@@ -1,6 +1,6 @@
 [project]
 name = "workhorse-agent"
-version = "0.2.0"
+version = "0.2.1"
 description = "Fail-soft runner for YAML-defined agent workflows — drives the Claude CLI through a workflow graph unattended for days."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/GabrielCpp/stablemate"
+Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"
 Repository = "https://github.com/GabrielCpp/stablemate"
 Issues = "https://github.com/GabrielCpp/stablemate/issues"
 
