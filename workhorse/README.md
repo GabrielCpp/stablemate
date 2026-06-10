@@ -202,6 +202,10 @@ see [docs/DOCKER.md](docs/DOCKER.md).)
 
 ## Writing a workflow
 
+> **Full schema reference:** [docs/WORKFLOW.md](docs/WORKFLOW.md) documents every
+> top-level key, every node type and field, the `OutputSpec`/branch syntax, and
+> the templating context. The overview below is the quick version.
+
 A workflow is a directory with this layout:
 
 ```
