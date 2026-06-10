@@ -24,8 +24,8 @@ test: ## Run the standalone test suite
 	@for t in tests/test_*.py; do echo ">> $$t"; uv run python $$t || exit 1; done
 
 .PHONY: build
-build: clean ## Build sdist + wheel into dist/
-	uv build --package $(NAME)
+build: clean ## Build sdist + wheel into this package's dist/
+	uv build --package $(NAME) --out-dir dist
 
 .PHONY: check
 check: build ## Build and list the wheel contents (verify packaged files)

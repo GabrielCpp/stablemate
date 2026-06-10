@@ -17,9 +17,9 @@ test: ## Run both packages' test suites
 	$(MAKE) -C farrier test
 
 .PHONY: build
-build: ## Build sdists + wheels for both packages
-	uv build --package workhorse-agent
-	uv build --package farrier
+build: ## Build sdists + wheels for both packages (into each package's dist/)
+	$(MAKE) -C workhorse build
+	$(MAKE) -C farrier build
 
 .PHONY: publish-test
 publish-test: ## Publish both packages to TestPyPI
