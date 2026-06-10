@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "farrier"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -283,7 +283,7 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },

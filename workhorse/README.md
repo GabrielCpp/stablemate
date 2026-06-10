@@ -22,7 +22,7 @@ it. That goal drives the two defining properties of the tool:
   response, a rate limit, a spending cap, an unparseable output) must never crash
   the whole run. The runner retries transient failures, reframes the prompt, and
   finally defaults a node's outputs so the graph advances to its `next` rather
-  than aborting. See [docs/GUARDRAILS.md](docs/GUARDRAILS.md) for the full recovery
+  than aborting. See [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md) for the full recovery
   ladder and its tuning knobs.
 - **Reproducibility and resume.** Every step is recorded as a run artifact and
   the graph checkpoints after each node, so a run resumes from exactly where it
@@ -30,7 +30,7 @@ it. That goal drives the two defining properties of the tool:
 
 It is repository-agnostic: the same workflow runs against any repo a workflow's
 `setup.sh` chooses to clone. A containerized harness for fully isolated,
-unattended runs lives in the source repo — see [docs/DOCKER.md](docs/DOCKER.md)
+unattended runs lives in the source repo — see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md)
 (not shipped in the PyPI package).
 
 ## Install
@@ -70,7 +70,7 @@ Key flags (run `workhorse --help` for the full list):
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
 > and persistent volumes. It is *not* part of the PyPI package — see
-> [docs/DOCKER.md](docs/DOCKER.md).
+> [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Choosing the agent CLI backend
 
@@ -86,7 +86,7 @@ workhorse --workflow ./wf/workflow.yaml --cli copilot
 
 The backend default model is overridable per run with the `AGENT_MODEL` env var
 (a node's own `model:` still wins), and the resilience/timeout knobs are all env
-vars too — see [docs/GUARDRAILS.md](docs/GUARDRAILS.md) for the full list.
+vars too — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md) for the full list.
 
 | Backend | CLI | Default model | In-place compaction |
 |---|---|---|---|
@@ -187,7 +187,7 @@ runs/
 
 Artifacts are written under `--runs-dir` (default `<workflow-dir>/runs`). The
 Docker harness redirects them to a persistent volume instead — see
-[docs/DOCKER.md](docs/DOCKER.md).
+[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Repository isolation
 
@@ -198,11 +198,11 @@ and clones the required repositories to a known path. This keeps the workflow
 reproducible and lets the agent work from a clean, versioned checkout rather than
 a host working tree. See any workflow's `scripts/setup.sh` for an example. (The
 Docker harness builds on this to give each run a fully isolated, throwaway clone —
-see [docs/DOCKER.md](docs/DOCKER.md).)
+see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).)
 
 ## Writing a workflow
 
-> **Full schema reference:** [docs/WORKFLOW.md](docs/WORKFLOW.md) documents every
+> **Full schema reference:** [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md) documents every
 > top-level key, every node type and field, the `OutputSpec`/branch syntax, and
 > the templating context. The overview below is the quick version.
 
@@ -289,7 +289,7 @@ echo "{\"result\": {\"status\": \"ok\"}}"
 Because runs are meant to survive a week without supervision, the controller
 will, as a last resort, **default an agent node's outputs and advance to `next`**
 rather than crash when Claude can't be coaxed into a usable answer (after
-transient retries and prompt reframing — see [docs/GUARDRAILS.md](docs/GUARDRAILS.md)).
+transient retries and prompt reframing — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)).
 
 The runner is generic and doesn't know what your outputs mean, so **you** declare
 the safe fallback per output via `default`:
@@ -313,7 +313,7 @@ disable defaulting entirely and hard-fail instead, set
 This section is for working on the **controller itself** (the Python that runs
 workflows), not on individual workflows. It assumes you have cloned the source
 repository (the `agents/local-worker/` directory) rather than installed from PyPI.
-Common tasks are wrapped in the [`Makefile`](Makefile) (`make help`):
+Common tasks are wrapped in the [`Makefile`](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/Makefile) (`make help`):
 `make install`, `make test`, `make build`, `make publish`.
 
 ### Project layout
@@ -355,7 +355,7 @@ agents/local-worker/          # source repo dir for the workhorse controller
 4. **Writes** a per-step artifact and advances `current_id` to `node.next` (or the branch target).
 
 A `terminal`/`fail` node ends the loop. The resilience for `agent` nodes lives
-entirely in `runner/agent.py::run_agent` — see [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
+entirely in `runner/agent.py::run_agent` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 ### Sessions (per-node clean context)
 
@@ -375,7 +375,7 @@ context window mid-run (the headless CLI returns instead of auto-compacting),
 `run_agent` runs `/compact` on that node's session and retries the *same* prompt
 on it, preserving the node's progress (bounded by `AGENT_MAX_COMPACT_ATTEMPTS`;
 falls back to a fresh-session reframe if `/compact` can't help). Verified against
-Claude Code 2.1.x. See the recovery ladder in [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
+Claude Code 2.1.x. See the recovery ladder in [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 > Not yet implemented: a configurable *per-node turn limit* (`--max-turns`) that
 > proactively compacts before the window is exhausted. Today compaction is
@@ -441,4 +441,4 @@ keeps agent context accurate too.
 The repo ships a Docker harness (`Dockerfile`, `compose.yaml`, `entrypoint.sh`)
 for isolated unattended runs. It is not part of the PyPI package; its build/run
 workflow — including rebuilding the image after controller or `pyproject.toml`
-changes — is documented in [docs/DOCKER.md](docs/DOCKER.md).
+changes — is documented in [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
