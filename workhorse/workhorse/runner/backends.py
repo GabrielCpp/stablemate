@@ -1,0 +1,397 @@
+"""Agent CLI backends — the facade that lets the controller drive different agent
+CLIs (Claude today; Codex/Copilot later) behind one interface.
+
+The resilience ladder in ``agent.py`` (transient/cap retries, context-overflow
+compaction, prompt reframing, default-to-next) is CLI-agnostic and delegates the
+two operations that ARE CLI-specific to the active backend:
+
+* ``run_turn`` — run one non-interactive turn and return its final text.
+* ``compact``  — best-effort context compaction (``False`` when unsupported, in
+  which case the ladder reframes instead).
+
+The backend is chosen per-run via the ``AGENT_CLI`` env var (or ``--cli``), so a
+single workflow runs entirely on one CLI; there is no per-node selection.
+
+``ClaudeBackend`` is an *adapter* over the existing Claude functions in
+``agent.py`` (``_run_claude_cli`` / ``_compact_session``): it calls them through
+the ``agent`` module so they remain the single, tested implementation of the
+Claude ``stream-json`` / ``--resume`` / ``/compact`` protocol. ``CodexBackend``
+(``codex exec --json``) and ``CopilotBackend`` (``copilot -p --output-format
+json``) implement their own JSONL protocols here, sharing the ``_stream_jsonl``
+event loop and ``_finalize_turn`` classifier below. Neither supports in-place
+compaction (they manage context internally), so the ladder reframes on overflow.
+"""
+from __future__ import annotations
+
+import json
+import os
+import select
+import subprocess
+import time
+from abc import ABC, abstractmethod
+from pathlib import Path
+
+# Import the module (not its names) so test monkeypatches of e.g.
+# ``agent._run_claude_cli`` are resolved at call time. agent.py imports this
+# module only lazily (inside run_agent/_invoke_claude), so there is no import cycle.
+from . import agent as _agent
+
+
+class AgentBackend(ABC):
+    """One agent CLI behind a uniform interface. Stateless — safe to share."""
+
+    #: Short name used in logs and the ``AGENT_CLI`` registry key.
+    name: str = "agent"
+    #: Model used when a node declares no ``model:`` and no env override is set.
+    default_model: str | None = None
+    #: Whether the CLI can compact a long session in place. When False the
+    #: resilience ladder reframes on context overflow instead of compacting.
+    supports_compaction: bool = False
+
+    @abstractmethod
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> str:
+        """Run one non-interactive turn for ``prompt`` and return the final result
+        text. Persist the session id (when the CLI supports resume) to
+        ``session_id_path``. Raise ``agent.BackendInvocationError`` on failure,
+        classifying it as ``transient`` / ``overflow`` / cap (``reset_at``) so the
+        ladder can recover appropriately."""
+
+    @abstractmethod
+    def compact(
+        self,
+        session_id_path: Path | None,
+        node_id: str,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> bool:
+        """Best-effort: compact the node's session to free context so it can
+        continue. Return True when compaction ran, False when it could not (no
+        session, failure) or is unsupported — callers then fall back to reframe."""
+
+
+class ClaudeBackend(AgentBackend):
+    """Claude Code CLI (``claude -p``). Adapter over the Claude implementation in
+    ``agent.py`` — see this module's docstring for why it delegates rather than
+    owning the protocol code."""
+
+    name = "claude"
+    default_model = "sonnet"
+    supports_compaction = True
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> str:
+        return _agent._run_claude_cli(
+            prompt, node_id, session_id_path, model, timeout=timeout
+        )
+
+    def compact(
+        self,
+        session_id_path: Path | None,
+        node_id: str,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> bool:
+        return _agent._compact_session(session_id_path, node_id, model)
+
+
+# ── Shared JSONL plumbing for non-Claude backends ──────────────────────────────
+# Codex and Copilot both stream newline-delimited JSON. The loop below is generic;
+# each backend supplies an ``on_event`` callback that pulls the final answer text
+# and the resumable session id out of its own event vocabulary into ``state``.
+
+
+def _read_session_id(session_id_path: Path | None) -> str | None:
+    """The persisted session id for this node, if any (for --resume)."""
+    if session_id_path and session_id_path.exists():
+        sid = session_id_path.read_text().strip()
+        return sid or None
+    return None
+
+
+def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
+    """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
+    invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
+
+    Mirrors the timeout / live-echo behavior of agent._stream_events. Returns
+    ``(state, diagnostics, timed_out, returncode)`` where ``state`` carries
+    ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
+    diagnostics so failure classification can see them."""
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
+        text=True,
+        bufsize=1,
+    )
+    assert proc.stdin is not None
+    if stdin_data is not None:
+        proc.stdin.write(stdin_data)
+    proc.stdin.close()
+
+    state: dict = {"result_text": "", "session_id": None}
+    diagnostics: list[str] = []
+    timed_out = False
+    start = time.time()
+    assert proc.stdout is not None
+    while True:
+        elapsed = time.time() - start
+        if elapsed > timeout:
+            timed_out = True
+            break
+        ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
+        if not ready:
+            if proc.poll() is not None:
+                break
+            continue
+        raw = proc.stdout.readline()
+        if not raw:
+            break
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            print(f"[{node_id}] {line}", flush=True)
+            diagnostics.append(line)
+            continue
+        on_event(event, state, node_id, diagnostics)
+
+    proc.wait()
+    if timed_out and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    return state, "\n".join(diagnostics), timed_out, proc.returncode
+
+
+def _finalize_turn(
+    backend_name, node_id, state, diagnostics, timed_out, returncode, session_id_path
+) -> str:
+    """Classify a finished turn the same way _run_claude_cli does: timeout and
+    empty result are transient; a known overflow marker is a (non-transient)
+    overflow; a non-zero exit is transient only if its output matches a retryable
+    marker. Persist the session id on success/overflow. Returns the result text."""
+    tail = f": {diagnostics.strip()}" if diagnostics.strip() else ""
+    sid = state.get("session_id")
+
+    if timed_out:
+        raise _agent.BackendInvocationError(
+            f"Timeout waiting for result from {backend_name} for node '{node_id}'"
+            f" after {int(_agent.DEFAULT_RESULT_TIMEOUT_S)}s{tail}",
+            transient=True,
+        )
+    if _agent._is_context_overflow(diagnostics):
+        if session_id_path and sid:
+            session_id_path.write_text(sid)
+        raise _agent.BackendInvocationError(
+            f"Context window exhausted for node '{node_id}'{tail}",
+            transient=False,
+            overflow=True,
+        )
+    if returncode != 0:
+        raise _agent.BackendInvocationError(
+            f"{backend_name} CLI exited with code {returncode} for node '{node_id}'{tail}",
+            transient=_agent._is_transient(diagnostics),
+        )
+    if not state.get("result_text"):
+        raise _agent.BackendInvocationError(
+            f"No result text from {backend_name} for node '{node_id}'{tail}",
+            transient=True,
+        )
+    if session_id_path and sid:
+        session_id_path.write_text(sid)
+    return state["result_text"]
+
+
+def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
+    """Parse a node's ``model:`` string into ``(profile, model_slug)`` for codex.
+
+    Codex's per-node selection is overloaded onto the generic ``model`` field as
+    ``<profile>[@<model-slug>]``. ``@`` is the delimiter because it never appears
+    in OpenRouter slugs (``deepseek/deepseek-chat-v3.1``) or local tags
+    (``qwen2.5-coder:32b``), which freely use ``/`` and ``:``:
+
+    * ``"local"``                         → profile=local,      model=None  (profile pins the model)
+    * ``"openrouter@deepseek/deep-v3.1"`` → profile=openrouter, model=deepseek/deep-v3.1
+    * ``"openrouter@"``                   → profile=openrouter, model=None
+    * ``"@gpt-5.5"``                      → profile=None,        model=gpt-5.5  (model only; profile from CODEX_PROFILE)
+    * ``""`` / ``None``                   → (None, None)
+
+    A bare token (no ``@``) is a *profile* name — that is the unit codex configs
+    bundle provider+auth+model into. To target a model on the default provider
+    with no profile, lead with ``@``."""
+    raw = (model or "").strip()
+    if not raw:
+        return None, None
+    if "@" in raw:
+        prof, _, slug = raw.partition("@")
+        return (prof.strip() or None), (slug.strip() or None)
+    return raw, None
+
+
+def _codex_on_event(event, state, node_id, diagnostics):
+    """Codex `exec --json`: thread.started → resume id; item.completed agent_message
+    → answer text (last wins); anything error/failed → diagnostics."""
+    etype = event.get("type") or ""
+    if etype == "thread.started":
+        state["session_id"] = event.get("thread_id") or state["session_id"]
+    elif etype == "item.completed":
+        item = event.get("item") or {}
+        if item.get("type") == "agent_message":
+            text = item.get("text") or ""
+            if text:
+                state["result_text"] = text
+                print(f"[{node_id}] {text.strip()[:500]}", flush=True)
+        elif item.get("type") == "error" or item.get("error"):
+            diagnostics.append(str(item)[:500])
+    elif "error" in etype or "fail" in etype:
+        diagnostics.append(json.dumps(event)[:500])
+
+
+def _copilot_on_event(event, state, node_id, diagnostics):
+    """Copilot `-p --output-format json`: assistant.message.data.content → answer
+    text (last non-empty wins); result → sessionId + exitCode."""
+    etype = event.get("type") or ""
+    if etype == "assistant.message":
+        content = (event.get("data") or {}).get("content") or ""
+        if content:
+            state["result_text"] = content
+            print(f"[{node_id}] {content.strip()[:500]}", flush=True)
+    elif etype == "result":
+        if event.get("sessionId"):
+            state["session_id"] = event["sessionId"]
+        exit_code = event.get("exitCode")
+        if exit_code not in (0, None):
+            diagnostics.append(f"copilot exitCode={exit_code}")
+    elif "error" in etype:
+        diagnostics.append(json.dumps(event)[:500])
+
+
+class CodexBackend(AgentBackend):
+    """OpenAI Codex CLI (``codex exec --json``). No in-place compaction — Codex
+    manages its own context, so the ladder reframes on overflow. Runs with the
+    sandbox bypassed because the worker container is itself the sandbox (mirrors
+    Claude's --dangerously-skip-permissions).
+
+    Per-node provider/model selection is overloaded onto the node ``model:`` field
+    as ``<profile>[@<model-slug>]`` (see ``_parse_codex_model``), where the profile
+    is a ``~/.codex/config.toml`` profile (e.g. ``openrouter``, ``local``). The
+    ``CODEX_PROFILE`` env var is the run-level fallback when a node names none."""
+
+    name = "codex"
+    default_model = None  # use Codex's configured default unless a node sets model
+    supports_compaction = False
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> str:
+        sid = _read_session_id(session_id_path)
+        # Resolve a codex config *profile* (from ~/.codex/config.toml — selects the
+        # provider, auth and a pinned model as one bundle) and an optional model
+        # override, per node. `--profile` is a top-level flag (it must precede
+        # `exec`, and `exec resume` doesn't accept it) so it goes in `head`; the
+        # model override maps to `-m`.
+        profile, model_slug = _parse_codex_model(model)
+        if not profile:  # node didn't name one → fall back to the run-level default
+            profile = (os.environ.get("CODEX_PROFILE") or "").strip() or None
+        head = ["codex", *(["--profile", profile] if profile else [])]
+        flags = ["--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"]
+        if model_slug:
+            flags += ["-m", model_slug]
+        if sid:
+            # codex [--profile P] exec resume <flags> <session_id> -   (prompt on stdin)
+            cmd = [*head, "exec", "resume", *flags, sid, "-"]
+            print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
+        else:
+            cmd = [*head, "exec", *flags, "-"]
+        state, diag, timed_out, rc = _stream_jsonl(
+            cmd, node_id, timeout, prompt, _codex_on_event
+        )
+        return _finalize_turn("codex", node_id, state, diag, timed_out, rc, session_id_path)
+
+    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+        return False
+
+
+class CopilotBackend(AgentBackend):
+    """GitHub Copilot CLI (``copilot -p --output-format json``). No in-place
+    compaction. --allow-all-tools + --no-ask-user make it fully autonomous (the
+    container is the sandbox). Session is resumed by id via --session-id."""
+
+    name = "copilot"
+    default_model = None  # 'auto' / Copilot's default unless a node sets model
+    supports_compaction = False
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+    ) -> str:
+        sid = _read_session_id(session_id_path)
+        # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).
+        cmd = ["copilot", "-p", prompt, "--output-format", "json",
+               "--allow-all-tools", "--no-ask-user"]
+        if model:
+            cmd += ["--model", model]
+        if sid:
+            cmd += ["--session-id", sid]
+            print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
+        state, diag, timed_out, rc = _stream_jsonl(
+            cmd, node_id, timeout, None, _copilot_on_event
+        )
+        return _finalize_turn("copilot", node_id, state, diag, timed_out, rc, session_id_path)
+
+    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+        return False
+
+
+# Registry of available backends, keyed by their AGENT_CLI name.
+_REGISTRY: dict[str, type[AgentBackend]] = {
+    "claude": ClaudeBackend,
+    "codex": CodexBackend,
+    "copilot": CopilotBackend,
+}
+
+_CACHE: dict[str, AgentBackend] = {}
+
+
+def get_backend(name: str | None = None) -> AgentBackend:
+    """Resolve the active backend: explicit ``name`` → ``AGENT_CLI`` env → ``claude``.
+
+    Backends are stateless, so a per-name cached instance is reused. Raises
+    ``ValueError`` (fail fast) on an unknown name."""
+    resolved = (name or os.environ.get("AGENT_CLI") or "claude").strip().lower()
+    if resolved not in _REGISTRY:
+        available = ", ".join(sorted(_REGISTRY))
+        raise ValueError(
+            f"unknown CLI backend {resolved!r} (set AGENT_CLI to one of: {available})"
+        )
+    if resolved not in _CACHE:
+        _CACHE[resolved] = _REGISTRY[resolved]()
+    return _CACHE[resolved]

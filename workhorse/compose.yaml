@@ -1,0 +1,72 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # ── Auth: Claude subscription (Claude.ai OAuth) is the DEFAULT ─────────────
+      # Credentials are seeded once from the host's ~/.claude/.credentials.json
+      # into the persistent claude-state volume by entrypoint.sh; the CLI then
+      # refreshes/rotates the token in-volume across runs and reboots.
+      #
+      # Optional: skip the file seed and use a long-lived OAuth token instead.
+      # Generate it on the host with `claude setup-token` and export it before
+      # `docker compose up` (or put it in a .env next to compose.yaml).
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+
+      WORKFLOW_PATH: /workflow/workflow.yaml
+      # Write run artifacts to the persistent named volume (survives reboots).
+      AGENT_RUNS_DIR: /runs
+      # The CLI binary lives in a read-only system path; don't let it self-update.
+      DISABLE_AUTOUPDATER: "1"
+
+      # ── Bedrock alternative (uncomment this block + the ~/.aws mount below) ────
+      # CLAUDE_CODE_USE_BEDROCK: "1"
+      # AWS_PROFILE: ${AWS_PROFILE:-default}
+    volumes:
+      # Subscription credentials — seeded into the volume at startup (read-only here).
+      - type: bind
+        source: ${HOME}/.claude/.credentials.json
+        target: /mnt/claude-credentials.json
+        read_only: true
+
+      # Optional host Claude config (settings.json). Uncomment if you keep one.
+      # - type: bind
+      #   source: ${HOME}/.claude/settings.json
+      #   target: /mnt/claude-settings.json
+      #   read_only: true
+
+      # ── Bedrock alternative ───────────────────────────────────────────────────
+      # - type: bind
+      #   source: ${HOME}/.aws
+      #   target: /mnt/aws
+      #   read_only: true
+
+      # Workflow directory — set via the WORKFLOW_DIR env var
+      - type: bind
+        source: ${WORKFLOW_DIR:?Set WORKFLOW_DIR to the absolute path of your workflow directory}
+        target: /workflow
+
+      # Agent working tree (repo clones, branches, commits) — PERSISTS across
+      # container restarts and reboots so in-progress work is never lost.
+      - type: volume
+        source: workspace
+        target: /workspace
+
+      # Claude session state + seeded credentials — persists across reboots.
+      - type: volume
+        source: claude-state
+        target: /claude-state
+
+      # Run artifacts (prompts, outputs, context snapshots) — persists across reboots.
+      - type: volume
+        source: runs
+        target: /runs
+
+volumes:
+  # Agent working tree: clones live here so committed work survives reboots.
+  workspace:
+  # Claude CLI session history, seeded subscription credentials, onboarding flag.
+  claude-state:
+  # Workflow run artifacts.
+  runs:

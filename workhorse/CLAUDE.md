@@ -1,0 +1,34 @@
+# local-worker
+
+You are working inside `agents/local-worker` — the Dockerized agent controller
+that runs YAML-defined workflows with the Claude CLI, designed to run agent
+workflows **unattended for up to a week**.
+
+## Orientation
+
+- The full usage + development guide is the README, imported below. Read its
+  **Development** section before changing the controller: project layout, the
+  graph-walk loop, where tests and docs go, and conventions.
+- The error-recovery design (the retry → reframe → default ladder that keeps a
+  long run from crashing on one bad node) is in docs/GUARDRAILS.md, imported below.
+
+## Working rules (most load-bearing)
+
+- **Fail soft for unattended runs.** New failure paths in agent-node handling
+  must slot into the existing retry → reframe → default ladder in
+  `workhorse/runner/agent.py`, not raise. One bad node must never end the run.
+  Reserve hard raises for unrecoverable, deterministic errors.
+- **Tests go in `tests/test_<area>.py`** and must be dependency-free and
+  standalone: patch the CLI boundary (`_run_claude_cli` / `_invoke_claude`) and
+  sleeping so nothing hits the network or waits in real time. Run with
+  `.venv/bin/python tests/test_*.py`. Add/extend a test for any behavior change.
+- **Keep README.md and docs/GUARDRAILS.md current** when behavior changes — they are
+  the operator contract and are imported here.
+- **Controller `.py` is COPY'd into the image, not bind-mounted** — changes take
+  effect only after an image rebuild (add `--build` to the `docker compose up`).
+- **Stay repository-agnostic.** Never add repo-specific bind mounts to
+  `compose.yaml`; workflows clone what they need via their own `setup.sh`.
+
+@README.md
+
+@docs/GUARDRAILS.md
