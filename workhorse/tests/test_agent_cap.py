@@ -53,7 +53,7 @@ def test_session_limit_pauses_until_reset_then_resumes():
     """A session-limit error pauses until its parsed reset (not short backoff)."""
     calls = {"n": 0}
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ClaudeInvocationError(SESSION_MSG, transient=True)
@@ -123,7 +123,7 @@ def test_structured_reset_at_drives_invoke_wait():
     now = 2_000_000.0
     calls = {"n": 0}
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ClaudeInvocationError("blocked", transient=True, reset_at=now + 7200)
@@ -144,7 +144,7 @@ def test_budget_timeout_warns_retry_with_time_budget():
     warning that states the limit, so the next attempt can size its work to fit."""
     seen_prompts = []
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         seen_prompts.append(prompt)
         if len(seen_prompts) == 1:
             raise ClaudeInvocationError(
@@ -173,7 +173,7 @@ def test_non_timeout_transient_retries_prompt_unchanged():
     warning is injected (only real wall-clock timeouts get one)."""
     seen_prompts = []
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         seen_prompts.append(prompt)
         if len(seen_prompts) == 1:
             raise ClaudeInvocationError("overloaded_error", transient=True)
@@ -191,7 +191,7 @@ def test_cap_sleeps_until_reset_then_resumes():
     """A cap error pauses (parsed reset, not short backoff) and retries to success."""
     calls = {"n": 0}
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ClaudeInvocationError(CAP_MSG, transient=True)
@@ -213,7 +213,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
     """Even with a tiny short-retry budget, multiple caps are ridden out."""
     calls = {"n": 0}
 
-    def fake_cli(prompt, node_id, sid, model, timeout=None):
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] <= 3:
             raise ClaudeInvocationError(CAP_MSG, transient=True)
@@ -229,7 +229,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
 
 def test_cap_wait_safety_bound():
     """A cap that never clears gives up after _MAX_CAP_WAITS instead of looping forever."""
-    def always_cap(prompt, node_id, sid, model, timeout=None):
+    def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise ClaudeInvocationError(CAP_MSG, transient=True)
 
     with patch.object(agent, "_run_claude_cli", always_cap), \
@@ -246,7 +246,7 @@ def test_short_transient_uses_bounded_backoff_then_fails():
     """A non-cap transient (overload) retries with backoff and fails fast."""
     calls = {"n": 0}
 
-    def always_overloaded(prompt, node_id, sid, model, timeout=None):
+    def always_overloaded(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         raise ClaudeInvocationError("overloaded", transient=True)
 
@@ -263,7 +263,7 @@ def test_short_transient_uses_bounded_backoff_then_fails():
 def test_non_transient_fails_immediately():
     calls = {"n": 0}
 
-    def hard_fail(prompt, node_id, sid, model, timeout=None):
+    def hard_fail(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         raise ClaudeInvocationError("malformed workflow node", transient=False)
 

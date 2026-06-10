@@ -56,12 +56,18 @@ class AgentBackend(ABC):
         session_id_path: Path | None,
         model: str | None = None,
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result
         text. Persist the session id (when the CLI supports resume) to
         ``session_id_path``. Raise ``agent.BackendInvocationError`` on failure,
         classifying it as ``transient`` / ``overflow`` / cap (``reset_at``) so the
-        ladder can recover appropriately."""
+        ladder can recover appropriately.
+
+        ``cwd`` sets the subprocess working directory (controls CLAUDE.md/skills
+        discovery). ``add_dirs`` are additional directories the agent can access
+        (passed as --add-dir flags to Claude)."""
 
     @abstractmethod
     def compact(
@@ -92,9 +98,12 @@ class ClaudeBackend(AgentBackend):
         session_id_path: Path | None,
         model: str | None = None,
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
     ) -> str:
         return _agent._run_claude_cli(
-            prompt, node_id, session_id_path, model, timeout=timeout
+            prompt, node_id, session_id_path, model, timeout=timeout,
+            cwd=cwd, add_dirs=add_dirs,
         )
 
     def compact(
@@ -307,6 +316,8 @@ class CodexBackend(AgentBackend):
         session_id_path: Path | None,
         model: str | None = None,
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
     ) -> str:
         sid = _read_session_id(session_id_path)
         # Resolve a codex config *profile* (from ~/.codex/config.toml — selects the
@@ -352,6 +363,8 @@ class CopilotBackend(AgentBackend):
         session_id_path: Path | None,
         model: str | None = None,
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
     ) -> str:
         sid = _read_session_id(session_id_path)
         # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).

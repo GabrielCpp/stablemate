@@ -237,6 +237,12 @@ def run_agent(
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
+    # Render per-node working directory and additional directories from context.
+    rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
+    rendered_add_dirs = [
+        d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
+    ]
+
     # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
     # claude). Imported lazily to avoid an import cycle (backends imports this
     # module). Used here for the compaction step and the per-backend model default.
@@ -283,6 +289,7 @@ def run_agent(
             outputs = _invoke_and_parse(
                 prompt, node, session_id_path, model, max_output_retries,
                 timeout=effective_timeout,
+                cwd=rendered_cwd, add_dirs=rendered_add_dirs,
             )
             return rendered_prompt, outputs
         except (ClaudeInvocationError, OutputParseError) as exc:
@@ -340,6 +347,8 @@ def _invoke_and_parse(
     model: str | None,
     max_output_retries: int,
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    cwd: str | None = None,
+    add_dirs: list[str] | None = None,
 ) -> dict[str, Any]:
     """Invoke Claude and parse the node's declared outputs.
 
@@ -349,7 +358,8 @@ def _invoke_and_parse(
     """
     for attempt in range(max_output_retries + 1):
         result_text = _invoke_claude(
-            prompt, node.id, session_id_path, model=model, timeout=timeout
+            prompt, node.id, session_id_path, model=model, timeout=timeout,
+            cwd=cwd, add_dirs=add_dirs,
         )
         try:
             return _extract_outputs(result_text, node)
@@ -377,6 +387,8 @@ def _invoke_claude(
     backend: "AgentBackend | None" = None,
     max_invoke_retries: int = DEFAULT_MAX_INVOKE_RETRIES,
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    cwd: str | None = None,
+    add_dirs: list[str] | None = None,
 ) -> str:
     """Run one agent-CLI turn for ``prompt``, recovering from transient failures.
 
@@ -404,7 +416,10 @@ def _invoke_claude(
     while True:
         try:
             print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
-            return backend.run_turn(attempt_prompt, node_id, session_id_path, model, timeout=timeout)
+            return backend.run_turn(
+                attempt_prompt, node_id, session_id_path, model, timeout=timeout,
+                cwd=cwd, add_dirs=add_dirs,
+            )
         except BackendInvocationError as exc:
             print(f"[{node_id}] ⚠ Claude invocation failed: {exc}", flush=True)
             if not exc.transient:
@@ -454,13 +469,17 @@ def _run_claude_cli(
     session_id_path: Path | None,
     model: str | None = None,
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    cwd: str | None = None,
+    add_dirs: list[str] | None = None,
 ) -> str:
     """Run a single Claude CLI turn for ``prompt``, returning the final result
     text. Raises ``ClaudeInvocationError`` on CLI failure, classifying it as
     transient when the captured output matches a known retryable marker.
-    
+
     Args:
         timeout: Maximum seconds to wait for a result event from Claude.
+        cwd: Working directory for the subprocess (controls CLAUDE.md discovery).
+        add_dirs: Additional directories to grant the agent access to.
     """
     cmd = [
         "claude",
@@ -470,6 +489,8 @@ def _run_claude_cli(
     ]
     if model:
         cmd.extend(["--model", model])
+    for d in (add_dirs or []):
+        cmd.extend(["--add-dir", d])
     cmd.append("-p")
 
     # Resume session if one exists
@@ -486,6 +507,7 @@ def _run_claude_cli(
         stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
         text=True,
         bufsize=1,
+        cwd=cwd or None,
     )
     assert proc.stdin is not None
     proc.stdin.write(prompt)

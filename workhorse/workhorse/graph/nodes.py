@@ -31,6 +31,14 @@ class AgentNode(BaseModel):
     # The effective value is surfaced to the prompt as `node_timeout_s` /
     # `node_timeout_min`, so the agent can size its work to fit the budget.
     timeout: float | None = 1200
+    # Per-node working directory (Jinja2-rendered from workflow context). Sets the
+    # subprocess CWD for the agent CLI, controlling CLAUDE.md/skills discovery and
+    # git context. When empty/None, inherits the process CWD (existing behavior).
+    cwd: str | None = None
+    # Additional directories to grant the agent access to (rendered as --add-dir
+    # flags). Used for multi-repo workflows where the agent's CWD is one repo but
+    # it needs to read/write files in another.
+    add_dirs: list[str] = Field(default_factory=list)
     next: str | None = None
 
 
@@ -40,6 +48,9 @@ class ScriptNode(BaseModel):
     script: str
     args: list[str] = Field(default_factory=list)
     outputs: list[OutputSpec] = Field(default_factory=list)
+    # Per-node working directory (Jinja2-rendered). Sets the subprocess CWD for
+    # the script. When empty/None, defaults to the workflow directory.
+    cwd: str | None = None
     next: str | None = None
 
 

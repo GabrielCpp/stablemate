@@ -37,7 +37,7 @@ def _run_capturing(node):
         seen["ctx"] = ctx
         return str(tmpl)
 
-    def fake_invoke(prompt, node_id, sid, model=None, timeout=None):
+    def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         seen["timeout"] = timeout
         return json.dumps({})
 
