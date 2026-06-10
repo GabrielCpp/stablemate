@@ -36,6 +36,14 @@ farrier --repo .            # render/install the selected packs
 farrier --repo . --check    # verify generated files are up to date (no writes)
 ```
 
+## Configuring `.agents.yml`
+
+`.agents.yml` (at your repo root) selects what farrier renders. Every option —
+`repo`, `agents`, `packs`, `skills`/`prompts`/`roots`, `scaffolds`, `exclude`,
+`localInstructions`, `template`/`vars`, and `workflow` — is documented with
+inline comments in **[`agents.example.yml`](agents.example.yml)**. Copy it to
+your repo as `.agents.yml` and prune to taste.
+
 ## Locating the library
 
 farrier resolves the library directory with this precedence:

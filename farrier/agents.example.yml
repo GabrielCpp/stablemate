@@ -1,0 +1,171 @@
+# ============================================================================
+# .agents.yml — complete reference for the `farrier` installer
+# ============================================================================
+#
+# Copy this file to your repository root as `.agents.yml`, then prune it to the
+# keys you need. farrier reads it to decide which skills, prompts, roots,
+# scaffolds, and workflows from the prompt library to render into your repo's
+# adapter files.
+#
+# Run it (after `pipx install farrier` and pointing farrier at the library):
+#   farrier config set-library /path/to/the/library     # one-time
+#   farrier --repo .            # render/install
+#   farrier --repo . --check    # verify generated files are current (no writes)
+#
+# Every key below is OPTIONAL unless marked REQUIRED. Where two spellings are
+# shown (camelCase / snake_case), either is accepted.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# repo — repository identity. The prefix is prepended to every installed skill
+# and prompt name (skill `db.md` → `<prefix>-db`).
+# ---------------------------------------------------------------------------
+repo:
+  name: myrepo            # identifier; default = the repo directory name
+  prefix: myrepo          # optional; overrides `name` as the install prefix
+
+
+# ---------------------------------------------------------------------------
+# agents — REQUIRED. Which assistant adapters to generate. At least one must be
+# truthy or farrier errors. Mapping form (with booleans) or list form.
+#
+#   claude  → .claude/skills/<name>/SKILL.md      + .claude/commands/<name>.md
+#   codex   → .agents/skills/<name>/SKILL.md      + .agents/prompts/<name>.prompt.md
+#   copilot → .github/instructions/<name>.instructions.md,
+#             .github/skills/<name>/SKILL.md, .github/prompts/<name>.prompt.md,
+#             and roots → .github/copilot-instructions.md
+# ---------------------------------------------------------------------------
+agents:
+  claude: true
+  codex: false
+  copilot: false
+# list form (equivalent to enabling just these):
+# agents: [claude]
+
+
+# ---------------------------------------------------------------------------
+# packs — named bundles from the library's packs/*.yml (omit the .yml). A pack
+# selects a set of skills/prompts/roots/scaffolds/workflows and may `include`
+# other packs. All selected packs are merged (union).
+# ---------------------------------------------------------------------------
+packs:
+  - go
+  - flutter
+  - shared-lifecycle
+
+
+# ---------------------------------------------------------------------------
+# skills / prompts / roots — extra individual selections ADDED on top of what
+# the packs pull in (union, not replacement). Glob patterns are allowed for
+# skills and prompts.
+# ---------------------------------------------------------------------------
+skills:
+  - planning/*            # every skill under the library's planning/ group
+prompts:
+  - review/*
+roots:
+  - olympus               # a root instruction (mainly used by copilot)
+
+
+# ---------------------------------------------------------------------------
+# scaffolds — seed files copied from the library scaffolds/ tree. Each entry is
+# either a glob (namespace stripped from the output path) or a single-key
+# mapping `source: dest` that retargets a folder-agnostic scaffold to a
+# repo-specific directory. Seed files (e.g. .gitignore) are write-once and are
+# never overwritten on re-install.
+# ---------------------------------------------------------------------------
+scaffolds:
+  - shared-docs           # glob: scaffolds/shared-docs/** → repo root
+  - flutter: app          # mapping: scaffolds/flutter/**  → app/
+  - go: api               # mapping: scaffolds/go/**        → api/
+
+
+# ---------------------------------------------------------------------------
+# exclude — suppress items a pack pulls in but this repo does not want. Glob
+# patterns, matched against library paths.
+# ---------------------------------------------------------------------------
+exclude:
+  skills:
+    - go/experimental-*
+  prompts:
+    - planning/spike-*
+  scaffolds:
+    - shared-docs/CONTRIBUTING.md
+
+
+# ---------------------------------------------------------------------------
+# localInstructions — render selected (already-installed) skills as local
+# CLAUDE.md / AGENTS.md / CODEX.md files in chosen directories, so the assistant
+# auto-loads those rules contextually from any ancestor dir.
+#
+# Provide EITHER `skill` (one) or `skills` (many, concatenated in order).
+# The names must match INSTALLED skill names (i.e. include the prefix), or the
+# render fails when it can't find the source.
+# ---------------------------------------------------------------------------
+localInstructions:
+  - skills: [myrepo, myrepo-developer]
+    paths: ["."]              # repo root
+    includeReadme: inline     # inline (default) | import | none  (true=inline, false=none)
+  - skill: myrepo-go
+    paths: ["api"]            # write under api/
+    includeReadme: import     # Claude `@README.md` directive; others fall back to inline
+
+
+# ---------------------------------------------------------------------------
+# template (preferred) / vars (legacy alias) — Jinja2 values injected into
+# every rendered skill and prompt. Reference them in library source as
+# `{{ template.<key> }}`. Both tables are merged into one context; use
+# `template` for new configs. Shared library prompts should use
+# `| default("…")` so they stay installable when a key is absent.
+# ---------------------------------------------------------------------------
+template:
+  project_name: "My Project"
+  backend_layer_name: "Go API"
+  go_module: github.com/org/myrepo
+  go_cli_name: appctl
+  app_path: app
+  api_path: api
+  openapi_path: api/pkg/api/openapi.yaml
+# vars:                       # legacy spelling; merged with `template`
+#   project_name: "My Project"
+
+
+# ---------------------------------------------------------------------------
+# workflow — configuration for the generated launcher (.agents/agents.mk) and
+# for workflow runners. Required only when a selected pack installs workflows.
+# camelCase or snake_case accepted.
+# ---------------------------------------------------------------------------
+workflow:
+  # Git remote for GitHub-default workflow runs (NOT the default local
+  # bind-mount clone). Auto-detected from `git remote get-url origin` if omitted.
+  repoUrl: https://github.com/org/myrepo.git        # or: repo_url
+
+  # Long-lived integration/trunk branch the worker clones and targets PRs at.
+  # Auto-detected (origin/HEAD → main → master) if omitted. Must be the trunk,
+  # NOT your current feature branch.
+  branch: main
+
+  # Path from this repo to the prompt-library content directory. Becomes
+  # AGENTS_DIR in .agents/agents.mk. Default: $(abspath $(CURDIR)/../vigilant-octo/agents).
+  agentsDir: ../vigilant-octo/agents                # or: agents_dir
+
+  # Host environment variables to forward into the Docker worker at compose-up.
+  envPassthrough:                                   # or: env_passthrough
+    - GH_TOKEN
+    - OPENAI_API_KEY
+
+  # Name of the env var carrying the GitHub token for PR/CI workflow steps
+  # (falls back to GH_TOKEN then GITHUB_TOKEN). Must also be in envPassthrough.
+  githubTokenEnv: GH_TOKEN
+
+  # storyCoder (and similar) — an opaque, workflow-specific subtree passed
+  # through to the workflow's prompts/templates. farrier does not interpret its
+  # internals; shape it to whatever the installed workflow documents.
+  # storyCoder:
+  #   prompts:
+  #     plan: myrepo-plan-story
+  #     implement: myrepo-implement-plan
+  #   successGate:
+  #     apiPath: api
+  #     apiCommand: make test
