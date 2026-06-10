@@ -248,11 +248,7 @@ def _find_latest_resumable(runs_dir: Path) -> Path | None:
     return max(candidates)[1]
 
 
-def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] == "version":
-        print(importlib.metadata.version("workhorse-agent"))
-        return
-    parser = argparse.ArgumentParser(description="Generic agent workflow controller")
+def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
     parser.add_argument(
         "--runs-dir",
@@ -299,8 +295,9 @@ def main() -> None:
         action="store_true",
         help="Resume the most recent unfinished run under --runs-dir (errors if none).",
     )
-    args = parser.parse_args()
 
+
+def _run_run(args: argparse.Namespace) -> None:
     # Per-run CLI backend selection. --cli wins over the AGENT_CLI env; validate
     # now so an unknown name fails fast with a clear message instead of mid-run.
     if args.cli:
@@ -354,3 +351,42 @@ def main() -> None:
             params=params,
         )
     )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="workhorse",
+        description="Fail-soft runner for YAML-defined agent workflows.",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # run (default)
+    run_p = sub.add_parser("run", help="Execute a workflow (default)")
+    _add_run_args(run_p)
+
+    # version
+    sub.add_parser("version", help="Print the installed workhorse-agent version")
+
+    return parser
+
+
+def main() -> None:
+    argv = sys.argv[1:]
+    parser = _build_parser()
+
+    # Keep `workhorse --workflow ...` working: if no recognised subcommand is
+    # given, inject `run` so existing invocations are unchanged.
+    # Exception: bare --help/-h should show the top-level subcommand listing.
+    _SUBCOMMANDS = {"run", "version"}
+    if argv and argv[0] in ("-h", "--help"):
+        pass  # let the top-level parser handle it
+    elif not argv or argv[0] not in _SUBCOMMANDS:
+        argv = ["run"] + list(argv)
+
+    args = parser.parse_args(argv)
+
+    if args.command == "version":
+        print(importlib.metadata.version("workhorse-agent"))
+        return
+
+    _run_run(args)

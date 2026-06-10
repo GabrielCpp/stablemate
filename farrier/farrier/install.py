@@ -1363,33 +1363,32 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
         print("Added .agents/runs to .gitignore")
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="farrier",
-        description="Render the agent prompt library into a repository. "
-        "This is the default action; 'farrier install --repo .' is an accepted "
-        "alias. Run 'farrier config set-library <path>' once to point at the library.",
-    )
-    parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository root to install into")
-    parser.add_argument("--config", type=Path, help="Path to agents.yml")
-    parser.add_argument("--check", action="store_true", help="Check generated files without writing")
+def _add_install_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository root to install into (default: cwd)")
+    parser.add_argument("--config", type=Path, help="Path to agents.yml (default: <repo>/agents.yml)")
+    parser.add_argument("--check", action="store_true", help="Verify generated files are current without writing")
     parser.add_argument(
         "--library",
         type=Path,
-        help="Library directory (the agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+        help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
-    return parser.parse_args(argv)
 
 
-def config_command(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="farrier config", description="Manage the farrier home config.")
-    sub = parser.add_subparsers(dest="action", required=True)
-    set_parser = sub.add_parser("set-library", help="Record the library directory in the home config")
-    set_parser.add_argument("path", type=Path, help="Path to the library (the agents/ tree)")
-    sub.add_parser("show", help="Print the config path, stored library_dir, and effective resolved root")
-    args = parser.parse_args(argv)
+def _run_install(args: argparse.Namespace) -> int:
+    set_library_globals(resolve_library_dir(args.library))
+    repo = args.repo.resolve()
+    config_path = args.config.resolve() if args.config else repo / "agents.yml"
+    config = read_yaml(config_path)
+    outputs = render_expected(config, repo)
+    if args.check:
+        return check_outputs(repo, outputs)
+    install_outputs(repo, outputs)
+    print(f"Installed {len(outputs)} generated files into {repo}")
+    return 0
 
-    if args.action == "set-library":
+
+def _run_config(args: argparse.Namespace) -> int:
+    if args.config_action == "set-library":
         root = args.path.expanduser().resolve()
         if not is_library_dir(root):
             raise SystemExit(
@@ -1410,32 +1409,54 @@ def config_command(argv: list[str]) -> int:
     return 0
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="farrier",
+        description="Render an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters.",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # install (default)
+    install_p = sub.add_parser("install", help="Render/install the selected packs into a repository (default)")
+    _add_install_args(install_p)
+
+    # config
+    config_p = sub.add_parser("config", help="Manage the farrier home config")
+    config_sub = config_p.add_subparsers(dest="config_action", required=True)
+    set_lib = config_sub.add_parser("set-library", help="Record the library directory in the home config")
+    set_lib.add_argument("path", type=Path, help="Path to the library (the agents/ tree)")
+    config_sub.add_parser("show", help="Print the config path, stored library_dir, and effective resolved root")
+
+    # version
+    sub.add_parser("version", help="Print the installed farrier version")
+
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "version":
+
+    parser = _build_parser()
+
+    # Keep `farrier --repo .` working: if no recognised subcommand is given,
+    # inject `install` so existing invocations are unchanged.
+    # Exception: bare --help/-h should show the top-level subcommand listing.
+    _SUBCOMMANDS = {"install", "config", "version"}
+    if argv and argv[0] in ("-h", "--help"):
+        pass  # let the top-level parser handle it
+    elif not argv or argv[0] not in _SUBCOMMANDS:
+        argv = ["install"] + argv
+
+    args = parser.parse_args(argv)
+
+    if args.command == "version":
         print(importlib.metadata.version("farrier"))
         return 0
-    if argv and argv[0] == "config":
-        return config_command(argv[1:])
 
-    # `install` is the default action; accept it as an explicit subcommand too,
-    # so both `farrier --repo .` and `farrier install --repo .` work.
-    if argv and argv[0] == "install":
-        argv = argv[1:]
+    if args.command == "config":
+        return _run_config(args)
 
-    args = parse_args(argv)
-    set_library_globals(resolve_library_dir(args.library))
-    repo = args.repo.resolve()
-    config_path = args.config.resolve() if args.config else repo / "agents.yml"
-    config = read_yaml(config_path)
-    outputs = render_expected(config, repo)
-
-    if args.check:
-        return check_outputs(repo, outputs)
-
-    install_outputs(repo, outputs)
-    print(f"Installed {len(outputs)} generated files into {repo}")
-    return 0
+    return _run_install(args)
 
 
 if __name__ == "__main__":
