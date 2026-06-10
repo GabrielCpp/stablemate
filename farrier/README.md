@@ -36,6 +36,9 @@ farrier --repo .            # render/install the selected packs
 farrier --repo . --check    # verify generated files are up to date (no writes)
 ```
 
+Rendering is the default action; `farrier install --repo .` is an accepted alias
+of `farrier --repo .`.
+
 ## Configuring `.agents.yml`
 
 `.agents.yml` (at your repo root) selects what farrier renders. Every option —

@@ -1366,7 +1366,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="farrier",
         description="Render the agent prompt library into a repository. "
-        "Use 'farrier config set-library <path>' once to point at the library.",
+        "This is the default action; 'farrier install --repo .' is an accepted "
+        "alias. Run 'farrier config set-library <path>' once to point at the library.",
     )
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository root to install into")
     parser.add_argument("--config", type=Path, help="Path to .agents.yml")
@@ -1412,6 +1413,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "config":
         return config_command(argv[1:])
+
+    # `install` is the default action; accept it as an explicit subcommand too,
+    # so both `farrier --repo .` and `farrier install --repo .` work.
+    if argv and argv[0] == "install":
+        argv = argv[1:]
 
     args = parse_args(argv)
     set_library_globals(resolve_library_dir(args.library))
