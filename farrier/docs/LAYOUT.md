@@ -17,7 +17,6 @@ farrier never bundles content — it only renders whatever library it is aimed a
   library/
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
-    roots/<name>/SKILL.md            # root instruction skills (repo-root CLAUDE.md/AGENTS.md)
   packs/<pack>.yml             # named bundles a repo opts into via `.agents.yml`
   scaffolds/<group>/...        # literal seed files copied into the repo
   workflows/<workflow>/        # workhorse workflow.yaml + prompts + scripts
@@ -110,17 +109,20 @@ library/prompts/planning/plan-story.md          → public id `plan-story`
 | codex   | `.agents/prompts/<prefix>-<name>.prompt.md` |
 | copilot | `.github/prompts/<prefix>-<name>.prompt.md` |
 
-## `library/roots/` — root instructions
+## Repo-root instructions (`localInstructions`)
 
-Skills placed under `roots/` are rendered as **repo-root instruction files**
-(`CLAUDE.md` / `AGENTS.md`) — always-loaded context for the whole repository.
-They use the same `SKILL.md` format as ordinary skills and are selected by a
-pack's `roots:` list. Keep these lean: link to large situational skills rather
-than embedding them, so every session does not pay their token cost.
+There is **no `library/roots/` skills tree** in the reference library. The normal
+way to produce an always-loaded repo-root `CLAUDE.md` / `AGENTS.md` is the
+`localInstructions` block in the consumer's `.agents.yml`, which promotes an
+ordinary installed skill into a directory-local instruction file — use
+`paths: ["."]` for the repo root. That is a selection-side feature, documented in
+[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml).
 
-(The consumer can also promote any ordinary skill into a *directory-local*
-`CLAUDE.md` via the `localInstructions` block in `.agents.yml` — that is a
-selection-side feature, documented in `agents.example.yml`.)
+A separate, legacy `roots:` pack key also exists: it reads **flat** files at
+`library/roots/<name>.md` (note: flat `.md`, not `<name>/SKILL.md`) and renders
+them **only for the copilot agent**, into `.github/copilot-instructions.md`. The
+reference library ships no `library/roots/` directory, so this key is effectively
+unused — prefer `localInstructions` for repo-root context.
 
 ## `packs/<pack>.yml` — bundles
 
@@ -133,8 +135,6 @@ skills:
   - go/*                 # glob over the skill namespace
 prompts:
   - go/*
-roots:
-  - my-root              # a roots/ skill → repo-root CLAUDE.md
 scaffolds:
   - go/**                # literal seed files
 workflows:
@@ -142,6 +142,10 @@ workflows:
 includes:
   - shared-lifecycle     # compose other packs (merged, cycle-checked)
 ```
+
+A pack may also carry a `roots:` list, but it is the legacy copilot-only key
+described above (flat `library/roots/<name>.md`); repo-root context normally comes
+from the consumer's `localInstructions`, not a pack.
 
 - Every key is a list of patterns matched (case-insensitively, via `fnmatch`)
   against source ids, public ids, and relative paths — so `go/*`, `go-testing`,
