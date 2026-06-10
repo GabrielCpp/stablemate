@@ -47,6 +47,14 @@ of `farrier --repo .`.
 inline comments in **[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**. Copy it to
 your repo as `.agents.yml` and prune to taste.
 
+## Library layout
+
+The other side of the contract is the **agent library** farrier renders *from* —
+what goes in `library/skills/`, `library/prompts/`, `library/roots/`, `packs/`,
+`scaffolds/`, and `workflows/`, the file formats expected, and how source names
+map to generated adapters. That is documented in
+**[`docs/LAYOUT.md`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/docs/LAYOUT.md)**.
+
 ## Locating the library
 
 farrier resolves the library directory with this precedence:
