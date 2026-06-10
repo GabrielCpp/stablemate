@@ -22,6 +22,7 @@ import fnmatch
 import os
 import re
 import shutil
+import importlib.metadata
 import subprocess
 import sys
 import tomllib
@@ -1411,6 +1412,9 @@ def config_command(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "version":
+        print(importlib.metadata.version("farrier"))
+        return 0
     if argv and argv[0] == "config":
         return config_command(argv[1:])
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import importlib.metadata
 import json
 import os
 import sys
@@ -248,6 +249,9 @@ def _find_latest_resumable(runs_dir: Path) -> Path | None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "version":
+        print(importlib.metadata.version("workhorse-agent"))
+        return
     parser = argparse.ArgumentParser(description="Generic agent workflow controller")
     parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
     parser.add_argument(

@@ -1,6 +1,6 @@
 [project]
 name = "farrier"
-version = "1.0.0"
+version = "1.0.1"
 description = "Render an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters."
 readme = "README.md"
 requires-python = ">=3.12"
