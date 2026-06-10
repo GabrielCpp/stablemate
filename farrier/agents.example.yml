@@ -1,8 +1,8 @@
 # ============================================================================
-# .agents.yml — complete reference for the `farrier` installer
+# agents.yml — complete reference for the `farrier` installer
 # ============================================================================
 #
-# Copy this file to your repository root as `.agents.yml`, then prune it to the
+# Copy this file to your repository root as `agents.yml`, then prune it to the
 # keys you need. farrier reads it to decide which skills, prompts, roots,
 # scaffolds, and workflows from the prompt library to render into your repo's
 # adapter files.

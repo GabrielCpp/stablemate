@@ -1,6 +1,6 @@
 [project]
 name = "farrier"
-version = "0.1.6"
+version = "1.0.0"
 description = "Render an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Gabriel Côté" }]
 keywords = ["agent", "prompts", "skills", "claude", "codex", "copilot", "installer"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
