@@ -150,7 +150,7 @@ LAUNCHER_AGENTS_MK = ".agents/agents.mk"
 LAUNCHER_COMPOSE = ".agents/local.compose.yaml"
 LAUNCHER_ROOT_MAKEFILE = "Makefile"
 # Default relative path from the target repo to the vigilant-octo agents dir
-# (the prompt-library *content*). Overridable per-repo via .agents.yml:
+# (the prompt-library *content*). Overridable per-repo via agents.yml:
 # workflow.agentsDir.
 DEFAULT_AGENTS_DIR = "$(abspath $(CURDIR)/../vigilant-octo/agents)"
 # Default relative path to the public `stablemate` checkout (holds the workhorse
@@ -493,7 +493,7 @@ def resolve_workflow_meta(
 ) -> dict[str, str]:
     """Resolve repo_url / branch / agents-dir for the launcher scaffolding.
 
-    Precedence: explicit `.agents.yml` `workflow:` block, then the repo's own
+    Precedence: explicit `agents.yml` `workflow:` block, then the repo's own
     git origin + DEFAULT branch (master/main — NOT the branch currently checked
     out), then a clearly-marked placeholder. REPO_BRANCH is the trunk the worker
     clones and the coder workflow targets/merges PRs into, so it must be the
@@ -735,7 +735,7 @@ def render_local_compose(meta: dict[str, str]) -> str:
     passthrough_block = ""
     if passthrough:
         passthrough_block = (
-            "      # Host env vars forwarded per .agents.yml workflow.envPassthrough\n"
+            "      # Host env vars forwarded per agents.yml workflow.envPassthrough\n"
             "      # (interpolated from the local env at `docker compose up`; empty if unset).\n"
             + "".join(f"      {name}: ${{{name}:-}}\n" for name in passthrough)
         )
@@ -1370,7 +1370,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "alias. Run 'farrier config set-library <path>' once to point at the library.",
     )
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository root to install into")
-    parser.add_argument("--config", type=Path, help="Path to .agents.yml")
+    parser.add_argument("--config", type=Path, help="Path to agents.yml")
     parser.add_argument("--check", action="store_true", help="Check generated files without writing")
     parser.add_argument(
         "--library",
@@ -1422,7 +1422,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     set_library_globals(resolve_library_dir(args.library))
     repo = args.repo.resolve()
-    config_path = args.config.resolve() if args.config else repo / ".agents.yml"
+    config_path = args.config.resolve() if args.config else repo / "agents.yml"
     config = read_yaml(config_path)
     outputs = render_expected(config, repo)
 

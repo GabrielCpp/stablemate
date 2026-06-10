@@ -4,7 +4,7 @@ farrier renders an **agent library** into a repository. This document describes
 how that library directory is laid out — what each folder holds, the file format
 expected, and how names flow from source files to generated adapters. It is the
 companion to [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml),
-which documents the consumer-side `.agents.yml` that *selects* from this library.
+which documents the consumer-side `agents.yml` that *selects* from this library.
 
 The library is a separate, self-contained directory (the reference one lives in a
 private repo; you point farrier at it with `farrier config set-library <dir>`).
@@ -17,7 +17,7 @@ farrier never bundles content — it only renders whatever library it is aimed a
   library/
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
-  packs/<pack>.yml             # named bundles a repo opts into via `.agents.yml`
+  packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
   scaffolds/<group>/...        # literal seed files copied into the repo
   workflows/<workflow>/        # workhorse workflow.yaml + prompts + scripts
 ```
@@ -75,7 +75,7 @@ Body markdown — the actual instructions…
 | copilot | `.github/skills/<prefix>-<name>/SKILL.md` |
 
 `<prefix>` is the repo's install prefix (`repo.name`/`repo.prefix` in
-`.agents.yml`). A skill whose name already equals or starts with the prefix is
+`agents.yml`). A skill whose name already equals or starts with the prefix is
 not double-prefixed.
 
 ## `library/prompts/` — prompts
@@ -113,7 +113,7 @@ library/prompts/planning/plan-story.md          → public id `plan-story`
 
 There is **no `library/roots/` skills tree** in the reference library. The normal
 way to produce an always-loaded repo-root `CLAUDE.md` / `AGENTS.md` is the
-`localInstructions` block in the consumer's `.agents.yml`, which promotes an
+`localInstructions` block in the consumer's `agents.yml`, which promotes an
 ordinary installed skill into a directory-local instruction file — use
 `paths: ["."]` for the repo root. That is a selection-side feature, documented in
 [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml).
@@ -152,7 +152,7 @@ from the consumer's `localInstructions`, not a pack.
   and `skills/go/go-testing` all resolve.
 - `includes:` composes packs; sets union and a later pack's scaffold dest-mapping
   overrides an earlier one. Include cycles are detected and rejected.
-- Packs selected in `.agents.yml` are merged before rendering; nothing in the
+- Packs selected in `agents.yml` are merged before rendering; nothing in the
   library is installed unless some selected pack pulls it in.
 
 ## `scaffolds/` — literal seed files
@@ -161,7 +161,7 @@ Scaffolds are copied **verbatim** (not name-mangled like skills/prompts) into th
 repo. The output path mirrors the source with its leading namespace segment
 stripped, e.g. `scaffolds/shared/docs/README.md` → `docs/README.md`.
 
-Because service-folder names are project-specific, a pack/`.agents.yml` may use
+Because service-folder names are project-specific, a pack/`agents.yml` may use
 the `{src-prefix: dest-dir}` mapping form to retarget a folder-agnostic scaffold
 (e.g. point `scaffolds/flutter/.gitignore` at the repo's actual `app/` folder).
 Per-service `.gitignore` seeds are written once and then owned by the repo (never
@@ -189,7 +189,7 @@ so a workflow's dependencies install even if a pack lists only the workflow.
 
 Skill and prompt bodies are rendered through **Jinja2** before output:
 
-- `{{ template.<key> }}` — substitutes values from the `.agents.yml` `template:`
+- `{{ template.<key> }}` — substitutes values from the `agents.yml` `template:`
   block. Always give shared library files a `| default("…")` fallback so they
   remain installable without that key.
 - `{{ instruction_file("<name>") }}` / `instruction_ref` / `prompt_ref` — cross-
