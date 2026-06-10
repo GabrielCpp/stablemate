@@ -50,8 +50,8 @@ your repo as `.agents.yml` and prune to taste.
 ## Library layout
 
 The other side of the contract is the **agent library** farrier renders *from* —
-what goes in `library/skills/`, `library/prompts/`, `library/roots/`, `packs/`,
-`scaffolds/`, and `workflows/`, the file formats expected, and how source names
+what goes in `library/skills/`, `library/prompts/`, `packs/`, `scaffolds/`, and
+`workflows/`, the file formats expected, and how source names
 map to generated adapters. That is documented in
 **[`docs/LAYOUT.md`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/docs/LAYOUT.md)**.
 
