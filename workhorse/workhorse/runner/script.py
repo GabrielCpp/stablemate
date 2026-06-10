@@ -24,6 +24,10 @@ def run_script(
     script_path = workflow_dir / node.script
     rendered_args = [render_string(arg, ctx) for arg in node.args]
 
+    # Render per-node working directory; fall back to workflow_dir when unset.
+    resolved_cwd = render_string(node.cwd, ctx).strip() if node.cwd else ""
+    effective_cwd = resolved_cwd or str(workflow_dir)
+
     # Prefix interpreter so scripts don't need to be executable
     suffix = script_path.suffix.lower()
     if suffix == ".py":
@@ -38,7 +42,7 @@ def run_script(
         cmd,
         capture_output=True,
         text=True,
-        cwd=str(workflow_dir),
+        cwd=effective_cwd,
     )
 
     if proc.returncode != 0:

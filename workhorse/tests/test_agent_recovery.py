@@ -53,7 +53,7 @@ def test_empty_result_then_reframe_succeeds():
     calls = {"n": 0}
     good = json.dumps({"decision": "continue", "review": "ok"})
 
-    def fake_invoke(prompt, node_id, sid, model=None, timeout=None):
+    def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             # Mirrors _run_claude_cli when result text is empty.
@@ -74,7 +74,7 @@ def test_empty_result_then_reframe_succeeds():
 def test_persistent_failure_defaults_to_next_node():
     """When every reframing fails, return safe defaults so the controller can
     advance to node.next instead of raising."""
-    def always_fail(prompt, node_id, sid, model=None, timeout=None):
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise ClaudeInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
@@ -90,7 +90,7 @@ def test_reframe_count_then_default():
     """Exactly max_rephrase_attempts+1 invocations before defaulting."""
     calls = {"n": 0}
 
-    def always_fail(prompt, node_id, sid, model=None, timeout=None):
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         raise ClaudeInvocationError("No 'result' event received", transient=True)
 
@@ -104,7 +104,7 @@ def test_reframe_count_then_default():
 def test_unparseable_output_reframes_then_defaults():
     """A node that always returns unparseable text exhausts output retries, then
     reframes, then defaults — never crashes."""
-    def junk(prompt, node_id, sid, model=None, timeout=None):
+    def junk(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         return "I cannot produce JSON, sorry."
 
     with patch.object(agent, "_invoke_claude", junk), \
@@ -125,7 +125,7 @@ def test_default_outputs_use_declared_defaults_else_none():
         next="next_node",
     )
 
-    def always_fail(prompt, node_id, sid, model=None, timeout=None):
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise ClaudeInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
@@ -183,7 +183,7 @@ def test_overflow_compacts_then_continues_same_prompt():
     calls = {"n": 0}
     good = json.dumps({"decision": "approve", "review": "done"})
 
-    def fake_invoke(prompt, node_id, sid, model=None, timeout=None):
+    def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ClaudeInvocationError("Context window exhausted", overflow=True)
@@ -210,7 +210,7 @@ def test_overflow_compacts_then_continues_same_prompt():
 
 def test_overflow_falls_back_to_reframe_when_compaction_fails():
     """If compaction can't help, the runner reframes (fresh session) then defaults."""
-    def always_overflow(prompt, node_id, sid, model=None, timeout=None):
+    def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise ClaudeInvocationError("prompt is too long", overflow=True)
 
     def failed_compact(session_id_path, node_id, model=None):
@@ -230,7 +230,7 @@ def test_overflow_compaction_attempts_are_bounded():
     """Compaction is tried at most max_compact_attempts times, then reframe."""
     compacted = {"n": 0}
 
-    def always_overflow(prompt, node_id, sid, model=None, timeout=None):
+    def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise ClaudeInvocationError("context window exceeded", overflow=True)
 
     def ok_compact(session_id_path, node_id, model=None):
@@ -248,7 +248,7 @@ def test_overflow_compaction_attempts_are_bounded():
 
 def test_default_outputs_disabled_raises():
     """With defaulting off, a persistently failing node raises for a hard stop."""
-    def always_fail(prompt, node_id, sid, model=None, timeout=None):
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise ClaudeInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
