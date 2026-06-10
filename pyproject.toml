@@ -1,0 +1,22 @@
+# stablemate — a uv workspace housing the publishable packages that work
+# alongside the prompt library:
+#   - workhorse/  -> workhorse-agent  (the fail-soft workflow runtime)
+#   - farrier/    -> farrier          (renders the prompt library into a repo)
+#
+# The prompt-library *content* itself lives in a separate repository; farrier is
+# pointed at it via `farrier config set-library <path>`.
+#
+# This root is the workspace anchor and a member (per uv's "every workspace needs
+# a root, which is also a workspace member"). It declares [project] but NO
+# [build-system], so — per the uv docs — uv "will not attempt to build or install
+# the project itself, just its dependencies". It is never published; the two
+# member packages are built and released independently.
+
+[project]
+name = "stablemate"
+version = "0.0.0"
+description = "Workspace anchor for the workhorse-agent and farrier packages (not published)."
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["workhorse", "farrier"]
