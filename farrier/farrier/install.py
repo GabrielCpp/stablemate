@@ -73,12 +73,34 @@ def read_config() -> dict[str, Any]:
         return tomllib.load(handle)
 
 
-def write_library_dir(path: Path) -> None:
-    """Persist ``library_dir`` to the home config file (creating parents)."""
+def _write_config_key(key: str, value: str) -> None:
+    """Persist a single key to the home config file, preserving other keys."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Single-key config — a hand-rolled line avoids a TOML-writer dependency.
-    escaped = str(path).replace("\\", "\\\\").replace('"', '\\"')
-    CONFIG_PATH.write_text(f'library_dir = "{escaped}"\n', encoding="utf-8")
+    cfg = read_config()
+    cfg[key] = value
+    lines = []
+    for k, v in cfg.items():
+        escaped = str(v).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'{k} = "{escaped}"\n')
+    CONFIG_PATH.write_text("".join(lines), encoding="utf-8")
+
+
+def write_library_dir(path: Path) -> None:
+    """Persist ``library_dir`` to the home config file."""
+    _write_config_key("library_dir", str(path))
+
+
+def write_stablemate_dir(path: Path) -> None:
+    """Persist ``stablemate_dir`` to the home config file."""
+    _write_config_key("stablemate_dir", str(path))
+
+
+def resolve_stablemate_dir() -> "Path | None":
+    """Return the configured stablemate checkout path, or None if unset."""
+    configured = read_config().get("stablemate_dir")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return None
 
 
 def is_library_dir(path: Path) -> bool:
@@ -570,17 +592,15 @@ def render_agents_mk(workflows: list[str], meta: dict[str, str]) -> str:
 #
 # Installed workflows: {workflow_list}
 #
-# Native mode runs the published `workhorse-agent` package via pipx — no checkout
-# required (only the Docker + SRC=1 targets need $(STABLEMATE_DIR)).
-# Override WORKHORSE to pin a version or use a local source checkout, e.g.
-#   make agent-native WORKHORSE="uv run --project /path/to/stablemate/workhorse workhorse"
+# Native mode uses the installed `workhorse` binary by default.
+# SRC=1 runs workhorse from the local stablemate source checkout ($(LOCAL_WORKER)) via uv.
 #
 # Usage:
 #   make agent-run                 # Docker + local clone (default WF={default_wf})
 #   make agent-run WF=<name>       # pick another installed workflow
-#   make agent-native              # native (no Docker, pipx) on THIS working tree (foreground)
+#   make agent-native              # native (no Docker) on THIS working tree (foreground)
 #   make agent-native-bg           # native, detached — saves pid; watch with agent-logs
-#   make agent-native SRC=1        # native from local source ($(LOCAL_WORKER)) — test engine changes pre-publish
+#   make agent-native SRC=1        # native from local stablemate source ($(LOCAL_WORKER))
 #   make agent-logs                # follow the current run log (.agents/runs/<WF>.log)
 #   make agent-stop                # stop a detached native run (agent-native-bg)
 #   make agent-build               # rebuild image + run
@@ -593,10 +613,10 @@ def render_agents_mk(workflows: list[str], meta: dict[str, str]) -> str:
 #   make agent-install             # regenerate these adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
 
-AGENTS_DIR     ?= {meta["agents_dir"]}
+AGENTS_DIR     ?= $(shell farrier config show library_dir)
 # Public stablemate checkout (workhorse runtime + farrier installer source).
 # Needed only for Docker runs and SRC=1 local-source runs.
-STABLEMATE_DIR ?= {DEFAULT_STABLEMATE_DIR}
+STABLEMATE_DIR ?= $(shell farrier config show stablemate_dir)
 LOCAL_WORKER   := $(STABLEMATE_DIR)/workhorse
 # WF selects which installed workflow to run; defaults to the first installed.
 WF           ?= {default_wf}
@@ -606,32 +626,28 @@ REPO_BRANCH  ?= {meta["branch"]}
 {repo_url_line}
 # Compose project name (default = first compose file's directory) → volume prefix.
 PROJECT      ?= local-worker
-# Native runs use the published PyPI package via pipx (no source checkout needed).
-# Pin a version with WORKHORSE="pipx run --spec workhorse-agent==X.Y.Z workhorse".
-#
-# SRC=1 instead runs workhorse straight from the local source checkout
-# ($(LOCAL_WORKER)) via uv — use it to exercise un-published engine changes in a
-# real workflow before cutting a release. An explicit WORKHORSE=... overrides both.
-# WORKHORSE_VERSION is the informational version printed at startup; it carries a
-# "(...)" suffix naming which source is in effect.
+# Native runs use the installed workhorse binary by default.
+# SRC=1 runs workhorse from the local stablemate source checkout via uv.
+# An explicit WORKHORSE=... overrides both.
+# WORKHORSE_VERSION is the informational version printed at startup.
 ifeq ($(SRC),1)
 WORKHORSE         ?= uv run --project $(LOCAL_WORKER) workhorse
 WORKHORSE_VERSION ?= $(shell grep -m1 '^version' $(LOCAL_WORKER)/pyproject.toml 2>/dev/null | cut -d'"' -f2) (local source: $(LOCAL_WORKER))
 endif
-WORKHORSE         ?= pipx run --spec workhorse-agent workhorse
-WORKHORSE_VERSION ?= $(shell pipx list --short 2>/dev/null | grep '^workhorse-agent ' | cut -d' ' -f2) (pipx install)
+WORKHORSE         ?= workhorse
+WORKHORSE_VERSION ?= $(shell workhorse --version 2>/dev/null || echo unknown) (installed)
 
 # farrier regenerates these adapters from the prompt library. Default uses the
-# published PyPI package via pipx (no checkout needed); SRC=1 runs the local
-# source under $(STABLEMATE_DIR)/farrier. The library CONTENT is located via the
-# user's `farrier config set-library` home config; when a vigilant-octo checkout
-# exists at $(AGENTS_DIR) we pass --library explicitly so no global config is
-# required. First-time setup without a checkout:
+# installed farrier binary. SRC=1 runs the local source under $(STABLEMATE_DIR)/farrier.
+# The library CONTENT is located via the user's `farrier config set-library` home
+# config; when a vigilant-octo checkout exists at $(AGENTS_DIR) we pass --library
+# explicitly so no global config is required. First-time setup:
 #   pipx install farrier && farrier config set-library /path/to/vigilant-octo/agents
+#   farrier config set-stablemate /path/to/stablemate
 ifeq ($(SRC),1)
 FARRIER ?= uv run --project $(STABLEMATE_DIR)/farrier farrier
 endif
-FARRIER ?= pipx run farrier
+FARRIER ?= farrier
 FARRIER_LIB_ARG := $(if $(wildcard $(AGENTS_DIR)/library),--library "$(AGENTS_DIR)",)
 
 # Optional run knobs forwarded to workhorse (native targets):
@@ -1441,17 +1457,25 @@ def _run_config(args: argparse.Namespace) -> int:
                 f"error: {root} is not a usable library directory — it must contain library/ and packs/."
             )
         write_library_dir(root)
-        print(f"Saved library_dir = {root}\n  to {CONFIG_PATH}")
+        print(f"library_dir={root}")
         return 0
 
-    # show
+    if args.config_action == "set-stablemate":
+        root = args.path.expanduser().resolve()
+        write_stablemate_dir(root)
+        print(f"stablemate_dir={root}")
+        return 0
+
+    # show — with a key: print bare value; without: print all as key=value
     cfg = read_config()
-    print(f"config file:  {CONFIG_PATH}{'' if CONFIG_PATH.exists() else ' (does not exist yet)'}")
-    print(f"library_dir:  {cfg.get('library_dir', '(unset)')}")
-    try:
-        print(f"effective:    {resolve_library_dir(None)}")
-    except SystemExit as exc:
-        print(f"effective:    (unresolved) — {exc}")
+    if args.key:
+        value = cfg.get(args.key)
+        if value is None:
+            raise SystemExit(f"error: '{args.key}' is not set in {CONFIG_PATH}")
+        print(value)
+    else:
+        for key, value in cfg.items():
+            print(f"{key}={value}")
     return 0
 
 
@@ -1471,7 +1495,10 @@ def _build_parser() -> argparse.ArgumentParser:
     config_sub = config_p.add_subparsers(dest="config_action", required=True)
     set_lib = config_sub.add_parser("set-library", help="Record the library directory in the home config")
     set_lib.add_argument("path", type=Path, help="Path to the library (the agents/ tree)")
-    config_sub.add_parser("show", help="Print the config path, stored library_dir, and effective resolved root")
+    set_sm = config_sub.add_parser("set-stablemate", help="Record the stablemate checkout path in the home config")
+    set_sm.add_argument("path", type=Path, help="Path to the stablemate checkout")
+    show_p = config_sub.add_parser("show", help="Print all config keys as key=value lines, or a single bare value")
+    show_p.add_argument("key", nargs="?", default=None, help="If given, print only the value of this key")
 
     # version
     sub.add_parser("version", help="Print the installed farrier version")
