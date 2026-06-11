@@ -15,6 +15,7 @@ from .runner import agent as agent_runner
 from .runner import branch as branch_runner
 from .runner import script as script_runner
 from .runner.agent import ClaudeInvocationError
+from .runner.script import ScriptExitError
 
 
 def run(
@@ -98,78 +99,91 @@ def run(
 
     session_id_path = writer.run_dir / ".session_id"
 
-    while True:
-        node = graph.nodes[current_id]
+    try:
+        while True:
+            node = graph.nodes[current_id]
 
-        if isinstance(node, TerminalNode):
-            writer.write_final_context(ctx.as_dict())
-            writer.finish(terminal=node.type)
-            success = node.type == "terminal"
-            print(f"[workhorse] {node.type.upper()} — run artifacts: {writer.run_dir}")
-            return 0 if success else 1
+            if isinstance(node, TerminalNode):
+                writer.write_final_context(ctx.as_dict())
+                writer.finish(terminal=node.type)
+                success = node.type == "terminal"
+                print(f"[workhorse] {node.type.upper()} — run artifacts: {writer.run_dir}")
+                return 0 if success else 1
 
-        # Checkpoint the node we're about to run and the context going into it.
-        # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
-        writer.write_checkpoint(current_id, ctx.as_dict())
+            # Checkpoint the node we're about to run and the context going into it.
+            # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
+            writer.write_checkpoint(current_id, ctx.as_dict())
 
-        if isinstance(node, AgentNode):
-            print(f"[workhorse] agent  → {node.id}")
-            try:
-                # run_agent is self-healing: it retries transient failures, reframes
-                # the prompt, and finally defaults the node's outputs so the run
-                # advances rather than crashing. A ClaudeInvocationError only
-                # escapes when defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
-                prompt, outputs = agent_runner.run_agent(
-                    node, ctx, workflow_dir, session_id_path,
-                    resume_session=resume_interrupted_node,
-                )
-                # The resume only applies to the first re-entered node; every node
-                # the run advances to afterward is a fresh prompt / clean context.
+            if isinstance(node, AgentNode):
+                print(f"[workhorse] agent  → {node.id}")
+                try:
+                    # run_agent is self-healing: it retries transient failures, reframes
+                    # the prompt, and finally defaults the node's outputs so the run
+                    # advances rather than crashing. A ClaudeInvocationError only
+                    # escapes when defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
+                    prompt, outputs = agent_runner.run_agent(
+                        node, ctx, workflow_dir, session_id_path,
+                        resume_session=resume_interrupted_node,
+                    )
+                    # The resume only applies to the first re-entered node; every node
+                    # the run advances to afterward is a fresh prompt / clean context.
+                    resume_interrupted_node = False
+
+                    ctx.merge(outputs)
+                    if node.next is None:
+                        raise RuntimeError(f"AgentNode '{node.id}' has no 'next' and is not terminal")
+                    writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
+                    current_id = node.next
+
+                except ClaudeInvocationError as e:
+                    print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
+                    if e.transient:
+                        print("[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
+                        print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
+                    else:
+                        print("[workhorse] This appears to be a persistent error", file=sys.stderr)
+                    raise
+
+            elif isinstance(node, ScriptNode):
+                # A re-entered script/branch carries no Claude session; clear the flag
+                # so a later agent node isn't mistaken for an interrupted continuation.
                 resume_interrupted_node = False
-
-                ctx.merge(outputs)
-                if node.next is None:
-                    raise RuntimeError(f"AgentNode '{node.id}' has no 'next' and is not terminal")
-                writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
-                current_id = node.next
-
-            except ClaudeInvocationError as e:
-                print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
-                if e.transient:
-                    print(f"[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
+                print(f"[workhorse] script → {node.id}")
+                try:
+                    cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir)
+                    ctx.merge(outputs)
+                    if node.next is None:
+                        raise RuntimeError(f"ScriptNode '{node.id}' has no 'next' and is not terminal")
+                    writer.write_step(node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next)
+                    current_id = node.next
+                except ScriptExitError as e:
+                    # Propagate the script's own exit code so callers can distinguish
+                    # expected halts (e.g. await_operator exits 2 for "blocked") from
+                    # genuine crashes (exit 1).
+                    print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
+                    sys.exit(e.exit_code)
+                except Exception as e:
+                    # Log script errors with context
+                    print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
+                    print("[workhorse] Script execution failed - workflow can be resumed after fixing", file=sys.stderr)
                     print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
-                else:
-                    print(f"[workhorse] This appears to be a persistent error", file=sys.stderr)
-                raise
+                    raise
 
-        elif isinstance(node, ScriptNode):
-            # A re-entered script/branch carries no Claude session; clear the flag
-            # so a later agent node isn't mistaken for an interrupted continuation.
-            resume_interrupted_node = False
-            print(f"[workhorse] script → {node.id}")
-            try:
-                cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir)
-                ctx.merge(outputs)
-                if node.next is None:
-                    raise RuntimeError(f"ScriptNode '{node.id}' has no 'next' and is not terminal")
-                writer.write_step(node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next)
-                current_id = node.next
-            except Exception as e:
-                # Log script errors with context
-                print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
-                print(f"[workhorse] Script execution failed - workflow can be resumed after fixing", file=sys.stderr)
-                print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
-                raise
+            elif isinstance(node, BranchNode):
+                resume_interrupted_node = False
+                print(f"[workhorse] branch → {node.id}")
+                next_id, value = branch_runner.evaluate(node, ctx)
+                writer.write_branch(node.id, node.path, value, next_id)
+                current_id = next_id
 
-        elif isinstance(node, BranchNode):
-            resume_interrupted_node = False
-            print(f"[workhorse] branch → {node.id}")
-            next_id, value = branch_runner.evaluate(node, ctx)
-            writer.write_branch(node.id, node.path, value, next_id)
-            current_id = next_id
+            else:
+                raise RuntimeError(f"Unknown node type: {type(node)}")
 
-        else:
-            raise RuntimeError(f"Unknown node type: {type(node)}")
+    except KeyboardInterrupt:
+        agent_runner.terminate_active()
+        print("\n[workhorse] interrupted — run paused.", file=sys.stderr)
+        print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}", file=sys.stderr)
+        sys.exit(130)
 
 
 def _should_fast_forward(done: dict | None, checkpoint: dict) -> bool:
@@ -353,6 +367,47 @@ def _run_run(args: argparse.Namespace) -> None:
     )
 
 
+def _add_test_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "workflow_dir",
+        help="Directory containing workflow.yaml and a tests/ subdirectory",
+    )
+    parser.add_argument(
+        "--filter", "-k",
+        default=None,
+        metavar="PATTERN",
+        help="Only run tests matching this pytest -k expression",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Pass -v to pytest for verbose output",
+    )
+
+
+def _run_test(args: argparse.Namespace) -> None:
+    workflow_dir = Path(args.workflow_dir).resolve()
+    tests_dir = workflow_dir / "tests"
+    if not tests_dir.is_dir():
+        print(f"error: no tests/ directory found in {workflow_dir}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        import pytest as _pytest  # noqa: PLC0415
+    except ImportError:
+        print(
+            "error: pytest is required to run workflow tests.\n"
+            "Install it with: pip install 'workhorse-agent[test]'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    pytest_args = [str(tests_dir)]
+    if args.filter:
+        pytest_args += ["-k", args.filter]
+    if args.verbose:
+        pytest_args += ["-v"]
+    sys.exit(_pytest.main(pytest_args))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="workhorse",
@@ -363,6 +418,13 @@ def _build_parser() -> argparse.ArgumentParser:
     # run (default)
     run_p = sub.add_parser("run", help="Execute a workflow (default)")
     _add_run_args(run_p)
+
+    # test
+    test_p = sub.add_parser(
+        "test",
+        help="Run pytest tests from a workflow's tests/ directory",
+    )
+    _add_test_args(test_p)
 
     # version
     sub.add_parser("version", help="Print the installed workhorse-agent version")
@@ -377,7 +439,7 @@ def main() -> None:
     # Keep `workhorse --workflow ...` working: if no recognised subcommand is
     # given, inject `run` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"run", "version"}
+    _SUBCOMMANDS = {"run", "test", "version"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
@@ -387,6 +449,10 @@ def main() -> None:
 
     if args.command == "version":
         print(importlib.metadata.version("workhorse-agent"))
+        return
+
+    if args.command == "test":
+        _run_test(args)
         return
 
     _run_run(args)

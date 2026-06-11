@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -7,6 +8,21 @@ from typing import Any
 from ..graph.nodes import ScriptNode
 from ..graph.context import WorkflowContext
 from ..templates import render_string
+
+
+class ScriptExitError(Exception):
+    """Raised when a workflow script exits with a non-zero code.
+
+    Carries the original exit code so callers (e.g. ``workhorse run``) can
+    propagate it faithfully — e.g. ``await_operator.py`` exits with 2 to signal
+    "operator input required", which is distinct from an unexpected crash (1).
+    """
+
+    def __init__(self, script: str, exit_code: int, stderr: str) -> None:
+        super().__init__(
+            f"Script '{script}' exited with code {exit_code}.\nstderr: {stderr.strip()}"
+        )
+        self.exit_code = exit_code
 
 
 def run_script(
@@ -24,9 +40,10 @@ def run_script(
     script_path = workflow_dir / node.script
     rendered_args = [render_string(arg, ctx) for arg in node.args]
 
-    # Render per-node working directory; fall back to workflow_dir when unset.
+    # Render per-node working directory; fall back to WORKHORSE_DEFAULT_SCRIPT_CWD
+    # (injected by the test harness) or workflow_dir when unset.
     resolved_cwd = render_string(node.cwd, ctx).strip() if node.cwd else ""
-    effective_cwd = resolved_cwd or str(workflow_dir)
+    effective_cwd = resolved_cwd or os.environ.get("WORKHORSE_DEFAULT_SCRIPT_CWD") or str(workflow_dir)
 
     # Prefix interpreter so scripts don't need to be executable
     suffix = script_path.suffix.lower()
@@ -46,10 +63,7 @@ def run_script(
     )
 
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"Script '{node.script}' exited with code {proc.returncode}.\n"
-            f"stderr: {proc.stderr.strip()}"
-        )
+        raise ScriptExitError(node.script, proc.returncode, proc.stderr)
 
     outputs = _extract_outputs(proc.stdout, node)
     return cmd_str, outputs
