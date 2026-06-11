@@ -145,6 +145,7 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
         stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
         text=True,
         bufsize=1,
+        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
     )
     assert proc.stdin is not None
     if stdin_data is not None:

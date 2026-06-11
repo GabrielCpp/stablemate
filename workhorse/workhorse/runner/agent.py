@@ -4,6 +4,7 @@ import os
 import re
 import select
 import subprocess
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,30 @@ if TYPE_CHECKING:
     from .backends import AgentBackend
 from ..graph.context import WorkflowContext
 from ..templates import render, render_string
+
+
+# Active subprocess registry — lets the top-level interrupt handler terminate
+# the currently-streaming Claude process cleanly instead of leaving it orphaned.
+_active_proc_lock: threading.Lock = threading.Lock()
+_active_proc: subprocess.Popen | None = None
+
+
+def terminate_active() -> None:
+    """Terminate the currently-streaming Claude subprocess, if any.
+
+    Called by the main loop's KeyboardInterrupt handler so the child process is
+    cleaned up before workhorse exits, rather than being left as an orphan.
+    """
+    with _active_proc_lock:
+        proc = _active_proc
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 
 # Number of additional attempts when Claude's response can't be parsed into the
@@ -508,20 +533,27 @@ def _run_claude_cli(
         text=True,
         bufsize=1,
         cwd=cwd or None,
+        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
     )
     assert proc.stdin is not None
     proc.stdin.write(prompt)
     proc.stdin.close()
 
-    # Stream Claude's events to our stdout as they arrive (so they show up live in
-    # the run log) while accumulating the final result text + session id. The
-    # diagnostics string captures non-event output (e.g. "Spending cap reached")
-    # and error-result subtypes so we can tell transient failures apart.
-    result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at = (
-        _stream_events(proc, node_id, timeout)
-    )
-
-    proc.wait()
+    global _active_proc
+    with _active_proc_lock:
+        _active_proc = proc
+    try:
+        # Stream Claude's events to our stdout as they arrive (so they show up live in
+        # the run log) while accumulating the final result text + session id. The
+        # diagnostics string captures non-event output (e.g. "Spending cap reached")
+        # and error-result subtypes so we can tell transient failures apart.
+        result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at = (
+            _stream_events(proc, node_id, timeout)
+        )
+        proc.wait()
+    finally:
+        with _active_proc_lock:
+            _active_proc = None
 
     # A cap-like failure (text markers or a blocked rate_limit_event) carries the
     # structured reset epoch so the runner can sleep until the window reopens; a
