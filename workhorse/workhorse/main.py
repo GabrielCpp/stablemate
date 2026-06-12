@@ -214,11 +214,22 @@ def _auto_resolve(
     The run id defaults to "default", giving one fixed dir per id (e.g.
     ``research-default``); pass ``--run-id`` to keep separate runs side by side.
     Returns ``(run_id, resume_dir)`` where ``resume_dir`` is that dir when it
-    already holds a checkpoint to continue, else None (caller starts fresh)."""
+    already holds a checkpoint to continue, else None (caller starts fresh).
+
+    A run that already reached a terminal node is NOT resumed — re-running means a
+    new run, not a no-op replay of the finished one (mirrors ``_find_latest_resumable``,
+    which skips terminal runs). The fresh start reuses the same stable dir."""
     rid = run_id or "default"
     stable = runs_dir / f"{workflow_name}-{rid}"
-    resume = stable if (stable / ArtifactWriter.CHECKPOINT_FILE).exists() else None
-    return rid, resume
+    if not (stable / ArtifactWriter.CHECKPOINT_FILE).exists():
+        return rid, None
+    try:
+        meta = json.loads((stable / "run.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        meta = {}
+    if meta.get("terminal") is not None:  # already finished — start a new run
+        return rid, None
+    return rid, stable
 
 
 def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:

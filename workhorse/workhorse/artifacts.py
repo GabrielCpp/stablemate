@@ -17,6 +17,11 @@ class ArtifactWriter:
             run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
         self.run_dir = runs_dir / f"{workflow_name}-{run_id}"
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        # A fresh start may reuse a stable dir whose previous run already finished
+        # (e.g. --auto restarting after a terminal run). Drop any stale checkpoint so
+        # an interruption before this run's first checkpoint can't resurrect the old
+        # one on the next auto-resume; this run starts from the graph's start node.
+        (self.run_dir / self.CHECKPOINT_FILE).unlink(missing_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
         self._run_id = run_id
