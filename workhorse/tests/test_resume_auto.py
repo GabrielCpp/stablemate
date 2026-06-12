@@ -84,6 +84,25 @@ def test_auto_resolve_single_stable_dir_per_program():
         assert resume2 == stable  # same single folder, continued
 
 
+def test_auto_resolve_skips_terminal_run():
+    """A stable dir whose run already finished (run.json terminal set) is NOT
+    resumed — re-running starts a new run rather than replaying the finished one
+    (mirrors _find_latest_resumable). Without this, an epic-coder run that reached
+    its terminal node would no-op on the next `make agent-native`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        stable = runs / "epic-coder-default"
+        stable.mkdir()
+        (stable / "checkpoint.json").write_text(json.dumps({"current_id": "merge_final", "context": {}}))
+        # No run.json (or terminal=None) -> resumable.
+        assert m._auto_resolve(runs, "epic-coder", run_id="default")[1] == stable
+        # run.json marks it terminal -> start fresh (resume None) in the same dir.
+        (stable / "run.json").write_text(json.dumps({"workflow": "epic-coder", "terminal": "terminal"}))
+        rid, resume = m._auto_resolve(runs, "epic-coder", run_id="default")
+        assert rid == "default"
+        assert resume is None
+
+
 def test_auto_resolve_run_id_precedence():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
