@@ -19,11 +19,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import importlib.metadata
 import json
 import os
 import re
 import shutil
-import importlib.metadata
 import subprocess
 import sys
 import tomllib
@@ -34,7 +34,6 @@ from typing import Any
 import yaml
 from jinja2 import Environment, StrictUndefined
 from platformdirs import user_config_dir
-
 
 # Library content roots. Populated by ``set_library_globals()`` once the library
 # directory is resolved in ``main()``. They are module globals because the
@@ -120,7 +119,10 @@ def resolve_library_dir(cli_library: Path | None) -> Path:
     if cli_library is not None:
         candidate, source = cli_library, "--library"
     elif os.environ.get("FARRIER_LIBRARY_DIR"):
-        candidate, source = Path(os.environ["FARRIER_LIBRARY_DIR"]), "$FARRIER_LIBRARY_DIR"
+        candidate, source = (
+            Path(os.environ["FARRIER_LIBRARY_DIR"]),
+            "$FARRIER_LIBRARY_DIR",
+        )
     else:
         configured = read_config().get("library_dir")
         if configured:
@@ -141,6 +143,7 @@ def resolve_library_dir(cli_library: Path | None) -> Path:
             "— it must contain library/ and packs/."
         )
     return root
+
 
 # Scaffold outputs whose basename is in this set are SEEDS: written only when the
 # target does not already exist, so a repository can evolve them after the first
@@ -320,7 +323,10 @@ def load_sources(root: Path, kind: str) -> list[Source]:
     sources: list[Source] = []
     # Load SKILL.md files (new open skill format: <name>/SKILL.md).
     # Also support flat *.md files for backwards compatibility during migration.
-    for path in sorted(list(root.rglob("SKILL.md")) + [p for p in root.rglob("*.md") if p.name != "SKILL.md"]):
+    for path in sorted(
+        list(root.rglob("SKILL.md"))
+        + [p for p in root.rglob("*.md") if p.name != "SKILL.md"]
+    ):
         rel = path.relative_to(root).as_posix()
         sources.append(Source(kind=kind, path=path, rel=rel, id=source_id(root, path)))
     return sources
@@ -417,7 +423,9 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
 
 def should_skip_workflow_file(path: Path, root: Path) -> bool:
     rel = path.relative_to(root)
-    return any(part in WORKFLOW_SKIP_PARTS for part in rel.parts) or path.suffix == ".pyc"
+    return (
+        any(part in WORKFLOW_SKIP_PARTS for part in rel.parts) or path.suffix == ".pyc"
+    )
 
 
 def extract_workflow_dependencies(workflow_root: Path) -> tuple[set[str], set[str]]:
@@ -569,11 +577,11 @@ def render_agents_mk(workflows: list[str], meta: dict[str, str]) -> str:
     workflow_list = " ".join(workflows)
     placeholder = meta["repo_url"].startswith("REPLACE_ME")
     repo_url_line = (
-        f'REPO_URL     ?= {meta["repo_url"]}'
+        f"REPO_URL     ?= {meta['repo_url']}"
         if not placeholder
-        else f'# REPO_URL: set me to the git remote (only used by GitHub-default runs,\n'
-        f'# not the default local bind-mount clone). Auto-detection found no origin.\n'
-        f'REPO_URL     ?= {meta["repo_url"]}'
+        else f"# REPO_URL: set me to the git remote (only used by GitHub-default runs,\n"
+        f"# not the default local bind-mount clone). Auto-detection found no origin.\n"
+        f"REPO_URL     ?= {meta['repo_url']}"
     )
     return f"""# Multi-workflow agent launcher — workhorse quick start (generated).
 #
@@ -790,6 +798,7 @@ services:
         read_only: true
 """
 
+
 # File suffixes that accept a `#`-style comment header.
 _COMMENTABLE_SUFFIXES = {".py", ".sh", ".yaml", ".yml"}
 
@@ -881,7 +890,9 @@ class Renderer:
         source = self.skill_source(name)
         generated = public_name(self.prefix, source)
         if target == "copilot-instruction":
-            return self.repo / ".github" / "instructions" / f"{generated}.instructions.md"
+            return (
+                self.repo / ".github" / "instructions" / f"{generated}.instructions.md"
+            )
         if target == "copilot":
             return self.repo / ".github" / "skills" / generated / "SKILL.md"
         if target == "codex":
@@ -947,12 +958,16 @@ class Renderer:
 
         def skill_file(name: str) -> str:
             if self.optional_skill_source(name):
-                return relative_reference(from_file, self.skill_output_path(name, target))
+                return relative_reference(
+                    from_file, self.skill_output_path(name, target)
+                )
             return f"generated {name} skill when installed"
 
         def prompt_file_fn(name: str) -> str:
             if self.optional_prompt_source(name):
-                return relative_reference(from_file, self.prompt_output_path(name, target))
+                return relative_reference(
+                    from_file, self.prompt_output_path(name, target)
+                )
             return f"generated {name} prompt when installed"
 
         def is_using_instruction(instruction_name: str) -> bool:
@@ -966,14 +981,20 @@ class Renderer:
             return "{{ " + name + " }}"
 
         return template.render(
-            instruction_file=lambda name: relative_reference(
-                from_file, self.skill_output_path(name, skill_target)
-            ) if self.optional_skill_source(name) else f"generated {name} instruction file when installed",
+            instruction_file=lambda name: (
+                relative_reference(
+                    from_file, self.skill_output_path(name, skill_target)
+                )
+                if self.optional_skill_source(name)
+                else f"generated {name} instruction file when installed"
+            ),
             instruction_ref=instruction_ref,
             skill_file=skill_file,
             prompt_file=prompt_file_fn,
             prompt_ref=prompt_ref,
-            skill_dir=lambda: relative_reference(from_file, self.skill_dir_path(target)),
+            skill_dir=lambda: relative_reference(
+                from_file, self.skill_dir_path(target)
+            ),
             isUsingInstruction=is_using_instruction,
             workhorse_var=workhorse_var,
             repo=self.repo_context,
@@ -1019,7 +1040,9 @@ class Renderer:
             "skill_dir": rel(self.skill_dir_path(target)),
         }
 
-    def skill_description(self, source: Source, header: dict[str, str], body: str) -> str:
+    def skill_description(
+        self, source: Source, header: dict[str, str], body: str
+    ) -> str:
         title = first_heading(body, public_name(self.prefix, source))
         apply_to = header.get("applyTo")
         if header.get("description"):
@@ -1056,13 +1079,19 @@ description: {yaml_quote(description)}
 
         if agents.get("copilot"):
             for source in self.skills:
-                instruction_path = self.skill_output_path(source.id, "copilot-instruction")
-                content = self.render_templates(source.path.read_text(encoding="utf-8"), "copilot", instruction_path)
+                instruction_path = self.skill_output_path(
+                    source.id, "copilot-instruction"
+                )
+                content = self.render_templates(
+                    source.path.read_text(encoding="utf-8"), "copilot", instruction_path
+                )
                 outputs[instruction_path] = content
 
             for source in self.prompts:
                 output_path = self.prompt_output_path(source.id, "copilot")
-                content = self.render_templates(source.path.read_text(encoding="utf-8"), "copilot", output_path)
+                content = self.render_templates(
+                    source.path.read_text(encoding="utf-8"), "copilot", output_path
+                )
                 outputs[output_path] = content
 
             for root in roots:
@@ -1072,26 +1101,38 @@ description: {yaml_quote(description)}
                         self.repo / ".github" / "copilot-instructions.md",
                         self.repo / ".github" / "agents" / "copilot-instructions.md",
                     ]:
-                        content = self.render_templates(root_path.read_text(encoding="utf-8"), "copilot", output_path)
+                        content = self.render_templates(
+                            root_path.read_text(encoding="utf-8"),
+                            "copilot",
+                            output_path,
+                        )
                         outputs[output_path] = content
 
         if agents.get("codex"):
             for source in self.skills:
                 output_path = self.skill_output_path(source.id, "codex")
-                outputs[output_path] = self.generated_skill(source, "codex", output_path)
+                outputs[output_path] = self.generated_skill(
+                    source, "codex", output_path
+                )
             for source in self.prompts:
                 output_path = self.prompt_output_path(source.id, "codex")
-                content = self.render_templates(source.path.read_text(encoding="utf-8"), "codex", output_path)
+                content = self.render_templates(
+                    source.path.read_text(encoding="utf-8"), "codex", output_path
+                )
                 outputs[output_path] = content
 
         if agents.get("claude"):
             for source in self.skills:
                 output_path = self.skill_output_path(source.id, "claude")
-                outputs[output_path] = self.generated_skill(source, "claude", output_path)
+                outputs[output_path] = self.generated_skill(
+                    source, "claude", output_path
+                )
             for source in self.prompts:
                 _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
                 output_path = self.prompt_output_path(source.id, "claude")
-                outputs[output_path] = self.render_templates(body, "claude", output_path)
+                outputs[output_path] = self.render_templates(
+                    body, "claude", output_path
+                )
 
         # Workflows are NOT installed/copied — they run directly from the library
         # (see render_agents_mk: WORKFLOW_DIR points at $(AGENTS_DIR)/workflows/$(WF)).
@@ -1105,12 +1146,17 @@ description: {yaml_quote(description)}
         # work — workhorse renders the library prompts against it at run time.
         if workflows:
             manifest_target = (
-                "claude" if agents.get("claude")
-                else "codex" if agents.get("codex")
+                "claude"
+                if agents.get("claude")
+                else "codex"
+                if agents.get("codex")
                 else "copilot"
             )
             outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST] = (
-                json.dumps(self.context_manifest(manifest_target), indent=2, sort_keys=True) + "\n"
+                json.dumps(
+                    self.context_manifest(manifest_target), indent=2, sort_keys=True
+                )
+                + "\n"
             )
             meta = dict(workflow_meta or {})
             meta.setdefault("repo_url", "REPLACE_ME-git-remote-url")
@@ -1135,7 +1181,11 @@ description: {yaml_quote(description)}
         return outputs
 
     def render_local_instruction(
-        self, skill_names: list[str], target: str, output_path: Path, readme_mode: str = "inline"
+        self,
+        skill_names: list[str],
+        target: str,
+        output_path: Path,
+        readme_mode: str = "inline",
     ) -> str:
         parts: list[str] = []
         for skill_name in skill_names:
@@ -1156,11 +1206,15 @@ description: {yaml_quote(description)}
         # back to inlining the body.
         if readme_mode == "import" and target == "claude":
             return f"{rendered}\n\n## Local README\n\n@README.md\n"
-        readme_body = self.render_templates(readme.read_text(encoding="utf-8"), target, output_path)
+        readme_body = self.render_templates(
+            readme.read_text(encoding="utf-8"), target, output_path
+        )
         return f"{rendered}\n\n## Local README\n\n{readme_body.strip()}\n"
 
     def render_scaffold(self, source: Source, output_path: Path) -> str:
-        return self.render_templates(source.path.read_text(encoding="utf-8"), "scaffold", output_path)
+        return self.render_templates(
+            source.path.read_text(encoding="utf-8"), "scaffold", output_path
+        )
 
     def validate_workflow_dependencies(self, workflow_name: str) -> list[str]:
         """Check that a workflow's dependencies are satisfied by selected skills/prompts.
@@ -1173,10 +1227,14 @@ description: {yaml_quote(description)}
         missing = []
         for skill in required_skills:
             if not self.optional_skill_source(skill):
-                missing.append(f"skill '{skill}' (referenced in {workflow_name} prompts)")
+                missing.append(
+                    f"skill '{skill}' (referenced in {workflow_name} prompts)"
+                )
         for prompt in required_prompts:
             if not self.optional_prompt_source(prompt):
-                missing.append(f"prompt '{prompt}' (referenced in {workflow_name} prompts)")
+                missing.append(
+                    f"prompt '{prompt}' (referenced in {workflow_name} prompts)"
+                )
 
         return missing
 
@@ -1185,7 +1243,9 @@ def normalize_agents(config: dict[str, Any]) -> dict[str, bool]:
     agents = config.get("agents") or {}
     if isinstance(agents, list):
         return {name: name in agents for name in ["codex", "claude", "copilot"]}
-    return {name: bool(agents.get(name, False)) for name in ["codex", "claude", "copilot"]}
+    return {
+        name: bool(agents.get(name, False)) for name in ["codex", "claude", "copilot"]
+    }
 
 
 def collect_selection(
@@ -1244,7 +1304,10 @@ def select_scaffolds(
     selected = [
         source
         for source in sources
-        if (matches(source, patterns) or scaffold_mapping_for(source, mappings) is not None)
+        if (
+            matches(source, patterns)
+            or scaffold_mapping_for(source, mappings) is not None
+        )
         and not matches(source, exclude_patterns)
     ]
     return sorted(selected, key=lambda item: item.id)
@@ -1255,7 +1318,7 @@ def scaffold_output_path(repo: Path, source: Source, mappings: dict[str, str]) -
     # preserving any path below the matched prefix.
     key = scaffold_mapping_for(source, mappings)
     if key is not None:
-        rest = source.rel[len(key):].lstrip("/")
+        rest = source.rel[len(key) :].lstrip("/")
         return repo.joinpath(mappings[key], rest) if rest else repo / mappings[key]
     # No mapping: fall back to stripping the leading namespace segment.
     rel = Path(source.rel)
@@ -1291,7 +1354,9 @@ def remove_targets(repo: Path) -> None:
 
 def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
-    prefix = kebab(str(repo_config.get("prefix") or repo_config.get("name") or repo.name))
+    prefix = kebab(
+        str(repo_config.get("prefix") or repo_config.get("name") or repo.name)
+    )
     agents = normalize_agents(config)
     if not any(agents.values()):
         raise SystemExit("No agents selected in config")
@@ -1323,10 +1388,16 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         set(exclude.get("scaffolds", []) or []),
     )
     if not skills and not prompts and not workflows and not scaffolds:
-        raise SystemExit("Selected packs did not match any skills, prompts, scaffolds, or workflows")
+        raise SystemExit(
+            "Selected packs did not match any skills, prompts, scaffolds, or workflows"
+        )
 
-    renderer = Renderer(repo, prefix, repo_config, collect_template_values(config), skills, prompts)
-    workflow_meta = resolve_workflow_meta(config, repo, str(repo_config.get("name") or repo.name))
+    renderer = Renderer(
+        repo, prefix, repo_config, collect_template_values(config), skills, prompts
+    )
+    workflow_meta = resolve_workflow_meta(
+        config, repo, str(repo_config.get("name") or repo.name)
+    )
     workflow_meta["repo_src_default"] = repo.as_posix()
     outputs = renderer.render(agents, roots, workflows, workflow_meta)
 
@@ -1462,14 +1533,27 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     # Workflow runs write logs/artifacts under .agents/runs (see render_agents_mk
     # RUNS_DIR). Keep them out of version control. Only relevant when a workflow
     # launcher was generated.
-    if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_gitignore_entry(repo, ".agents/runs"):
-        print("Added .agents/runs to .gitignore")
+    if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_gitignore_entry(
+        repo, ".agents"
+    ):
+        print("Added .agents to .gitignore")
 
 
 def _add_install_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository root to install into (default: cwd)")
-    parser.add_argument("--config", type=Path, help="Path to agents.yml (default: <repo>/agents.yml)")
-    parser.add_argument("--check", action="store_true", help="Verify generated files are current without writing")
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root to install into (default: cwd)",
+    )
+    parser.add_argument(
+        "--config", type=Path, help="Path to agents.yml (default: <repo>/agents.yml)"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify generated files are current without writing",
+    )
     parser.add_argument(
         "--library",
         type=Path,
@@ -1528,18 +1612,33 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # install (default)
-    install_p = sub.add_parser("install", help="Render/install the selected packs into a repository (default)")
+    install_p = sub.add_parser(
+        "install", help="Render/install the selected packs into a repository (default)"
+    )
     _add_install_args(install_p)
 
     # config
     config_p = sub.add_parser("config", help="Manage the farrier home config")
     config_sub = config_p.add_subparsers(dest="config_action", required=True)
-    set_lib = config_sub.add_parser("set-library", help="Record the library directory in the home config")
-    set_lib.add_argument("path", type=Path, help="Path to the library (the agents/ tree)")
-    set_sm = config_sub.add_parser("set-stablemate", help="Record the stablemate checkout path in the home config")
+    set_lib = config_sub.add_parser(
+        "set-library", help="Record the library directory in the home config"
+    )
+    set_lib.add_argument(
+        "path", type=Path, help="Path to the library (the agents/ tree)"
+    )
+    set_sm = config_sub.add_parser(
+        "set-stablemate", help="Record the stablemate checkout path in the home config"
+    )
     set_sm.add_argument("path", type=Path, help="Path to the stablemate checkout")
-    show_p = config_sub.add_parser("show", help="Print all config keys as key=value lines, or a single bare value")
-    show_p.add_argument("key", nargs="?", default=None, help="If given, print only the value of this key")
+    show_p = config_sub.add_parser(
+        "show", help="Print all config keys as key=value lines, or a single bare value"
+    )
+    show_p.add_argument(
+        "key",
+        nargs="?",
+        default=None,
+        help="If given, print only the value of this key",
+    )
 
     # version
     sub.add_parser("version", help="Print the installed farrier version")
