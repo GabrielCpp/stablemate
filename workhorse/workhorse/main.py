@@ -25,9 +25,17 @@ def run(
     auto: bool = True,
     run_id: str | None = None,
     params: dict[str, Any] | None = None,
+    context_manifest: dict[str, Any] | None = None,
 ) -> int:
     graph = load_workflow(workflow_path)
     workflow_dir = workflow_path.parent
+
+    # The per-repo context manifest (template values, instruction/prompt path maps,
+    # selected-skills set) is the OUTER layer of every context: the workflow's own
+    # vars, --params, and node outputs all override it, but it is always present so
+    # the farrier template helpers (instruction_ref/isUsingInstruction/template.*)
+    # resolve at render time. See workhorse/templates.py.
+    manifest = context_manifest or {}
 
     # Default (auto): one stable run dir per (workflow, program) that we resume in
     # place. The run *is* the research session — its full context (counters, gate
@@ -60,7 +68,7 @@ def run(
                 file=sys.stderr,
             )
             return 1
-        ctx = WorkflowContext(initial=checkpoint["context"])
+        ctx = WorkflowContext(initial={**manifest, **checkpoint["context"]})
         print(
             f"[workhorse] resuming '{graph.name}' at node '{current_id}' "
             f"(run: {writer.run_dir.name})"
@@ -75,7 +83,7 @@ def run(
         if _should_fast_forward(done, checkpoint):
             after = writer.read_context_after(current_id)
             if after is not None:
-                ctx = WorkflowContext(initial=after)
+                ctx = WorkflowContext(initial={**manifest, **after})
             print(
                 f"[workhorse] node '{current_id}' already completed under this "
                 f"checkpoint — fast-forwarding to '{done['next']}'"
@@ -92,7 +100,7 @@ def run(
         # can parameterize a run without editing the workflow (e.g. pick a research
         # program). They apply only on a fresh start; a resume restores the context
         # from the checkpoint, which already captured them.
-        ctx = WorkflowContext(initial={**graph.vars, **(params or {})})
+        ctx = WorkflowContext(initial={**manifest, **graph.vars, **(params or {})})
         writer = ArtifactWriter(graph.name, runs_dir, run_id=fresh_run_id)
         current_id = graph.start
         print(f"[workhorse] starting '{graph.name}' (run: {writer.run_dir.name})")
@@ -262,8 +270,72 @@ def _find_latest_resumable(runs_dir: Path) -> Path | None:
     return max(candidates)[1]
 
 
+def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
+    """Shape a farrier context manifest into starting-context keys.
+
+    The manifest's ``template``/``repo``/``vars`` become top-level context values
+    (so ``{{ template.x }}`` / ``{{ repo.y }}`` resolve), while the path maps and
+    the selected-skills set are stashed under reserved ``_``-prefixed keys read by
+    the template helpers in workhorse/templates.py.
+    """
+    ctx: dict[str, Any] = {}
+    for key in ("template", "repo", "vars"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            ctx[key] = value
+    ctx["_instructions"] = raw.get("instructions") or {}
+    ctx["_prompts"] = raw.get("prompts") or {}
+    ctx["_used_skills"] = raw.get("used_skills") or []
+    if raw.get("skill_dir"):
+        ctx["_skill_dir"] = raw["skill_dir"]
+    return ctx
+
+
+def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
+    """Load the per-repo farrier context manifest that library prompts render against.
+
+    Resolution order: an explicit ``--context-file`` (which MUST exist — a typo'd
+    path is a hard error), else auto-detect ``$AGENT_REPO_DIR/.agents/agents-context.json``.
+    When neither is present the run proceeds with an empty manifest (the farrier
+    helpers degrade to placeholders / ``False``) — manifest-free workflows like
+    hello-world need no repo context. Workflows that DO need it (e.g. coder) always
+    pass ``--context-file`` via the generated Makefile, so the miss is caught there."""
+    if context_file:
+        path = Path(context_file)
+        if not path.is_file():
+            print(
+                f"error: --context-file not found: {path}\n"
+                "Run `make agent-install` to generate .agents/agents-context.json.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        repo_dir = os.environ.get("AGENT_REPO_DIR", ".")
+        path = Path(repo_dir) / ".agents" / "agents-context.json"
+        if not path.is_file():
+            return {}
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read context manifest {path}: {e}", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(raw, dict):
+        print(f"error: context manifest {path} must be a JSON object", file=sys.stderr)
+        sys.exit(1)
+    return _build_manifest_context(raw)
+
+
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
+    parser.add_argument(
+        "--context-file",
+        default=None,
+        metavar="PATH",
+        help="Per-repo farrier context manifest (JSON). Default: "
+        "$AGENT_REPO_DIR/.agents/agents-context.json. Provides the template "
+        "values, instruction/prompt path maps, and selected-skills set the "
+        "library prompts render against. Required.",
+    )
     parser.add_argument(
         "--runs-dir",
         default=None,
@@ -334,6 +406,7 @@ def _run_run(args: argparse.Namespace) -> None:
         runs_dir = (workflow_path.parent / "runs").resolve()
 
     params = _load_params(args.params, args.params_file)
+    context_manifest = _load_context_manifest(args.context_file)
 
     resume_run_dir: Path | None = None
     if args.resume_run:
@@ -363,6 +436,7 @@ def _run_run(args: argparse.Namespace) -> None:
             auto=True,
             run_id=args.run_id,
             params=params,
+            context_manifest=context_manifest,
         )
     )
 
