@@ -203,6 +203,13 @@ class BackendInvocationError(RuntimeError):
 ClaudeInvocationError = BackendInvocationError
 
 
+def _print_rendered_prompt(node_id: str, prompt: str) -> None:
+    """Echo the fully-rendered prompt to stdout, framed so it's easy to spot in the log."""
+    print(f"[{node_id}] ┌─ rendered prompt ({len(prompt)} chars) " + "─" * 24, flush=True)
+    print(prompt, flush=True)
+    print(f"[{node_id}] └─ end prompt " + "─" * 34, flush=True)
+
+
 def run_agent(
     node: AgentNode,
     context: WorkflowContext,
@@ -261,6 +268,14 @@ def run_agent(
         "node_timeout_min": int(round(effective_timeout / 60)),
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
+
+    # Echo the fully-rendered prompt before launching the agent. Library prompts now
+    # render dynamically from the context manifest + live run context, so seeing the
+    # exact text (resolved instruction paths, per-layer run plan, gated sections) is
+    # the fastest way to catch a mis-resolved variable. On (default); WORKHORSE_PRINT_PROMPT=0
+    # silences it. The prompt is also persisted to the run dir's prompt.md afterward.
+    if os.environ.get("WORKHORSE_PRINT_PROMPT", "1").lower() not in ("0", "false", "no", ""):
+        _print_rendered_prompt(node.id, rendered_prompt)
 
     # Render per-node working directory and additional directories from context.
     rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
