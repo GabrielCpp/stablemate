@@ -32,48 +32,52 @@ ResilientUndefined = make_logging_undefined(
 
 
 def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, Any]:
-    """Return Jinja2 globals for farrier install-time template helpers.
+    """Return Jinja2 globals for the farrier template helpers, resolved at run time.
 
-    Farrier (the agents-library build tool) processes source prompts and
-    replaces calls like ``{{ workhorse_var('story_path') }}`` with plain
-    ``{{ story_path }}`` before the workflow is installed.  When workhorse
-    renders source prompts directly (e.g. during workflow development or
-    testing), these helpers would otherwise be undefined.  The stubs here
-    produce the same final output: ``workhorse_var('key')`` returns the
-    context value for ``key`` directly, which is equivalent to the two-step
-    install → runtime render.
+    Workflows (and their prompts) now run **directly from the agent library** —
+    farrier no longer renders/copies them into a repo. Instead it emits a per-repo
+    **context manifest** (``.agents/agents-context.json``) that the runner loads and
+    merges into the workflow context under reserved keys:
+
+      - ``_instructions``: ``{name: repo-root-relative skill path}``
+      - ``_prompts``:      ``{name: repo-root-relative prompt path}``
+      - ``_used_skills``:  the set of skills selected for this repo
+      - ``_skill_dir``:    repo-root-relative skills directory
+
+    These helpers reproduce what farrier used to resolve at install time, but from
+    the manifest in ``context``. Paths are repo-root-relative because the agent runs
+    with its working directory at the repo root (``AGENT_REPO_DIR``); the library
+    prompt's physical location is irrelevant.
     """
+    instructions: dict[str, str] = context.get("_instructions") or {}
+    prompts: dict[str, str] = context.get("_prompts") or {}
+    used_skills = set(context.get("_used_skills") or [])
+    skill_dir_value = context.get("_skill_dir")
+
     def workhorse_var(name: str) -> Any:  # noqa: ANN202
         return context.get(name, "")
 
     def skill_dir() -> str:
-        return str(workflow_dir)
+        return skill_dir_value if skill_dir_value else str(workflow_dir)
 
-    def _noop_ref(_name: str = "") -> str:
-        return ""
+    def instruction_ref(name: str = "") -> str:
+        return instructions.get(name, f"generated {name} instruction file when installed")
 
-    def is_using_instruction(*_args: Any, **_kwargs: Any) -> str:
-        return ""
+    def prompt_ref(name: str = "") -> str:
+        return prompts.get(name, f"generated {name} prompt when installed")
 
-    # template.*/repo.*/vars.* attribute accesses resolve to "" with | default() support
-    class _AttrNS:
-        def __getattr__(self, name: str) -> str:
-            return ""
-
-    _ns = _AttrNS()
+    def is_using_instruction(name: str = "", *_args: Any, **_kwargs: Any) -> bool:
+        return name in used_skills
 
     return {
         "workhorse_var": workhorse_var,
         "skill_dir": skill_dir,
-        "instruction_ref": _noop_ref,
-        "instruction_file": _noop_ref,
-        "skill_file": _noop_ref,
-        "prompt_file": _noop_ref,
-        "prompt_ref": _noop_ref,
+        "instruction_ref": instruction_ref,
+        "instruction_file": instruction_ref,
+        "skill_file": instruction_ref,
+        "prompt_file": prompt_ref,
+        "prompt_ref": prompt_ref,
         "isUsingInstruction": is_using_instruction,
-        "template": _ns,
-        "repo": _ns,
-        "vars": _ns,
     }
 
 
@@ -101,7 +105,14 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
 
 
 def render_string(template_str: str, context: dict[str, Any]) -> str:
-    """Render an inline Jinja2 template string (used for node args)."""
+    """Render an inline Jinja2 template string (used for node args/cwd/commands).
+
+    Exposes the same farrier helpers as :func:`render` so node args in a
+    library-resident ``workflow.yaml`` can use ``instruction_ref``/``template.*``
+    the same way prompts do.
+    """
     env = Environment(undefined=ResilientUndefined)
+    workflow_dir = Path(context.get("_skill_dir") or ".")
+    env.globals.update(_farrier_globals(context, workflow_dir))
     tmpl = env.from_string(template_str)
     return tmpl.render(**context)
