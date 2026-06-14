@@ -60,7 +60,7 @@ Copilot), then extracts JSON outputs from the response.
     - key: plan_result
       default: { status: blocked }   # emitted if the node exhausts all retries
   model: opus                  # optional backend model override (see below)
-  timeout: 1800                # optional wall-clock budget in seconds (default 1200)
+  timeout: 1800                # optional wall-clock budget in seconds (default 3600)
   next: review_plan            # REQUIRED for agent nodes
 ```
 
@@ -70,7 +70,7 @@ Copilot), then extracts JSON outputs from the response.
 | `args` | map<str,str> | no | Jinja string values rendered against the context, then merged into the prompt context. Lets you parameterize a prompt without editing the template. |
 | `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
 | `model` | string | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a profile or `<profile>@<model-slug>`. Unset → backend default (or `AGENT_MODEL`). |
-| `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **1200** (20 min); `0`/null → engine default. |
+| `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 
 **Output extraction.** The response is scanned for JSON in this order: a fenced

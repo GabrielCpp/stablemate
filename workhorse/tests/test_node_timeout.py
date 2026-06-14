@@ -47,16 +47,16 @@ def _run_capturing(node):
     return seen["ctx"], seen["timeout"]
 
 
-def test_timeout_defaults_to_20_min():
-    # The engine default budget is 20 min so benchmark-running nodes aren't killed.
-    assert _node().timeout == 1200
+def test_timeout_defaults_to_1_hour():
+    # The default per-node budget is 1 hour so benchmark-running nodes aren't killed.
+    assert _node().timeout == 3600
 
 
 def test_default_budget_threads_to_invocation_and_prompt():
     ctx, invoke_timeout = _run_capturing(_node())
-    assert invoke_timeout == 1200
-    assert ctx["node_timeout_s"] == 1200
-    assert ctx["node_timeout_min"] == 20
+    assert invoke_timeout == 3600
+    assert ctx["node_timeout_s"] == 3600
+    assert ctx["node_timeout_min"] == 60
 
 
 def test_explicit_timeout_overrides_and_reaches_prompt():

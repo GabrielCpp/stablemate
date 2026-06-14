@@ -38,8 +38,8 @@ class AgentNode(BaseModel):
     # the Claude/Copilot CLIs (low|medium|high|xhigh|max); unset → backend default.
     # See runner/backends.py.
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
-    # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 1200s
-    # (20 min) — research/implementation nodes routinely run a benchmark that
+    # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 3600s
+    # (1 hour) — research/implementation nodes routinely run a benchmark that
     # exceeds the old 600s ceiling. Set explicitly per node to widen or tighten it
     # (e.g. `timeout: 5000`); an explicit None/0 falls back to the engine default
     # (AGENT_RESULT_TIMEOUT_S). Set `timeout: infinity` (also "inf"/"unbounded"/
@@ -49,7 +49,7 @@ class AgentNode(BaseModel):
     # timeout-retry recovery; prefer a large finite value unless you truly want this.
     # The effective value is surfaced to the prompt as `node_timeout_s` /
     # `node_timeout_min` ("unbounded" when infinite), so the agent can size its work.
-    timeout: float | None = 1200
+    timeout: float | None = 3600
 
     @field_validator("timeout", mode="before")
     @classmethod
