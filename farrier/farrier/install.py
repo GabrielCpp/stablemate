@@ -272,6 +272,44 @@ def is_seed_output(path: Path) -> bool:
     return path.name in SEED_SCAFFOLD_BASENAMES
 
 
+def library_source_path(source: Source) -> str:
+    """The source's path within the prompt library, for provenance banners.
+
+    Anchored at the last ``library/`` segment so the result is machine-independent
+    (e.g. ``library/skills/go/go-qa/SKILL.md``) — identical across machines and
+    therefore stable under ``--check``. Falls back to ``source.rel`` if the path is
+    not under a ``library/`` tree (it always is for skills/prompts).
+    """
+    parts = source.path.parts
+    if "library" in parts:
+        idx = len(parts) - 1 - parts[::-1].index("library")
+        return Path(*parts[idx:]).as_posix()
+    return source.rel
+
+
+# A generated skill is a *copy* of a library SKILL.md. Without a marker, an agent
+# editing it sees an ordinary skill and "fixes" the copy — losing the change on the
+# next `make agent-install`. We stamp the single source of truth into the openskill
+# `metadata` field (an arbitrary key-value object: openskill.sh/docs/creators/skill-format)
+# so the edit lands in the library instead. Only skills carry this — prompts/commands
+# and aggregated instruction files are left untouched.
+def skill_metadata_block(source: Source) -> str:
+    """The openskill `metadata:` block stamping a generated skill with its source.
+
+    Returns the YAML lines (newline-terminated) to splice into the front matter.
+    """
+    do_not_edit = (
+        "edit the source in the central prompt library and re-run "
+        "`make agent-install` to regenerate"
+    )
+    return (
+        "metadata:\n"
+        "  generated_by: farrier\n"
+        f"  source: {library_source_path(source)}\n"
+        f"  do_not_edit: {yaml_quote(do_not_edit)}\n"
+    )
+
+
 def kebab(value: str) -> str:
     value = value.removesuffix(".prompt").removesuffix(".instructions")
     value = value.replace(".", "-").replace("_", "-")
@@ -1071,13 +1109,15 @@ class Renderer:
         body = self.render_templates(body, target, output_path).strip()
         name = public_name(self.prefix, source)
         description = self.skill_description(source, header, body)
-        return f"""---
-name: {name}
-description: {yaml_quote(description)}
----
-
-{body}
-"""
+        return (
+            "---\n"
+            f"name: {name}\n"
+            f"description: {yaml_quote(description)}\n"
+            f"{skill_metadata_block(source)}"
+            "---\n"
+            "\n"
+            f"{body}\n"
+        )
 
     def render(
         self,

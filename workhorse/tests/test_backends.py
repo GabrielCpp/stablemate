@@ -103,6 +103,95 @@ def _fake_stream(canned):
     return fake, captured
 
 
+def test_codex_effort_sets_reasoning_override():
+    """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    prior = os.environ.pop("CODEX_PROFILE", None)
+    try:
+        with patch.object(backends, "_stream_jsonl", fake):
+            CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5", effort="high")
+    finally:
+        if prior is not None:
+            os.environ["CODEX_PROFILE"] = prior
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+
+def test_codex_effort_clamped_to_high():
+    """Codex tops out at "high"; the Claude-superset levels clamp down."""
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    for level in ("xhigh", "max"):
+        fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+        prior = os.environ.pop("CODEX_PROFILE", None)
+        try:
+            with patch.object(backends, "_stream_jsonl", fake):
+                CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5", effort=level)
+        finally:
+            if prior is not None:
+                os.environ["CODEX_PROFILE"] = prior
+        cmd = captured["cmd"]
+        assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+
+def test_codex_no_effort_omits_override():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    prior = os.environ.pop("CODEX_PROFILE", None)
+    try:
+        with patch.object(backends, "_stream_jsonl", fake):
+            CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5")
+    finally:
+        if prior is not None:
+            os.environ["CODEX_PROFILE"] = prior
+    assert "model_reasoning_effort" not in " ".join(captured["cmd"])
+
+
+def _capture_claude_cmd(**run_turn_kwargs):
+    """Run ClaudeBackend.run_turn with subprocess.Popen stubbed to capture the argv
+    and short-circuit (the cmd is assembled before Popen is called)."""
+    captured = {}
+
+    class _Boom(Exception):
+        pass
+
+    def fake_popen(cmd, *a, **k):
+        captured["cmd"] = cmd
+        raise _Boom()
+
+    with patch("subprocess.Popen", fake_popen):
+        try:
+            ClaudeBackend().run_turn("P", "n", None, **run_turn_kwargs)
+        except Exception:
+            pass
+    return captured["cmd"]
+
+
+def test_claude_effort_maps_to_native_flag():
+    """`effort` becomes a native `--effort <level>` flag on the claude CLI (no prompt
+    mutation), for every supported level."""
+    for level in ("low", "medium", "high", "xhigh", "max"):
+        cmd = _capture_claude_cmd(model="opus", effort=level)
+        assert cmd[cmd.index("--effort") + 1] == level
+        assert cmd[cmd.index("--model") + 1] == "opus"
+
+
+def test_claude_no_effort_omits_flag():
+    cmd = _capture_claude_cmd(model="opus")
+    assert "--effort" not in cmd
+
+
+def test_copilot_effort_maps_to_native_flag():
+    """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "s"}, "", False, 0))
+    with patch.object(backends, "_stream_jsonl", fake):
+        CopilotBackend().run_turn("BASE PROMPT", "n", sidp, effort="high")
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--effort") + 1] == "high"
+    assert "BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
+
+
 def test_codex_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(({"result_text": "OK", "session_id": "tid-123"}, "", False, 0))
