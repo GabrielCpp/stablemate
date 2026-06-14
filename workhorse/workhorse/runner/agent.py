@@ -210,6 +210,24 @@ def _print_rendered_prompt(node_id: str, prompt: str) -> None:
     print(f"[{node_id}] └─ end prompt " + "─" * 34, flush=True)
 
 
+def _model_for_backend(node_model: "str | dict[str, str] | None", backend_name: str) -> str | None:
+    """Resolve a node's ``model:`` field for the active CLI backend.
+
+    - ``None``  → no per-node model (caller falls through to env / backend default).
+    - ``str``   → an absolute default applied to every backend (existing behaviour).
+    - ``dict``  → per-CLI map keyed by backend name ("claude"/"codex"/"copilot");
+                  an optional ``"default"`` key covers any backend not listed. A
+                  backend that is neither listed nor has a ``"default"`` yields
+                  ``None`` so the caller falls through to AGENT_MODEL / the backend
+                  default — i.e. the map only pins the backends it names.
+    """
+    if node_model is None:
+        return None
+    if isinstance(node_model, str):
+        return node_model
+    return node_model.get(backend_name) or node_model.get("default")
+
+
 def run_agent(
     node: AgentNode,
     context: WorkflowContext,
@@ -290,9 +308,11 @@ def run_agent(
     backend = get_backend()
 
     # Per-node model wins; otherwise a global env override (AGENT_MODEL, with the
-    # legacy AGENT_CLAUDE_MODEL still honored), then the backend's own default.
+    # legacy AGENT_CLAUDE_MODEL still honored), then the backend's own default. The
+    # node's model may be a plain string (absolute default for every backend) or a
+    # per-CLI map keyed by backend name (see _model_for_backend / nodes.py).
     model = (
-        node.model
+        _model_for_backend(node.model, backend.name)
         or os.environ.get("AGENT_MODEL")
         or os.environ.get("AGENT_CLAUDE_MODEL")
         or backend.default_model

@@ -17,6 +17,13 @@ from .runner import script as script_runner
 from .runner.agent import ClaudeInvocationError
 from .runner.script import ScriptExitError
 
+# Canonical skill directory per backend — must match farrier's install layout.
+_BACKEND_SKILL_DIR: dict[str, str] = {
+    "claude": ".claude/skills",
+    "codex": ".agents/skills",
+    "copilot": ".github/skills",
+}
+
 
 def run(
     workflow_path: Path,
@@ -288,17 +295,36 @@ def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
     (so ``{{ template.x }}`` / ``{{ repo.y }}`` resolve), while the path maps and
     the selected-skills set are stashed under reserved ``_``-prefixed keys read by
     the template helpers in workhorse/templates.py.
+
+    When the active backend (``AGENT_CLI``) differs from the backend the manifest
+    was generated for, instruction paths are rewritten from the manifest's
+    ``skill_dir`` prefix to the active backend's directory.  All three backends
+    share the ``{skill_dir}/{prefix}-{name}/SKILL.md`` structure, so a simple
+    prefix substitution is sufficient.
     """
     ctx: dict[str, Any] = {}
     for key in ("template", "repo", "vars"):
         value = raw.get(key)
         if isinstance(value, dict):
             ctx[key] = value
-    ctx["_instructions"] = raw.get("instructions") or {}
+
+    backend = os.environ.get("AGENT_CLI", "claude")
+    manifest_skill_dir = raw.get("skill_dir") or ""
+    target_skill_dir = _BACKEND_SKILL_DIR.get(backend, manifest_skill_dir)
+
+    raw_instructions: dict[str, str] = raw.get("instructions") or {}
+    if manifest_skill_dir and target_skill_dir and target_skill_dir != manifest_skill_dir:
+        ctx["_instructions"] = {
+            k: v.replace(manifest_skill_dir, target_skill_dir, 1)
+            for k, v in raw_instructions.items()
+        }
+    else:
+        ctx["_instructions"] = raw_instructions
+
     ctx["_prompts"] = raw.get("prompts") or {}
     ctx["_used_skills"] = raw.get("used_skills") or []
-    if raw.get("skill_dir"):
-        ctx["_skill_dir"] = raw["skill_dir"]
+    if target_skill_dir or manifest_skill_dir:
+        ctx["_skill_dir"] = target_skill_dir or manifest_skill_dir
     return ctx
 
 
@@ -306,11 +332,15 @@ def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
     """Load the per-repo farrier context manifest that library prompts render against.
 
     Resolution order: an explicit ``--context-file`` (which MUST exist — a typo'd
-    path is a hard error), else auto-detect ``$AGENT_REPO_DIR/.agents/agents-context.json``.
-    When neither is present the run proceeds with an empty manifest (the farrier
-    helpers degrade to placeholders / ``False``) — manifest-free workflows like
-    hello-world need no repo context. Workflows that DO need it (e.g. coder) always
-    pass ``--context-file`` via the generated Makefile, so the miss is caught there."""
+    path is a hard error), else auto-detect the per-assistant manifest for the active
+    CLI (``$AGENT_REPO_DIR/.agents/agents-context.$AGENT_CLI.json``), then the generic
+    ``$AGENT_REPO_DIR/.agents/agents-context.json``. The per-assistant file makes a
+    Codex/Copilot run resolve ``instruction_ref`` to its own adapter files
+    (``.github/skills`` etc.) rather than Claude's. When none is present the run
+    proceeds with an empty manifest (the farrier helpers degrade to placeholders /
+    ``False``) — manifest-free workflows like hello-world need no repo context.
+    Workflows that DO need it (e.g. coder) always pass ``--context-file`` via the
+    generated Makefile, so the miss is caught there."""
     if context_file:
         path = Path(context_file)
         if not path.is_file():
@@ -322,7 +352,10 @@ def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
             sys.exit(1)
     else:
         repo_dir = os.environ.get("AGENT_REPO_DIR", ".")
-        path = Path(repo_dir) / ".agents" / "agents-context.json"
+        agents_dir = Path(repo_dir) / ".agents"
+        cli = os.environ.get("AGENT_CLI", "claude").strip().lower()
+        per_cli = agents_dir / f"agents-context.{cli}.json"
+        path = per_cli if per_cli.is_file() else agents_dir / "agents-context.json"
         if not path.is_file():
             return {}
     try:
@@ -493,6 +526,78 @@ def _run_test(args: argparse.Namespace) -> None:
     sys.exit(_pytest.main(pytest_args))
 
 
+def _add_dot_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
+    parser.add_argument(
+        "--pin",
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="Pin a branch variable so any branch on that path collapses to its "
+        "single resolved edge (and the unreachable subgraph is pruned). Repeatable. "
+        "For the coder workflow: --pin mode=epic or --pin mode=story.",
+    )
+    parser.add_argument(
+        "--leaf",
+        action="append",
+        default=None,
+        metavar="NODE",
+        help="Render NODE as a dead-end: suppress its outgoing edges so reachability "
+        "stops there. Use to cut a cross-view bridge not gated by a pinned branch. "
+        "Repeatable. For the coder story view: --leaf replan_epic.",
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        metavar="NAME",
+        help="Override the digraph identifier (default: sanitized workflow name).",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        metavar="PATH",
+        help="Write the DOT output to this file (default: stdout).",
+    )
+
+
+def _parse_pins(raw: list[str] | None) -> dict[str, str]:
+    """Parse repeated --pin KEY=VALUE flags into a dict (exits on a malformed entry)."""
+    pins: dict[str, str] = {}
+    for item in raw or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            print(
+                f"error: --pin must be KEY=VALUE (got '{item}')", file=sys.stderr
+            )
+            sys.exit(1)
+        pins[key] = value
+    return pins
+
+
+def _run_dot(args: argparse.Namespace) -> None:
+    from .graph.dot import to_dot
+
+    workflow_path = Path(args.workflow).resolve()
+    if not workflow_path.exists():
+        print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        graph = load_workflow(workflow_path)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    pins = _parse_pins(args.pin)
+    leaves = set(args.leaf or [])
+    dot = to_dot(graph, pins=pins, name=args.name, leaves=leaves)
+
+    if args.output:
+        Path(args.output).write_text(dot)
+        print(f"[workhorse] wrote {args.output}", file=sys.stderr)
+    else:
+        sys.stdout.write(dot)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="workhorse",
@@ -511,6 +616,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_test_args(test_p)
 
+    # dot
+    dot_p = sub.add_parser(
+        "dot",
+        help="Render a workflow graph to Graphviz DOT",
+    )
+    _add_dot_args(dot_p)
+
     # version
     sub.add_parser("version", help="Print the installed workhorse-agent version")
 
@@ -524,7 +636,7 @@ def main() -> None:
     # Keep `workhorse --workflow ...` working: if no recognised subcommand is
     # given, inject `run` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"run", "test", "version"}
+    _SUBCOMMANDS = {"run", "test", "dot", "version"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
@@ -538,6 +650,10 @@ def main() -> None:
 
     if args.command == "test":
         _run_test(args)
+        return
+
+    if args.command == "dot":
+        _run_dot(args)
         return
 
     _run_run(args)

@@ -81,6 +81,42 @@ def test_touched_layers_gates_per_story():
     assert "GO" in fallback and "WEB" in fallback
 
 
+def test_codex_backend_rewrites_skill_paths(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "codex")
+    ctx = wm._build_manifest_context(MANIFEST)
+    assert ctx["_instructions"]["go"] == ".agents/skills/demo-go/SKILL.md"
+    assert ctx["_instructions"]["react-router"] == ".agents/skills/demo-react-router/SKILL.md"
+    assert ctx["_skill_dir"] == ".agents/skills"
+
+
+def test_copilot_backend_rewrites_skill_paths(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "copilot")
+    ctx = wm._build_manifest_context(MANIFEST)
+    assert ctx["_instructions"]["go"] == ".github/skills/demo-go/SKILL.md"
+    assert ctx["_skill_dir"] == ".github/skills"
+
+
+def test_same_backend_no_rewrite(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    ctx = wm._build_manifest_context(MANIFEST)
+    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert ctx["_skill_dir"] == ".claude/skills"
+
+
+def test_old_manifest_no_skill_dir_no_rewrite(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "codex")
+    old_manifest = {k: v for k, v in MANIFEST.items() if k != "skill_dir"}
+    ctx = wm._build_manifest_context(old_manifest)
+    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
+
+
+def test_unknown_backend_falls_back_to_manifest_dir(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "future-cli")
+    ctx = wm._build_manifest_context(MANIFEST)
+    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert ctx["_skill_dir"] == ".claude/skills"
+
+
 def test_explicit_missing_context_file_is_hard_error():
     # An explicitly-passed --context-file that doesn't exist is a hard error.
     with pytest.raises(SystemExit):

@@ -20,10 +20,17 @@ class AgentNode(BaseModel):
     prompt: str
     args: dict[str, str] = Field(default_factory=dict)
     outputs: list[OutputSpec] = Field(default_factory=list)
-    # Model name for this node, interpreted by the active CLI backend (e.g.
-    # "sonnet"/"opus" for Claude). When unset, the backend's own default applies
-    # (see runner/backends.py), so workflows need not hard-code a Claude alias.
-    model: str | None = None
+    # Model for this node, interpreted by the active CLI backend.
+    #   str  → an absolute default applied to every backend (e.g. "opus" / "haiku"
+    #          for Claude). Existing behaviour.
+    #   dict → per-CLI selection keyed by backend name ("claude"/"codex"/"copilot"),
+    #          e.g. {claude: opus, codex: "@gpt-5.5"}. An optional "default" key
+    #          covers any backend not listed; a backend that is neither listed nor
+    #          has a "default" falls through to AGENT_MODEL / the backend's own
+    #          default (see runner/agent.py:_model_for_backend and runner/backends.py).
+    # When unset, the backend's own default applies — workflows need not hard-code a
+    # Claude alias.
+    model: str | dict[str, str] | None = None
     # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 1200s
     # (20 min) — research/implementation nodes routinely run a benchmark that
     # exceeds the old 600s ceiling. Set explicitly per node to widen or tighten it;
