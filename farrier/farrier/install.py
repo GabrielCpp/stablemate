@@ -1585,6 +1585,41 @@ def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
     return True
 
 
+# Managed .gitignore rules for the generated `.agents/` directory. Generated
+# adapter outputs (context manifests, runs/, skills/, prompts/, workflows/) are
+# ignored, but hand-authored files are tracked: the launcher Makefile and prompt
+# *flavor* overrides under `.agents/flavors/`. `/.agents/*` matches only the direct
+# children one level deep, so the negated `flavors/` subtree's deeper files stay
+# tracked. This supersedes a bare `.agents` line, which ignored the whole directory
+# and stopped git descending — making `.agents/flavors/` impossible to track.
+AGENTS_GITIGNORE_BLOCK = (
+    "/.agents/*",
+    "!/.agents/agents.mk",
+    "!/.agents/flavors/",
+)
+
+
+def ensure_agents_gitignore(repo: Path) -> bool:
+    """Install/upgrade the managed `.agents/` ignore block in the repo's .gitignore.
+
+    Idempotent: returns True only when the file was actually modified. Strips any
+    legacy standalone `.agents` wholesale-ignore line (so git descends into
+    `.agents/` and the hand-authored `flavors/` subtree can be tracked) and any
+    prior copy of the managed block, then re-appends the block at the end.
+    """
+    gitignore = repo / ".gitignore"
+    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    managed = set(AGENTS_GITIGNORE_BLOCK) | {".agents", ".agents/", "/.agents"}
+    kept = [ln for ln in existing.splitlines() if ln.strip() not in managed]
+    body = "\n".join(kept).rstrip("\n")
+    prefix = f"{body}\n\n" if body else ""
+    desired = prefix + "\n".join(AGENTS_GITIGNORE_BLOCK) + "\n"
+    if desired == existing:
+        return False
+    gitignore.write_text(desired, encoding="utf-8")
+    return True
+
+
 def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     remove_targets(repo)
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
@@ -1596,10 +1631,8 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     # Workflow runs write logs/artifacts under .agents/runs (see render_agents_mk
     # RUNS_DIR). Keep them out of version control. Only relevant when a workflow
     # launcher was generated.
-    if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_gitignore_entry(
-        repo, ".agents"
-    ):
-        print("Added .agents to .gitignore")
+    if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_agents_gitignore(repo):
+        print("Updated .agents .gitignore rules")
 
 
 def _add_install_args(parser: argparse.ArgumentParser) -> None:

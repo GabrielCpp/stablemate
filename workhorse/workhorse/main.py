@@ -325,6 +325,11 @@ def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
     ctx["_used_skills"] = raw.get("used_skills") or []
     if target_skill_dir or manifest_skill_dir:
         ctx["_skill_dir"] = target_skill_dir or manifest_skill_dir
+
+    # Absolute repo root, so the renderer can locate hand-authored prompt flavor
+    # overrides at <repo>/.agents/flavors/<workflow>/<node>.md (see templates.render).
+    # The agent runs with its cwd at the repo root (AGENT_REPO_DIR); default to cwd.
+    ctx["_repo_root"] = str(Path(os.environ.get("AGENT_REPO_DIR") or ".").resolve())
     return ctx
 
 

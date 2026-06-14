@@ -81,21 +81,55 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
     }
 
 
+def _flavor_override(
+    template_path: Path, context: dict[str, Any], workflow_dir: Path
+) -> tuple[str, str] | None:
+    """Locate a repo-authored flavor override for this node's prompt, if any.
+
+    A consuming repo extends a base prompt by dropping a same-named file at
+    ``<repo_root>/.agents/flavors/<workflow>/<node>.md`` — no config or selection,
+    presence alone activates it. The override ``{% extends "prompts/<node>.md" %}``
+    and fills the base's named blocks; plain (no such file) leaves the base
+    untouched (the blocks extend to nothing). Returns ``(flavor_dir, node_name)``
+    when an override exists, else ``None``.
+    """
+    repo_root = context.get("_repo_root")
+    if not repo_root:
+        return None
+    node_name = template_path.name
+    flavor_dir = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name
+    if (flavor_dir / node_name).is_file():
+        return str(flavor_dir), node_name
+    return None
+
+
 def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str | Path) -> str:
-    """Render a Jinja2 template file relative to workflow_dir with the given context."""
+    """Render a Jinja2 template file relative to workflow_dir with the given context.
+
+    A repo may override a node prompt via a flavor file (see :func:`_flavor_override`);
+    when present it is rendered instead, with the base prompt on the loader path so its
+    ``{% extends %}`` resolves. Otherwise the base prompt renders exactly as authored.
+    """
     workflow_dir = Path(workflow_dir)
     template_path = Path(template_path)
 
     # Support both absolute paths and paths relative to the workflow directory
     if template_path.is_absolute():
-        search_path = template_path.parent
+        search_paths = [str(template_path.parent)]
         template_name = template_path.name
     else:
-        search_path = workflow_dir
         template_name = str(template_path)
+        search_paths = [str(workflow_dir)]
+        override = _flavor_override(template_path, context, workflow_dir)
+        if override is not None:
+            flavor_dir, node_name = override
+            # Flavor dir first so the override entry resolves there; workflow_dir
+            # second so the override's `{% extends "prompts/<node>.md" %}` finds the base.
+            search_paths = [flavor_dir, str(workflow_dir)]
+            template_name = node_name
 
     env = Environment(
-        loader=FileSystemLoader(str(search_path)),
+        loader=FileSystemLoader(search_paths),
         undefined=ResilientUndefined,
         keep_trailing_newline=True,
     )
