@@ -72,6 +72,32 @@ Key flags (run `workhorse --help` for the full list):
 > and persistent volumes. It is *not* part of the PyPI package — see
 > [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
+## Diagramming a workflow (`workhorse dot`)
+
+`workhorse dot` renders a workflow graph to [Graphviz](https://graphviz.org) DOT
+straight from its `workflow.yaml`, so the diagram never drifts from the workflow.
+Styling is type-based: branch nodes are salmon diamonds, terminals green, `fail`
+nodes coral, agent/script nodes plain boxes; branch edges are labeled with their
+case / numeric-condition / `default`.
+
+```bash
+workhorse dot --workflow ./wf/workflow.yaml            # DOT to stdout
+workhorse dot --workflow ./wf/workflow.yaml -o wf.dot  # ...or to a file
+dot -Tsvg wf.dot -o wf.svg                             # render (needs graphviz)
+```
+
+| Flag | Purpose |
+|---|---|
+| `--workflow <path>` | Path to the `workflow.yaml` to render (required) |
+| `--pin KEY=VALUE` | Pin a branch variable; matching branches collapse to their single resolved edge and the now-unreachable subgraph is pruned. Repeatable. |
+| `--leaf NODE` | Render `NODE` as a dead-end (suppress its out-edges) to cut a cross-view bridge not gated by a pinned branch. Repeatable. |
+| `--name <id>` | Override the `digraph` identifier (default: sanitized workflow name) |
+| `-o, --output <path>` | Write to a file instead of stdout |
+
+A workflow that dispatches on a mode variable encodes several modes in one graph;
+`--pin` carves out a single mode's view. For example the coder workflow's two
+diagrams are just `--pin mode=epic` and `--pin mode=story --leaf replan_epic`.
+
 ## Choosing the agent CLI backend
 
 The controller drives one agent CLI per run, behind a backend facade
@@ -327,7 +353,8 @@ agents/local-worker/          # source repo dir for the workhorse controller
 │   ├── graph/
 │   │   ├── nodes.py           # Pydantic node models (AgentNode/ScriptNode/BranchNode/TerminalNode) + Graph
 │   │   ├── loader.py          # Parse + validate workflow.yaml into a Graph
-│   │   └── context.py         # WorkflowContext: the key→value bag + dot-path lookup for branches
+│   │   ├── context.py         # WorkflowContext: the key→value bag + dot-path lookup for branches
+│   │   └── dot.py             # Render a Graph to Graphviz DOT (the `workhorse dot` subcommand)
 │   └── runner/
 │       ├── agent.py           # Invoke Claude CLI; the retry → reframe → default resilience ladder
 │       ├── script.py          # Run a ScriptNode, capture JSON stdout
