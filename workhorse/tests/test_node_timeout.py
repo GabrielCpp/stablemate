@@ -72,3 +72,23 @@ def test_explicit_none_falls_back_to_engine_default():
     ctx, invoke_timeout = _run_capturing(_node(timeout=None))
     assert invoke_timeout == agent.DEFAULT_RESULT_TIMEOUT_S
     assert ctx["node_timeout_s"] == int(agent.DEFAULT_RESULT_TIMEOUT_S)
+
+
+def test_numeric_string_timeout_parses_to_seconds():
+    # `timeout: 5000` (or "5000") is a plain seconds budget.
+    assert _node(timeout="5000").timeout == 5000.0
+
+
+def test_infinity_words_coerce_to_unbounded():
+    for word in ("infinity", "inf", "INFINITE", "unbounded", "Never"):
+        assert _node(timeout=word).timeout == float("inf")
+
+
+def test_unbounded_timeout_threads_through_without_overflow():
+    # The unbounded budget reaches the invocation layer as inf (the stream loop's
+    # `elapsed > inf` is always False → never killed), and the prompt-surfaced budget
+    # is the string "unbounded" rather than a crash on int(inf).
+    ctx, invoke_timeout = _run_capturing(_node(timeout="infinity"))
+    assert invoke_timeout == float("inf")
+    assert ctx["node_timeout_s"] == "unbounded"
+    assert ctx["node_timeout_min"] == "unbounded"

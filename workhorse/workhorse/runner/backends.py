@@ -58,6 +58,7 @@ class AgentBackend(ABC):
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
+        effort: str | None = None,
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result
         text. Persist the session id (when the CLI supports resume) to
@@ -67,7 +68,9 @@ class AgentBackend(ABC):
 
         ``cwd`` sets the subprocess working directory (controls CLAUDE.md/skills
         discovery). ``add_dirs`` are additional directories the agent can access
-        (passed as --add-dir flags to Claude)."""
+        (passed as --add-dir flags to Claude). ``effort`` is the node's reasoning
+        effort ("low"/"medium"/"high"); each backend translates it (thinking
+        directive for Claude/Copilot, ``model_reasoning_effort`` for Codex)."""
 
     @abstractmethod
     def compact(
@@ -100,10 +103,12 @@ class ClaudeBackend(AgentBackend):
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
+        effort: str | None = None,
     ) -> str:
+        # Claude has a native reasoning-effort flag (`--effort low|medium|high|xhigh|max`).
         return _agent._run_claude_cli(
             prompt, node_id, session_id_path, model, timeout=timeout,
-            cwd=cwd, add_dirs=add_dirs,
+            cwd=cwd, add_dirs=add_dirs, effort=effort,
         )
 
     def compact(
@@ -319,6 +324,7 @@ class CodexBackend(AgentBackend):
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
+        effort: str | None = None,
     ) -> str:
         sid = _read_session_id(session_id_path)
         # Resolve a codex config *profile* (from ~/.codex/config.toml — selects the
@@ -333,6 +339,12 @@ class CodexBackend(AgentBackend):
         flags = ["--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"]
         if model_slug:
             flags += ["-m", model_slug]
+        # Codex has a native reasoning-effort knob (GPT-5.x); set it via a `-c` config
+        # override (TOML value, hence the quotes). Codex tops out at "high", so clamp
+        # the Claude-superset levels (xhigh/max) down to it.
+        if effort:
+            codex_effort = "high" if effort in ("xhigh", "max") else effort
+            flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
         if sid:
             # codex [--profile P] exec resume <flags> <session_id> -   (prompt on stdin)
             cmd = [*head, "exec", "resume", *flags, sid, "-"]
@@ -366,6 +378,7 @@ class CopilotBackend(AgentBackend):
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
+        effort: str | None = None,
     ) -> str:
         sid = _read_session_id(session_id_path)
         # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).
@@ -373,6 +386,9 @@ class CopilotBackend(AgentBackend):
                "--allow-all-tools", "--no-ask-user"]
         if model:
             cmd += ["--model", model]
+        # Copilot has a native reasoning-effort flag (same level range as Claude).
+        if effort:
+            cmd += ["--effort", effort]
         if sid:
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)

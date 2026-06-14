@@ -10,6 +10,11 @@ DIST        := dist
 PYPI_TOKEN   = $(shell awk '/password/{print $$3}' $(HOME)/.pypirc)
 NAME        := $(shell grep -m1 '^name' pyproject.toml | cut -d'"' -f2)
 VERSION     := $(shell grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+SCRIPTS     := $(abspath $(CURDIR)/../scripts)
+
+# Release knobs (see scripts/release.sh) — exported so they reach the scripts
+# whether passed as `make release LEVEL=minor` or `LEVEL=minor make release`.
+export DRY_RUN LEVEL RELEASE_VERSION PUBLISH ALLOW_DIRTY NO_PUSH ZEROVER
 
 .PHONY: help
 help: ## Show this help
@@ -43,6 +48,22 @@ publish: build ## Publish to PyPI (token from ~/.pypirc)
 .PHONY: verify-install
 verify-install: ## Install the published package from PyPI and run --help
 	uv run --with $(NAME) --no-project --refresh-package $(NAME) -- workhorse --help
+
+.PHONY: next-version
+next-version: ## Print the next version inferred from commit history (LEVEL=… to force)
+	@$(SCRIPTS)/next-version.sh $(NAME) $(CURDIR) $(VERSION)
+
+.PHONY: bump
+bump: ## Stamp the inferred next version into pyproject.toml (no commit — review, then commit)
+	@$(SCRIPTS)/set-version.sh $(CURDIR) $$($(SCRIPTS)/next-version.sh $(NAME) $(CURDIR) $(VERSION))
+
+.PHONY: release
+release: ## Bump from history, build, publish, commit, tag, push (DRY_RUN=1, LEVEL=…, RELEASE_VERSION=…, PUBLISH=testpypi)
+	@$(SCRIPTS)/release.sh $(NAME) $(CURDIR)
+
+.PHONY: release-test
+release-test: ## Same as release, but publish to TestPyPI
+	@PUBLISH=testpypi $(SCRIPTS)/release.sh $(NAME) $(CURDIR)
 
 .PHONY: clean
 clean: ## Remove build artifacts

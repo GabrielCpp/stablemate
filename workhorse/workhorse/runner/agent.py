@@ -276,14 +276,18 @@ def run_agent(
     # agent can size its commands to finish — a turn killed at the budget restarts
     # the node from scratch with no memory, wasting the whole budget.
     effective_timeout = node.timeout if node.timeout else DEFAULT_RESULT_TIMEOUT_S
+    # An unbounded budget (timeout: infinity) means "never kill this turn". The stream
+    # loops compare `elapsed > timeout`, so float('inf') naturally never trips; only the
+    # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
+    unbounded = effective_timeout == float("inf")
 
     # Render node args as Jinja2 strings, merge into context for prompt rendering
     rendered_args = {k: render_string(v, ctx) for k, v in node.args.items()}
     prompt_ctx = {
         **ctx,
         **rendered_args,
-        "node_timeout_s": int(effective_timeout),
-        "node_timeout_min": int(round(effective_timeout / 60)),
+        "node_timeout_s": "unbounded" if unbounded else int(effective_timeout),
+        "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
@@ -350,6 +354,7 @@ def run_agent(
                 prompt, node, session_id_path, model, max_output_retries,
                 timeout=effective_timeout,
                 cwd=rendered_cwd, add_dirs=rendered_add_dirs,
+                effort=node.effort,
             )
             return rendered_prompt, outputs
         except (ClaudeInvocationError, OutputParseError) as exc:
@@ -409,6 +414,7 @@ def _invoke_and_parse(
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
+    effort: str | None = None,
 ) -> dict[str, Any]:
     """Invoke Claude and parse the node's declared outputs.
 
@@ -419,7 +425,7 @@ def _invoke_and_parse(
     for attempt in range(max_output_retries + 1):
         result_text = _invoke_claude(
             prompt, node.id, session_id_path, model=model, timeout=timeout,
-            cwd=cwd, add_dirs=add_dirs,
+            cwd=cwd, add_dirs=add_dirs, effort=effort,
         )
         try:
             return _extract_outputs(result_text, node)
@@ -449,6 +455,7 @@ def _invoke_claude(
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
+    effort: str | None = None,
 ) -> str:
     """Run one agent-CLI turn for ``prompt``, recovering from transient failures.
 
@@ -478,7 +485,7 @@ def _invoke_claude(
             print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
             return backend.run_turn(
                 attempt_prompt, node_id, session_id_path, model, timeout=timeout,
-                cwd=cwd, add_dirs=add_dirs,
+                cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
         except BackendInvocationError as exc:
             print(f"[{node_id}] ⚠ Claude invocation failed: {exc}", flush=True)
@@ -531,6 +538,7 @@ def _run_claude_cli(
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
+    effort: str | None = None,
 ) -> str:
     """Run a single Claude CLI turn for ``prompt``, returning the final result
     text. Raises ``ClaudeInvocationError`` on CLI failure, classifying it as
@@ -549,6 +557,8 @@ def _run_claude_cli(
     ]
     if model:
         cmd.extend(["--model", model])
+    if effort:
+        cmd.extend(["--effort", effort])
     for d in (add_dirs or []):
         cmd.extend(["--add-dir", d])
     cmd.append("-p")
