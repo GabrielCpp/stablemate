@@ -416,6 +416,15 @@ class WorkflowRun:
             "AGENT_CLI": cli,
             "WORKHORSE_SHIM_DIR": str(self._test_dir),
             "WORKHORSE_DEFAULT_SCRIPT_CWD": str(self._sandbox),
+            # Pin the repo root to the sandbox so scripts that resolve it via
+            # AGENT_REPO_DIR (every git-touching script: branch-*, commit-*,
+            # *-pr.sh, merge-pr.sh, push-*.sh) operate ON THE SANDBOX, never on the
+            # workflow library's own checkout. Without this a script that runs real
+            # `git` (a test that doesn't mock it) would fall back to walking up from
+            # its own location and mutate the library repo (cut branches, commit). The
+            # sandbox is not a git repo unless the test makes one, so unmocked git
+            # fails harmlessly instead of corrupting the library.
+            "AGENT_REPO_DIR": str(self._sandbox),
         }
 
         try:
