@@ -287,6 +287,24 @@ def test_codex_per_node_profile_overrides_env():
             os.environ["CODEX_PROFILE"] = prior
 
 
+def test_codex_litellm_profile_model_string():
+    """A litellm profile's resolved codex model (`mimo@mimo-pro`) drives the CLI as
+    `codex --profile mimo exec ... -m mimo-pro` — the codex config profile points at
+    the proxy, the slug selects the LiteLLM logical model."""
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    prior = os.environ.pop("CODEX_PROFILE", None)
+    try:
+        with patch.object(backends, "_stream_jsonl", fake):
+            CodexBackend().run_turn("P", "n", sidp, model="mimo@mimo-pro")
+    finally:
+        if prior is not None:
+            os.environ["CODEX_PROFILE"] = prior
+    cmd = captured["cmd"]
+    assert cmd[:4] == ["codex", "--profile", "mimo", "exec"]
+    assert cmd[cmd.index("-m") + 1] == "mimo-pro"
+
+
 def test_parse_codex_model():
     assert backends._parse_codex_model(None) == (None, None)
     assert backends._parse_codex_model("") == (None, None)

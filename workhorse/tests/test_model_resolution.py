@@ -7,7 +7,19 @@ a per-CLI map keyed by backend name with an optional ``"default"`` key. Runnable
 """
 from __future__ import annotations
 
-from workhorse.runner.agent import _model_for_backend
+from workhorse.runner.agent import _model_for_backend, _resolve_model
+from workhorse.runner.profiles import Profile
+
+
+def _litellm_profile() -> Profile:
+    return Profile(
+        name="litellm",
+        cli="codex",
+        models={"mimo": "mimo@mimo", "mimo-pro": "mimo@mimo-pro"},
+        default_model="mimo",
+        env={},
+        effort="none",
+    )
 
 
 def test_none_yields_none():
@@ -47,6 +59,36 @@ def test_haiku_map_only_pins_claude():
     assert _model_for_backend(m, "claude") == "haiku"
     assert _model_for_backend(m, "codex") is None
     assert _model_for_backend(m, "copilot") is None
+
+
+# ── _resolve_model: the (cli, profile) precedence ────────────────────────────────
+
+
+def test_default_profile_matches_legacy_chain():
+    # profile=None → node CLI-map, then AGENT_MODEL, then AGENT_CLAUDE_MODEL, else None.
+    assert _resolve_model(None, {"codex": "@gpt-5.5"}, "codex", {}) == "@gpt-5.5"
+    assert _resolve_model(None, None, "codex", {"AGENT_MODEL": "x"}) == "x"
+    assert _resolve_model(None, None, "codex", {"AGENT_CLAUDE_MODEL": "y"}) == "y"
+    assert _resolve_model(None, None, "codex", {}) is None
+
+
+def test_named_profile_default_when_node_silent():
+    p = _litellm_profile()
+    assert _resolve_model(p, {"claude": "opus", "codex": "@gpt-5.5"}, "codex", {}) == "mimo@mimo"
+    assert _resolve_model(p, None, "codex", {}) == "mimo@mimo"
+
+
+def test_named_profile_node_per_profile_key_overrides():
+    p = _litellm_profile()
+    nm = {"claude": "opus", "codex": "@gpt-5.5", "litellm": "mimo-pro"}
+    assert _resolve_model(p, nm, "codex", {}) == "mimo@mimo-pro"
+
+
+def test_named_profile_ignores_cli_map():
+    # Regression for the core bug: the node's codex entry must NOT leak through
+    # under a profile (it used to send `-m gpt-5.5` against the mimo provider).
+    p = _litellm_profile()
+    assert _resolve_model(p, {"codex": "@gpt-5.5"}, "codex", {}) == "mimo@mimo"
 
 
 if __name__ == "__main__":  # parity with the other tests' dual-run style

@@ -14,6 +14,7 @@ from ..graph.nodes import AgentNode
 
 if TYPE_CHECKING:
     from .backends import AgentBackend
+    from .profiles import Profile
 from ..graph.context import WorkflowContext
 from ..templates import render, render_string
 
@@ -228,6 +229,33 @@ def _model_for_backend(node_model: "str | dict[str, str] | None", backend_name: 
     return node_model.get(backend_name) or node_model.get("default")
 
 
+def _resolve_model(
+    profile: "Profile | None",
+    node_model: "str | dict[str, str] | None",
+    backend_name: str,
+    environ: "dict[str, str]",
+) -> str | None:
+    """Concrete model for this node given the active ``(cli, profile)``.
+
+    - **Default profile** (``profile is None``) — unchanged: the node's per-CLI
+      ``model:`` map (``_model_for_backend``), then ``AGENT_MODEL`` /
+      ``AGENT_CLAUDE_MODEL``; ``None`` lets the caller fall to ``backend.default_model``.
+    - **Named profile** — the node picks one of the profile's models via the
+      profile-name key in its ``model:`` map (e.g. ``litellm: mimo-pro``); a node
+      that names none gets the profile's ``default_model``. The node's CLI-keyed map
+      is intentionally NOT consulted here — under a profile the model is selected by
+      ``(cli, profile)``, with the per-node key the only override.
+    """
+    if profile is not None:
+        logical = node_model.get(profile.name) if isinstance(node_model, dict) else None
+        return profile.model_for(logical)
+    return (
+        _model_for_backend(node_model, backend_name)
+        or environ.get("AGENT_MODEL")
+        or environ.get("AGENT_CLAUDE_MODEL")
+    )
+
+
 def run_agent(
     node: AgentNode,
     context: WorkflowContext,
@@ -305,22 +333,27 @@ def run_agent(
         d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
     ]
 
-    # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
-    # claude). Imported lazily to avoid an import cycle (backends imports this
-    # module). Used here for the compaction step and the per-backend model default.
+    # Resolve the active CLI backend for this run (per-run via AGENT_CLI, which a
+    # named profile pins from its `cli`; default claude). Imported lazily to avoid
+    # an import cycle (backends imports this module). Used here for the compaction
+    # step and the per-backend model default.
     from .backends import get_backend
+    from .profiles import resolve_profile
     backend = get_backend()
 
-    # Per-node model wins; otherwise a global env override (AGENT_MODEL, with the
-    # legacy AGENT_CLAUDE_MODEL still honored), then the backend's own default. The
-    # node's model may be a plain string (absolute default for every backend) or a
-    # per-CLI map keyed by backend name (see _model_for_backend / nodes.py).
-    model = (
-        _model_for_backend(node.model, backend.name)
-        or os.environ.get("AGENT_MODEL")
-        or os.environ.get("AGENT_CLAUDE_MODEL")
-        or backend.default_model
-    )
+    # A named run-level profile (AGENT_PROFILE / --profile) drives the model: it
+    # selects per (cli, profile), overriding the node's CLI-map. The default profile
+    # (none) keeps today's behaviour: node CLI-map → AGENT_MODEL / AGENT_CLAUDE_MODEL
+    # → backend default. See runner/profiles.py and _resolve_model.
+    profile = resolve_profile(os.environ.get("AGENT_PROFILE"), workflow_dir=workflow_dir)
+    model = _resolve_model(profile, node.model, backend.name, os.environ) or backend.default_model
+
+    # Effort stays per-node, but a profile may override it (e.g. MiMo isn't a
+    # reasoning model — the litellm profile sets effort "none" to suppress the flag).
+    if profile is not None and profile.effort is not None:
+        node_effort = None if profile.effort == "none" else profile.effort
+    else:
+        node_effort = node.effort
 
     # New node = clean context: drop any session left by a previous node so this
     # node's first attempt does not --resume someone else's conversation. When
@@ -354,7 +387,7 @@ def run_agent(
                 prompt, node, session_id_path, model, max_output_retries,
                 timeout=effective_timeout,
                 cwd=rendered_cwd, add_dirs=rendered_add_dirs,
-                effort=node.effort,
+                effort=node_effort,
             )
             return rendered_prompt, outputs
         except (ClaudeInvocationError, OutputParseError) as exc:

@@ -23,13 +23,18 @@ class AgentNode(BaseModel):
     # Model for this node, interpreted by the active CLI backend.
     #   str  → an absolute default applied to every backend (e.g. "opus" / "haiku"
     #          for Claude). Existing behaviour.
-    #   dict → per-CLI selection keyed by backend name ("claude"/"codex"/"copilot"),
-    #          e.g. {claude: opus, codex: "@gpt-5.5"}. An optional "default" key
-    #          covers any backend not listed; a backend that is neither listed nor
-    #          has a "default" falls through to AGENT_MODEL / the backend's own
-    #          default (see runner/agent.py:_model_for_backend and runner/backends.py).
-    # When unset, the backend's own default applies — workflows need not hard-code a
-    # Claude alias.
+    #   dict → keyed selection. CLI-name keys ("claude"/"codex"/"copilot", plus an
+    #          optional "default") apply under the **default profile** (no --profile):
+    #          e.g. {claude: opus, codex: "@gpt-5.5"}; an unlisted backend with no
+    #          "default" falls through to AGENT_MODEL / the backend's own default.
+    #          PROFILE-name keys apply under a **named run-level profile** (--profile
+    #          / AGENT_PROFILE): the value names one of that profile's models, e.g.
+    #          {litellm: mimo-pro}. Under a named profile the CLI-keys are ignored and
+    #          a node that names none gets the profile's default_model.
+    #          See runner/agent.py (_resolve_model / _model_for_backend) and
+    #          runner/profiles.py.
+    # When unset, the backend's own default (or the profile default) applies —
+    # workflows need not hard-code a Claude alias.
     model: str | dict[str, str] | None = None
     # Reasoning/thinking effort for this node's turn. "high" is worth it for the
     # hardest decision/authoring nodes (e.g. resolving an operator block). Every

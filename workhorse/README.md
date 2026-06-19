@@ -63,7 +63,8 @@ Key flags (run `workhorse --help` for the full list):
 | `--workflow <path>` | Path to the `workflow.yaml` to run (required) |
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<workflow-dir>/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default `default` |
-| `--cli {claude,codex,copilot}` | Which agent CLI drives the run |
+| `--cli {claude,codex,copilot}` | Which agent CLI drives the run (mutually exclusive with `--profile`) |
+| `--profile <name>` / `--profiles-file <path>` | Run-level profile (CLI + models + proxy env); see [Run-level profiles](#run-level-profiles---profile) |
 | `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
 
@@ -101,7 +102,8 @@ diagrams are just `--pin mode=epic` and `--pin mode=story --leaf replan_epic`.
 ## Choosing the agent CLI backend
 
 The controller drives one agent CLI per run, behind a backend facade
-(`workhorse/runner/backends.py`). Selection is **per-run**, not per-node:
+(`workhorse/runner/backends.py`). The CLI is chosen **per-run** (the *model* is
+still per-node — see below):
 
 ```bash
 workhorse --workflow ./wf/workflow.yaml                      # claude (default)
@@ -109,6 +111,9 @@ workhorse --workflow ./wf/workflow.yaml --cli codex
 workhorse --workflow ./wf/workflow.yaml --cli copilot
 # Equivalently, set the AGENT_CLI={claude,codex,copilot} env var.
 ```
+
+`--cli` is mutually exclusive with `--profile` (a run-level profile names its own
+CLI — see [Run-level profiles](#run-level-profiles---profile)).
 
 The backend default model is overridable per run with the `AGENT_MODEL` env var
 (a node's own `model:` still wins), and the resilience/timeout knobs are all env
@@ -162,8 +167,90 @@ nodes:
     model: local          # the local profile's pinned model
 ```
 
-> Profiles live in `~/.codex/config.toml`. Each names a `model_provider`
-> (`base_url` + `env_key`) and a model; codex 0.128+ requires `wire_api = "responses"`.
+> These codex config profiles live in `~/.codex/config.toml`. Each names a
+> `model_provider` (`base_url` + `env_key`) and a model; codex 0.128+ requires
+> `wire_api = "responses"`. They are a DISTINCT, lower-level concept from the
+> workhorse run-level profiles below (which can *carry* a codex config profile name
+> in their model strings).
+
+## Run-level profiles (`--profile`)
+
+A **run-level profile** is the alternative to `--cli`: a self-contained bundle that
+runs a whole workflow on one CLI through a (usually proxied) provider. It names its
+`cli`, the `models` it exposes, the `env` to inject, and optionally a managed
+`proxy:` whose lifecycle workhorse owns — so `--profile` and `--cli` are mutually
+exclusive (the profile picks the CLI). With no `--profile`, the implicit **`default`**
+profile keeps today's behaviour: native models, node CLI-maps honored, no proxy env.
+
+```bash
+workhorse --profile litellm --workflow ./wf/workflow.yaml
+#                  ^ pins cli: codex, starts + wires the proxy, runs every node on MiMo
+```
+
+Profiles are **operator config** (proxy endpoints, provider credentials), so
+workhorse ships none. Discovery (first hit wins): `--profiles-file` →
+`AGENT_PROFILES_FILE` → `$AGENT_REPO_DIR/.agents/workhorse-profiles.yaml` →
+`<workflow-dir>/workhorse-profiles.yaml` → `~/.config/workhorse/profiles.yaml`. A
+ready example for MiMo-V2.5 over OpenRouter is in
+[`tooling/openrouter-cache/workhorse-profiles.yaml`](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/tooling/openrouter-cache/workhorse-profiles.yaml).
+
+```yaml
+profiles:
+  litellm:                 # one profile, codex CLI, exposes both MiMo models
+    cli: codex
+    default_model: mimo
+    effort: none           # MiMo isn't a reasoning model → suppress the effort flag
+    proxy:                 # workhorse owns this proxy's lifecycle (see below)
+      start: ["docker", "compose", "-f", "/abs/compose.litellm.yaml", "up", "-d"]
+      port: 4444           # → base_url http://localhost:4444; exported as LITELLM_PORT
+      health_path: /health/readiness
+      passthrough_env: [OPENROUTER_API_KEY]   # the real upstream key, from your env
+    env:
+      # ${LITELLM_MASTER_KEY} / ${LITELLM_BASE_URL} are MANAGED by workhorse (a
+      # generated local token + the proxy base URL) — resolved automatically.
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+    models:
+      mimo: "mimo@mimo"          # <codex config profile>@<LiteLLM model_name>
+      mimo-pro: "mimo@mimo-pro"
+```
+
+**Model selection under a profile.** A profile selects the model by *(cli, profile)*
+and overrides the node's CLI-map. A node still chooses among the profile's models by
+adding the **profile name** as a key to its `model:` map; a node that names none gets
+the profile's `default_model`:
+
+```yaml
+nodes:
+  - id: plan
+    type: agent
+    model: { claude: opus, codex: "@gpt-5.5", litellm: mimo-pro }  # heavy → Pro
+  - id: record
+    type: agent
+    model: { claude: haiku }     # no litellm key → the litellm default (mimo)
+```
+
+**Managed proxy — works out of the box.** When a profile declares `proxy:`, workhorse
+owns its lifecycle: on a profiled run it (1) generates a stable *local-only* auth
+token (persisted at `~/.config/workhorse/proxy-secret` — not a real credential; the
+proxy injects the upstream key), (2) if the proxy isn't already healthy, runs
+`proxy.start` with that token + `port` + the `passthrough_env` secrets pulled from
+your environment, and waits for readiness, then (3) injects the token + base URL into
+the agent-CLI subprocess. So `${LITELLM_MASTER_KEY}` / `${LITELLM_BASE_URL}` resolve
+automatically — **no `.env`, no exported key, no `docker compose up`**; the only thing
+you supply is the real upstream key named in `passthrough_env` (e.g.
+`OPENROUTER_API_KEY`, usually already in `~/.bashrc`). A profile *without* a `proxy:`
+block keeps the legacy behaviour: workhorse just health-checks `LITELLM_BASE_URL` and
+fails fast if it's down. `effort` (optional) overrides each node's reasoning effort
+under the profile; `none` suppresses it.
+
+| `proxy:` field | Default | Meaning |
+|---|---|---|
+| `start` | _(required)_ | argv list to bring the proxy up when down (`${VAR}` expanded) |
+| `port` | — | host port → `base_url` `http://localhost:<port>`, exported as `port_env` |
+| `base_url` | from `port` | explicit proxy base URL (overrides the port-derived one) |
+| `health_path` | `/health/readiness` | readiness probe path (any `<500` = up) |
+| `passthrough_env` | `[]` | ambient vars required to start (validated, inherited by `start`) |
+| `secret_env` / `base_url_env` / `port_env` | `LITELLM_MASTER_KEY` / `LITELLM_BASE_URL` / `LITELLM_PORT` | names the managed token / base URL / port are exposed under |
 
 ## Resuming and run identity
 

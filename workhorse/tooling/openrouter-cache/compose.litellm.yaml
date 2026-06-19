@@ -14,7 +14,9 @@ services:
     container_name: openrouter-cache-proxy
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
-      - "4000:4000"
+      # Host port is overridable (default 4000). Set LITELLM_PORT if 4000 is taken
+      # — e.g. the Firebase Emulator Suite UI also defaults to :4000.
+      - "${LITELLM_PORT:-4000}:4000"
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in .env}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}

@@ -54,13 +54,46 @@ OPENROUTER_API_KEY=$OPENROUTER_API_KEY python3 pin_proxy.py serve &
 
 ## Run a workflow
 
+Workhorse is **profile-aware**: a run-level `--profile` names its CLI, the models
+it exposes, and a managed `proxy:` whose lifecycle workhorse owns. The example
+profiles live in [`workhorse-profiles.yaml`](./workhorse-profiles.yaml) in this
+directory.
+
+**Out of the box — nothing to export, no `.env`, no `docker compose up`:**
+
 ```bash
-./run-workflow.sh --workflow /path/to/agents/workflows/author/workflow.yaml
+export AGENT_PROFILES_FILE="$PWD/workhorse-profiles.yaml"   # or copy to ~/.config/workhorse/profiles.yaml, or pass --profiles-file
+
+workhorse --profile litellm \
+  --workflow /path/to/agents/workflows/author/workflow.yaml
 ```
 
-`run-workflow.sh` reads `.env`, wires the chosen CLI to the proxy, and execs
-`workhorse` with your args. Override per run with `AGENT_CLI=copilot` or
-`AGENT_MODEL=mimo-pro`.
+On a profiled run workhorse:
+1. generates a stable **local-only** proxy token (persisted at
+   `~/.config/workhorse/proxy-secret` — not a real credential), and
+2. if the proxy isn't already healthy, runs the profile's `proxy.start`
+   (`docker compose -f …/compose.litellm.yaml up -d`) with that token + the port,
+   passing `OPENROUTER_API_KEY` through from your environment, then waits for
+   readiness, and
+3. injects the token + base URL into the CLI subprocess.
+
+The **only** thing you supply is `OPENROUTER_API_KEY` in your environment (usually
+already exported by `~/.bashrc`). `--profile` is **mutually exclusive** with `--cli`
+(the profile names its own CLI). Switch the MiMo version per node via its `model:`
+map (`{ litellm: mimo-pro }`); nodes that name none get the profile's
+`default_model` (`mimo`). Use `--profile litellm-copilot` / `litellm-claude` for the
+other CLIs.
+
+> **Edit the proxy path + port once.** In `workhorse-profiles.yaml` set
+> `proxy.start`'s `-f` to the **absolute** path of `compose.litellm.yaml`, and keep
+> `proxy.port: 4444` (`:4000` is the Firebase Emulator Suite UI). For codex, run
+> `./setup-codex-profile.sh` once so `~/.codex/config.toml` points its provider
+> `base_url` at the same port.
+
+> Profiles are operator config — workhorse ships none. Point at the example with
+> `--profiles-file` / `AGENT_PROFILES_FILE`, or copy it to a discovered location:
+> `~/.config/workhorse/profiles.yaml`, `<repo>/.agents/workhorse-profiles.yaml`, or
+> `<workflow-dir>/workhorse-profiles.yaml`.
 
 ## Which CLI
 
@@ -74,7 +107,8 @@ three were checked; **codex and copilot are verified end-to-end** with live runs
 | **copilot** | `COPILOT_PROVIDER_BASE_URL` → `/v1` (BYOK) | **verified append-only** | ✅ confirmed — ~99% cached |
 | claude | `ANTHROPIC_BASE_URL` → `/v1/messages` | stable by design (native cache_control) | ✅ works; needs the LiteLLM proxy |
 
-`run-workflow.sh` sets the right env vars for whichever `AGENT_CLI` you pick.
+The `--profile` you pick (`litellm` / `litellm-copilot` / `litellm-claude`) sets the
+right env vars and pins the CLI.
 
 ### Codex — verified (the default)
 
@@ -94,9 +128,10 @@ appended the tool exchange. The `xiaomi` cache covers ~99% of every turn.
 
 ### Copilot — verified
 
-Copilot CLI BYOK (≥ 2026-04-07) is configured by env vars that `run-workflow.sh`
-sets: `COPILOT_PROVIDER_BASE_URL`, `COPILOT_PROVIDER_API_KEY`, `COPILOT_MODEL`,
-`COPILOT_OFFLINE=true`. Live two-turn run:
+Copilot CLI BYOK (≥ 2026-04-07) is configured by env vars that the
+`litellm-copilot` profile injects: `COPILOT_PROVIDER_BASE_URL`,
+`COPILOT_PROVIDER_API_KEY`, `COPILOT_OFFLINE=true` (the model is passed as
+`--model`). Live two-turn run:
 
 ```
 turn 1 [system,user]            prompt=13210  cached=0       (cache write)
@@ -111,7 +146,7 @@ honors the custom endpoint **and** keeps a stable prefix.
 Claude emits Anthropic-native `cache_control` and keeps a stable prefix, but
 speaks `/v1/messages` — which only the LiteLLM proxy translates (pin_proxy is
 OpenAI/Responses only). Use it via `docker compose -f compose.litellm.yaml up -d`
-and `AGENT_CLI=claude`.
+and `--profile litellm-claude`.
 
 ## Confirming caching during a real run
 
@@ -131,9 +166,9 @@ and `AGENT_CLI=claude`.
 | File | Purpose |
 |---|---|
 | `litellm-config.yaml` | Proxy model defs + the `xiaomi` provider pin (the guarantee) |
-| `compose.litellm.yaml` | Runs the proxy on `:4000` |
-| `.env.example` | Keys + run defaults (copy to `.env`, gitignored) |
-| `run-workflow.sh` | Sets per-CLI env (claude/codex/copilot), execs `workhorse` |
+| `compose.litellm.yaml` | Runs the proxy on `${LITELLM_PORT:-4000}` (use 4444); started by workhorse's managed `proxy:` |
+| `.env.example` | Only needed for a manual `docker compose up`; workhorse manages the token/port itself |
+| `workhorse-profiles.yaml` | Example run-level profiles (litellm / -copilot / -claude) for `workhorse --profile` |
 | `setup-codex-profile.sh` | Idempotently adds the `mimo` codex profile (Responses API) |
 | `verify_cache.py` | Proves caching fires upstream (identical requests → `cached_tokens`) |
 | `pin_proxy.py` | Diagnostic proxy: records requests + pins `xiaomi`; checks client prefix stability |

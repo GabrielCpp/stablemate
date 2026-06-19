@@ -1,0 +1,92 @@
+# Example workhorse run-level profiles for MiMo-V2.5 over OpenRouter via the local
+# LiteLLM proxy (see README.md in this directory).
+#
+# workhorse ships NO profiles of its own — they are operator config. Make these
+# active in one of:
+#   • point at this file:  workhorse --profile litellm \
+#                            --profiles-file tooling/openrouter-cache/workhorse-profiles.yaml ...
+#   • or set it in .env:   AGENT_PROFILES_FILE=tooling/openrouter-cache/workhorse-profiles.yaml
+#   • or copy to a discovered location:
+#       ~/.config/workhorse/profiles.yaml          (user-global)
+#       <repo>/.agents/workhorse-profiles.yaml     (per-repo)
+#       <workflow-dir>/workhorse-profiles.yaml     (per-workflow)
+#
+# OUT OF THE BOX: each profile declares a `proxy:` whose lifecycle workhorse OWNS.
+# On `workhorse --profile litellm ...` it generates a stable local-only auth token
+# (persisted at ~/.config/workhorse/proxy-secret — NOT a real credential), starts
+# the proxy with `proxy.start` if it isn't already up, waits for readiness, and
+# injects the token + base URL into the CLI. You do NOT export LITELLM_MASTER_KEY,
+# maintain a proxy .env, or run `docker compose up` yourself.
+#
+# The ONLY thing that must be in your environment is the real upstream key named in
+# `passthrough_env` (OPENROUTER_API_KEY) — workhorse passes it through to the proxy.
+#
+# Pick a model per node by adding the profile name as a key to the node's `model:`
+# map, e.g.  model: { claude: opus, codex: "@gpt-5.5", litellm: mimo-pro }
+# Nodes that don't name one get the profile's default_model.
+
+# The shared LiteLLM proxy (one container serves codex/copilot via /v1 and claude
+# via /v1/messages). EDIT the compose path below to the ABSOLUTE path on your
+# machine — `proxy.start` runs from the repo being coded, so a relative path will
+# not resolve. :4444 because the Firebase Emulator Suite UI also defaults to :4000.
+.litellm-proxy: &litellm_proxy
+  start:
+    - docker
+    - compose
+    - -f
+    - /path/to/workhorse/tooling/openrouter-cache/compose.litellm.yaml
+    - up
+    - -d
+  port: 4444
+  health_path: /health/readiness
+  passthrough_env: [OPENROUTER_API_KEY]   # the real upstream key, from your env
+
+profiles:
+  # ── codex (the verified default; ~99% cached append-only prefix) ──────────────
+  litellm:
+    cli: codex
+    default_model: mimo
+    # MiMo isn't a reasoning model; never send a reasoning-effort flag (the
+    # ~/.codex/config.toml `mimo` profile also sets model_reasoning_effort="none").
+    effort: none
+    proxy: *litellm_proxy
+    env:
+      # codex reads the proxy token via the config profile's env_key; the base URL +
+      # wire_api live in ~/.codex/config.toml (run setup-codex-profile.sh once, and
+      # point its base_url at the proxy port, e.g. :4444). ${LITELLM_MASTER_KEY} is
+      # the workhorse-managed token — resolved automatically, nothing to export.
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+    models:
+      # "<codex config profile>@<LiteLLM model_name>": the `mimo` config profile
+      # points codex at the proxy; the `-m` slug selects the LiteLLM logical model.
+      mimo: "mimo@mimo"
+      mimo-pro: "mimo@mimo-pro"
+
+  # ── copilot (BYOK; no native profile, so the proxy is wired via env) ──────────
+  litellm-copilot:
+    cli: copilot
+    default_model: mimo
+    effort: none
+    proxy: *litellm_proxy
+    env:
+      # ${LITELLM_BASE_URL} / ${LITELLM_MASTER_KEY} are workhorse-managed (derived
+      # from proxy.port + the generated token) — auto-resolved, nothing to export.
+      COPILOT_PROVIDER_BASE_URL: "${LITELLM_BASE_URL}/v1"
+      COPILOT_PROVIDER_API_KEY: "${LITELLM_MASTER_KEY}"
+      COPILOT_OFFLINE: "true"   # talk only to our provider, not GitHub model routing
+    models:
+      mimo: mimo                # passed verbatim as --model to the proxy
+      mimo-pro: mimo-pro
+
+  # ── claude (needs the LiteLLM proxy: it serves the Anthropic /v1/messages wire) ─
+  litellm-claude:
+    cli: claude
+    default_model: mimo
+    effort: none
+    proxy: *litellm_proxy
+    env:
+      ANTHROPIC_BASE_URL: "${LITELLM_BASE_URL}"
+      ANTHROPIC_AUTH_TOKEN: "${LITELLM_MASTER_KEY}"
+    models:
+      mimo: mimo                # passed as --model; LiteLLM maps it to the pinned slug
+      mimo-pro: mimo-pro

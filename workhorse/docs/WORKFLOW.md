@@ -69,7 +69,7 @@ Copilot), then extracts JSON outputs from the response.
 | `prompt` | string | **yes** | Path to a Jinja2 template (`.md`/`.txt`), relative to the workflow dir (or absolute). |
 | `args` | map<str,str> | no | Jinja string values rendered against the context, then merged into the prompt context. Lets you parameterize a prompt without editing the template. |
 | `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
-| `model` | string | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a profile or `<profile>@<model-slug>`. Unset → backend default (or `AGENT_MODEL`). |
+| `model` | string \| map | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a profile or `<profile>@<model-slug>`. A map keys CLI names under the default profile (`{claude: opus, codex: "@gpt-5.5"}`) and **profile names** under a named `--profile` (`{litellm: mimo-pro}` → that profile's model). Under a profile the CLI-keys are ignored and a node that names none gets the profile's `default_model`. Unset → backend default (or `AGENT_MODEL`). |
 | `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 
@@ -227,7 +227,7 @@ set, otherwise raises.
 workhorse --workflow path/to/workflow.yaml \
   [--runs-dir DIR] [--run-id ID] \
   [--params '{"story_path":"docs/…"}'] [--params-file params.json] \
-  [--cli claude|codex|copilot] \
+  [--cli claude|codex|copilot | --profile NAME [--profiles-file PATH]] \
   [--resume-run ID|PATH | --resume-latest]
 ```
 
@@ -238,7 +238,9 @@ workhorse --workflow path/to/workflow.yaml \
 | `--run-id` | `default` | Stable id; run dir is `<name>-<run-id>`. Use distinct ids to keep parallel runs apart. |
 | `--params` | — | Inline JSON object merged into the starting context (overrides `vars`). |
 | `--params-file` | — | JSON file of params; inline `--params` wins on conflict. |
-| `--cli` | `claude` (or `$AGENT_CLI`) | Agent backend. |
+| `--cli` | `claude` (or `$AGENT_CLI`) | Agent backend. Mutually exclusive with `--profile`. |
+| `--profile` | — (the `default` profile) | Run-level profile: names its CLI + models + proxy env, overriding node CLI-maps per *(cli, profile)*. See the README's "Run-level profiles". |
+| `--profiles-file` | discovery (env / `.agents/` / `<wf-dir>/` / `~/.config/workhorse/`) | Path to a `workhorse-profiles.yaml`. |
 | `--resume-run` / `--resume-latest` | — | Manually resume a specific / the latest unfinished run. |
 
 **Auto-resume.** By default each `(workflow, run-id)` maps to one stable run
