@@ -3,7 +3,11 @@ import argparse
 import importlib.metadata
 import json
 import os
+import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -415,7 +419,27 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="NAME",
         help="Agent CLI backend to drive this run (e.g. 'claude'). Overrides the "
-        "AGENT_CLI env var; default 'claude'. Selection is per-run, not per-node.",
+        "AGENT_CLI env var; default 'claude'. Selection is per-run, not per-node. "
+        "Mutually exclusive with --profile (a profile names its own CLI).",
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        metavar="NAME",
+        help="Run-level profile (e.g. 'litellm', 'litellm-copilot'). A profile names "
+        "its CLI, the proxy env to inject, and the models it exposes — running the "
+        "whole workflow through a (proxied) provider. Overrides AGENT_PROFILE. "
+        "Mutually exclusive with --cli. Default: none (the 'default' profile — native "
+        "models, node CLI-maps honored).",
+    )
+    parser.add_argument(
+        "--profiles-file",
+        default=None,
+        metavar="PATH",
+        help="Path to a workhorse-profiles.yaml. Default discovery: AGENT_PROFILES_FILE, "
+        "$AGENT_REPO_DIR/.agents/workhorse-profiles.yaml, <workflow-dir>/"
+        "workhorse-profiles.yaml, then the built-in defaults (litellm / "
+        "litellm-copilot / litellm-claude).",
     )
     resume_group = parser.add_mutually_exclusive_group()
     resume_group.add_argument(
@@ -432,21 +456,161 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _run_run(args: argparse.Namespace) -> None:
-    # Per-run CLI backend selection. --cli wins over the AGENT_CLI env; validate
-    # now so an unknown name fails fast with a clear message instead of mid-run.
-    if args.cli:
-        os.environ["AGENT_CLI"] = args.cli
-    from .runner.backends import get_backend
+# How long to wait for the proxy health probe before declaring it down.
+_PROXY_HEALTH_TIMEOUT_S = float(os.environ.get("WORKHORSE_PROXY_HEALTH_TIMEOUT_S", "5"))
+
+
+def _check_proxy_reachable(
+    base_url: str | None = None,
+    timeout: float | None = None,
+    health_path: str = "/v1/models",
+) -> tuple[bool, str]:
+    """Probe ``<proxy><health_path>``. A response (even 401/403 — auth needed) proves
+    the proxy is up; a connection error or 5xx means it's down. Returns
+    ``(reachable, detail)``. ``LITELLM_BASE_URL`` (default ``http://localhost:4000``)
+    is the probe target when ``base_url`` is not given."""
+    base = base_url or os.environ.get("LITELLM_BASE_URL") or "http://localhost:4000"
+    timeout = _PROXY_HEALTH_TIMEOUT_S if timeout is None else timeout
+    url = base.rstrip("/") + health_path
     try:
-        get_backend()
-    except ValueError as e:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (local proxy)
+            code = getattr(resp, "status", None) or resp.getcode()
+            return code < 500, f"HTTP {code} from {url}"
+    except urllib.error.HTTPError as e:
+        return e.code < 500, f"HTTP {e.code} from {url}"
+    except Exception as e:  # noqa: BLE001 — URLError / socket timeout / etc.
+        return False, f"{type(e).__name__}: {e} ({url})"
+
+
+def _ensure_proxy(profile) -> None:  # noqa: ANN001 — Profile (avoid an import cycle)
+    """Make the profile's proxy reachable before the run.
+
+    With a managed ``proxy:`` spec (full lifecycle): validate the ambient secrets it
+    needs, and if it isn't already healthy, start it with ``proxy.start`` — passing
+    the workhorse-managed token, base URL and port into that command — then wait for
+    readiness. Without a ``proxy:`` spec, fall back to the legacy behaviour: just
+    health-check whatever ``LITELLM_BASE_URL`` points at. Exits 1 on any failure."""
+    from .runner.profiles import proxy_local_secret
+
+    proxy = profile.proxy
+    if proxy is None:
+        ok, detail = _check_proxy_reachable()
+        if not ok:
+            print(
+                f"error: profile '{profile.name}' proxy is not reachable ({detail}). "
+                "Start it (e.g. docker compose -f "
+                "tooling/openrouter-cache/compose.litellm.yaml up -d) and verify "
+                "LITELLM_BASE_URL.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return
+
+    missing = [v for v in proxy.passthrough_env if not os.environ.get(v)]
+    if missing:
+        print(
+            f"error: profile '{profile.name}' proxy needs {', '.join(missing)} in the "
+            "environment (the real upstream provider key). Export it (e.g. in "
+            "~/.bashrc) and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    base = proxy.resolved_base_url
+    ok, _ = _check_proxy_reachable(base, health_path=proxy.health_path)
+    if ok:
+        print(f"[workhorse] profile '{profile.name}': proxy already up at {base}")
+        return
+
+    # Down → bring it up ourselves with the managed token / base URL / port.
+    start_env = {
+        **os.environ,
+        proxy.secret_env: proxy_local_secret(),
+        proxy.base_url_env: base,
+    }
+    if proxy.port is not None:
+        start_env[proxy.port_env] = str(proxy.port)
+    print(f"[workhorse] profile '{profile.name}': proxy down — starting: {' '.join(proxy.start)}")
+    try:
+        subprocess.run(list(proxy.start), env=start_env, check=True)
+    except FileNotFoundError as e:
+        print(f"error: cannot start proxy ({proxy.start[0]} not found): {e}", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"error: proxy start command failed (exit {e.returncode})", file=sys.stderr)
+        sys.exit(1)
+
+    deadline = time.monotonic() + proxy.ready_timeout_s
+    while time.monotonic() < deadline:
+        ok, detail = _check_proxy_reachable(base, health_path=proxy.health_path)
+        if ok:
+            print(f"[workhorse] profile '{profile.name}': proxy ready at {base}")
+            return
+        time.sleep(2)
+    print(
+        f"error: profile '{profile.name}' proxy did not become ready within "
+        f"{proxy.ready_timeout_s:.0f}s at {base}{proxy.health_path} ({detail}).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _activate_profile(name: str, profiles_file: str | None, workflow_dir: Path) -> None:
+    """Resolve a named run-level profile, pin ``AGENT_CLI`` to its CLI, ensure its
+    proxy is up (starting it when workhorse owns the lifecycle), and inject its env
+    into the process so every agent-CLI subprocess inherits it (each builds its env
+    from ``os.environ``). Exits 1 on an unknown profile, a missing required env var,
+    an unreadable profiles file, or a proxy that won't come up."""
+    os.environ["AGENT_PROFILE"] = name
+    if profiles_file:
+        os.environ["AGENT_PROFILES_FILE"] = profiles_file
+    from .runner.profiles import resolve_profile
+    try:
+        profile = resolve_profile(name, path=profiles_file, workflow_dir=workflow_dir)
+    except (ValueError, FileNotFoundError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+    assert profile is not None  # name is a real profile here (not 'default'/None)
+    os.environ["AGENT_CLI"] = profile.cli
+
+    _ensure_proxy(profile)
+    os.environ.update(profile.env)
+    print(
+        f"[workhorse] profile '{name}' → {profile.cli} "
+        f"default={profile.default_model} (proxy ready; env injected)"
+    )
+
+
+def _run_run(args: argparse.Namespace) -> None:
+    # --cli and --profile are mutually exclusive: a profile names its own CLI, so
+    # accepting both would be ambiguous about which CLI wins.
+    if args.profile and args.cli:
+        print(
+            "error: --cli and --profile are mutually exclusive (a profile names its "
+            "own CLI)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     workflow_path = Path(args.workflow).resolve()
     if not workflow_path.exists():
         print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # A named profile sets AGENT_CLI from its `cli` and wires the proxy; otherwise
+    # --cli (or AGENT_CLI / default claude) selects the backend.
+    if args.profile:
+        _activate_profile(args.profile, args.profiles_file, workflow_path.parent)
+    elif args.cli:
+        os.environ["AGENT_CLI"] = args.cli
+
+    # Validate the active backend now so an unknown name fails fast with a clear
+    # message instead of mid-run.
+    from .runner.backends import get_backend
+    try:
+        get_backend()
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
 
     if args.runs_dir:

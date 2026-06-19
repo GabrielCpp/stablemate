@@ -4,11 +4,13 @@
 # the Responses API, and LiteLLM serves /v1/responses, so wire_api="responses".
 #
 #   ./setup-codex-profile.sh
-#   CODEX_PROFILE=mimo AGENT_CLI=codex ./run-workflow.sh --workflow ...
+#   workhorse --profile litellm --profiles-file ./workhorse-profiles.yaml --workflow ...
 set -euo pipefail
 
 CONFIG="${CODEX_CONFIG:-$HOME/.codex/config.toml}"
-PROXY="${LITELLM_BASE_URL:-http://localhost:4000}"
+# :4444 by default — :4000 is taken by the Firebase Emulator Suite UI. Must match
+# the `port:` in your workhorse-profiles.yaml litellm proxy block.
+PROXY="${LITELLM_BASE_URL:-http://localhost:4444}"
 # Model the proxy forwards. With pin_proxy (forwards straight to OpenRouter) use
 # the OpenRouter slug; with the LiteLLM proxy use its logical name (e.g. "mimo").
 CODEX_MODEL="${CODEX_MODEL:-xiaomi/mimo-v2.5}"
@@ -24,8 +26,9 @@ fi
 cat >> "$CONFIG" <<EOF
 
 # ── Added by workhorse/tooling/openrouter-cache/setup-codex-profile.sh ────────
-# MiMo-V2.5 via the local pin proxy on :4000 (xiaomi provider pin → cache reads).
-# Auth value is a dummy (LITELLM_MASTER_KEY); the proxy injects the real key.
+# MiMo-V2.5 via the local LiteLLM proxy (xiaomi provider pin → cache reads).
+# Auth value (LITELLM_MASTER_KEY) is supplied by workhorse — a managed local token;
+# the proxy injects the real upstream key.
 [model_providers.openrouter-cache]
 name = "OpenRouter (xiaomi cache pin)"
 base_url = "$PROXY/v1"
@@ -39,4 +42,4 @@ model_reasoning_effort = "none"  # MiMo isn't a reasoning model; don't send effo
 EOF
 
 echo "✓ Added [profiles.mimo] + [model_providers.litellm-cache] to $CONFIG"
-echo "  Run with: CODEX_PROFILE=mimo AGENT_CLI=codex ./run-workflow.sh --workflow ..."
+echo "  Run with: workhorse --profile litellm --profiles-file ./workhorse-profiles.yaml --workflow ..."

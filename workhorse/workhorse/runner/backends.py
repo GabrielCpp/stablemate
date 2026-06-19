@@ -10,7 +10,10 @@ two operations that ARE CLI-specific to the active backend:
   which case the ladder reframes instead).
 
 The backend is chosen per-run via the ``AGENT_CLI`` env var (or ``--cli``), so a
-single workflow runs entirely on one CLI; there is no per-node selection.
+single workflow runs entirely on one CLI (a named ``--profile`` pins it from the
+profile's ``cli``). The *model* is still selectable per node via a node's ``model:``
+map (per-CLI under the default profile; per-profile under a named one — see
+``runner/agent.py`` and ``runner/profiles.py``).
 
 ``ClaudeBackend`` is an *adapter* over the existing Claude functions in
 ``agent.py`` (``_run_claude_cli`` / ``_compact_session``): it calls them through
