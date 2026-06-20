@@ -3,11 +3,13 @@ import json
 import os
 import re
 import select
+import signal
 import subprocess
 import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ..graph.nodes import AgentNode
@@ -29,21 +31,40 @@ _active_proc_lock: threading.Lock = threading.Lock()
 _active_proc: subprocess.Popen | None = None
 
 
-def terminate_active() -> None:
-    """Terminate the currently-streaming Claude subprocess, if any.
+def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
+    """Signal the subprocess AND its entire process group, reaping any grandchildren
+    (MCP servers, headless browsers, JVMs) the agent spawned.
 
-    Called by the main loop's KeyboardInterrupt handler so the child process is
+    The agent is launched with ``start_new_session=True``, so it is the leader of its
+    own process group; killing the group is what stops an unattended run from
+    accumulating orphaned Playwright/Maestro/Chrome processes when a turn is force-
+    terminated. Falls back to signalling just the process if the group is already
+    gone, and never raises if the target has already exited.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.send_signal(sig)
+        except (ProcessLookupError, ValueError):
+            pass
+
+
+def terminate_active() -> None:
+    """Terminate the currently-streaming Claude subprocess (and its group), if any.
+
+    Called by the main loop's KeyboardInterrupt handler so the child process tree is
     cleaned up before workhorse exits, rather than being left as an orphan.
     """
     with _active_proc_lock:
         proc = _active_proc
     if proc is None or proc.poll() is not None:
         return
-    proc.terminate()
+    _kill_process_group(proc, signal.SIGTERM)
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _kill_process_group(proc, signal.SIGKILL)
         proc.wait()
 
 
@@ -77,10 +98,158 @@ DEFAULT_MAX_COMPACT_ATTEMPTS = int(os.environ.get("AGENT_MAX_COMPACT_ATTEMPTS", 
 # (AGENT_USE_DEFAULT_OUTPUTS=false) only when a hard stop on failure is wanted.
 USE_DEFAULT_OUTPUTS = os.environ.get("AGENT_USE_DEFAULT_OUTPUTS", "true").lower() == "true"
 
-# Maximum time to wait for a result event from Claude (in seconds)
-DEFAULT_RESULT_TIMEOUT_S = float(os.environ.get("AGENT_RESULT_TIMEOUT_S", "600"))
+# Default per-node wall-clock budget for a single agent turn when the workflow node
+# does not set its own ``timeout:`` (in seconds). 1h is the normalized default: long
+# enough for a heavy QA / build / browser node to finish, short enough that a wedged
+# turn is force-killed and retried within the hour on an unattended run. Nodes may
+# override per-node (incl. ``timeout: infinity`` to opt out); env overrides globally.
+DEFAULT_RESULT_TIMEOUT_S = float(os.environ.get("AGENT_RESULT_TIMEOUT_S", "3600"))
 _INVOKE_BACKOFF_BASE_S = float(os.environ.get("AGENT_INVOKE_BACKOFF_BASE_S", "15"))
 _INVOKE_BACKOFF_CAP_S = float(os.environ.get("AGENT_INVOKE_BACKOFF_CAP_S", "300"))
+
+# Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout`` check in
+# _stream_events can only fire BETWEEN reads — if the agent writes a partial line and
+# then its socket wedges (a stalled API stream or a hung MCP server), the reader
+# blocks inside readline() and the wall-clock check never runs again, so the turn can
+# hang forever. This watchdog runs on a SEPARATE thread and SIGKILLs the whole process
+# group once the turn overruns its budget by this grace, regardless of stream state —
+# the guarantee that no single wedged turn can freeze a week-long unattended run.
+_WATCHDOG_GRACE_S = float(os.environ.get("AGENT_WATCHDOG_GRACE_S", "120"))
+# Optional idle cutoff: treat a turn that has produced no stream event for this long as
+# stalled (caught at select granularity, so it does NOT fire while blocked inside a
+# single readline). Default 0 = disabled, because a legitimate long tool call (e.g. a
+# multi-minute `make test`) emits nothing until it returns and must not be killed; the
+# watchdog above is the always-on backstop. Set >0 to fail stalls faster.
+_DEFAULT_IDLE_TIMEOUT_S = float(os.environ.get("AGENT_IDLE_TIMEOUT_S", "0"))
+
+
+def _arm_watchdog(
+    proc: subprocess.Popen,
+    node_id: str,
+    timeout: float,
+    on_fire: "Callable[[], None] | None" = None,
+) -> threading.Timer | None:
+    """Arm an out-of-band timer that force-kills ``proc``'s process group after
+    ``timeout + grace``. Returns the Timer (cancel it once the turn completes) or
+    None when the node opts out of a deadline (``timeout: infinity``). ``on_fire`` is
+    invoked just before the kill so the reader can record that the turn was watchdog-
+    killed (and treat the resulting EOF as a timeout rather than a hard error)."""
+    if timeout == float("inf"):
+        return None
+
+    def _fire() -> None:
+        if proc.poll() is not None:
+            return
+        print(
+            f"[{node_id}] ⏱ watchdog: turn exceeded {int(timeout)}s + "
+            f"{int(_WATCHDOG_GRACE_S)}s grace — SIGKILLing process group",
+            flush=True,
+        )
+        if on_fire is not None:
+            on_fire()
+        _kill_process_group(proc, signal.SIGKILL)
+
+    timer = threading.Timer(timeout + _WATCHDOG_GRACE_S, _fire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def stream_subprocess(
+    cmd: list[str],
+    node_id: str,
+    timeout: float,
+    on_line: "Callable[[str], None]",
+    *,
+    stdin_data: str | None = None,
+    cwd: str | None = None,
+    env_extra: dict[str, str] | None = None,
+) -> tuple[bool, int]:
+    """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to
+    ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an
+    out-of-band watchdog that SIGKILLs the whole process group once a turn overruns
+    ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged
+    stream (a stalled API response or a hung MCP server), which the in-loop check alone
+    can never catch.
+
+    Every harness — Claude, Codex, Copilot, OpenCode, aider — streams through this one
+    path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
+    browser / JVM grandchildren), and the active-process registration behave identically
+    regardless of backend. ``on_line`` receives each raw line (newline included) and does
+    its own parsing/accumulation. Returns ``(timed_out, returncode)``.
+    """
+    env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
+        text=True,
+        bufsize=1,
+        cwd=cwd or None,
+        env=env,
+        # Own process group/session so the watchdog can reap the agent AND every MCP
+        # server / browser / JVM it spawns, instead of orphaning grandchildren.
+        start_new_session=True,
+    )
+    if stdin_data is not None:
+        assert proc.stdin is not None
+        proc.stdin.write(stdin_data)
+        proc.stdin.close()
+
+    global _active_proc
+    with _active_proc_lock:
+        _active_proc = proc
+
+    fired = {"v": False}
+    watchdog = _arm_watchdog(
+        proc, node_id, timeout, on_fire=lambda: fired.__setitem__("v", True)
+    )
+    timed_out = False
+    assert proc.stdout is not None
+    try:
+        start = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - start
+            if elapsed > timeout:
+                timed_out = True
+                break
+            # Short select slices keep the in-loop wall-clock check live for a cleanly
+            # arriving stream; the watchdog is the backstop for a stream that wedges
+            # mid-line (where readline() below would otherwise block past the deadline).
+            ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
+            if not ready:
+                if proc.poll() is not None:
+                    break
+                continue
+            raw = proc.stdout.readline()
+            if not raw:  # EOF
+                break
+            on_line(raw)
+        # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
+        # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
+        timed_out = timed_out or fired["v"]
+        if timed_out and proc.poll() is None:
+            _kill_process_group(proc, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(proc, signal.SIGKILL)
+        proc.wait()
+    finally:
+        if watchdog is not None:
+            watchdog.cancel()
+        with _active_proc_lock:
+            _active_proc = None
+        # Backstop orphan reap: if the agent is somehow still alive on exit, take its
+        # whole group down so no MCP server / browser lingers into the next node.
+        if proc.poll() is None:
+            _kill_process_group(proc, signal.SIGKILL)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+    return timed_out, proc.returncode
 
 # A subscription "cap" is a transient failure that recovers on a SCHEDULE — the
 # spending/usage/session window resets at a wall-clock time (e.g. "resets 3:50am",
@@ -591,52 +760,24 @@ def _run_claude_cli(
             cmd.extend(["--resume", sid])
             print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
 
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
-        text=True,
-        bufsize=1,
-        cwd=cwd or None,
-        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
+    # Stream Claude's events through the shared supervised spawn path: own process
+    # group, hard watchdog, and group-reaping kill all live in stream_subprocess, so the
+    # timeout behaves identically here and in every other harness. The diagnostics string
+    # captures non-event output (e.g. "Spending cap reached") and error-result subtypes
+    # so the caller can classify transient failures.
+    result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode = (
+        _stream_events(cmd, node_id, timeout, stdin_data=prompt, cwd=cwd or None)
     )
-    assert proc.stdin is not None
-    proc.stdin.write(prompt)
-    proc.stdin.close()
-
-    global _active_proc
-    with _active_proc_lock:
-        _active_proc = proc
-    try:
-        # Stream Claude's events to our stdout as they arrive (so they show up live in
-        # the run log) while accumulating the final result text + session id. The
-        # diagnostics string captures non-event output (e.g. "Spending cap reached")
-        # and error-result subtypes so we can tell transient failures apart.
-        result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at = (
-            _stream_events(proc, node_id, timeout)
-        )
-        proc.wait()
-    finally:
-        with _active_proc_lock:
-            _active_proc = None
 
     # A cap-like failure (text markers or a blocked rate_limit_event) carries the
     # structured reset epoch so the runner can sleep until the window reopens; a
     # plain transient must NOT, or it would be mistaken for a cap.
     cap_ish = rate_limited or _is_cap(diagnostics)
     cap_reset_at = rate_reset_at if cap_ish else None
-    
-    # Handle timeout case specially - always transient
+
+    # Handle timeout case specially - always transient. The process group has already
+    # been force-killed and reaped by stream_subprocess; here we only classify.
     if timed_out:
-        # Try to terminate the process gracefully
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
         raise ClaudeInvocationError(
             f"Timeout waiting for result from Claude for node '{node_id}' after {timeout}s"
             + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
@@ -659,9 +800,9 @@ def _run_claude_cli(
             overflow=True,
         )
 
-    if proc.returncode != 0:
+    if returncode != 0:
         raise ClaudeInvocationError(
-            f"Claude CLI exited with code {proc.returncode} for node '{node_id}'"
+            f"Claude CLI exited with code {returncode} for node '{node_id}'"
             + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
             transient=_is_transient(diagnostics) or rate_limited,
             reset_at=cap_reset_at,
@@ -722,66 +863,40 @@ def _compact_session(
     cmd.extend(["--resume", sid, "-p"])
 
     print(f"[{node_id}] 🗜 compacting session {sid[:8]}… to free context", flush=True)
-    saw_compacting = False
-    compact_failed = False
-    compact_error = ""
-    new_session_id = sid
-    proc = None
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        assert proc.stdin is not None
-        proc.stdin.write("/compact")
-        proc.stdin.close()
+    st = {"saw_compacting": False, "compact_failed": False, "compact_error": "",
+          "new_session_id": sid}
 
-        start = time.time()
-        assert proc.stdout is not None
-        while True:
-            if time.time() - start > timeout:
-                break
-            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
-            if not ready:
-                if proc.poll() is not None:
-                    break
-                continue
-            raw = proc.stdout.readline()
-            if not raw:
-                break
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if event.get("session_id"):
-                new_session_id = event["session_id"]
-            if event.get("status") == "compacting":
-                saw_compacting = True
-            if "compact_result" in event:
-                if event.get("compact_result") == "failed":
-                    compact_failed = True
-                    compact_error = str(event.get("compact_error") or "")
-                elif event.get("compact_result") == "success":
-                    saw_compacting = True
+    def on_line(raw: str) -> None:
+        line = raw.strip()
+        if not line:
+            return
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        if event.get("session_id"):
+            st["new_session_id"] = event["session_id"]
+        if event.get("status") == "compacting":
+            st["saw_compacting"] = True
+        if "compact_result" in event:
+            if event.get("compact_result") == "failed":
+                st["compact_failed"] = True
+                st["compact_error"] = str(event.get("compact_error") or "")
+            elif event.get("compact_result") == "success":
+                st["saw_compacting"] = True
+
+    try:
+        # Shares the supervised spawn path (own process group, hard watchdog, group
+        # reap), so a wedged /compact turn can't hang the run either.
+        stream_subprocess(cmd, node_id, timeout, on_line, stdin_data="/compact")
     except Exception as exc:  # noqa: BLE001 — compaction is best-effort
         print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
         return False
-    finally:
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
 
+    saw_compacting = st["saw_compacting"]
+    compact_failed = st["compact_failed"]
+    compact_error = st["compact_error"]
+    new_session_id = st["new_session_id"]
     if new_session_id:
         session_id_path.write_text(new_session_id)
 
@@ -968,11 +1083,16 @@ def _default_outputs(node: AgentNode) -> dict[str, Any]:
 
 
 def _stream_events(
-    proc: subprocess.Popen, node_id: str, timeout: float
-) -> tuple[str, str | None, str, bool, bool, float | None]:
-    """Consume Claude's stream-json line by line, echoing a concise live view to
-    stdout and returning ``(result_text, session_id, diagnostics, timed_out,
-    rate_limited, rate_reset_at)``.
+    cmd: list[str],
+    node_id: str,
+    timeout: float,
+    *,
+    stdin_data: str | None = None,
+    cwd: str | None = None,
+) -> tuple[str, str | None, str, bool, bool, float | None, int]:
+    """Run ``cmd`` through the shared supervised spawn path and parse Claude's
+    stream-json, echoing a concise live view to stdout. Returns ``(result_text,
+    session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode)``.
 
     ``diagnostics`` accumulates anything that signals *how* a run failed —
     non-event output lines (e.g. "Spending cap reached") and error-result
@@ -982,42 +1102,17 @@ def _stream_events(
     ``rate_reset_at`` is the most recent window-reset epoch seen (used only when the
     failure is otherwise determined to be a cap, for precise wait timing).
 
-    ``timed_out`` indicates whether we exceeded the timeout waiting for a result."""
-    result_text = ""
-    session_id = None
+    ``timed_out`` indicates the turn hit its deadline (in-loop or watchdog). The
+    timeout/process-group kill all live in ``stream_subprocess`` — this function only
+    interprets the lines."""
+    st: dict[str, Any] = {"result_text": "", "session_id": None, "rate_reset_at": None,
+                          "rate_limited": False}
     diagnostics: list[str] = []
-    timed_out = False
-    rate_limited = False
-    rate_reset_at: float | None = None
-    start_time = time.time()
-    
-    assert proc.stdout is not None
-    
-    # Set non-blocking mode for stdout to enable timeout handling
-    
-    while True:
-        # Check if we've exceeded the total timeout
-        elapsed = time.time() - start_time
-        if elapsed > timeout:
-            timed_out = True
-            break
-        
-        # Wait for data with a short timeout to check overall timeout periodically
-        ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
-        if not ready:
-            # No data available, check if process is still running
-            if proc.poll() is not None:
-                # Process has ended
-                break
-            continue
-        
-        raw_line = proc.stdout.readline()
-        if not raw_line:
-            # EOF reached
-            break
+
+    def on_line(raw_line: str) -> None:
         line = raw_line.strip()
         if not line:
-            continue
+            return
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -1025,25 +1120,31 @@ def _stream_events(
             # and keep it as a diagnostic for failure classification.
             print(f"[{node_id}] {line}", flush=True)
             diagnostics.append(line)
-            continue
+            return
 
         etype = event.get("type")
         if etype == "result":
-            result_text = event.get("result", "") or result_text
+            st["result_text"] = event.get("result", "") or st["result_text"]
             # An error result carries the reason in its subtype / is_error flag.
             if event.get("is_error") or event.get("subtype") not in (None, "success"):
                 diagnostics.append(str(event.get("subtype") or "") + " " + str(event.get("result") or ""))
         elif etype == "rate_limit_event":
             blocked, reset_at = _rate_limit_info(event)
             if reset_at is not None:
-                rate_reset_at = reset_at  # last-seen window reset (used only if capped)
+                st["rate_reset_at"] = reset_at  # last-seen window reset (used only if capped)
             if blocked:
-                rate_limited = True
+                st["rate_limited"] = True
         elif etype == "system" and "session_id" in event:
-            session_id = event["session_id"]
+            st["session_id"] = event["session_id"]
         _emit_event(node_id, event)
 
-    return result_text, session_id, "\n".join(diagnostics), timed_out, rate_limited, rate_reset_at
+    timed_out, returncode = stream_subprocess(
+        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd
+    )
+    return (
+        st["result_text"], st["session_id"], "\n".join(diagnostics),
+        timed_out, st["rate_limited"], st["rate_reset_at"], returncode,
+    )
 
 
 def _emit_event(node_id: str, event: dict) -> None:

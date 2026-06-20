@@ -353,7 +353,7 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "0.7.2"
+version = "0.7.3"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },

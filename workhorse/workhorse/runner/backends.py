@@ -34,9 +34,6 @@ from __future__ import annotations
 
 import json
 import os
-import select
-import subprocess
-import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -148,62 +145,30 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
 
-    Mirrors the timeout / live-echo behavior of agent._stream_events. Returns
+    Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
+    process-group kill behave identically to every other harness. Returns
     ``(state, diagnostics, timed_out, returncode)`` where ``state`` carries
     ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
     diagnostics so failure classification can see them."""
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
-        text=True,
-        bufsize=1,
-        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
-    )
-    assert proc.stdin is not None
-    if stdin_data is not None:
-        proc.stdin.write(stdin_data)
-    proc.stdin.close()
-
     state: dict = {"result_text": "", "session_id": None}
     diagnostics: list[str] = []
-    timed_out = False
-    start = time.time()
-    assert proc.stdout is not None
-    while True:
-        elapsed = time.time() - start
-        if elapsed > timeout:
-            timed_out = True
-            break
-        ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
-        if not ready:
-            if proc.poll() is not None:
-                break
-            continue
-        raw = proc.stdout.readline()
-        if not raw:
-            break
+
+    def on_line(raw: str) -> None:
         line = raw.strip()
         if not line:
-            continue
+            return
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             print(f"[{node_id}] {line}", flush=True)
             diagnostics.append(line)
-            continue
+            return
         on_event(event, state, node_id, diagnostics)
 
-    proc.wait()
-    if timed_out and proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-    return state, "\n".join(diagnostics), timed_out, proc.returncode
+    timed_out, returncode = _agent.stream_subprocess(
+        cmd, node_id, timeout, on_line, stdin_data=stdin_data
+    )
+    return state, "\n".join(diagnostics), timed_out, returncode
 
 
 def _finalize_turn(
@@ -489,49 +454,24 @@ def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
     accumulate every line as the turn result. Mirrors ``_stream_jsonl``'s timeout /
     live-echo loop, but these CLIs have no event protocol and no resumable session id
     — the whole transcript IS the result, and also the diagnostics channel (overflow
-    / transient markers are printed inline, so ``_finalize_turn`` classifies off it)."""
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
-        text=True,
-        bufsize=1,
-        cwd=cwd,
-        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
-    )
+    / transient markers are printed inline, so ``_finalize_turn`` classifies off it).
+
+    Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
+    process-group kill behave identically to every other harness."""
     lines: list[str] = []
-    timed_out = False
-    start = time.time()
-    assert proc.stdout is not None
-    while True:
-        elapsed = time.time() - start
-        if elapsed > timeout:
-            timed_out = True
-            break
-        ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
-        if not ready:
-            if proc.poll() is not None:
-                break
-            continue
-        raw = proc.stdout.readline()
-        if not raw:
-            break
+
+    def on_line(raw: str) -> None:
         line = raw.rstrip("\n")
         print(f"[{node_id}] {line}", flush=True)
         lines.append(line)
-    proc.wait()
-    if timed_out and proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+
+    timed_out, returncode = _agent.stream_subprocess(
+        cmd, node_id, timeout, on_line, cwd=cwd
+    )
     text = "\n".join(lines).strip()
     state = {"result_text": text, "session_id": None}
     return _finalize_turn(
-        backend_name, node_id, state, text, timed_out, proc.returncode, session_id_path
+        backend_name, node_id, state, text, timed_out, returncode, session_id_path
     )
 
 
