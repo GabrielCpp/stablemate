@@ -500,6 +500,16 @@ def _run_run(args: argparse.Namespace) -> None:
         print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
         sys.exit(1)
 
+    # The consuming repo is the directory workhorse is launched in — same <cwd>
+    # rule as the runs-dir default below. Library scripts (load-config,
+    # await-operator, …) resolve the repo root from AGENT_REPO_DIR first and only
+    # fall back to walking up from their cwd; but a library-installed workflow runs
+    # its scripts with cwd = the workflow's own dir (inside the prompt library, a
+    # different repo), so that walk would find the library, not the target repo.
+    # Pin AGENT_REPO_DIR to the launch dir when the caller hasn't set it, so every
+    # subprocess agrees on the repo without needing the farrier Makefile.
+    os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
+
     # --cli (else AGENT_CLI, else default claude) selects the backend for the run.
     if args.cli:
         os.environ["AGENT_CLI"] = args.cli

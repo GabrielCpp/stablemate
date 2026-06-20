@@ -109,6 +109,57 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     assert captured["runs_dir"] == (launch / ".agents" / "runs").resolve()
 
 
+# ── AGENT_REPO_DIR default = launch cwd ──────────────────────────────────────
+
+def test_agent_repo_dir_defaults_to_launch_cwd():
+    # Library scripts run with cwd = the workflow dir; AGENT_REPO_DIR must be
+    # pinned to the launch dir so they resolve the consuming repo, not the library.
+    def fake_run(*a, **k):
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        launch = tmp / "repo"
+        launch.mkdir()
+        wf = tmp / "elsewhere" / "workflow.yaml"
+        wf.parent.mkdir()
+        wf.write_text("name: research\n")
+        env = {k: v for k, v in os.environ.items() if k != "AGENT_REPO_DIR"}
+        with patch.dict(os.environ, env, clear=True), patch.object(
+            m, "run", fake_run
+        ), patch.object(
+            m.Path, "cwd", staticmethod(lambda: launch)
+        ), patch("sys.argv", ["workhorse", "--workflow", str(wf)]):
+            try:
+                m.main()
+            except SystemExit:
+                pass
+            assert os.environ["AGENT_REPO_DIR"] == str(launch.resolve())
+
+
+def test_agent_repo_dir_respects_explicit_value():
+    # An explicitly-set AGENT_REPO_DIR (e.g. from the farrier Makefile) wins.
+    def fake_run(*a, **k):
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        launch = tmp / "repo"
+        launch.mkdir()
+        wf = tmp / "elsewhere" / "workflow.yaml"
+        wf.parent.mkdir()
+        wf.write_text("name: research\n")
+        with patch.dict(os.environ, {"AGENT_REPO_DIR": "/pinned/repo"}, clear=False), \
+                patch.object(m, "run", fake_run), patch.object(
+                    m.Path, "cwd", staticmethod(lambda: launch)
+                ), patch("sys.argv", ["workhorse", "--workflow", str(wf)]):
+            try:
+                m.main()
+            except SystemExit:
+                pass
+            assert os.environ["AGENT_REPO_DIR"] == "/pinned/repo"
+
+
 if __name__ == "__main__":
     import sys
     import pytest
