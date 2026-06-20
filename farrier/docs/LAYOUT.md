@@ -91,15 +91,21 @@ library/prompts/planning/plan-story.md          → public id `plan-story`
 - Either `.prompt.md` or plain `.md` is accepted; the suffix is stripped for the
   name. The leading group (`review`, `planning`) is the namespace packs glob over
   (`review/*`) and is dropped from the generated name.
-- Optional frontmatter selects the executing agent:
+- Optional frontmatter selects the executing agent and describes the command:
 
   ```markdown
   ---
   agent: agent
+  description: Review the current PR and fix the comments
+  argument-hint: <pr-number>
   ---
   # Pull Request Self-Review Prompt
   …
   ```
+
+  `description` (and the optional `argument-hint`) drive the **Claude slash-command
+  header** — see below. `agent` is farrier-internal selection metadata and never
+  leaks into a generated command.
 
 ### Generated outputs
 
@@ -108,6 +114,16 @@ library/prompts/planning/plan-story.md          → public id `plan-story`
 | claude  | `.claude/commands/<prefix>-<name>.md`       |
 | codex   | `.agents/prompts/<prefix>-<name>.prompt.md` |
 | copilot | `.github/prompts/<prefix>-<name>.prompt.md` |
+
+The **claude** command is emitted with a generated YAML header so the slash command
+is discoverable — `claude-code-acp` reads `description` from it to advertise the
+command over ACP (without it, the command never appears in Zed's autocomplete). The
+header carries the slash-command keys (`description`, `argument-hint`, and `model` /
+`allowed-tools` when set) plus the same `metadata:` provenance block generated skills
+get (`generated_by` / `source` / `do_not_edit`), and drops farrier-internal keys
+(`agent`, `name`). `description` falls back to the body's first `# heading` when the
+source sets none. The **codex** and **copilot** prompt files are copied through
+verbatim (their own frontmatter intact).
 
 ## Repo-root instructions (`localInstructions`)
 

@@ -1,5 +1,5 @@
 """Agent CLI backends — the facade that lets the controller drive different agent
-CLIs (Claude today; Codex/Copilot later) behind one interface.
+CLIs (Claude, Codex, Copilot, Aider, OpenCode) behind one interface.
 
 The resilience ladder in ``agent.py`` (transient/cap retries, context-overflow
 compaction, prompt reframing, default-to-next) is CLI-agnostic and delegates the
@@ -10,19 +10,25 @@ two operations that ARE CLI-specific to the active backend:
   which case the ladder reframes instead).
 
 The backend is chosen per-run via the ``AGENT_CLI`` env var (or ``--cli``), so a
-single workflow runs entirely on one CLI (a named ``--profile`` pins it from the
-profile's ``cli``). The *model* is still selectable per node via a node's ``model:``
-map (per-CLI under the default profile; per-profile under a named one — see
-``runner/agent.py`` and ``runner/profiles.py``).
+single workflow runs entirely on one CLI. The *model* is selectable per node via a
+node's ``model:`` map (a per-CLI map, e.g. ``{claude: opus, aider: openrouter/...}``;
+see ``runner/agent.py``). To run a node on an OpenRouter model, point an
+OpenRouter-native backend (``aider`` / ``opencode``) at it with ``AGENT_CLI`` and
+give the node an ``openrouter/<slug>`` model — no proxy, since those CLIs speak
+plain chat-completions and (for the MiMo experiment) cache natively.
 
 ``ClaudeBackend`` is an *adapter* over the existing Claude functions in
 ``agent.py`` (``_run_claude_cli`` / ``_compact_session``): it calls them through
 the ``agent`` module so they remain the single, tested implementation of the
 Claude ``stream-json`` / ``--resume`` / ``/compact`` protocol. ``CodexBackend``
-(``codex exec --json``) and ``CopilotBackend`` (``copilot -p --output-format
-json``) implement their own JSONL protocols here, sharing the ``_stream_jsonl``
-event loop and ``_finalize_turn`` classifier below. Neither supports in-place
-compaction (they manage context internally), so the ladder reframes on overflow.
+(``codex exec --json``), ``CopilotBackend`` (``copilot -p --output-format json``)
+and ``OpenCodeBackend`` (``opencode run --format json``) implement their own JSONL
+protocols here, sharing the ``_stream_jsonl`` event loop and ``_finalize_turn``
+classifier below. ``AiderBackend`` (``aider --message``) has no event protocol —
+it streams plain text, captured line-for-line by ``_run_text_turn`` and handed to
+the same classifier. None of the non-Claude backends compact in place (they manage
+context internally, or — aider — run a single message), so the ladder reframes on
+overflow.
 """
 from __future__ import annotations
 
@@ -404,11 +410,188 @@ class CopilotBackend(AgentBackend):
         return False
 
 
+def _opencode_on_event(event, state, node_id, diagnostics):
+    """OpenCode `run --format json`: NDJSON events with a top-level ``type`` and
+    ``sessionID``. ``text`` parts carry the answer (``part.text``); we accumulate
+    them keyed by part id so multiple text blocks are preserved in order. ``error``
+    events go to diagnostics. The top-level ``sessionID`` is the resume handle."""
+    sid = event.get("sessionID")
+    if sid:
+        state["session_id"] = sid
+    etype = event.get("type") or ""
+    if etype == "text":
+        part = event.get("part") or {}
+        text = part.get("text") or ""
+        if text:
+            parts = state.setdefault("_text_parts", {})
+            parts[part.get("id") or len(parts)] = text
+            state["result_text"] = "\n".join(parts.values())
+            print(f"[{node_id}] {text.strip()[:500]}", flush=True)
+    elif etype == "error":
+        err = event.get("error") or {}
+        data = err.get("data") or {}
+        msg = data.get("message") or err.get("name") or json.dumps(event)[:300]
+        diagnostics.append(str(msg)[:500])
+
+
+# OpenCode's `--variant` is its provider-specific reasoning knob; its documented
+# levels are minimal/high/max, so map the Claude-superset effort onto those (medium
+# has no opencode variant → leave it unset).
+_OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
+
+
+class OpenCodeBackend(AgentBackend):
+    """OpenCode CLI (``opencode run --format json``). Speaks plain chat-completions
+    to whatever provider its model names, so it drives OpenRouter models directly —
+    e.g. ``openrouter/xiaomi/mimo-v2.5`` — with no proxy. The prompt is passed as the
+    positional message (after ``--`` so a leading dash can't be read as a flag);
+    sessions resume by id via ``--session``. No in-place compaction."""
+
+    name = "opencode"
+    default_model = None  # node/AGENT_MODEL names the provider/model (e.g. openrouter/…)
+    supports_compaction = False
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
+        effort: str | None = None,
+    ) -> str:
+        sid = _read_session_id(session_id_path)
+        cmd = ["opencode", "run", "--format", "json"]
+        if model:
+            cmd += ["-m", model]
+        if effort and _OPENCODE_VARIANT.get(effort):
+            cmd += ["--variant", _OPENCODE_VARIANT[effort]]
+        if sid:
+            cmd += ["--session", sid]
+            print(f"[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)
+        # `--` ends option parsing so a prompt starting with '-' is still the message.
+        cmd += ["--", prompt]
+        # OpenCode reads the message from argv (no stdin prompt channel), so pass
+        # nothing on stdin.
+        state, diag, timed_out, rc = _stream_jsonl(
+            cmd, node_id, timeout, None, _opencode_on_event
+        )
+        return _finalize_turn("opencode", node_id, state, diag, timed_out, rc, session_id_path)
+
+    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+        return False
+
+
+def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
+    """Run a NON-JSONL agent CLI (aider) that streams plain text to stdout: echo and
+    accumulate every line as the turn result. Mirrors ``_stream_jsonl``'s timeout /
+    live-echo loop, but these CLIs have no event protocol and no resumable session id
+    — the whole transcript IS the result, and also the diagnostics channel (overflow
+    / transient markers are printed inline, so ``_finalize_turn`` classifies off it)."""
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
+        text=True,
+        bufsize=1,
+        cwd=cwd,
+        env={**os.environ, "WORKHORSE_NODE_ID": node_id},
+    )
+    lines: list[str] = []
+    timed_out = False
+    start = time.time()
+    assert proc.stdout is not None
+    while True:
+        elapsed = time.time() - start
+        if elapsed > timeout:
+            timed_out = True
+            break
+        ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
+        if not ready:
+            if proc.poll() is not None:
+                break
+            continue
+        raw = proc.stdout.readline()
+        if not raw:
+            break
+        line = raw.rstrip("\n")
+        print(f"[{node_id}] {line}", flush=True)
+        lines.append(line)
+    proc.wait()
+    if timed_out and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    text = "\n".join(lines).strip()
+    state = {"result_text": text, "session_id": None}
+    return _finalize_turn(
+        backend_name, node_id, state, text, timed_out, proc.returncode, session_id_path
+    )
+
+
+# Aider tops out at "high" for reasoning effort; clamp the Claude-superset levels.
+def _aider_effort(effort: str) -> str:
+    return "high" if effort in ("xhigh", "max") else effort
+
+
+class AiderBackend(AgentBackend):
+    """Aider (``aider --message``). A single-message, non-interactive coder that
+    speaks plain chat-completions via litellm, so it drives OpenRouter models
+    directly (``--model openrouter/xiaomi/mimo-v2.5``) with no proxy. Unlike the
+    JSONL backends it has no event stream and no resumable session — each turn is a
+    fresh ``--message`` whose full stdout transcript is the result; the resilience
+    ladder reframes (never compacts/resumes) on failure. The OpenRouter provider pin
+    + prompt caching for the MiMo experiment live in aider's own model-settings file,
+    not here. ``add_dirs`` has no aider equivalent (it works the repo at ``cwd``) and
+    is ignored."""
+
+    name = "aider"
+    default_model = None  # aider has no usable default; the node must name a model
+    supports_compaction = False
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None,
+        model: str | None = None,
+        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
+        effort: str | None = None,
+    ) -> str:
+        # Fully non-interactive: --yes-always answers every prompt; --no-stream/
+        # --no-pretty give clean line-buffered output; --no-auto-commits/--no-gitignore
+        # keep aider from mutating the repo's git state or .gitignore behind our back.
+        cmd = [
+            "aider", "--message", prompt,
+            "--yes-always", "--no-stream", "--no-pretty",
+            "--no-auto-commits", "--no-gitignore", "--no-analytics",
+            "--no-show-model-warnings", "--no-check-model-accepts-settings",
+        ]
+        if model:
+            cmd += ["--model", model]
+        if effort:
+            cmd += ["--reasoning-effort", _aider_effort(effort)]
+        return _run_text_turn("aider", cmd, node_id, timeout, cwd, session_id_path)
+
+    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+        return False
+
+
 # Registry of available backends, keyed by their AGENT_CLI name.
 _REGISTRY: dict[str, type[AgentBackend]] = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
     "copilot": CopilotBackend,
+    "aider": AiderBackend,
+    "opencode": OpenCodeBackend,
 }
 
 _CACHE: dict[str, AgentBackend] = {}

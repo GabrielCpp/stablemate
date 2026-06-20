@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Aider (workhorse `aider` backend writes these into whatever repo it runs in:
+# chat/input history, tags cache). Keep the committable config files, per
+# https://aider.chat/docs/faq.html#how-can-i-add-all-the-files-to-the-chat
+.aider*
+!.aider.conf.yml
+!.aider.model.settings.yml
+!.aider.model.metadata.json

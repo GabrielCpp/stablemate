@@ -5,8 +5,12 @@ the copy and loses the change on the next `make agent-install`. So each generate
 SKILL.md names its source of truth in the openskill `metadata` field
 (openskill.sh/docs/creators/skill-format).
 
-Prompts/commands and aggregated instruction files are NOT skills and are left
-untouched — no metadata, no comment, nothing added.
+Prompts are not skills, so they carry no openskill `metadata` block. But a generated
+Claude command still needs a `description` in its front matter — without one,
+claude-code-acp advertises nothing over ACP and the command never appears in Zed's
+autocomplete. So the claude target emits a header (description / argument-hint /
+model / allowed-tools) plus the same `metadata:` provenance block skills get, while
+codex/copilot prompts and aggregated instruction files are left untouched.
 
     ./.venv/bin/python -m pytest tests/test_provenance_banner.py
 """
@@ -91,25 +95,63 @@ def test_generated_skill_metadata_follows_description(tmp_path):
     assert lines[3] == "metadata:"
 
 
-def test_generated_prompt_is_left_untouched(tmp_path):
-    prompt_file = tmp_path / "library" / "prompts" / "coder" / "plan-story.md"
-    prompt_file.parent.mkdir(parents=True)
-    original = "# Plan a story\n\nDo the planning.\n"
-    prompt_file.write_text(original, encoding="utf-8")
-    source = Source(
-        kind="prompt", path=prompt_file, rel="coder/plan-story.md", id="coder/plan-story"
+def _prompt_source(tmp_path: Path, body: str, rel: str = "coder/plan-story.md") -> Source:
+    prompt_file = tmp_path / "library" / "prompts" / Path(rel)
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text(body, encoding="utf-8")
+    return Source(
+        kind="prompt", path=prompt_file, rel=rel, id=rel.removesuffix(".md")
     )
+
+
+def _render_claude_command(tmp_path: Path, source: Source) -> str:
     renderer = _renderer_with(tmp_path, prompts=[source])
     outputs = renderer.render(
         agents={"claude": True, "codex": False, "copilot": False},
         roots=set(),
         workflows=set(),
     )
-    content = next(c for p, c in outputs.items() if p.name.endswith(".md"))
-    # Commands/prompts get nothing added: no metadata, no comment, no banner.
-    assert content.strip() == original.strip()
-    assert "generated_by" not in content
+    return next(c for p, c in outputs.items() if p.name.endswith(".md"))
+
+
+def test_generated_command_gets_description_front_matter(tmp_path):
+    source = _prompt_source(tmp_path, "# Plan a story\n\nDo the planning.\n")
+    content = _render_claude_command(tmp_path, source)
+    # A header is required so claude-code-acp advertises the command to Zed.
+    assert content.startswith("---\n")
+    front_matter = content.split("\n---\n", 1)[0]
+    # No explicit description → falls back to the body's first heading.
+    assert 'description: "Plan a story"' in front_matter
+    # Provenance is the same structured metadata block skills get (not a comment).
+    assert "\nmetadata:\n" in front_matter
+    assert "  generated_by: farrier\n" in front_matter
+    assert "  source: library/prompts/coder/plan-story.md\n" in front_matter
+    assert "  do_not_edit:" in front_matter
     assert "<!--" not in content
+    # The body survives below the header.
+    assert content.rstrip().endswith("Do the planning.")
+
+
+def test_generated_command_prefers_source_description_and_drops_internal_keys(tmp_path):
+    source = _prompt_source(
+        tmp_path,
+        "---\nagent: agent\nname: plan-story\ndescription: Plan a coding story\n---\n\n# Heading\n\nBody.\n",
+    )
+    content = _render_claude_command(tmp_path, source)
+    front_matter = content.split("\n---\n", 1)[0]
+    assert 'description: "Plan a coding story"' in front_matter
+    # Farrier-internal selection keys never leak into the command header.
+    assert "agent:" not in front_matter
+    assert "name:" not in front_matter
+
+
+def test_generated_command_passes_through_argument_hint(tmp_path):
+    source = _prompt_source(
+        tmp_path,
+        "---\ndescription: Check a PR\nargument-hint: <pr-number>\n---\n\n# Check\n\nBody.\n",
+    )
+    content = _render_claude_command(tmp_path, source)
+    assert 'argument-hint: "<pr-number>"' in content.split("\n---\n", 1)[0]
 
 
 def test_generated_copilot_prompt_with_front_matter_untouched(tmp_path):
