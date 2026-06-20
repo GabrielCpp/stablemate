@@ -4,6 +4,7 @@ import importlib.metadata
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -375,7 +376,14 @@ def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
 
 
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
+    parser.add_argument(
+        "--workflow",
+        required=True,
+        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'author') "
+        "resolved from the configured prompt library as "
+        "<library_dir>/workflows/<name>/workflow.yaml. The library dir comes from "
+        "$WORKHORSE_LIBRARY_DIR or library_dir in ~/.config/farrier/config.toml.",
+    )
     parser.add_argument(
         "--context-file",
         default=None,
@@ -388,7 +396,8 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--runs-dir",
         default=None,
-        help="Directory to write run artifacts (default: <workflow-dir>/runs)",
+        help="Directory to write run artifacts (default: <cwd>/.agents/runs — "
+        "deduced from the directory workhorse is launched in)",
     )
     parser.add_argument(
         "--run-id",
@@ -434,8 +443,59 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _resolve_library_dir() -> Path | None:
+    """Locate the installed prompt library (the dir holding ``workflows/<name>/``).
+
+    Resolution order: ``$WORKHORSE_LIBRARY_DIR`` (explicit override), then the
+    ``library_dir`` key in ``~/.config/farrier/config.toml`` — the same home config
+    farrier and the generated Makefile read (``farrier config show library_dir``),
+    so a bare ``--workflow <name>`` finds the same library the rest of the toolchain
+    uses. Returns ``None`` when neither is set."""
+    env = os.environ.get("WORKHORSE_LIBRARY_DIR")
+    if env:
+        return Path(env).expanduser()
+    cfg = Path.home() / ".config" / "farrier" / "config.toml"
+    if cfg.is_file():
+        try:
+            data = tomllib.loads(cfg.read_text())
+        except (OSError, tomllib.TOMLDecodeError):
+            return None
+        lib = data.get("library_dir")
+        if isinstance(lib, str) and lib:
+            return Path(lib).expanduser()
+    return None
+
+
+def _resolve_workflow_path(spec: str) -> Path:
+    """Resolve ``--workflow`` as either an explicit path or a bare library name.
+
+    A value that looks like a path — contains a separator, ends in ``.yaml``/
+    ``.yml``, or names an existing filesystem entry — is used verbatim. Otherwise
+    it is treated as a bare workflow NAME and resolved against the configured
+    prompt library as ``<library_dir>/workflows/<name>/workflow.yaml`` (so
+    ``--workflow author`` runs the library's author workflow without a full path)."""
+    looks_like_path = (
+        os.sep in spec
+        or (os.altsep is not None and os.altsep in spec)
+        or spec.endswith((".yaml", ".yml"))
+        or Path(spec).exists()
+    )
+    if looks_like_path:
+        return Path(spec).resolve()
+    library = _resolve_library_dir()
+    if library is None:
+        print(
+            f"error: '{spec}' is not a path and no prompt library is configured.\n"
+            "Set library_dir in ~/.config/farrier/config.toml (or export "
+            "WORKHORSE_LIBRARY_DIR), or pass --workflow as a path to a workflow.yaml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return (library / "workflows" / spec / "workflow.yaml").resolve()
+
+
 def _run_run(args: argparse.Namespace) -> None:
-    workflow_path = Path(args.workflow).resolve()
+    workflow_path = _resolve_workflow_path(args.workflow)
     if not workflow_path.exists():
         print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
         sys.exit(1)
@@ -456,7 +516,7 @@ def _run_run(args: argparse.Namespace) -> None:
     if args.runs_dir:
         runs_dir = Path(args.runs_dir).resolve()
     else:
-        runs_dir = (workflow_path.parent / "runs").resolve()
+        runs_dir = (Path.cwd() / ".agents" / "runs").resolve()
 
     params = _load_params(args.params, args.params_file)
     context_manifest = _load_context_manifest(args.context_file)

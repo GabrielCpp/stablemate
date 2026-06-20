@@ -73,10 +73,16 @@ Copilot), then extracts JSON outputs from the response.
 | `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 
-**Output extraction.** The response is scanned for JSON in this order: a fenced
-```` ```json … ``` ```` block, then the first top-level `{…}` object. Each
-declared `outputs` key must be present, or it's an `OutputParseError`. With no
-`outputs`, nothing is captured (the agent may still print JSON).
+**Output extraction.** Strict first: the response is scanned for a fenced
+```` ```json … ``` ```` block, then the first top-level `{…}` object, parsed
+with the stdlib. If that doesn't yield an object carrying every declared
+`outputs` key, a tolerant `json-repair` pass recovers the object — fixing
+trailing commas, single quotes, comments, and truncated/unclosed braces, and
+preferring the object with the declared keys when the response embeds several
+(an example plus the real answer). Only if no object can be recovered, or a
+declared key is still missing, is it an `OutputParseError` (which then climbs
+the resilience ladder). With no `outputs`, nothing is captured (the agent may
+still print JSON).
 
 **Resilience (summary; full detail in [GUARDRAILS.md](GUARDRAILS.md)).** On
 failure workhorse climbs a ladder rather than crashing: transient retries
@@ -224,7 +230,9 @@ set, otherwise raises.
 ## 4. Running a workflow
 
 ```bash
-workhorse --workflow path/to/workflow.yaml \
+# --workflow takes a path OR a bare library name (e.g. `author`); run from the
+# repo dir so artifacts default to ./.agents/runs.
+workhorse --workflow author \
   [--runs-dir DIR] [--run-id ID] \
   [--params '{"story_path":"docs/…"}'] [--params-file params.json] \
   [--cli claude|codex|copilot|aider|opencode] \
@@ -233,8 +241,8 @@ workhorse --workflow path/to/workflow.yaml \
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--workflow` | — (required) | Path to the workflow file. |
-| `--runs-dir` | `<workflow-dir>/runs` | Where run artifacts are written. |
+| `--workflow` | — (required) | Path to a workflow file, **or** a bare workflow name (e.g. `author`) resolved from the configured prompt library as `<library_dir>/workflows/<name>/workflow.yaml`. Library dir = `$WORKHORSE_LIBRARY_DIR` or `library_dir` in `~/.config/farrier/config.toml`. |
+| `--runs-dir` | `<cwd>/.agents/runs` | Where run artifacts are written. Defaults to `.agents/runs` under the directory you launch workhorse from (not the workflow's dir). |
 | `--run-id` | `default` | Stable id; run dir is `<name>-<run-id>`. Use distinct ids to keep parallel runs apart. |
 | `--params` | — | Inline JSON object merged into the starting context (overrides `vars`). |
 | `--params-file` | — | JSON file of params; inline `--params` wins on conflict. |
