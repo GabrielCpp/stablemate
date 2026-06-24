@@ -1,6 +1,6 @@
 [project]
 name = "workhorse-agent"
-version = "0.7.3"
+version = "0.7.4"
 description = "Fail-soft runner for YAML-defined agent workflows — drives the Claude CLI through a workflow graph unattended for days."
 readme = "README.md"
 requires-python = ">=3.12"
