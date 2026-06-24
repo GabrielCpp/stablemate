@@ -258,7 +258,17 @@ def stream_subprocess(
 # the prompt — re-asking a capped subscription can't help). This is baked into the
 # core agent so a single run survives a cap with no supervisor — and because an AI
 # "fixer" can't help here anyway: it would run on the same capped subscription.
-_CAP_MARKERS = ("spending cap", "usage limit", "weekly limit", "session limit", "quota")
+# "key limit"/"daily limit" cover a *provider API key* that has hit its per-key
+# daily ceiling (e.g. OpenRouter: "Key limit exceeded (daily limit)"). Like a
+# subscription cap this clears on a wall-clock schedule (the daily reset), not after
+# a few seconds — so it is waited out, never reframed. Critically, reframing or
+# defaulting through it would silently advance the run past a gate on empty outputs
+# (which is exactly how a daily-limit hit on a grounding node dumped a run onto the
+# operator gate); the cap path pauses and re-runs the SAME node instead.
+_CAP_MARKERS = (
+    "spending cap", "usage limit", "weekly limit", "session limit", "quota",
+    "key limit", "daily limit",
+)
 # Fallback wait when the reset time can't be parsed from the message, then re-probe.
 _CAP_DEFAULT_WAIT_S = float(os.environ.get("AGENT_CAP_DEFAULT_WAIT_S", "3600"))
 # Added after a parsed reset so we wake just AFTER the window reopens.
@@ -289,6 +299,8 @@ _TRANSIENT_MARKERS = (
     "weekly limit",
     "session limit",
     "quota",
+    "key limit",      # provider API key hit its ceiling (cap; see _CAP_MARKERS)
+    "daily limit",    # …specifically the per-day reset, e.g. OpenRouter daily key cap
     "rate limit",
     "rate-limit",
     "overloaded",
