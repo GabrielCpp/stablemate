@@ -49,6 +49,48 @@ def test_classification():
         assert agent._is_transient(marker) is True, f"cap marker not transient: {marker}"
 
 
+# OpenRouter (and similar gateways) cap a key per day; the CLI surfaces the raw
+# provider error. This is a scheduled-reset cap, NOT a content failure — it must be
+# waited out, never reframed/defaulted through (which would advance past a gate).
+KEY_LIMIT_MSG = (
+    "opencode CLI exited with code 1 for node 'resolve_surface_coverage': "
+    "Key limit exceeded (daily limit). Manage it using "
+    "https://openrouter.ai/workspaces/default/keys/7a2ee3c"
+)
+
+
+def test_daily_key_limit_classified_as_cap():
+    """A provider per-key daily limit is a (transient) cap, not a hard failure —
+    so _invoke_claude waits it out instead of raising into the reframe ladder."""
+    assert agent._is_cap(KEY_LIMIT_MSG) is True
+    assert agent._is_transient(KEY_LIMIT_MSG) is True
+    # The bare phrasings both trip the cap detector.
+    assert agent._is_cap("Key limit exceeded") is True
+    assert agent._is_cap("daily limit reached") is True
+
+
+def test_daily_key_limit_pauses_then_resumes_same_node():
+    """The keyed-out node pauses once (no reset in the message → default wait) and
+    re-runs the SAME prompt once the key resets — never reframes, never defaults."""
+    calls = {"n": 0}
+
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ClaudeInvocationError(KEY_LIMIT_MSG, transient=True)
+        return "RESULT_OK"
+
+    slept = []
+    with patch.object(agent, "_run_claude_cli", fake_cli), \
+         patch.object(agent, "_sleep_with_notice", lambda s, n, l: slept.append(s)):
+        out = agent._invoke_claude("p", "resolve_surface_coverage", None)
+
+    assert out == "RESULT_OK"
+    assert calls["n"] == 2, "should re-run the same node after the daily-limit wait"
+    assert len(slept) == 1 and slept[0] == agent._CAP_DEFAULT_WAIT_S, \
+        "no reset time in the message → falls back to the default cap wait"
+
+
 def test_session_limit_pauses_until_reset_then_resumes():
     """A session-limit error pauses until its parsed reset (not short backoff)."""
     calls = {"n": 0}
