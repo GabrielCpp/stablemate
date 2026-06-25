@@ -8,6 +8,10 @@ from typing import Any
 
 class ArtifactWriter:
     CHECKPOINT_FILE = "checkpoint.json"
+    # Append-only, per-node event log (enter/done/terminal) with timestamps.
+    # Unlike checkpoint.json (overwritten every step), this preserves the full
+    # node-visit history so spend/output can be attributed to individual nodes.
+    EVENTS_FILE = "events.jsonl"
 
     def __init__(self, workflow_name: str, runs_dir: Path, run_id: str | None = None) -> None:
         # A fixed run_id (e.g. the program name, used by --auto) gives a single
@@ -22,6 +26,10 @@ class ArtifactWriter:
         # an interruption before this run's first checkpoint can't resurrect the old
         # one on the next auto-resume; this run starts from the graph's start node.
         (self.run_dir / self.CHECKPOINT_FILE).unlink(missing_ok=True)
+        # A fresh start re-runs from the graph's start node with seq reset to 0, so
+        # any prior event log in a reused (stable-id) dir belongs to a different run
+        # and would interleave confusingly — drop it, mirroring the checkpoint above.
+        (self.run_dir / self.EVENTS_FILE).unlink(missing_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
         self._run_id = run_id
@@ -73,6 +81,44 @@ class ArtifactWriter:
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(data, indent=2))
         tmp.replace(path)  # atomic rename on the same filesystem
+        # Mirror the node-entry to the append-only event log (history-preserving).
+        self._append_event(node_id=current_id, phase="enter")
+
+    def _append_event(self, node_id: str, phase: str, **fields: Any) -> None:
+        """Append one timestamped line to the per-node event log. Best-effort:
+        instrumentation must never crash a run, so I/O errors are swallowed.
+        ``phase`` is one of "enter" | "done" | "terminal"; extra ``fields`` (e.g.
+        a resolved model name, passed by the runner) are merged into the record."""
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "seq": self._seq,
+            "node": node_id,
+            "phase": phase,
+            **fields,
+        }
+        try:
+            with (self.run_dir / self.EVENTS_FILE).open("a") as f:
+                f.write(json.dumps(record) + "\n")
+        except OSError:
+            pass
+
+    def read_events(self) -> list[dict[str, Any]]:
+        """Read the append-only event log in order (empty if absent/unwritten).
+        Consumers (e.g. a cost-per-node scorecard) join these node windows against
+        timestamped provider spend and git commits."""
+        path = self.run_dir / self.EVENTS_FILE
+        if not path.exists():
+            return []
+        events: list[dict[str, Any]] = []
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return events
 
     def _write_done(self, node_id: str, next_node: str | None) -> None:
         """Mark ``node_id`` complete under the current checkpoint seq, recording the
@@ -82,6 +128,7 @@ class ArtifactWriter:
         (self.run_dir / node_id / "done.json").write_text(
             json.dumps({"seq": self._seq, "next": next_node}, indent=2)
         )
+        self._append_event(node_id=node_id, phase="done", next=next_node)
 
     def read_done(self, node_id: str) -> dict[str, Any] | None:
         path = self.run_dir / node_id / "done.json"
@@ -139,6 +186,7 @@ class ArtifactWriter:
     def finish(self, terminal: str) -> None:
         (self.run_dir / "context.json").write_text("{}")  # overwritten by controller
         self._write_run_json(terminal=terminal)
+        self._append_event(node_id="<run>", phase="terminal", terminal=terminal)
 
     def write_final_context(self, context: dict[str, Any]) -> None:
         (self.run_dir / "context.json").write_text(json.dumps(context, indent=2))
