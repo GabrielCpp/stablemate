@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ostler/story.schema.json",
+  "title": "Story Concept frontmatter (docs/epics/<epic>/stories/<slug>/story.md)",
+  "type": "object",
+  "required": ["type", "slug", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "type": { "const": "story" },
+    "slug": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "minLength": 1 },
+    "surface": { "type": "string" }
+  }
+}

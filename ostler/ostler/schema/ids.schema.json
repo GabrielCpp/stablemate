@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ostler/ids.schema.json",
+  "title": "Id registry (.agents/ids.json)",
+  "type": "object",
+  "required": ["prefix", "counter"],
+  "additionalProperties": true,
+  "properties": {
+    "prefix": { "type": "string", "minLength": 1 },
+    "counter": { "type": "integer", "minimum": 0 },
+    "epics": { "type": "object", "additionalProperties": { "type": "string" } },
+    "stories": { "type": "object", "additionalProperties": { "type": "string" } },
+    "frozen": {
+      "type": "object",
+      "description": "Approved, immutable entities. Key = story slug or seed id; value records the content fingerprint at approval so doctor can flag later mutation or removal.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "hash"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": { "type": "string", "enum": ["story", "seed"] },
+          "hash": { "type": "string", "minLength": 1 },
+          "approvedAt": { "type": "string" },
+          "approvedBy": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}
