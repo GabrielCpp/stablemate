@@ -383,10 +383,73 @@ class BackendInvocationError(RuntimeError):
         self.reset_at = reset_at
 
 
-# Backwards-compatible alias: this error was originally Claude-specific, but the
-# resilience ladder and backends are now CLI-agnostic. main.py and tests import
-# the old name; keep it pointing at the same class.
-ClaudeInvocationError = BackendInvocationError
+def classify_turn(
+    backend_name: str,
+    node_id: str,
+    *,
+    result_text: str | None,
+    diagnostics: str,
+    timed_out: bool,
+    returncode: int,
+    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    session_id: str | None = None,
+    session_id_path: Path | None = None,
+    rate_limited: bool = False,
+    rate_reset_at: float | None = None,
+) -> str:
+    """Classify a finished agent-CLI turn uniformly for EVERY backend.
+
+    The single source of truth for turning a finished subprocess into either a
+    result string or a typed ``BackendInvocationError`` — shared by the Claude
+    path (``_run_claude_cli``) and the JSONL/text path (``backends._finalize_turn``)
+    so the failure messages and the transient/overflow/cap/non-recoverable
+    classification are identical no matter which CLI ran.
+
+    Ladder (first match wins):
+    - ``timed_out`` → transient (the watchdog already reaped the process group).
+    - context-overflow marker → ``overflow`` (recovered by compaction, not retry);
+      the session id is persisted so the runner can compact-and-continue it.
+    - non-zero exit → transient *iff* the output matches a retryable marker (or a
+      rate limit fired); otherwise NON-RECOVERABLE (``transient=False``) so the
+      runner stops instead of reframing a crashed CLI.
+    - empty result → transient (the CLI was likely interrupted).
+    A cap-like failure carries ``reset_at`` so the runner can sleep until the
+    window reopens; a plain transient must not, or it would look like a cap.
+    The session id is persisted on success and on overflow.
+    """
+    tail = f": {diagnostics.strip()}" if diagnostics.strip() else ""
+    cap_reset_at = rate_reset_at if (rate_limited or _is_cap(diagnostics)) else None
+
+    if timed_out:
+        raise BackendInvocationError(
+            f"Timeout waiting for result from {backend_name} for node '{node_id}'"
+            f" after {int(timeout)}s{tail}",
+            transient=True,
+            timed_out=True,
+        )
+    if _is_context_overflow(diagnostics):
+        if session_id_path and session_id:
+            session_id_path.write_text(session_id)
+        raise BackendInvocationError(
+            f"Context window exhausted for node '{node_id}'{tail}",
+            transient=False,
+            overflow=True,
+        )
+    if returncode != 0:
+        raise BackendInvocationError(
+            f"{backend_name} CLI exited with code {returncode} for node '{node_id}'{tail}",
+            transient=_is_transient(diagnostics) or rate_limited,
+            reset_at=cap_reset_at,
+        )
+    if not result_text:
+        raise BackendInvocationError(
+            f"No result text from {backend_name} for node '{node_id}'{tail}",
+            transient=True,
+            reset_at=cap_reset_at,
+        )
+    if session_id_path and session_id:
+        session_id_path.write_text(session_id)
+    return result_text
 
 
 def _print_rendered_prompt(node_id: str, prompt: str) -> None:
@@ -559,7 +622,7 @@ def run_agent(
                 effort=node_effort,
             )
             return rendered_prompt, outputs
-        except (ClaudeInvocationError, OutputParseError) as exc:
+        except (BackendInvocationError, OutputParseError) as exc:
             # Layer 2: context window exhausted → compact this session and retry the
             # SAME prompt on it, keeping the node's progress. Only when compaction
             # is unavailable/ineffective do we fall through to a (lossy) reframe.
@@ -583,6 +646,24 @@ def run_agent(
                     f"falling back to reframe",
                     flush=True,
                 )
+
+            # Non-recoverable backend/CLI failure (non-transient, non-overflow):
+            # the agent CLI crashed or its server returned a hard error (e.g.
+            # "Unexpected server error"). Reframing the prompt can't bring back a
+            # dead CLI, and fabricating default outputs would corrupt the workflow
+            # (e.g. an empty write_epic), so stop the ladder and surface it for a
+            # clean abort. Transient-exhausted and overflow failures fall through to
+            # the reframe/default layers below, unchanged.
+            if (
+                isinstance(exc, BackendInvocationError)
+                and not exc.transient
+                and not exc.overflow
+            ):
+                print(
+                    f"[{node.id}] ✖ non-recoverable {backend.name} failure: {exc}",
+                    flush=True,
+                )
+                raise
 
             # Layer 3: reframe in a fresh session.
             if rephrase < max_rephrase_attempts:
@@ -690,7 +771,7 @@ def _invoke_claude(
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
         except BackendInvocationError as exc:
-            print(f"[{node_id}] ⚠ Claude invocation failed: {exc}", flush=True)
+            print(f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True)
             if not exc.transient:
                 raise
             # A budget timeout: warn the next attempt that it overran and give it the
@@ -724,7 +805,7 @@ def _invoke_claude(
             delay = min(_INVOKE_BACKOFF_BASE_S * (2 ** short_attempt), _INVOKE_BACKOFF_CAP_S)
             short_attempt += 1
             print(
-                f"[{node_id}] ⚠ transient Claude CLI failure "
+                f"[{node_id}] ⚠ transient {backend.name} CLI failure "
                 f"(attempt {short_attempt}/{max_invoke_retries}): {exc}; "
                 f"retrying in {int(delay)}s",
                 flush=True,
@@ -743,11 +824,12 @@ def _run_claude_cli(
     effort: str | None = None,
 ) -> str:
     """Run a single Claude CLI turn for ``prompt``, returning the final result
-    text. Raises ``ClaudeInvocationError`` on CLI failure, classifying it as
-    transient when the captured output matches a known retryable marker.
+    text. Raises ``BackendInvocationError`` (via ``classify_turn``) on CLI failure,
+    classifying it as transient when the captured output matches a known retryable
+    marker.
 
     Args:
-        timeout: Maximum seconds to wait for a result event from Claude.
+        timeout: Maximum seconds to wait for a result event from the agent.
         cwd: Working directory for the subprocess (controls CLAUDE.md discovery).
         add_dirs: Additional directories to grant the agent access to.
     """
@@ -781,57 +863,24 @@ def _run_claude_cli(
         _stream_events(cmd, node_id, timeout, stdin_data=prompt, cwd=cwd or None)
     )
 
-    # A cap-like failure (text markers or a blocked rate_limit_event) carries the
-    # structured reset epoch so the runner can sleep until the window reopens; a
-    # plain transient must NOT, or it would be mistaken for a cap.
-    cap_ish = rate_limited or _is_cap(diagnostics)
-    cap_reset_at = rate_reset_at if cap_ish else None
-
-    # Handle timeout case specially - always transient. The process group has already
-    # been force-killed and reaped by stream_subprocess; here we only classify.
-    if timed_out:
-        raise ClaudeInvocationError(
-            f"Timeout waiting for result from Claude for node '{node_id}' after {timeout}s"
-            + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
-            transient=True,
-            timed_out=True,
-        )
-
-    # Context window exhausted mid-node: the headless CLI returned (often with an
-    # error result and/or a non-zero exit) instead of compacting. Detect this
-    # before the generic exit-code/empty-result checks, persist the session id so
-    # the runner can compact-and-continue THIS session (keeping the node's
-    # progress), and surface it as a distinct, non-transient overflow error.
-    if _is_context_overflow(diagnostics):
-        if session_id_path and new_session_id:
-            session_id_path.write_text(new_session_id)
-        raise ClaudeInvocationError(
-            f"Context window exhausted for node '{node_id}'"
-            + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
-            transient=False,
-            overflow=True,
-        )
-
-    if returncode != 0:
-        raise ClaudeInvocationError(
-            f"Claude CLI exited with code {returncode} for node '{node_id}'"
-            + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
-            transient=_is_transient(diagnostics) or rate_limited,
-            reset_at=cap_reset_at,
-        )
-    if not result_text:
-        # No result is often transient - Claude may have been interrupted
-        raise ClaudeInvocationError(
-            f"No 'result' event received from Claude for node '{node_id}'"
-            + (f": {diagnostics.strip()}" if diagnostics.strip() else ""),
-            transient=True,  # Changed to True - missing result is often transient
-            reset_at=cap_reset_at,
-        )
-
-    if session_id_path and new_session_id:
-        session_id_path.write_text(new_session_id)
-
-    return result_text
+    # Classify the finished turn through the one shared classifier so the Claude
+    # path and every other backend produce identical messages and transient /
+    # overflow / cap / non-recoverable verdicts. Claude's structured-cap signals
+    # (rate_limited / rate_reset_at, from the stream-json rate_limit_event) are
+    # passed in so a capped window still carries its precise reset epoch.
+    return classify_turn(
+        "claude",
+        node_id,
+        result_text=result_text,
+        diagnostics=diagnostics,
+        timed_out=timed_out,
+        returncode=returncode,
+        timeout=timeout,
+        session_id=new_session_id,
+        session_id_path=session_id_path,
+        rate_limited=rate_limited,
+        rate_reset_at=rate_reset_at,
+    )
 
 
 def _compact_session(
@@ -979,7 +1028,7 @@ def _rate_limit_info(event: dict) -> tuple[bool, float | None]:
     return blocked, reset_at
 
 
-def _cap_delay_seconds(exc: ClaudeInvocationError, now: float | None = None) -> tuple[float, str]:
+def _cap_delay_seconds(exc: BackendInvocationError, now: float | None = None) -> tuple[float, str]:
     """How long to sleep for a cap, and a human 'resuming around' label.
 
     Prefers the structured ``reset_at`` epoch (precise, timezone-correct) when the

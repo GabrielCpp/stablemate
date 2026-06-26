@@ -392,6 +392,26 @@ def test_finalize_turn_classifies_failures():
     assert backends._finalize_turn("codex", "n", dict(base), "", False, 0, None) == "x"
 
 
+def test_finalize_turn_non_recoverable_names_each_backend():
+    """A non-zero exit whose output is NOT a retryable marker is non-recoverable
+    (transient=False, not overflow), and the message names the ACTUAL backend — the
+    one shared classifier (agent.classify_turn) gives every CLI a uniform,
+    backend-named error instead of a hardcoded 'Claude'."""
+    diag = "Unexpected server error. Check server logs for details."
+    for name in ("opencode", "codex", "copilot", "claude"):
+        try:
+            backends._finalize_turn(
+                name, "write_epic", {"result_text": "", "session_id": None},
+                diag, False, 1, None,
+            )
+            raise AssertionError(f"{name}: expected raise on a hard CLI exit")
+        except agent.BackendInvocationError as e:
+            assert e.transient is False, f"{name}: server error must be non-recoverable"
+            assert e.overflow is False
+            assert name in str(e), f"{name}: message must name the backend"
+            assert "Claude" not in str(e), "must not hardcode 'Claude'"
+
+
 def test_agentnode_model_is_optional():
     """A node may omit `model:`; the backend default fills in at run time."""
     node = AgentNode(type="agent", id="n", prompt="do it", next="done")

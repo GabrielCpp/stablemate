@@ -11,7 +11,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from workhorse.runner import agent
-from workhorse.runner.agent import ClaudeInvocationError
+from workhorse.runner.agent import BackendInvocationError
 
 CAP_MSG = "Claude CLI exited with code 1 for node 'select_gate': success Spending cap reached resets 3:50am"
 
@@ -77,7 +77,7 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise ClaudeInvocationError(KEY_LIMIT_MSG, transient=True)
+            raise BackendInvocationError(KEY_LIMIT_MSG, transient=True)
         return "RESULT_OK"
 
     slept = []
@@ -98,7 +98,7 @@ def test_session_limit_pauses_until_reset_then_resumes():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise ClaudeInvocationError(SESSION_MSG, transient=True)
+            raise BackendInvocationError(SESSION_MSG, transient=True)
         return "RESULT_OK"
 
     slept = []
@@ -130,17 +130,17 @@ def test_rate_limit_info_parsing():
 def test_cap_delay_prefers_structured_reset_at():
     """A structured reset_at epoch drives the wait time precisely (+ margin)."""
     now = 1_000_000.0
-    exc = ClaudeInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
+    exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
     delay, _when = agent._cap_delay_seconds(exc, now=now)
     assert abs(delay - (3600 + agent._CAP_WAIT_MARGIN_S)) < 1
 
     # A past reset → retry promptly (just the margin).
-    exc_past = ClaudeInvocationError("blocked", transient=True, reset_at=now - 50)
+    exc_past = BackendInvocationError("blocked", transient=True, reset_at=now - 50)
     delay_past, _ = agent._cap_delay_seconds(exc_past, now=now)
     assert delay_past == agent._CAP_WAIT_MARGIN_S
 
     # An absurd far-future reset is bounded.
-    exc_far = ClaudeInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
+    exc_far = BackendInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
     delay_far, _ = agent._cap_delay_seconds(exc_far, now=now)
     assert delay_far == agent._CAP_MAX_STRUCTURED_WAIT_S + agent._CAP_WAIT_MARGIN_S
 
@@ -151,11 +151,11 @@ def test_cap_delay_falls_back_to_text_then_default():
     with patch.object(agent, "datetime") as dt:
         dt.now.return_value = now_dt
         dt.fromtimestamp.side_effect = lambda ts: datetime.fromtimestamp(ts)
-        exc = ClaudeInvocationError("usage limit, resets 3:50am", transient=True)
+        exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
         delay, _ = agent._cap_delay_seconds(exc, now=0)  # no reset_at → text path
         assert abs(delay - (100 * 60 + agent._CAP_WAIT_MARGIN_S)) < 1
 
-    exc_none = ClaudeInvocationError("overloaded somehow", transient=True)
+    exc_none = BackendInvocationError("overloaded somehow", transient=True)
     delay_none, _ = agent._cap_delay_seconds(exc_none, now=0)
     assert delay_none == agent._CAP_DEFAULT_WAIT_S
 
@@ -168,7 +168,7 @@ def test_structured_reset_at_drives_invoke_wait():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise ClaudeInvocationError("blocked", transient=True, reset_at=now + 7200)
+            raise BackendInvocationError("blocked", transient=True, reset_at=now + 7200)
         return "OK"
 
     slept = []
@@ -189,7 +189,7 @@ def test_budget_timeout_warns_retry_with_time_budget():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         seen_prompts.append(prompt)
         if len(seen_prompts) == 1:
-            raise ClaudeInvocationError(
+            raise BackendInvocationError(
                 "Timeout waiting for result from Claude for node 'implement' after 1200s",
                 transient=True,
                 timed_out=True,
@@ -218,7 +218,7 @@ def test_non_timeout_transient_retries_prompt_unchanged():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         seen_prompts.append(prompt)
         if len(seen_prompts) == 1:
-            raise ClaudeInvocationError("overloaded_error", transient=True)
+            raise BackendInvocationError("overloaded_error", transient=True)
         return "OK"
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
@@ -236,7 +236,7 @@ def test_cap_sleeps_until_reset_then_resumes():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise ClaudeInvocationError(CAP_MSG, transient=True)
+            raise BackendInvocationError(CAP_MSG, transient=True)
         return "RESULT_OK"
 
     slept = []
@@ -258,7 +258,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] <= 3:
-            raise ClaudeInvocationError(CAP_MSG, transient=True)
+            raise BackendInvocationError(CAP_MSG, transient=True)
         return "OK_AFTER_CAPS"
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
@@ -272,15 +272,15 @@ def test_cap_waits_do_not_consume_short_retry_budget():
 def test_cap_wait_safety_bound():
     """A cap that never clears gives up after _MAX_CAP_WAITS instead of looping forever."""
     def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
-        raise ClaudeInvocationError(CAP_MSG, transient=True)
+        raise BackendInvocationError(CAP_MSG, transient=True)
 
     with patch.object(agent, "_run_claude_cli", always_cap), \
          patch.object(agent, "_sleep_with_notice", lambda s, *_a: None), \
          patch.object(agent, "_MAX_CAP_WAITS", 3):
         try:
             agent._invoke_claude("p", "n", None)
-            raise AssertionError("expected ClaudeInvocationError after exhausting cap waits")
-        except ClaudeInvocationError:
+            raise AssertionError("expected BackendInvocationError after exhausting cap waits")
+        except BackendInvocationError:
             pass
 
 
@@ -290,14 +290,14 @@ def test_short_transient_uses_bounded_backoff_then_fails():
 
     def always_overloaded(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
-        raise ClaudeInvocationError("overloaded", transient=True)
+        raise BackendInvocationError("overloaded", transient=True)
 
     with patch.object(agent, "_run_claude_cli", always_overloaded), \
          patch.object(agent.time, "sleep", lambda s: None):
         try:
             agent._invoke_claude("p", "n", None, max_invoke_retries=2)
-            raise AssertionError("expected ClaudeInvocationError after retries")
-        except ClaudeInvocationError as e:
+            raise AssertionError("expected BackendInvocationError after retries")
+        except BackendInvocationError as e:
             assert "overloaded" in str(e)
     assert calls["n"] == 3, "initial + 2 retries"
 
@@ -307,13 +307,13 @@ def test_non_transient_fails_immediately():
 
     def hard_fail(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
-        raise ClaudeInvocationError("malformed workflow node", transient=False)
+        raise BackendInvocationError("malformed workflow node", transient=False)
 
     with patch.object(agent, "_run_claude_cli", hard_fail):
         try:
             agent._invoke_claude("p", "n", None)
             raise AssertionError("expected immediate raise on non-transient error")
-        except ClaudeInvocationError:
+        except BackendInvocationError:
             pass
     assert calls["n"] == 1, "non-transient must not retry"
 
