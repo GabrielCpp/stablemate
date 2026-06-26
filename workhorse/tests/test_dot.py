@@ -175,6 +175,90 @@ def test_deterministic_output():
     assert out.index('guard [shape=diamond') < out.index(" -> ")
 
 
+# ── flows: sub-graphs render as clusters ────────────────────────────────────────
+
+# A graph with a `qa` flow node calling a flows: sub-graph that has its own start,
+# an internal branch, and a terminal — plus a parent continuation after the phase.
+_FLOW_NODES = [
+    {"id": "start_n", "type": "script", "script": "s.sh", "next": "qa_phase"},
+    {
+        "id": "qa_phase",
+        "type": "flow",
+        "name": "qa",
+        "args": {"x": "{{ y }}"},
+        "outputs": [{"key": "qa_status"}],
+        "next": "after",
+    },
+    {"id": "after", "type": "agent", "prompt": "a.md", "next": "done"},
+    {"id": "done", "type": "terminal"},
+]
+_QA_FLOW = {
+    "name": "qa",
+    "start": "run_qa",
+    "vars": {"x": ""},
+    "nodes": {
+        "run_qa": {"id": "run_qa", "type": "agent", "prompt": "qa.md", "next": "decide"},
+        "decide": {
+            "id": "decide",
+            "type": "branch",
+            "path": "qa_result.status",
+            "cases": {"passed": "qa_done"},
+            "default": "qa_done",
+        },
+        "qa_done": {"id": "qa_done", "type": "terminal"},
+    },
+}
+
+
+def _flow_graph() -> Graph:
+    nodes = {n["id"]: n for n in _FLOW_NODES}
+    return Graph.model_validate(
+        {"name": "with-flow", "start": "start_n", "vars": {}, "nodes": nodes,
+         "flows": {"qa": _QA_FLOW}}
+    )
+
+
+def test_flow_node_styled_as_box3d_with_flow_label():
+    out = to_dot(_flow_graph())
+    assert 'qa_phase [shape=box3d, fillcolor=lightyellow, label="qa_phase\\nflow: qa"];' in out
+
+
+def test_flow_node_keeps_its_next_edge():
+    # The phase's continuation (parent's `next`) stays a normal edge.
+    out = to_dot(_flow_graph())
+    assert "qa_phase -> after;" in out
+
+
+def test_flow_renders_as_cluster_with_prefixed_internals():
+    out = to_dot(_flow_graph())
+    assert "subgraph cluster_qa {" in out
+    assert 'label="flow: qa";' in out
+    # Internal nodes are name-prefixed; the cluster start gets the START marker.
+    assert 'qa__run_qa [fillcolor=lightgreen, label="START\\nrun_qa"];' in out
+    assert 'qa__decide [shape=diamond, fillcolor=lightsalmon, label="decide"];' in out
+    assert 'qa__qa_done [fillcolor=lightgreen, label="qa_done\\n(terminal)"];' in out
+    # Internal edges are prefixed on both ends.
+    assert "qa__run_qa -> qa__decide;" in out
+    assert 'qa__decide -> qa__qa_done [label="passed|default"];' in out
+
+
+def test_flow_node_has_dashed_calls_edge_into_cluster_start():
+    out = to_dot(_flow_graph())
+    assert (
+        'qa_phase -> qa__run_qa [style=dashed, color=gray55, label="calls", '
+        'constraint=false];' in out
+    )
+
+
+def test_flowless_graph_output_unchanged_by_flow_support():
+    # Regression guard: a workflow with no flows: renders byte-for-byte as before —
+    # no cluster scaffolding leaks in.
+    out = to_dot(_graph())
+    assert "subgraph cluster_" not in out
+    assert "box3d" not in out
+    assert "calls" not in out
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

@@ -17,9 +17,11 @@ from unittest.mock import patch
 from workhorse.runner import agent, backends
 from workhorse.runner.backends import (
     AgentBackend,
+    AiderBackend,
     ClaudeBackend,
     CodexBackend,
     CopilotBackend,
+    OpenCodeBackend,
     get_backend,
 )
 from workhorse.graph.nodes import AgentNode
@@ -81,13 +83,20 @@ def test_get_backend_caches_instance():
     assert get_backend("claude") is get_backend("claude")
 
 
-def test_codex_and_copilot_registered():
-    for name, cls in (("codex", CodexBackend), ("copilot", CopilotBackend)):
+def test_non_claude_backends_registered():
+    # codex, copilot, aider, opencode: all stateless, no in-place compaction, and
+    # no built-in default model (the node/AGENT_MODEL names it).
+    for name, cls in (
+        ("codex", CodexBackend),
+        ("copilot", CopilotBackend),
+        ("aider", AiderBackend),
+        ("opencode", OpenCodeBackend),
+    ):
         b = get_backend(name)
         assert isinstance(b, cls)
         assert b.name == name
         assert b.default_model is None
-        assert b.supports_compaction is False  # neither compacts in place
+        assert b.supports_compaction is False  # none compact in place
 
 
 def _fake_stream(canned):
@@ -287,10 +296,10 @@ def test_codex_per_node_profile_overrides_env():
             os.environ["CODEX_PROFILE"] = prior
 
 
-def test_codex_litellm_profile_model_string():
-    """A litellm profile's resolved codex model (`mimo@mimo-pro`) drives the CLI as
-    `codex --profile mimo exec ... -m mimo-pro` — the codex config profile points at
-    the proxy, the slug selects the LiteLLM logical model."""
+def test_codex_profile_at_slug_model_string():
+    """A `<profile>@<slug>` codex model string drives the CLI as
+    `codex --profile mimo exec ... -m mimo-pro` — the codex config profile selects
+    the provider/auth bundle, the slug overrides its pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
     prior = os.environ.pop("CODEX_PROFILE", None)
@@ -390,6 +399,120 @@ def test_agentnode_model_is_optional():
     # An explicit model is preserved unchanged.
     node2 = AgentNode(type="agent", id="n2", prompt="p", model="opus", next="done")
     assert node2.model == "opus"
+
+
+# ── OpenCode backend (opencode run --format json) ───────────────────────────────
+
+
+def test_opencode_run_turn_fresh_then_resume():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(({"result_text": "PONG", "session_id": "ses_1"}, "", False, 0))
+    with patch.object(backends, "_stream_jsonl", fake):
+        out = OpenCodeBackend().run_turn(
+            "PROMPT", "n", sidp, model="openrouter/xiaomi/mimo-v2.5", effort="high"
+        )
+    assert out == "PONG"
+    cmd = captured["cmd"]
+    assert cmd[:4] == ["opencode", "run", "--format", "json"]
+    assert cmd[cmd.index("-m") + 1] == "openrouter/xiaomi/mimo-v2.5"
+    assert cmd[cmd.index("--variant") + 1] == "high"  # effort → variant
+    assert "--session" not in cmd                     # fresh run
+    # The prompt is the final positional, guarded by `--`.
+    assert cmd[-2:] == ["--", "PROMPT"]
+    assert captured["stdin"] is None                  # message is on argv, not stdin
+    assert sidp.read_text() == "ses_1"                # session persisted for resume
+
+    fake2, captured2 = _fake_stream(({"result_text": "P2", "session_id": "ses_1"}, "", False, 0))
+    with patch.object(backends, "_stream_jsonl", fake2):
+        OpenCodeBackend().run_turn("P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
+    assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
+
+
+def test_opencode_effort_variant_mapping_and_omit():
+    sidp = Path(tempfile.mkdtemp()) / ".s"
+    cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
+    for effort, variant in cases.items():
+        fake, captured = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+        with patch.object(backends, "_stream_jsonl", fake):
+            OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort=effort)
+        assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
+    # "medium" has no opencode variant → omitted entirely.
+    fake, captured = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+    with patch.object(backends, "_stream_jsonl", fake):
+        OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort="medium")
+    assert "--variant" not in captured["cmd"]
+
+
+def test_opencode_on_event_text_session_and_error():
+    state = {"result_text": "", "session_id": None}
+    diag: list[str] = []
+    backends._opencode_on_event(
+        {"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n", diag
+    )
+    backends._opencode_on_event(
+        {"type": "text", "sessionID": "ses_9", "part": {"id": "p1", "text": "PONG"}}, state, "n", diag
+    )
+    assert state["session_id"] == "ses_9"
+    assert state["result_text"] == "PONG"
+    # A second distinct text part is appended, preserving order.
+    backends._opencode_on_event(
+        {"type": "text", "sessionID": "ses_9", "part": {"id": "p2", "text": "more"}}, state, "n", diag
+    )
+    assert state["result_text"] == "PONG\nmore"
+    # An error event is captured as a diagnostic.
+    backends._opencode_on_event(
+        {"type": "error", "sessionID": "ses_9", "error": {"data": {"message": "boom"}}},
+        state, "n", diag,
+    )
+    assert any("boom" in d for d in diag)
+
+
+# ── Aider backend (aider --message, plain-text capture) ─────────────────────────
+
+
+def _fake_text_turn():
+    """Stand-in for _run_text_turn that records the cmd and returns canned text."""
+    captured = {}
+
+    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        return "AIDER OK"
+
+    return fake, captured
+
+
+def test_aider_run_turn_builds_noninteractive_cmd():
+    fake, captured = _fake_text_turn()
+    with patch.object(backends, "_run_text_turn", fake):
+        out = AiderBackend().run_turn(
+            "PROMPT", "n", None, model="openrouter/xiaomi/mimo-v2.5", cwd="/repo"
+        )
+    assert out == "AIDER OK"
+    cmd = captured["cmd"]
+    assert cmd[0] == "aider"
+    assert cmd[cmd.index("--message") + 1] == "PROMPT"
+    assert cmd[cmd.index("--model") + 1] == "openrouter/xiaomi/mimo-v2.5"
+    # Fully non-interactive, no repo/git mutation behind our back.
+    for flag in ("--yes-always", "--no-stream", "--no-pretty",
+                 "--no-auto-commits", "--no-gitignore"):
+        assert flag in cmd
+    assert captured["cwd"] == "/repo"
+
+
+def test_aider_effort_clamped_to_high():
+    for level, expected in (("low", "low"), ("high", "high"), ("xhigh", "high"), ("max", "high")):
+        fake, captured = _fake_text_turn()
+        with patch.object(backends, "_run_text_turn", fake):
+            AiderBackend().run_turn("P", "n", None, model="m", effort=level)
+        assert captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
+
+
+def test_aider_no_effort_omits_flag():
+    fake, captured = _fake_text_turn()
+    with patch.object(backends, "_run_text_turn", fake):
+        AiderBackend().run_turn("P", "n", None, model="m")
+    assert "--reasoning-effort" not in captured["cmd"]
 
 
 if __name__ == "__main__":

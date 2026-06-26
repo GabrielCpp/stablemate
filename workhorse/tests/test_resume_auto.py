@@ -117,14 +117,16 @@ def test_main_is_auto_by_default_no_flag():
     resolved inside run())."""
     captured = {}
 
-    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True, run_id=None, params=None, context_manifest=None):
+    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True, run_id=None, params=None, context_manifest=None, flow=None):
         captured.update(resume_run_dir=resume_run_dir, auto=auto)
         return 0
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        runs = tmp / "runs"; runs.mkdir()
-        wf = tmp / "workflow.yaml"; wf.write_text("name: research\n")
+        runs = tmp / "runs"
+        runs.mkdir()
+        wf = tmp / "workflow.yaml"
+        wf.write_text("name: research\n")
         with patch.object(m, "run", fake_run), patch(
             "sys.argv",
             ["workhorse", "--workflow", str(wf), "--runs-dir", str(runs)],  # no --auto
@@ -140,9 +142,9 @@ def test_main_is_auto_by_default_no_flag():
 
 def test_auto_flag_is_gone():
     """--auto must not exist anymore (auto is the default, not an opt-in)."""
-    import argparse
     with tempfile.TemporaryDirectory() as tmp:
-        wf = Path(tmp) / "workflow.yaml"; wf.write_text("name: research\n")
+        wf = Path(tmp) / "workflow.yaml"
+        wf.write_text("name: research\n")
         with patch("sys.argv", ["workhorse", "--workflow", str(wf), "--auto"]):
             try:
                 m.main()
@@ -161,8 +163,10 @@ def test_resume_latest_still_errors_when_none():
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        runs = tmp / "runs"; runs.mkdir()
-        wf = tmp / "workflow.yaml"; wf.write_text("name: research\n")
+        runs = tmp / "runs"
+        runs.mkdir()
+        wf = tmp / "workflow.yaml"
+        wf.write_text("name: research\n")
         exit_code = None
         with patch.object(m, "run", fake_run), patch(
             "sys.argv",

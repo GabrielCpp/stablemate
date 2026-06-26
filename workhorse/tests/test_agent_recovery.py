@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse.runner import agent
-from workhorse.runner.agent import ClaudeInvocationError, OutputParseError
+from workhorse.runner.agent import ClaudeInvocationError
 from workhorse.graph.context import WorkflowContext
 from workhorse.graph.nodes import AgentNode, OutputSpec
 

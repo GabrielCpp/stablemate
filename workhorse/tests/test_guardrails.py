@@ -5,7 +5,6 @@ Test script for verifying guardrail improvements in the agent worker.
 
 import sys
 import os
-import time
 from pathlib import Path
 
 # Add parent directory to path for imports
