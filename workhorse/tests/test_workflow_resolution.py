@@ -86,7 +86,7 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     captured = {}
 
     def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True,
-                 run_id=None, params=None, context_manifest=None):
+                 run_id=None, params=None, context_manifest=None, flow=None):
         captured["runs_dir"] = runs_dir
         return 0
 

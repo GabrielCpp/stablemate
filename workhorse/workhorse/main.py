@@ -5,18 +5,20 @@ import json
 import os
 import sys
 import tomllib
+from collections import Counter, deque
 from pathlib import Path
 from typing import Any
 
 from .artifacts import ArtifactWriter
 from .graph.context import WorkflowContext
 from .graph.loader import load_workflow
-from .graph.nodes import AgentNode, BranchNode, ScriptNode, TerminalNode
+from .graph.nodes import AgentNode, BranchNode, FlowNode, Graph, ScriptNode, TerminalNode
 from .runner import agent as agent_runner
 from .runner import branch as branch_runner
 from .runner import script as script_runner
 from .runner.agent import ClaudeInvocationError
 from .runner.script import ScriptExitError
+from .templates import render_string
 
 # Canonical skill directory per backend — must match farrier's install layout.
 _BACKEND_SKILL_DIR: dict[str, str] = {
@@ -34,9 +36,42 @@ def run(
     run_id: str | None = None,
     params: dict[str, Any] | None = None,
     context_manifest: dict[str, Any] | None = None,
+    flow: str | None = None,
 ) -> int:
     graph = load_workflow(workflow_path)
     workflow_dir = workflow_path.parent
+
+    # `workhorse run <workflow> <flow>`: run a named sub-graph standalone (the re-QA
+    # entrypoint). The flow's `vars` are its parameter contract; treat the sub-graph
+    # as the top graph for this run so it gets its own run dir, checkpoint, and
+    # resume — independent of the parent workflow's run, so a story from a merged or
+    # already-finished epic re-qualifies fine.
+    if flow is not None:
+        if flow not in graph.flows:
+            available = ", ".join(sorted(graph.flows)) or "(none)"
+            print(
+                f"error: workflow '{graph.name}' has no flow '{flow}'. "
+                f"Available flows: {available}",
+                file=sys.stderr,
+            )
+            return 1
+        supplied = params or {}
+        missing = [
+            k for k, v in graph.flows[flow].vars.items()
+            if v in (None, "") and not supplied.get(k)
+        ]
+        if missing:
+            contract = ", ".join(
+                f"{k}={v!r}" for k, v in graph.flows[flow].vars.items()
+            )
+            print(
+                f"error: flow '{flow}' requires params: {', '.join(missing)}\n"
+                f"  contract (var=default): {contract}\n"
+                f"  supply via --params '{{\"<var>\": \"<value>\"}}'",
+                file=sys.stderr,
+            )
+            return 1
+        graph = graph.flows[flow]
 
     # The per-repo context manifest (template values, instruction/prompt path maps,
     # selected-skills set) is the OUTER layer of every context: the workflow's own
@@ -115,91 +150,340 @@ def run(
 
     session_id_path = writer.run_dir / ".session_id"
 
+    tank = _GasTank(_configured_gas())
+
     try:
-        while True:
-            node = graph.nodes[current_id]
-
-            if isinstance(node, TerminalNode):
-                writer.write_final_context(ctx.as_dict())
-                writer.finish(terminal=node.type)
-                success = node.type == "terminal"
-                print(f"[workhorse] {node.type.upper()} — run artifacts: {writer.run_dir}")
-                return 0 if success else 1
-
-            # Checkpoint the node we're about to run and the context going into it.
-            # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
-            writer.write_checkpoint(current_id, ctx.as_dict())
-
-            if isinstance(node, AgentNode):
-                print(f"[workhorse] agent  → {node.id}")
-                try:
-                    # run_agent is self-healing: it retries transient failures, reframes
-                    # the prompt, and finally defaults the node's outputs so the run
-                    # advances rather than crashing. A ClaudeInvocationError only
-                    # escapes when defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
-                    prompt, outputs = agent_runner.run_agent(
-                        node, ctx, workflow_dir, session_id_path,
-                        resume_session=resume_interrupted_node,
-                    )
-                    # The resume only applies to the first re-entered node; every node
-                    # the run advances to afterward is a fresh prompt / clean context.
-                    resume_interrupted_node = False
-
-                    ctx.merge(outputs)
-                    if node.next is None:
-                        raise RuntimeError(f"AgentNode '{node.id}' has no 'next' and is not terminal")
-                    writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
-                    current_id = node.next
-
-                except ClaudeInvocationError as e:
-                    print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
-                    if e.transient:
-                        print("[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
-                        print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
-                    else:
-                        print("[workhorse] This appears to be a persistent error", file=sys.stderr)
-                    raise
-
-            elif isinstance(node, ScriptNode):
-                # A re-entered script/branch carries no Claude session; clear the flag
-                # so a later agent node isn't mistaken for an interrupted continuation.
-                resume_interrupted_node = False
-                print(f"[workhorse] script → {node.id}")
-                try:
-                    cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir)
-                    ctx.merge(outputs)
-                    if node.next is None:
-                        raise RuntimeError(f"ScriptNode '{node.id}' has no 'next' and is not terminal")
-                    writer.write_step(node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next)
-                    current_id = node.next
-                except ScriptExitError as e:
-                    # Propagate the script's own exit code so callers can distinguish
-                    # expected halts (e.g. await_operator exits 2 for "blocked") from
-                    # genuine crashes (exit 1).
-                    print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
-                    sys.exit(e.exit_code)
-                except Exception as e:
-                    # Log script errors with context
-                    print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
-                    print("[workhorse] Script execution failed - workflow can be resumed after fixing", file=sys.stderr)
-                    print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
-                    raise
-
-            elif isinstance(node, BranchNode):
-                resume_interrupted_node = False
-                print(f"[workhorse] branch → {node.id}")
-                next_id, value = branch_runner.evaluate(node, ctx)
-                writer.write_branch(node.id, node.path, value, next_id)
-                current_id = next_id
-
-            else:
-                raise RuntimeError(f"Unknown node type: {type(node)}")
-
+        terminal_type = _step_loop(
+            graph,
+            writer,
+            ctx,
+            current_id,
+            resume_interrupted_node,
+            manifest=manifest,
+            workflow_dir=workflow_dir,
+            session_id_path=session_id_path,
+            tank=tank,
+        )
     except KeyboardInterrupt:
         agent_runner.terminate_active()
         print("\n[workhorse] interrupted — run paused.", file=sys.stderr)
         print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}", file=sys.stderr)
         sys.exit(130)
+    except OutOfGasError as e:
+        # A never-terminating cycle: fail the run loudly (non-zero) instead of letting
+        # it spin forever. The run dir is left intact for inspection.
+        agent_runner.terminate_active()
+        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
+        writer.finish(terminal="fail")
+        return 1
+
+    writer.write_final_context(ctx.as_dict())
+    writer.finish(terminal=terminal_type)
+    success = terminal_type == "terminal"
+    print(f"[workhorse] {terminal_type.upper()} — run artifacts: {writer.run_dir}")
+    return 0 if success else 1
+
+
+# Hard ceiling on flow nesting (a flow calling a flow calling a flow …). Real
+# compositions are shallow; this is a runaway-recursion backstop, not a design limit.
+_MAX_FLOW_DEPTH = 16
+
+# Gas-tank infinite-loop guard. A workflow that never reaches a terminal — a cycle
+# whose exit branch never trips (e.g. a story loop whose "done" condition is never
+# satisfied) — would otherwise spin FOREVER, silently burning an unattended week-long
+# run with no failure ever surfaced. A hang reads as "still working", which is the
+# worst outcome. Rather than a flat global step ceiling (which a legitimately long run
+# could trip), the guard is PROGRESS-METERED: the run burns one unit of gas per node
+# step and refuels to full whenever it makes real forward progress (a refuel node's
+# tracked value changes — a new story, a new epic). A healthy run tops up at every
+# progress point and never runs dry no matter how long it is; a loop that reprocesses
+# the SAME unit forever burns exactly one tank and then halts LOUDLY with diagnostics.
+# So the tank is sized to ONE unit of progress (one story), NOT the whole run. Override
+# with WORKHORSE_GAS; set it to 0 to disable the guard entirely (not recommended).
+_DEFAULT_GAS = 5000
+
+
+class OutOfGasError(RuntimeError):
+    """Raised when a run burns a full gas tank without forward progress — a loop."""
+
+
+def _configured_gas() -> int:
+    raw = (os.environ.get("WORKHORSE_GAS") or "").strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            print(
+                f"[workhorse] ⚠ ignoring non-integer WORKHORSE_GAS={raw!r}; "
+                f"using default {_DEFAULT_GAS}",
+                file=sys.stderr,
+            )
+    return _DEFAULT_GAS
+
+
+class _GasTank:
+    """Progress-metered loop guard shared across the root graph AND every nested flow
+    (one tank per run). ``burn`` spends a unit per node step and raises once the tank
+    is empty; ``refuel`` refills it to full when a progress marker advances (a refuel
+    node's tracked value changed). A sliding window of recent node ids lets the failure
+    name the hottest nodes — the cycle whose exit condition never trips."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity
+        self.gas = capacity
+        self._last_refuel: dict[str, Any] = {}
+        self._recent: deque[str] = deque(maxlen=2000)
+
+    def refuel(self, node_id: str, value: Any) -> None:
+        """Top the tank back up when this refuel node's tracked value has changed
+        since we last saw it (forward progress), or on its first visit."""
+        if self.capacity <= 0:
+            return
+        sentinel = self._last_refuel.get(node_id, _UNSEEN)
+        if value != sentinel:
+            self._last_refuel[node_id] = value
+            self.gas = self.capacity
+
+    def burn(self, node_id: str) -> None:
+        if self.capacity <= 0:  # guard disabled
+            return
+        self._recent.append(node_id)
+        self.gas -= 1
+        if self.gas < 0:
+            hot = ", ".join(
+                f"{nid}×{n}" for nid, n in Counter(self._recent).most_common(8)
+            )
+            raise OutOfGasError(
+                f"workflow ran out of gas — burned a full tank of {self.capacity} node "
+                f"steps without forward progress (no new story/epic). Almost certainly "
+                f"an infinite loop: the exit condition on the cycle is never tripping. "
+                f"Hottest nodes in the last {len(self._recent)} steps: {hot}. The tank "
+                f"refuels on real progress (a refuel node's value changing); if this run "
+                f"legitimately needs more steps between progress points, raise "
+                f"WORKHORSE_GAS."
+            )
+
+
+# Sentinel for "this refuel node has never been visited" (distinct from any real
+# value, including None, so the first visit always counts as progress).
+_UNSEEN = object()
+
+
+def _step_loop(
+    graph: Graph,
+    writer: ArtifactWriter,
+    ctx: WorkflowContext,
+    current_id: str,
+    resume_interrupted_node: bool,
+    *,
+    manifest: dict[str, Any],
+    workflow_dir: Path,
+    session_id_path: Path,
+    tank: _GasTank,
+    depth: int = 0,
+) -> str:
+    """Step ``graph`` from ``current_id`` until a TerminalNode, mutating ``ctx`` in
+    place. Returns the terminal node's type ("terminal" | "fail") WITHOUT finalizing
+    the writer — the caller (top-level run, or a flow handler) decides what to do with
+    that result. This is the shared engine for both the root graph and every flow
+    sub-graph (see the FlowNode branch). ``tank`` is the run-wide gas guard, shared
+    across the root and all flows so a non-progressing cycle anywhere fails loudly."""
+    while True:
+        node = graph.nodes[current_id]
+
+        if isinstance(node, TerminalNode):
+            return node.type
+
+        # Infinite-loop guard: spend one unit of gas for this step (across root +
+        # flows). Refuel happens below, after a progress-marking node advances.
+        tank.burn(current_id)
+
+        # Checkpoint the node we're about to run and the context going into it.
+        # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
+        writer.write_checkpoint(current_id, ctx.as_dict())
+
+        if isinstance(node, AgentNode):
+            print(f"[workhorse] agent  → {node.id}")
+            try:
+                # run_agent is self-healing: it retries transient failures, reframes
+                # the prompt, and finally defaults the node's outputs so the run
+                # advances rather than crashing. A ClaudeInvocationError only
+                # escapes when defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
+                prompt, outputs = agent_runner.run_agent(
+                    node, ctx, workflow_dir, session_id_path,
+                    resume_session=resume_interrupted_node,
+                )
+                # The resume only applies to the first re-entered node; every node
+                # the run advances to afterward is a fresh prompt / clean context.
+                resume_interrupted_node = False
+
+                ctx.merge(outputs)
+                if node.next is None:
+                    raise RuntimeError(f"AgentNode '{node.id}' has no 'next' and is not terminal")
+                writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
+                current_id = node.next
+
+            except ClaudeInvocationError as e:
+                print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
+                if e.transient:
+                    print("[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
+                    print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
+                else:
+                    print("[workhorse] This appears to be a persistent error", file=sys.stderr)
+                raise
+
+        elif isinstance(node, ScriptNode):
+            # A re-entered script/branch carries no Claude session; clear the flag
+            # so a later agent node isn't mistaken for an interrupted continuation.
+            resume_interrupted_node = False
+            print(f"[workhorse] script → {node.id}")
+            try:
+                cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir)
+                ctx.merge(outputs)
+                # Refuel the gas tank on forward progress: when a node declares a
+                # `refuel` key (e.g. select_story → story_slug), a CHANGED value means
+                # a new unit of work began, so top the tank back up. Reprocessing the
+                # same story/epic leaves the value unchanged → no refuel → the loop
+                # eventually runs dry and halts.
+                if node.refuel:
+                    tank.refuel(node.id, ctx.get_dotpath(node.refuel, None))
+                if node.next is None:
+                    raise RuntimeError(f"ScriptNode '{node.id}' has no 'next' and is not terminal")
+                writer.write_step(node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next)
+                current_id = node.next
+            except ScriptExitError as e:
+                # Propagate the script's own exit code so callers can distinguish
+                # expected halts (e.g. await_operator exits 2 for "blocked") from
+                # genuine crashes (exit 1).
+                print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
+                sys.exit(e.exit_code)
+            except Exception as e:
+                # Log script errors with context
+                print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
+                print("[workhorse] Script execution failed - workflow can be resumed after fixing", file=sys.stderr)
+                print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
+                raise
+
+        elif isinstance(node, BranchNode):
+            resume_interrupted_node = False
+            print(f"[workhorse] branch → {node.id}")
+            next_id, value = branch_runner.evaluate(node, ctx)
+            writer.write_branch(node.id, node.path, value, next_id)
+            current_id = next_id
+
+        elif isinstance(node, FlowNode):
+            # Capture whether THIS entry is a genuine mid-flow resume (the parent was
+            # killed inside this flow node) BEFORE clearing the flag. Only a real
+            # resume reuses the child's checkpoint; a fresh re-entry (a loop body
+            # invoking the flow again) must re-run the flow from its start.
+            is_flow_resume = resume_interrupted_node
+            resume_interrupted_node = False
+            outputs = _run_flow(
+                node, graph, writer, ctx,
+                manifest=manifest, workflow_dir=workflow_dir,
+                session_id_path=session_id_path, tank=tank, depth=depth,
+                resume=is_flow_resume,
+            )
+            ctx.merge(outputs)
+            if node.next is None:
+                raise RuntimeError(f"FlowNode '{node.id}' has no 'next' and is not terminal")
+            writer.write_step(
+                node.id, f"flow:{node.name}", outputs, ctx.as_dict(), next_node=node.next
+            )
+            current_id = node.next
+
+        else:
+            raise RuntimeError(f"Unknown node type: {type(node)}")
+
+
+def _enter(
+    writer: ArtifactWriter,
+    graph: Graph,
+    manifest: dict[str, Any],
+    initial: dict[str, Any],
+) -> tuple[str, WorkflowContext, bool]:
+    """Decide resume-vs-fresh for ``writer``'s run dir and return
+    ``(current_id, ctx, resume_interrupted_node)``. With no checkpoint, start fresh
+    from ``graph.start`` with ``initial`` context. With one, restore the context and
+    either fast-forward past an already-completed node or re-enter the interrupted
+    one. This is the same logic the root uses inline (kept separate there for its
+    friendly messages); flows reuse it for resume across a flow boundary."""
+    checkpoint = writer.read_checkpoint()
+    if checkpoint is None:
+        return graph.start, WorkflowContext(initial=initial), False
+    current_id = checkpoint["current_id"]
+    if current_id not in graph.nodes:
+        raise ValueError(
+            f"checkpoint node '{current_id}' not found in flow '{graph.name}' "
+            f"(did the flow change?)"
+        )
+    ctx = WorkflowContext(initial={**manifest, **checkpoint["context"]})
+    done = writer.read_done(current_id)
+    if _should_fast_forward(done, checkpoint):
+        after = writer.read_context_after(current_id)
+        if after is not None:
+            ctx = WorkflowContext(initial={**manifest, **after})
+        return done["next"], ctx, False
+    return current_id, ctx, True
+
+
+def _run_flow(
+    node: FlowNode,
+    graph: Graph,
+    writer: ArtifactWriter,
+    parent_ctx: WorkflowContext,
+    *,
+    manifest: dict[str, Any],
+    workflow_dir: Path,
+    session_id_path: Path,
+    tank: _GasTank,
+    depth: int,
+    resume: bool = False,
+) -> dict[str, Any]:
+    """Run the flow named by ``node`` as a child graph and return its declared
+    outputs. The child context is ``{manifest, flow.vars, rendered_args}`` — only the
+    rendered ``args`` cross from the parent, so the boundary is explicit. The child
+    runs under a nested artifact scope so a kill inside it resumes mid-flow.
+
+    ``resume`` is the parent's "we were killed inside this flow node" signal; it gates
+    whether the child reuses its checkpoint (true resume) or starts clean. A fresh
+    re-entry (the same flow node reached again by normal forward stepping — e.g. a
+    per-story loop calling the qa flow each iteration) must run the flow from scratch,
+    NOT fast-forward through the previous invocation's completed checkpoint."""
+    if depth + 1 > _MAX_FLOW_DEPTH:
+        raise RuntimeError(
+            f"flow nesting exceeded depth {_MAX_FLOW_DEPTH} at flow node '{node.id}' "
+            f"(flow '{node.name}') — likely a flow cycle"
+        )
+    flow = graph.flows[node.name]  # existence validated at load time
+    rendered = {k: render_string(v, parent_ctx.as_dict()) for k, v in node.args.items()}
+    print(f"[workhorse] flow   → {node.id} ({node.name})")
+
+    child_writer = writer.subscope(node.id, flow.name, resume=resume)
+    initial = {**manifest, **flow.vars, **rendered}
+    current_id, child_ctx, resume_interrupted_node = _enter(
+        child_writer, flow, manifest, initial
+    )
+    term = _step_loop(
+        flow,
+        child_writer,
+        child_ctx,
+        current_id,
+        resume_interrupted_node,
+        manifest=manifest,
+        workflow_dir=workflow_dir,
+        session_id_path=child_writer.run_dir / ".session_id",
+        tank=tank,
+        depth=depth + 1,
+    )
+    child_writer.write_final_context(child_ctx.as_dict())
+    child_writer.finish(terminal=term)
+
+    # Lift the declared outputs out of the child's terminal context (missing key →
+    # the spec's declared default, mirroring the agent/script output contract).
+    return {
+        spec.key: child_ctx.get_dotpath(spec.key, spec.default) for spec in node.outputs
+    }
 
 
 def _should_fast_forward(done: dict | None, checkpoint: dict) -> bool:
@@ -385,6 +669,15 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         "$WORKHORSE_LIBRARY_DIR or library_dir in ~/.config/farrier/config.toml.",
     )
     parser.add_argument(
+        "flow",
+        nargs="?",
+        default=None,
+        help="Optional name of a `flows:` sub-graph to run standalone (e.g. "
+        "`--workflow coder qa`). Runs just that flow as its own run; the flow's "
+        "vars are its parameter contract — supply required ones via --params. Used "
+        "to re-QA an already-built story without replaying the whole pipeline.",
+    )
+    parser.add_argument(
         "--context-file",
         default=None,
         metavar="PATH",
@@ -560,6 +853,7 @@ def _run_run(args: argparse.Namespace) -> None:
             run_id=args.run_id,
             params=params,
             context_manifest=context_manifest,
+            flow=args.flow,
         )
     )
 

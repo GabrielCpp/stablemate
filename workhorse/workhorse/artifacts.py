@@ -64,6 +64,43 @@ class ArtifactWriter:
         self._write_run_json(terminal=None)
         return self
 
+    @classmethod
+    def at(cls, run_dir: Path, workflow_name: str, run_id: str) -> "ArtifactWriter":
+        """Create a FRESH writer rooted directly at ``run_dir`` (no
+        ``runs_dir/<name>-<id>`` derivation). Used for a flow's nested scope, which
+        lives under the parent run's node dir. Mirrors ``__init__``'s fresh-start
+        hygiene (drop any stale checkpoint/event log from a prior visit)."""
+        self = cls.__new__(cls)
+        self.run_dir = run_dir
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        (self.run_dir / cls.CHECKPOINT_FILE).unlink(missing_ok=True)
+        (self.run_dir / cls.EVENTS_FILE).unlink(missing_ok=True)
+        self._started_at = datetime.now(timezone.utc).isoformat()
+        self._workflow_name = workflow_name
+        self._run_id = run_id
+        self._seq = 0
+        self._write_run_json(terminal=None)
+        return self
+
+    def subscope(
+        self, node_id: str, flow_name: str, *, resume: bool = False
+    ) -> "ArtifactWriter":
+        """Writer for a flow invoked at ``node_id``, rooted under this run's node dir
+        (``<run>/<node_id>/_flow``).
+
+        ``resume`` MUST come from the engine's "are we re-entering this exact node
+        after a kill?" signal — NOT from "does a checkpoint happen to exist". A flow
+        that ran to completion ALSO leaves a checkpoint behind, so keying resume on
+        mere checkpoint presence makes a SECOND invocation of the same flow node (a
+        loop body calling a flow) fast-forward through the prior run's completion and
+        silently skip the whole flow. So: resume in place ONLY for a genuine
+        mid-flow resume; every fresh (re-)entry starts the child clean, which is what
+        lets a flow inside a loop run again each iteration."""
+        sub_dir = self.run_dir / node_id / "_flow"
+        if resume and (sub_dir / self.CHECKPOINT_FILE).exists():
+            return ArtifactWriter.resume(sub_dir)
+        return ArtifactWriter.at(sub_dir, flow_name, node_id)
+
     def write_checkpoint(self, current_id: str, context: dict[str, Any]) -> None:
         """Atomically record the node about to run and the context going into it,
         so a crashed run can resume from exactly this point. Bumps the checkpoint

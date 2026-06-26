@@ -82,7 +82,7 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: slept.append(s)):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
         out = agent._invoke_claude("p", "resolve_surface_coverage", None)
 
     assert out == "RESULT_OK"
@@ -103,7 +103,7 @@ def test_session_limit_pauses_until_reset_then_resumes():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: slept.append(s)):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
         out = agent._invoke_claude("p", "review_plan", None)
 
     assert out == "RESULT_OK"
@@ -174,7 +174,7 @@ def test_structured_reset_at_drives_invoke_wait():
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
          patch.object(agent.time, "time", lambda: now), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: slept.append(s)):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
         out = agent._invoke_claude("p", "n", None)
 
     assert out == "OK"
@@ -241,7 +241,7 @@ def test_cap_sleeps_until_reset_then_resumes():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: slept.append(s)):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
         out = agent._invoke_claude("prompt", "select_gate", None)
 
     assert out == "RESULT_OK"
@@ -262,7 +262,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
         return "OK_AFTER_CAPS"
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: None):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: None):
         out = agent._invoke_claude("p", "n", None, max_invoke_retries=1)  # short budget = 1
 
     assert out == "OK_AFTER_CAPS"
@@ -275,7 +275,7 @@ def test_cap_wait_safety_bound():
         raise ClaudeInvocationError(CAP_MSG, transient=True)
 
     with patch.object(agent, "_run_claude_cli", always_cap), \
-         patch.object(agent, "_sleep_with_notice", lambda s, n, l: None), \
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: None), \
          patch.object(agent, "_MAX_CAP_WAITS", 3):
         try:
             agent._invoke_claude("p", "n", None)
