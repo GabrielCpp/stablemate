@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ostler/feature.schema.json",
+  "title": "Feature Concept frontmatter (docs/features/**/<slug>.md)",
+  "type": "object",
+  "required": ["type", "slug", "title"],
+  "additionalProperties": true,
+  "properties": {
+    "type": { "const": "feature" },
+    "slug": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "area": { "type": "string" },
+    "route": { "type": ["string", "null"] },
+    "capture": { "type": "boolean" }
+  }
+}
