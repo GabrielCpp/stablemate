@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse.runner import agent
-from workhorse.runner.agent import ClaudeInvocationError
+from workhorse.runner.agent import BackendInvocationError
 from workhorse.graph.context import WorkflowContext
 from workhorse.graph.nodes import AgentNode, OutputSpec
 
@@ -57,7 +57,7 @@ def test_empty_result_then_reframe_succeeds():
         calls["n"] += 1
         if calls["n"] == 1:
             # Mirrors _run_claude_cli when result text is empty.
-            raise ClaudeInvocationError(
+            raise BackendInvocationError(
                 "No 'result' event received from Claude for node 'review_implementation'",
                 transient=True,
             )
@@ -75,7 +75,7 @@ def test_persistent_failure_defaults_to_next_node():
     """When every reframing fails, return safe defaults so the controller can
     advance to node.next instead of raising."""
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise ClaudeInvocationError("No 'result' event received", transient=True)
+        raise BackendInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
          patch.object(agent.time, "sleep", lambda s: None):
@@ -92,7 +92,7 @@ def test_reframe_count_then_default():
 
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
-        raise ClaudeInvocationError("No 'result' event received", transient=True)
+        raise BackendInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
          patch.object(agent.time, "sleep", lambda s: None):
@@ -126,7 +126,7 @@ def test_default_outputs_use_declared_defaults_else_none():
     )
 
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise ClaudeInvocationError("No 'result' event received", transient=True)
+        raise BackendInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
          patch.object(agent.time, "sleep", lambda s: None):
@@ -186,7 +186,7 @@ def test_overflow_compacts_then_continues_same_prompt():
     def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise ClaudeInvocationError("Context window exhausted", overflow=True)
+            raise BackendInvocationError("Context window exhausted", overflow=True)
         # second invocation (after compaction) succeeds; must be the original prompt
         assert "reframe" not in prompt.lower() and "do your best" not in prompt.lower()
         return good
@@ -211,7 +211,7 @@ def test_overflow_compacts_then_continues_same_prompt():
 def test_overflow_falls_back_to_reframe_when_compaction_fails():
     """If compaction can't help, the runner reframes (fresh session) then defaults."""
     def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise ClaudeInvocationError("prompt is too long", overflow=True)
+        raise BackendInvocationError("prompt is too long", overflow=True)
 
     def failed_compact(session_id_path, node_id, model=None):
         return False  # /compact unavailable/ineffective
@@ -231,7 +231,7 @@ def test_overflow_compaction_attempts_are_bounded():
     compacted = {"n": 0}
 
     def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise ClaudeInvocationError("context window exceeded", overflow=True)
+        raise BackendInvocationError("context window exceeded", overflow=True)
 
     def ok_compact(session_id_path, node_id, model=None):
         compacted["n"] += 1
@@ -246,10 +246,53 @@ def test_overflow_compaction_attempts_are_bounded():
     assert compacted["n"] == 2, "compaction must be bounded by max_compact_attempts"
 
 
+def test_non_recoverable_backend_error_aborts_without_reframe():
+    """A non-transient, non-overflow backend failure (e.g. an opencode 'Unexpected
+    server error') is non-recoverable: reframing can't bring back a crashed CLI and
+    fabricating defaults would corrupt the workflow, so the ladder re-raises at once
+    for a clean abort — no reframe, no default outputs."""
+    calls = {"n": 0}
+
+    def fatal(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError(
+            "opencode CLI exited with code 1 for node 'review_implementation': "
+            "Unexpected server error. Check server logs for details.",
+            transient=False,
+        )
+
+    with patch.object(agent, "_invoke_claude", fatal), \
+         patch.object(agent.time, "sleep", lambda s: None):
+        try:
+            _run(_node(), max_rephrase_attempts=3)
+            raise AssertionError("expected re-raise on a non-recoverable backend failure")
+        except BackendInvocationError:
+            pass
+
+    assert calls["n"] == 1, "non-recoverable failure must not reframe or default"
+
+
+def test_transient_failure_still_reframes_not_aborts():
+    """Guard for the non-recoverable fast-path: a TRANSIENT failure must still go
+    through reframe→default, NOT the immediate abort path."""
+    calls = {"n": 0}
+
+    def transient_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("overloaded", transient=True)
+
+    with patch.object(agent, "_invoke_claude", transient_fail), \
+         patch.object(agent.time, "sleep", lambda s: None):
+        _, outputs = _run(_node(), max_rephrase_attempts=2)
+
+    assert calls["n"] == 3, "transient failure should reframe (initial + 2) then default"
+    assert outputs["decision"] == "continue"
+
+
 def test_default_outputs_disabled_raises():
     """With defaulting off, a persistently failing node raises for a hard stop."""
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise ClaudeInvocationError("No 'result' event received", transient=True)
+        raise BackendInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
          patch.object(agent, "USE_DEFAULT_OUTPUTS", False), \
@@ -257,7 +300,7 @@ def test_default_outputs_disabled_raises():
         try:
             _run(_node(), max_rephrase_attempts=1)
             raise AssertionError("expected raise when defaulting is disabled")
-        except ClaudeInvocationError:
+        except BackendInvocationError:
             pass
 
 

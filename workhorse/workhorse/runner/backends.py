@@ -172,42 +172,23 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
 
 
 def _finalize_turn(
-    backend_name, node_id, state, diagnostics, timed_out, returncode, session_id_path
+    backend_name, node_id, state, diagnostics, timed_out, returncode, session_id_path,
+    timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
 ) -> str:
-    """Classify a finished turn the same way _run_claude_cli does: timeout and
-    empty result are transient; a known overflow marker is a (non-transient)
-    overflow; a non-zero exit is transient only if its output matches a retryable
-    marker. Persist the session id on success/overflow. Returns the result text."""
-    tail = f": {diagnostics.strip()}" if diagnostics.strip() else ""
-    sid = state.get("session_id")
-
-    if timed_out:
-        raise _agent.BackendInvocationError(
-            f"Timeout waiting for result from {backend_name} for node '{node_id}'"
-            f" after {int(_agent.DEFAULT_RESULT_TIMEOUT_S)}s{tail}",
-            transient=True,
-        )
-    if _agent._is_context_overflow(diagnostics):
-        if session_id_path and sid:
-            session_id_path.write_text(sid)
-        raise _agent.BackendInvocationError(
-            f"Context window exhausted for node '{node_id}'{tail}",
-            transient=False,
-            overflow=True,
-        )
-    if returncode != 0:
-        raise _agent.BackendInvocationError(
-            f"{backend_name} CLI exited with code {returncode} for node '{node_id}'{tail}",
-            transient=_agent._is_transient(diagnostics),
-        )
-    if not state.get("result_text"):
-        raise _agent.BackendInvocationError(
-            f"No result text from {backend_name} for node '{node_id}'{tail}",
-            transient=True,
-        )
-    if session_id_path and sid:
-        session_id_path.write_text(sid)
-    return state["result_text"]
+    """Classify a finished turn through the one shared classifier, so the JSONL/text
+    backends and the Claude path produce identical failure messages and transient /
+    overflow / non-recoverable verdicts. See ``agent.classify_turn``."""
+    return _agent.classify_turn(
+        backend_name,
+        node_id,
+        result_text=state.get("result_text"),
+        diagnostics=diagnostics,
+        timed_out=timed_out,
+        returncode=returncode,
+        timeout=timeout,
+        session_id=state.get("session_id"),
+        session_id_path=session_id_path,
+    )
 
 
 def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
@@ -328,7 +309,7 @@ class CodexBackend(AgentBackend):
         state, diag, timed_out, rc = _stream_jsonl(
             cmd, node_id, timeout, prompt, _codex_on_event
         )
-        return _finalize_turn("codex", node_id, state, diag, timed_out, rc, session_id_path)
+        return _finalize_turn("codex", node_id, state, diag, timed_out, rc, session_id_path, timeout)
 
     def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
         return False
@@ -369,7 +350,7 @@ class CopilotBackend(AgentBackend):
         state, diag, timed_out, rc = _stream_jsonl(
             cmd, node_id, timeout, None, _copilot_on_event
         )
-        return _finalize_turn("copilot", node_id, state, diag, timed_out, rc, session_id_path)
+        return _finalize_turn("copilot", node_id, state, diag, timed_out, rc, session_id_path, timeout)
 
     def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
         return False
@@ -443,7 +424,7 @@ class OpenCodeBackend(AgentBackend):
         state, diag, timed_out, rc = _stream_jsonl(
             cmd, node_id, timeout, None, _opencode_on_event
         )
-        return _finalize_turn("opencode", node_id, state, diag, timed_out, rc, session_id_path)
+        return _finalize_turn("opencode", node_id, state, diag, timed_out, rc, session_id_path, timeout)
 
     def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
         return False
@@ -471,7 +452,7 @@ def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
     text = "\n".join(lines).strip()
     state = {"result_text": text, "session_id": None}
     return _finalize_turn(
-        backend_name, node_id, state, text, timed_out, returncode, session_id_path
+        backend_name, node_id, state, text, timed_out, returncode, session_id_path, timeout
     )
 
 

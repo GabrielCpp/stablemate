@@ -6,7 +6,7 @@ This document describes the guardrails and error recovery mechanisms implemented
 
 The original error:
 ```
-workhorse.runner.agent.ClaudeInvocationError: No 'result' event received from Claude for node 'review_implementation'
+workhorse.runner.agent.BackendInvocationError: No result text from claude for node 'review_implementation'
 ```
 
 This occurs when Claude's CLI doesn't return a (non-empty) result event within the expected timeframe, which can happen due to:
@@ -106,7 +106,7 @@ The following environment variables control the guardrail behavior:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_MAX_OUTPUT_RETRIES` | 2 | Additional same-session attempts when Claude's response can't be parsed |
-| `AGENT_MAX_INVOKE_RETRIES` | 4 | Additional attempts for transient Claude CLI failures |
+| `AGENT_MAX_INVOKE_RETRIES` | 4 | Additional attempts for transient agent CLI failures |
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
 | `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before defaulting the node |
 | `AGENT_USE_DEFAULT_OUTPUTS` | true | Default a failed node's outputs and advance to `next` instead of crashing |

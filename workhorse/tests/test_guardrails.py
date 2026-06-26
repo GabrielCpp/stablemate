@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from workhorse.runner.agent import (
-    ClaudeInvocationError,
+    BackendInvocationError,
     _is_transient,
     _is_cap,
     _parse_reset_seconds,
@@ -113,14 +113,14 @@ def test_error_recovery():
     """Test error recovery behavior."""
     print("Testing error recovery behavior...")
     
-    # Test ClaudeInvocationError with transient flag
-    transient_error = ClaudeInvocationError("Connection timeout", transient=True)
+    # Test BackendInvocationError with transient flag
+    transient_error = BackendInvocationError("Connection timeout", transient=True)
     assert transient_error.transient, "Transient flag should be set"
-    print("  ✓ ClaudeInvocationError correctly stores transient flag")
+    print("  ✓ BackendInvocationError correctly stores transient flag")
     
-    non_transient_error = ClaudeInvocationError("Invalid model", transient=False)
+    non_transient_error = BackendInvocationError("Invalid model", transient=False)
     assert not non_transient_error.transient, "Transient flag should not be set"
-    print("  ✓ ClaudeInvocationError correctly stores non-transient flag")
+    print("  ✓ BackendInvocationError correctly stores non-transient flag")
     
     print("✓ Error recovery tests passed!\n")
 

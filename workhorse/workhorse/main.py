@@ -16,7 +16,7 @@ from .graph.nodes import AgentNode, BranchNode, FlowNode, Graph, ScriptNode, Ter
 from .runner import agent as agent_runner
 from .runner import branch as branch_runner
 from .runner import script as script_runner
-from .runner.agent import ClaudeInvocationError
+from .runner.agent import BackendInvocationError
 from .runner.script import ScriptExitError
 from .templates import render_string
 
@@ -176,6 +176,17 @@ def run(
         print(f"[workhorse] ERROR: {e}", file=sys.stderr)
         writer.finish(terminal="fail")
         return 1
+    except BackendInvocationError as e:
+        # An agent-CLI turn failed in a way the resilience ladder couldn't recover
+        # (a non-recoverable backend/CLI crash, or a transient that exhausted its
+        # budget with defaulting disabled). End the run cleanly — a clear message
+        # and a resume command — instead of letting it surface as a raw traceback.
+        agent_runner.terminate_active()
+        kind = "transient" if e.transient else "non-recoverable"
+        print(f"[workhorse] ERROR: {kind} agent failure — {e}", file=sys.stderr)
+        print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}", file=sys.stderr)
+        writer.finish(terminal="fail")
+        return 1
 
     writer.write_final_context(ctx.as_dict())
     writer.finish(terminal=terminal_type)
@@ -307,8 +318,9 @@ def _step_loop(
             try:
                 # run_agent is self-healing: it retries transient failures, reframes
                 # the prompt, and finally defaults the node's outputs so the run
-                # advances rather than crashing. A ClaudeInvocationError only
-                # escapes when defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
+                # advances rather than crashing. A BackendInvocationError only
+                # escapes when the failure is non-recoverable (the backend/CLI
+                # itself crashed) or defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
                 prompt, outputs = agent_runner.run_agent(
                     node, ctx, workflow_dir, session_id_path,
                     resume_session=resume_interrupted_node,
@@ -323,13 +335,13 @@ def _step_loop(
                 writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
                 current_id = node.next
 
-            except ClaudeInvocationError as e:
+            except BackendInvocationError as e:
                 print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
                 if e.transient:
                     print("[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
                     print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
                 else:
-                    print("[workhorse] This appears to be a persistent error", file=sys.stderr)
+                    print("[workhorse] This is a non-recoverable agent failure", file=sys.stderr)
                 raise
 
         elif isinstance(node, ScriptNode):
