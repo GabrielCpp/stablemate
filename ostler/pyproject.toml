@@ -1,6 +1,6 @@
 [project]
 name = "ostler"
-version = "1.0.0"
+version = "0.1.0"
 description = "Define, validate, search and mutate a repository's markdown knowledge graph (OKF profile: epics, stories, seeds, knowledge, features)."
 readme = "README.md"
 requires-python = ">=3.12"
