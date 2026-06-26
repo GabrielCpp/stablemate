@@ -89,6 +89,33 @@ class ScriptNode(BaseModel):
     # Per-node working directory (Jinja2-rendered). Sets the subprocess CWD for
     # the script. When empty/None, defaults to the workflow directory.
     cwd: str | None = None
+    # Gas-tank refuel marker (infinite-loop guard). When set to a context dotpath,
+    # reaching this node REFILLS the run's gas tank whenever the value at that path
+    # has changed since the last visit — i.e. real forward progress was made. The
+    # engine burns one unit of gas per node step and halts when the tank empties, so
+    # a healthy run tops up at each progress point and never runs dry, while a loop
+    # that reprocesses the SAME unit forever burns one tank and stops. The coder
+    # workflow refuels on a new story (`story_slug`) and a new epic (`epic`). See
+    # main.py `_GasTank`.
+    refuel: str | None = None
+    next: str | None = None
+
+
+class FlowNode(BaseModel):
+    """Call a named sub-graph (a ``flows:`` entry) like a function: render ``args``
+    into a fresh child context, run the flow to its terminal, pull the declared
+    ``outputs`` back into the parent context, then advance to ``next``. Mirrors
+    AgentNode/ScriptNode's args/outputs/next shape so it composes the same way."""
+    type: Literal["flow"]
+    id: str
+    # Which flow (key in the containing graph's `flows:` map) to invoke.
+    name: str
+    # Jinja2 templates rendered against the PARENT context; the rendered values are
+    # the ONLY things that cross into the child context (alongside the flow's own
+    # vars), so the boundary is explicit and parent state can't silently leak in.
+    args: dict[str, str] = Field(default_factory=dict)
+    # Keys to lift OUT of the child's terminal context back into the parent.
+    outputs: list[OutputSpec] = Field(default_factory=list)
     next: str | None = None
 
 
@@ -114,7 +141,7 @@ class TerminalNode(BaseModel):
 
 
 Node = Annotated[
-    AgentNode | ScriptNode | BranchNode | TerminalNode,
+    AgentNode | ScriptNode | BranchNode | FlowNode | TerminalNode,
     Field(discriminator="type"),
 ]
 
@@ -124,6 +151,10 @@ class Graph(BaseModel):
     start: str
     vars: dict[str, Any] = Field(default_factory=dict)
     nodes: dict[str, Node]
+    # Named sub-graphs callable via a FlowNode, or runnable standalone
+    # (`workhorse run <workflow> <flow>`). Each value is itself a Graph, so flows
+    # self-validate and may (within the depth backstop) nest.
+    flows: dict[str, Graph] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_edges(self) -> Graph:
@@ -134,6 +165,15 @@ class Graph(BaseModel):
             refs: list[str] = []
             if isinstance(node, (AgentNode, ScriptNode)) and node.next:
                 refs.append(node.next)
+            elif isinstance(node, FlowNode):
+                if node.next:
+                    refs.append(node.next)
+                # The flow itself must resolve in THIS graph's `flows:` map (lexical
+                # scope); the sub-graph it names self-validates as its own Graph.
+                if node.name not in self.flows:
+                    raise ValueError(
+                        f"flow node '{node.id}' references unknown flow '{node.name}'"
+                    )
             elif isinstance(node, BranchNode):
                 refs.extend(node.cases.values())
                 refs.extend(c.next for c in node.conditions)

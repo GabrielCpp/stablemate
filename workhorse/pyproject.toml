@@ -25,7 +25,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+# pytest-xdist: the workflow integration suites (e.g. the coder workflow's tests,
+# which drive the real CLI as a subprocess per test) are subprocess/CPU-bound and
+# shard cleanly across cores — their pytest.ini sets `-n auto`, which needs xdist.
+test = ["pytest>=8.0", "pytest-xdist>=3.0"]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"
