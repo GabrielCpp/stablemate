@@ -38,8 +38,17 @@ wheels = [
 ]
 
 [[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
+]
+
+[[package]]
 name = "farrier"
-version = "1.5.0"
+version = "1.5.1"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -73,6 +82,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "json-repair"
+version = "0.61.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/c0/1cb689126eacd166fd5a78370f095c7d3a250808dabeda129300e5280110/json_repair-0.61.0.tar.gz", hash = "sha256:48759cc6c3052814c797d1d56787d9e1d451603a8760a55d619e97d2f49353d6", size = 50055, upload-time = "2026-06-16T12:18:33.32Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/b9/e996902245d5e12e55b0b2e667d3e83a4636dec3692e405e5b8ea0868263/json_repair-0.61.0-py3-none-any.whl", hash = "sha256:ee9fe5f95fcb2713d72d4495b67b794b62ff2cd24d6dba3bfb3173d9f7ab0f7d", size = 48490, upload-time = "2026-06-16T12:18:31.883Z" },
 ]
 
 [[package]]
@@ -188,7 +206,7 @@ wheels = [
 
 [[package]]
 name = "ostler"
-version = "1.0.0"
+version = "0.1.0"
 source = { editable = "ostler" }
 dependencies = [
     { name = "jsonschema" },
@@ -350,6 +368,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7d/0d/549bd94f1a0a402dc8cf64563a117c0f3765662e2e668477624baeec44d5/pytest-9.0.3.tar.gz", hash = "sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c", size = 1572165, upload-time = "2026-04-07T17:16:18.027Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/24/a372aaf5c9b7208e7112038812994107bc65a84cd00e0354a88c2c77a617/pytest-9.0.3-py3-none-any.whl", hash = "sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9", size = 375249, upload-time = "2026-04-07T17:16:16.13Z" },
+]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791eb921115fca8e44e596a13efeda518b9d845a619450/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1", size = 88069, upload-time = "2025-07-01T13:30:59.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396, upload-time = "2025-07-01T13:30:56.632Z" },
 ]
 
 [[package]]
@@ -550,10 +581,11 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "0.7.2"
+version = "0.7.4"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },
+    { name = "json-repair" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -561,13 +593,16 @@ dependencies = [
 [package.optional-dependencies]
 test = [
     { name = "pytest" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "json-repair", specifier = ">=0.30" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 provides-extras = ["test"]

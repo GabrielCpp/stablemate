@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -202,6 +201,28 @@ class RunResult:
         candidates = [d for d in self.runs_dir.iterdir() if d.is_dir()]
         return max(candidates, key=lambda d: d.stat().st_mtime) if candidates else None
 
+    def _node_artifact(self, node_id: str, filename: str) -> Path | None:
+        """Locate ``<node_id>/<filename>`` for a node that may live at the top level
+        OR inside a ``flows:`` sub-graph. A flow call writes its child nodes under a
+        nested scope ``<flow_node>/_flow/<node_id>/…`` (flows may nest, giving
+        ``…/_flow/…/_flow/<node_id>/…``). Node ids are unique across a workflow, so
+        we prefer the top-level path and otherwise return the first match under any
+        ``_flow`` scope — this keeps ``step_outputs``/``prompt`` working unchanged
+        whether a node was hoisted into a flow or not."""
+        rd = self.run_dir
+        if rd is None:
+            return None
+        direct = rd / node_id / filename
+        if direct.is_file():
+            return direct
+        # rglob finds every `_flow` scope at any nesting depth; a flow's immediate
+        # child node sits directly under its scope dir.
+        for flow_dir in sorted(rd.rglob("_flow")):
+            cand = flow_dir / node_id / filename
+            if cand.is_file():
+                return cand
+        return None
+
     # ── Inspection ────────────────────────────────────────────────────────────
 
     def passed(self) -> bool:
@@ -224,12 +245,12 @@ class RunResult:
         return {}
 
     def step_outputs(self, node_id: str) -> dict[str, Any]:
-        """Outputs extracted by workhorse for ``node_id`` (``output.json``)."""
-        rd = self.run_dir
-        if rd is None:
-            return {}
-        f = rd / node_id / "output.json"
-        if not f.is_file():
+        """Outputs extracted by workhorse for ``node_id`` (``output.json``).
+
+        Resolves the node whether it ran at the top level or inside a ``flows:``
+        sub-graph (nested ``_flow`` scope)."""
+        f = self._node_artifact(node_id, "output.json")
+        if f is None:
             return {}
         try:
             return json.loads(f.read_text(encoding="utf-8"))
@@ -237,12 +258,10 @@ class RunResult:
             return {}
 
     def prompt(self, node_id: str) -> str:
-        """Rendered prompt that was sent to the agent for ``node_id``."""
-        rd = self.run_dir
-        if rd is None:
-            return ""
-        f = rd / node_id / "prompt.md"
-        return f.read_text(encoding="utf-8") if f.is_file() else ""
+        """Rendered prompt that was sent to the agent for ``node_id`` (top level or
+        inside a ``flows:`` sub-graph)."""
+        f = self._node_artifact(node_id, "prompt.md")
+        return f.read_text(encoding="utf-8") if f is not None else ""
 
     def calls(self, command: str) -> list[dict[str, Any]]:
         """All recorded shim invocations for ``command``, sorted by seq."""
@@ -390,11 +409,17 @@ class WorkflowRun:
         self,
         *,
         params: dict[str, Any] | None = None,
+        flow: str | None = None,
         cli: str = "claude",
         timeout: float = 120,
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
         """Execute ``workhorse --workflow <path>`` as a subprocess.
+
+        Pass ``flow`` to run a named ``flows:`` sub-graph standalone
+        (``workhorse --workflow <path> <flow>``) — the re-run-one-phase entrypoint.
+        The flow's vars are its parameter contract, so ``params`` must supply every
+        required one.
 
         Environment (in precedence order, highest last):
         - Inherited from the calling process (``os.environ``)
@@ -404,8 +429,10 @@ class WorkflowRun:
         """
         self._setup_shims(cli)
 
-        cmd = ["workhorse", "--workflow", str(self._workflow),
-               "--runs-dir", str(self._runs_dir)]
+        cmd = ["workhorse", "--workflow", str(self._workflow)]
+        if flow:
+            cmd.append(flow)  # positional: run just this flows: sub-graph
+        cmd += ["--runs-dir", str(self._runs_dir)]
         if params:
             cmd += ["--params", json.dumps(params)]
 
@@ -416,6 +443,26 @@ class WorkflowRun:
             "AGENT_CLI": cli,
             "WORKHORSE_SHIM_DIR": str(self._test_dir),
             "WORKHORSE_DEFAULT_SCRIPT_CWD": str(self._sandbox),
+            # Size the engine's gas tank (infinite-loop guard) small under test, so a
+            # workflow whose exit condition never fires runs dry and fails with the
+            # loop diagnostic in seconds rather than running until the harness `timeout`
+            # wall. The tank refuels on real progress (a new story/epic), so no
+            # legitimate test — which makes progress every iteration — comes close to
+            # burning this between refuels. A test that genuinely needs a bigger tank
+            # passes WORKHORSE_GAS in extra_env (honored here).
+            "WORKHORSE_GAS": (extra_env or {}).get("WORKHORSE_GAS", "1500"),
+            # Kill the agent runner's recovery SLEEPS under test. On a mocked agent
+            # whose output the parser can't satisfy (an unmocked node returns {}, or a
+            # mock omits a declared output), the runner reframes up to
+            # AGENT_MAX_REPHRASE_ATTEMPTS times, sleeping 10·n seconds between tries
+            # (10+20+30 = 60s) BEFORE falling back to default outputs — and likewise
+            # backs off AGENT_INVOKE_BACKOFF_BASE_S seconds on a transient CLI error.
+            # Those waits are pure dead time in a test: zero them so a parse-miss
+            # resolves to defaults instantly. The logical outcome (default outputs) is
+            # unchanged; only the sleeping is removed. A test that specifically exercises
+            # the retry/reframe path can override either via extra_env.
+            "AGENT_MAX_REPHRASE_ATTEMPTS": (extra_env or {}).get("AGENT_MAX_REPHRASE_ATTEMPTS", "0"),
+            "AGENT_INVOKE_BACKOFF_BASE_S": (extra_env or {}).get("AGENT_INVOKE_BACKOFF_BASE_S", "0"),
             # Pin the repo root to the sandbox so scripts that resolve it via
             # AGENT_REPO_DIR (every git-touching script: branch-*, commit-*,
             # *-pr.sh, merge-pr.sh, push-*.sh) operate ON THE SANDBOX, never on the

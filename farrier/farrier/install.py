@@ -287,14 +287,16 @@ def library_source_path(source: Source) -> str:
     return source.rel
 
 
-# A generated skill is a *copy* of a library SKILL.md. Without a marker, an agent
-# editing it sees an ordinary skill and "fixes" the copy — losing the change on the
-# next `make agent-install`. We stamp the single source of truth into the openskill
-# `metadata` field (an arbitrary key-value object: openskill.sh/docs/creators/skill-format)
-# so the edit lands in the library instead. Only skills carry this — prompts/commands
-# and aggregated instruction files are left untouched.
+# A generated skill/command is a *copy* of a library source. Without a marker, an
+# agent editing it "fixes" the copy — losing the change on the next `make
+# agent-install`. We stamp the single source of truth into a `metadata` front-matter
+# field so the edit lands in the library instead. Skills carry it natively (openskill
+# format: openskill.sh/docs/creators/skill-format); Claude commands carry the same
+# block — the slash-command parser (and claude-code-acp) ignores keys it does not
+# recognise, so `metadata` is inert to the agent. Codex/copilot prompts and aggregated
+# instruction files are left untouched.
 def skill_metadata_block(source: Source) -> str:
-    """The openskill `metadata:` block stamping a generated skill with its source.
+    """The `metadata:` block stamping a generated skill/command with its source.
 
     Returns the YAML lines (newline-terminated) to splice into the front matter.
     """
@@ -1119,6 +1121,54 @@ class Renderer:
             f"{body}\n"
         )
 
+    def command_description(
+        self, source: Source, header: dict[str, str], body: str
+    ) -> str:
+        """The `description` for a generated Claude command's front matter.
+
+        Prefer an explicit library `description:`; otherwise fall back to the body's
+        first heading (what shows in claude-code-acp's slash-command menu). This is
+        the prompt analogue of ``skill_description``.
+        """
+        if header.get("description"):
+            return header["description"]
+        return first_heading(body, public_name(self.prefix, source))
+
+    def generated_command(self, source: Source, target: str, output_path: Path) -> str:
+        """Render a library prompt into a Claude slash command WITH front matter.
+
+        Without a `description` in the front matter, claude-code-acp has nothing to
+        advertise over ACP and the command never appears in Zed's autocomplete. So,
+        like ``generated_skill``, we emit a header carrying the slash-command keys the
+        parser recognises (description / argument-hint / model / allowed-tools) plus
+        the same `metadata:` provenance block skills get. Farrier-internal keys
+        (`agent`, `name`) are intentionally dropped: the command name comes from the
+        filename, and `agent` only selected the backend at render time.
+        """
+        header, body = split_front_matter(source.path.read_text(encoding="utf-8"))
+        header = {
+            key: self.render_templates(value, target, output_path)
+            for key, value in header.items()
+        }
+        body = self.render_templates(body, target, output_path).strip()
+        lines = [
+            "---",
+            f"description: {yaml_quote(self.command_description(source, header, body))}",
+        ]
+        # Pass through the optional slash-command keys when the library author set
+        # them (accepting both kebab and camelCase spellings in the source).
+        for key, aliases in (
+            ("argument-hint", ("argument-hint", "argumentHint")),
+            ("model", ("model",)),
+            ("allowed-tools", ("allowed-tools", "allowedTools")),
+        ):
+            value = next((header[a] for a in aliases if header.get(a)), None)
+            if value:
+                lines.append(f"{key}: {yaml_quote(value)}")
+        lines.append(skill_metadata_block(source).rstrip("\n"))
+        lines.append("---")
+        return "\n".join(lines) + "\n\n" + f"{body}\n"
+
     def render(
         self,
         agents: dict[str, bool],
@@ -1174,10 +1224,9 @@ class Renderer:
                     source, "claude", output_path
                 )
             for source in self.prompts:
-                _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
                 output_path = self.prompt_output_path(source.id, "claude")
-                outputs[output_path] = self.render_templates(
-                    body, "claude", output_path
+                outputs[output_path] = self.generated_command(
+                    source, "claude", output_path
                 )
 
         # Workflows are NOT installed/copied — they run directly from the library

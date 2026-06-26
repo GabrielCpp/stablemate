@@ -96,10 +96,9 @@ pointing `WORKFLOW_DIR` at it.
 | `WORKFLOW_DIR` | _(required)_ | Absolute path to the workflow directory (mounted at `/workflow`) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | _(unset)_ | Optional long-lived OAuth token (`claude setup-token`); skips the credentials-file seed |
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
-| `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, or `copilot`. Ignored when `AGENT_PROFILE` is set (the profile names its CLI) |
-| `AGENT_MODEL` | _(unset)_ | Overrides every node's model for the run (a node's own `model:` still wins). Not consulted under a named profile |
-| `AGENT_PROFILE` | _(unset, = `default`)_ | Run-level profile: names its CLI + models + proxy env, overriding node CLI-maps per *(cli, profile)*. The proxy must be reachable from the container |
-| `AGENT_PROFILES_FILE` | discovery | Path to a `workhorse-profiles.yaml` (else `.agents/` / `<wf-dir>/` / `~/.config/workhorse/`) |
+| `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `aider`, or `opencode` |
+| `AGENT_MODEL` | _(unset)_ | Overrides every node's model for the run (a node's own `model:` still wins) |
+| `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `aider` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |
 

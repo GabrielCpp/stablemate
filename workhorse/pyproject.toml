@@ -1,6 +1,6 @@
 [project]
 name = "workhorse-agent"
-version = "0.7.2"
+version = "0.7.4"
 description = "Fail-soft runner for YAML-defined agent workflows — drives the Claude CLI through a workflow graph unattended for days."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,10 +21,14 @@ dependencies = [
   "jinja2>=3.1",
   "pyyaml>=6.0",
   "pydantic>=2.0",
+  "json-repair>=0.30",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+# pytest-xdist: the workflow integration suites (e.g. the coder workflow's tests,
+# which drive the real CLI as a subprocess per test) are subprocess/CPU-bound and
+# shard cleanly across cores — their pytest.ini sets `-n auto`, which needs xdist.
+test = ["pytest>=8.0", "pytest-xdist>=3.0"]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"

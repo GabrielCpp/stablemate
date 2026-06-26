@@ -69,14 +69,20 @@ Copilot), then extracts JSON outputs from the response.
 | `prompt` | string | **yes** | Path to a Jinja2 template (`.md`/`.txt`), relative to the workflow dir (or absolute). |
 | `args` | map<str,str> | no | Jinja string values rendered against the context, then merged into the prompt context. Lets you parameterize a prompt without editing the template. |
 | `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
-| `model` | string \| map | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a profile or `<profile>@<model-slug>`. A map keys CLI names under the default profile (`{claude: opus, codex: "@gpt-5.5"}`) and **profile names** under a named `--profile` (`{litellm: mimo-pro}` → that profile's model). Under a profile the CLI-keys are ignored and a node that names none gets the profile's `default_model`. Unset → backend default (or `AGENT_MODEL`). |
+| `model` | string \| map | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a config profile or `<profile>@<model-slug>`. Aider/OpenCode: a provider model like `openrouter/xiaomi/mimo-v2.5`. A map keys CLI names (`{claude: opus, codex: "@gpt-5.5", aider: openrouter/xiaomi/mimo-v2.5}`), with an optional `default`; the active backend (`--cli`/`AGENT_CLI`) picks its key. Unset → backend default (or `AGENT_MODEL`). |
 | `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 
-**Output extraction.** The response is scanned for JSON in this order: a fenced
-```` ```json … ``` ```` block, then the first top-level `{…}` object. Each
-declared `outputs` key must be present, or it's an `OutputParseError`. With no
-`outputs`, nothing is captured (the agent may still print JSON).
+**Output extraction.** Strict first: the response is scanned for a fenced
+```` ```json … ``` ```` block, then the first top-level `{…}` object, parsed
+with the stdlib. If that doesn't yield an object carrying every declared
+`outputs` key, a tolerant `json-repair` pass recovers the object — fixing
+trailing commas, single quotes, comments, and truncated/unclosed braces, and
+preferring the object with the declared keys when the response embeds several
+(an example plus the real answer). Only if no object can be recovered, or a
+declared key is still missing, is it an `OutputParseError` (which then climbs
+the resilience ladder). With no `outputs`, nothing is captured (the agent may
+still print JSON).
 
 **Resilience (summary; full detail in [GUARDRAILS.md](GUARDRAILS.md)).** On
 failure workhorse climbs a ladder rather than crashing: transient retries
@@ -224,23 +230,23 @@ set, otherwise raises.
 ## 4. Running a workflow
 
 ```bash
-workhorse --workflow path/to/workflow.yaml \
+# --workflow takes a path OR a bare library name (e.g. `author`); run from the
+# repo dir so artifacts default to ./.agents/runs.
+workhorse --workflow author \
   [--runs-dir DIR] [--run-id ID] \
   [--params '{"story_path":"docs/…"}'] [--params-file params.json] \
-  [--cli claude|codex|copilot | --profile NAME [--profiles-file PATH]] \
+  [--cli claude|codex|copilot|aider|opencode] \
   [--resume-run ID|PATH | --resume-latest]
 ```
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--workflow` | — (required) | Path to the workflow file. |
-| `--runs-dir` | `<workflow-dir>/runs` | Where run artifacts are written. |
+| `--workflow` | — (required) | Path to a workflow file, **or** a bare workflow name (e.g. `author`) resolved from the configured prompt library as `<library_dir>/workflows/<name>/workflow.yaml`. Library dir = `$WORKHORSE_LIBRARY_DIR` or `library_dir` in `~/.config/farrier/config.toml`. |
+| `--runs-dir` | `<cwd>/.agents/runs` | Where run artifacts are written. Defaults to `.agents/runs` under the directory you launch workhorse from (not the workflow's dir). |
 | `--run-id` | `default` | Stable id; run dir is `<name>-<run-id>`. Use distinct ids to keep parallel runs apart. |
 | `--params` | — | Inline JSON object merged into the starting context (overrides `vars`). |
 | `--params-file` | — | JSON file of params; inline `--params` wins on conflict. |
-| `--cli` | `claude` (or `$AGENT_CLI`) | Agent backend. Mutually exclusive with `--profile`. |
-| `--profile` | — (the `default` profile) | Run-level profile: names its CLI + models + proxy env, overriding node CLI-maps per *(cli, profile)*. See the README's "Run-level profiles". |
-| `--profiles-file` | discovery (env / `.agents/` / `<wf-dir>/` / `~/.config/workhorse/`) | Path to a `workhorse-profiles.yaml`. |
+| `--cli` | `claude` (or `$AGENT_CLI`) | Agent backend: `claude`, `codex`, `copilot`, `aider`, or `opencode`. For OpenRouter models (e.g. MiMo) use `aider`/`opencode` and an `openrouter/<slug>` node model — see the README's "OpenRouter models". |
 | `--resume-run` / `--resume-latest` | — | Manually resume a specific / the latest unfinished run. |
 
 **Auto-resume.** By default each `(workflow, run-id)` maps to one stable run
