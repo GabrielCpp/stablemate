@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 from . import (
-    __version__,
     backlog as backlog_mod,
     crud,
     doctor,
@@ -27,7 +27,7 @@ _TYPES = tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ostler", description="Tend your documentation graph.")
-    p.add_argument("--version", action="version", version=f"ostler {__version__}")
+    p.add_argument("--version", action="version", version=f"ostler {_pkg_version('ostler')}")
     p.add_argument("-C", "--chdir", metavar="DIR", help="operate as if run from DIR")
     sub = p.add_subparsers(dest="command", required=True)
 
