@@ -14,6 +14,7 @@ from . import (
     doctor,
     edit,
     freeze as freeze_mod,
+    path as path_mod,
     query as query_mod,
     registry,
     select,
@@ -149,6 +150,19 @@ def _build_parser() -> argparse.ArgumentParser:
     rn.add_argument("old_slug")
     rn.add_argument("new_slug")
 
+    # ---- path resolution -----------------------------------------------------
+    pa = sub.add_parser("path", help="resolve a slug to its canonical path")
+    pas = pa.add_subparsers(dest="what", required=True)
+    pa_spec = pas.add_parser("spec", help="spec dir for a story slug")
+    pa_spec.add_argument("slug")
+    pa_story = pas.add_parser("story", help="story.md path for an epic + slug")
+    pa_story.add_argument("epic")
+    pa_story.add_argument("slug")
+    pa_branch = pas.add_parser("branch", help="git branch name for a slug")
+    pa_branch.add_argument("slug")
+    pa_branch.add_argument("--epic", action="store_true", dest="is_epic",
+                           help="emit feat/<slug> instead of story/<slug>")
+
     fz = sub.add_parser("freeze", help="pin an approved story/seed as immutable ground truth")
     fz.add_argument("ident")
     fz.add_argument("--by", default="")
@@ -283,6 +297,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         if args.op == "reorder":
             return _result(todo_mod.reorder(graph, args.names))
         return _emit(todo_mod.list_epics(graph), args.json)
+    if c == "path":
+        if args.what == "spec":
+            print(path_mod.resolve_spec(graph, args.slug))
+        elif args.what == "story":
+            print(path_mod.resolve_story(graph, args.epic, args.slug))
+        else:
+            print(path_mod.resolve_branch(args.slug, epic=args.is_epic))
+        return 0
     if c == "edit":
         return _cmd_edit(graph, args)
     if c == "freeze":
