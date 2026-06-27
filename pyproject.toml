@@ -21,3 +21,8 @@ requires-python = ">=3.12"
 
 [tool.uv.workspace]
 members = ["workhorse", "farrier", "ostler"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.20",
+]

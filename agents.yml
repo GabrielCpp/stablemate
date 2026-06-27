@@ -1,0 +1,10 @@
+repo:
+  name: stablemate
+
+agents:
+  claude: true
+  codex: false
+  copilot: false
+
+packs:
+  - python-workflow

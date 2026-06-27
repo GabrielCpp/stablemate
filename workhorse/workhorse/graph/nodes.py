@@ -75,8 +75,11 @@ class AgentNode(BaseModel):
     cwd: str | None = None
     # Additional directories to grant the agent access to (rendered as --add-dir
     # flags). Used for multi-repo workflows where the agent's CWD is one repo but
-    # it needs to read/write files in another.
-    add_dirs: list[str] = Field(default_factory=list)
+    # it needs to read/write files in another. Accepts either a list of Jinja2
+    # template strings or a single template string that resolves to a list value
+    # in the workflow context (e.g. `"{{ affected_repo_paths }}"` where the context
+    # value is a list).
+    add_dirs: list[str] | str = Field(default_factory=list)
     next: str | None = None
 
 
@@ -89,6 +92,13 @@ class ScriptNode(BaseModel):
     # Per-node working directory (Jinja2-rendered). Sets the subprocess CWD for
     # the script. When empty/None, defaults to the workflow directory.
     cwd: str | None = None
+    # Extra environment variables injected into the script subprocess (values are
+    # Jinja2-rendered from workflow context). Merged on top of the inherited
+    # os.environ so scripts can receive workflow config without sys.argv or file
+    # side-channels.  Example:
+    #   env:
+    #     CODER_WORKSPACE_ENV: "CNN_WORKSPACE"
+    env: dict[str, str] = Field(default_factory=dict)
     # Gas-tank refuel marker (infinite-loop guard). When set to a context dotpath,
     # reaching this node REFILLS the run's gas tank whenever the value at that path
     # has changed since the last visit — i.e. real forward progress was made. The
@@ -150,6 +160,12 @@ class Graph(BaseModel):
     name: str
     start: str
     vars: dict[str, Any] = Field(default_factory=dict)
+    # Workflow-level environment variables injected into every ScriptNode subprocess
+    # (values are Jinja2-rendered from workflow context). Per-node env is merged on
+    # top, so nodes can override individual keys. Example:
+    #   env:
+    #     CODER_WORKSPACE_ENV: "CNN_WORKSPACE"
+    env: dict[str, str] = Field(default_factory=dict)
     nodes: dict[str, Node]
     # Named sub-graphs callable via a FlowNode, or runnable standalone
     # (`workhorse run <workflow> <flow>`). Each value is itself a Graph, so flows
