@@ -350,7 +350,7 @@ def _step_loop(
             resume_interrupted_node = False
             print(f"[workhorse] script → {node.id}")
             try:
-                cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir)
+                cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir, graph.env or None)
                 ctx.merge(outputs)
                 # Refuel the gas tank on forward progress: when a node declares a
                 # `refuel` key (e.g. select_story → story_slug), a CHANGED value means

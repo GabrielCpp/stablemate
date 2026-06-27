@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ def run_script(
     node: ScriptNode,
     context: WorkflowContext,
     workflow_dir: Path,
+    graph_env: dict[str, str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Render script args via Jinja2, run the script, parse stdout as JSON.
@@ -48,18 +50,25 @@ def run_script(
     # Prefix interpreter so scripts don't need to be executable
     suffix = script_path.suffix.lower()
     if suffix == ".py":
-        cmd = ["python3", str(script_path)] + rendered_args
+        cmd = [sys.executable, str(script_path)] + rendered_args
     elif suffix in (".sh", ".bash"):
         cmd = ["bash", str(script_path)] + rendered_args
     else:
         cmd = [str(script_path)] + rendered_args
     cmd_str = " ".join(cmd)
 
+    env = {**os.environ}
+    if graph_env:
+        env.update({k: render_string(v, ctx) for k, v in graph_env.items()})
+    if node.env:
+        env.update({k: render_string(v, ctx) for k, v in node.env.items()})
+
     proc = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         cwd=effective_cwd,
+        env=env,
     )
 
     if proc.returncode != 0:

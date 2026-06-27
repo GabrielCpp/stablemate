@@ -569,9 +569,21 @@ def run_agent(
 
     # Render per-node working directory and additional directories from context.
     rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
-    rendered_add_dirs = [
-        d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
-    ]
+    if isinstance(node.add_dirs, str):
+        # Template string that resolves to a context list (e.g. "{{ affected_repo_paths }}").
+        # Jinja2 renders a list variable as its string repr, so look up the native context
+        # value directly when the template is a bare variable reference.
+        bare = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", node.add_dirs.strip())
+        if bare:
+            native = ctx.get(bare.group(1), [])
+            rendered_add_dirs = [str(d).strip() for d in (native if isinstance(native, list) else [native]) if d]
+        else:
+            rendered = render_string(node.add_dirs, ctx).strip()
+            rendered_add_dirs = [rendered] if rendered else []
+    else:
+        rendered_add_dirs = [
+            d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
+        ]
 
     # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
     # claude). Imported lazily to avoid an import cycle (backends imports this
