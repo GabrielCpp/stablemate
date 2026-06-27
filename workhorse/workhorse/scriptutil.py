@@ -105,6 +105,36 @@ def find_repo_root() -> Path:
     return here
 
 
+def find_docs_root(docs_path: str = "") -> Path:
+    """Resolve the docs repo root.
+
+    Priority:
+    1. Explicit ``docs_path`` argument (from workflow var)
+    2. ``CODER_DOCS_PATH`` environment variable
+    3. Falls back to ``find_repo_root()`` (AGENT_REPO_DIR / CWD walk)
+    """
+    path = docs_path or os.environ.get("CODER_DOCS_PATH", "")
+    if path:
+        p = Path(path)
+        if p.is_absolute():
+            return p.resolve()
+        return (find_repo_root() / p).resolve()
+    return find_repo_root()
+
+
+def get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | None = None):
+    """Get a config value from a repo's agents.yml workspace section.
+
+    Examples:
+        get_repo_config("olympus", "qa_mode")            # → "cli"
+        get_repo_config("olympus", "base_branch", "main") # → "develop"
+    """
+    if repos is None:
+        repos = resolve_workspace()
+    repo = repos.get(repo_name, {})
+    return repo.get(key, default)
+
+
 def build_dispatch_list(plan_ctx: dict, repos: dict[str, dict], *, fallback: bool = False) -> list[dict]:
     """Build ordered dispatch records from plan-context.json + workspace repos.
 
