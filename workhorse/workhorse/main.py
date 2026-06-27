@@ -148,6 +148,8 @@ def run(
         current_id = graph.start
         print(f"[workhorse] starting '{graph.name}' (run: {writer.run_dir.name})")
 
+    ctx.merge({"_run_dir": str(writer.run_dir)})
+
     session_id_path = writer.run_dir / ".session_id"
 
     tank = _GasTank(_configured_gas())

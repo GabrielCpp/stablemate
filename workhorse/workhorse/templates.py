@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 import sys
 from pathlib import Path
@@ -54,8 +55,23 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
     used_skills = set(context.get("_used_skills") or [])
     skill_dir_value = context.get("_skill_dir")
 
+    run_dir_value = context.get("_run_dir", "")
+
     def workhorse_var(name: str) -> Any:  # noqa: ANN202
         return context.get(name, "")
+
+    def get_node_output(node_id: str, key: str, default: Any = "") -> Any:  # noqa: ANN202
+        """Read a key from a previously-run node's output.json on disk."""
+        if not run_dir_value:
+            return default
+        output_file = Path(run_dir_value) / node_id / "output.json"
+        if not output_file.exists():
+            return default
+        try:
+            data = json.loads(output_file.read_text(encoding="utf-8"))
+            return data.get(key, default)
+        except (json.JSONDecodeError, OSError):
+            return default
 
     def skill_dir() -> str:
         return skill_dir_value if skill_dir_value else str(workflow_dir)
@@ -71,6 +87,7 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
 
     return {
         "workhorse_var": workhorse_var,
+        "get_node_output": get_node_output,
         "skill_dir": skill_dir,
         "instruction_ref": instruction_ref,
         "instruction_file": instruction_ref,
