@@ -12,6 +12,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from ..config import resolve_power
 from ..graph.nodes import AgentNode
 
 try:
@@ -459,41 +460,24 @@ def _print_rendered_prompt(node_id: str, prompt: str) -> None:
     print(f"[{node_id}] └─ end prompt " + "─" * 34, flush=True)
 
 
-def _model_for_backend(node_model: "str | dict[str, str] | None", backend_name: str) -> str | None:
-    """Resolve a node's ``model:`` field for the active CLI backend.
-
-    - ``None``  → no per-node model (caller falls through to env / backend default).
-    - ``str``   → an absolute default applied to every backend (existing behaviour).
-    - ``dict``  → per-CLI map keyed by backend name ("claude"/"codex"/"copilot");
-                  an optional ``"default"`` key covers any backend not listed. A
-                  backend that is neither listed nor has a ``"default"`` yields
-                  ``None`` so the caller falls through to AGENT_MODEL / the backend
-                  default — i.e. the map only pins the backends it names.
-    """
-    if node_model is None:
-        return None
-    if isinstance(node_model, str):
-        return node_model
-    return node_model.get(backend_name) or node_model.get("default")
-
-
-def _resolve_model(
-    node_model: "str | dict[str, str] | None",
+def _resolve_power_settings(
+    power: str | None,
     backend_name: str,
     environ: "dict[str, str]",
-) -> str | None:
-    """Concrete model for this node: the node's per-CLI ``model:`` map
-    (``_model_for_backend``), then ``AGENT_MODEL`` / ``AGENT_CLAUDE_MODEL``.
-    ``None`` lets the caller fall back to ``backend.default_model``.
+) -> tuple[str | None, str | None]:
+    """Resolve a node's abstract ``power`` into concrete backend settings.
 
-    A node targets an OpenRouter model by keying its ``model:`` map on the backend
-    that speaks OpenRouter, e.g. ``{aider: openrouter/xiaomi/mimo-v2.5}`` run with
-    ``--cli aider`` — no proxy, no run-level profile."""
-    return (
-        _model_for_backend(node_model, backend_name)
+    User config wins when present. If the config or the specific power/backend entry
+    is unset, model falls through to legacy run-level env overrides and effort stays
+    unset so the harness default applies.
+    """
+    mapped = resolve_power(power, backend_name)
+    model = (
+        mapped.model
         or environ.get("AGENT_MODEL")
         or environ.get("AGENT_CLAUDE_MODEL")
     )
+    return model, mapped.effort
 
 
 def run_agent(
@@ -591,13 +575,11 @@ def run_agent(
     from .backends import get_backend
     backend = get_backend()
 
-    # The model comes from the node's per-CLI `model:` map → AGENT_MODEL /
-    # AGENT_CLAUDE_MODEL → backend default. See _resolve_model.
-    model = _resolve_model(node.model, backend.name, os.environ) or backend.default_model
-
-    # Reasoning/thinking effort is per-node (a model that isn't a reasoning model
-    # simply leaves it unset in the workflow).
-    node_effort = node.effort
+    # The node's abstract power tier maps through user config to concrete
+    # model/effort for the active backend. Missing config falls back to env/backend
+    # defaults, preserving harness behavior.
+    model, node_effort = _resolve_power_settings(node.power, backend.name, os.environ)
+    model = model or backend.default_model
 
     # New node = clean context: drop any session left by a previous node so this
     # node's first attempt does not --resume someone else's conversation. When

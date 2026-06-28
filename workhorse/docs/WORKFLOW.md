@@ -59,7 +59,7 @@ Copilot), then extracts JSON outputs from the response.
   outputs:                     # JSON keys to capture from the response
     - key: plan_result
       default: { status: blocked }   # emitted if the node exhausts all retries
-  model: opus                  # optional backend model override (see below)
+  power: high                  # optional abstract tier resolved through user config
   timeout: 1800                # optional wall-clock budget in seconds (default 3600)
   next: review_plan            # REQUIRED for agent nodes
 ```
@@ -69,7 +69,7 @@ Copilot), then extracts JSON outputs from the response.
 | `prompt` | string | **yes** | Path to a Jinja2 template (`.md`/`.txt`), relative to the workflow dir (or absolute). |
 | `args` | map<str,str> | no | Jinja string values rendered against the context, then merged into the prompt context. Lets you parameterize a prompt without editing the template. |
 | `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
-| `model` | string \| map | no | Backend model. Claude: `sonnet` \| `opus` \| `haiku`. Codex: a config profile or `<profile>@<model-slug>`. Aider/OpenCode: a provider model like `openrouter/xiaomi/mimo-v2.5`. A map keys CLI names (`{claude: opus, codex: "@gpt-5.5", aider: openrouter/xiaomi/mimo-v2.5}`), with an optional `default`; the active backend (`--cli`/`AGENT_CLI`) picks its key. Unset → backend default (or `AGENT_MODEL`). |
+| `power` | `low` \| `medium` \| `high` | no | Abstract capacity tier. Resolved through `~/.config/workhorse/config.toml` at `power.<tier>.<backend>` to concrete `model`/`effort`; missing config leaves model/effort unset so the backend default or `AGENT_MODEL` applies. |
 | `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 

@@ -412,13 +412,12 @@ def test_finalize_turn_non_recoverable_names_each_backend():
             assert "Claude" not in str(e), "must not hardcode 'Claude'"
 
 
-def test_agentnode_model_is_optional():
-    """A node may omit `model:`; the backend default fills in at run time."""
+def test_agentnode_power_is_optional():
+    """A node may omit `power:`; the backend default fills in at run time."""
     node = AgentNode(type="agent", id="n", prompt="do it", next="done")
-    assert node.model is None
-    # An explicit model is preserved unchanged.
-    node2 = AgentNode(type="agent", id="n2", prompt="p", model="opus", next="done")
-    assert node2.model == "opus"
+    assert node.power is None
+    node2 = AgentNode(type="agent", id="n2", prompt="p", power="high", next="done")
+    assert node2.power == "high"
 
 
 # ── OpenCode backend (opencode run --format json) ───────────────────────────────
