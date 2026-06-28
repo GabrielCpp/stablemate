@@ -114,9 +114,12 @@ workhorse --workflow ./wf/workflow.yaml --cli opencode       # OpenRouter-native
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,aider,opencode} env var.
 ```
 
-The backend default model is overridable per run with the `AGENT_MODEL` env var
-(a node's own `model:` still wins), and the resilience/timeout knobs are all env
-vars too — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md) for the full list.
+The backend default model is overridable per run with the `AGENT_MODEL` env var.
+Workflows can request an abstract `power` tier per node; your user-wide config maps
+that tier to concrete backend model/effort settings. If a tier/backend mapping is
+unset, Workhorse leaves model/effort unset and the selected harness uses its own
+defaults. The resilience/timeout knobs are env vars too — see
+[docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 | Backend | CLI | Default model | In-place compaction |
 |---|---|---|---|
@@ -129,26 +132,62 @@ vars too — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/b
 For running OpenRouter models (e.g. MiMo) on `aider` / `opencode`, see
 [OpenRouter models](#openrouter-models--aider-and-opencode) below.
 
-### Node model selection
+### Node power selection
 
-A node's optional `model:` field is interpreted by the active backend. When unset,
-the backend's own default applies (so workflows need not hard-code a Claude alias):
+A node's optional `power:` field is one of `high`, `medium`, or `low`. It is not a
+model name; it is resolved through `~/.config/workhorse/config.toml` for the active
+backend:
 
 ```yaml
 nodes:
   - id: lead_review
     type: agent
-    model: opus           # claude: alias; codex: a config profile (see below)
+    power: high
 ```
+
+Example config:
+
+```toml
+[power.high.claude]
+model = "opus"
+effort = "high"
+
+[power.medium.claude]
+model = "sonnet"
+effort = "high"
+
+[power.low.claude]
+model = "haiku"
+effort = "high"
+
+[power.high.codex]
+model = "@gpt-5.5"
+effort = "high"
+
+[power.high.opencode]
+model = "openai/gpt-5.5"
+effort = "high"
+```
+
+Inspect the loaded config with:
+
+```bash
+workhorse config list
+workhorse config get power
+workhorse config get power.high.claude
+```
+
+Set `WORKHORSE_CONFIG=/path/to/config.toml` to use a non-default config file.
 
 ### Codex config profiles (`<profile>@<model-slug>`)
 
-For the `codex` backend, `model:` selects a [codex config profile](https://github.com/openai/codex)
-(from `~/.codex/config.toml`) — which bundles provider, auth and a pinned model —
-plus an optional model override, written as `<profile>[@<model-slug>]`. `@` is the
-delimiter because `/` and `:` already appear inside model slugs:
+For the `codex` backend, the configured model value selects a
+[codex config profile](https://github.com/openai/codex) (from
+`~/.codex/config.toml`) — which bundles provider, auth and a pinned model — plus an
+optional model override, written as `<profile>[@<model-slug>]`. `@` is the delimiter
+because `/` and `:` already appear inside model slugs:
 
-| `model:` value | Resulting codex flags |
+| Configured model value | Resulting codex flags |
 |---|---|
 | `local` | `--profile local` (the profile pins the model) |
 | `openrouter@deepseek/deepseek-chat-v3.1` | `--profile openrouter -m deepseek/deepseek-chat-v3.1` |
@@ -156,51 +195,33 @@ delimiter because `/` and `:` already appear inside model slugs:
 | `@gpt-5.5` | `-m gpt-5.5` (no profile; falls back to `CODEX_PROFILE`) |
 | _(unset)_ | `CODEX_PROFILE` if set, else codex's own default |
 
-`CODEX_PROFILE` is the run-level default; a node's own `<profile>@…` always wins.
-This lets one workflow tier per node — e.g. a lead node on
-`openrouter@anthropic/claude-sonnet-4.5` and bookkeeping nodes on `local` (a local
-Qwen server) — the same way Claude nodes tier across `opus`/`sonnet`/`haiku`.
-
-```yaml
-nodes:
-  - id: lead_review
-    type: agent
-    model: openrouter@anthropic/claude-sonnet-4.5
-  - id: record
-    type: agent
-    model: local          # the local profile's pinned model
-```
+`CODEX_PROFILE` is the run-level default when the resolved model has no explicit
+profile.
 
 > These codex config profiles live in `~/.codex/config.toml`. Each names a
 > `model_provider` (`base_url` + `env_key`) and a model; codex 0.128+ requires
-> `wire_api = "responses"`. They are codex-internal, distinct from a node's
-> per-CLI `model:` map.
+> `wire_api = "responses"`. They are codex-internal, distinct from Workhorse's
+> `power` mapping.
 
 ## OpenRouter models — `aider` and `opencode`
 
-To run a workflow (or specific nodes) on an OpenRouter model — e.g. the MiMo-V2.5
-experiment — drive the run with an **OpenRouter-native backend** and give nodes an
-`openrouter/<slug>` model. Both `aider` and `opencode` speak plain chat-completions,
-so they reach OpenRouter **directly, with no proxy** (unlike codex's Responses API,
-which needs one). Export your key once and pick the backend:
+To run a workflow on an OpenRouter model — e.g. the MiMo-V2.5 experiment — drive
+the run with an **OpenRouter-native backend** and map the desired `power` tier to an
+`openrouter/<slug>` model for that backend. Both `aider` and `opencode` speak plain
+chat-completions, so they reach OpenRouter **directly, with no proxy** (unlike
+codex's Responses API, which needs one). Export your key once and pick the backend:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-v1-...
 workhorse --workflow ./wf/workflow.yaml --cli opencode   # or: --cli aider
 ```
 
-Point nodes at the model through the per-CLI `model:` map (the key is the backend
-name), so the same workflow still runs natively under `--cli claude`:
+Point the power tier at the model in your config, so the same workflow still runs
+natively under `--cli claude`:
 
-```yaml
-nodes:
-  - id: implement
-    type: agent
-    # No `effort:` — MiMo isn't a reasoning model, so leave it unset.
-    model:
-      claude: opus
-      aider: openrouter/xiaomi/mimo-v2.5
-      opencode: openrouter/xiaomi/mimo-v2.5
+```toml
+[power.high.opencode]
+model = "openrouter/xiaomi/mimo-v2.5"
 ```
 
 | Trait | `aider` | `opencode` |

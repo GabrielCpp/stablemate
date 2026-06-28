@@ -97,7 +97,8 @@ pointing `WORKFLOW_DIR` at it.
 | `CLAUDE_CODE_OAUTH_TOKEN` | _(unset)_ | Optional long-lived OAuth token (`claude setup-token`); skips the credentials-file seed |
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
 | `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `aider`, or `opencode` |
-| `AGENT_MODEL` | _(unset)_ | Overrides every node's model for the run (a node's own `model:` still wins) |
+| `AGENT_MODEL` | _(unset)_ | Fallback model override when the node's `power` mapping does not provide one |
+| `WORKHORSE_CONFIG` | `~/.config/workhorse/config.toml` | User-wide config mapping `power` tiers to backend model/effort settings |
 | `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `aider` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |

@@ -20,29 +20,11 @@ class AgentNode(BaseModel):
     prompt: str
     args: dict[str, str] = Field(default_factory=dict)
     outputs: list[OutputSpec] = Field(default_factory=list)
-    # Model for this node, interpreted by the active CLI backend.
-    #   str  → an absolute default applied to every backend (e.g. "opus" / "haiku"
-    #          for Claude). Existing behaviour.
-    #   dict → keyed selection by CLI name ("claude"/"codex"/"copilot"/"aider"/
-    #          "opencode", plus an optional "default"): e.g.
-    #          {claude: opus, codex: "@gpt-5.5", aider: openrouter/xiaomi/mimo-v2.5}.
-    #          The active backend (AGENT_CLI / --cli) picks its key; an unlisted
-    #          backend with no "default" falls through to AGENT_MODEL / the backend's
-    #          own default. To run a node on an OpenRouter model, drive the run with
-    #          an OpenRouter-native backend (aider/opencode) and give it an
-    #          "openrouter/<slug>" value here. See runner/agent.py (_resolve_model /
-    #          _model_for_backend).
-    # When unset, the backend's own default applies — workflows need not hard-code a
-    # Claude alias.
-    model: str | dict[str, str] | None = None
-    # Reasoning/thinking effort for this node's turn. "high" is worth it for the
-    # hardest decision/authoring nodes (e.g. resolving an operator block). Every
-    # backend uses its native knob: Claude and Copilot → `--effort <level>`; Codex →
-    # `-c model_reasoning_effort=<level>` (clamped to its max of "high"); aider →
-    # `--reasoning-effort` (clamped to "high"); opencode → `--variant`. Levels follow
-    # the Claude/Copilot CLIs (low|medium|high|xhigh|max); unset → backend default
-    # (use unset for non-reasoning models like MiMo). See runner/backends.py.
-    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    # Abstract capacity tier for this node. The active backend maps this through the
+    # user-wide workhorse config (`power.<level>.<backend>`) to concrete model/effort.
+    # Missing config deliberately leaves model/effort unset so the backend's default
+    # behavior applies. See workhorse/config.py and runner/agent.py.
+    power: Literal["low", "medium", "high"] | None = None
     # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 3600s
     # (1 hour) — research/implementation nodes routinely run a benchmark that
     # exceeds the old 600s ceiling. Set explicitly per node to widen or tighten it

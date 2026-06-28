@@ -1,80 +1,69 @@
-"""Tests for per-CLI model resolution (runner/agent.py:_model_for_backend /
-_resolve_model).
+"""Tests for power-tier model resolution (runner/agent.py:_resolve_power_settings).
 
-A node's ``model:`` may be a plain string (absolute default for every backend) or
-a per-CLI map keyed by backend name with an optional ``"default"`` key. The active
-backend (AGENT_CLI / --cli) picks its key; resolution then falls through to
-AGENT_MODEL / AGENT_CLAUDE_MODEL, else None (caller uses the backend default).
+A node's ``power:`` is resolved through user-wide config keyed by backend. Missing
+config falls through to AGENT_MODEL / AGENT_CLAUDE_MODEL for model and leaves effort
+unset so the harness default applies.
 Runnable:
 
     ./.venv/bin/python -m pytest tests/test_model_resolution.py
 """
 from __future__ import annotations
 
-from workhorse.runner.agent import _model_for_backend, _resolve_model
+from unittest.mock import patch
 
-ALL_BACKENDS = ("claude", "codex", "copilot", "aider", "opencode")
-
-
-def test_none_yields_none():
-    # No per-node model → caller falls through to env / backend default.
-    assert _model_for_backend(None, "claude") is None
-    assert _model_for_backend(None, "opencode") is None
+from workhorse.config import resolve_power
+from workhorse.runner.agent import _resolve_power_settings
 
 
-def test_string_is_absolute_default_for_every_backend():
-    # Regression: a plain string behaves exactly as before — same for all backends.
-    for backend in ALL_BACKENDS:
-        assert _model_for_backend("opus", backend) == "opus"
+CONFIG = {
+    "power": {
+        "high": {
+            "claude": {"model": "opus", "effort": "high"},
+            "codex": {"model": "@gpt-5.5", "effort": "high"},
+            "opencode": {"model": "openai/gpt-5.5", "effort": "high"},
+        },
+        "medium": {
+            "claude": {"model": "sonnet", "effort": "high"},
+        },
+        "low": {
+            "claude": {"model": "haiku", "effort": "high"},
+        },
+    }
+}
 
 
-def test_map_picks_the_backend_entry():
-    m = {"claude": "opus", "codex": "@gpt-5.5", "aider": "openrouter/xiaomi/mimo-v2.5"}
-    assert _model_for_backend(m, "claude") == "opus"
-    assert _model_for_backend(m, "codex") == "@gpt-5.5"
-    assert _model_for_backend(m, "aider") == "openrouter/xiaomi/mimo-v2.5"
+def test_none_power_yields_env_model_and_no_effort():
+    assert _resolve_power_settings(None, "claude", {}) == (None, None)
+    assert _resolve_power_settings(None, "codex", {"AGENT_MODEL": "x"}) == ("x", None)
 
 
-def test_map_missing_backend_without_default_yields_none():
-    # copilot is not listed and there's no "default" → fall through (None).
-    m = {"claude": "opus", "codex": "@gpt-5.5"}
-    assert _model_for_backend(m, "copilot") is None
-    assert _model_for_backend(m, "opencode") is None
+def test_power_picks_backend_mapping():
+    with patch("workhorse.runner.agent.resolve_power") as resolve:
+        resolve.side_effect = lambda power, backend: resolve_power(power, backend, CONFIG)
+        assert _resolve_power_settings("high", "claude", {}) == ("opus", "high")
+        assert _resolve_power_settings("high", "codex", {}) == ("@gpt-5.5", "high")
+        assert _resolve_power_settings("high", "opencode", {}) == ("openai/gpt-5.5", "high")
 
 
-def test_map_default_key_covers_unlisted_backends():
-    m = {"claude": "opus", "default": "sonnet"}
-    assert _model_for_backend(m, "claude") == "opus"     # explicit entry wins
-    assert _model_for_backend(m, "codex") == "sonnet"    # falls to "default"
-    assert _model_for_backend(m, "opencode") == "sonnet"
+def test_missing_backend_mapping_falls_through_to_env_and_no_effort():
+    with patch("workhorse.runner.agent.resolve_power") as resolve:
+        resolve.side_effect = lambda power, backend: resolve_power(power, backend, CONFIG)
+        assert _resolve_power_settings("medium", "opencode", {}) == (None, None)
+        assert _resolve_power_settings("medium", "opencode", {"AGENT_MODEL": "fallback"}) == ("fallback", None)
 
 
-def test_haiku_map_only_pins_claude():
-    # research's light nodes: claude:haiku, others fall through to their own default.
-    m = {"claude": "haiku"}
-    assert _model_for_backend(m, "claude") == "haiku"
-    assert _model_for_backend(m, "codex") is None
-    assert _model_for_backend(m, "aider") is None
+def test_default_backend_mapping_covers_unlisted_backends():
+    cfg = {"power": {"high": {"default": {"model": "default-model", "effort": "high"}}}}
+    with patch("workhorse.runner.agent.resolve_power") as resolve:
+        resolve.side_effect = lambda power, backend: resolve_power(power, backend, cfg)
+        assert _resolve_power_settings("high", "copilot", {}) == ("default-model", "high")
 
 
-# ── _resolve_model: node CLI-map → AGENT_MODEL → AGENT_CLAUDE_MODEL → None ────────
-
-
-def test_resolve_prefers_node_cli_map():
-    assert _resolve_model({"codex": "@gpt-5.5"}, "codex", {}) == "@gpt-5.5"
-
-
-def test_resolve_openrouter_model_for_openrouter_backend():
-    # The MiMo experiment: an aider node names an OpenRouter slug directly, no proxy.
-    nm = {"claude": "opus", "aider": "openrouter/xiaomi/mimo-v2.5"}
-    assert _resolve_model(nm, "aider", {}) == "openrouter/xiaomi/mimo-v2.5"
-    assert _resolve_model(nm, "opencode", {}) is None  # unlisted, no default
-
-
-def test_resolve_falls_through_to_env_then_none():
-    assert _resolve_model(None, "codex", {"AGENT_MODEL": "x"}) == "x"
-    assert _resolve_model(None, "codex", {"AGENT_CLAUDE_MODEL": "y"}) == "y"
-    assert _resolve_model(None, "codex", {}) is None
+def test_empty_config_keeps_harness_defaults_unset():
+    with patch("workhorse.runner.agent.resolve_power") as resolve:
+        resolve.side_effect = lambda power, backend: resolve_power(power, backend, {})
+        assert _resolve_power_settings("high", "claude", {}) == (None, None)
+        assert _resolve_power_settings("high", "claude", {"AGENT_CLAUDE_MODEL": "sonnet"}) == ("sonnet", None)
 
 
 if __name__ == "__main__":  # parity with the other tests' dual-run style

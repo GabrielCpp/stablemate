@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import ArtifactWriter
+from .config import config_path, get_config_value, load_config
 from .graph.context import WorkflowContext
 from .graph.loader import load_workflow
 from .graph.nodes import AgentNode, BranchNode, FlowNode, Graph, ScriptNode, TerminalNode
@@ -1010,6 +1011,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_dot_args(dot_p)
 
+    # config
+    config_p = sub.add_parser("config", help="Inspect user-wide workhorse config")
+    config_sub = config_p.add_subparsers(dest="config_command", required=True)
+    config_sub.add_parser("list", help="Print the loaded config")
+    get_p = config_sub.add_parser("get", help="Print one config value")
+    get_p.add_argument("name", help="Config key, e.g. power or power.high.claude")
+
     # version
     sub.add_parser("version", help="Print the installed workhorse-agent version")
 
@@ -1023,7 +1031,7 @@ def main() -> None:
     # Keep `workhorse --workflow ...` working: if no recognised subcommand is
     # given, inject `run` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"run", "test", "dot", "version"}
+    _SUBCOMMANDS = {"run", "test", "dot", "config", "version"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
@@ -1043,4 +1051,24 @@ def main() -> None:
         _run_dot(args)
         return
 
+    if args.command == "config":
+        _run_config(args)
+        return
+
     _run_run(args)
+
+
+def _run_config(args: argparse.Namespace) -> None:
+    cfg = load_config()
+    if args.config_command == "list":
+        print(f"# {config_path()}")
+        print(json.dumps(cfg, indent=2, sort_keys=True))
+        return
+    if args.config_command == "get":
+        value = get_config_value(args.name, cfg)
+        if value is None:
+            return
+        if isinstance(value, (dict, list)):
+            print(json.dumps(value, indent=2, sort_keys=True))
+        else:
+            print(value)
