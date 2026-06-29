@@ -6,9 +6,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from platformdirs import user_config_dir
+
 
 CONFIG_PATH_ENV = "WORKHORSE_CONFIG"
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "workhorse" / "config.toml"
+
+
+def _default_config_path() -> Path:
+    """Resolve the platform-appropriate config directory for workhorse.
+
+    ~/Library/Application Support/workhorse on macOS, %APPDATA%\\workhorse on Windows,
+    ~/.config/workhorse on Linux."""
+    return Path(user_config_dir("workhorse")) / "config.toml"
 
 
 @dataclass(frozen=True)
@@ -21,7 +30,20 @@ def config_path() -> Path:
     raw = os.environ.get(CONFIG_PATH_ENV)
     if raw:
         return Path(raw).expanduser()
-    return DEFAULT_CONFIG_PATH
+    return _default_config_path()
+
+
+def write_config_key(key: str, value: str) -> None:
+    """Persist a single top-level string key, preserving all other keys."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cfg = load_config()
+    cfg[key] = value
+    lines = []
+    for k, v in cfg.items():
+        escaped = str(v).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'{k} = "{escaped}"\n')
+    path.write_text("".join(lines), encoding="utf-8")
 
 
 def load_config() -> dict[str, Any]:

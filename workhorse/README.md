@@ -54,19 +54,44 @@ Run the `workhorse` command against a workflow directory. You need the agent CLI
 (`claude` by default) installed and authenticated:
 
 ```bash
+# Direct path form
 workhorse --workflow ./workflows/hello-world/workflow.yaml
+
+# Named workflow form — resolves from the configured prompt library
+workhorse run hello-world
+workhorse run coder qa --params '{"story":"CASE-1234","target_env":"dev"}'
 ```
 
 Key flags (run `workhorse --help` for the full list):
 
 | Flag | Purpose |
 |---|---|
-| `--workflow <path>` | Path to the `workflow.yaml` to run (required) |
+| `--workflow <path>` | Path to the `workflow.yaml` to run. Alternatively use the positional form: `workhorse run <name> [<flow>]` |
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<workflow-dir>/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default `default` |
 | `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
 | `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
+
+### Named workflows (`workhorse run`)
+
+The `run` subcommand resolves a workflow by name from the configured prompt library:
+
+```bash
+workhorse run <name>                              # run the workflow's default flow
+workhorse run <name> <flow>                       # run a specific flow standalone
+workhorse run <name> <flow> --params '{"k":"v"}' # with param overrides
+```
+
+Configure the library path once:
+
+```bash
+workhorse config set-library ~/path/to/prompt-library
+workhorse config set-stablemate ~/path/to/stablemate   # optional: sets CODER_WORKSPACE
+```
+
+`--workflow` and the `run` positional form are equivalent — use whichever fits the
+context. The prompt library path can also be set via `WORKHORSE_LIBRARY_DIR`.
 
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
@@ -135,8 +160,8 @@ For running OpenRouter models (e.g. MiMo) on `aider` / `opencode`, see
 ### Node power selection
 
 A node's optional `power:` field is one of `high`, `medium`, or `low`. It is not a
-model name; it is resolved through `~/.config/workhorse/config.toml` for the active
-backend:
+model name; it is resolved through the workhorse config file for the active backend
+(see [Config file location](#config-file-location) below):
 
 ```yaml
 nodes:
@@ -169,15 +194,47 @@ model = "openai/gpt-5.5"
 effort = "high"
 ```
 
-Inspect the loaded config with:
+Inspect or set config:
 
 ```bash
-workhorse config list
-workhorse config get power
-workhorse config get power.high.claude
+workhorse config show                        # print all config keys
+workhorse config show power.high.claude      # print one value
+workhorse config set-library ~/path/to/lib   # set the prompt library path
+workhorse config set-stablemate ~/path/to/sm # set the stablemate path
+workhorse config list                        # list all config keys (power table friendly)
+workhorse config get power.high.claude       # get one key
 ```
 
-Set `WORKHORSE_CONFIG=/path/to/config.toml` to use a non-default config file.
+#### Config file location
+
+Workhorse stores its own config at a platform-appropriate path (via
+[platformdirs](https://github.com/tox-dev/platformdirs)):
+
+| Platform | Default path |
+|---|---|
+| macOS | `~/Library/Application Support/workhorse/config.toml` |
+| Windows | `%APPDATA%\workhorse\config.toml` |
+| Linux | `~/.config/workhorse/config.toml` |
+
+Override the path with `WORKHORSE_CONFIG=/path/to/config.toml`.
+
+#### Initial setup
+
+After installing workhorse for the first time, register your prompt library:
+
+```bash
+workhorse config set-library ~/path/to/your/prompt-library
+# Optionally, also set the stablemate path (used as CODER_WORKSPACE):
+workhorse config set-stablemate ~/path/to/stablemate
+```
+
+Then verify:
+
+```bash
+workhorse config show
+# library_dir=/Users/you/path/to/prompt-library
+# stablemate_dir=/Users/you/path/to/stablemate
+```
 
 ### Codex config profiles (`<profile>@<model-slug>`)
 
