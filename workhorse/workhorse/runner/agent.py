@@ -337,6 +337,11 @@ _CONTEXT_OVERFLOW_MARKERS = (
     "exceeds the maximum",
     "too many tokens",
     "conversation is too long",
+    # Claude rejects sessions with too many large images — treat as overflow so the
+    # runner compacts (purging the images from context) and restarts the node rather
+    # than dying as non-recoverable.
+    "dimension limit",
+    "many-image requests",
 )
 
 
