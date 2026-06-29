@@ -409,7 +409,13 @@ class OpenCodeBackend(AgentBackend):
         effort: str | None = None,
     ) -> str:
         sid = _read_session_id(session_id_path)
-        cmd = ["opencode", "run", "--format", "json"]
+        # --print-logs routes ERROR-level logs to stderr (merged into stdout by stream_subprocess),
+        # so quota/limit errors like "The usage limit has been reached" appear as non-JSON lines in
+        # diagnostics. The existing _is_cap() check then catches "usage limit" and triggers the
+        # cap-wait path instead of burning the short-retry budget. Without this flag these logs
+        # go only to ~/.local/share/opencode/log/opencode.log and workhorse never sees them —
+        # opencode's internal exponential backoff runs silently until the watchdog kills it.
+        cmd = ["opencode", "--print-logs", "--log-level", "ERROR", "run", "--format", "json"]
         if model:
             cmd += ["-m", model]
         if effort and _OPENCODE_VARIANT.get(effort):
