@@ -3,17 +3,24 @@ import argparse
 import importlib.metadata
 import json
 import os
+import shutil
 import sys
-import tomllib
 from collections import Counter, deque
 from pathlib import Path
 from typing import Any
 
 from .artifacts import ArtifactWriter
-from .config import config_path, get_config_value, load_config
+from .config import config_path, get_config_value, load_config, write_config_key
 from .graph.context import WorkflowContext
 from .graph.loader import load_workflow
-from .graph.nodes import AgentNode, BranchNode, FlowNode, Graph, ScriptNode, TerminalNode
+from .graph.nodes import (
+    AgentNode,
+    BranchNode,
+    FlowNode,
+    Graph,
+    ScriptNode,
+    TerminalNode,
+)
 from .runner import agent as agent_runner
 from .runner import branch as branch_runner
 from .runner import script as script_runner
@@ -38,6 +45,7 @@ def run(
     params: dict[str, Any] | None = None,
     context_manifest: dict[str, Any] | None = None,
     flow: str | None = None,
+    no_cache: bool = False,
 ) -> int:
     graph = load_workflow(workflow_path)
     workflow_dir = workflow_path.parent
@@ -58,8 +66,9 @@ def run(
             return 1
         supplied = params or {}
         missing = [
-            k for k, v in graph.flows[flow].vars.items()
-            if v in (None, "") and not supplied.get(k)
+            k
+            for k, v in graph.flows[flow].vars.items()
+            if v is None and not supplied.get(k)
         ]
         if missing:
             contract = ", ".join(
@@ -68,7 +77,7 @@ def run(
             print(
                 f"error: flow '{flow}' requires params: {', '.join(missing)}\n"
                 f"  contract (var=default): {contract}\n"
-                f"  supply via --params '{{\"<var>\": \"<value>\"}}'",
+                f'  supply via --params \'{{"<var>": "<value>"}}\'',
                 file=sys.stderr,
             )
             return 1
@@ -88,6 +97,12 @@ def run(
     # over. If it has no checkpoint yet, start fresh IN that same stable dir. An
     # explicit resume_run_dir (manual --resume-*) overrides this.
     fresh_run_id = run_id
+    if no_cache and resume_run_dir is None:
+        rid = run_id or "default"
+        stable = runs_dir / f"{graph.name}-{rid}"
+        if stable.is_dir():
+            shutil.rmtree(stable)
+            print(f"[workhorse] --no-cache: cleared run dir {stable.name}")
     if resume_run_dir is None and auto:
         fresh_run_id, resume_run_dir = _auto_resolve(runs_dir, graph.name, run_id)
 
@@ -170,7 +185,10 @@ def run(
     except KeyboardInterrupt:
         agent_runner.terminate_active()
         print("\n[workhorse] interrupted — run paused.", file=sys.stderr)
-        print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}", file=sys.stderr)
+        print(
+            f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
+            file=sys.stderr,
+        )
         sys.exit(130)
     except OutOfGasError as e:
         # A never-terminating cycle: fail the run loudly (non-zero) instead of letting
@@ -187,7 +205,10 @@ def run(
         agent_runner.terminate_active()
         kind = "transient" if e.transient else "non-recoverable"
         print(f"[workhorse] ERROR: {kind} agent failure — {e}", file=sys.stderr)
-        print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}", file=sys.stderr)
+        print(
+            f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
+            file=sys.stderr,
+        )
         writer.finish(terminal="fail")
         return 1
 
@@ -325,7 +346,10 @@ def _step_loop(
                 # escapes when the failure is non-recoverable (the backend/CLI
                 # itself crashed) or defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
                 prompt, outputs = agent_runner.run_agent(
-                    node, ctx, workflow_dir, session_id_path,
+                    node,
+                    ctx,
+                    workflow_dir,
+                    session_id_path,
                     resume_session=resume_interrupted_node,
                 )
                 # The resume only applies to the first re-entered node; every node
@@ -334,17 +358,30 @@ def _step_loop(
 
                 ctx.merge(outputs)
                 if node.next is None:
-                    raise RuntimeError(f"AgentNode '{node.id}' has no 'next' and is not terminal")
-                writer.write_step(node.id, prompt, outputs, ctx.as_dict(), next_node=node.next)
+                    raise RuntimeError(
+                        f"AgentNode '{node.id}' has no 'next' and is not terminal"
+                    )
+                writer.write_step(
+                    node.id, prompt, outputs, ctx.as_dict(), next_node=node.next
+                )
                 current_id = node.next
 
             except BackendInvocationError as e:
                 print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
                 if e.transient:
-                    print("[workhorse] This is a transient error - the workflow can be resumed", file=sys.stderr)
-                    print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
+                    print(
+                        "[workhorse] This is a transient error - the workflow can be resumed",
+                        file=sys.stderr,
+                    )
+                    print(
+                        f"[workhorse] Resume command: --resume-run {writer.run_dir}",
+                        file=sys.stderr,
+                    )
                 else:
-                    print("[workhorse] This is a non-recoverable agent failure", file=sys.stderr)
+                    print(
+                        "[workhorse] This is a non-recoverable agent failure",
+                        file=sys.stderr,
+                    )
                 raise
 
         elif isinstance(node, ScriptNode):
@@ -353,7 +390,9 @@ def _step_loop(
             resume_interrupted_node = False
             print(f"[workhorse] script → {node.id}")
             try:
-                cmd_str, outputs = script_runner.run_script(node, ctx, workflow_dir, graph.env or None)
+                cmd_str, outputs = script_runner.run_script(
+                    node, ctx, workflow_dir, graph.env or None
+                )
                 ctx.merge(outputs)
                 # Refuel the gas tank on forward progress: when a node declares a
                 # `refuel` key (e.g. select_story → story_slug), a CHANGED value means
@@ -363,20 +402,36 @@ def _step_loop(
                 if node.refuel:
                     tank.refuel(node.id, ctx.get_dotpath(node.refuel, None))
                 if node.next is None:
-                    raise RuntimeError(f"ScriptNode '{node.id}' has no 'next' and is not terminal")
-                writer.write_step(node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next)
+                    raise RuntimeError(
+                        f"ScriptNode '{node.id}' has no 'next' and is not terminal"
+                    )
+                writer.write_step(
+                    node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next
+                )
                 current_id = node.next
             except ScriptExitError as e:
                 # Propagate the script's own exit code so callers can distinguish
                 # expected halts (e.g. await_operator exits 2 for "blocked") from
                 # genuine crashes (exit 1).
-                print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
+                print(
+                    f"[workhorse] ERROR in script node '{node.id}': {e}",
+                    file=sys.stderr,
+                )
                 sys.exit(e.exit_code)
             except Exception as e:
                 # Log script errors with context
-                print(f"[workhorse] ERROR in script node '{node.id}': {e}", file=sys.stderr)
-                print("[workhorse] Script execution failed - workflow can be resumed after fixing", file=sys.stderr)
-                print(f"[workhorse] Resume command: --resume-run {writer.run_dir}", file=sys.stderr)
+                print(
+                    f"[workhorse] ERROR in script node '{node.id}': {e}",
+                    file=sys.stderr,
+                )
+                print(
+                    "[workhorse] Script execution failed - workflow can be resumed after fixing",
+                    file=sys.stderr,
+                )
+                print(
+                    f"[workhorse] Resume command: --resume-run {writer.run_dir}",
+                    file=sys.stderr,
+                )
                 raise
 
         elif isinstance(node, BranchNode):
@@ -394,16 +449,28 @@ def _step_loop(
             is_flow_resume = resume_interrupted_node
             resume_interrupted_node = False
             outputs = _run_flow(
-                node, graph, writer, ctx,
-                manifest=manifest, workflow_dir=workflow_dir,
-                session_id_path=session_id_path, tank=tank, depth=depth,
+                node,
+                graph,
+                writer,
+                ctx,
+                manifest=manifest,
+                workflow_dir=workflow_dir,
+                session_id_path=session_id_path,
+                tank=tank,
+                depth=depth,
                 resume=is_flow_resume,
             )
             ctx.merge(outputs)
             if node.next is None:
-                raise RuntimeError(f"FlowNode '{node.id}' has no 'next' and is not terminal")
+                raise RuntimeError(
+                    f"FlowNode '{node.id}' has no 'next' and is not terminal"
+                )
             writer.write_step(
-                node.id, f"flow:{node.name}", outputs, ctx.as_dict(), next_node=node.next
+                node.id,
+                f"flow:{node.name}",
+                outputs,
+                ctx.as_dict(),
+                next_node=node.next,
             )
             current_id = node.next
 
@@ -563,7 +630,9 @@ def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:
             print(f"error: {label} is not valid JSON: {e}", file=sys.stderr)
             sys.exit(1)
         if not isinstance(parsed, dict):
-            print(f"error: {label} must be a JSON object (key→value map)", file=sys.stderr)
+            print(
+                f"error: {label} must be a JSON object (key→value map)", file=sys.stderr
+            )
             sys.exit(1)
         params.update(parsed)
     return params
@@ -613,7 +682,11 @@ def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
     target_skill_dir = _BACKEND_SKILL_DIR.get(backend, manifest_skill_dir)
 
     raw_instructions: dict[str, str] = raw.get("instructions") or {}
-    if manifest_skill_dir and target_skill_dir and target_skill_dir != manifest_skill_dir:
+    if (
+        manifest_skill_dir
+        and target_skill_dir
+        and target_skill_dir != manifest_skill_dir
+    ):
         ctx["_instructions"] = {
             k: v.replace(manifest_skill_dir, target_skill_dir, 1)
             for k, v in raw_instructions.items()
@@ -677,20 +750,20 @@ def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workflow",
-        required=True,
-        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'author') "
+        default=None,
+        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'coder') "
         "resolved from the configured prompt library as "
         "<library_dir>/workflows/<name>/workflow.yaml. The library dir comes from "
-        "$WORKHORSE_LIBRARY_DIR or library_dir in ~/.config/farrier/config.toml.",
+        "$WORKHORSE_LIBRARY_DIR or library_dir in ~/.config/farrier/config.toml. "
+        "May also be given as the first positional argument: "
+        "`workhorse run coder` or `workhorse run coder qa`.",
     )
     parser.add_argument(
-        "flow",
-        nargs="?",
-        default=None,
-        help="Optional name of a `flows:` sub-graph to run standalone (e.g. "
-        "`--workflow coder qa`). Runs just that flow as its own run; the flow's "
-        "vars are its parameter contract — supply required ones via --params. Used "
-        "to re-QA an already-built story without replaying the whole pipeline.",
+        "positional",
+        nargs="*",
+        help="Positional form of --workflow [flow]: `workhorse run <name> [<flow>]`. "
+        "The first token is treated as the workflow name when --workflow is omitted; "
+        "the optional second token is the flow sub-graph to run standalone.",
     )
     parser.add_argument(
         "--context-file",
@@ -749,28 +822,28 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Resume the most recent unfinished run under --runs-dir (errors if none).",
     )
+    resume_group.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Delete the stable run directory before starting, forcing a clean run "
+        "from scratch. Mutually exclusive with --resume-run and --resume-latest.",
+    )
 
 
 def _resolve_library_dir() -> Path | None:
     """Locate the installed prompt library (the dir holding ``workflows/<name>/``).
 
-    Resolution order: ``$WORKHORSE_LIBRARY_DIR`` (explicit override), then the
-    ``library_dir`` key in ``~/.config/farrier/config.toml`` — the same home config
-    farrier and the generated Makefile read (``farrier config show library_dir``),
-    so a bare ``--workflow <name>`` finds the same library the rest of the toolchain
-    uses. Returns ``None`` when neither is set."""
+    Resolution order:
+    1. ``$WORKHORSE_LIBRARY_DIR`` env var (explicit override).
+    2. ``library_dir`` key in workhorse's own config.toml (set via
+       ``workhorse config set-library <path>``).
+    Returns ``None`` when neither is set."""
     env = os.environ.get("WORKHORSE_LIBRARY_DIR")
     if env:
         return Path(env).expanduser()
-    cfg = Path.home() / ".config" / "farrier" / "config.toml"
-    if cfg.is_file():
-        try:
-            data = tomllib.loads(cfg.read_text())
-        except (OSError, tomllib.TOMLDecodeError):
-            return None
-        lib = data.get("library_dir")
-        if isinstance(lib, str) and lib:
-            return Path(lib).expanduser()
+    lib = get_config_value("library_dir")
+    if isinstance(lib, str) and lib:
+        return Path(lib).expanduser()
     return None
 
 
@@ -803,7 +876,36 @@ def _resolve_workflow_path(spec: str) -> Path:
 
 
 def _run_run(args: argparse.Namespace) -> None:
-    workflow_path = _resolve_workflow_path(args.workflow)
+    # Resolve workflow name/path and optional flow from the two input shapes:
+    #   explicit:   --workflow coder [--flow qa]  (args.workflow set, args.positional=[])
+    #   positional: coder [qa]                    (args.workflow=None, args.positional=[name, flow?])
+    workflow_spec = args.workflow
+    flow = getattr(args, "flow", None)  # legacy: flow used to be its own positional
+    positional = getattr(args, "positional", []) or []
+    if workflow_spec is None:
+        if not positional:
+            print(
+                "error: workflow is required — pass --workflow <name> or use the "
+                "positional form: workhorse run <name> [<flow>]",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        workflow_spec = positional[0]
+        if len(positional) > 1:
+            flow = positional[1]
+    elif positional:
+        # --workflow given AND positionals present → first positional is the flow
+        if len(positional) == 1:
+            flow = positional[0]
+        else:
+            print(
+                f"error: unexpected positional arguments {positional[1:]!r} — "
+                "when --workflow is given, at most one positional (the flow name) is allowed",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    workflow_path = _resolve_workflow_path(workflow_spec)
     if not workflow_path.exists():
         print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
         sys.exit(1)
@@ -825,6 +927,7 @@ def _run_run(args: argparse.Namespace) -> None:
     # Validate the active backend now so an unknown name fails fast with a clear
     # message instead of mid-run.
     from .runner.backends import get_backend
+
     try:
         get_backend()
     except ValueError as e:
@@ -868,7 +971,8 @@ def _run_run(args: argparse.Namespace) -> None:
             run_id=args.run_id,
             params=params,
             context_manifest=context_manifest,
-            flow=args.flow,
+            flow=flow,
+            no_cache=getattr(args, "no_cache", False),
         )
     )
 
@@ -879,13 +983,15 @@ def _add_test_args(parser: argparse.ArgumentParser) -> None:
         help="Directory containing workflow.yaml and a tests/ subdirectory",
     )
     parser.add_argument(
-        "--filter", "-k",
+        "--filter",
+        "-k",
         default=None,
         metavar="PATTERN",
         help="Only run tests matching this pytest -k expression",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Pass -v to pytest for verbose output",
     )
@@ -941,7 +1047,8 @@ def _add_dot_args(parser: argparse.ArgumentParser) -> None:
         help="Override the digraph identifier (default: sanitized workflow name).",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=None,
         metavar="PATH",
         help="Write the DOT output to this file (default: stdout).",
@@ -954,9 +1061,7 @@ def _parse_pins(raw: list[str] | None) -> dict[str, str]:
     for item in raw or []:
         key, sep, value = item.partition("=")
         if not sep or not key:
-            print(
-                f"error: --pin must be KEY=VALUE (got '{item}')", file=sys.stderr
-            )
+            print(f"error: --pin must be KEY=VALUE (got '{item}')", file=sys.stderr)
             sys.exit(1)
         pins[key] = value
     return pins
@@ -1011,11 +1116,35 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_dot_args(dot_p)
 
-    # config
-    config_p = sub.add_parser("config", help="Inspect user-wide workhorse config")
+    # config — mirrors farrier's interface so agents.mk / scripts can call either tool
+    config_p = sub.add_parser("config", help="Manage the workhorse/farrier home config")
     config_sub = config_p.add_subparsers(dest="config_command", required=True)
-    config_sub.add_parser("list", help="Print the loaded config")
-    get_p = config_sub.add_parser("get", help="Print one config value")
+    # show [key] — print all keys as key=value lines, or a single bare value (farrier-compatible)
+    show_p = config_sub.add_parser(
+        "show", help="Print all config keys as key=value lines, or a single bare value"
+    )
+    show_p.add_argument(
+        "key",
+        nargs="?",
+        default=None,
+        help="If given, print only the value of this key",
+    )
+    # set-library / set-stablemate — write to the farrier config file (same file farrier reads)
+    set_lib_p = config_sub.add_parser(
+        "set-library", help="Record the prompt library directory in the home config"
+    )
+    set_lib_p.add_argument(
+        "path", type=Path, help="Path to the library (the agents/ tree)"
+    )
+    set_sm_p = config_sub.add_parser(
+        "set-stablemate", help="Record the stablemate checkout path in the home config"
+    )
+    set_sm_p.add_argument("path", type=Path, help="Path to the stablemate checkout")
+    # list / get — workhorse-specific power/model config (workhorse's own config.toml)
+    config_sub.add_parser(
+        "list", help="Print the loaded workhorse config (power mappings etc.)"
+    )
+    get_p = config_sub.add_parser("get", help="Print one workhorse config value")
     get_p.add_argument("name", help="Config key, e.g. power or power.high.claude")
 
     # version
@@ -1059,11 +1188,40 @@ def main() -> None:
 
 
 def _run_config(args: argparse.Namespace) -> None:
+    if args.config_command == "set-library":
+        path = Path(args.path).expanduser().resolve()
+        write_config_key("library_dir", str(path))
+        print(f"library_dir={path}")
+        return
+
+    if args.config_command == "set-stablemate":
+        path = Path(args.path).expanduser().resolve()
+        write_config_key("stablemate_dir", str(path))
+        print(f"stablemate_dir={path}")
+        return
+
     cfg = load_config()
+
+    if args.config_command == "show":
+        if args.key:
+            value = cfg.get(args.key)
+            if value is None:
+                print(
+                    f"error: '{args.key}' is not set in {config_path()}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            print(value)
+        else:
+            for key, value in cfg.items():
+                print(f"{key}={value}")
+        return
+
     if args.config_command == "list":
         print(f"# {config_path()}")
         print(json.dumps(cfg, indent=2, sort_keys=True))
         return
+
     if args.config_command == "get":
         value = get_config_value(args.name, cfg)
         if value is None:

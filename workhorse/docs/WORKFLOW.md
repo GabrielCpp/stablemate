@@ -184,6 +184,52 @@ Looks up a dot-path in the context and routes accordingly.
 
 Both take only `id` (and `type`). They have no `next`.
 
+### 2.6 `flow` — invoke a named sub-graph
+
+A `flow` node calls one of the workflow's `flows:` sub-graphs with an isolated variable
+scope. Each `flow` is a self-contained mini-workflow with its own `vars`, `start`, and
+`nodes`.
+
+```yaml
+- id: qa_phase
+  type: flow
+  name: qa               # must match a key under `flows:` in this workflow
+  args:                  # populate the flow's vars; Jinja-rendered against the parent context
+    story_path: "{{ get_node_output('prepare_story', 'story_path') }}"
+    spec_dir:   "{{ get_node_output('prepare_story', 'spec_dir') }}"
+    target_env: "{{ target_env }}"
+  outputs:
+    - key: qa_result
+  next: decide_qa
+```
+
+**Flow `vars` contract:**
+
+| Default | Meaning |
+|---------|---------|
+| `null` (absent) | Required — the parent `args:` must supply a value; missing → error at launch |
+| `""` (empty string) | Optional — caller may omit; the flow uses the empty string if absent |
+| any other value | Default used when the caller doesn't supply that key |
+
+```yaml
+flows:
+  qa:
+    name: qa
+    start: plan_qa
+    vars:
+      story_path: null    # required — must be passed by caller
+      spec_dir: null       # required
+      target_env: "local"  # optional — defaults to "local"
+      operator_mode: "auto"
+    nodes:
+      - id: plan_qa
+        ...
+```
+
+Flows invoked standalone via `workhorse run <workflow> <flow> --params '{"story":"CASE-1234"}'`
+resolve their own `prepare_story` (or equivalent) as the first node so they are
+fully self-contained without needing pre-resolved paths in the params.
+
 ---
 
 ## 3. Context & templating
@@ -230,18 +276,23 @@ set, otherwise raises.
 ## 4. Running a workflow
 
 ```bash
-# --workflow takes a path OR a bare library name (e.g. `author`); run from the
-# repo dir so artifacts default to ./.agents/runs.
+# Path form
 workhorse --workflow author \
   [--runs-dir DIR] [--run-id ID] \
   [--params '{"story_path":"docs/…"}'] [--params-file params.json] \
   [--cli claude|codex|copilot|aider|opencode] \
   [--resume-run ID|PATH | --resume-latest]
+
+# Named workflow form (resolves from the configured prompt library)
+workhorse run <name> [<flow>] [--params '{"key":"value"}']
+# e.g.:
+workhorse run coder                                     # full coder workflow (default flow)
+workhorse run coder qa --params '{"story":"CASE-1234"}' # standalone QA flow
 ```
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--workflow` | — (required) | Path to a workflow file, **or** a bare workflow name (e.g. `author`) resolved from the configured prompt library as `<library_dir>/workflows/<name>/workflow.yaml`. Library dir = `$WORKHORSE_LIBRARY_DIR` or `library_dir` in `~/.config/farrier/config.toml`. |
+| `--workflow` | — | Path to a workflow file, **or** a bare workflow name (e.g. `author`) resolved from the configured prompt library as `<library_dir>/workflows/<name>/workflow.yaml`. May be omitted when using the positional `workhorse run <name> [<flow>]` form. Library dir = `$WORKHORSE_LIBRARY_DIR` or `library_dir` in the workhorse config file (see [Config file location in the README](../README.md)). |
 | `--runs-dir` | `<cwd>/.agents/runs` | Where run artifacts are written. Defaults to `.agents/runs` under the directory you launch workhorse from (not the workflow's dir). |
 | `--run-id` | `default` | Stable id; run dir is `<name>-<run-id>`. Use distinct ids to keep parallel runs apart. |
 | `--params` | — | Inline JSON object merged into the starting context (overrides `vars`). |

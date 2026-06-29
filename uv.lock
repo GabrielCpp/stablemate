@@ -653,12 +653,13 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "0.7.5"
+version = "0.8.0"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "gitpython" },
     { name = "jinja2" },
     { name = "json-repair" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -674,6 +675,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "json-repair", specifier = ">=0.30" },
+    { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.0" },
