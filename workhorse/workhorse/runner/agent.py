@@ -559,6 +559,12 @@ def run_agent(
     # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
     unbounded = effective_timeout == float("inf")
 
+    # Render per-node CWD first so it can be forwarded into the prompt context.
+    # _flavor_override uses _node_cwd to look up flavors relative to the per-node
+    # repo root (e.g. delphi) rather than the global _repo_root (the orchestrating
+    # repo), enabling each workspace repo to provide its own flavor independently.
+    rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
+
     # Render node args as Jinja2 strings, merge into context for prompt rendering
     rendered_args = {k: render_string(v, ctx) for k, v in node.args.items()}
     prompt_ctx = {
@@ -566,6 +572,7 @@ def run_agent(
         **rendered_args,
         "node_timeout_s": "unbounded" if unbounded else int(effective_timeout),
         "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
+        "_node_cwd": rendered_cwd or "",
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
@@ -577,8 +584,7 @@ def run_agent(
     if os.environ.get("WORKHORSE_PRINT_PROMPT", "1").lower() not in ("0", "false", "no", ""):
         _print_rendered_prompt(node.id, rendered_prompt)
 
-    # Render per-node working directory and additional directories from context.
-    rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
+    # Render additional directories and the rest of the per-node dispatch config.
     if isinstance(node.add_dirs, str):
         # Template string that resolves to a context list (e.g. "{{ affected_repo_paths }}").
         # Jinja2 renders a list variable as its string repr, so look up the native context

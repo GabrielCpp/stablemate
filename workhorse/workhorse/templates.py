@@ -109,8 +109,14 @@ def _flavor_override(
     and fills the base's named blocks; plain (no such file) leaves the base
     untouched (the blocks extend to nothing). Returns ``(flavor_dir, node_name)``
     when an override exists, else ``None``.
+
+    When the agent node declares a ``cwd`` (e.g. to run in a specific repo), the
+    flavor is looked up relative to that per-node CWD rather than the global
+    ``_repo_root`` — so each repo in a multi-repo workflow can provide its own
+    flavor independently of the orchestrating repo.
     """
-    repo_root = context.get("_repo_root")
+    node_cwd = context.get("_node_cwd")
+    repo_root = node_cwd if node_cwd else context.get("_repo_root")
     if not repo_root:
         return None
     node_name = template_path.name
