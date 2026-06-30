@@ -69,6 +69,73 @@ def test_daily_key_limit_classified_as_cap():
     assert agent._is_cap("daily limit reached") is True
 
 
+# opencode logs the usage-limit error to its stream but does NOT exit — it retries
+# internally until the watchdog reaps it, so the finished turn arrives timed_out=True
+# with the limit text in diagnostics. The classifier must read the cap THROUGH the
+# timeout, not report a bogus "Timeout waiting for result … after 3600s".
+OPENCODE_CAP_DIAG = (
+    'stream error providerID=openai modelID=gpt-5.5 session.id=ses_0ec '
+    'agent=build mode=primary error.error="AI_APICallError: The usage limit '
+    'has been reached"'
+)
+
+
+def test_cap_hang_classified_as_cap_not_timeout():
+    """A cap that makes the CLI hang (timed_out=True) is classified as a cap, not a
+    timeout — so the run waits the window out under a truthful message instead of
+    reporting 'Timeout waiting for result … after Ns'."""
+    try:
+        agent.classify_turn(
+            "opencode",
+            "review_implementation",
+            result_text=None,
+            diagnostics=OPENCODE_CAP_DIAG,
+            timed_out=True,
+            returncode=0,
+            timeout=3600,
+        )
+        raise AssertionError("expected BackendInvocationError")
+    except BackendInvocationError as exc:
+        assert "cap reached" in str(exc), "should be framed as a cap"
+        assert "Timeout waiting for result" not in str(exc), "must not mis-frame as a timeout"
+        assert agent._is_cap(str(exc)), "runner's cap detector must still catch it"
+        assert exc.transient is True
+        # A cap is waited out by the cap branch, NOT given the budget-overrun warning,
+        # so it must not masquerade as a real wall-clock timeout.
+        assert exc.timed_out is False
+
+
+def test_cap_hang_pauses_then_resumes_same_node():
+    """End-to-end: an opencode cap-hang pauses the node once and re-runs the SAME
+    prompt — it never gets the budget-timeout warning and never reframes."""
+    calls = {"n": 0}
+
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            agent.classify_turn(
+                "opencode", node_id, result_text=None, diagnostics=OPENCODE_CAP_DIAG,
+                timed_out=True, returncode=0, timeout=3600,
+            )
+        return "RESULT_OK"
+
+    slept, seen_prompts = [], []
+
+    def record_cli(prompt, *a, **k):
+        seen_prompts.append(prompt)
+        return fake_cli(prompt, *a, **k)
+
+    with patch.object(agent, "_run_claude_cli", record_cli), \
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
+        out = agent._invoke_claude("DO THE TASK", "review_implementation", None, timeout=3600)
+
+    assert out == "RESULT_OK"
+    assert calls["n"] == 2, "should re-run the same node after the cap wait"
+    assert len(slept) == 1 and slept[0] == agent._CAP_DEFAULT_WAIT_S, \
+        "opencode's cap error carries no reset time → default wait"
+    assert seen_prompts[1] == "DO THE TASK", "cap retry must reuse the prompt verbatim (no budget warning)"
+
+
 def test_daily_key_limit_pauses_then_resumes_same_node():
     """The keyed-out node pauses once (no reset in the message → default wait) and
     re-runs the SAME prompt once the key resets — never reframes, never defaults."""
