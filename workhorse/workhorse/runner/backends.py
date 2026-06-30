@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -152,32 +154,49 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
     diagnostics so failure classification can see them."""
     state: dict = {"result_text": "", "session_id": None}
     diagnostics: list[str] = []
+    cap_abort = [False]
 
-    def on_line(raw: str) -> None:
+    def on_line(raw: str) -> bool:
         line = raw.strip()
         if not line:
-            return
+            return False
+        before = len(diagnostics)
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             print(f"[{node_id}] {line}", flush=True)
             diagnostics.append(line)
-            return
-        on_event(event, state, node_id, diagnostics)
+        else:
+            on_event(event, state, node_id, diagnostics)
+        # As soon as a cap marker appears — whether it arrived as a raw --print-logs
+        # line (the JSON-decode path) or a structured error event (via on_event) —
+        # abort early and let the runner wait the window out, rather than blocking for
+        # tens of minutes while opencode retries internally until the watchdog reaps
+        # it. Scan only the lines this call added so it stays O(n) over the stream.
+        new_diag = "\n".join(diagnostics[before:])
+        if not cap_abort[0] and new_diag and _agent._is_cap(new_diag):
+            cap_abort[0] = True
+            return True  # signal stream_subprocess to break and kill the process
+        return False
 
     timed_out, returncode = _agent.stream_subprocess(
         cmd, node_id, timeout, on_line, stdin_data=stdin_data
     )
-    return state, "\n".join(diagnostics), timed_out, returncode
+    return state, "\n".join(diagnostics), timed_out or cap_abort[0], returncode
 
 
 def _finalize_turn(
     backend_name, node_id, state, diagnostics, timed_out, returncode, session_id_path,
     timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    rate_reset_at=None,
 ) -> str:
     """Classify a finished turn through the one shared classifier, so the JSONL/text
     backends and the Claude path produce identical failure messages and transient /
-    overflow / non-recoverable verdicts. See ``agent.classify_turn``."""
+    overflow / non-recoverable verdicts. See ``agent.classify_turn``.
+
+    ``rate_reset_at`` is an optional unix epoch when a cap's window reopens (the
+    opencode/Codex path fetches it out-of-band); on a cap the classifier attaches it
+    so the runner sleeps until exactly then instead of the blind default wait."""
     return _agent.classify_turn(
         backend_name,
         node_id,
@@ -188,6 +207,7 @@ def _finalize_turn(
         timeout=timeout,
         session_id=state.get("session_id"),
         session_id_path=session_id_path,
+        rate_reset_at=rate_reset_at,
     )
 
 
@@ -386,6 +406,73 @@ def _opencode_on_event(event, state, node_id, diagnostics):
 _OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
 
 
+# opencode's openai provider is the ChatGPT/Codex OAuth backend. Every response from
+# it carries the subscription's rate-limit state in `x-codex-*` headers — including
+# `x-codex-primary-reset-at`, the unix epoch when the (5-hour) usage window reopens —
+# and these ride along even on the 429 that reports "The usage limit has been reached".
+# opencode reads them for its TUI percentage but DROPS them on the headless `run` path,
+# so the runner never sees a reset time and falls back to the blind default wait. We
+# read them ourselves, from the very same OAuth token opencode uses, so a Codex cap is
+# waited out until its ACTUAL reset (like Claude's structured rate_limit_event) instead
+# of re-probing on a fixed timer. Mirrors codex CLI's own usage display.
+_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
+_OPENCODE_AUTH_PATH = Path(
+    os.environ.get("OPENCODE_AUTH_PATH", str(Path.home() / ".local/share/opencode/auth.json"))
+)
+
+
+def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
+    """Best-effort unix epoch when the ChatGPT/Codex usage window for ``model`` resets.
+
+    Returns ``x-codex-primary-reset-at`` from the Codex backend, or ``None`` on ANY
+    problem (disabled, non-codex model, missing/expired OAuth, network/parse error) —
+    the caller then falls back to the default cap wait, so this can only ever sharpen
+    the wait, never break the run. Gated to ``openai/*`` models (the Codex provider);
+    OpenRouter caps on opencode go through the daily-key-limit path instead.
+
+    Set ``WORKHORSE_CODEX_RESET_PROBE=0`` to disable the probe entirely.
+    """
+    if os.environ.get("WORKHORSE_CODEX_RESET_PROBE", "1").lower() in ("0", "false", "no", ""):
+        return None
+    if not model or not model.lower().startswith("openai/"):
+        return None
+    try:
+        creds = (json.loads(_OPENCODE_AUTH_PATH.read_text()).get("openai") or {})
+        token, account = creds.get("access"), creds.get("accountId")
+        if creds.get("type") != "oauth" or not token:
+            return None
+        # A minimal request: when capped it 429s WITH the reset headers and bills
+        # nothing; the headers are what we're after, not any completion.
+        body = json.dumps({
+            "model": model.split("/", 1)[1],
+            "instructions": "",
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
+            "stream": True,
+            "store": False,
+        }).encode()
+        req = urllib.request.Request(
+            _CODEX_RESPONSES_URL, data=body, method="POST",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "ChatGPT-Account-Id": account or "",
+                "Content-Type": "application/json",
+                "originator": "opencode",
+                "User-Agent": "opencode",
+                "OpenAI-Beta": "responses=experimental",
+            },
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            headers = resp.headers
+            resp.close()  # don't drain the stream — we only need the headers
+        except urllib.error.HTTPError as exc:
+            headers = exc.headers  # the 429 (cap) carries the same x-codex-* headers
+        raw = headers.get("x-codex-primary-reset-at")
+        return float(raw) if raw else None
+    except Exception:
+        return None
+
+
 class OpenCodeBackend(AgentBackend):
     """OpenCode CLI (``opencode run --format json``). Speaks plain chat-completions
     to whatever provider its model names, so it drives OpenRouter models directly —
@@ -430,7 +517,13 @@ class OpenCodeBackend(AgentBackend):
         state, diag, timed_out, rc = _stream_jsonl(
             cmd, node_id, timeout, None, _opencode_on_event
         )
-        return _finalize_turn("opencode", node_id, state, diag, timed_out, rc, session_id_path, timeout)
+        # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
+        # headless path) so the runner sleeps until the window reopens, not a flat hour.
+        rate_reset_at = _codex_reset_at(model) if _agent._is_cap(diag) else None
+        return _finalize_turn(
+            "opencode", node_id, state, diag, timed_out, rc, session_id_path, timeout,
+            rate_reset_at=rate_reset_at,
+        )
 
     def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
         return False

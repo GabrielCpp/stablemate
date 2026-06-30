@@ -226,7 +226,9 @@ def stream_subprocess(
             raw = proc.stdout.readline()
             if not raw:  # EOF
                 break
-            on_line(raw)
+            if on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
+                timed_out = True
+                break
         # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
         # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
         timed_out = timed_out or fired["v"]
@@ -412,6 +414,10 @@ def classify_turn(
     classification are identical no matter which CLI ran.
 
     Ladder (first match wins):
+    - cap marker / rate-limit signal → a scheduled-reset cap (carries ``reset_at``),
+      checked BEFORE ``timed_out`` because a cap often makes the CLI hang until the
+      watchdog reaps it — framing that as a cap (not a timeout) is what lets the run
+      wait the window out instead of reporting a bogus "Timeout waiting for result".
     - ``timed_out`` → transient (the watchdog already reaped the process group).
     - context-overflow marker → ``overflow`` (recovered by compaction, not retry);
       the session id is persisted so the runner can compact-and-continue it.
@@ -424,7 +430,22 @@ def classify_turn(
     The session id is persisted on success and on overflow.
     """
     tail = f": {diagnostics.strip()}" if diagnostics.strip() else ""
-    cap_reset_at = rate_reset_at if (rate_limited or _is_cap(diagnostics)) else None
+    is_cap = rate_limited or _is_cap(diagnostics)
+    cap_reset_at = rate_reset_at if is_cap else None
+
+    # A spending/usage cap can surface as the CLI *hanging*: it logs the limit error
+    # to its stream (e.g. opencode: "AI_APICallError: The usage limit has been
+    # reached") but never exits, so the watchdog reaps it and reports timed_out=True.
+    # Classify the cap FIRST — before the timed_out branch — so the run waits the
+    # window out (until reset_at when the CLI gave one) under a truthful "cap reached"
+    # message, instead of mis-framing it as a plain "Timeout waiting for result …
+    # after Ns" that buries the real cause and reads like a stuck node.
+    if is_cap:
+        raise BackendInvocationError(
+            f"{backend_name} usage/spending cap reached for node '{node_id}'{tail}",
+            transient=True,
+            reset_at=cap_reset_at,
+        )
 
     if timed_out:
         raise BackendInvocationError(
@@ -776,7 +797,11 @@ def _invoke_claude(
             # A budget timeout: warn the next attempt that it overran and give it the
             # wall-clock budget so it can size its work to fit. Other transients
             # (rate limit, overload, network) retry the prompt unchanged.
-            if exc.timed_out:
+            # Cap-triggered early aborts also carry timed_out=True (the stream loop
+            # breaks the same way) but must NOT get the budget warning — the model
+            # never actually ran; the cap cleared externally.
+            is_cap_hit = exc.reset_at is not None or _is_cap(str(exc))
+            if exc.timed_out and not is_cap_hit:
                 print(
                     f"[{node_id}] ⏱ previous attempt exceeded its ~{int(timeout)}s "
                     f"budget; warning the retry to size its work to fit",
@@ -785,7 +810,7 @@ def _invoke_claude(
                 attempt_prompt = _timeout_retry_prompt(prompt, timeout)
             else:
                 attempt_prompt = prompt
-            if exc.reset_at is not None or _is_cap(str(exc)):
+            if is_cap_hit:
                 if cap_waits >= _MAX_CAP_WAITS:
                     raise
                 cap_waits += 1

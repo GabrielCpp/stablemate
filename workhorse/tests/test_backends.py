@@ -432,7 +432,9 @@ def test_opencode_run_turn_fresh_then_resume():
         )
     assert out == "PONG"
     cmd = captured["cmd"]
-    assert cmd[:4] == ["opencode", "run", "--format", "json"]
+    # --print-logs --log-level ERROR routes opencode's quota/limit errors to stderr so
+    # the runner's cap detector can see them (and abort the stream early on a cap).
+    assert cmd[:7] == ["opencode", "--print-logs", "--log-level", "ERROR", "run", "--format", "json"]
     assert cmd[cmd.index("-m") + 1] == "openrouter/xiaomi/mimo-v2.5"
     assert cmd[cmd.index("--variant") + 1] == "high"  # effort → variant
     assert "--session" not in cmd                     # fresh run
@@ -532,6 +534,121 @@ def test_aider_no_effort_omits_flag():
     with patch.object(backends, "_run_text_turn", fake):
         AiderBackend().run_turn("P", "n", None, model="m")
     assert "--reasoning-effort" not in captured["cmd"]
+
+
+def test_codex_reset_at_skips_non_openai_models_without_network():
+    """The reset probe is Codex-only: an OpenRouter (or empty) model returns None with
+    no network call (those caps go through the daily-key-limit path)."""
+    # No urllib patch needed: a network attempt here would be a bug, so its absence
+    # (these return before any request) is the assertion.
+    assert backends._codex_reset_at("openrouter/xiaomi/mimo-v2.5") is None
+    assert backends._codex_reset_at(None) is None
+    assert backends._codex_reset_at("") is None
+
+
+def test_codex_reset_at_disabled_by_env():
+    """WORKHORSE_CODEX_RESET_PROBE=0 turns the probe off entirely."""
+    with patch.dict(os.environ, {"WORKHORSE_CODEX_RESET_PROBE": "0"}):
+        assert backends._codex_reset_at("openai/gpt-5.5") is None
+
+
+def test_opencode_cap_attaches_codex_reset_at():
+    """On a Codex usage cap, run_turn fetches the precise reset epoch and the raised
+    cap error carries it — so the runner sleeps until the window reopens, not a flat
+    default hour."""
+    reset = 1782759835.0
+    capped = (
+        {"result_text": "", "session_id": None},
+        'error.error="AI_APICallError: The usage limit has been reached"',
+        True,  # cap_abort flagged timed_out
+        0,
+    )
+    fake, _ = _fake_stream(capped)
+    with patch.object(backends, "_stream_jsonl", fake), \
+         patch.object(backends, "_codex_reset_at", lambda model, *a, **k: reset) as probe:
+        try:
+            OpenCodeBackend().run_turn("P", "review_implementation", None, model="openai/gpt-5.5")
+            raise AssertionError("expected a cap BackendInvocationError")
+        except agent.BackendInvocationError as exc:
+            assert exc.reset_at == reset, "precise Codex reset must ride through to the runner"
+            assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(exc)
+
+
+def test_opencode_non_cap_does_not_probe_codex():
+    """A normal (non-cap) opencode turn never touches the Codex reset probe."""
+    ok = ({"result_text": "DONE", "session_id": "s"}, "", False, 0)
+    fake, _ = _fake_stream(ok)
+    calls = {"n": 0}
+    with patch.object(backends, "_stream_jsonl", fake), \
+         patch.object(backends, "_codex_reset_at", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1)):
+        out = OpenCodeBackend().run_turn("P", "n", None, model="openai/gpt-5.5")
+    assert out == "DONE"
+    assert calls["n"] == 0, "no cap → no probe"
+
+
+def _drive_stream_jsonl(lines, on_event):
+    """Run backends._stream_jsonl, feeding ``lines`` to its on_line callback through a
+    faked stream_subprocess that stops the moment on_line requests an early abort
+    (mirroring agent.stream_subprocess). Returns (state, diagnostics, timed_out, rc)."""
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        for raw in lines:
+            if on_line(raw):  # cap detected → break + (real code) kill the process group
+                return True, 0
+        return False, 0
+
+    with patch.object(agent, "stream_subprocess", fake_stream):
+        return backends._stream_jsonl(["opencode"], "review_implementation", 3600, None, on_event)
+
+
+def test_opencode_cap_log_line_aborts_stream_early():
+    """A cap surfaced as a raw --print-logs ERROR line aborts the stream immediately
+    (timed_out flagged so the runner waits the window out) instead of waiting ~3600s
+    for the watchdog while opencode retries internally."""
+    consumed = {"n": 0}
+
+    def on_event(event, state, node_id, diagnostics):
+        consumed["n"] += 1  # only real JSON events reach here; the cap line is non-JSON
+
+    state, diag, timed_out, rc = _drive_stream_jsonl(
+        [
+            '{"type":"step","text":"working"}\n',
+            'level=ERROR message="stream error" error.error="AI_APICallError: '
+            'The usage limit has been reached"\n',
+            '{"type":"step","text":"SHOULD NOT BE READ"}\n',  # after the abort
+        ],
+        on_event,
+    )
+    assert timed_out is True, "cap abort must flag timed_out so the turn finalizes"
+    assert "usage limit" in diag.lower()
+    assert consumed["n"] == 1, "stream must stop at the cap line — later events unread"
+    # The runner's classifier then frames this as a cap, not a timeout.
+    try:
+        agent.classify_turn(
+            "opencode", "review_implementation", result_text=state.get("result_text") or None,
+            diagnostics=diag, timed_out=timed_out, returncode=rc, timeout=3600,
+        )
+        raise AssertionError("expected a cap BackendInvocationError")
+    except agent.BackendInvocationError as exc:
+        assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(exc)
+
+
+def test_opencode_cap_structured_error_event_aborts_stream_early():
+    """A cap surfaced as a structured JSON error event (not a log line) is caught the
+    same way — the on_event-appended diagnostics trip the cap abort."""
+    def on_event(event, state, node_id, diagnostics):
+        if event.get("type") == "error":
+            diagnostics.append(event.get("message") or "")
+
+    state, diag, timed_out, rc = _drive_stream_jsonl(
+        [
+            '{"type":"step","text":"working"}\n',
+            '{"type":"error","message":"The usage limit has been reached"}\n',
+            '{"type":"step","text":"SHOULD NOT BE READ"}\n',
+        ],
+        on_event,
+    )
+    assert timed_out is True
+    assert "usage limit" in diag.lower()
 
 
 if __name__ == "__main__":
