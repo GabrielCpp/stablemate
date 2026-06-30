@@ -19,10 +19,7 @@ from pathlib import Path
 
 import yaml
 
-try:
-    from git import Repo  # type: ignore[import-untyped]
-except ImportError:
-    Repo = None  # type: ignore[assignment,misc]
+from git import Repo
 
 
 def load_jsonc(text: str) -> dict:
@@ -209,10 +206,7 @@ def get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]:
     return sorted(names)
 
 
-def open_repo(path: str | Path) -> "Repo":
-    """Open a git.Repo at path. Raises RuntimeError if gitpython is unavailable."""
-    if Repo is None:
-        raise RuntimeError("gitpython is not installed — cannot open git repo")
+def open_repo(path: str | Path) -> Repo:
     return Repo(str(path))
 
 
