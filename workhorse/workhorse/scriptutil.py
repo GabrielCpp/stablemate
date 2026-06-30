@@ -43,17 +43,18 @@ def load_json(path: Path, label: str, logger: logging.Logger) -> dict:
     return {}
 
 
-def resolve_workspace() -> dict[str, dict]:
+def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, dict]:
     """Build {repo_name: {path, ...}} from workspace file or CWD fallback.
 
     Resolution order:
-    1. Read env var named by CODER_WORKSPACE_ENV (default WORKSPACE_FILE).
+    1. Read the env var named by ``workspace_env_key`` (caller-supplied; default
+       ``WORKSPACE_FILE`` for generic use). Workflow scripts should pass their
+       own convention (e.g. ``"CODER_WORKSPACE"``).
     2. If that env var points to an existing file, parse it as a VSCode workspace.
     3. Otherwise treat CWD as a single-folder workspace.
 
     For each folder, reads agents.yml and merges the workspace: section into the record.
     """
-    workspace_env_key = os.environ.get("CODER_WORKSPACE_ENV", "WORKSPACE_FILE")
     workspace_path = os.environ.get(workspace_env_key)
 
     if workspace_path and Path(workspace_path).exists():
