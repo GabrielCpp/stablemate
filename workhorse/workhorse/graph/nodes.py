@@ -79,7 +79,7 @@ class ScriptNode(BaseModel):
     # os.environ so scripts can receive workflow config without sys.argv or file
     # side-channels.  Example:
     #   env:
-    #     CODER_WORKSPACE_ENV: "CNN_WORKSPACE"
+    #     CODER_WORKSPACE: "{{ workspace_file }}"
     env: dict[str, str] = Field(default_factory=dict)
     # Gas-tank refuel marker (infinite-loop guard). When set to a context dotpath,
     # reaching this node REFILLS the run's gas tank whenever the value at that path
@@ -146,7 +146,7 @@ class Graph(BaseModel):
     # (values are Jinja2-rendered from workflow context). Per-node env is merged on
     # top, so nodes can override individual keys. Example:
     #   env:
-    #     CODER_WORKSPACE_ENV: "CNN_WORKSPACE"
+    #     CODER_WORKSPACE: "{{ workspace_file }}"
     env: dict[str, str] = Field(default_factory=dict)
     nodes: dict[str, Node]
     # Named sub-graphs callable via a FlowNode, or runnable standalone

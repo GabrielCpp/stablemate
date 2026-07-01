@@ -117,7 +117,7 @@ def test_main_is_auto_by_default_no_flag():
     resolved inside run())."""
     captured = {}
 
-    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True, run_id=None, params=None, context_manifest=None, flow=None):
+    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True, run_id=None, params=None, context_manifest=None, flow=None, no_cache=False):
         captured.update(resume_run_dir=resume_run_dir, auto=auto)
         return 0
 
