@@ -149,6 +149,10 @@ def _build_parser() -> argparse.ArgumentParser:
     rn = esub.add_parser("rename", parents=[write_parent])
     rn.add_argument("old_slug")
     rn.add_argument("new_slug")
+    sr = esub.add_parser("settle-review", parents=[write_parent],
+                         help="flip a story's status from its review-resolution.json, "
+                              "gated on the artifacts/assertions the verdict cites")
+    sr.add_argument("slug")
 
     # ---- path resolution -----------------------------------------------------
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
@@ -220,6 +224,8 @@ def _cmd_edit(graph, args) -> int:
         plan = edit.set_owner(graph, args.gap, args.story)
     elif args.op == "relink":
         plan = edit.relink(graph, args.old_path, args.new_path)
+    elif args.op == "settle-review":
+        plan = edit.settle_review(graph, args.slug)
     else:
         plan = edit.rename(graph, args.old_slug, args.new_slug)
     print(plan.render())
