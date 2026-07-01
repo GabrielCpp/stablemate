@@ -28,6 +28,17 @@ workflows **unattended for up to a week**.
   effect only after an image rebuild (add `--build` to the `docker compose up`).
 - **Stay repository-agnostic.** Never add repo-specific bind mounts to
   `compose.yaml`; workflows clone what they need via their own `setup.sh`.
+- **Stay workflow-agnostic (separation of concerns).** Workhorse is a generic
+  engine shared by every workflow. Never bake one workflow's vocabulary into it —
+  no `plan-context`/`plan_result` field names (`services[].type`, `touched_layers`,
+  layer→platform maps), no workflow-specific Jinja globals in `templates.py`, no
+  branching on a particular env-var/repo/story name. A value derived from a
+  workflow's own data belongs in that workflow (a `script:` node or the prompt's
+  Jinja over context), not in `workhorse/**`. If workhorse genuinely needs a new
+  capability, add a **parameterised primitive** that knows no workflow's schema —
+  `resolve_workspace(env_key)` is the model (the workflow passes the key; workhorse
+  just reads it). Litmus test: *would a different workflow want this unchanged?* If
+  not, it belongs in the workflow.
 
 @README.md
 

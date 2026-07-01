@@ -25,15 +25,15 @@ def test_library_dir_from_env_override():
         assert m._resolve_library_dir() == Path("/tmp/lib")
 
 
-def test_library_dir_from_farrier_config():
-    with tempfile.TemporaryDirectory() as home:
-        cfg = Path(home) / ".config" / "farrier"
-        cfg.mkdir(parents=True)
-        (cfg / "config.toml").write_text('library_dir = "/srv/agents"\n')
+def test_library_dir_from_workhorse_config():
+    # library_dir falls back to workhorse's own config.toml (resolved via config_path();
+    # WORKHORSE_CONFIG points it at a temp file here) when the env override is unset.
+    with tempfile.TemporaryDirectory() as d:
+        cfg = Path(d) / "config.toml"
+        cfg.write_text('library_dir = "/srv/agents"\n')
         env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        with patch.dict(os.environ, env, clear=True), patch.object(
-            m.Path, "home", staticmethod(lambda: Path(home))
-        ):
+        env["WORKHORSE_CONFIG"] = str(cfg)
+        with patch.dict(os.environ, env, clear=True):
             assert m._resolve_library_dir() == Path("/srv/agents")
 
 
@@ -86,7 +86,7 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     captured = {}
 
     def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True,
-                 run_id=None, params=None, context_manifest=None, flow=None):
+                 run_id=None, params=None, context_manifest=None, flow=None, no_cache=False):
         captured["runs_dir"] = runs_dir
         return 0
 

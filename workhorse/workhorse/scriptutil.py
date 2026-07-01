@@ -19,8 +19,6 @@ from pathlib import Path
 
 import yaml
 
-from git import Repo
-
 
 def load_jsonc(text: str) -> dict:
     """Parse JSON with Comments (trailing commas, // comments) as used by VSCode."""
@@ -207,6 +205,14 @@ def get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]:
 
 
 def open_repo(path: str | Path) -> Repo:
+    # Import GitPython lazily: importing it runs a `git --version` probe at import
+    # time, which crashes (IndexError parsing the version) whenever `git` is shadowed
+    # by a stub — e.g. the workflow test harness mocks `git`, returning empty output.
+    # Only the handful of scripts that actually open a repo should pay that cost; the
+    # many git-free scripts (select-next-*, resolve-*, detect-*) must import this
+    # module without needing a real git on PATH.
+    from git import Repo
+
     return Repo(str(path))
 
 

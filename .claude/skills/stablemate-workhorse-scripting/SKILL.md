@@ -85,7 +85,7 @@ repos = resolve_workspace()
 ```
 
 Resolution order:
-1. Read env var named by `CODER_WORKSPACE_ENV` (e.g. `CNN_WORKSPACE`) → VSCode workspace file
+1. Read the `CODER_WORKSPACE` env var → its value is the VSCode workspace file path
 2. If unset or file missing → CWD is the single-folder workspace (mono-repo fallback)
 
 The planner selects which repos are relevant — scripts iterate only repos listed in `plan-context.json`, not all workspace folders.

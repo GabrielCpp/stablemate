@@ -84,7 +84,9 @@ nodes:
 flows:
   sub:
     start: s_emit
-    vars: { x: "" }
+    # x has no default (null) → required: a standalone `run(flow="sub")` must be given
+    # x or it fails fast (main.py flags vars whose default is None and weren't supplied).
+    vars: { x: null }
     nodes:
       - id: s_emit
         type: script
@@ -223,7 +225,7 @@ def test_unknown_flow_standalone_errors(tmp_path, capsys):
 
 
 def test_standalone_missing_required_param_errors(tmp_path, capsys):
-    # `sub`'s `x` var defaults to "" → required; running it with no params fails fast.
+    # `sub`'s `x` var has no default (null) → required; running it with no params fails fast.
     wf = _scaffold(tmp_path, _COMPOSE)
     runs = tmp_path / "runs"
     rc = m.run(wf, runs, flow="sub", params={})
