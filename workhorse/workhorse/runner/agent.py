@@ -479,10 +479,12 @@ def classify_turn(
     return result_text
 
 
-def _print_rendered_prompt(node_id: str, prompt: str) -> None:
-    """Echo the fully-rendered prompt to stdout, framed so it's easy to spot in the log."""
-    print(f"[{node_id}] ┌─ rendered prompt ({len(prompt)} chars) " + "─" * 24, flush=True)
-    print(prompt, flush=True)
+def _print_prompt_summary(node_id: str, prompt_path: "str | Path", variables: dict[str, Any]) -> None:
+    """Echo the prompt's template path and the resolved variables, without the rendered text."""
+    print(f"[{node_id}] ┌─ prompt " + "─" * 24, flush=True)
+    print(f"[{node_id}] path: {prompt_path}", flush=True)
+    for key in sorted(variables):
+        print(f"[{node_id}] {key} = {variables[key]!r}", flush=True)
     print(f"[{node_id}] └─ end prompt " + "─" * 34, flush=True)
 
 
@@ -576,13 +578,12 @@ def run_agent(
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
-    # Echo the fully-rendered prompt before launching the agent. Library prompts now
-    # render dynamically from the context manifest + live run context, so seeing the
-    # exact text (resolved instruction paths, per-layer run plan, gated sections) is
-    # the fastest way to catch a mis-resolved variable. On (default); WORKHORSE_PRINT_PROMPT=0
-    # silences it. The prompt is also persisted to the run dir's prompt.md afterward.
+    # Echo the prompt's template path and resolved variables before launching the agent,
+    # rather than the full rendered text — enough to catch a mis-resolved variable
+    # without flooding the log on every step. On (default); WORKHORSE_PRINT_PROMPT=0
+    # silences it. The full rendered prompt is still persisted to the run dir's prompt.md.
     if os.environ.get("WORKHORSE_PRINT_PROMPT", "1").lower() not in ("0", "false", "no", ""):
-        _print_rendered_prompt(node.id, rendered_prompt)
+        _print_prompt_summary(node.id, node.prompt, prompt_ctx)
 
     # Render additional directories and the rest of the per-node dispatch config.
     if isinstance(node.add_dirs, str):

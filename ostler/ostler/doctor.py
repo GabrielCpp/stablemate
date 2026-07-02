@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import freeze, markdown, registry, schemas
+from . import dynamic_registry, freeze, markdown, registry, schemas
 from .model import Graph, Epic
 
 
@@ -196,7 +196,7 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
     (``okf-missing-type`` otherwise). On top of that, ostler validates each Concept's frontmatter
     against its registered per-type schema (warn-level), which OKF permits for known types.
     """
-    for etype in registry.REGISTRY:
+    for etype in registry.REGISTRY + dynamic_registry.as_entity_types(graph.template_kinds):
         base = graph.doc_roots.get(etype.doc_root)
         if base is None or not base.is_dir():
             continue

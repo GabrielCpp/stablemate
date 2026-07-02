@@ -58,7 +58,7 @@ def _remove_subsection(doc: markdown.MarkdownDoc, heading: str, sub_title: str) 
     return False
 
 
-def _dump_frontmatter(fm: dict) -> str:
+def dump_frontmatter(fm: dict) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
 
 
@@ -72,7 +72,7 @@ def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) 
         return Result(False, f"epic '{name}' already exists")
     eid = ids.allocate(graph, prefix)
     fm = {"type": "epic", "id": eid, "title": title, "status": "planned"}
-    text = f"---\n{_dump_frontmatter(fm)}---\n# Epic: {title}\n\n## Seeds\n\n## Stories\n"
+    text = f"---\n{dump_frontmatter(fm)}---\n# Epic: {title}\n\n## Seeds\n\n## Stories\n"
     edir.mkdir(parents=True, exist_ok=True)
     epic_md.write_text(text, encoding="utf-8")
     return Result(True, f"created epic '{name}' ({eid})", [epic_md], entity_id=eid)
@@ -129,7 +129,7 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     body = (f"# Story: {title}\n\n## Context\n\n## Acceptance Criteria\n\n"
             f"## Implementation Status\n\n- **Status**: Not started\n")
     story_md.parent.mkdir(parents=True, exist_ok=True)
-    story_md.write_text(f"---\n{_dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
+    story_md.write_text(f"---\n{dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
     return Result(True, f"created story '{slug}' ({sid}) in epic '{epic_name}'",
                   [epic_md, story_md], entity_id=sid)
 
@@ -157,7 +157,7 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
     doc = markdown.split(path.read_text(encoding="utf-8"))
     fm = doc.frontmatter or {"type": "story", "slug": slug}
     fm["status"] = status
-    doc.raw_frontmatter = _dump_frontmatter(fm)
+    doc.raw_frontmatter = dump_frontmatter(fm)
     doc.body = re.sub(r"(\*\*Status\*\*:\s*).*", lambda m: m.group(1) + status,
                       doc.body, count=1)
     path.write_text(doc.render(), encoding="utf-8")
@@ -220,7 +220,7 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
     if route:
         fm["route"] = route
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"---\n{_dump_frontmatter(fm)}---\n# {title}\n\n", encoding="utf-8")
+    path.write_text(f"---\n{dump_frontmatter(fm)}---\n# {title}\n\n", encoding="utf-8")
     return Result(True, f"created feature '{slug}' ({fid})", [path], entity_id=fid)
 
 

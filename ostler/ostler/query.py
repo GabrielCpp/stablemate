@@ -7,6 +7,7 @@ workflows ask (gaps-in-story, stories-covering-seed, surfaces-referenced-by-stor
 
 from __future__ import annotations
 
+from . import crud_generic
 from .model import Graph
 
 
@@ -64,6 +65,8 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
             for g in r.gaps:
                 rows.append({"type": "gap", "id": g.id, "surface": r.surface,
                              "owner": g.owner, "disposition": g.disposition})
+    else:
+        rows = crud_generic.find_instance(graph, etype)
 
     if epic is not None:
         rows = [r for r in rows if r.get("epic") == epic or r.get("name") == epic]

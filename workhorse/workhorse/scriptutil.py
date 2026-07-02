@@ -46,7 +46,7 @@ def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, di
        ``WORKSPACE_FILE`` for generic use). Workflow scripts should pass their
        own convention (e.g. ``"CODER_WORKSPACE"``).
     2. If that env var points to an existing file, parse it as a VSCode workspace.
-    3. Otherwise treat CWD as a single-folder workspace.
+    3. Otherwise treat the repo root as a single-folder workspace.
 
     For each folder, reads agents.yml and merges the workspace: section into the record.
     """
@@ -57,7 +57,13 @@ def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, di
         ws_dir = Path(workspace_path).parent
         folders = ws.get("folders", [])
     else:
-        cwd = Path.cwd()
+        # Script nodes run with cwd = the workflow definition's own directory, not the
+        # consuming repo (see main.py's AGENT_REPO_DIR comment), so a bare Path.cwd()
+        # here would synthesize a single-folder workspace keyed off the workflow dir's
+        # name (e.g. "coder") instead of the real repo. Mirror find_repo_root()'s
+        # AGENT_REPO_DIR-first resolution so mono-repo setups (no CODER_WORKSPACE) key
+        # correctly off the actual repo.
+        cwd = Path(os.environ.get("AGENT_REPO_DIR") or Path.cwd()).resolve()
         agents_yml = cwd / "agents.yml"
         if agents_yml.exists():
             try:

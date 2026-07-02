@@ -172,3 +172,87 @@ This profile is versioned `<major>.<minor>`; the current version is **1.0**. A r
 `okf_version: "0.1"` (the base OKF version) and `ostler_profile: "1.0"` in `docs/epics/index.md`.
 Minor bumps add backward-compatible fields; major bumps may change required frontmatter or the
 `epic.md` grammar.
+
+## 10. Templates and template-declared kinds
+
+The entity types in §2 are **built in** (`ostler/registry.py`) and fixed for every repo. A repo
+that needs a *different* OKF hierarchy — its own Concept kinds, nesting, required frontmatter,
+and status enums — declares one in a **per-repo** file: `.agents/templates.yml`. This sits
+alongside `.agents/ids.json` (§7): `.agents/` is ostler's repo-local, non-`docs/` state, and
+`.agents/templates.yml` extends that same convention rather than a global `~/.config/` store.
+
+A template kind is **live the moment it's written** — `ostler new/find/set/remove` and `ostler
+doctor` pick it up on every run via `model.load()`, with no separate activation step. A kind
+behaves exactly like a built-in `type` for conformance purposes (§8: a non-reserved `.md` under
+its `location` glob must carry a non-empty `type`), but its required-field and enum validation is
+enforced only by ostler's own CRUD (`new`/`set`), not by `doctor`.
+
+`.agents/templates.yml` maps **template name → definition**, so a repo can define more than one
+hierarchy in one file:
+
+```yaml
+research:
+  title: Research Program
+  kinds:
+    - name: program                             # top-level, bundle-shaped (own directory)
+      doc_root: research                        # key into the Graph.doc_roots dict
+      default_path: specs                        # repo-relative dir for that key
+      path_template: "{name}/program.md"         # -> specs/<name>/program.md
+      required: [type, title, status]
+      fields: {status: {enum: [proposed, active, paused, complete]}}
+      extra_files:                                # written once, at creation time only
+        - {path: "README.md", content: "# {title}\n\n## Gate Ladder\n"}
+        - {path: "log.md", content: "# Progress Log\n"}
+    - name: gate                                 # nested under program, bundle-shaped
+      doc_root: research
+      default_path: specs
+      parent: program
+      path_template: "{parent}/gates/{name}/gate.md"   # -> specs/<program>/gates/<gate>/gate.md
+      required: [type, gate, status]
+      fields: {status: {enum: [pending, in-review, passed, reopened, blocked]}}
+    - name: finding                              # nested under gate, leaf-shaped (no children)
+      doc_root: research
+      default_path: specs
+      parent: gate
+      path_template: "{parent}/findings/{name}.md"
+      required: [type, title]
+```
+
+**`path_template` placeholders.** `{name}` is the instance's own name (the `ostler new <kind>
+<name>` positional). `{parent}` (only valid when `parent` is set) is the directory containing the
+parent instance's own file, resolved relative to `doc_root` — located by scanning the parent
+kind's `location` glob for an instance with the given name, the same way `ostler story` commands
+locate a story by slug without stating its epic. A child only ever needs its **immediate**
+parent's name: `ostler new finding f1 gate=G0 title=...` does not also need `program=SMCNv3`.
+
+**Bundle vs. leaf shape.** A `path_template` ending in `{name}/<literal>.md` is *bundle-shaped*
+(each instance gets its own directory, so it can itself be a `parent`). One ending in `{name}.md`
+or `<literal>/{name}.md` is *leaf-shaped* — valid for a kind with no children, but rejected as a
+`parent` target (all children would collide into one shared directory) and cannot declare
+`extra_files` (it has no directory of its own to hold them).
+
+**CRUD grammar** — generic, kind-agnostic verbs parallel to the built-in `create`/`edit`/`delete`:
+
+```
+ostler new    <kind> <name> [field=value ...]   # create; <parent-kind>=<name> scopes nesting
+ostler find   <kind> [<name>]                    # list, or one instance's fields
+ostler set    <kind> <name> field=value ...      # edit fields (never touches extra_files)
+ostler remove <kind> <name>                      # delete (rmtree if bundle-shaped, else unlink)
+```
+
+**Template CRUD** manages the YAML itself:
+
+```
+ostler template new    <name> [kind ...]   # declare a template, optionally with stub kinds
+ostler template edit   <name> --set <kind>.<field>[.<subfield>]=<value>
+ostler template find   [<name>]            # list templates, or one template's full definition
+ostler template delete <name>              # remove the template (does not touch instance files)
+ostler template apply  <name>              # mkdir -p each doc_root + inject CLAUDE.md guidance
+```
+
+`template edit`/`new` hard-validate before saving: a kind name colliding with a built-in type or
+another template's kind is rejected, as is a `parent` pointing at a leaf-shaped or nonexistent
+kind, or `extra_files` on a leaf-shaped kind. `template apply` is the only step with disk side
+effects beyond the YAML write itself — idempotent and safe to re-run (directory creation is
+deduplicated across kinds sharing a `doc_root`; the injected `CLAUDE.md` section is
+marker-delimited and replaced in place, never duplicated).

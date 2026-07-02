@@ -8,9 +8,12 @@ import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
+import yaml
+
 from . import (
     backlog as backlog_mod,
     crud,
+    crud_generic,
     doctor,
     edit,
     freeze as freeze_mod,
@@ -18,9 +21,11 @@ from . import (
     query as query_mod,
     registry,
     select,
+    templates as templates_mod,
     todo as todo_mod,
     trace,
 )
+from . import vet as vet_mod
 from .model import load
 
 _TYPES = tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
@@ -42,14 +47,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ---- retrieval --------------------------------------------------------
     ls = sub.add_parser("list", help="list Concepts of a type")
-    ls.add_argument("--type", required=True, choices=_TYPES, dest="etype")
+    ls.add_argument("--type", required=True, dest="etype",
+                    help=f"one of {', '.join(_TYPES)}, or a template-declared kind")
     ls.add_argument("--epic")
     ls.add_argument("--status")
     ls.add_argument("--json", action="store_true")
 
     se = sub.add_parser("search", help="full-text search over Concepts")
     se.add_argument("q")
-    se.add_argument("--type", choices=_TYPES, dest="etype")
+    se.add_argument("--type", dest="etype",
+                    help=f"one of {', '.join(_TYPES)}, or a template-declared kind")
     se.add_argument("--owner")
     se.add_argument("--tag")
     se.add_argument("--json", action="store_true")
@@ -94,6 +101,45 @@ def _build_parser() -> argparse.ArgumentParser:
     dls.add_parser("epic").add_argument("name")
     dls.add_parser("story").add_argument("slug")
     dls.add_parser("feature").add_argument("slug")
+
+    # ---- template-declared kinds: generic instance CRUD + hierarchy CRUD --
+    gn = sub.add_parser("new", help="create an instance of a template-declared kind")
+    gn.add_argument("kind")
+    gn.add_argument("name")
+    gn.add_argument("fields", nargs="*", metavar="key=value")
+    gn.add_argument("--json", action="store_true")
+
+    gf = sub.add_parser("find", help="find/list instances of a template-declared kind")
+    gf.add_argument("kind")
+    gf.add_argument("name", nargs="?")
+    gf.add_argument("--json", action="store_true")
+
+    gs = sub.add_parser("set", help="edit fields on an instance of a template-declared kind")
+    gs.add_argument("kind")
+    gs.add_argument("name")
+    gs.add_argument("fields", nargs="+", metavar="key=value")
+    gs.add_argument("--json", action="store_true")
+
+    gr = sub.add_parser("remove", help="delete an instance of a template-declared kind")
+    gr.add_argument("kind")
+    gr.add_argument("name")
+    gr.add_argument("--json", action="store_true")
+
+    tp = sub.add_parser("template", help="define/apply OKF hierarchies (.agents/templates.yml)")
+    tps = tp.add_subparsers(dest="op", required=True)
+    tpn = tps.add_parser("new", help="declare a new template, optionally stubbing kinds")
+    tpn.add_argument("name")
+    tpn.add_argument("kinds", nargs="*")
+    tpn.add_argument("--json", action="store_true")
+    tpe = tps.add_parser("edit", help="patch a template's kinds via --set kind.field=value")
+    tpe.add_argument("name")
+    tpe.add_argument("--set", action="append", default=[], dest="assignments")
+    tpf = tps.add_parser("find", help="list templates, or one template's definition")
+    tpf.add_argument("name", nargs="?")
+    tpf.add_argument("--json", action="store_true")
+    tps.add_parser("delete").add_argument("name")
+    tps.add_parser("apply", help="scaffold doc_root dirs + inject CLAUDE.md guidance") \
+        .add_argument("name")
 
     sd = sub.add_parser("seed", help="add/remove a seed in an epic")
     sds = sd.add_subparsers(dest="op", required=True)
@@ -173,6 +219,19 @@ def _build_parser() -> argparse.ArgumentParser:
     fz.add_argument("--note", default="")
     uf = sub.add_parser("unfreeze", help="lift the freeze on a story/seed")
     uf.add_argument("ident")
+
+    # ---- vet ---------------------------------------------------------------
+    vt = sub.add_parser("vet", parents=[write_parent],
+                        help="deterministic visual-fidelity check")
+    vt.add_argument("screenshot", type=Path)
+    vt.add_argument("--manifest", required=True, type=Path)
+    vt_group = vt.add_mutually_exclusive_group(required=True)
+    vt_group.add_argument("--cdp-url", dest="cdp_url")
+    vt_group.add_argument("--regions", dest="regions_file", type=Path)
+    vt.add_argument("--slug", required=True)
+    vt.add_argument("--state", default="default")
+    vt.add_argument("--iou-threshold", type=float, default=0.5, dest="iou_threshold")
+    vt.add_argument("--json", action="store_true")
     return p
 
 
@@ -239,8 +298,60 @@ def _cmd_edit(graph, args) -> int:
     return 0
 
 
+def _cmd_vet(graph, args) -> int:
+    outcome, plan = vet_mod.run_vet(
+        graph, args.screenshot, args.manifest, args.slug,
+        cdp_url=args.cdp_url, regions_file=args.regions_file,
+        state=args.state, iou_threshold=args.iou_threshold,
+    )
+    if outcome.error:
+        if args.json:
+            print(json.dumps({"error": outcome.error}))
+        else:
+            print(f"error: {outcome.error}")
+        return 1
+    if args.json:
+        print(outcome.report.model_dump_json(by_alias=True, indent=2))
+    else:
+        print(plan.render())
+    if getattr(args, "write", False):
+        plan.apply()
+        if not args.json:
+            print(f"\napplied: {len(plan.writes)} file(s) written")
+    elif not args.json:
+        print("\n(dry-run — pass --write to apply)")
+    return 0 if outcome.report.summary.status == "clean" else 1
+
+
 def _split(csv: str) -> list[str]:
     return [p.strip() for p in csv.split(",") if p.strip()]
+
+
+def _parse_fields(pairs: list[str]) -> dict | None:
+    fields: dict = {}
+    for pair in pairs:
+        if "=" not in pair:
+            return None
+        key, _, raw_value = pair.partition("=")
+        try:
+            value = yaml.safe_load(raw_value)
+        except yaml.YAMLError:
+            value = raw_value
+        fields[key.strip()] = value
+    return fields
+
+
+def _cmd_template(graph, args) -> int:
+    root = graph.root
+    if args.op == "new":
+        return _result(templates_mod.new(root, args.name, args.kinds), getattr(args, "json", False))
+    if args.op == "edit":
+        return _result(templates_mod.edit(root, args.name, args.assignments))
+    if args.op == "find":
+        return _emit(templates_mod.find(root, args.name), args.json)
+    if args.op == "delete":
+        return _result(templates_mod.delete(root, args.name))
+    return _result(templates_mod.apply(root, args.name))
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command dispatch
@@ -255,6 +366,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         lines, found = trace.run(graph, args.token)
         print("\n".join(lines))
         return 0 if found else 1
+    if c in ("list", "search"):
+        valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
+        if args.etype is not None and args.etype not in valid_types:
+            print(f"error: argument --type: invalid choice: '{args.etype}' "
+                  f"(choose from {', '.join(valid_types)})")
+            return 2
     if c == "list":
         return _emit(query_mod.list_entities(graph, args.etype, args.epic, args.status), args.json)
     if c == "search":
@@ -328,6 +445,29 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
             return 1
         plan.apply()
         return 0
+    if c == "vet":
+        return _cmd_vet(graph, args)
+    if c == "new":
+        fields = _parse_fields(args.fields)
+        if fields is None:
+            print("invalid field (expected key=value)")
+            return 2
+        return _result(crud_generic.create_instance(graph, args.kind, args.name, fields),
+                       getattr(args, "json", False))
+    if c == "find":
+        return _emit(crud_generic.find_instance(graph, args.kind, args.name), args.json)
+    if c == "set":
+        fields = _parse_fields(args.fields)
+        if fields is None:
+            print("invalid field (expected key=value)")
+            return 2
+        return _result(crud_generic.edit_instance(graph, args.kind, args.name, fields),
+                       getattr(args, "json", False))
+    if c == "remove":
+        return _result(crud_generic.delete_instance(graph, args.kind, args.name),
+                       getattr(args, "json", False))
+    if c == "template":
+        return _cmd_template(graph, args)
     return 2
 
 

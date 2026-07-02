@@ -78,3 +78,18 @@ def test_epic_filter_scopes_findings(repo: Path):
     write(repo / "docs/knowledge/area/rec.md", knowledge_md("area/rec", [("gap-x", "99-ghost")]))
     report = doctor.run(load(repo), epic_filter="epic-b")
     assert all(f.epic in ("epic-b",) for f in report.findings)
+
+
+def test_template_kind_instance_missing_type_is_flagged(repo: Path):
+    write(repo / ".agents/templates.yml", """
+research:
+  title: Research
+  kinds:
+    - name: program
+      doc_root: research
+      default_path: specs
+      path_template: "{name}/program.md"
+      required: [type, title]
+""")
+    write(repo / "specs/SMCNv3/program.md", "---\ntitle: SMCNv3\n---\n# SMCNv3\n")
+    assert "okf-missing-type" in codes(doctor.run(load(repo)))

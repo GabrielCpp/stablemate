@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import markdown, registry
+from . import dynamic_registry, markdown, registry
 
 # Seed statuses that no longer require story coverage.
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
@@ -102,6 +102,7 @@ class Graph:
     knowledge: list[KnowledgeRecord] = field(default_factory=list)
     features: list[FeatureRecord] = field(default_factory=list)
     ids: dict | None = None
+    template_kinds: tuple = ()
 
     # ---- indexes -------------------------------------------------------------
     def epic_of_seed(self, seed_id: str) -> Epic | None:
@@ -263,13 +264,18 @@ def load(cwd: Path | None = None) -> Graph:
         for key in ("features", "epics", "knowledge", "specs")
     }
 
+    template_kinds = dynamic_registry.load_kinds(root)
+    for kind in template_kinds:
+        doc_roots.setdefault(kind.doc_root, root / doc_root_cfg.get(kind.doc_root, kind.default_path))
+
     org_name = config.get("name") or root.name
     if config.get("profile") in ("full", "exploration"):
         profile = config["profile"]
     else:
         profile = "full" if doc_roots["epics"].is_dir() else "exploration"
 
-    graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=doc_roots)
+    graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=doc_roots,
+                  template_kinds=template_kinds)
 
     _load_knowledge(graph)
     _load_features(graph)
