@@ -216,6 +216,33 @@ knowledge coverage graph), **`exploration`** otherwise (knowledge/docs only, no 
 Override any default in an optional `organization:` block in `ostler.yml` / `agents.yml` at the repo
 root.
 
+## Templates (custom hierarchies)
+
+The built-in types above (epic/story/knowledge/feature/spec) are fixed. For a *different*
+documentation shape — your own Concept kinds, nesting, required fields, status enums — declare it
+per-repo in **`.agents/templates.yml`** (git-tracked, alongside `.agents/ids.json`). A kind is live
+for `new`/`find`/`set`/`remove`/`doctor` the moment it's written — no separate activation step.
+
+```bash
+ostler template new    <name> [kind ...]        # declare a template, optionally with stub kinds
+ostler template edit   <name> --set <kind>.<field>[.<subfield>]=<value>
+ostler template find   [<name>]                 # list templates, or one template's definition
+ostler template delete <name>
+ostler template apply  <name>                   # mkdir -p each doc_root + inject CLAUDE.md guidance
+```
+
+Once a template's kinds are declared, use the same generic verbs against instances:
+
+```bash
+ostler new    <kind> <name> [field=value ...]   # <parent-kind>=<name> scopes nesting
+ostler find   <kind> [<name>]
+ostler set    <kind> <name> field=value ...
+ostler remove <kind> <name>
+```
+
+See [`SPEC.md` §10](SPEC.md#10-templates-and-template-declared-kinds) for the full YAML schema, a
+worked 3-level nesting example, and the bundle-vs-leaf shape rules.
+
 ## Versioning
 
 The format is the OKF profile **v1.0**, versioned `<major>.<minor>`. Minor bumps add backward-compatible
