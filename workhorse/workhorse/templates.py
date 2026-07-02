@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -85,8 +86,12 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
     def is_using_instruction(name: str = "", *_args: Any, **_kwargs: Any) -> bool:
         return name in used_skills
 
+    def agent_cli() -> str:
+        return os.environ.get("AGENT_CLI", "claude").strip().lower()
+
     return {
         "workhorse_var": workhorse_var,
+        "agent_cli": agent_cli,
         "get_node_output": get_node_output,
         "skill_dir": skill_dir,
         "instruction_ref": instruction_ref,
