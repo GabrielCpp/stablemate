@@ -127,13 +127,27 @@ class BranchNode(BaseModel):
     default: str | None = None
 
 
+class CallOutputSpec(OutputSpec):
+    wrap: str | None = None
+
+
+class CallNode(BaseModel):
+    type: Literal["call"]
+    id: str
+    fn: str
+    args: dict[str, str] = Field(default_factory=dict)
+    outputs: list[CallOutputSpec] = Field(default_factory=list)
+    refuel: str | None = None
+    next: str | None = None
+
+
 class TerminalNode(BaseModel):
     type: Literal["terminal", "fail"]
     id: str
 
 
 Node = Annotated[
-    AgentNode | ScriptNode | BranchNode | FlowNode | TerminalNode,
+    AgentNode | ScriptNode | BranchNode | FlowNode | CallNode | TerminalNode,
     Field(discriminator="type"),
 ]
 
@@ -161,7 +175,7 @@ class Graph(BaseModel):
 
         for node in self.nodes.values():
             refs: list[str] = []
-            if isinstance(node, (AgentNode, ScriptNode)) and node.next:
+            if isinstance(node, (AgentNode, ScriptNode, CallNode)) and node.next:
                 refs.append(node.next)
             elif isinstance(node, FlowNode):
                 if node.next:

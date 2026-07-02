@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from collections import deque
 
-from .nodes import AgentNode, BranchNode, FlowNode, Graph, Node, ScriptNode, TerminalNode
+from .nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, Node, ScriptNode, TerminalNode
 
 _HEADER = (
     "  rankdir=TB;\n"
@@ -126,7 +126,7 @@ def _out_edges(
     if node.id in collapsed:
         target, label = collapsed[node.id]
         return [(target, label)]
-    if isinstance(node, (AgentNode, ScriptNode, FlowNode)):
+    if isinstance(node, (AgentNode, ScriptNode, CallNode, FlowNode)):
         return [(node.next, None)] if node.next else []
     if isinstance(node, BranchNode):
         edges: list[tuple[str, str | None]] = []
