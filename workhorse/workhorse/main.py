@@ -16,6 +16,7 @@ from .graph.loader import load_workflow
 from .graph.nodes import (
     AgentNode,
     BranchNode,
+    CallNode,
     FlowNode,
     Graph,
     ScriptNode,
@@ -23,6 +24,7 @@ from .graph.nodes import (
 )
 from .runner import agent as agent_runner
 from .runner import branch as branch_runner
+from .runner import call as call_runner
 from .runner import script as script_runner
 from .runner.agent import BackendInvocationError
 from .runner.script import ScriptExitError
@@ -433,6 +435,20 @@ def _step_loop(
                     file=sys.stderr,
                 )
                 raise
+
+        elif isinstance(node, CallNode):
+            resume_interrupted_node = False
+            print(f"[workhorse] call   → {node.id}")
+            label, outputs = call_runner.run_call(node, ctx, workflow_dir)
+            ctx.merge(outputs)
+            if node.refuel:
+                tank.refuel(node.id, ctx.get_dotpath(node.refuel, None))
+            if node.next is None:
+                raise RuntimeError(
+                    f"CallNode '{node.id}' has no 'next' and is not terminal"
+                )
+            writer.write_step(node.id, label, outputs, ctx.as_dict(), next_node=node.next)
+            current_id = node.next
 
         elif isinstance(node, BranchNode):
             resume_interrupted_node = False
