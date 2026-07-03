@@ -89,9 +89,24 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
     def agent_cli() -> str:
         return os.environ.get("AGENT_CLI", "claude").strip().lower()
 
+    def skill_load_ref(skill_name: str, skill_path: str = "") -> str:
+        """Return the harness-native syntax for loading a skill.
+
+        For Claude Code, emits a slash-command invocation (``/skill-name``).
+        For every other harness, emits a Read-the-file instruction using the
+        resolved path (``skill_path`` when given, else
+        ``{skill_dir}/{skill_name}/SKILL.md`` as a fallback).
+        """
+        cli = agent_cli()
+        if cli == "claude":
+            return f"/{skill_name}"
+        path = skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
+        return f"Read `{path}` and follow its instructions"
+
     return {
         "workhorse_var": workhorse_var,
         "agent_cli": agent_cli,
+        "skill_load_ref": skill_load_ref,
         "get_node_output": get_node_output,
         "skill_dir": skill_dir,
         "instruction_ref": instruction_ref,
