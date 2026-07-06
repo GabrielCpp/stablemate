@@ -94,13 +94,14 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
 
         For Claude Code, emits a slash-command invocation (``/skill-name``).
         For every other harness, emits a Read-the-file instruction using the
-        resolved path (``skill_path`` when given, else
-        ``{skill_dir}/{skill_name}/SKILL.md`` as a fallback).
+        resolved path — first checking the manifest ``instructions`` dict
+        (which holds the correct prefixed path from farrier), then falling back
+        to ``skill_path`` or ``{skill_dir}/{skill_name}/SKILL.md``.
         """
         cli = agent_cli()
         if cli == "claude":
             return f"/{skill_name}"
-        path = skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
+        path = instructions.get(skill_name) or skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
         return f"Read `{path}` and follow its instructions"
 
     return {
