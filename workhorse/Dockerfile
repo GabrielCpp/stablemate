@@ -1,13 +1,65 @@
 FROM ubuntu:24.04
 
-# Install system deps
+# Install system deps, plus the gh and docker apt repos (both ship only a signing
+# key + repo file via apt, not a direct package — added before the single
+# apt-get install below so gh/docker packages resolve in the same layer).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    gnupg \
     gosu \
     git \
     openssh-client \
-    && rm -rf /var/lib/apt/lists/*
+    python3 \
+    python3-pip \
+    python3-venv \
+    unzip \
+    xz-utils \
+    && mkdir -p -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
+    && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    gh \
+    docker-ce-cli \
+    docker-compose-plugin \
+    nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && gh --version && docker --version && docker compose version && node --version && python3 --version
+
+# Install Bun, then relocate the binary to a world-accessible path (nobody runs
+# at runtime) — same relocation pattern as the Claude CLI below.
+RUN curl -fsSL https://bun.sh/install | bash \
+    && cp /root/.bun/bin/bun /usr/local/bin/bun \
+    && chmod a+rx /usr/local/bin/bun \
+    && /usr/local/bin/bun --version
+
+# Install Go (official tarball) into a world-readable location.
+ARG GO_VERSION=1.23.4
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz \
+    && chmod -R a+rX /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+RUN go version
+
+# Install Flutter (official stable-channel tarball) into a world-readable
+# location; precache the SDK's own tooling at build time so the first run
+# doesn't pay that cost. Heaviest layer in the image — built once and reused.
+ARG FLUTTER_VERSION=3.27.1
+RUN curl -fsSL "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" -o /tmp/flutter.tar.xz \
+    && tar -C /opt -xJf /tmp/flutter.tar.xz \
+    && rm /tmp/flutter.tar.xz \
+    && chmod -R a+rX /opt/flutter
+ENV PATH="/opt/flutter/bin:${PATH}"
+RUN git config --global --add safe.directory /opt/flutter \
+    && flutter precache \
+    && flutter --version \
+    && chmod -R a+rX /opt/flutter
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -25,16 +77,29 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 
 WORKDIR /app
 
-# Copy project files (pyproject.toml, uv.lock, workhorse package)
+# Copy project files (pyproject.toml, uv.lock, workhorse + groom + ostler packages).
+# groom itself never runs here — only its `groom-sidecar` console script does,
+# watching this container's own /workspace + /runs and pushing to the host's
+# groom dashboard (see entrypoint.sh). workhorse's own pyproject.toml/deps are
+# unaffected by groom/ostler being present in the synced workspace.
+# ostler must be baked in globally: workflow script nodes (validate-artifacts.py,
+# verify-surface-coverage.py, reconcile-artifacts.py, ostler-doctor.py) shell out
+# to `ostler` directly as workhorse subprocesses, not through an agent's own shell —
+# an agent ad hoc `uv tool install ostler`-ing itself mid-run does not make the
+# binary visible to those sibling script processes.
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY workhorse/ workhorse/
+COPY groom/ groom/
+COPY ostler/ ostler/
 
 # Install Python deps — run as root during build, nobody at runtime
-RUN uv sync --frozen \
+RUN uv sync --frozen --package workhorse-agent --package groom --package ostler \
+    && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
     && chown -R nobody:nogroup /app \
+    && mkdir -p /opt/uv-python \
     && chmod -R a+rX /opt/uv-python
 
-COPY entrypoint.sh /entrypoint.sh
+COPY workhorse/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Mounts expected at runtime (see compose.yaml):

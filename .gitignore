@@ -224,3 +224,7 @@ __marimo__/
 !.aider.conf.yml
 !.aider.model.settings.yml
 !.aider.model.metadata.json
+
+/.agents/*
+!/.agents/agents.mk
+!/.agents/flavors/

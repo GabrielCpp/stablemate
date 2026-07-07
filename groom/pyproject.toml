@@ -1,0 +1,49 @@
+[project]
+name = "groom"
+version = "0.1.0"
+description = "Local push-driven dashboard for workhorse agent-workflow operator gates — tends the horses while they run."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gabriel Côté" }]
+keywords = ["agent", "workflow", "claude", "dashboard", "operator", "litestar", "htmx"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "litestar[standard]>=2.10",
+  "workhorse-agent",
+  "inotify-simple>=1.3.5",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/groom"
+Repository = "https://github.com/GabrielCpp/stablemate"
+Issues = "https://github.com/GabrielCpp/stablemate/issues"
+
+[project.scripts]
+groom = "groom.cli:main"
+groom-sidecar = "groom.cli:sidecar_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["groom"]
+
+[tool.hatch.build.targets.sdist]
+include = ["groom", "README.md", "LICENSE", "docs"]
+
+[tool.uv.sources]
+workhorse-agent = { workspace = true }
