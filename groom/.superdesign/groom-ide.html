@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>groom — operator console (mockup)</title>
+  <!-- Vendored assets, served from the groom package root (python -m http.server in groom/). -->
+  <link rel="stylesheet" href="/groom/assets/diff2html.min.css">
+  <script src="/groom/assets/marked.min.js"></script>
+  <script src="/groom/assets/purify.min.js"></script>
+  <script src="/groom/assets/diff2html.min.js"></script>
+  <style>
+    /* ---- tokens (mirrors .superdesign/design-system.md) ---- */
+    :root {
+      --bg-0:#16181d; --bg-1:#1b1e24; --bg-2:#21252d; --bg-3:#2a2f39;
+      --border:#2e333d; --border-2:#3a4150;
+      --text-0:#e6e8ec; --text-1:#a7adb8; --text-2:#6b7280;
+      --accent:#4c8bf5;
+      --blocked:#f0483e; --running:#38b26b; --idle:#c8873a; --finished:#6b7280;
+      --coder:#2f9e8f; --author:#8a6ff0;
+      --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+      --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    }
+    * { box-sizing:border-box; }
+    html,body { height:100%; margin:0; }
+    body {
+      font-family:var(--sans); font-size:13px; line-height:1.4;
+      color:var(--text-0); background:var(--bg-0);
+      -webkit-font-smoothing:antialiased;
+    }
+    .app {
+      display:grid; height:100vh;
+      grid-template-columns:48px 264px 1fr;
+      grid-template-rows:1fr 24px;
+      grid-template-areas:"act picker main" "status status status";
+    }
+
+    /* ---- activity bar ---- */
+    #activitybar { grid-area:act; background:var(--bg-0); border-right:1px solid var(--border);
+      display:flex; flex-direction:column; align-items:center; padding-top:6px; }
+    .act-btn { width:48px; height:44px; display:flex; align-items:center; justify-content:center;
+      color:var(--text-2); cursor:pointer; border-left:2px solid transparent; position:relative; }
+    .act-btn:hover { color:var(--text-1); }
+    .act-btn.active { color:var(--text-0); border-left-color:var(--accent); }
+    .act-btn svg { width:20px; height:20px; }
+    .act-spacer { flex:1; }
+
+    /* ---- picker ---- */
+    #picker { grid-area:picker; background:var(--bg-1); border-right:1px solid var(--border);
+      display:flex; flex-direction:column; overflow:hidden; }
+    .picker-head { padding:6px 8px; border-bottom:1px solid var(--border); }
+    .picker-title { font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--text-2); margin-bottom:6px; }
+    .filter { width:100%; background:var(--bg-2); border:1px solid var(--border); border-radius:4px;
+      color:var(--text-0); font-size:12px; padding:4px 8px; outline:none; }
+    .filter:focus { border-color:var(--accent); }
+    .tree { overflow-y:auto; flex:1; padding:4px 0; }
+    .repo { padding:5px 8px; display:flex; align-items:center; gap:6px; cursor:pointer;
+      color:var(--text-1); white-space:nowrap; }
+    .repo:hover { background:var(--bg-2); }
+    .repo .chev { color:var(--text-2); font-size:10px; width:10px; flex:none; transition:transform .1s; }
+    .repo.collapsed .chev { transform:rotate(-90deg); }
+    .repo .name { font-family:var(--mono); font-size:12px; color:var(--text-0); flex:none; }
+    .repo .sum { flex:1; min-width:0; text-align:right; overflow:hidden; text-overflow:ellipsis;
+      font-size:10px; color:var(--text-2); font-family:var(--mono); }
+    .repo .bpill { flex:none; font-family:var(--mono); font-size:10px; color:#fff; background:var(--blocked);
+      border-radius:8px; padding:0 5px; }
+    .worker { padding:3px 8px 3px 24px; display:flex; align-items:center; gap:6px; cursor:pointer;
+      font-size:12.5px; border-left:2px solid transparent; }
+    .worker:hover { background:var(--bg-2); }
+    .worker.selected { background:var(--bg-3); border-left-color:var(--accent); }
+    .worker .wid { font-family:var(--mono); color:var(--text-1); }
+    .worker .node { font-family:var(--mono); font-size:11px; color:var(--text-2);
+      margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:96px; }
+
+    /* dots + badges */
+    .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+    .dot.blocked { background:var(--blocked); box-shadow:0 0 0 0 rgba(240,72,62,.6); animation:pulse 1.6s infinite; }
+    .dot.running { background:var(--running); }
+    .dot.idle { background:var(--idle); }
+    .dot.finished { background:var(--finished); }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(240,72,62,.55)} 70%{box-shadow:0 0 0 5px rgba(240,72,62,0)} 100%{box-shadow:0 0 0 0 rgba(240,72,62,0)} }
+    @media (prefers-reduced-motion:reduce){ .dot.blocked{animation:none} }
+    .badge { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em;
+      padding:1px 5px; border-radius:3px; color:#0c0f14; font-weight:600; }
+    .badge.coder { background:var(--coder); }
+    .badge.author { background:var(--author); }
+
+    /* ---- main split ---- */
+    #main { grid-area:main; display:grid; grid-template-columns:1.1fr 1.4fr; overflow:hidden; }
+    #main.no-detail { grid-template-columns:1fr; }
+    #inbox { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+    .pane-head { padding:6px 10px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;
+      font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2); }
+    .pane-head .count { margin-left:auto; font-family:var(--mono); color:var(--text-1); }
+    .inbox-list { overflow-y:auto; flex:1; }
+    .row { padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;
+      border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px; }
+    .row:hover { background:var(--bg-2); }
+    .row.selected { background:var(--bg-3); border-left-color:var(--accent); }
+    .row.blocked { border-left-color:var(--blocked); }
+    .row .line1 { display:flex; align-items:center; gap:7px; }
+    .row .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-1); }
+    .row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2); }
+    .row .gate { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+    .row .q { font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* ---- detail ---- */
+    #detail { display:flex; flex-direction:column; overflow:hidden; background:var(--bg-1); }
+    .detail-head { padding:8px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .detail-head .repo-branch { font-family:var(--mono); font-size:12px; color:var(--text-0); }
+    .detail-head .meta { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+    .detail-body { overflow-y:auto; padding:12px; flex:1; }
+    .gate-block { margin-bottom:18px; }
+    .gate-path { font-family:var(--mono); font-size:11px; color:var(--text-2); margin-bottom:8px; }
+    .question { background:var(--bg-2); border:1px solid var(--border); border-radius:5px; padding:10px 12px; }
+    .question :first-child { margin-top:0; } .question :last-child { margin-bottom:0; }
+    .question pre { background:var(--bg-0); border:1px solid var(--border); border-radius:4px; padding:8px 10px; overflow:auto; }
+    .question code { font-family:var(--mono); font-size:12px; }
+    .question a { color:var(--accent); }
+    .answer { margin-top:10px; }
+    .answer textarea { width:100%; min-height:88px; background:var(--bg-2); border:1px solid var(--border);
+      border-radius:5px; color:var(--text-0); font-family:var(--sans); font-size:13px; padding:8px 10px; outline:none; resize:vertical; }
+    .answer textarea:focus { border-color:var(--accent); }
+    .answer-actions { margin-top:8px; display:flex; align-items:center; gap:8px; }
+    .btn { background:var(--accent); color:#fff; border:none; border-radius:4px; padding:5px 14px; font-size:12px; cursor:pointer; }
+    .btn:hover { filter:brightness(1.08); }
+    .btn.ghost { background:transparent; color:var(--text-1); border:1px solid var(--border-2); }
+    .disclosure { margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
+    .disclosure summary { cursor:pointer; color:var(--text-1); font-size:12px; list-style:none; }
+    .disclosure summary::before { content:"▸ "; color:var(--text-2); }
+    .disclosure[open] summary::before { content:"▾ "; }
+    .diff-wrap { margin-top:8px; font-size:12px; }
+    .detail-empty { color:var(--text-2); padding:24px 12px; text-align:center; }
+
+    /* ---- status bar ---- */
+    #statusbar { grid-area:status; background:var(--bg-1); border-top:1px solid var(--border);
+      display:flex; align-items:center; gap:14px; padding:0 10px; font-size:11.5px; font-family:var(--mono); color:var(--text-1); }
+    .stat { display:flex; align-items:center; gap:5px; }
+    .stat .n { color:var(--text-0); }
+    .status-right { margin-left:auto; display:flex; align-items:center; gap:14px; color:var(--text-2); }
+    .ws-dot { width:7px; height:7px; border-radius:50%; background:var(--running); }
+
+    /* ---- command palette ---- */
+    #palette { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:flex-start; justify-content:center; padding-top:12vh; z-index:50; }
+    #palette.open { display:flex; }
+    .palette-box { width:min(560px,90vw); background:var(--bg-2); border:1px solid var(--border-2); border-radius:8px; box-shadow:0 12px 40px rgba(0,0,0,.5); overflow:hidden; }
+    .palette-box input { width:100%; background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text-0); font-size:14px; padding:12px 14px; outline:none; }
+    .palette-results { max-height:320px; overflow-y:auto; }
+    .presult { padding:7px 14px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; }
+    .presult:hover, .presult.active { background:var(--bg-3); }
+    .presult .rb { font-family:var(--mono); color:var(--text-1); }
+    .presult .hint { margin-left:auto; font-size:10.5px; color:var(--text-2); font-family:var(--mono); }
+    .kbd { font-family:var(--mono); font-size:10.5px; color:var(--text-2); border:1px solid var(--border-2); border-radius:3px; padding:0 4px; }
+
+    /* ---- toasts ---- */
+    #toasts { position:fixed; right:14px; bottom:34px; display:flex; flex-direction:column; gap:8px; z-index:60; }
+    .toast { background:var(--bg-2); border:1px solid var(--border-2); border-left:3px solid var(--blocked);
+      border-radius:5px; padding:8px 12px; width:300px; box-shadow:0 8px 24px rgba(0,0,0,.4); animation:slidein .15s ease; }
+    .toast .t-title { font-size:12px; font-weight:600; margin-bottom:2px; }
+    .toast .t-body { font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    @keyframes slidein { from{transform:translateX(12px);opacity:0} to{transform:none;opacity:1} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- activity bar -->
+    <div id="activitybar">
+      <div class="act-btn active" data-mode="inbox" title="Inbox">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14v14H5z"/></svg>
+      </div>
+      <div class="act-btn" data-mode="fleet" title="Fleet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="15" width="18" height="5" rx="1"/></svg>
+      </div>
+      <div class="act-btn" data-mode="changes" title="Changes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
+      </div>
+      <div class="act-spacer"></div>
+      <div class="act-btn" data-mode="settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
+      </div>
+    </div>
+
+    <!-- picker -->
+    <nav id="picker">
+      <div class="picker-head">
+        <div class="picker-title">Workers</div>
+        <input class="filter" placeholder="Filter repos, workers, types…">
+      </div>
+      <div class="tree" id="tree"></div>
+    </nav>
+
+    <!-- main -->
+    <div id="main">
+      <div id="inbox">
+        <div class="pane-head">Inbox — needs you <span class="count" id="inbox-count"></span></div>
+        <div class="inbox-list" id="inbox-list"></div>
+      </div>
+      <div id="detail"></div>
+    </div>
+
+    <!-- status bar -->
+    <div id="statusbar">
+      <div class="stat"><span class="dot blocked"></span><span class="n" id="s-blocked">1</span> blocked</div>
+      <div class="stat"><span class="dot running"></span><span class="n" id="s-running">2</span> running</div>
+      <div class="stat"><span class="dot idle"></span><span class="n" id="s-idle">1</span> idle</div>
+      <div class="stat"><span class="dot finished"></span><span class="n" id="s-finished">1</span> finished</div>
+      <div class="status-right">
+        <span>2 repos · 5 workers</span>
+        <span class="stat"><span class="ws-dot"></span> live</span>
+        <span><span class="kbd">⌘K</span> palette</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- command palette -->
+  <div id="palette">
+    <div class="palette-box">
+      <input id="palette-input" placeholder="Jump to a worker or blocked gate…">
+      <div class="palette-results" id="palette-results"></div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script>
+    // ---- fake fleet data (stands in for the live websocket feed) ----
+    const XSS_PROBE = "See the failing check below. <img src=x onerror=alert('xss')> and <script>alert(1)<\/script> should be inert.";
+    const WORKERS = [
+      { id:"a1b2c3", repo:"predykt", branch:"main", type:"coder", state:"blocked",
+        node:"fix_ci", gate:"docs/epics/checkout/story-4/ci-operator-context.md",
+        question:
+`**CI is red on \`story-4\`** and I need a decision before continuing.
+
+The integration test \`test_checkout_flow\` fails because the payment gateway
+sandbox returns \`402\` for the seeded test card. Two options:
+
+1. Switch the fixture to the gateway's documented test card \`4242…\`.
+2. Mark the test \`xfail\` and open a follow-up story.
+
+${XSS_PROBE}
+
+\`\`\`text
+FAIL tests/integration/test_checkout_flow.py::test_pay
+  gateway.PaymentError: 402 card_declined
+\`\`\`
+
+Which should I do?` ,
+        diff:
+`diff --git a/tests/integration/test_checkout_flow.py b/tests/integration/test_checkout_flow.py
+index 3f2a1b0..9c4d5e2 100644
+--- a/tests/integration/test_checkout_flow.py
++++ b/tests/integration/test_checkout_flow.py
+@@ -12,7 +12,7 @@ def seeded_card():
+-    return Card(number="4000000000000002")  # always-declined sandbox card
++    return Card(number="4242424242424242")  # documented success test card
+@@ -30,6 +30,7 @@ def test_pay(client, seeded_card):
+     resp = client.post("/checkout", json=payload)
++    assert resp.status_code == 200
+     assert resp.json()["status"] == "paid"` },
+      { id:"c3d4e5", repo:"predykt", branch:"main", type:"author", state:"running", node:"write_epic", gate:"", question:"", diff:"" },
+      { id:"e5f6a7", repo:"yenta", branch:"dev", type:"coder", state:"running", node:"implement_story", gate:"", question:"", diff:"" },
+      { id:"778899", repo:"yenta", branch:"dev", type:"coder", state:"idle", node:"—", gate:"", question:"", diff:"" },
+      { id:"99aabb", repo:"yenta", branch:"dev", type:"author", state:"finished", node:"done", gate:"", question:"", diff:"" },
+    ];
+    const ORDER = { blocked:0, running:1, idle:2, finished:3 };
+    let selected = "a1b2c3";
+    const openDiffs = new Set();
+
+    // ---- helpers ----
+    const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const rb = w => `${w.repo}@${w.branch}`;
+    function groupByRepo(list){
+      const g = {};
+      for (const w of list){ (g[rb(w)] ??= []).push(w); }
+      return g;
+    }
+
+    // ---- picker tree ----
+    function renderTree(filter=""){
+      const f = filter.toLowerCase();
+      const list = WORKERS.filter(w => !f || (rb(w)+w.id+w.type+w.node).toLowerCase().includes(f));
+      const groups = groupByRepo(list);
+      const tree = document.getElementById("tree");
+      tree.innerHTML = Object.entries(groups).map(([repo, ws]) => {
+        const types = {}; let blocked=0;
+        ws.forEach(w => { types[w.type]=(types[w.type]||0)+1; if(w.state==="blocked")blocked++; });
+        const sum = Object.entries(types).map(([t,n])=>`${t}×${n}`).join(" ");
+        const pill = blocked ? `<span class="bpill">${blocked}</span>` : "";
+        const workerRows = ws.sort((a,b)=>ORDER[a.state]-ORDER[b.state]).map(w => `
+          <div class="worker ${w.id===selected?'selected':''}" data-id="${w.id}">
+            <span class="dot ${w.state}"></span>
+            <span class="badge ${w.type}">${w.type}</span>
+            <span class="wid">#${w.id.slice(0,4)}</span>
+            <span class="node">${esc(w.node)}</span>
+          </div>`).join("");
+        return `<div class="repo" data-repo="${esc(repo)}"><span class="chev">▾</span><span class="name">${esc(repo)}</span><span class="sum">${esc(sum)}</span>${pill}</div>${workerRows}`;
+      }).join("");
+    }
+
+    // ---- inbox ----
+    function renderInbox(){
+      const list = [...WORKERS].sort((a,b)=>ORDER[a.state]-ORDER[b.state]);
+      document.getElementById("inbox-count").textContent = `${WORKERS.filter(w=>w.state==="blocked").length} blocked`;
+      document.getElementById("inbox-list").innerHTML = list.map(w => `
+        <div class="row ${w.state==='blocked'?'blocked':''} ${w.id===selected?'selected':''}" data-id="${w.id}">
+          <div class="line1">
+            <span class="dot ${w.state}"></span>
+            <span class="badge ${w.type}">${w.type}</span>
+            <span class="repo-branch">${esc(rb(w))}</span>
+            <span class="wid">#${w.id.slice(0,4)}</span>
+            <span class="gate">${esc(w.gate || w.node)}</span>
+          </div>
+          ${w.state==='blocked' ? `<div class="q">${esc(w.question.split("\\n")[0].replace(/[*`]/g,''))}</div>` : ''}
+        </div>`).join("");
+    }
+
+    // ---- detail ----
+    function renderDetail(){
+      const w = WORKERS.find(x => x.id===selected);
+      const el = document.getElementById("detail");
+      const main = document.getElementById("main");
+      if (!w){ main.classList.add("no-detail"); el.innerHTML=""; return; }
+      main.classList.remove("no-detail");
+      const head = `<div class="detail-head">
+        <span class="dot ${w.state}"></span>
+        <span class="badge ${w.type}">${w.type}</span>
+        <span class="repo-branch">${esc(rb(w))}</span>
+        <span class="meta">#${w.id.slice(0,6)} · ${esc(w.state)} · node ${esc(w.node)}</span>
+      </div>`;
+      if (w.state !== "blocked"){
+        el.innerHTML = head + `<div class="detail-empty">No open gate. This worker is <b>${esc(w.state)}</b>${w.node&&w.node!=='—'?` at node <code>${esc(w.node)}</code>`:''}.</div>`;
+        return;
+      }
+      el.innerHTML = head + `<div class="detail-body">
+        <div class="gate-block">
+          <div class="gate-path">${esc(w.gate)}</div>
+          <div class="question" data-md>${esc(w.question)}</div>
+          <div class="answer">
+            <textarea placeholder="Your answer…" data-answer></textarea>
+            <div class="answer-actions">
+              <button class="btn">Send answer</button>
+              <button class="btn ghost">Skip</button>
+            </div>
+          </div>
+          <details class="disclosure" ${openDiffs.has(w.id)?'open':''} data-diff="${w.id}">
+            <summary>Working-tree diff</summary>
+            <div class="diff-wrap" data-diff-target></div>
+          </details>
+        </div>
+      </div>`;
+      renderMarkdown();
+      wireDiff(w);
+    }
+
+    // ---- markdown (untrusted → marked → DOMPurify) ----
+    function renderMarkdown(){
+      document.querySelectorAll("[data-md]").forEach(el => {
+        el.innerHTML = DOMPurify.sanitize(marked.parse(el.textContent));
+      });
+    }
+
+    // ---- diff (diff2html, dark) ----
+    function wireDiff(w){
+      const d = document.querySelector(`details[data-diff="${w.id}"]`);
+      if (!d) return;
+      const target = d.querySelector("[data-diff-target]");
+      const render = () => { if(!target.dataset.done){ target.innerHTML = Diff2Html.html(w.diff, {drawFileList:true, outputFormat:"line-by-line", colorScheme:"dark"}); target.dataset.done="1"; } };
+      if (d.open) render();
+      d.addEventListener("toggle", () => { if(d.open){ openDiffs.add(w.id); render(); } else openDiffs.delete(w.id); });
+    }
+
+    // ---- selection ----
+    function select(id){ selected=id; renderTree(document.querySelector('.filter').value); renderInbox(); renderDetail(); }
+
+    // ---- mode switch ----
+    document.getElementById("activitybar").addEventListener("click", e => {
+      const btn = e.target.closest(".act-btn"); if(!btn) return;
+      document.querySelectorAll(".act-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+
+    // ---- clicks ----
+    document.getElementById("tree").addEventListener("click", e => {
+      const repo = e.target.closest(".repo");
+      if (repo){ repo.classList.toggle("collapsed"); let n=repo.nextElementSibling; while(n&&n.classList.contains("worker")){ n.style.display = repo.classList.contains("collapsed")?"none":""; n=n.nextElementSibling; } return; }
+      const w = e.target.closest(".worker"); if(w) select(w.dataset.id);
+    });
+    document.getElementById("inbox-list").addEventListener("click", e => {
+      const r = e.target.closest(".row"); if(r) select(r.dataset.id);
+    });
+    document.querySelector(".filter").addEventListener("input", e => renderTree(e.target.value));
+
+    // ---- command palette ----
+    const pal = document.getElementById("palette"), palIn = document.getElementById("palette-input"), palRes = document.getElementById("palette-results");
+    function openPalette(){ pal.classList.add("open"); palIn.value=""; renderPalette(""); palIn.focus(); }
+    function closePalette(){ pal.classList.remove("open"); }
+    function renderPalette(q){
+      const f=q.toLowerCase();
+      const list = WORKERS.filter(w=>!f||(rb(w)+w.id+w.type+w.node).toLowerCase().includes(f)).sort((a,b)=>ORDER[a.state]-ORDER[b.state]);
+      palRes.innerHTML = list.map((w,i)=>`<div class="presult ${i===0?'active':''}" data-id="${w.id}">
+        <span class="dot ${w.state}"></span><span class="badge ${w.type}">${w.type}</span>
+        <span class="rb">${esc(rb(w))} #${w.id.slice(0,4)}</span>
+        <span class="hint">${w.state==='blocked'?'gate ⛱':esc(w.node)}</span></div>`).join("");
+    }
+    palIn.addEventListener("input", e=>renderPalette(e.target.value));
+    palRes.addEventListener("click", e=>{ const r=e.target.closest(".presult"); if(r){ select(r.dataset.id); closePalette(); }});
+    document.addEventListener("keydown", e => {
+      if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); pal.classList.contains("open")?closePalette():openPalette(); return; }
+      if (e.key==="Escape") closePalette();
+      if (pal.classList.contains("open") && e.key==="Enter"){ const a=palRes.querySelector(".presult.active")||palRes.querySelector(".presult"); if(a){ select(a.dataset.id); closePalette(); } }
+      // j/k inbox nav (ignore while typing)
+      if (!/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && (e.key==="j"||e.key==="k")){
+        const rows=[...document.querySelectorAll("#inbox-list .row")]; const idx=rows.findIndex(r=>r.dataset.id===selected);
+        const next=rows[Math.max(0,Math.min(rows.length-1, idx+(e.key==="j"?1:-1)))]; if(next) select(next.dataset.id);
+      }
+    });
+
+    // ---- toasts (raised on a new blocked event) ----
+    function toast(title, body){
+      const t=document.createElement("div"); t.className="toast";
+      t.innerHTML=`<div class="t-title">${esc(title)}</div><div class="t-body">${esc(body)}</div>`;
+      document.getElementById("toasts").appendChild(t);
+      setTimeout(()=>t.remove(), 6000);
+    }
+
+    // ---- boot ----
+    renderTree(); renderInbox(); renderDetail();
+    setTimeout(()=>toast("⛔ predykt@main · coder blocked", "CI is red on story-4 — needs a decision"), 700);
+  </script>
+</body>
+</html>

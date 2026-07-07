@@ -26,6 +26,7 @@ from . import (
     trace,
 )
 from . import vet as vet_mod
+from . import artifact as artifact_mod
 from .model import load
 
 _TYPES = tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
@@ -232,6 +233,20 @@ def _build_parser() -> argparse.ArgumentParser:
     vt.add_argument("--state", default="default")
     vt.add_argument("--iou-threshold", type=float, default=0.5, dest="iou_threshold")
     vt.add_argument("--json", action="store_true")
+
+    ar = sub.add_parser("artifact", help="schema-checked workflow artifacts (scaffold/vet/list)")
+    ars = ar.add_subparsers(dest="what", required=True)
+    arsc = ars.add_parser("scaffold", help="write the kind's skeleton into the spec dir")
+    arsc.add_argument("kind")
+    arsc.add_argument("--spec", required=True, type=Path,
+                      help="spec directory (absolute, or relative to the repo root)")
+    arsc.add_argument("--force", action="store_true")
+    arvt = ars.add_parser("vet", help="validate the artifact against its contract")
+    arvt.add_argument("kind")
+    arvt.add_argument("--spec", required=True, type=Path)
+    arvt.add_argument("--json", action="store_true")
+    arls = ars.add_parser("list", help="show registered artifact kinds")
+    arls.add_argument("--json", action="store_true")
     return p
 
 
@@ -321,6 +336,30 @@ def _cmd_vet(graph, args) -> int:
     elif not args.json:
         print("\n(dry-run — pass --write to apply)")
     return 0 if outcome.report.summary.status == "clean" else 1
+
+
+def _cmd_artifact(graph, args) -> int:
+    if args.what == "list":
+        return _emit(artifact_mod.list_kinds(), args.json)
+    if args.what == "scaffold":
+        outcome = artifact_mod.scaffold(args.kind, args.spec, graph.root, force=args.force)
+        if outcome.error:
+            print(f"error: {outcome.error}")
+            return 1
+        print(f"scaffolded {outcome.kind} -> {outcome.path}")
+        return 0
+    # vet
+    outcome = artifact_mod.vet(args.kind, args.spec, graph.root)
+    if args.json:
+        print(json.dumps(outcome.to_dict(), indent=2))
+    else:
+        if outcome.error:
+            print(f"error: {outcome.error}")
+        else:
+            print(f"{outcome.kind}: {outcome.status}")
+            for problem in outcome.problems:
+                print(f"  - {problem}")
+    return 0 if outcome.status == "clean" else 1
 
 
 def _split(csv: str) -> list[str]:
@@ -447,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return 0
     if c == "vet":
         return _cmd_vet(graph, args)
+    if c == "artifact":
+        return _cmd_artifact(graph, args)
     if c == "new":
         fields = _parse_fields(args.fields)
         if fields is None:

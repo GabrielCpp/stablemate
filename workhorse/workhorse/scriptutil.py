@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -38,6 +39,22 @@ def load_json(path: Path, label: str, logger: logging.Logger) -> dict:
     return {}
 
 
+def _read_workspace_file(workspace_env_key: str) -> tuple[list[dict], Path] | None:
+    """Parse the `.code-workspace` file named by ``workspace_env_key``, if set.
+
+    Returns ``(folders, ws_dir)`` when the env var points at an existing file,
+    else ``None`` — callers apply their own single-folder fallback in that case,
+    since resolve_workspace() (read an existing checkout) and checkout_workspace()
+    (create one) fall back differently.
+    """
+    workspace_path = os.environ.get(workspace_env_key)
+    if not workspace_path or not Path(workspace_path).exists():
+        return None
+    ws = load_jsonc(Path(workspace_path).read_text(encoding="utf-8"))
+    ws_dir = Path(workspace_path).parent
+    return ws.get("folders", []), ws_dir
+
+
 def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, dict]:
     """Build {repo_name: {path, ...}} from workspace file or CWD fallback.
 
@@ -50,12 +67,9 @@ def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, di
 
     For each folder, reads agents.yml and merges the workspace: section into the record.
     """
-    workspace_path = os.environ.get(workspace_env_key)
-
-    if workspace_path and Path(workspace_path).exists():
-        ws = load_jsonc(Path(workspace_path).read_text(encoding="utf-8"))
-        ws_dir = Path(workspace_path).parent
-        folders = ws.get("folders", [])
+    parsed = _read_workspace_file(workspace_env_key)
+    if parsed is not None:
+        folders, ws_dir = parsed
     else:
         # Script nodes run with cwd = the workflow definition's own directory, not the
         # consuming repo (see main.py's AGENT_REPO_DIR comment), so a bare Path.cwd()
@@ -93,6 +107,101 @@ def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, di
         else:
             repos[name] = {"path": str(abs_path)}
     return repos
+
+
+def _has_unsynced_work(dest: Path, branch: str) -> bool:
+    """True if ``dest`` has uncommitted changes or commits not on ``origin/<branch>``.
+
+    Used by ``checkout_workspace`` to tell "container restarted mid-run, resume
+    where we left off" apart from "clean checkout, safe to fast-forward to the
+    host's latest commit" — a bare reset can't distinguish the two, and would
+    otherwise silently discard uncommitted in-container work (e.g. a blocked
+    operator-gate node's edits) on every restart.
+    """
+    status = subprocess.run(
+        ["git", "-C", str(dest), "status", "--porcelain"], capture_output=True, text=True, check=True,
+    )
+    if status.stdout.strip():
+        return True
+    ahead = subprocess.run(
+        ["git", "-C", str(dest), "rev-list", "--count", f"origin/{branch}..HEAD"],
+        capture_output=True, text=True, check=True,
+    )
+    return ahead.stdout.strip() != "0"
+
+
+def checkout_workspace(
+    workspace_env_key: str = "CODER_WORKSPACE",
+    workspace_root: str | Path = "/workspace",
+) -> None:
+    """Clone/update every `url`-bearing folder in the `.code-workspace` file into
+    ``workspace_root``, transparent to whichever workflow graph runs next.
+
+    Meant to be invoked once from entrypoint.sh, before the workflow engine starts —
+    neither coder nor author has a "setup" node; by the time the graph starts, every
+    folder's working tree already exists under ``workspace_root/<folder name>``.
+
+    Resolution order:
+    1. If the workspace file (named by ``workspace_env_key``) is set, clone/update
+       every folder in its `folders` list that carries a `url` key (its own optional
+       schema extension — VSCode ignores unknown keys, so plain `.code-workspace`
+       files stay valid whether or not they use it). A missing `branch` defaults to
+       "main". Folders WITHOUT a `url` are left untouched — they may not be git repos
+       at all (e.g. a plain documentation directory); their content can only reach the
+       container via the workspace-directory bind mount (see compose.yaml), not a clone.
+    2. Otherwise (no workspace file set), synthesize a single folder from the existing
+       REPO_URL/REPO_NAME/REPO_BRANCH env vars (today's single-primary-repo mechanism)
+       and feed it through the exact same clone path — this keeps 1-repo and N-repo
+       runs on one code path with zero repo-name defaulting. Cloning from a local
+       bind-mounted path (Predykt's read-only host-working-tree trick) works exactly
+       like cloning from a remote, so nothing about that mechanism needs to change.
+    """
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[checkout] %(message)s")
+    logger = logging.getLogger("workhorse.checkout")
+    workspace_root = Path(workspace_root)
+
+    parsed = _read_workspace_file(workspace_env_key)
+    if parsed is not None:
+        folders, _ws_dir = parsed
+    else:
+        repo_url = os.environ.get("REPO_URL", "")
+        if not repo_url:
+            logger.info("no workspace file and no REPO_URL set — nothing to check out")
+            return
+        folders = [{
+            "name": os.environ.get("REPO_NAME") or "repo",
+            "url": repo_url,
+            "branch": os.environ.get("REPO_BRANCH", "main"),
+        }]
+
+    workspace_root.mkdir(parents=True, exist_ok=True)
+
+    for folder in folders:
+        url = folder.get("url")
+        if not url:
+            continue
+        name = folder.get("name") or Path(folder["path"]).name
+        branch = folder.get("branch", "main")
+        dest = workspace_root / name
+
+        if (dest / ".git").exists():
+            subprocess.run(["git", "-C", str(dest), "fetch", "--quiet", "origin"], check=True)
+            if _has_unsynced_work(dest, branch):
+                logger.info(
+                    "%s has uncommitted changes or commits not on origin/%s — "
+                    "preserving existing checkout, skipping reset",
+                    name, branch,
+                )
+                continue
+            logger.info("updating %s from %s (%s)", name, url, branch)
+            subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", branch], check=True)
+            subprocess.run(["git", "-C", str(dest), "reset", "--quiet", "--hard", f"origin/{branch}"], check=True)
+        else:
+            logger.info("cloning %s from %s (%s)", name, url, branch)
+            subprocess.run(
+                ["git", "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest)],
+                check=True,
+            )
 
 
 def find_repo_root() -> Path:

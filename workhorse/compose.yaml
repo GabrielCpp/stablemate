@@ -1,8 +1,22 @@
 services:
   agent:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # Build context is the uv workspace ROOT (one level up), not this
+      # directory — the Dockerfile needs the workspace's pyproject.toml/uv.lock
+      # (workhorse is a workspace member and has no lock file of its own).
+      context: ..
+      dockerfile: workhorse/Dockerfile
+    extra_hosts:
+      # Lets the container's groom-sidecar (baked into the agent image) reach
+      # a loopback-bound `groom` dashboard running on the host.
+      #
+      # NOTE (native Linux Docker Engine): host-gateway resolves to the
+      # docker bridge's own gateway IP (e.g. 172.17.0.1), NOT the host's real
+      # loopback interface — that equivalence only holds on Docker Desktop's
+      # (Mac/Windows) VM-proxied host.docker.internal. So on Linux, `groom
+      # serve` must itself bind that bridge IP explicitly (see its --host /
+      # --allow-non-loopback flags) rather than the 127.0.0.1 default.
+      - "host.docker.internal:host-gateway"
     environment:
       # ── Auth: Claude subscription (Claude.ai OAuth) is the DEFAULT ─────────────
       # Credentials are seeded once from the host's ~/.claude/.credentials.json
@@ -42,10 +56,28 @@ services:
       #   target: /mnt/aws
       #   read_only: true
 
-      # Workflow directory — set via the WORKFLOW_DIR env var
+      # Workflow directory — set via the WORKFLOW_DIR env var. Only required if
+      # you actually start this generic `agent` service directly (standalone
+      # workhorse testing); per-workflow consumers (farrier's generated
+      # local.compose.yaml) define their own named services with their own
+      # /workflow mount instead and never select this one, but Compose
+      # interpolates every service's variables up front regardless of which
+      # service you run — so this can't be a hard `:?` requirement without
+      # breaking `docker compose up <other-service>` for anyone merging this
+      # file in. Defaults to an unmountable placeholder; only bites if `agent`
+      # is actually started without WORKFLOW_DIR set.
       - type: bind
-        source: ${WORKFLOW_DIR:?Set WORKFLOW_DIR to the absolute path of your workflow directory}
+        source: ${WORKFLOW_DIR:-/dev/null/workflow-dir-not-set}
         target: /workflow
+
+      # Optional: host directory containing a .code-workspace file, for
+      # multi-repo runs (or non-git sibling folders that can't be cloned — see
+      # workhorse/scriptutil.py's checkout_workspace()). Uncomment and set
+      # WORKSPACE_DIR_HOST; point the workspace-file env var (e.g.
+      # CODER_WORKSPACE) at this mount's target below, not the host path.
+      # - type: bind
+      #   source: ${WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}
+      #   target: /mnt/workspace-host
 
       # Agent working tree (repo clones, branches, commits) — PERSISTS across
       # container restarts and reboots so in-progress work is never lost.

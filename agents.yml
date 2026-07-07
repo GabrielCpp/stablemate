@@ -8,3 +8,4 @@ agents:
 
 packs:
   - python-workflow
+  - stablemate

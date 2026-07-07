@@ -3,13 +3,42 @@ name: stablemate-workhorse-scripting
 description: "Workhorse workflow scripting — JSON output protocol, shared lib import, workspace resolution, WorkflowRun test API. Applies to scripts/**/*.py."
 metadata:
   generated_by: farrier
-  source: library/skills/python/workhorse-scripting/SKILL.md
+  source: library/skills/stablemate/workhorse-scripting/SKILL.md
   do_not_edit: "edit the source in the central prompt library and re-run `make agent-install` to regenerate"
 ---
 
 # Workhorse Scripting
 
 Patterns for Python scripts executed as `script:` nodes in a workhorse `workflow.yaml`.
+
+---
+
+## Separation of concerns — workhorse is generic, keep workflow logic in the workflow
+
+Workhorse (`workhorse/**`, including `scriptutil.py`, `templates.py`, the graph engine,
+and the Jinja globals it registers) is a **generic engine shared by every workflow**. It
+must never learn the shape of one workflow's data.
+
+**Do not add workflow-specific logic to workhorse.** Concretely, do not put in workhorse:
+- a schema of a particular `plan-context.json` / plan_result (e.g. `services[].type`,
+  `touched_layers`, layer→platform maps) — that is the coder workflow's vocabulary;
+- a Jinja global that derives a workflow-specific value (e.g. `touched_layers()`); or
+- branching on a specific env var name, repo name, or story convention.
+
+**Where each thing lives:**
+- **Deriving a value from the workflow's own data** → do it in the **workflow**: either in
+  a workflow `script:` node (`agents/workflows/<wf>/scripts/*.py`) that reads the JSON and
+  emits the derived field to context, or directly in the prompt's Jinja over the context
+  data (`{% for svc in plan_result.services %}` / `| map(attribute='type') | unique`).
+  Workhorse already exposes the raw context — the derivation is the workflow's job.
+- **A genuinely reusable primitive** → add it to workhorse **parameterised**, with no
+  knowledge of any workflow's field names. `resolve_workspace(env_key)` is the model: the
+  workflow passes `"CODER_WORKSPACE"`; workhorse just reads the env var it's told to. Good
+  additions are things like "read a dotted path from a JSON file", "dedup a list preserving
+  order" — verbs, not nouns from a specific schema.
+
+Litmus test before touching `workhorse/**`: *would a totally different workflow want this
+unchanged?* If it only makes sense for the coder workflow, it belongs in the workflow.
 
 ---
 
@@ -51,42 +80,25 @@ def main() -> None:
 
 `__name__` is the script module name — automatic, stateless, no `set_script_name()` needed.
 
-## Shared lib pattern
-
-Scripts in the same workflow share a `lib/` directory via `sys.path.insert`:
-
-```python
-from __future__ import annotations
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-
-from workspace import resolve_workspace, load_json, load_jsonc
-```
-
-Public exports from `lib/` use **no underscore prefix** — underscore means private to the module. `load_jsonc` not `_load_jsonc`.
-
 ## JSONC parsing
 
-VSCode workspace files use JSON with Comments (trailing commas, `//` comments). Parse them with `load_jsonc()` from the shared lib — never standard `json.loads()` directly.
+VSCode workspace files use JSON with Comments (trailing commas, `//` comments). Parse them with `load_jsonc()` from scriptutil — never standard `json.loads()` directly.
 
 Output is always strict JSON — only input (workspace files) may be JSONC.
 
 ## Workspace resolution
 
-Scripts resolve multi-repo context via `resolve_workspace()`:
+Scripts resolve multi-repo context via `workhorse.scriptutil`:
 
 ```python
-from workspace import resolve_workspace
+from workhorse.scriptutil import resolve_workspace, load_json, load_jsonc
 
-repos = resolve_workspace()
+# Pass the workflow's env key so the correct workspace file is found.
+repos = resolve_workspace("CODER_WORKSPACE")
 # {repo_name: {"path": "/abs/path", "qa_mode": "cli", "verification": "...", ...}}
 ```
 
-Resolution order:
-1. Read the `CODER_WORKSPACE` env var → its value is the VSCode workspace file path
-2. If unset or file missing → CWD is the single-folder workspace (mono-repo fallback)
+The `workspace_env_key` parameter is the name of the env var that points to a VSCode `.code-workspace` file. Each workflow defines its own convention (e.g. `CODER_WORKSPACE` for the coder workflow). When unset or file missing, CWD is used as the single-folder fallback.
 
 The planner selects which repos are relevant — scripts iterate only repos listed in `plan-context.json`, not all workspace folders.
 
@@ -147,7 +159,44 @@ if repo.is_dirty(untracked_files=True):
 repo.remote("origin").push()
 ```
 
-For `gh` CLI operations (no Python library exists): `subprocess.run(["gh", "pr", "create", ...])` is the acceptable exception.
+For push operations, use the transient credential-helper pattern via `subprocess` (gitpython doesn't support it cleanly):
+
+
+```python
+push_url = f"https://github.com/{owner}/{repo_slug}.git"
+cred_helper = f'!f() {{ echo username=x-access-token; echo "password={token}"; }}; f'
+subprocess.run(
+    ["git", "-c", f"credential.helper={cred_helper}", "push", push_url, f"{branch}:{branch}"],
+    cwd=str(repo_path), timeout=120,
+)
+```
+
+
+## GitHub API — PyGithub
+
+For typed GitHub API access (PR creation, PR search, issue comments) use PyGithub.
+Resolve the token first via `gh-token.py`, then pass it to `Github()`:
+
+```python
+from github import Github, GithubException
+
+gh = Github(token)
+gh_repo = gh.get_repo("SafelyYou-Inc/olympus")
+
+# Check for existing PR or create one
+owner = gh_repo.owner.login
+existing = list(gh_repo.get_pulls(head=f"{owner}:{branch}", state="open"))
+if existing:
+    pr = existing[0]
+else:
+    pr = gh_repo.create_pull(title=title, body=body, head=branch, base=base)
+
+# Cross-reference comment
+pr.create_issue_comment("**Related PRs:**\n- delphi: https://...")
+```
+
+Use `gh` CLI via subprocess for one-off token lookup. Use PyGithub when you need
+structured responses (PR URL, PR number, paginated list of PRs).
 
 ## Testing workflow scripts
 
