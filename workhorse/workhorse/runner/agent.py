@@ -602,6 +602,12 @@ def run_agent(
             d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
         ]
 
+    # The backend already sets cwd as the agent's working directory — passing it
+    # again via --add-dir is redundant and clutters the CLI invocation.
+    if rendered_cwd and rendered_add_dirs:
+        cwd_resolved = Path(rendered_cwd).resolve()
+        rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
+
     # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
     # claude). Imported lazily to avoid an import cycle (backends imports this
     # module). Used here for the compaction step and the per-backend model default.
