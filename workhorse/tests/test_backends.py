@@ -7,6 +7,7 @@ backend supplies the default). Runnable two ways:
     ./.venv/bin/python tests/test_backends.py
     ./.venv/bin/python -m pytest tests/test_backends.py
 """
+
 from __future__ import annotations
 
 import os
@@ -100,13 +101,14 @@ def test_non_claude_backends_registered():
 
 
 def _fake_stream(canned):
-    """Return a _stream_jsonl stand-in that records the cmd/stdin and returns canned
+    """Return a _stream_jsonl stand-in that records the cmd/stdin/cwd and returns canned
     (state, diagnostics, timed_out, returncode)."""
     captured = {}
 
-    def fake(cmd, node_id, timeout, stdin_data, on_event):
+    def fake(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
         captured["cmd"] = cmd
         captured["stdin"] = stdin_data
+        captured["cwd"] = cwd
         return canned
 
     return fake, captured
@@ -115,7 +117,9 @@ def _fake_stream(canned):
 def test_codex_effort_sets_reasoning_override():
     """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+    )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
@@ -131,7 +135,9 @@ def test_codex_effort_clamped_to_high():
     """Codex tops out at "high"; the Claude-superset levels clamp down."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     for level in ("xhigh", "max"):
-        fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+        fake, captured = _fake_stream(
+            ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+        )
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
             with patch.object(backends, "_stream_jsonl", fake):
@@ -145,7 +151,9 @@ def test_codex_effort_clamped_to_high():
 
 def test_codex_no_effort_omits_override():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+    )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
@@ -193,7 +201,9 @@ def test_claude_no_effort_omits_flag():
 def test_copilot_effort_maps_to_native_flag():
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "s"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "s"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake):
         CopilotBackend().run_turn("BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
@@ -203,7 +213,9 @@ def test_copilot_effort_maps_to_native_flag():
 
 def test_codex_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "tid-123"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "tid-123"}, "", False, 0)
+    )
 
     prior = os.environ.pop("CODEX_PROFILE", None)  # no profile → bare `codex exec`
     try:
@@ -225,7 +237,9 @@ def test_codex_run_turn_fresh_then_resume():
     assert sidp.read_text() == "tid-123"  # session persisted for resume
 
     # Second call resumes by the persisted id.
-    fake2, captured2 = _fake_stream(({"result_text": "OK2", "session_id": "tid-123"}, "", False, 0))
+    fake2, captured2 = _fake_stream(
+        ({"result_text": "OK2", "session_id": "tid-123"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake2):
         CodexBackend().run_turn("P2", "n", sidp)
     assert captured2["cmd"][:3] == ["codex", "exec", "resume"]
@@ -237,14 +251,18 @@ def test_codex_profile_from_env():
     injects a top-level `--profile <name>` (before `exec`); a leading-'@' model
     still maps to `-m`, overriding the profile's pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t1"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "t1"}, "", False, 0)
+    )
 
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         with patch.object(backends, "_stream_jsonl", fake):
             # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
-            CodexBackend().run_turn("PROMPT", "n", sidp, model="@deepseek/deepseek-chat-v3.1")
+            CodexBackend().run_turn(
+                "PROMPT", "n", sidp, model="@deepseek/deepseek-chat-v3.1"
+            )
     finally:
         if prior is None:
             os.environ.pop("CODEX_PROFILE", None)
@@ -256,7 +274,9 @@ def test_codex_profile_from_env():
     assert cmd[:4] == ["codex", "--profile", "openrouter", "exec"]
     assert cmd[cmd.index("-m") + 1] == "deepseek/deepseek-chat-v3.1"
     # Resume also carries the top-level profile ahead of `exec resume`.
-    fake2, captured2 = _fake_stream(({"result_text": "OK2", "session_id": "t1"}, "", False, 0))
+    fake2, captured2 = _fake_stream(
+        ({"result_text": "OK2", "session_id": "t1"}, "", False, 0)
+    )
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         with patch.object(backends, "_stream_jsonl", fake2):
@@ -266,7 +286,13 @@ def test_codex_profile_from_env():
             os.environ.pop("CODEX_PROFILE", None)
         else:
             os.environ["CODEX_PROFILE"] = prior
-    assert captured2["cmd"][:5] == ["codex", "--profile", "openrouter", "exec", "resume"]
+    assert captured2["cmd"][:5] == [
+        "codex",
+        "--profile",
+        "openrouter",
+        "exec",
+        "resume",
+    ]
 
 
 def test_codex_per_node_profile_overrides_env():
@@ -276,7 +302,9 @@ def test_codex_per_node_profile_overrides_env():
     os.environ["CODEX_PROFILE"] = "openrouter"  # run default the node should override
     try:
         sidp = Path(tempfile.mkdtemp()) / ".s"
-        fake, captured = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+        fake, captured = _fake_stream(
+            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+        )
         with patch.object(backends, "_stream_jsonl", fake):
             CodexBackend().run_turn("P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
@@ -284,7 +312,9 @@ def test_codex_per_node_profile_overrides_env():
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
 
         sidp2 = Path(tempfile.mkdtemp()) / ".s"
-        fake2, captured2 = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+        fake2, captured2 = _fake_stream(
+            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+        )
         with patch.object(backends, "_stream_jsonl", fake2):
             CodexBackend().run_turn("P", "n", sidp2, model="local")  # bare = profile
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
@@ -301,7 +331,9 @@ def test_codex_profile_at_slug_model_string():
     `codex --profile mimo exec ... -m mimo-pro` — the codex config profile selects
     the provider/auth bundle, the slug overrides its pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "OK", "session_id": "t"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+    )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
@@ -318,14 +350,19 @@ def test_parse_codex_model():
     assert backends._parse_codex_model(None) == (None, None)
     assert backends._parse_codex_model("") == (None, None)
     assert backends._parse_codex_model("local") == ("local", None)
-    assert backends._parse_codex_model("openrouter@deepseek/x-v3.1") == ("openrouter", "deepseek/x-v3.1")
+    assert backends._parse_codex_model("openrouter@deepseek/x-v3.1") == (
+        "openrouter",
+        "deepseek/x-v3.1",
+    )
     assert backends._parse_codex_model("openrouter@") == ("openrouter", None)
     assert backends._parse_codex_model("@gpt-5.5") == (None, "gpt-5.5")
 
 
 def test_copilot_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "ANSWER", "session_id": "sess-1"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "ANSWER", "session_id": "sess-1"}, "", False, 0)
+    )
 
     with patch.object(backends, "_stream_jsonl", fake):
         out = CopilotBackend().run_turn("PROMPT", "n", sidp)
@@ -338,7 +375,9 @@ def test_copilot_run_turn_fresh_then_resume():
     assert "--session-id" not in cmd  # fresh run: no resume yet
     assert sidp.read_text() == "sess-1"
 
-    fake2, captured2 = _fake_stream(({"result_text": "A2", "session_id": "sess-1"}, "", False, 0))
+    fake2, captured2 = _fake_stream(
+        ({"result_text": "A2", "session_id": "sess-1"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake2):
         CopilotBackend().run_turn("P2", "n", sidp)
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
@@ -347,9 +386,14 @@ def test_copilot_run_turn_fresh_then_resume():
 def test_codex_on_event_extracts_text_and_session():
     state = {"result_text": "", "session_id": None}
     diag: list[str] = []
-    backends._codex_on_event({"type": "thread.started", "thread_id": "abc"}, state, "n", diag)
     backends._codex_on_event(
-        {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}}, state, "n", diag
+        {"type": "thread.started", "thread_id": "abc"}, state, "n", diag
+    )
+    backends._codex_on_event(
+        {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}},
+        state,
+        "n",
+        diag,
     )
     assert state["session_id"] == "abc"
     assert state["result_text"] == "hi"
@@ -372,7 +416,9 @@ def test_finalize_turn_classifies_failures():
     base = {"result_text": "x", "session_id": None}
     # Non-zero exit whose output matches a transient marker → transient.
     try:
-        backends._finalize_turn("codex", "n", dict(base), "rate limit hit", False, 1, None)
+        backends._finalize_turn(
+            "codex", "n", dict(base), "rate limit hit", False, 1, None
+        )
         raise AssertionError("expected raise on non-zero exit")
     except agent.BackendInvocationError as e:
         assert e.transient is True
@@ -384,7 +430,9 @@ def test_finalize_turn_classifies_failures():
         assert e.transient is True
     # Empty result is transient.
     try:
-        backends._finalize_turn("codex", "n", {"result_text": "", "session_id": None}, "", False, 0, None)
+        backends._finalize_turn(
+            "codex", "n", {"result_text": "", "session_id": None}, "", False, 0, None
+        )
         raise AssertionError("expected raise on empty result")
     except agent.BackendInvocationError as e:
         assert e.transient is True
@@ -401,8 +449,13 @@ def test_finalize_turn_non_recoverable_names_each_backend():
     for name in ("opencode", "codex", "copilot", "claude"):
         try:
             backends._finalize_turn(
-                name, "write_epic", {"result_text": "", "session_id": None},
-                diag, False, 1, None,
+                name,
+                "write_epic",
+                {"result_text": "", "session_id": None},
+                diag,
+                False,
+                1,
+                None,
             )
             raise AssertionError(f"{name}: expected raise on a hard CLI exit")
         except agent.BackendInvocationError as e:
@@ -425,7 +478,9 @@ def test_agentnode_power_is_optional():
 
 def test_opencode_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(({"result_text": "PONG", "session_id": "ses_1"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "PONG", "session_id": "ses_1"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake):
         out = OpenCodeBackend().run_turn(
             "PROMPT", "n", sidp, model="openrouter/xiaomi/mimo-v2.5", effort="high"
@@ -434,16 +489,26 @@ def test_opencode_run_turn_fresh_then_resume():
     cmd = captured["cmd"]
     # --print-logs --log-level ERROR routes opencode's quota/limit errors to stderr so
     # the runner's cap detector can see them (and abort the stream early on a cap).
-    assert cmd[:7] == ["opencode", "--print-logs", "--log-level", "ERROR", "run", "--format", "json"]
+    assert cmd[:7] == [
+        "opencode",
+        "--print-logs",
+        "--log-level",
+        "ERROR",
+        "run",
+        "--format",
+        "json",
+    ]
     assert cmd[cmd.index("-m") + 1] == "openrouter/xiaomi/mimo-v2.5"
     assert cmd[cmd.index("--variant") + 1] == "high"  # effort → variant
-    assert "--session" not in cmd                     # fresh run
+    assert "--session" not in cmd  # fresh run
     # The prompt is the final positional, guarded by `--`.
     assert cmd[-2:] == ["--", "PROMPT"]
-    assert captured["stdin"] is None                  # message is on argv, not stdin
-    assert sidp.read_text() == "ses_1"                # session persisted for resume
+    assert captured["stdin"] is None  # message is on argv, not stdin
+    assert sidp.read_text() == "ses_1"  # session persisted for resume
 
-    fake2, captured2 = _fake_stream(({"result_text": "P2", "session_id": "ses_1"}, "", False, 0))
+    fake2, captured2 = _fake_stream(
+        ({"result_text": "P2", "session_id": "ses_1"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake2):
         OpenCodeBackend().run_turn("P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
@@ -453,12 +518,16 @@ def test_opencode_effort_variant_mapping_and_omit():
     sidp = Path(tempfile.mkdtemp()) / ".s"
     cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
     for effort, variant in cases.items():
-        fake, captured = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+        fake, captured = _fake_stream(
+            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+        )
         with patch.object(backends, "_stream_jsonl", fake):
             OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
     # "medium" has no opencode variant → omitted entirely.
-    fake, captured = _fake_stream(({"result_text": "X", "session_id": "s"}, "", False, 0))
+    fake, captured = _fake_stream(
+        ({"result_text": "X", "session_id": "s"}, "", False, 0)
+    )
     with patch.object(backends, "_stream_jsonl", fake):
         OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
@@ -471,19 +540,27 @@ def test_opencode_on_event_text_session_and_error():
         {"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n", diag
     )
     backends._opencode_on_event(
-        {"type": "text", "sessionID": "ses_9", "part": {"id": "p1", "text": "PONG"}}, state, "n", diag
+        {"type": "text", "sessionID": "ses_9", "part": {"id": "p1", "text": "PONG"}},
+        state,
+        "n",
+        diag,
     )
     assert state["session_id"] == "ses_9"
     assert state["result_text"] == "PONG"
     # A second distinct text part is appended, preserving order.
     backends._opencode_on_event(
-        {"type": "text", "sessionID": "ses_9", "part": {"id": "p2", "text": "more"}}, state, "n", diag
+        {"type": "text", "sessionID": "ses_9", "part": {"id": "p2", "text": "more"}},
+        state,
+        "n",
+        diag,
     )
     assert state["result_text"] == "PONG\nmore"
     # An error event is captured as a diagnostic.
     backends._opencode_on_event(
         {"type": "error", "sessionID": "ses_9", "error": {"data": {"message": "boom"}}},
-        state, "n", diag,
+        state,
+        "n",
+        diag,
     )
     assert any("boom" in d for d in diag)
 
@@ -515,18 +592,30 @@ def test_aider_run_turn_builds_noninteractive_cmd():
     assert cmd[cmd.index("--message") + 1] == "PROMPT"
     assert cmd[cmd.index("--model") + 1] == "openrouter/xiaomi/mimo-v2.5"
     # Fully non-interactive, no repo/git mutation behind our back.
-    for flag in ("--yes-always", "--no-stream", "--no-pretty",
-                 "--no-auto-commits", "--no-gitignore"):
+    for flag in (
+        "--yes-always",
+        "--no-stream",
+        "--no-pretty",
+        "--no-auto-commits",
+        "--no-gitignore",
+    ):
         assert flag in cmd
     assert captured["cwd"] == "/repo"
 
 
 def test_aider_effort_clamped_to_high():
-    for level, expected in (("low", "low"), ("high", "high"), ("xhigh", "high"), ("max", "high")):
+    for level, expected in (
+        ("low", "low"),
+        ("high", "high"),
+        ("xhigh", "high"),
+        ("max", "high"),
+    ):
         fake, captured = _fake_text_turn()
         with patch.object(backends, "_run_text_turn", fake):
             AiderBackend().run_turn("P", "n", None, model="m", effort=level)
-        assert captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
+        assert (
+            captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
+        )
 
 
 def test_aider_no_effort_omits_flag():
@@ -564,14 +653,24 @@ def test_opencode_cap_attaches_codex_reset_at():
         0,
     )
     fake, _ = _fake_stream(capped)
-    with patch.object(backends, "_stream_jsonl", fake), \
-         patch.object(backends, "_codex_reset_at", lambda model, *a, **k: reset) as probe:
+    with (
+        patch.object(backends, "_stream_jsonl", fake),
+        patch.object(
+            backends, "_codex_reset_at", lambda model, *a, **k: reset
+        ) as probe,
+    ):
         try:
-            OpenCodeBackend().run_turn("P", "review_implementation", None, model="openai/gpt-5.5")
+            OpenCodeBackend().run_turn(
+                "P", "review_implementation", None, model="openai/gpt-5.5"
+            )
             raise AssertionError("expected a cap BackendInvocationError")
         except agent.BackendInvocationError as exc:
-            assert exc.reset_at == reset, "precise Codex reset must ride through to the runner"
-            assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(exc)
+            assert exc.reset_at == reset, (
+                "precise Codex reset must ride through to the runner"
+            )
+            assert "cap reached" in str(
+                exc
+            ) and "Timeout waiting for result" not in str(exc)
 
 
 def test_opencode_non_cap_does_not_probe_codex():
@@ -579,8 +678,14 @@ def test_opencode_non_cap_does_not_probe_codex():
     ok = ({"result_text": "DONE", "session_id": "s"}, "", False, 0)
     fake, _ = _fake_stream(ok)
     calls = {"n": 0}
-    with patch.object(backends, "_stream_jsonl", fake), \
-         patch.object(backends, "_codex_reset_at", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1)):
+    with (
+        patch.object(backends, "_stream_jsonl", fake),
+        patch.object(
+            backends,
+            "_codex_reset_at",
+            lambda *a, **k: calls.__setitem__("n", calls["n"] + 1),
+        ),
+    ):
         out = OpenCodeBackend().run_turn("P", "n", None, model="openai/gpt-5.5")
     assert out == "DONE"
     assert calls["n"] == 0, "no cap → no probe"
@@ -590,14 +695,19 @@ def _drive_stream_jsonl(lines, on_event):
     """Run backends._stream_jsonl, feeding ``lines`` to its on_line callback through a
     faked stream_subprocess that stops the moment on_line requests an early abort
     (mirroring agent.stream_subprocess). Returns (state, diagnostics, timed_out, rc)."""
+
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         for raw in lines:
-            if on_line(raw):  # cap detected → break + (real code) kill the process group
+            if on_line(
+                raw
+            ):  # cap detected → break + (real code) kill the process group
                 return True, 0
         return False, 0
 
     with patch.object(agent, "stream_subprocess", fake_stream):
-        return backends._stream_jsonl(["opencode"], "review_implementation", 3600, None, on_event)
+        return backends._stream_jsonl(
+            ["opencode"], "review_implementation", 3600, None, on_event
+        )
 
 
 def test_opencode_cap_log_line_aborts_stream_early():
@@ -624,17 +734,25 @@ def test_opencode_cap_log_line_aborts_stream_early():
     # The runner's classifier then frames this as a cap, not a timeout.
     try:
         agent.classify_turn(
-            "opencode", "review_implementation", result_text=state.get("result_text") or None,
-            diagnostics=diag, timed_out=timed_out, returncode=rc, timeout=3600,
+            "opencode",
+            "review_implementation",
+            result_text=state.get("result_text") or None,
+            diagnostics=diag,
+            timed_out=timed_out,
+            returncode=rc,
+            timeout=3600,
         )
         raise AssertionError("expected a cap BackendInvocationError")
     except agent.BackendInvocationError as exc:
-        assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(exc)
+        assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(
+            exc
+        )
 
 
 def test_opencode_cap_structured_error_event_aborts_stream_early():
     """A cap surfaced as a structured JSON error event (not a log line) is caught the
     same way — the on_event-appended diagnostics trip the cap abort."""
+
     def on_event(event, state, node_id, diagnostics):
         if event.get("type") == "error":
             diagnostics.append(event.get("message") or "")
@@ -652,7 +770,9 @@ def test_opencode_cap_structured_error_event_aborts_stream_early():
 
 
 if __name__ == "__main__":
-    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
+    fns = [
+        v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)
+    ]
     failed = 0
     for fn in fns:
         try:
