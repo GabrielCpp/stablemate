@@ -30,6 +30,7 @@ the same classifier. None of the non-Claude backends compact in place (they mana
 context internally, or — aider — run a single message), so the ladder reframes on
 overflow.
 """
+
 from __future__ import annotations
 
 import json
@@ -115,8 +116,14 @@ class ClaudeBackend(AgentBackend):
     ) -> str:
         # Claude has a native reasoning-effort flag (`--effort low|medium|high|xhigh|max`).
         return _agent._run_claude_cli(
-            prompt, node_id, session_id_path, model, timeout=timeout,
-            cwd=cwd, add_dirs=add_dirs, effort=effort,
+            prompt,
+            node_id,
+            session_id_path,
+            model,
+            timeout=timeout,
+            cwd=cwd,
+            add_dirs=add_dirs,
+            effort=effort,
         )
 
     def compact(
@@ -143,14 +150,16 @@ def _read_session_id(session_id_path: Path | None) -> str | None:
     return None
 
 
-def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
+def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
 
     Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
-    process-group kill behave identically to every other harness. Returns
-    ``(state, diagnostics, timed_out, returncode)`` where ``state`` carries
-    ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
+    process-group kill behave identically to every other harness. ``cwd`` sets the
+    subprocess working directory (previously silently dropped here, so Codex/Copilot/
+    OpenCode nodes always ran in the launching process's CWD regardless of a node's
+    ``cwd:``). Returns ``(state, diagnostics, timed_out, returncode)`` where ``state``
+    carries ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
     diagnostics so failure classification can see them."""
     state: dict = {"result_text": "", "session_id": None}
     diagnostics: list[str] = []
@@ -180,13 +189,19 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event):
         return False
 
     timed_out, returncode = _agent.stream_subprocess(
-        cmd, node_id, timeout, on_line, stdin_data=stdin_data
+        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd
     )
     return state, "\n".join(diagnostics), timed_out or cap_abort[0], returncode
 
 
 def _finalize_turn(
-    backend_name, node_id, state, diagnostics, timed_out, returncode, session_id_path,
+    backend_name,
+    node_id,
+    state,
+    diagnostics,
+    timed_out,
+    returncode,
+    session_id_path,
     timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
     rate_reset_at=None,
 ) -> str:
@@ -311,7 +326,11 @@ class CodexBackend(AgentBackend):
         if not profile:  # node didn't name one → fall back to the run-level default
             profile = (os.environ.get("CODEX_PROFILE") or "").strip() or None
         head = ["codex", *(["--profile", profile] if profile else [])]
-        flags = ["--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"]
+        flags = [
+            "--json",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
         if model_slug:
             flags += ["-m", model_slug]
         # Codex has a native reasoning-effort knob (GPT-5.x); set it via a `-c` config
@@ -327,18 +346,30 @@ class CodexBackend(AgentBackend):
         else:
             cmd = [*head, "exec", *flags, "-"]
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, prompt, _codex_on_event
+            cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd
         )
-        return _finalize_turn("codex", node_id, state, diag, timed_out, rc, session_id_path, timeout)
+        return _finalize_turn(
+            "codex", node_id, state, diag, timed_out, rc, session_id_path, timeout
+        )
 
-    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+    def compact(
+        self,
+        session_id_path,
+        node_id,
+        model=None,
+        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    ):
         return False
 
 
 class CopilotBackend(AgentBackend):
     """GitHub Copilot CLI (``copilot -p --output-format json``). No in-place
     compaction. --allow-all-tools + --no-ask-user make it fully autonomous (the
-    container is the sandbox). Session is resumed by id via --session-id."""
+    container is the sandbox). Session is resumed by id via --session-id.
+    ``add_dirs`` maps to one --add-dir per directory: Copilot's own path sandbox
+    only allows CWD + subdirs + the temp dir by default, so multi-repo dispatch
+    (a node whose cwd is one service repo but that also needs to read/write a
+    sibling repo) needs this explicitly granted."""
 
     name = "copilot"
     default_model = None  # 'auto' / Copilot's default unless a node sets model
@@ -357,22 +388,41 @@ class CopilotBackend(AgentBackend):
     ) -> str:
         sid = _read_session_id(session_id_path)
         # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).
-        cmd = ["copilot", "-p", prompt, "--output-format", "json",
-               "--allow-all-tools", "--no-ask-user"]
+        cmd = [
+            "copilot",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--allow-all-tools",
+            "--no-ask-user",
+        ]
         if model:
             cmd += ["--model", model]
         # Copilot has a native reasoning-effort flag (same level range as Claude).
         if effort:
             cmd += ["--effort", effort]
+        # Grant access to sibling repos (multi-repo dispatch): Copilot's own path
+        # sandbox only allows CWD + subdirs + temp dir by default.
+        for d in add_dirs or []:
+            cmd += ["--add-dir", d]
         if sid:
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _copilot_on_event
+            cmd, node_id, timeout, None, _copilot_on_event, cwd=cwd
         )
-        return _finalize_turn("copilot", node_id, state, diag, timed_out, rc, session_id_path, timeout)
+        return _finalize_turn(
+            "copilot", node_id, state, diag, timed_out, rc, session_id_path, timeout
+        )
 
-    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+    def compact(
+        self,
+        session_id_path,
+        node_id,
+        model=None,
+        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    ):
         return False
 
 
@@ -417,7 +467,9 @@ _OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "m
 # of re-probing on a fixed timer. Mirrors codex CLI's own usage display.
 _CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 _OPENCODE_AUTH_PATH = Path(
-    os.environ.get("OPENCODE_AUTH_PATH", str(Path.home() / ".local/share/opencode/auth.json"))
+    os.environ.get(
+        "OPENCODE_AUTH_PATH", str(Path.home() / ".local/share/opencode/auth.json")
+    )
 )
 
 
@@ -432,26 +484,40 @@ def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
 
     Set ``WORKHORSE_CODEX_RESET_PROBE=0`` to disable the probe entirely.
     """
-    if os.environ.get("WORKHORSE_CODEX_RESET_PROBE", "1").lower() in ("0", "false", "no", ""):
+    if os.environ.get("WORKHORSE_CODEX_RESET_PROBE", "1").lower() in (
+        "0",
+        "false",
+        "no",
+        "",
+    ):
         return None
     if not model or not model.lower().startswith("openai/"):
         return None
     try:
-        creds = (json.loads(_OPENCODE_AUTH_PATH.read_text()).get("openai") or {})
+        creds = json.loads(_OPENCODE_AUTH_PATH.read_text()).get("openai") or {}
         token, account = creds.get("access"), creds.get("accountId")
         if creds.get("type") != "oauth" or not token:
             return None
         # A minimal request: when capped it 429s WITH the reset headers and bills
         # nothing; the headers are what we're after, not any completion.
-        body = json.dumps({
-            "model": model.split("/", 1)[1],
-            "instructions": "",
-            "input": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
-            "stream": True,
-            "store": False,
-        }).encode()
+        body = json.dumps(
+            {
+                "model": model.split("/", 1)[1],
+                "instructions": "",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "ping"}],
+                    }
+                ],
+                "stream": True,
+                "store": False,
+            }
+        ).encode()
         req = urllib.request.Request(
-            _CODEX_RESPONSES_URL, data=body, method="POST",
+            _CODEX_RESPONSES_URL,
+            data=body,
+            method="POST",
             headers={
                 "Authorization": f"Bearer {token}",
                 "ChatGPT-Account-Id": account or "",
@@ -481,7 +547,9 @@ class OpenCodeBackend(AgentBackend):
     sessions resume by id via ``--session``. No in-place compaction."""
 
     name = "opencode"
-    default_model = None  # node/AGENT_MODEL names the provider/model (e.g. openrouter/…)
+    default_model = (
+        None  # node/AGENT_MODEL names the provider/model (e.g. openrouter/…)
+    )
     supports_compaction = False
 
     def run_turn(
@@ -502,7 +570,15 @@ class OpenCodeBackend(AgentBackend):
         # cap-wait path instead of burning the short-retry budget. Without this flag these logs
         # go only to ~/.local/share/opencode/log/opencode.log and workhorse never sees them —
         # opencode's internal exponential backoff runs silently until the watchdog kills it.
-        cmd = ["opencode", "--print-logs", "--log-level", "ERROR", "run", "--format", "json"]
+        cmd = [
+            "opencode",
+            "--print-logs",
+            "--log-level",
+            "ERROR",
+            "run",
+            "--format",
+            "json",
+        ]
         if model:
             cmd += ["-m", model]
         if effort and _OPENCODE_VARIANT.get(effort):
@@ -515,17 +591,30 @@ class OpenCodeBackend(AgentBackend):
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _opencode_on_event
+            cmd, node_id, timeout, None, _opencode_on_event, cwd=cwd
         )
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
         # headless path) so the runner sleeps until the window reopens, not a flat hour.
         rate_reset_at = _codex_reset_at(model) if _agent._is_cap(diag) else None
         return _finalize_turn(
-            "opencode", node_id, state, diag, timed_out, rc, session_id_path, timeout,
+            "opencode",
+            node_id,
+            state,
+            diag,
+            timed_out,
+            rc,
+            session_id_path,
+            timeout,
             rate_reset_at=rate_reset_at,
         )
 
-    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+    def compact(
+        self,
+        session_id_path,
+        node_id,
+        model=None,
+        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    ):
         return False
 
 
@@ -551,7 +640,14 @@ def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
     text = "\n".join(lines).strip()
     state = {"result_text": text, "session_id": None}
     return _finalize_turn(
-        backend_name, node_id, state, text, timed_out, returncode, session_id_path, timeout
+        backend_name,
+        node_id,
+        state,
+        text,
+        timed_out,
+        returncode,
+        session_id_path,
+        timeout,
     )
 
 
@@ -590,10 +686,17 @@ class AiderBackend(AgentBackend):
         # --no-pretty give clean line-buffered output; --no-auto-commits/--no-gitignore
         # keep aider from mutating the repo's git state or .gitignore behind our back.
         cmd = [
-            "aider", "--message", prompt,
-            "--yes-always", "--no-stream", "--no-pretty",
-            "--no-auto-commits", "--no-gitignore", "--no-analytics",
-            "--no-show-model-warnings", "--no-check-model-accepts-settings",
+            "aider",
+            "--message",
+            prompt,
+            "--yes-always",
+            "--no-stream",
+            "--no-pretty",
+            "--no-auto-commits",
+            "--no-gitignore",
+            "--no-analytics",
+            "--no-show-model-warnings",
+            "--no-check-model-accepts-settings",
         ]
         if model:
             cmd += ["--model", model]
@@ -601,7 +704,13 @@ class AiderBackend(AgentBackend):
             cmd += ["--reasoning-effort", _aider_effort(effort)]
         return _run_text_turn("aider", cmd, node_id, timeout, cwd, session_id_path)
 
-    def compact(self, session_id_path, node_id, model=None, timeout=_agent.DEFAULT_RESULT_TIMEOUT_S):
+    def compact(
+        self,
+        session_id_path,
+        node_id,
+        model=None,
+        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    ):
         return False
 
 
