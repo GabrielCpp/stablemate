@@ -394,9 +394,12 @@ class CopilotBackend(AgentBackend):
             prompt,
             "--output-format",
             "json",
-            "--allow-all-tools",
+            "--allow-all",
             "--no-ask-user",
         ]
+        # --add-dir serves dual purpose for Copilot: path sandbox allowlisting AND
+        # skill/CLAUDE.md discovery scope. Even with --allow-all (no sandbox), the
+        # dirs inform Copilot where to look for project instructions.
         if model:
             cmd += ["--model", model]
         # Copilot has a native reasoning-effort flag (same level range as Claude).
