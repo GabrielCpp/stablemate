@@ -40,9 +40,8 @@ def test_library_dir_from_workhorse_config():
 def test_library_dir_none_when_unconfigured():
     with tempfile.TemporaryDirectory() as home:  # no config.toml inside
         env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        with patch.dict(os.environ, env, clear=True), patch.object(
-            m.Path, "home", staticmethod(lambda: Path(home))
-        ):
+        env["WORKHORSE_CONFIG"] = str(Path(home) / "config.toml")
+        with patch.dict(os.environ, env, clear=True):
             assert m._resolve_library_dir() is None
 
 
