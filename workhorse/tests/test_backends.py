@@ -371,7 +371,7 @@ def test_copilot_run_turn_fresh_then_resume():
     cmd = captured["cmd"]
     assert cmd[0] == "copilot" and "-p" in cmd and "PROMPT" in cmd
     assert cmd[cmd.index("--output-format") + 1] == "json"
-    assert "--allow-all-tools" in cmd and "--no-ask-user" in cmd
+    assert "--allow-all" in cmd and "--no-ask-user" in cmd
     assert "--session-id" not in cmd  # fresh run: no resume yet
     assert sidp.read_text() == "sess-1"
 
