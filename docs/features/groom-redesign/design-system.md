@@ -1,3 +1,10 @@
+---
+type: feature
+slug: design-system
+area: groom-redesign
+title: groom — IDE console design system
+status: implemented
+---
 # groom — IDE console design system
 
 A design brief for groom's operator console. groom watches `workhorse`

@@ -47,6 +47,8 @@ body {
 .filter:focus { border-color:var(--accent); }
 .tree { overflow-y:auto; flex:1; padding:4px 0; }
 .empty { color:var(--text-2); font-size:12px; padding:12px; }
+.empty.loading { display:flex; align-items:center; gap:8px; }
+.empty.loading .spin { width:12px; height:12px; border:2px solid var(--bg-3); border-top-color:var(--running); border-radius:50%; animation:spin .7s linear infinite; }
 .repo { padding:5px 8px; display:flex; align-items:center; gap:6px; cursor:pointer;
   color:var(--text-1); white-space:nowrap; }
 .repo:hover { background:var(--bg-2); }
@@ -128,6 +130,39 @@ body {
 .settings-panel { padding:16px; }
 .settings-panel h2 { font-size:13px; margin:0 0 10px; }
 .settings-panel .row-set { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--text-1); font-size:12.5px; }
+
+/* ---- changes view (per-repo tree of working-tree diffs) ---- */
+.changes { overflow-y:auto; padding:12px; flex:1; }
+.chg-repo { margin-bottom:16px; }
+.chg-repo-head { display:flex; align-items:center; gap:8px; padding:4px 0 6px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.chg-repo-head .name { font-family:var(--mono); font-size:12.5px; color:var(--text-0); }
+.chg-repo-head .sum { flex:1; text-align:right; color:var(--text-2); font-size:11px; }
+.chg-worker { margin:0 0 12px 10px; padding-left:8px; border-left:1px solid var(--border); }
+.chg-worker-head { display:flex; align-items:center; gap:6px; margin-bottom:6px; cursor:pointer; padding:2px 4px; border-radius:3px; }
+.chg-worker-head:hover { background:var(--bg-2); }
+.chg-worker-head .tchev { color:var(--text-2); font-size:9px; width:9px; transition:transform .1s; }
+.chg-worker.collapsed > .chg-worker-head .tchev { transform:rotate(-90deg); }
+.chg-worker.collapsed > .chg-worker-body { display:none; }
+.chg-worker-head .node { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+.chg-loading, .chg-empty { color:var(--text-2); font-size:11.5px; padding:6px 2px; }
+/* two-pane: changed-file treeview on the left, the clicked file's diff on the right */
+.chg-worker-body { display:flex; gap:14px; align-items:flex-start; }
+.chg-files { flex:0 0 300px; max-width:44%; max-height:70vh; overflow:auto; font-family:var(--mono); font-size:12px; }
+.chg-filediff { flex:1 1 auto; min-width:0; max-height:70vh; overflow:auto; font-size:12px;
+  border:1px solid var(--border); border-radius:5px; background:var(--bg-0); }
+.chg-filediff .chg-empty { padding:14px; }
+.tree-children { margin-left:12px; }
+.tree-dir.collapsed > .tree-children { display:none; }
+.tree-dir-head { display:flex; align-items:center; gap:4px; padding:2px 4px; color:var(--text-1); cursor:pointer; border-radius:3px; white-space:nowrap; }
+.tree-dir-head:hover { background:var(--bg-2); }
+.tree-dir-head .tchev { color:var(--text-2); font-size:9px; width:9px; flex:none; transition:transform .1s; }
+.tree-dir.collapsed > .tree-dir-head .tchev { transform:rotate(-90deg); }
+.tree-file { display:flex; align-items:center; gap:8px; padding:2px 6px; cursor:pointer; border-radius:3px; }
+.tree-file:hover { background:var(--bg-2); }
+.tree-file.active { background:var(--bg-2); box-shadow:inset 2px 0 0 var(--accent); }
+.tree-file .fname { color:var(--text-0); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tree-file .fstat { flex:none; font-size:11px; }
+.tree-file .fstat .add { color:#3fb950; } .tree-file .fstat .del { color:#f85149; }
 
 /* diff2html renders its own table with its own per-cell layout; the bespoke
    theme is class-based so it never bleeds into those bare cells. */

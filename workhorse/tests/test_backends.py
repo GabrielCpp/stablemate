@@ -657,7 +657,7 @@ def test_opencode_cap_attaches_codex_reset_at():
         patch.object(backends, "_stream_jsonl", fake),
         patch.object(
             backends, "_codex_reset_at", lambda model, *a, **k: reset
-        ) as probe,
+        ),
     ):
         try:
             OpenCodeBackend().run_turn(

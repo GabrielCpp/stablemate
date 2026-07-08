@@ -39,7 +39,23 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopb
 
     from .app import create_app
 
-    uvicorn.run(create_app(), host=host, port=port, log_level="info")
+    # uvicorn traps SIGINT/SIGTERM itself, but with the dashboard's persistent
+    # /ws websocket held open its graceful shutdown otherwise blocks waiting for
+    # that connection to drain — so a single Ctrl+C appears to hang until a
+    # second one force-quits. A bounded graceful-shutdown timeout closes lingering
+    # connections and exits cleanly on the first Ctrl+C.
+    config = uvicorn.Config(
+        create_app(),
+        host=host,
+        port=port,
+        log_level="info",
+        timeout_graceful_shutdown=3,
+    )
+    server = uvicorn.Server(config)
+    try:
+        server.run()
+    except KeyboardInterrupt:  # pragma: no cover - only on a racing second signal
+        pass
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -71,10 +87,20 @@ def sidecar_main(argv: list[str] | None = None) -> None:
         default=None,
         help="Send a one-shot 'workflow exited' push with this code and return, instead of watching.",
     )
+    parser.add_argument(
+        "--query",
+        action="store_true",
+        help="Print this container's current gate + run state as JSON and exit (host-side pull path).",
+    )
     args = parser.parse_args(argv)
 
     from . import sidecar
 
+    if args.query:
+        import json
+
+        print(json.dumps(sidecar.snapshot()))
+        return
     if args.exit_code is not None:
         sidecar.push_exited(args.exit_code)
         return

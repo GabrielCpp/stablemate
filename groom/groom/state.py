@@ -13,6 +13,13 @@ WORKFLOWS: dict[str, WorkflowContainer] = {}
 LOG: deque[dict] = deque(maxlen=200)
 CLIENTS: set[asyncio.Queue] = set()
 
+# True while the initial (or a manual) container-discovery pass is still in
+# flight. The UI renders a spinner instead of the "no workers" empty state so a
+# not-yet-scanned fleet doesn't look finished-and-empty. Single process / single
+# event loop, so a plain bool needs no lock. Starts True: groom serves the page
+# immediately and discovers in the background (see app._background_scan).
+SCANNING: bool = True
+
 _gate_locks: dict[str, asyncio.Lock] = {}
 
 

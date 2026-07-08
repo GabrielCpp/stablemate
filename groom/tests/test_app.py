@@ -8,6 +8,7 @@ Run: uv run pytest tests/test_app.py
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import patch
 
 from litestar.testing import TestClient
@@ -145,6 +146,48 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
     # Gate still open, still blocked, no answered event.
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
     assert "groom:answered" not in captured["fragment"]
+
+
+# ---- startup only *schedules* discovery; it must not block on the scan ----
+def test_spawn_scan_returns_before_discovery_completes():
+    _reset()
+    order: list[str] = []
+
+    async def _slow_reconcile() -> int:
+        order.append("scan-start")
+        await asyncio.sleep(0.02)
+        order.append("scan-done")
+        return 0
+
+    async def _scenario() -> None:
+        with patch.object(groom_app, "_reconcile", _slow_reconcile):
+            await groom_app._spawn_scan()
+            order.append("spawn-returned")
+            await groom_app._scan_task  # let the background task finish
+
+    asyncio.run(_scenario())
+
+    # spawn returned before the scan even started running — i.e. non-blocking.
+    assert order[0] == "spawn-returned"
+    assert "scan-done" in order
+    assert state.SCANNING is False
+
+
+# ---- SCANNING is cleared even if the background scan raises ----
+def test_background_scan_clears_scanning_on_error():
+    _reset()
+    state.SCANNING = True
+
+    async def _boom() -> int:
+        raise RuntimeError("docker exploded")
+
+    async def _scenario() -> None:
+        with patch.object(groom_app, "_reconcile", _boom):
+            with contextlib.suppress(RuntimeError):
+                await groom_app._background_scan()
+
+    asyncio.run(_scenario())
+    assert state.SCANNING is False
 
 
 if __name__ == "__main__":

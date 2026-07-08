@@ -17,8 +17,12 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from git import Repo
 
 
 def load_jsonc(text: str) -> dict:

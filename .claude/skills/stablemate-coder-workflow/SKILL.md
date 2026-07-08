@@ -11,6 +11,14 @@ metadata:
 
 Load this skill when reading, modifying, or debugging `agents/workflows/coder/workflow.yaml` or any script under `agents/workflows/coder/scripts/`.
 
+> **Repo modes (mono-repo vs multi-repo), the docs root, and standalone flow
+> invocation are documented in `agents/workflows/coder/docs/repo-modes.md`
+> (repo-root-relative path — read it before touching any `cwd:`/`add_dirs:` on an
+> agent node or any path-resolution script (`resolve-impl-context.py`,
+> `resolve-review-context.py`, `find_repo_root`/`find_docs_root`). It documents
+> guarantees (and the lack thereof) around the docs root and the affected-repos
+> list that are easy to get wrong.**
+
 ---
 
 ## Workflow Parameters (`vars:`)

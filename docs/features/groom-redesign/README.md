@@ -1,3 +1,10 @@
+---
+type: feature
+slug: README
+area: groom-redesign
+title: groom — IDE console redesign (design result)
+status: implemented
+---
 # groom — IDE console redesign (design result)
 
 Superdesign output for reworking groom's UI from its single 7-column table into

@@ -91,6 +91,72 @@ def _current_node() -> str:
         return ""
 
 
+def _terminal() -> str:
+    """The latest run's terminal state (non-empty ⇒ the workflow FINISHED),
+    read from ``<latest>/run.json`` — the pull-side complement to the inotify
+    loop, which only ever reports the current node.
+    """
+    run_dir = _latest_run_dir()
+    if run_dir is None:
+        return ""
+    run_json = run_dir / "run.json"
+    if not run_json.is_file():
+        return ""
+    try:
+        return json.loads(run_json.read_text()).get("terminal") or ""
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+# STATUS: is the first line of a gate context file, so a small head read is
+# enough to classify a file without slurping large source files whole.
+_GATE_SCAN_HEAD = 512
+
+
+def scan_gates() -> list[dict]:
+    """A one-shot sweep of ``/workspace`` for every file whose STATUS line reads
+    AWAITING_OPERATOR — the pull-side equivalent of what ``_handle_event`` emits
+    reactively, so a host query returns gates that were already open before any
+    inotify event fired. Same directory skips as the watcher.
+    """
+    gates: list[dict] = []
+    if not WORKSPACE_DIR.is_dir():
+        return gates
+    for dirpath, dirnames, filenames in os.walk(WORKSPACE_DIR):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
+        for fname in filenames:
+            fpath = Path(dirpath) / fname
+            try:
+                with fpath.open("r", errors="replace") as fh:
+                    head = fh.read(_GATE_SCAN_HEAD)
+            except OSError:
+                continue
+            if status_of(head) != AWAITING:
+                continue
+            try:
+                content = fpath.read_text(errors="replace")
+            except OSError:
+                continue
+            try:
+                rel_path = str(fpath.relative_to(WORKSPACE_DIR))
+            except ValueError:
+                rel_path = str(fpath)
+            gates.append({"file_path": rel_path, "question": extract_question(content)})
+    return gates
+
+
+def snapshot() -> dict:
+    """The container's full current state as the host's ``--query`` asks for it:
+    current graph node, terminal state, and every open gate. Pure file reads —
+    no inotify, no network — so it is safe to run as a one-shot ``docker exec``.
+    """
+    return {
+        "current_node": _current_node(),
+        "terminal": _terminal(),
+        "gates": scan_gates(),
+    }
+
+
 def _add_watches(inotify: INotify, root: Path, wd_to_path: dict[int, str]) -> None:
     if not root.is_dir():
         return

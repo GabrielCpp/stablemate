@@ -80,6 +80,16 @@ async def worker_detail(container_id: str) -> Response:
     return Response(content=render.render_worker_detail(wf), media_type=MediaType.HTML)
 
 
+@get("/changes", include_in_schema=False)
+async def changes() -> Response:
+    """The Changes activity-mode pane: a per-repo tree of every worker's
+    working-tree diff, fetched on demand into ``#detail``. The diffs themselves
+    are still lazy-loaded per worker via ``GET /diff/{id}`` and rendered by
+    diff2html client-side.
+    """
+    return Response(content=render.render_changes(_all_workflows()), media_type=MediaType.HTML)
+
+
 @get("/diff/{container_id:str}", include_in_schema=False)
 async def diff(container_id: str) -> Response:
     """Plain-text git diff for a workflow's working tree, fetched client-side
@@ -95,11 +105,17 @@ async def diff(container_id: str) -> Response:
     return Response(content=text, media_type=MediaType.TEXT)
 
 
-@post("/refresh", include_in_schema=False)
-async def refresh() -> dict:
-    """Re-run the startup reconciliation scan on demand (e.g. a UI button),
-    so workflows that predate this groom process without ever pushing to it
-    are still discovered without a restart.
+async def _reconcile() -> int:
+    """One discovery pass: upsert every found workflow, then prune the ones
+    whose container is gone (skipping the prune when docker is unreachable so a
+    transient outage never wipes the fleet). Shared by the background startup
+    scan and the manual /refresh. Returns the number of workflows found.
+
+    Runs on the default thread-pool via ``asyncio.to_thread``; a Ctrl+C landing
+    mid-scan waits for the current docker call to return before the process
+    exits (bounded by DOCKER_TIMEOUT), then shuts down cleanly. A daemon-thread
+    variant was tried to make that instant but crashed uvloop on teardown, so
+    the clean bounded wait is the deliberate choice.
     """
     found = await asyncio.to_thread(discovery.scan)
     for wf in found:
@@ -107,8 +123,24 @@ async def refresh() -> dict:
     present = await asyncio.to_thread(discovery.present_container_ids)
     if present is not None:
         state.prune_workflows(present)
+    return len(found)
+
+
+@post("/refresh", include_in_schema=False)
+async def refresh() -> dict:
+    """Re-run the reconciliation scan on demand (e.g. a UI button), so
+    workflows that predate this groom process without ever pushing to it are
+    still discovered without a restart. Flags SCANNING so an empty fleet shows
+    the spinner while the rescan runs.
+    """
+    state.SCANNING = True
     await _broadcast_shell()
-    return {"ok": True, "count": len(found)}
+    try:
+        count = await _reconcile()
+    finally:
+        state.SCANNING = False
+    await _broadcast_shell()
+    return {"ok": True, "count": count}
 
 
 @post("/push/progress", include_in_schema=False)
@@ -238,13 +270,32 @@ async def dashboard_ws(socket: WebSocket) -> None:
         state.remove_client(queue)
 
 
-async def _startup_scan() -> None:
-    found = await asyncio.to_thread(discovery.scan)
-    for wf in found:
-        state.WORKFLOWS[wf.container_id] = wf
-    present = await asyncio.to_thread(discovery.present_container_ids)
-    if present is not None:
-        state.prune_workflows(present)
+# Held module-side so the background scan task isn't garbage-collected while it
+# runs (asyncio keeps only a weak reference to bare tasks).
+_scan_task: asyncio.Task | None = None
+
+
+async def _background_scan() -> None:
+    """The startup discovery pass, run off the event loop *after* the server is
+    already accepting connections. SCANNING stays True until this finishes (the
+    UI shows a spinner); the completion broadcast then swaps in real rows —
+    reaching every connected tab through the same path /refresh uses. Cleared in
+    a finally so a scan error can't strand the spinner forever.
+    """
+    try:
+        await _reconcile()
+    finally:
+        state.SCANNING = False
+        await _broadcast_shell()
+
+
+async def _spawn_scan() -> None:
+    """on_startup hook: only *schedule* discovery and return immediately, so
+    uvicorn finishes lifespan-startup and binds the port right away instead of
+    blocking on the whole docker scan (the old _startup_scan did the latter).
+    """
+    global _scan_task
+    _scan_task = asyncio.create_task(_background_scan())
 
 
 def create_app() -> Litestar:
@@ -253,6 +304,7 @@ def create_app() -> Litestar:
             index,
             search,
             worker_detail,
+            changes,
             diff,
             refresh,
             push_progress,
@@ -261,5 +313,5 @@ def create_app() -> Litestar:
             dashboard_ws,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
-        on_startup=[_startup_scan],
+        on_startup=[_spawn_scan],
     )

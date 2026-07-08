@@ -26,6 +26,7 @@ from __future__ import annotations
 import html as _html
 import json
 
+from . import state
 from .models import WorkflowContainer, WorkflowState
 
 # Blocked first, then active, then quiet — used for both tree and inbox order.
@@ -43,6 +44,24 @@ def esc(value: str | None) -> str:
 
 def _oob(oob: bool) -> str:
     return ' hx-swap-oob="true"' if oob else ""
+
+
+def render_loading(message: str = "Discovering containers…") -> str:
+    """The placeholder shown in an empty live region while discovery is still
+    running, so a not-yet-scanned fleet reads as *loading* rather than
+    *finished-and-empty*. Reuses the ``spin`` keyframes from dashboard.css.
+    """
+    return f'<div class="empty loading"><span class="spin"></span>{esc(message)}</div>'
+
+
+def _empty_or_loading(text: str, query: str) -> str:
+    """Loading spinner while a discovery pass is in flight (and the operator
+    isn't mid-search), else the region's normal empty message. A query means the
+    operator is filtering an already-loaded fleet, so show the empty result.
+    """
+    if state.SCANNING and not query:
+        return render_loading()
+    return f'<div class="empty">{text}</div>'
 
 
 def _matches(wf: WorkflowContainer, query: str) -> bool:
@@ -139,7 +158,7 @@ def _tree_group(label: str, members: list[WorkflowContainer]) -> str:
 def render_tree(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = False) -> str:
     matching = [wf for wf in workflows if _matches(wf, query)]
     if not matching:
-        inner = '<div class="empty">No workers.</div>'
+        inner = _empty_or_loading("No workers.", query)
     else:
         inner = "".join(_tree_group(label, members) for label, members in _group_by_repo(matching))
     return f'<div class="tree" id="tree"{_oob(oob)}>{inner}</div>'
@@ -177,10 +196,13 @@ def _inbox_row(wf: WorkflowContainer) -> str:
 
 
 def render_inbox(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = False) -> str:
-    matching = [wf for wf in workflows if _matches(wf, query)]
+    # The inbox is the operator's *message* list — only workers with an open
+    # gate (an incoming "I need you" from a container) belong here. The full
+    # fleet lives in the tree; a plain RUNNING/FINISHED worker is not a message.
+    matching = [wf for wf in workflows if wf.gates and _matches(wf, query)]
     matching.sort(key=lambda wf: (STATE_ORDER[wf.state], wf.name))
     if not matching:
-        inner = '<div class="empty">No workflow containers found.</div>'
+        inner = _empty_or_loading("No incoming messages — inbox zero.", query)
     else:
         inner = "".join(_inbox_row(wf) for wf in matching)
     return f'<div class="inbox-list" id="inbox-list"{_oob(oob)}>{inner}</div>'
@@ -278,6 +300,58 @@ def render_worker_detail(wf: WorkflowContainer | None) -> str:
         )
     body = f'<div class="detail-body">{"".join(blocks)}{_diff_disclosure(wf)}</div>'
     return f'<div id="detail">{_detail_head(wf)}{body}</div>'
+
+
+# --------------------------------------------------------------------------- #
+# Changes view (per-repo tree of working-tree diffs)
+# --------------------------------------------------------------------------- #
+def _changes_worker(wf: WorkflowContainer) -> str:
+    """One worker inside a repo group: its identity line, a lazily-filled tree of
+    the *changed file names* (``.chg-files``), and an initially-empty diff panel
+    (``.chg-filediff``). dashboard.html fetches the worker's unified diff once,
+    lists the files, and renders a file's diff into the panel only when that file
+    is clicked — the diff is never shown until a file is selected.
+    """
+    node = f'<span class="node">{esc(wf.current_node)}</span>' if wf.current_node else ""
+    cid = esc(wf.container_id)
+    # No data-worker-id here on purpose: in the Changes tab a click drives the
+    # file tree / diff (handled by the changes view's own delegated listener),
+    # not the global worker-select that opens the gate detail in other tabs.
+    return (
+        f'<div class="chg-worker" data-container="{cid}">'
+        f'<div class="chg-worker-head"><span class="tchev">▾</span>'
+        f"{_state_dot(wf.state)}{_type_badge(wf.workflow_type)}"
+        f'<span class="wid">#{esc(_short_id(wf))}</span>{node}</div>'
+        f'<div class="chg-worker-body">'
+        f'<div class="chg-files" data-files-for="{cid}"><div class="chg-loading">Loading changed files…</div></div>'
+        f'<div class="chg-filediff" data-filediff-for="{cid}"><div class="chg-empty">Select a file to see its diff.</div></div>'
+        f"</div></div>"
+    )
+
+
+def render_changes(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = False) -> str:
+    """The Changes activity-mode pane: every worker's working-tree diff grouped
+    under its repo header, so the operator sees changes *per repo* rather than
+    one selected worker's raw diff. Fetched on demand via ``GET /changes`` into
+    ``#detail`` (the diffs themselves are lazy-loaded + rendered client-side by
+    diff2html, same contract as the per-worker disclosure).
+    """
+    matching = [wf for wf in workflows if _matches(wf, query)]
+    if not matching:
+        inner = _empty_or_loading("No repositories with changes.", query)
+    else:
+        inner = "".join(
+            f'<div class="chg-repo" data-repo="{esc(label)}">'
+            f'<div class="chg-repo-head"><span class="name">{esc(label)}</span>'
+            f'<span class="sum">{len(members)} worker{"s" if len(members) != 1 else ""}</span></div>'
+            + "".join(
+                _changes_worker(m)
+                for m in sorted(members, key=lambda w: (STATE_ORDER[w.state], w.name))
+            )
+            + "</div>"
+            for label, members in _group_by_repo(matching)
+        )
+    return f'<div class="changes" id="changes"{_oob(oob)}>{inner}</div>'
 
 
 # --------------------------------------------------------------------------- #

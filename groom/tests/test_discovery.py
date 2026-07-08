@@ -140,8 +140,11 @@ def test_scan_marks_blocked_workflow_and_finished_run():
     def _fake_grep(volume, mount_subdir=""):
         return ["docs/gate.md"] if volume == "author-1-workspace" else []
 
+    # sidecar_query returns None here so the scan exercises the volume-read
+    # fallback (the path this test covers); the query path is tested separately.
     with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}, {"ID": "fedcba987654"}]), \
          patch.object(discovery.docker_io, "docker_inspect", side_effect=_fake_inspect), \
+         patch.object(discovery.docker_io, "sidecar_query", return_value=None), \
          patch.object(discovery.docker_io, "list_run_dirs", side_effect=_fake_run_dirs), \
          patch.object(discovery.docker_io, "read_file", side_effect=_fake_read_file), \
          patch.object(discovery.docker_io, "grep_awaiting_files", side_effect=_fake_grep):
@@ -158,6 +161,52 @@ def test_scan_marks_blocked_workflow_and_finished_run():
 
     # A finished run's terminal state wins even though it has no live gates.
     assert coder.state == WorkflowState.FINISHED
+
+
+def test_scan_uses_sidecar_query_for_running_container():
+    # A running container's state comes from the in-container sidecar's
+    # --query snapshot; the throwaway volume-read primitives must NOT be hit.
+    snapshot = {
+        "current_node": "resolve_integrity",
+        "terminal": "",
+        "gates": [{"file_path": "docs/gate.md", "question": "Which default?"}],
+    }
+    with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}]), \
+         patch.object(discovery.docker_io, "docker_inspect", return_value=_inspect()), \
+         patch.object(discovery.docker_io, "sidecar_query", return_value=snapshot) as q, \
+         patch.object(discovery.docker_io, "grep_awaiting_files", side_effect=AssertionError("volume path used")), \
+         patch.object(discovery.docker_io, "list_run_dirs", side_effect=AssertionError("volume path used")):
+        found = discovery.scan()
+
+    q.assert_called_once_with("abcdef012345")
+    wf = found[0]
+    assert wf.state == WorkflowState.BLOCKED
+    assert wf.current_node == "resolve_integrity"
+    assert "docs/gate.md" in wf.gates
+    assert wf.gates["docs/gate.md"].workflow_id == "abcdef012345"
+
+
+def test_scan_query_terminal_wins_over_gates():
+    snapshot = {"current_node": "publish", "terminal": "done", "gates": []}
+    with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}]), \
+         patch.object(discovery.docker_io, "docker_inspect", return_value=_inspect()), \
+         patch.object(discovery.docker_io, "sidecar_query", return_value=snapshot):
+        found = discovery.scan()
+    assert found[0].state == WorkflowState.FINISHED
+
+
+def test_scan_stopped_container_skips_query_and_reads_volumes():
+    # A stopped container can't be exec'd, so sidecar_query must not be called;
+    # state comes from the volume-read fallback instead.
+    stopped = _inspect(State={"Running": False, "ExitCode": 0})
+    with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}]), \
+         patch.object(discovery.docker_io, "docker_inspect", return_value=stopped), \
+         patch.object(discovery.docker_io, "sidecar_query", side_effect=AssertionError("exec'd a stopped container")), \
+         patch.object(discovery.docker_io, "list_run_dirs", return_value=["run-20260705-090000"]), \
+         patch.object(discovery.docker_io, "read_file", return_value='{"terminal": "done"}'), \
+         patch.object(discovery.docker_io, "grep_awaiting_files", return_value=[]):
+        found = discovery.scan()
+    assert found[0].state == WorkflowState.FINISHED
 
 
 def test_present_container_ids_passes_through_docker_layer():
