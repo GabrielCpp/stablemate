@@ -123,6 +123,82 @@
       });
     }
 
+    // ---------- changes view: per-repo tree of changed FILES ----------
+    // Each worker's unified diff is fetched once; the changed paths are shown as
+    // a collapsible directory treeview, and a file's diff is rendered into the
+    // panel only when that file is clicked (never shown before a click).
+    function escHtml(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+
+    function buildFileTree(files) {
+      var root = { dirs: {}, files: [] };
+      files.forEach(function (f, i) {
+        var name = (f.newName && f.newName !== "/dev/null") ? f.newName : f.oldName;
+        var parts = String(name).split("/");
+        var node = root;
+        for (var p = 0; p < parts.length - 1; p++) {
+          node.dirs[parts[p]] = node.dirs[parts[p]] || { dirs: {}, files: [] };
+          node = node.dirs[parts[p]];
+        }
+        node.files.push({ name: parts[parts.length - 1], idx: i, add: f.addedLines, del: f.deletedLines });
+      });
+      return root;
+    }
+    function renderTreeNode(node) {
+      var html = "";
+      Object.keys(node.dirs).sort().forEach(function (d) {
+        html += '<div class="tree-dir"><div class="tree-dir-head"><span class="tchev">▾</span>' + escHtml(d) + "</div>" +
+                '<div class="tree-children">' + renderTreeNode(node.dirs[d]) + "</div></div>";
+      });
+      node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
+        html += '<div class="tree-file" data-file-idx="' + f.idx + '"><span class="fname">' + escHtml(f.name) + "</span>" +
+                '<span class="fstat"><span class="add">+' + f.add + '</span> <span class="del">-' + f.del + "</span></span></div>";
+      });
+      return html;
+    }
+    function wireChanges() {
+      var changes = document.querySelector("#detail .changes");
+      if (!changes) return;
+      // One delegated listener for the whole Changes view — collapse a worker,
+      // collapse a directory, or render a single file's diff on click. The
+      // global body handler bails out inside .changes, so a click here never
+      // triggers the gate-detail worker-select used by the other tabs.
+      if (!changes.dataset.wired) {
+        changes.dataset.wired = "1";
+        changes.addEventListener("click", function (e) {
+          var whead = e.target.closest(".chg-worker-head");
+          if (whead) { whead.parentNode.classList.toggle("collapsed"); return; }
+          var dhead = e.target.closest(".tree-dir-head");
+          if (dhead) { dhead.parentNode.classList.toggle("collapsed"); return; }
+          var row = e.target.closest(".tree-file");
+          if (!row) return;
+          var worker = row.closest(".chg-worker");
+          var filesEl = worker.querySelector("[data-files-for]");
+          var diffEl = worker.querySelector("[data-filediff-for]");
+          filesEl.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
+          row.classList.add("active");
+          diffEl.innerHTML = Diff2Html.html([filesEl._files[+row.dataset.fileIdx]],
+            { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" });
+        });
+      }
+      // Lazily fetch each worker's diff once and render its changed paths as a tree.
+      changes.querySelectorAll(".chg-worker[data-container]").forEach(function (w) {
+        var cid = w.dataset.container;
+        var filesEl = w.querySelector("[data-files-for]");
+        if (!filesEl || filesEl.dataset.loaded) return;
+        filesEl.dataset.loaded = "1";
+        fetch("/diff/" + encodeURIComponent(cid))
+          .then(function (r) { return r.text(); })
+          .then(function (text) {
+            if (!text.trim()) { filesEl.innerHTML = '<div class="chg-empty">(no changes)</div>'; return; }
+            var files = Diff2Html.parse(text);
+            if (!files.length) { filesEl.innerHTML = '<div class="chg-empty">(no changes)</div>'; return; }
+            filesEl._files = files;
+            filesEl.innerHTML = renderTreeNode(buildFileTree(files));
+          })
+          .catch(function () { filesEl.innerHTML = '<div class="chg-empty">failed to load</div>'; });
+      });
+    }
+
     // ---------- activity bar (mode switch) ----------
     function setMode(mode) {
       document.querySelector(".app").dataset.mode = mode;
@@ -136,8 +212,14 @@
           '<span>Re-run the docker discovery pass.</span></div>' +
           '<div class="row-set"><button class="btn ghost" id="btn-notify">Enable notifications</button>' +
           '<span>Browser alerts when a worker blocks.</span></div></div>';
+      } else if (mode === "changes") {
+        // Per-repo tree of every worker's working-tree diff. Load it whole into
+        // #detail; wireDetail() then lazy-fetches + auto-opens each diff.
+        window.htmx.ajax("GET", "/changes", { target: "#detail", swap: "innerHTML" });
       } else if (selected) {
-        wireDetail();
+        // Back to a per-worker mode: restore the selected worker's detail pane
+        // (it may currently hold the changes tree or settings panel).
+        select(selected);
       }
     }
     document.getElementById("activitybar").addEventListener("click", function (e) {
@@ -148,6 +230,9 @@
     // ---------- clicks: tree collapse, worker selection, settings buttons ----------
     document.body.addEventListener("click", function (e) {
       if (e.target.closest("form")) return;               // don't hijack the answer form
+      // Changes tab owns its own clicks (file tree + diff) — a worker click there
+      // must NOT open the gate detail the way it does in the Inbox/Fleet tabs.
+      if (e.target.closest(".changes")) return;
       var repo = e.target.closest(".repo");
       if (repo) {
         repo.classList.toggle("collapsed");
@@ -251,7 +336,7 @@
     });
 
     // ---------- live swaps: re-render markdown, re-apply selection, wire diffs ----------
-    document.body.addEventListener("htmx:afterSwap", function () { renderMarkdown(); wireDetail(); });
+    document.body.addEventListener("htmx:afterSwap", function () { renderMarkdown(); wireDetail(); wireChanges(); });
     document.body.addEventListener("htmx:oobAfterSwap", function () { renderMarkdown(); applySelection(); });
     renderMarkdown();
   </script>

@@ -9,12 +9,16 @@ Run: uv run python tests/test_sidecar.py   (or via pytest)
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import tempfile
 import urllib.error
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from groom import sidecar
+from groom import cli, sidecar
 from inotify_simple import flags
 
 
@@ -168,6 +172,61 @@ def test_handle_event_ignores_unknown_watch_descriptor():
     # No exception, no push, when the wd isn't in our map (e.g. a stale watch).
     with patch.object(sidecar, "push_progress", side_effect=AssertionError("should not push")):
         sidecar._handle_event(None, _event(999, flags.MODIFY, name="x"), {})
+
+
+# --------------------------------------------------------------------------- #
+# Pull-side query: scan_gates / _terminal / snapshot / cli --query
+# --------------------------------------------------------------------------- #
+def test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "docs").mkdir()
+        (ws / "docs" / "gate.md").write_text(
+            "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich default?\n"
+        )
+        (ws / "docs" / "done.md").write_text("STATUS: CONSUMED\n\nnothing to see\n")
+        (ws / ".git").mkdir()
+        (ws / ".git" / "hook.md").write_text("STATUS: AWAITING_OPERATOR\n")  # excluded dir
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            gates = sidecar.scan_gates()
+    assert gates == [{"file_path": "docs/gate.md", "question": "Which default?"}]
+
+
+def test_terminal_reads_latest_run_json():
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        rd = runs / "coder-20260101-000000"
+        rd.mkdir()
+        (rd / "run.json").write_text('{"terminal": "done"}')
+        with patch.object(sidecar, "RUNS_DIR", runs):
+            assert sidecar._terminal() == "done"
+
+
+def test_snapshot_reports_node_terminal_and_gates():
+    with tempfile.TemporaryDirectory() as tmp_ws, tempfile.TemporaryDirectory() as tmp_runs:
+        ws, runs = Path(tmp_ws), Path(tmp_runs)
+        (ws / "context.md").write_text(
+            "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nPick one?\n"
+        )
+        rd = runs / "coder-20260101-000000"
+        rd.mkdir()
+        (rd / "checkpoint.json").write_text('{"current_id": "await_operator"}')
+        (rd / "run.json").write_text('{"terminal": ""}')
+        with patch.object(sidecar, "WORKSPACE_DIR", ws), patch.object(sidecar, "RUNS_DIR", runs):
+            snap = sidecar.snapshot()
+    assert snap["current_node"] == "await_operator"
+    assert snap["terminal"] == ""
+    assert snap["gates"] == [{"file_path": "context.md", "question": "Pick one?"}]
+
+
+def test_cli_query_prints_snapshot_json_and_does_not_watch():
+    fake = {"current_node": "n1", "terminal": "", "gates": []}
+    buf = io.StringIO()
+    with patch.object(sidecar, "snapshot", return_value=fake), \
+         patch.object(sidecar, "run", side_effect=AssertionError("--query must not start the watch loop")), \
+         contextlib.redirect_stdout(buf):
+        cli.sidecar_main(["--query"])
+    assert json.loads(buf.getvalue()) == fake
 
 
 if __name__ == "__main__":
