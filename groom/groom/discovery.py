@@ -13,11 +13,17 @@ from __future__ import annotations
 
 import json
 import posixpath
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from . import docker_io
 from .gates import AWAITING, extract_question, status_of
 from .models import GateInfo, WorkflowContainer, WorkflowState
+
+# Cap on concurrent per-container docker calls during a scan. The work is
+# I/O-bound subprocess (docker inspect + exec), so a small pool collapses total
+# wall time to ~the slowest single container without hammering the daemon.
+_SCAN_WORKERS = 8
 
 WORKFLOW_MOUNT = "/workflow"
 RUNS_MOUNT = "/runs"
@@ -125,29 +131,68 @@ def present_container_ids() -> set[str] | None:
     return docker_io.list_container_ids()
 
 
+def _apply_snapshot(wf: WorkflowContainer, snapshot: dict[str, Any]) -> None:
+    """Fold a sidecar ``--query`` snapshot into a workflow: current node, then
+    terminal-wins-over-gates (a finished run has no live gate to answer)."""
+    wf.current_node = snapshot.get("current_node") or wf.current_node
+    if snapshot.get("terminal"):
+        wf.state = WorkflowState.FINISHED
+        return
+    for gate in snapshot.get("gates") or []:
+        file_path = gate.get("file_path", "")
+        if not file_path:
+            continue
+        wf.gates[file_path] = GateInfo(
+            workflow_id=wf.container_id,
+            file_path=file_path,
+            question=gate.get("question", ""),
+            status=AWAITING,
+        )
+    if wf.gates:
+        wf.state = WorkflowState.BLOCKED
+
+
+def _resolve_via_volumes(wf: WorkflowContainer) -> None:
+    """The original throwaway-container path: reconstruct run node + gates by
+    reading the named volumes. Used for stopped containers (can't ``exec``) and
+    as the fallback when a running container's sidecar query fails."""
+    if wf.runs_volume:
+        wf.current_node, terminal = _current_run_state(wf.runs_volume)
+        if terminal:
+            wf.state = WorkflowState.FINISHED
+
+    if wf.workspace_volume and wf.state != WorkflowState.FINISHED:
+        for gate in _find_gates(wf.workspace_volume):
+            gate.workflow_id = wf.container_id
+            wf.gates[gate.file_path] = gate
+        if wf.gates:
+            wf.state = WorkflowState.BLOCKED
+
+
+def _resolve_container(container_id: str) -> WorkflowContainer | None:
+    """Inspect one container and, if it's a workhorse workflow, resolve its
+    state — preferring the in-container sidecar query for running containers and
+    falling back to volume reads for stopped/legacy ones. Returns ``None`` for
+    non-workflow containers so they're dropped from the scan."""
+    inspect = docker_io.docker_inspect(container_id)
+    if not inspect or not is_workhorse_container(inspect):
+        return None
+
+    wf = container_from_inspect(inspect)
+    running = bool((inspect.get("State") or {}).get("Running"))
+    snapshot = docker_io.sidecar_query(wf.container_id) if running else None
+    if snapshot is not None:
+        _apply_snapshot(wf, snapshot)
+    else:
+        _resolve_via_volumes(wf)
+    return wf
+
+
 def scan() -> list[WorkflowContainer]:
-    found: list[WorkflowContainer] = []
-    for entry in docker_io.docker_ps_all():
-        container_id = entry.get("ID", "")
-        if not container_id:
-            continue
-        inspect = docker_io.docker_inspect(container_id)
-        if not inspect or not is_workhorse_container(inspect):
-            continue
-
-        wf = container_from_inspect(inspect)
-
-        if wf.runs_volume:
-            wf.current_node, terminal = _current_run_state(wf.runs_volume)
-            if terminal:
-                wf.state = WorkflowState.FINISHED
-
-        if wf.workspace_volume and wf.state != WorkflowState.FINISHED:
-            for gate in _find_gates(wf.workspace_volume):
-                gate.workflow_id = wf.container_id
-                wf.gates[gate.file_path] = gate
-            if wf.gates:
-                wf.state = WorkflowState.BLOCKED
-
-        found.append(wf)
-    return found
+    ids = [entry.get("ID", "") for entry in docker_io.docker_ps_all() if entry.get("ID")]
+    if not ids:
+        return []
+    # Preserve docker-ps order (pool.map is ordered) for a stable UI/tests.
+    with ThreadPoolExecutor(max_workers=min(_SCAN_WORKERS, len(ids))) as pool:
+        resolved = pool.map(_resolve_container, ids)
+    return [wf for wf in resolved if wf is not None]

@@ -98,18 +98,39 @@ def test_tree_groups_workers_by_repo_and_badges_type():
     assert "predykt@main" in html
 
 
-def test_blocked_worker_sorts_first_in_inbox_and_shows_preview():
+def test_inbox_shows_only_workers_with_open_gates():
+    # The inbox is the message list: a worker without an open gate (plain
+    # RUNNING, or FINISHED) is not an incoming message and must not appear.
     wfs = [
-        _wf("run", state=WorkflowState.RUNNING),
+        _wf("run", state=WorkflowState.RUNNING, current_node="write_epic"),
         _blocked("blk", question="CI is red — pick an option"),
+        _wf("fin", state=WorkflowState.FINISHED, exit_code=0),
     ]
     html = render.render_inbox(wfs)
-    assert html.index('data-worker-id="blk"') < html.index('data-worker-id="run"')
+    assert 'data-worker-id="blk"' in html
+    assert 'data-worker-id="run"' not in html
+    assert 'data-worker-id="fin"' not in html
     assert "CI is red — pick an option" in html
 
 
+def test_inbox_orders_gated_workers_by_state_then_name():
+    wfs = [
+        _blocked("z", file_path="docs/z.md", name="zeta"),
+        _blocked("a", file_path="docs/a.md", name="alpha"),
+    ]
+    html = render.render_inbox(wfs)
+    assert html.index('data-worker-id="a"') < html.index('data-worker-id="z"')
+
+
 def test_empty_inbox_message():
-    assert "No workflow containers found." in render.render_inbox([])
+    from groom import state
+
+    prev = state.SCANNING
+    state.SCANNING = False
+    try:
+        assert "No incoming messages" in render.render_inbox([])
+    finally:
+        state.SCANNING = prev
 
 
 # ---- answered gate: server dispatches a groom:answered event ----
@@ -131,10 +152,84 @@ def test_exit_code_hint_only_on_finished_with_code():
     finished_ok = _wf("a", state=WorkflowState.FINISHED, exit_code=0)
     finished_err = _wf("b", state=WorkflowState.FINISHED, exit_code=1)
     running = _wf("c", state=WorkflowState.RUNNING, exit_code=0)  # code set but still live
-    assert "exited 0" in render.render_inbox([finished_ok])
+    # Finished workers have no open gate, so they surface in the detail head,
+    # not the (message-only) inbox.
+    assert "exited 0" in render.render_worker_detail(finished_ok)
     assert "exit-ok" in render.render_worker_detail(finished_ok)
-    assert "exit-err" in render.render_inbox([finished_err])
-    assert "exited" not in render.render_inbox([running])
+    assert "exit-err" in render.render_worker_detail(finished_err)
+    assert "exited" not in render.render_worker_detail(running)
+
+
+# ---- empty regions show a spinner while discovery is still in flight ----
+def test_empty_regions_show_spinner_while_scanning():
+    from groom import state
+
+    prev = state.SCANNING
+    state.SCANNING = True
+    try:
+        tree = render.render_tree([])
+        inbox = render.render_inbox([])
+    finally:
+        state.SCANNING = prev
+    assert "Discovering containers…" in tree and "spin" in tree
+    assert "Discovering containers…" in inbox
+
+
+def test_empty_regions_show_empty_state_when_not_scanning():
+    from groom import state
+
+    prev = state.SCANNING
+    state.SCANNING = False
+    try:
+        tree = render.render_tree([])
+        inbox = render.render_inbox([])
+    finally:
+        state.SCANNING = prev
+    assert "No workers." in tree and "Discovering" not in tree
+    assert "No incoming messages" in inbox
+
+
+# ---- changes view: per-repo tree of working-tree diffs (Changes activity mode) ----
+def test_changes_groups_diffs_per_repo():
+    wfs = [
+        _wf("a", repo_name="predykt", repo_branch="main", state=WorkflowState.RUNNING),
+        _wf("b", repo_name="predykt", repo_branch="main", state=WorkflowState.IDLE),
+        _wf("c", repo_name="yenta", repo_branch="dev", state=WorkflowState.RUNNING),
+    ]
+    html = render.render_changes(wfs)
+    assert html.count('class="chg-repo"') == 2       # two repo groups
+    assert "predykt@main" in html and "yenta@dev" in html
+    # one lazy file-tree container + one diff panel per worker (diff shown on
+    # file click, filled client-side); no diff is rendered server-side.
+    assert html.count("data-files-for=") == 3
+    assert html.count("data-filediff-for=") == 3
+    assert 'data-container="a"' in html
+    assert 'data-files-for="a"' in html
+
+
+def test_changes_empty_message():
+    from groom import state
+
+    prev = state.SCANNING
+    state.SCANNING = False
+    try:
+        assert "No repositories with changes." in render.render_changes([])
+    finally:
+        state.SCANNING = prev
+
+
+def test_search_with_query_shows_empty_not_spinner_even_while_scanning():
+    # A query means the operator is filtering an already-loaded fleet, so a
+    # no-match should read "empty", never "still loading".
+    from groom import state
+
+    prev = state.SCANNING
+    state.SCANNING = True
+    try:
+        tree = render.render_tree([], query="nomatch")
+    finally:
+        state.SCANNING = prev
+    assert "No workers." in tree and "Discovering" not in tree
 
 
 if __name__ == "__main__":
