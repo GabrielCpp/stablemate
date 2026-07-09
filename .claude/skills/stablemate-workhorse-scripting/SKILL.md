@@ -4,7 +4,8 @@ description: "Workhorse workflow scripting — JSON output protocol, shared lib 
 metadata:
   generated_by: farrier
   source: library/skills/stablemate/workhorse-scripting/SKILL.md
-  do_not_edit: "edit the source in the central prompt library and re-run `make agent-install` to regenerate"
+  resolve: "farrier source .claude/skills/stablemate-workhorse-scripting/SKILL.md"
+  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
 # Workhorse Scripting

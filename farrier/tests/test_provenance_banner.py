@@ -43,10 +43,17 @@ def test_library_source_path_anchors_at_library(tmp_path):
 
 
 def test_metadata_block_names_source_and_warns(tmp_path):
-    block = skill_metadata_block(_skill_source(tmp_path))
+    block = skill_metadata_block(
+        _skill_source(tmp_path), ".claude/skills/demo-go-qa/SKILL.md"
+    )
     assert block.startswith("metadata:\n")
     assert "  generated_by: farrier\n" in block
     assert "  source: library/skills/go/go-qa/SKILL.md\n" in block
+    # The resolve field is a copy-pasteable command back to the editable source; the
+    # source path stays library-anchored (portable), no absolute path baked in.
+    assert (
+        '  resolve: "farrier source .claude/skills/demo-go-qa/SKILL.md"\n' in block
+    )
     assert "  do_not_edit:" in block
     assert "make agent-install" in block
 
@@ -76,6 +83,12 @@ def test_generated_skill_carries_metadata_in_front_matter(tmp_path):
     # The provenance is a nested `metadata` block, not a top-level key.
     assert "\nmetadata:\n" in front_matter
     assert "  source: library/skills/go/go-qa/SKILL.md" in front_matter
+    # resolve names the generated file's own repo-relative path (prefix `demo` +
+    # skill `go-qa` → .claude/skills/demo-go-qa/SKILL.md).
+    assert (
+        '  resolve: "farrier source .claude/skills/demo-go-qa/SKILL.md"'
+        in front_matter
+    )
     assert "generated_by:" not in content.splitlines()[1:4]  # not a top-level key
     assert "<!--" not in content  # no HTML comment
 

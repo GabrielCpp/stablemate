@@ -16,10 +16,12 @@ from . import (
     crud_generic,
     doctor,
     edit,
+    fmt as fmt_mod,
     freeze as freeze_mod,
     path as path_mod,
     query as query_mod,
     registry,
+    scaffold as scaffold_mod,
     select,
     templates as templates_mod,
     todo as todo_mod,
@@ -29,7 +31,8 @@ from . import vet as vet_mod
 from . import artifact as artifact_mod
 from .model import load
 
-_TYPES = tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
+_TYPES = (tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
+          + tuple(t.name for t in registry.UI_TYPES))
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -201,6 +204,20 @@ def _build_parser() -> argparse.ArgumentParser:
                               "gated on the artifacts/assertions the verdict cites")
     sr.add_argument("slug")
 
+    sc = sub.add_parser("scaffold", help="create a UI-profile node in the right place (§9)")
+    sc.add_argument("type", help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
+    sc.add_argument("name")
+    sc.add_argument("--service", help="file-level types: the service subtree (docs/features/<svc>/)")
+    sc.add_argument("--in", dest="in_file",
+                    help="section-level types: the surface doc to insert the `### id` into")
+    sc.add_argument("--title")
+    sc.add_argument("--json", action="store_true")
+
+    fm = sub.add_parser("fmt", help="canonicalize UI-profile docs (frontmatter/bullets/headings)")
+    fm.add_argument("paths", nargs="*", help="files to format (default: all docs/features/**/*.md)")
+    fm.add_argument("--check", action="store_true",
+                    help="don't write; exit 1 if any file is not already canonical")
+
     # ---- path resolution -----------------------------------------------------
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
@@ -291,6 +308,22 @@ def _cmd_doctor(graph, args) -> int:
             print(f"  {mark} {fnd.code}: {scope}{fnd.message}")
     print(f"\n{report.errors} error(s), {report.warnings} warning(s)")
     return 1 if report.errors else 0
+
+
+def _cmd_fmt(graph, args) -> int:
+    result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
+    for path in result.changed:
+        rel = path.relative_to(graph.root).as_posix() if path.is_relative_to(graph.root) \
+            else path.as_posix()
+        print(f"{'would reformat' if args.check else 'reformatted'}: {rel}")
+    if not result.changed:
+        print("all files already canonical")
+        return 0
+    if args.check:
+        print(f"\n{len(result.changed)} file(s) not canonical (run `ostler fmt` to fix)")
+        return 1
+    print(f"\nreformatted {len(result.changed)} file(s)")
+    return 0
 
 
 def _cmd_edit(graph, args) -> int:
@@ -467,6 +500,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         else:
             print(path_mod.resolve_branch(args.slug, epic=args.is_epic))
         return 0
+    if c == "scaffold":
+        return _result(scaffold_mod.scaffold(
+            graph, args.type, args.name, service=args.service,
+            in_file=args.in_file, title=args.title), getattr(args, "json", False))
+    if c == "fmt":
+        return _cmd_fmt(graph, args)
     if c == "edit":
         return _cmd_edit(graph, args)
     if c == "freeze":

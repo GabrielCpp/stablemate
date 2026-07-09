@@ -7,8 +7,8 @@ workflows ask (gaps-in-story, stories-covering-seed, surfaces-referenced-by-stor
 
 from __future__ import annotations
 
-from . import crud_generic
-from .model import Graph
+from . import crud_generic, registry
+from .model import Graph, UINode
 
 
 def _story_row(graph: Graph, epic, story) -> dict:
@@ -17,6 +17,16 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "status": story.status, "covers": story.seed_items, "dependsOn": story.dependencies,
         "path": story.path,
     }
+
+
+def _ui_row(graph: Graph, node: UINode) -> dict:
+    """A UI node as a JSON row. Section nodes carry ``anchor``; the ``id`` is ``path#anchor``
+    (file nodes: the repo-relative path) so the agent-fix loop can address either directly."""
+    row = {"type": node.type, "kind": node.kind, "id": node.id, "title": node.title,
+           "path": node.path.relative_to(graph.root).as_posix(), "line": node.line}
+    if node.kind == "section":
+        row["anchor"] = node.anchor
+    return row
 
 
 def _seed_row(epic, seed) -> dict:
@@ -65,6 +75,8 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
             for g in r.gaps:
                 rows.append({"type": "gap", "id": g.id, "surface": r.surface,
                              "owner": g.owner, "disposition": g.disposition})
+    elif etype in registry.UI_TYPES_BY_NAME:
+        rows = [_ui_row(graph, n) for n in graph.ui_nodes_of_type(etype)]
     else:
         rows = crud_generic.find_instance(graph, etype)
 
@@ -86,19 +98,23 @@ def search(graph: Graph, q: str, etype: str | None = None,
            owner: str | None = None, tag: str | None = None) -> list[dict]:
     ql = q.lower()
     hits: list[dict] = []
-    types = [etype] if etype else ["epic", "story", "seed", "knowledge", "feature", "gap"]
+    types = [etype] if etype else (
+        ["epic", "story", "seed", "knowledge", "feature", "gap", *registry.UI_TYPES_BY_NAME])
     for t in types:
         for row in list_entities(graph, t):
             hay = " ".join(str(v) for v in row.values()).lower()
-            if t in ("story", "knowledge", "feature"):
+            if t in ("story", "knowledge", "feature") or t in registry.UI_TYPES_BY_NAME:
                 path = None
                 if t == "story":
                     found = graph.find_story(row["slug"])
                     path = found[1].story_md if found else None
                 elif t == "knowledge":
                     path = next((r.path for r in graph.knowledge if r.surface == row["surface"]), None)
-                else:
+                elif t == "feature":
                     path = next((f.path for f in graph.features if f.slug == row["slug"]), None)
+                else:  # UI node — resolve by identity
+                    node = graph.find_ui_node(row["id"])
+                    path = node.path if node else None
                 if path:
                     hay += " " + _body_text(path).lower()
             if owner and row.get("owner") != owner:

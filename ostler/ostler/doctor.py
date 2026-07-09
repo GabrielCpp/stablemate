@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import dynamic_registry, freeze, markdown, registry, schemas
+from . import dynamic_registry, freeze, links as links_mod, markdown, registry, schemas
 from .model import Graph, Epic
 
 
@@ -19,7 +19,11 @@ class Finding:
     code: str
     message: str
     epic: str = ""
-    ref: str = ""
+    ref: str = ""              # offending token
+    path: str = ""             # repo-relative file
+    line: int = 0              # 1-based, file-absolute
+    suggestion: str = ""       # expected form / nearest match
+    fixable: bool = False      # `ostler fmt`/`scaffold`/relink can apply the remedy
 
 
 @dataclass
@@ -54,6 +58,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     _check_knowledge(graph, f)
     _check_surfaces(graph, f)
+    _check_ui(graph, f)
     if check_schema:
         _check_conformance(graph, f)
 
@@ -194,31 +199,150 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
 
     Conformance is the one hard OKF rule: a non-reserved ``.md`` must carry a non-empty ``type``
     (``okf-missing-type`` otherwise). On top of that, ostler validates each Concept's frontmatter
-    against its registered per-type schema (warn-level), which OKF permits for known types.
+    against **its own declared type's** schema (warn-level), which OKF permits for known types.
+
+    Dispatch is by the file's declared ``base_type`` — *not* by the glob that discovered it. That
+    is deliberate (profile §5): a ``type: screen`` doc under ``features/`` is a first-class UI node
+    (no schema), so it must not be validated as a ``feature`` just because it matches
+    ``features/**/*.md``. The glob only discovers the file; the frontmatter decides the ruleset.
     """
-    for etype in registry.REGISTRY + dynamic_registry.as_entity_types(graph.template_kinds):
+    schema_by_base = {t.name: t.schema for t in registry.REGISTRY}
+    etypes = registry.REGISTRY + dynamic_registry.as_entity_types(graph.template_kinds)
+    seen: set = set()
+    for etype in etypes:
         base = graph.doc_roots.get(etype.doc_root)
         if base is None or not base.is_dir():
             continue
         for path in sorted(base.glob(etype.location)):
-            if not path.is_file() or path.name in registry.RESERVED_FILES:
+            if not path.is_file() or path.name in registry.RESERVED_FILES or path in seen:
                 continue
+            seen.add(path)
             rel = path.relative_to(graph.root).as_posix()
             try:
                 fm = (markdown.split(path.read_text(encoding="utf-8")).frontmatter) or {}
             except OSError as exc:
-                f.append(Finding("error", "unreadable", f"{rel}: {exc}"))
+                f.append(Finding("error", "unreadable", f"{rel}: {exc}", path=rel))
                 continue
-            if not registry.type_of(fm):
+            declared = registry.type_of(fm)
+            if not declared:
                 f.append(Finding("error", "okf-missing-type",
-                                 f"{rel}: Concept has no non-empty `type` in frontmatter"))
+                                 f"{rel}: Concept has no non-empty `type` in frontmatter",
+                                 path=rel, line=1))
                 continue
-            if etype.schema:
-                for msg in schemas.validate(fm, etype.schema):
-                    f.append(Finding("warn", "schema", f"{rel}: {msg}"))
+            schema = schema_by_base.get(registry.base_type(declared))
+            if schema:
+                for msg in schemas.validate(fm, schema):
+                    f.append(Finding("warn", "schema", f"{rel}: {msg}", path=rel))
     if graph.ids is not None:
         for msg in schemas.validate(graph.ids, "ids.schema.json"):
             f.append(Finding("warn", "schema", f"ids.json: {msg}"))
+
+
+# ---------------------------------------------------------------------------
+# OKF UI profile — mandatory linter (docs/okf-ui-support §7)
+# ---------------------------------------------------------------------------
+# Every finding below is an *error* the agent is expected to fix, each with a deterministic remedy
+# (`ostler fmt` or `ostler scaffold`) so a strict `doctor` converges instead of nagging (§7.1).
+# Code-grounding (`code:` / `verify:` targets exist in the repo) is deliberately *not* here — it
+# couples doc authoring to code existing, so it belongs to a later QA gate (§7.2).
+_UI_HEADING_BY_LOWER = {h.lower(): h for h in registry.UI_HEADING_TO_TYPE}
+
+
+def _known_types(graph: Graph) -> set[str]:
+    return (set(registry.REGISTRY_BY_NAME) | set(registry.UI_TYPES_BY_NAME)
+            | {k.name for k in graph.template_kinds})
+
+
+def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
+    rel = path.relative_to(graph.root).as_posix()
+    try:
+        doc = markdown.split(path.read_text(encoding="utf-8"))
+    except OSError:
+        return
+    fm = doc.frontmatter or {}
+    declared = registry.type_of(fm)
+    if declared and registry.base_type(declared) not in _known_types(graph):
+        f.append(Finding("error", "unknown-type",
+                         f"{rel}: type '{declared}' is not a recognized OKF type",
+                         path=rel, line=1, ref=declared))
+
+    # bad-heading-type: a case/spelling variant of a known UI heading (its `### id` children would
+    # otherwise be silently unrecognized) — `ostler fmt` canonicalizes the casing.
+    for section in doc.walk_sections():
+        if section.level != 2 or not section.children:
+            continue
+        title = section.title.strip()
+        canon = _UI_HEADING_BY_LOWER.get(title.lower())
+        if canon and title != canon:
+            f.append(Finding("error", "bad-heading-type",
+                             f"{rel}: `## {title}` should be `## {canon}` — its `### id` children "
+                             f"are {registry.UI_HEADING_TO_TYPE[canon]} nodes",
+                             path=rel, line=doc.body_offset + section.line_start + 1,
+                             suggestion=f"## {canon}", fixable=True))
+
+    ftype = registry.ui_type(declared)
+    if ftype is not None and ftype.kind == "file":
+        for heading in ftype.required_sections:
+            if doc.find_section(heading) is None:
+                f.append(Finding("error", "missing-required-section",
+                                 f"{rel}: {ftype.name} is missing its required `## {heading}` "
+                                 f"section", path=rel, line=1,
+                                 suggestion=f"## {heading}", fixable=True))
+
+
+def _check_ui(graph: Graph, f: list[Finding]) -> None:
+    froot = graph.doc_roots.get("features")
+    if froot is not None and froot.is_dir():
+        for path in sorted(froot.rglob("*.md")):
+            if path.is_file() and path.name not in registry.RESERVED_FILES:
+                _check_ui_file(graph, path, f)
+
+    resolver = links_mod.LinkResolver(graph)
+    seen: set = set()
+    for node in graph.ui_nodes:
+        uitype = registry.ui_type(node.type)
+        if uitype is None:
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        where = node.id
+
+        for bk in uitype.bullet_keys:
+            if bk.required and bk.key not in node.meta:
+                f.append(Finding("error", "missing-required-bullet",
+                                 f"{where}: {node.type} missing required `{bk.key}:`",
+                                 path=rel, line=node.line, ref=bk.key,
+                                 suggestion=f"- {bk.key}:", fixable=True))
+
+        # relation bullets (on/parent/extends/detail/…) — their broken link is an unresolved
+        # *relation* (more specific than a bare dangling-link); everything else is a plain link.
+        relation_hrefs: dict[str, str] = {}
+        for key in registry.RELATION_KEYS:
+            for _text, href in markdown.extract_refs(node.meta.get(key, "")).links:
+                relation_hrefs[href] = key
+
+        for _text, href in node.links:
+            if not links_mod.is_doc_link(href):
+                continue
+            dedupe = (str(node.path), href)
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            target = resolver.resolve(node.path, href)
+            if target is None or target.resolved:
+                continue
+            if href in relation_hrefs:
+                f.append(Finding("error", "unresolved-relation",
+                                 f"{rel}: `{relation_hrefs[href]}:` target '{href}' does not "
+                                 f"resolve", path=rel, line=node.line, ref=href, fixable=True))
+            elif not target.file_exists:
+                f.append(Finding("error", "dangling-link",
+                                 f"{rel}: link '{href}' target file does not exist",
+                                 path=rel, line=node.line, ref=href, fixable=True))
+            else:
+                f.append(Finding("error", "missing-anchor",
+                                 f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
+                                 f"heading not found", path=rel, line=node.line, ref=href,
+                                 fixable=True))
 
 
 def _check_knowledge(graph: Graph, f: list[Finding]) -> None:

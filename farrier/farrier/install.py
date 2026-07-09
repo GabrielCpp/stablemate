@@ -295,19 +295,27 @@ def library_source_path(source: Source) -> str:
 # block — the slash-command parser (and claude-code-acp) ignores keys it does not
 # recognise, so `metadata` is inert to the agent. Codex/copilot prompts and aggregated
 # instruction files are left untouched.
-def skill_metadata_block(source: Source) -> str:
+def skill_metadata_block(source: Source, dest_rel: str) -> str:
     """The `metadata:` block stamping a generated skill/command with its source.
+
+    *dest_rel* is the generated file's repo-root-relative path — it makes the
+    `resolve:` field a copy-pasteable command that turns the (machine-independent,
+    library-anchored) `source:` back into this machine's absolute editable path via
+    ``farrier source`` (which reuses the same library resolution as install). The
+    header stays portable: no absolute path is baked in, so it is stable across
+    machines and under ``--check``.
 
     Returns the YAML lines (newline-terminated) to splice into the front matter.
     """
     do_not_edit = (
-        "edit the source in the central prompt library and re-run "
-        "`make agent-install` to regenerate"
+        "generated — run the `resolve` command below for this machine's editable "
+        "source path, edit that, then `make agent-install` to regenerate"
     )
     return (
         "metadata:\n"
         "  generated_by: farrier\n"
         f"  source: {library_source_path(source)}\n"
+        f"  resolve: {yaml_quote(f'farrier source {dest_rel}')}\n"
         f"  do_not_edit: {yaml_quote(do_not_edit)}\n"
     )
 
@@ -406,6 +414,24 @@ def split_front_matter(content: str) -> tuple[dict[str, str], str]:
 
 def yaml_quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def frontmatter_metadata(text: str) -> dict[str, Any]:
+    """Parse a generated file's YAML front matter and return its `metadata` mapping.
+
+    Uses a real YAML parse (not the flat line-splitter in ``split_front_matter``)
+    because the provenance is a *nested* block. Returns ``{}`` for a file with no
+    front matter, no `metadata:` block, or malformed YAML.
+    """
+    match = re.match(r"\A---\n(?P<header>.*?)\n---\n", text, flags=re.DOTALL)
+    if not match:
+        return {}
+    try:
+        data = yaml.safe_load(match.group("header")) or {}
+    except yaml.YAMLError:
+        return {}
+    meta = data.get("metadata") if isinstance(data, dict) else None
+    return meta if isinstance(meta, dict) else {}
 
 
 def first_heading(body: str, fallback: str) -> str:
@@ -1223,7 +1249,7 @@ class Renderer:
             "---\n"
             f"name: {name}\n"
             f"description: {yaml_quote(description)}\n"
-            f"{skill_metadata_block(source)}"
+            f"{skill_metadata_block(source, output_path.relative_to(self.repo).as_posix())}"
             "---\n"
             "\n"
             f"{body}\n"
@@ -1273,7 +1299,8 @@ class Renderer:
             value = next((header[a] for a in aliases if header.get(a)), None)
             if value:
                 lines.append(f"{key}: {yaml_quote(value)}")
-        lines.append(skill_metadata_block(source).rstrip("\n"))
+        dest_rel = output_path.relative_to(self.repo).as_posix()
+        lines.append(skill_metadata_block(source, dest_rel).rstrip("\n"))
         lines.append("---")
         return "\n".join(lines) + "\n\n" + f"{body}\n"
 
@@ -1907,6 +1934,36 @@ def _run_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_source(args: argparse.Namespace) -> int:
+    """Resolve a generated skill/command back to its editable library source path.
+
+    Reads the file's `metadata.source` (a machine-independent, `library/`-anchored
+    path) and joins it under the library root resolved exactly as ``install`` does
+    (`--library` > `$FARRIER_LIBRARY_DIR` > home config), so the printed path is the
+    real editable source on *this* machine. This is what lets an agent go from a
+    generated adapter to its source of truth using only the file's front matter.
+    """
+    generated = args.file.resolve()
+    if not generated.is_file():
+        raise SystemExit(f"error: {args.file} is not a file")
+    rel_source = frontmatter_metadata(generated.read_text(encoding="utf-8")).get("source")
+    if not rel_source:
+        raise SystemExit(
+            f"error: {args.file} has no `metadata.source` — it is not a "
+            "farrier-generated skill or command."
+        )
+    root = resolve_library_dir(args.library)
+    abs_source = (root / rel_source).resolve()
+    if not abs_source.is_file():
+        raise SystemExit(
+            f"error: source '{rel_source}' does not exist under the library at "
+            f"{root} (looked for {abs_source}). The generated file may predate a "
+            "library move/rename — check `farrier config show library_dir`."
+        )
+    print(abs_source)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="farrier",
@@ -1943,6 +2000,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="If given, print only the value of this key",
     )
 
+    # source
+    source_p = sub.add_parser(
+        "source",
+        help="Print the editable library source path of a generated skill/command",
+    )
+    source_p.add_argument(
+        "file", type=Path, help="Path to a generated SKILL.md / command .md"
+    )
+    source_p.add_argument(
+        "--library",
+        type=Path,
+        help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+    )
+
     # version
     sub.add_parser("version", help="Print the installed farrier version")
 
@@ -1957,7 +2028,7 @@ def main(argv: list[str] | None = None) -> int:
     # Keep `farrier --repo .` working: if no recognised subcommand is given,
     # inject `install` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"install", "config", "version"}
+    _SUBCOMMANDS = {"install", "config", "version", "source"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
@@ -1971,6 +2042,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "config":
         return _run_config(args)
+
+    if args.command == "source":
+        return _run_source(args)
 
     return _run_install(args)
 
