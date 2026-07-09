@@ -93,6 +93,27 @@ class FeatureRecord:
 
 
 @dataclass
+class UINode:
+    """A node of the OKF UI profile (docs/okf-ui-profile.md).
+
+    Two shapes, both ordinary OKF content: a **file** node (identity = path; ``type:`` frontmatter
+    sets it) or a **section** node (identity = ``path#anchor``; a ``### id`` under a typed
+    ``## Heading`` — the heading implies the type). ``line`` is 1-based, file-absolute, for located
+    findings and byte-precise edits.
+    """
+    type: str                   # "screen" | "interaction" | ...
+    kind: str                   # "file" | "section"
+    id: str                     # file: repo-relative path; section: "<repo-rel-path>#<anchor>"
+    path: Path
+    anchor: str = ""            # section nodes only
+    title: str = ""
+    line: int = 0               # 1-based, file-absolute (the file's H1 / the `### id` line)
+    meta: dict = field(default_factory=dict)                 # parsed `- key: value` bullets
+    links: list = field(default_factory=list)                # (text, href) inside the node's region
+    data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
+
+
+@dataclass
 class Graph:
     root: Path
     org_name: str
@@ -101,8 +122,20 @@ class Graph:
     epics: list[Epic] = field(default_factory=list)
     knowledge: list[KnowledgeRecord] = field(default_factory=list)
     features: list[FeatureRecord] = field(default_factory=list)
+    ui_nodes: list[UINode] = field(default_factory=list)
     ids: dict | None = None
     template_kinds: tuple = ()
+
+    # ---- UI-profile indexes --------------------------------------------------
+    def ui_nodes_of_type(self, type_name: str) -> list[UINode]:
+        return [n for n in self.ui_nodes if n.type == type_name]
+
+    def find_ui_node(self, ident: str) -> UINode | None:
+        """Look up a UI node by its identity (repo-relative path, or ``path#anchor``)."""
+        for n in self.ui_nodes:
+            if n.id == ident:
+                return n
+        return None
 
     # ---- indexes -------------------------------------------------------------
     def epic_of_seed(self, seed_id: str) -> Epic | None:
@@ -279,6 +312,7 @@ def load(cwd: Path | None = None) -> Graph:
 
     _load_knowledge(graph)
     _load_features(graph)
+    _load_ui_nodes(graph)
     if profile == "full":
         _load_epics(graph)
         _load_ids(graph)
@@ -338,6 +372,81 @@ def _load_features(graph: Graph) -> None:
         area = str(data.get("area") or (rel.parent.as_posix() if rel.parent.as_posix() != "." else ""))
         title = str(data.get("title") or slug)
         graph.features.append(FeatureRecord(slug=slug, area=area, title=title, path=path, data=data))
+
+
+_ANCHOR_STRIP_RE = re.compile(r"[^\w\s-]")
+_ANCHOR_SPACE_RE = re.compile(r"\s+")
+
+
+def anchor_of(title: str) -> str:
+    """GitHub-style heading anchor: lowercase, spaces→hyphens, punctuation dropped."""
+    s = _ANCHOR_STRIP_RE.sub("", title.strip().lower())
+    return _ANCHOR_SPACE_RE.sub("-", s).strip("-")
+
+
+def _file_main_section(doc: markdown.MarkdownDoc) -> markdown.Section | None:
+    """The node's own region: its H1 (whose bullets are the file node's metadata), else preamble."""
+    for s in doc.sections:
+        if s.level == 1:
+            return s
+    return doc.sections[0] if doc.sections else None
+
+
+def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
+    """File-level node (if the frontmatter `type:` is a UI file-type) + every section node
+    (`### id` under a typed `## Heading`, whatever the file's own type)."""
+    rel = path.relative_to(root).as_posix()
+    offset = doc.body_offset
+    nodes: list[UINode] = []
+
+    fm = doc.frontmatter or {}
+    ftype = registry.ui_type(registry.type_of(fm))
+    if ftype is not None and ftype.kind == "file":
+        main = _file_main_section(doc)
+        meta = _meta_from_bullets(main) if main else {}
+        # The file node's own region = its H1 content up to the first `## Heading` child, so its
+        # links don't overlap the section nodes' links (keeps the linter from double-reporting).
+        if main is not None:
+            own_end = min((c.line_start for c in main.children), default=main.line_end)
+            text = "\n".join(main.body_lines[main.line_start:own_end])
+            line = offset + main.line_start + 1
+        else:
+            text, line = doc.body, offset + 1
+        nodes.append(UINode(
+            type=ftype.name, kind="file", id=rel, path=path,
+            title=str(fm.get("title") or (main.title if main else rel)),
+            line=line, meta=meta, links=markdown.extract_refs(text).links, data=fm,
+        ))
+
+    for section in doc.walk_sections():
+        if section.level != 2 or section.title.strip() not in registry.UI_HEADING_TO_TYPE:
+            continue
+        stype = registry.UI_HEADING_TO_TYPE[section.title.strip()]
+        for sub in section.children:
+            title = sub.title.strip()
+            if not title:
+                continue
+            anchor = anchor_of(title)
+            nodes.append(UINode(
+                type=stype, kind="section", id=f"{rel}#{anchor}", path=path,
+                anchor=anchor, title=title, line=offset + sub.line_start + 1,
+                meta=_meta_from_bullets(sub), links=sub.refs.links,
+            ))
+    return nodes
+
+
+def _load_ui_nodes(graph: Graph) -> None:
+    froot = graph.doc_roots["features"]
+    if not froot.is_dir():
+        return
+    for path in sorted(froot.rglob("*.md")):
+        if not path.is_file() or path.name in registry.RESERVED_FILES:
+            continue
+        try:
+            doc = markdown.split(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        graph.ui_nodes.extend(_parse_ui_nodes(doc, path, graph.root))
 
 
 def _load_epics(graph: Graph) -> None:

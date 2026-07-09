@@ -103,6 +103,17 @@ class MarkdownDoc:
     def has_frontmatter(self) -> bool:
         return self.frontmatter is not None
 
+    @property
+    def body_offset(self) -> int:
+        """File lines preceding the body (opening fence + frontmatter + closing fence); 0 if none.
+
+        Add it to a body-relative (0-indexed) line to get the file-absolute (0-indexed) line —
+        used to give a section/bullet node an absolute source location for located findings.
+        """
+        if not self.has_frontmatter:
+            return 0
+        return self.raw_frontmatter.count("\n") + 2
+
     def render(self) -> str:
         if not self.has_frontmatter:
             return self.body

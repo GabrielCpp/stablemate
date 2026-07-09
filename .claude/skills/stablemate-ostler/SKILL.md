@@ -1,10 +1,11 @@
 ---
 name: stablemate-ostler
-description: "ostler CLI reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts): command interface, epic.md grammar, coverage model, and when a workflow agent should call it."
+description: "ostler CLI reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's eleven surface/element/behavior/concept types): command interface, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, and when a workflow agent should call it."
 metadata:
   generated_by: farrier
   source: library/skills/stablemate/ostler/SKILL.md
-  do_not_edit: "edit the source in the central prompt library and re-run `make agent-install` to regenerate"
+  resolve: "farrier source .claude/skills/stablemate-ostler/SKILL.md"
+  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
 # Ostler
@@ -126,6 +127,12 @@ ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed a
 ostler unfreeze <ident>
 ```
 
+**OKF UI profile** (surfaces / elements / behaviors — see "The OKF UI profile" below)
+```bash
+ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]  # new node, canonically placed
+ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/headings; --check = no writes, exit 1 if unclean
+```
+
 **Visual-fidelity check** (used by `coder`'s QA gates — see [[coder-workflow]])
 ```bash
 ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --slug S [--state s] [--iou-threshold 0.5] [--json]
@@ -169,6 +176,117 @@ the check.
   in `.agents/templates.yml` (`ostler template new/edit/find/delete/apply`), then operate on
   instances with the generic `ostler new/find/set/remove <kind> <name>` verbs.
 
+## The OKF UI profile — surfaces, elements, behaviors
+
+A *profile* of OKF for describing UIs, CLIs, HTTP/WS servers, and the concepts they serve as a
+navigable graph (full spec: `docs/okf-ui-profile.md`). Ostler recognizes **eleven** UI types as
+first-class Concepts — listed, searched, traced, scaffolded, formatted, and **linted**. Use these
+instead of prose when you want a machine-readable hook: enumerate a screen's components, follow
+which interaction fires on a click, or check whether a documented link still resolves.
+
+| Role | GUI | CLI | HTTP/WS | shared |
+|---|---|---|---|---|
+| **surface** (you interact with it) | `screen` | `cli` | `server` | |
+| **element** (part of a surface) | `component` | `command` | `endpoint` | |
+| **behavior** (one event or call) | `interaction` | `invocation` | `invocation` | |
+| **journey** (ordered path) | | | | `flow` |
+| **noun** (domain *or* code) | | | | `concept` |
+| **artifact / data shape** | | | | `format` |
+
+**File vs section (author's choice).** A node is either its **own file** (identity = path; every
+`concept` gets one so others can link it) *or* a **`### <id>` section** under a typed `## Heading`
+inside a larger surface doc. The section's type is *implied by its heading* — no per-heading
+marker: `## Components`→`component`, `## Commands`→`command`, `## Endpoints`→`endpoint`,
+`## Interactions`→`interaction`, `## Invocations`→`invocation`.
+
+**Where nodes live — per service, then by context.** Each service owns `docs/features/<service>/`.
+A multi-context service splits by context (`gui/screens/`, `gui/components/`, `http/`); a
+single-context service (CLI-only workhorse) stays flat. Context-neutral nodes sit at the service
+root: `concepts/` (nouns) and `flows/` (journeys). `ostler scaffold` places files here for you —
+don't hand-pick paths.
+
+**Links are plain markdown path links, never `[[wikilinks]]`** — `[diff](../concepts/diff.md)`,
+`[row](changes-view.md#changes-file-row)`, same-file `[row](#changes-file-row)`. A bare link is
+**neutral**; meaning lives in the prose beside it. Two optional relation bullets layer a name on a
+link: `parent:` (part-of/containment) and `extends:` (is-a/reuse). A selector chooses one
+implementation of an abstraction via a plain `refs:` link (see the profile §7.11 pattern).
+
+**Document flags & arguments item-by-item, not as a token dump.** Write `flags:` / `args:` as a
+**nested bullet list** — one child per flag / positional — each saying *what it does, in which
+context it applies* (fresh start vs resume, which mode, its default), with inline links to the
+`concept`/`format`/command it touches. `- flags: --a, --b, --c` with no explanation is a smell.
+
+**No orphans — everything reachable from the surface root.** Every node links outward to what it
+relates to, and the `screen`/`cli`/`server` index links its key concepts/formats in its *own*
+body so `ostler trace <root>` walks to every node. Don't bury a structural pointer (a flag that
+selects a concept, a format's consumer) in prose only — put it in the node's bullets. After
+authoring, `ostler trace <root>` should reach the whole subgraph; a node nothing links to needs a
+home.
+
+### The completeness bar — the book, not a changelog
+
+OKF is the **full, always-current spec** of the system, authored to be **complete enough to
+regenerate behavior-equivalent code** from the docs plus the team's stack skills (profile §8):
+
+- **Spec-complete per node** — fields with `type`/`required`/`default`, flags/args item-by-item,
+  `does:` as ordered effects, algorithms as ordered steps, errors/exit/status codes, and for UI the
+  `dom:`/`props:`/`states:`/`a11y:` contract. A lone `code:` stub is below bar.
+- **Spec, not implementation** — the node says *what* the code does; the *how* (patterns, idioms,
+  libraries, structure) lives in the stack skills, never the book. `code:` anchors the impl.
+- **The book, not a changelog** — a story is a delta; its doc step *merges* into these nodes so
+  they read as the complete current reality (never "this story added X").
+
+Completeness is a **review** standard (the doc gates + the auditor), not a `doctor` gate — a linter
+can't judge "enough to regenerate." Reach for [[documentation]] (one-story merge) or [[okf-modeling]]
+(bulk build) to apply it.
+
+### Scaffold → author → fmt → doctor (the authoring loop)
+
+```bash
+ostler scaffold screen changes-view --service groom --title "Changes view"   # file node → gui/screens/
+ostler scaffold interaction click-file-opens-diff --in <the screen doc>       # section node under ## Interactions
+```
+`scaffold` writes the node in its canonical place with frontmatter, the H1, its bullet **stubs**,
+and (for surfaces) the `required_sections` skeleton. Then **author the prose and fill the bullets
+by editing the `.md` directly** — the body is yours. Finally:
+
+```bash
+ostler fmt docs/features/<svc>/…      # canonicalize: frontmatter key order, bullet order/spacing,
+                                       # `does:` → nested, heading casing, `### id` kebab anchors
+ostler doctor                          # gate: non-zero exit on any error
+```
+
+`ostler fmt` is the mechanical shape-fixer (the `ruff format` to doctor's `ruff check`); it never
+touches prose. Scaffold output is already canonical.
+
+### The mandatory linter (doctor errors — all with a deterministic remedy)
+
+Unlike the draft profile's original "warns, never blocks" stance, UI conformance is a **hard
+`doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
+mechanical fix, so a workflow node can gate on `ostler doctor` and always converge.
+
+| Code | Means | Remedy |
+|---|---|---|
+| `unknown-type` | `type:` isn't a recognized OKF type | fix the frontmatter `type:` |
+| `bad-heading-type` | `## interactions` (wrong casing of a known heading) | `ostler fmt` |
+| `missing-required-section` | a surface lacks a required `## Heading` (e.g. `cli` without `## Commands`) | `ostler scaffold` / add the heading |
+| `missing-required-bullet` | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
+| `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
+| `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
+| `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
+
+**Convergence contract:** `missing-required-bullet` checks that the **key** is present, not its
+value — so `scaffold`'s stubs clear it. **`code:` / `verify:` bullets are code refs
+(`path::symbol`), grounded at a *later* QA gate, never at author time** — doctor deliberately does
+*not* flag them as dangling links.
+
+### Navigating the UI graph
+
+`ostler list --type screen|component|interaction|cli|command|server|endpoint|invocation|flow|concept|format`
+lists nodes (section nodes report their `path#anchor` id + `anchor`); `ostler search <q>` covers
+UI-node bodies; `ostler trace <id|slug|anchor>` walks a node's outbound links (with
+`[ok]`/`[DANGLING]`/`[MISSING ANCHOR]` status) and inbound referrers.
+
 ## When to reach for it
 
 - Any workflow node that needs "what's the next thing to work on" → `next-epic`/`next-story`, not a
@@ -182,3 +300,7 @@ the check.
 - Any resolver prompt that fixes a graph problem (dangling owner, orphan seed, cross-epic
   contamination) → `ostler edit set-owner/relink/rename` or `ostler seed`/`set-status`, never a raw
   edit of `epic.md`'s generated sections.
+- Any node that documents a UI/CLI/server surface or a domain/code concept → the OKF UI profile
+  (`scaffold`/`fmt`/`doctor`) above; for the create-or-refresh loop after a story, load
+  [[documentation]]; to model a whole app's surface graph from scratch or from existing code, load
+  [[okf-modeling]].

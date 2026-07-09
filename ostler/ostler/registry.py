@@ -94,6 +94,161 @@ REGISTRY: tuple[EntityType, ...] = (
 REGISTRY_BY_NAME: dict[str, EntityType] = {t.name: t for t in REGISTRY}
 
 
+# ---------------------------------------------------------------------------
+# OKF UI profile — the eleven UI/concept node types (see docs/okf-ui-profile.md)
+# ---------------------------------------------------------------------------
+# These are *built-in* types (not template kinds): first-class, recognized by the loader,
+# navigation, and linter. They live under the ``features`` doc_root as ordinary OKF Concepts
+# (``type:`` frontmatter for file-level nodes; ``### id`` under a typed ``## Heading`` for
+# section-level ones). Each carries no bundled JSON Schema — conformance is the one hard OKF rule
+# plus this profile's structural checks (``doctor.py``). One ``UINodeType`` per type is the single
+# source of truth for the formatter (bullet order), the linter (required/link), and the scaffolder
+# (skeleton).
+@dataclass(frozen=True)
+class BulletKey:
+    """One recognized metadata bullet inside a UI node (``- key: value``)."""
+    key: str
+    required: bool = False
+    nested: bool = False   # ``does:`` — value is a nested-bullet list, one child per effect
+    link: bool = False     # value is a reference ostler resolves (doc link, or a code ref)
+
+
+@dataclass(frozen=True)
+class UINodeType:
+    """One UI-profile node type. Generalizes ``SEED_META_KEYS`` / ``SEEDS_HEADING`` to any type."""
+    name: str
+    kind: str                                   # "file" | "section"
+    heading: str = ""                           # section types: parent ``## Heading`` (e.g. "Interactions")
+    context: str = ""                           # file types: context folder for scaffold placement
+    required_sections: tuple[str, ...] = ()     # file types: headings that must be present
+    bullet_keys: tuple[BulletKey, ...] = ()     # recognized keys, in canonical order
+    body_template: str = ""                     # optional explicit skeleton override (scaffold)
+
+    @property
+    def bullet_by_key(self) -> dict[str, BulletKey]:
+        return {b.key: b for b in self.bullet_keys}
+
+
+# Bullet keys whose value is a code reference (``path::symbol`` / a test id), grounded against the
+# repo at a *later* QA gate (profile §7.2), not at author time like doc links.
+CODE_GROUNDING_KEYS = frozenset({"code", "verify"})
+# Bullet keys naming an inter-node relation the linter resolves at author time.
+RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail")
+
+
+UI_TYPES: tuple[UINodeType, ...] = (
+    # ---- file-level surfaces / nouns / artifacts ----
+    UINodeType(
+        name="screen", kind="file", context="gui/screens",
+    ),
+    UINodeType(
+        name="cli", kind="file", context="",
+        required_sections=("Commands",),
+        bullet_keys=(BulletKey("binary"), BulletKey("code", link=True)),
+    ),
+    UINodeType(
+        name="server", kind="file", context="http",
+        required_sections=("Endpoints",),
+        bullet_keys=(BulletKey("code", link=True), BulletKey("openapi", link=True)),
+    ),
+    UINodeType(
+        name="concept", kind="file", context="concepts",
+        bullet_keys=(BulletKey("code", link=True), BulletKey("extends", link=True)),
+    ),
+    UINodeType(
+        name="format", kind="file", context="",
+        bullet_keys=(BulletKey("file"), BulletKey("code", link=True)),
+    ),
+    UINodeType(
+        name="flow", kind="file", context="flows",
+        bullet_keys=(
+            BulletKey("start"),
+            BulletKey("steps", nested=True, link=True),
+            BulletKey("end"),
+            BulletKey("verify", link=True),
+        ),
+    ),
+    # ---- section-level elements / behaviors (a `### id` under a typed `## Heading`) ----
+    UINodeType(
+        name="component", kind="section", heading="Components",
+        bullet_keys=(
+            BulletKey("selector"),
+            BulletKey("extends", link=True),
+            BulletKey("parent", link=True),
+            BulletKey("states"),
+            BulletKey("code", link=True),
+        ),
+    ),
+    UINodeType(
+        name="command", kind="section", heading="Commands",
+        bullet_keys=(
+            BulletKey("usage"),
+            BulletKey("parent", link=True),
+            BulletKey("flags"),
+            BulletKey("args"),
+            BulletKey("does", nested=True),
+            BulletKey("code", link=True),
+            BulletKey("detail", link=True),
+        ),
+    ),
+    UINodeType(
+        name="endpoint", kind="section", heading="Endpoints",
+        bullet_keys=(
+            BulletKey("method"),
+            BulletKey("path"),
+            BulletKey("channel"),
+            BulletKey("message"),
+            BulletKey("does", nested=True),
+            BulletKey("emits"),
+            BulletKey("consumes"),
+            BulletKey("code", link=True),
+            BulletKey("openapi", link=True),
+            BulletKey("detail", link=True),
+        ),
+    ),
+    UINodeType(
+        name="interaction", kind="section", heading="Interactions",
+        bullet_keys=(
+            BulletKey("on", required=True, link=True),
+            BulletKey("trigger", required=True),
+            BulletKey("when"),
+            BulletKey("does", required=True, nested=True),
+            BulletKey("code", link=True),
+            BulletKey("verify", link=True),
+        ),
+    ),
+    UINodeType(
+        name="invocation", kind="section", heading="Invocations",
+        bullet_keys=(
+            BulletKey("on", required=True, link=True),
+            BulletKey("trigger", required=True),
+            BulletKey("when"),
+            BulletKey("does", required=True, nested=True),
+            BulletKey("emits"),
+            BulletKey("consumes"),
+            BulletKey("code", link=True),
+            BulletKey("verify", link=True),
+        ),
+    ),
+)
+
+UI_TYPES_BY_NAME: dict[str, UINodeType] = {t.name: t for t in UI_TYPES}
+# ``## Heading`` → the section-node type it contains (profile §4's implicit-type table).
+UI_HEADING_TO_TYPE: dict[str, str] = {t.heading: t.name for t in UI_TYPES if t.kind == "section"}
+UI_SECTION_HEADINGS: frozenset[str] = frozenset(UI_HEADING_TO_TYPE)
+
+
+def ui_type(name: str | None) -> UINodeType | None:
+    """The ``UINodeType`` for a declared ``type:`` value (by its base), or None."""
+    return UI_TYPES_BY_NAME.get(base_type(name) or "")
+
+
+def is_known_type(type_value: str | None) -> bool:
+    """True when a declared ``type:`` is a recognized built-in (incl. UI types)."""
+    base = base_type(type_value)
+    return bool(base) and (base in REGISTRY_BY_NAME or base in UI_TYPES_BY_NAME)
+
+
 def type_of(frontmatter: dict | None) -> str | None:
     """The declared concept `type` (e.g. 'epic', 'spec.plan'), or None when absent/blank."""
     if not frontmatter:
