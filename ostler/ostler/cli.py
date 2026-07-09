@@ -18,6 +18,7 @@ from . import (
     edit,
     fmt as fmt_mod,
     freeze as freeze_mod,
+    graph as graph_mod,
     path as path_mod,
     query as query_mod,
     registry,
@@ -69,6 +70,12 @@ def _build_parser() -> argparse.ArgumentParser:
     qy.add_argument("name", choices=query_mod.QUERIES)
     qy.add_argument("arg")
     qy.add_argument("--json", action="store_true")
+
+    gp = sub.add_parser("graph", help="dump every node + edges + bullets to filter on")
+    gp.add_argument("--type", dest="etype",
+                    help=f"scope to one node type ({', '.join(t.name for t in registry.UI_TYPES)})")
+    gp.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    gp.add_argument("--json", action="store_true")
 
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
@@ -438,6 +445,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         lines, found = trace.run(graph, args.token)
         print("\n".join(lines))
         return 0 if found else 1
+    if c == "graph":
+        data = graph_mod.build(graph, etype=args.etype, surface=args.surface)
+        print(json.dumps(data) if args.json else graph_mod.render_text(data))
+        return 0
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:

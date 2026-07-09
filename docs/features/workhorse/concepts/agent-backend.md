@@ -9,7 +9,8 @@ The abstract base every agent harness implements: one agent CLI behind a uniform
 **stateless** (safe to share/cache one instance). [get_backend](get-backend.md) returns the
 concrete one whose registry key matches [workhorse run](../workhorse.md#run)'s `--cli` value; the
 [workflow](workflow.md) execution loop calls it per `agent` node. Implementations extend it —
-`claude` (default), [codex](codex-backend.md), `copilot`, `aider`, `opencode` (see below).
+[claude](claude-backend.md) (default), [codex](codex-backend.md), [copilot](copilot-backend.md),
+[aider](aider-backend.md), [opencode](opencode-backend.md).
 
 - code: `workhorse/workhorse/runner/backends.py::AgentBackend`
 
@@ -29,6 +30,8 @@ concrete one whose registry key matches [workhorse run](../workhorse.md#run)'s `
 
 ## Implementations
 
-Each `extends:` this base and overrides `name` + `run_turn`/`compact`: [codex](codex-backend.md),
-plus `claude` (default), `copilot`, `aider`, `opencode`. Selected at runtime by
-[get_backend](get-backend.md), which the `--cli` flag on [run](../workhorse.md#run) drives.
+Each `extends:` this base and overrides `name` + `run_turn`/`compact`: [claude](claude-backend.md)
+(default — a thin adapter over `runner/agent.py`'s Claude functions), [codex](codex-backend.md),
+[copilot](copilot-backend.md), [aider](aider-backend.md), [opencode](opencode-backend.md).
+Selected at runtime by [get_backend](get-backend.md), which the `--cli` flag on
+[run](../workhorse.md#run) drives.

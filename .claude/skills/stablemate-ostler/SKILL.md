@@ -94,8 +94,20 @@ ostler trace  <id|slug|gap|surface|path>             # walk the graph from any n
 **Retrieve**
 ```bash
 ostler list   --type epic|story|knowledge|feature|spec|seed|gap [--epic E] [--status S] [--json]
-ostler search <query> [--type T] [--owner O] [--tag G] [--json]
+ostler search <query> [--type T] [--owner O] [--tag G] [--json]   # full-text match over node prose
 ostler query  gaps-in-story|stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
+ostler graph  [--type T] [--surface SVC] [--json]    # dump EVERY node + its bullets + resolved edges
+```
+
+`ostler graph --json` is the **structural** query `search` can't do: it emits every node with its
+parsed `- key: value` bullets and resolved out-edges (plus a flat edge list), so you filter the
+graph precisely instead of by prose. Use it to:
+- **dedup before you scaffold** — `… | jq '.nodes[] | select(.bullets.code=="mod.py::Sym")'`: if a
+  node already grounds that symbol, enrich it, don't make a second one.
+- **check inventory coverage** — collect every `.bullets.code` and diff against the source symbols;
+  what's missing is undocumented (an ABC's other implementations, a non-entry module).
+- **find orphans** — a node that appears in no edge's `to` is unreachable from the surface root.
+```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
 ostler path spec <slug> | story <epic> <slug> | branch <slug> [--epic] [--is_epic emits feat/<slug>]
