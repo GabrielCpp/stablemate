@@ -8,7 +8,9 @@ title: The workflow file format (workflow.yaml)
 The complete YAML schema of a [workflow](concepts/workflow.md) — the data contract from which
 the model is regenerable. Parsed and validated by [load_workflow](concepts/load-workflow.md);
 consumed by [workhorse run](workhorse.md#run) (executes it) and [workhorse dot](workhorse.md#dot)
-(renders it). Its `vars` are what [run](workhorse.md#run)'s `--params` override.
+(renders it). Its `vars` are what [run](workhorse.md#run)'s `--params` override. A
+[script](#script) node's own script may import [scriptutil](concepts/scriptutil.md) for shared
+workspace resolution and `git`/`gh` plumbing.
 
 - file: `**/workflow.yaml`
 - code: `workhorse/workhorse/graph/loader.py::load_workflow`
@@ -71,7 +73,9 @@ Run a script, capturing one JSON object from stdout as its outputs. Fields: `scr
 list<OutputSpec>` (default `[]`); `cwd: string|null` (default the workflow dir); `env:
 map<string,string>` (Jinja2; merged over workflow `env`; default `{}`); `refuel: string|null` (a
 context dot-path — reaching this node refuels the gas tank when that value changed since the last
-visit; default null); `next: string|null`.
+visit; default null); `next: string|null`. A script can import
+[`workhorse.scriptutil`](concepts/scriptutil.md) for workspace resolution, JSON/JSONC loading, and
+`git`/`gh` plumbing shared across workflows (available because workhorse is installed editable).
 
 ### branch
 Route to a node by inspecting context. Fields: `path: string` (**required**, a context dot-path);
