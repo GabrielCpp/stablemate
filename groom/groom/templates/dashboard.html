@@ -5,24 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>groom</title>
   <link rel="stylesheet" href="/assets/diff2html.min.css">
+  <link rel="stylesheet" href="/assets/hljs-github-dark.min.css">
   <link rel="stylesheet" href="/assets/dashboard.css">
   <script src="/assets/htmx.min.js"></script>
   <script src="/assets/htmx-ext-ws.min.js"></script>
   <script src="/assets/marked.min.js"></script>
   <script src="/assets/purify.min.js"></script>
   <script src="/assets/diff2html.min.js"></script>
+  <script src="/assets/highlight.min.js"></script>
 </head>
 <body>
   <div class="app" data-mode="inbox" hx-ext="ws" ws-connect="/ws">
-    <!-- activity bar -->
+    <!-- activity bar: the three panels + settings -->
     <div id="activitybar">
       <div class="act-btn active" data-mode="inbox" title="Inbox">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14v14H5z"/></svg>
       </div>
-      <div class="act-btn" data-mode="fleet" title="Fleet">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="15" width="18" height="5" rx="1"/></svg>
+      <div class="act-btn" data-mode="files" title="Files">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h6l2 2h8v11H4z"/></svg>
       </div>
-      <div class="act-btn" data-mode="changes" title="Changes">
+      <div class="act-btn" data-mode="diff" title="Diff">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
       </div>
       <div class="act-spacer"></div>
@@ -31,34 +33,77 @@
       </div>
     </div>
 
-    <!-- picker -->
-    <nav id="picker">
-      <div class="picker-head">
-        <div class="picker-title">Workers</div>
-        <input class="filter" type="search" name="q"
-               placeholder="Filter repos, workers, types…"
-               hx-get="/search" hx-trigger="input changed delay:250ms, search" hx-swap="none">
-      </div>
-      <div class="tree" id="tree"><div class="empty">Connecting…</div></div>
-    </nav>
-
-    <!-- main -->
+    <!-- main: one panel at a time, chosen by data-mode -->
     <div id="main">
-      <div id="inbox">
-        <div class="pane-head">Inbox — needs you</div>
-        <div class="inbox-list" id="inbox-list"></div>
+      <!-- 1) INBOX: message list + gate answer -->
+      <div id="inbox-pane" class="pane">
+        <div id="inbox">
+          <div class="pane-head">
+            <span>Inbox — needs you</span>
+            <input class="filter" type="search" name="q" aria-label="Filter incoming messages"
+                   placeholder="Filter messages…"
+                   hx-get="/search" hx-trigger="input changed delay:250ms, search" hx-swap="none">
+          </div>
+          <div class="inbox-list" id="inbox-list"></div>
+        </div>
+        <div id="detail"><div class="detail-empty">Select a message to answer its gate.</div></div>
       </div>
-      <div id="detail"><div class="detail-empty">Select a worker to see its gate.</div></div>
+
+      <!-- 2) FILES: container+repo tree + syntax-highlighted viewer -->
+      <div id="files-pane" class="pane">
+        <div class="picker-bar">
+          <button class="repo-picker" type="button" data-picker="files">
+            <span class="repo-picker-label">Select container / repo…</span><span class="caret">▾</span>
+          </button>
+        </div>
+        <div class="fd-split">
+          <div class="fd-tree" id="files-tree"><div class="fd-empty">Pick a container / repo above.</div></div>
+          <div class="fd-view" id="file-view"><div class="fd-empty">Select a file to view it.</div></div>
+        </div>
+      </div>
+
+      <!-- 3) DIFF: changeset tree + diff viewer -->
+      <div id="diff-pane" class="pane">
+        <div class="picker-bar">
+          <button class="repo-picker" type="button" data-picker="diff">
+            <span class="repo-picker-label">Select container / repo…</span><span class="caret">▾</span>
+          </button>
+        </div>
+        <div class="fd-split">
+          <div class="fd-tree" id="diff-tree"><div class="fd-empty">Pick a container / repo above.</div></div>
+          <div class="fd-view" id="diff-view"><div class="fd-empty">Select a changed file to see its diff.</div></div>
+        </div>
+      </div>
+
+      <!-- settings -->
+      <div id="settings-pane" class="pane">
+        <div class="settings-panel">
+          <h2>Settings</h2>
+          <div class="row-set"><button class="btn" id="btn-refresh">Rescan containers</button>
+            <span>Re-run the docker discovery pass.</span></div>
+          <div class="row-set"><button class="btn ghost" id="btn-notify">Enable notifications</button>
+            <span>Browser alerts when a worker blocks.</span></div>
+        </div>
+      </div>
     </div>
 
     <!-- status bar -->
     <div id="statusbar"></div>
   </div>
 
+  <!-- shared Zed-style container+repo menu (positioned under the active picker) -->
+  <div id="repo-menu-wrap">
+    <div class="repo-menu-box">
+      <input id="repo-search" type="text" aria-label="Search container / repo" placeholder="Search container / repo…">
+      <div id="repo-menu"></div>
+    </div>
+  </div>
+
   <!-- command palette -->
   <div id="palette">
     <div class="palette-box">
-      <input id="palette-input" type="text" placeholder="Jump to a worker or blocked gate…">
+      <input id="palette-input" type="text" aria-label="Jump to a worker or blocked gate"
+             placeholder="Jump to a worker or blocked gate…">
       <div class="palette-results" id="palette-results"></div>
     </div>
   </div>
@@ -74,6 +119,8 @@
       }, { once: true });
     }
 
+    function escHtml(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+
     // ---------- markdown: untrusted gate questions -> marked -> DOMPurify ----------
     // render.py emits the raw markdown as an escaped text node in a [data-md]
     // div; we read it back via textContent (entities decoded for us) and render
@@ -84,7 +131,7 @@
       });
     }
 
-    // ---------- selection + detail load ----------
+    // ---------- inbox: selection + gate detail load ----------
     var selected = null;
     function applySelection() {
       document.querySelectorAll("[data-worker-id]").forEach(function (el) {
@@ -97,38 +144,181 @@
       window.htmx.ajax("GET", "/worker/" + encodeURIComponent(id), { target: "#detail", swap: "innerHTML" });
     }
 
-    // ---------- diff panel (lazy fetch + diff2html, dark) ----------
+    // The working-tree-diff disclosure inside a gate's detail pane (lazy fetch).
     function wireDetail() {
-      var mode = document.querySelector(".app").dataset.mode;
       document.querySelectorAll("#detail details[data-diff]").forEach(function (d) {
-        if (!d.dataset.wired) {
-          d.dataset.wired = "1";
-          d.addEventListener("toggle", function () {
-            if (!d.open) return;
-            var target = d.querySelector("[data-diff-target]");
-            if (target.dataset.loaded) return;
-            target.textContent = "Loading diff…";
-            fetch("/diff/" + encodeURIComponent(target.dataset.container))
-              .then(function (r) { return r.text(); })
-              .then(function (text) {
-                target.dataset.loaded = "1";
-                target.innerHTML = text.trim()
-                  ? Diff2Html.html(text, { drawFileList: true, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" })
-                  : '<div class="detail-empty">(no changes)</div>';
-              })
-              .catch(function () { target.textContent = "failed to load diff"; });
-          });
-        }
-        if (mode === "changes" && !d.open) d.open = true;  // Changes mode: surface the diff
+        if (d.dataset.wired) return;
+        d.dataset.wired = "1";
+        d.addEventListener("toggle", function () {
+          if (!d.open) return;
+          var target = d.querySelector("[data-diff-target]");
+          if (target.dataset.loaded) return;
+          target.textContent = "Loading diff…";
+          fetch("/diff/" + encodeURIComponent(target.dataset.container))
+            .then(function (r) { return r.text(); })
+            .then(function (text) {
+              target.dataset.loaded = "1";
+              target.innerHTML = text.trim()
+                ? Diff2Html.html(text, { drawFileList: true, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" })
+                : '<div class="detail-empty">(no changes)</div>';
+            })
+            .catch(function () { target.textContent = "failed to load diff"; });
+        });
       });
     }
 
-    // ---------- changes view: per-repo tree of changed FILES ----------
-    // Each worker's unified diff is fetched once; the changed paths are shown as
-    // a collapsible directory treeview, and a file's diff is rendered into the
-    // panel only when that file is clicked (never shown before a click).
-    function escHtml(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+    // ---------- shared container+repo selection (Files / Diff) ----------
+    var sel = { container: null, repo: "", label: null };
+    var menuWrap = document.getElementById("repo-menu-wrap");
+    var menuBox = menuWrap.querySelector(".repo-menu-box");
+    var menuEl = document.getElementById("repo-menu");
+    var repoSearch = document.getElementById("repo-search");
 
+    function openRepoMenu(btn) {
+      var r = btn.getBoundingClientRect();
+      menuBox.style.left = r.left + "px";
+      menuBox.style.top = (r.bottom + 4) + "px";
+      menuBox.style.minWidth = Math.max(r.width, 240) + "px";
+      menuWrap.classList.add("open");
+      menuEl.innerHTML = '<div class="repo-empty">Loading…</div>';
+      repoSearch.value = "";
+      fetch("/repos").then(function (r) { return r.text(); }).then(function (html) {
+        menuEl.innerHTML = html || '<div class="repo-empty">No repositories available.</div>';
+      });
+      repoSearch.focus();
+    }
+    function closeRepoMenu() { menuWrap.classList.remove("open"); }
+    function filterRepoMenu(q) {
+      q = q.toLowerCase();
+      menuEl.querySelectorAll(".repo-item").forEach(function (it) {
+        it.style.display = (!q || (it.dataset.label || "").toLowerCase().indexOf(q) >= 0) ? "" : "none";
+      });
+    }
+    function selectRepo(container, repo, label) {
+      sel.container = container; sel.repo = repo || ""; sel.label = label;
+      document.querySelectorAll(".repo-picker-label").forEach(function (el) { el.textContent = label; });
+      loadActivePane();
+    }
+    function loadActivePane() {
+      var mode = document.querySelector(".app").dataset.mode;
+      if (mode === "files") loadFiles();
+      else if (mode === "diff") loadDiff();
+    }
+    repoSearch.addEventListener("input", function (e) { filterRepoMenu(e.target.value); });
+    menuEl.addEventListener("click", function (e) {
+      var it = e.target.closest(".repo-item");
+      if (it) { selectRepo(it.dataset.container, it.dataset.repo, it.dataset.label); closeRepoMenu(); }
+    });
+    document.querySelectorAll(".repo-picker").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        menuWrap.classList.contains("open") ? closeRepoMenu() : openRepoMenu(btn);
+      });
+    });
+    document.addEventListener("click", function (e) {
+      if (menuWrap.classList.contains("open") && !e.target.closest("#repo-menu-wrap") && !e.target.closest(".repo-picker")) {
+        closeRepoMenu();
+      }
+    });
+
+    // ---------- file tree (paths -> collapsible tree) ----------
+    function buildPathTree(paths) {
+      var root = { dirs: {}, files: [] };
+      paths.forEach(function (p) {
+        var parts = p.split("/");
+        var node = root;
+        for (var i = 0; i < parts.length - 1; i++) {
+          node.dirs[parts[i]] = node.dirs[parts[i]] || { dirs: {}, files: [] };
+          node = node.dirs[parts[i]];
+        }
+        node.files.push({ name: parts[parts.length - 1], path: p });
+      });
+      return root;
+    }
+    function renderPathTree(node) {
+      var html = "";
+      Object.keys(node.dirs).sort().forEach(function (d) {
+        html += '<div class="tree-dir"><div class="tree-dir-head"><span class="tchev">▾</span>' + escHtml(d) + "</div>" +
+                '<div class="tree-children">' + renderPathTree(node.dirs[d]) + "</div></div>";
+      });
+      node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
+        html += '<div class="tree-file" data-path="' + escHtml(f.path) + '"><span class="fname">' + escHtml(f.name) + "</span></div>";
+      });
+      return html;
+    }
+
+    // ---------- Files panel ----------
+    function loadFiles() {
+      var tree = document.getElementById("files-tree");
+      var view = document.getElementById("file-view");
+      if (!sel.container) { tree.innerHTML = '<div class="fd-empty">Pick a container / repo above.</div>'; return; }
+      tree.innerHTML = '<div class="fd-empty">Loading files…</div>';
+      view.innerHTML = '<div class="fd-empty">Select a file to view it.</div>';
+      fetch("/files/" + encodeURIComponent(sel.container) + "?repo=" + encodeURIComponent(sel.repo))
+        .then(function (r) { return r.text(); })
+        .then(function (text) {
+          var paths = text.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+          if (!paths.length) { tree.innerHTML = '<div class="fd-empty">(no files)</div>'; return; }
+          tree.innerHTML = renderPathTree(buildPathTree(paths));
+        })
+        .catch(function () { tree.innerHTML = '<div class="fd-empty">failed to load</div>'; });
+    }
+    document.getElementById("files-tree").addEventListener("click", function (e) {
+      var dh = e.target.closest(".tree-dir-head");
+      if (dh) { dh.parentNode.classList.toggle("collapsed"); return; }
+      var row = e.target.closest(".tree-file");
+      if (!row) return;
+      this.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
+      row.classList.add("active");
+      openFile(row.dataset.path);
+    });
+    function openFile(path) {
+      var view = document.getElementById("file-view");
+      view.innerHTML = '<div class="fd-empty">Loading…</div>';
+      fetch("/file/" + encodeURIComponent(sel.container) + "?repo=" + encodeURIComponent(sel.repo) + "&path=" + encodeURIComponent(path))
+        .then(function (r) { return r.text(); })
+        .then(function (text) { renderFile(path, text); })
+        .catch(function () { view.innerHTML = '<div class="fd-empty">failed to load</div>'; });
+    }
+    // ext -> highlight.js language; unmapped/unknown falls back to auto-detect.
+    var EXT_LANG = {
+      js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+      ts: "typescript", tsx: "typescript", py: "python", rb: "ruby", go: "go",
+      rs: "rust", java: "java", kt: "kotlin", c: "c", h: "c", cpp: "cpp", cc: "cpp",
+      hpp: "cpp", cs: "csharp", php: "php", swift: "swift", scala: "scala",
+      sh: "bash", bash: "bash", zsh: "bash", yml: "yaml", yaml: "yaml", json: "json",
+      toml: "ini", ini: "ini", cfg: "ini", md: "markdown", markdown: "markdown",
+      html: "xml", xml: "xml", svg: "xml", vue: "xml", css: "css", scss: "scss",
+      less: "less", sql: "sql", lua: "lua", pl: "perl", r: "r", dart: "dart"
+    };
+    function extLang(path) {
+      var base = path.split("/").pop().toLowerCase();
+      if (base === "dockerfile") return "dockerfile";
+      if (base === "makefile") return "makefile";
+      var dot = base.lastIndexOf(".");
+      var ext = dot > 0 ? base.slice(dot + 1) : "";
+      return EXT_LANG[ext] || "";
+    }
+    function renderFile(path, text) {
+      var view = document.getElementById("file-view");
+      view.innerHTML = '<div class="file-head">' + escHtml(path) + "</div>";
+      var body = document.createElement("div"); body.className = "file-body";
+      if (!text) {
+        body.innerHTML = '<div class="fd-empty">(empty or binary file)</div>';
+        view.appendChild(body); return;
+      }
+      var lang = extLang(path);
+      var code = document.createElement("code");
+      if (lang && window.hljs && hljs.getLanguage(lang)) code.className = "language-" + lang;
+      code.textContent = text;
+      if (window.hljs) { try { hljs.highlightElement(code); } catch (err) { /* leave as plain text */ } }
+      var pre = document.createElement("pre"); pre.className = "file-pre hljs";
+      pre.appendChild(code);
+      body.appendChild(pre);
+      view.appendChild(body);
+    }
+
+    // ---------- Diff panel (changeset tree -> diff2html per file) ----------
     function buildFileTree(files) {
       var root = { dirs: {}, files: [] };
       files.forEach(function (f, i) {
@@ -143,11 +333,11 @@
       });
       return root;
     }
-    function renderTreeNode(node) {
+    function renderDiffTree(node) {
       var html = "";
       Object.keys(node.dirs).sort().forEach(function (d) {
         html += '<div class="tree-dir"><div class="tree-dir-head"><span class="tchev">▾</span>' + escHtml(d) + "</div>" +
-                '<div class="tree-children">' + renderTreeNode(node.dirs[d]) + "</div></div>";
+                '<div class="tree-children">' + renderDiffTree(node.dirs[d]) + "</div></div>";
       });
       node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
         html += '<div class="tree-file" data-file-idx="' + f.idx + '"><span class="fname">' + escHtml(f.name) + "</span>" +
@@ -155,49 +345,33 @@
       });
       return html;
     }
-    function wireChanges() {
-      var changes = document.querySelector("#detail .changes");
-      if (!changes) return;
-      // One delegated listener for the whole Changes view — collapse a worker,
-      // collapse a directory, or render a single file's diff on click. The
-      // global body handler bails out inside .changes, so a click here never
-      // triggers the gate-detail worker-select used by the other tabs.
-      if (!changes.dataset.wired) {
-        changes.dataset.wired = "1";
-        changes.addEventListener("click", function (e) {
-          var whead = e.target.closest(".chg-worker-head");
-          if (whead) { whead.parentNode.classList.toggle("collapsed"); return; }
-          var dhead = e.target.closest(".tree-dir-head");
-          if (dhead) { dhead.parentNode.classList.toggle("collapsed"); return; }
-          var row = e.target.closest(".tree-file");
-          if (!row) return;
-          var worker = row.closest(".chg-worker");
-          var filesEl = worker.querySelector("[data-files-for]");
-          var diffEl = worker.querySelector("[data-filediff-for]");
-          filesEl.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
-          row.classList.add("active");
-          diffEl.innerHTML = Diff2Html.html([filesEl._files[+row.dataset.fileIdx]],
-            { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" });
-        });
-      }
-      // Lazily fetch each worker's diff once and render its changed paths as a tree.
-      changes.querySelectorAll(".chg-worker[data-container]").forEach(function (w) {
-        var cid = w.dataset.container;
-        var filesEl = w.querySelector("[data-files-for]");
-        if (!filesEl || filesEl.dataset.loaded) return;
-        filesEl.dataset.loaded = "1";
-        fetch("/diff/" + encodeURIComponent(cid))
-          .then(function (r) { return r.text(); })
-          .then(function (text) {
-            if (!text.trim()) { filesEl.innerHTML = '<div class="chg-empty">(no changes)</div>'; return; }
-            var files = Diff2Html.parse(text);
-            if (!files.length) { filesEl.innerHTML = '<div class="chg-empty">(no changes)</div>'; return; }
-            filesEl._files = files;
-            filesEl.innerHTML = renderTreeNode(buildFileTree(files));
-          })
-          .catch(function () { filesEl.innerHTML = '<div class="chg-empty">failed to load</div>'; });
-      });
+    function loadDiff() {
+      var tree = document.getElementById("diff-tree");
+      var view = document.getElementById("diff-view");
+      if (!sel.container) { tree.innerHTML = '<div class="fd-empty">Pick a container / repo above.</div>'; return; }
+      tree.innerHTML = '<div class="fd-empty">Loading changes…</div>';
+      view.innerHTML = '<div class="fd-empty">Select a changed file to see its diff.</div>';
+      fetch("/diff/" + encodeURIComponent(sel.container) + "?repo=" + encodeURIComponent(sel.repo))
+        .then(function (r) { return r.text(); })
+        .then(function (text) {
+          if (!text.trim()) { tree.innerHTML = '<div class="fd-empty">(no changes)</div>'; return; }
+          var files = Diff2Html.parse(text);
+          if (!files.length) { tree.innerHTML = '<div class="fd-empty">(no changes)</div>'; return; }
+          tree._files = files;
+          tree.innerHTML = renderDiffTree(buildFileTree(files));
+        })
+        .catch(function () { tree.innerHTML = '<div class="fd-empty">failed to load</div>'; });
     }
+    document.getElementById("diff-tree").addEventListener("click", function (e) {
+      var dh = e.target.closest(".tree-dir-head");
+      if (dh) { dh.parentNode.classList.toggle("collapsed"); return; }
+      var row = e.target.closest(".tree-file");
+      if (!row) return;
+      this.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
+      row.classList.add("active");
+      document.getElementById("diff-view").innerHTML = Diff2Html.html([this._files[+row.dataset.fileIdx]],
+        { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" });
+    });
 
     // ---------- activity bar (mode switch) ----------
     function setMode(mode) {
@@ -205,44 +379,19 @@
       document.querySelectorAll(".act-btn").forEach(function (b) {
         b.classList.toggle("active", b.dataset.mode === mode);
       });
-      if (mode === "settings") {
-        document.getElementById("detail").innerHTML =
-          '<div class="settings-panel"><h2>Settings</h2>' +
-          '<div class="row-set"><button class="btn" id="btn-refresh">Rescan containers</button>' +
-          '<span>Re-run the docker discovery pass.</span></div>' +
-          '<div class="row-set"><button class="btn ghost" id="btn-notify">Enable notifications</button>' +
-          '<span>Browser alerts when a worker blocks.</span></div></div>';
-      } else if (mode === "changes") {
-        // Per-repo tree of every worker's working-tree diff. Load it whole into
-        // #detail; wireDetail() then lazy-fetches + auto-opens each diff.
-        window.htmx.ajax("GET", "/changes", { target: "#detail", swap: "innerHTML" });
-      } else if (selected) {
-        // Back to a per-worker mode: restore the selected worker's detail pane
-        // (it may currently hold the changes tree or settings panel).
-        select(selected);
-      }
+      closeRepoMenu();
+      if (mode === "files") loadFiles();
+      else if (mode === "diff") loadDiff();
     }
     document.getElementById("activitybar").addEventListener("click", function (e) {
       var btn = e.target.closest(".act-btn");
       if (btn) setMode(btn.dataset.mode);
     });
 
-    // ---------- clicks: tree collapse, worker selection, settings buttons ----------
+    // ---------- clicks: worker selection, settings buttons ----------
     document.body.addEventListener("click", function (e) {
       if (e.target.closest("form")) return;               // don't hijack the answer form
-      // Changes tab owns its own clicks (file tree + diff) — a worker click there
-      // must NOT open the gate detail the way it does in the Inbox/Fleet tabs.
-      if (e.target.closest(".changes")) return;
-      var repo = e.target.closest(".repo");
-      if (repo) {
-        repo.classList.toggle("collapsed");
-        var n = repo.nextElementSibling;
-        while (n && n.classList.contains("worker")) {
-          n.style.display = repo.classList.contains("collapsed") ? "none" : "";
-          n = n.nextElementSibling;
-        }
-        return;
-      }
+      if (e.target.closest("#repo-menu-wrap, .repo-picker, .fd-tree")) return;  // panel-local handlers own these
       var node = e.target.closest("[data-worker-id]");
       if (node) { select(node.dataset.workerId); return; }
       var refreshBtn = e.target.closest("#btn-refresh, #btn-refresh-bar");
@@ -282,7 +431,7 @@
     palIn.addEventListener("input", function (e) { renderPalette(e.target.value); });
     palRes.addEventListener("click", function (e) {
       var r = e.target.closest(".presult");
-      if (r) { select(r.dataset.id); closePalette(); }
+      if (r) { setMode("inbox"); select(r.dataset.id); closePalette(); }
     });
 
     // ---------- keyboard ----------
@@ -290,10 +439,10 @@
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault(); pal.classList.contains("open") ? closePalette() : openPalette(); return;
       }
-      if (e.key === "Escape") { closePalette(); return; }
+      if (e.key === "Escape") { closePalette(); closeRepoMenu(); return; }
       if (pal.classList.contains("open") && e.key === "Enter") {
         var a = palRes.querySelector(".presult.active") || palRes.querySelector(".presult");
-        if (a) { select(a.dataset.id); closePalette(); }
+        if (a) { setMode("inbox"); select(a.dataset.id); closePalette(); }
         return;
       }
       var typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
@@ -301,7 +450,7 @@
         var rows = [].slice.call(document.querySelectorAll("#inbox-list .row"));
         var idx = rows.findIndex(function (r) { return r.dataset.workerId === selected; });
         var next = rows[Math.max(0, Math.min(rows.length - 1, idx + (e.key === "j" ? 1 : -1)))];
-        if (next) select(next.dataset.workerId);
+        if (next) { setMode("inbox"); select(next.dataset.workerId); }
       }
     });
 
@@ -326,9 +475,8 @@
     });
 
     // A gate we just answered: confirm, and if that worker's detail is open,
-    // re-fetch it so the answered question is dismissed (shows remaining gates
-    // or the "no open gate" state). Scoped to the answered worker so a
-    // half-typed answer on a different worker is never clobbered.
+    // re-fetch it so the answered question is dismissed. Scoped to the answered
+    // worker so a half-typed answer on a different worker is never clobbered.
     document.body.addEventListener("groom:answered", function (evt) {
       pushToast("ok", "✓ answer sent", "", 3500);
       var d = evt.detail || {};
@@ -336,7 +484,7 @@
     });
 
     // ---------- live swaps: re-render markdown, re-apply selection, wire diffs ----------
-    document.body.addEventListener("htmx:afterSwap", function () { renderMarkdown(); wireDetail(); wireChanges(); });
+    document.body.addEventListener("htmx:afterSwap", function () { renderMarkdown(); wireDetail(); });
     document.body.addEventListener("htmx:oobAfterSwap", function () { renderMarkdown(); applySelection(); });
     renderMarkdown();
   </script>

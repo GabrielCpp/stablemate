@@ -1,19 +1,22 @@
 """HTML fragment rendering for groom's IDE-style console.
 
-The dashboard is a CSS-grid shell (activity bar / picker / split inbox+detail /
-status bar). The server owns four dynamic regions and streams them to browser
-tabs over one websocket:
+The dashboard is a CSS-grid shell (activity bar / three-mode main / status bar)
+with three panels — Inbox, Files, Diff — switched from the activity bar. The
+server owns these dynamic regions and streams the live ones to browser tabs over
+one websocket:
 
-- ``#tree``       — the Repository -> worker picker tree
-- ``#inbox-list`` — every worker, blocked pinned to the top
+- ``#inbox-list`` — every worker with an open gate (the operator's message list)
 - ``#statusbar``  — fleet counts
 - ``#detail``     — the selected worker's gate(s): question + answer + diff,
                     fetched on demand via ``GET /worker/{id}`` (not broadcast,
                     so a half-typed answer is never clobbered by a live push)
+- ``#repo-menu``  — the container+repo picker for the Files/Diff panels, fetched
+                    on demand via ``GET /repos`` (see :func:`render_repo_menu`)
 
-``#tree``/``#inbox-list``/``#statusbar`` are re-rendered whole and pushed as one
+``#inbox-list``/``#statusbar`` are re-rendered whole and pushed as one
 ``hx-swap-oob`` frame on every state change (the fleet is small); their ids ship
-in the static shell so the first out-of-band swap has a matching target.
+in the static shell so the first out-of-band swap has a matching target. The
+Files/Diff panels are container+repo scoped and fetched on demand, not broadcast.
 
 Every dynamic value is passed through :func:`esc` — gate questions and answers
 come from LLM-authored context files and are untrusted as far as the browser is
@@ -109,59 +112,30 @@ def _question_preview(question: str) -> str:
     return ""
 
 
-def _group_by_repo(workflows: list[WorkflowContainer]) -> list[tuple[str, list[WorkflowContainer]]]:
-    groups: dict[str, list[WorkflowContainer]] = {}
-    for wf in workflows:
-        groups.setdefault(_repo_label(wf), []).append(wf)
-    # Repos with a blocked worker float up; then alphabetical.
-    def _key(item: tuple[str, list[WorkflowContainer]]) -> tuple[int, str]:
-        _, members = item
-        has_blocked = any(m.state == WorkflowState.BLOCKED for m in members)
-        return (0 if has_blocked else 1, item[0].lower())
-
-    return sorted(groups.items(), key=_key)
-
-
 # --------------------------------------------------------------------------- #
-# Picker tree
+# Container + repo picker (Files / Diff panels; fetched via GET /repos)
 # --------------------------------------------------------------------------- #
-def _tree_worker(wf: WorkflowContainer) -> str:
-    return (
-        f'<div class="worker" data-worker-id="{esc(wf.container_id)}" data-state="{esc(wf.state.value)}">'
-        f"{_state_dot(wf.state)}{_type_badge(wf.workflow_type)}"
-        f'<span class="wid">#{esc(_short_id(wf))}</span>'
-        f'<span class="node">{esc(wf.current_node)}</span>'
-        f"</div>"
-    )
-
-
-def _tree_group(label: str, members: list[WorkflowContainer]) -> str:
-    types: dict[str, int] = {}
-    blocked = 0
-    for m in members:
-        if m.workflow_type:
-            types[m.workflow_type] = types.get(m.workflow_type, 0) + 1
-        if m.state == WorkflowState.BLOCKED:
-            blocked += 1
-    summary = " ".join(f"{t}×{n}" for t, n in sorted(types.items()))
-    pill = f'<span class="bpill">{blocked}</span>' if blocked else ""
-    workers = "".join(
-        _tree_worker(m) for m in sorted(members, key=lambda w: (STATE_ORDER[w.state], w.name))
-    )
-    return (
-        f'<div class="repo" data-repo="{esc(label)}">'
-        f'<span class="chev">▾</span><span class="name">{esc(label)}</span>'
-        f'<span class="sum">{esc(summary)}</span>{pill}</div>{workers}'
-    )
-
-
-def render_tree(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = False) -> str:
-    matching = [wf for wf in workflows if _matches(wf, query)]
-    if not matching:
-        inner = _empty_or_loading("No workers.", query)
-    else:
-        inner = "".join(_tree_group(label, members) for label, members in _group_by_repo(matching))
-    return f'<div class="tree" id="tree"{_oob(oob)}>{inner}</div>'
+def render_repo_menu(entries: list[tuple[WorkflowContainer, list[str]]]) -> str:
+    """The Zed-style container+repo menu: one clickable ``<name>/<repo>`` row per
+    (container, checkout). ``entries`` is ``[(wf, [repo_dir, ...]), ...]``; a
+    workflow with no discoverable repo still gets a single volume-root entry so
+    it can be browsed. dashboard.html injects this into ``#repo-menu`` and does
+    the search-filtering client-side, so no query handling is needed here.
+    """
+    rows = []
+    for wf, repo_dirs in sorted(entries, key=lambda e: (STATE_ORDER[e[0].state], e[0].name)):
+        for repo in repo_dirs or [""]:
+            label = f"{wf.name}/{repo}" if repo else wf.name
+            rows.append(
+                f'<div class="repo-item" role="option" '
+                f'data-container="{esc(wf.container_id)}" data-repo="{esc(repo)}" '
+                f'data-label="{esc(label)}">'
+                f"{_state_dot(wf.state)}{_type_badge(wf.workflow_type)}"
+                f'<span class="repo-item-label">{esc(label)}</span></div>'
+            )
+    if not rows:
+        return '<div class="repo-empty">No repositories available.</div>'
+    return "".join(rows)
 
 
 # --------------------------------------------------------------------------- #
@@ -303,69 +277,14 @@ def render_worker_detail(wf: WorkflowContainer | None) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Changes view (per-repo tree of working-tree diffs)
-# --------------------------------------------------------------------------- #
-def _changes_worker(wf: WorkflowContainer) -> str:
-    """One worker inside a repo group: its identity line, a lazily-filled tree of
-    the *changed file names* (``.chg-files``), and an initially-empty diff panel
-    (``.chg-filediff``). dashboard.html fetches the worker's unified diff once,
-    lists the files, and renders a file's diff into the panel only when that file
-    is clicked — the diff is never shown until a file is selected.
-    """
-    node = f'<span class="node">{esc(wf.current_node)}</span>' if wf.current_node else ""
-    cid = esc(wf.container_id)
-    # No data-worker-id here on purpose: in the Changes tab a click drives the
-    # file tree / diff (handled by the changes view's own delegated listener),
-    # not the global worker-select that opens the gate detail in other tabs.
-    return (
-        f'<div class="chg-worker" data-container="{cid}">'
-        f'<div class="chg-worker-head"><span class="tchev">▾</span>'
-        f"{_state_dot(wf.state)}{_type_badge(wf.workflow_type)}"
-        f'<span class="wid">#{esc(_short_id(wf))}</span>{node}</div>'
-        f'<div class="chg-worker-body">'
-        f'<div class="chg-files" data-files-for="{cid}"><div class="chg-loading">Loading changed files…</div></div>'
-        f'<div class="chg-filediff" data-filediff-for="{cid}"><div class="chg-empty">Select a file to see its diff.</div></div>'
-        f"</div></div>"
-    )
-
-
-def render_changes(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = False) -> str:
-    """The Changes activity-mode pane: every worker's working-tree diff grouped
-    under its repo header, so the operator sees changes *per repo* rather than
-    one selected worker's raw diff. Fetched on demand via ``GET /changes`` into
-    ``#detail`` (the diffs themselves are lazy-loaded + rendered client-side by
-    diff2html, same contract as the per-worker disclosure).
-    """
-    matching = [wf for wf in workflows if _matches(wf, query)]
-    if not matching:
-        inner = _empty_or_loading("No repositories with changes.", query)
-    else:
-        inner = "".join(
-            f'<div class="chg-repo" data-repo="{esc(label)}">'
-            f'<div class="chg-repo-head"><span class="name">{esc(label)}</span>'
-            f'<span class="sum">{len(members)} worker{"s" if len(members) != 1 else ""}</span></div>'
-            + "".join(
-                _changes_worker(m)
-                for m in sorted(members, key=lambda w: (STATE_ORDER[w.state], w.name))
-            )
-            + "</div>"
-            for label, members in _group_by_repo(matching)
-        )
-    return f'<div class="changes" id="changes"{_oob(oob)}>{inner}</div>'
-
-
-# --------------------------------------------------------------------------- #
 # Combined broadcast payload
 # --------------------------------------------------------------------------- #
 def render_shell_data(workflows: list[WorkflowContainer], query: str = "", *, oob: bool = True) -> str:
     """The live regions, concatenated as one out-of-band frame for the initial
-    snapshot and every subsequent broadcast.
+    snapshot and every subsequent broadcast. The Files/Diff panels are
+    container+repo scoped and fetched on demand, so they are not part of this.
     """
-    return (
-        render_tree(workflows, query, oob=oob)
-        + render_inbox(workflows, query, oob=oob)
-        + render_statusbar(workflows, oob=oob)
-    )
+    return render_inbox(workflows, query, oob=oob) + render_statusbar(workflows, oob=oob)
 
 
 def render_notify_script(message: str) -> str:

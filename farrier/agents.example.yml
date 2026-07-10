@@ -113,6 +113,20 @@ localInstructions:
 
 
 # ---------------------------------------------------------------------------
+# lint — per-service lint command OVERRIDES for the coder workflow's lint gate.
+# The gate runs after each service is implemented (and again at QA) and routes a
+# dirty result back to rework. By CONVENTION it runs `make lint` in the service's
+# directory when that Makefile has a `lint` target — a service with no such target
+# is skipped (opt-in), so most repos need nothing here. Add an entry only to run a
+# DIFFERENT command for a service; the key is the service name (or its directory).
+#   groom's `make lint` runs ruff + a dependency-free HTML accessibility scan.
+# lint:
+#   groom: make lint                 # explicit (also the convention default)
+#   api: golangci-lint run ./...     # a service that doesn't use `make lint`
+#   web: npm run lint && npm run a11y
+
+
+# ---------------------------------------------------------------------------
 # template (preferred) / vars (legacy alias) — Jinja2 values injected into
 # every rendered skill and prompt. Reference them in library source as
 # `{{ template.<key> }}`. Both tables are merged into one context; use
@@ -120,7 +134,6 @@ localInstructions:
 # `| default("…")` so they stay installable when a key is absent.
 # ---------------------------------------------------------------------------
 template:
-  project_name: "My Project"
   backend_layer_name: "Go API"
   go_module: github.com/org/myrepo
   go_cli_name: appctl
@@ -128,7 +141,7 @@ template:
   api_path: api
   openapi_path: api/pkg/api/openapi.yaml
 # vars:                       # legacy spelling; merged with `template`
-#   project_name: "My Project"
+#   backend_layer_name: "Go API"
 
 
 # ---------------------------------------------------------------------------

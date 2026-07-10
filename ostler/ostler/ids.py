@@ -1,16 +1,17 @@
 """Id allocation — ostler owns ``.agents/ids.json`` (subsumes the workflow's allocate-ids script).
 
 The registry is ``{prefix, counter, frozen}``. ``allocate`` mints the next ``<prefix>-<n>`` id and
-persists the bumped counter. ``ensure`` creates the registry on first use (prefix from config's
-``id_prefix`` / ``template.id_prefix`` or an explicit override).
+persists the bumped counter. ``ensure`` creates the registry on first use. The prefix is managed
+entirely by ostler: it is tied to the repo in the CWD — the first 4 letters of the repo name,
+uppercased (an explicit override may still be passed programmatically). The registry pins the
+prefix once minted.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-
-import yaml
 
 from .model import Graph
 
@@ -38,33 +39,18 @@ def save(graph: Graph, ids: dict) -> None:
     graph.ids = ids
 
 
-def _config_prefix(graph: Graph) -> str | None:
-    """Best-effort id prefix from agents.yml (``template.id_prefix`` or ``repo.prefix``)."""
-    for name in ("agents.yml", ".agents.yml", "ostler.yml", "ostler.yaml"):
-        p = graph.root / name
-        if not p.exists():
-            continue
-        try:
-            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        tmpl = data.get("template") or {}
-        repo = data.get("repo") or {}
-        for cand in (tmpl.get("id_prefix"), repo.get("prefix"), (data.get("organization") or {}).get("prefix")):
-            if cand:
-                return str(cand)
-    return None
+def _repo_prefix(graph: Graph) -> str:
+    """Derived id prefix: the first 4 letters of the CWD repo's name, uppercased."""
+    letters = re.sub(r"[^A-Za-z0-9]", "", graph.root.name)
+    return (letters[:4] or "REPO").upper()
 
 
 def ensure(graph: Graph, prefix: str | None = None) -> dict:
-    """Return the registry, creating it if absent. A prefix is required to mint one."""
+    """Return the registry, creating it if absent (prefix derived from the repo name)."""
     ids = load(graph)
     if ids is not None:
         return ids
-    pfx = prefix or _config_prefix(graph) or graph.org_name
-    ids = {"prefix": pfx, "counter": 1}
+    ids = {"prefix": prefix or _repo_prefix(graph), "counter": 1}
     save(graph, ids)
     return ids
 

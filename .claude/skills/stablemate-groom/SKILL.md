@@ -87,6 +87,28 @@ paging requires a dashboard tab open with notification permission granted.
   boundary (`tests/test_render.py` is the contract to preserve).
 - `groom serve` refuses a non-loopback `--host` without `--allow-non-loopback`.
 
+## Accessibility (the dashboard is a real UI — it owes the contract)
+
+groom's stack is exactly the one [`../stablemate-htmx-accessibility/SKILL.md`](../stablemate-htmx-accessibility/SKILL.md)
+governs — server-rendered `templates/dashboard.html` + HTMX/`hx-ext="ws"` + vanilla JS, no bundler
+— which in turn realizes the universal
+[`../stablemate-accessibility/SKILL.md`](../stablemate-accessibility/SKILL.md) contract. Load
+both when touching the template or `assets/*.js`. Concrete gaps in the dashboard as built (fix these
+to the contract, don't add more like them):
+
+- `#palette` is a role-less `<div>` overlay — it must be `role="dialog"` + `aria-modal`, trap focus,
+  move focus to `#palette-input` on open, and Escape-restore focus to the trigger; `#palette-results`
+  must be a `role="listbox"` with `role="option"` rows driven by `aria-activedescendant`.
+- `#palette-input` and the `.filter` input have only a `placeholder` — each needs a real (optionally
+  sr-only) `<label>` or `aria-label`.
+- The websocket OOB targets (worker cards, the log, the blocked-gate banner) must be stable
+  `aria-live` regions — `role="status"`/`"log"` for progress, `aria-live="assertive"` for a new
+  blocked gate — or a screen-reader operator never hears a container went blocked.
+- The `.ws-dot` "live" indicator conveys state by color alone — pair it with text/an icon.
+
+The `marked`+`DOMPurify` markdown path already preserves the XSS boundary
+(`tests/test_render.py`); keep it also preserving headings/lists so gate questions stay perceivable.
+
 ## Package layout (orientation, not exhaustive — see groom.md for the full tree)
 
 `models.py` (dataclasses) · `state.py` (in-memory store + broadcast) · `gates.py` (STATUS

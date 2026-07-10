@@ -23,8 +23,15 @@ Three rules govern the content (profile §2, §8):
 - **Spec-complete for every node** — surfaces, elements, behaviors, concepts, flows, formats *and*
   visual nodes. Each carries its full contract: fields with `type`/`required`/`default`, flags/args
   item-by-item, `does:` as ordered effects, algorithms as ordered steps, errors/exit/status codes,
-  and for UI the `dom:`/`props:`/`states:`/`a11y:` contract. The per-type checklist is profile §8
+  and for UI the `dom:`/`props:`/`states:` contract. The per-type checklist is profile §8
   (mirrored in [[ostler]]). A one-line stub is below bar.
+- **Every interactive control carries its accessibility contract** — `role:` (the ARIA/semantic
+  role), `name:` (the accessible name), `keyboard:` (the key/shortcut to reach or fire it), on the
+  `component`/`interaction` node. This is the same data twice over: it's what makes the UI
+  *accessible* **and** the robust basis for automation — an interaction maps to
+  `getByRole(role, {name})` (stable across CSS churn), with the brittle `selector:` only as a
+  fallback. A control you can't give a role + accessible name is an a11y gap *and* a doc gap —
+  flag it, don't paper over it with a class selector.
 - **Structure it so the graph can *see* it — don't bury spec in prose.** A field or method described
   in a sentence is invisible to `ostler graph`; the same thing as a **nested typed section** is a
   first-class node you can query. Model a concept's methods as `### method:` sections and a format's

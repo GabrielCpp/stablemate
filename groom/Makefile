@@ -24,6 +24,19 @@ help: ## Show this help
 install: ## Create/sync the workspace venv from the root uv.lock
 	uv sync
 
+# Serve knobs — override on the command line, e.g. `make run PORT=9000`.
+HOST ?= 127.0.0.1
+PORT ?= 8787
+
+.PHONY: run
+run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 127.0.0.1:8787)
+	uv run groom serve --host $(HOST) --port $(PORT)
+
+.PHONY: lint
+lint: ## Lint: ruff + the dependency-free HTML accessibility check on the templates
+	uv run ruff check .
+	uv run python -m groom.a11y_lint
+
 .PHONY: test
 test: ## Run the standalone test suite
 	@for t in tests/test_*.py; do echo ">> $$t"; timeout 60 uv run python $$t || exit 1; done

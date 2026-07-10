@@ -204,7 +204,6 @@ packs:
   - go
 
 template:
-  project_name: "My Project"
   go_module: github.com/org/myrepo
 
 workflow:
