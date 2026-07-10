@@ -13,7 +13,12 @@ import argparse
 import ipaddress
 import sys
 
-DEFAULT_HOST = "127.0.0.1"
+# Default to all interfaces so the in-container groom-sidecars can reach the
+# host over the docker bridge (host.docker.internal → the bridge gateway on
+# Linux, not loopback) with no extra flags. groom has no authentication, so this
+# is only appropriate on a trusted machine — a non-loopback bind prints a
+# warning (below); pass --host 127.0.0.1 to bind loopback only.
+DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
 
 
@@ -29,11 +34,13 @@ def _is_loopback(host: str) -> bool:
 def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopback: bool = False) -> None:
     if not _is_loopback(host) and not allow_non_loopback:
         print(
-            f"refusing to bind non-loopback host {host!r} without --allow-non-loopback "
-            "(groom exposes docker control and gate answers with no authentication)",
+            f"warning: binding non-loopback host {host!r} — groom has NO authentication and "
+            "exposes docker control + gate answers to anything that can reach this address. "
+            "This is the default so in-container sidecars can reach it over the docker bridge; "
+            "pass --host 127.0.0.1 to bind loopback only, or --allow-non-loopback to silence "
+            "this warning. Only run on a trusted network.",
             file=sys.stderr,
         )
-        raise SystemExit(2)
 
     import uvicorn
 
@@ -68,7 +75,8 @@ def main(argv: list[str] | None = None) -> None:
     serve_parser.add_argument(
         "--allow-non-loopback",
         action="store_true",
-        help="Allow binding a non-loopback host. groom has no auth — only do this on a trusted network.",
+        help="Silence the non-loopback exposure warning (the default host is 0.0.0.0). "
+        "groom has no auth — only expose it on a trusted network.",
     )
 
     args = parser.parse_args(argv)

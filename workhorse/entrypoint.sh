@@ -70,33 +70,37 @@ gosu nobody env HOME="$CLAUDE_HOME" uv run python3 -c \
 # script's own exit code. stdout/stderr are discarded so a noisy or crashing
 # sidecar never interleaves with or pollutes the workflow's own logs.
 #
-# Dev source shadow: in the repo's own compose harness the host groom/ source is
-# bind-mounted read-only at /mnt/groom-src, so edits reach the sidecar without
-# an image rebuild. The process must never run straight off that bind — a
-# mid-save would expose partial files and the bind carries host ownership, not
-# the nobody-readable perms the sidecar needs. So copy it into /app/groom (the
-# location `uv run` resolves the editable package from), chowned to nobody,
-# before every launch. When the bind is absent (a released image, or a third
-# party's own image) copy_groom is a no-op and the baked-in groom is used.
-copy_groom() {
-    if [ -d /mnt/groom-src ]; then
-        cp -a /mnt/groom-src/. /app/groom/
-        chown -R nobody:nogroup /app/groom
-    fi
-}
+# Editable sidecar (the `pipx install --editable` model). groom is not baked into
+# the image; it is installed as an editable uv *tool* from a bind of the host
+# groom/ source at /mnt/groom-src (read-only; see compose.yaml). `--editable`
+# points the install at the live bind, so an edit on the host is imported by the
+# next sidecar start — a `reload` (or `docker restart`) is all it takes, no image
+# rebuild. `--no-sources` installs standalone (ignoring the uv workspace source
+# groom declares for workhorse-agent), pulling workhorse-agent + groom's deps
+# from PyPI into an isolated tool venv under HOME=/claude-state — persistent, so
+# only a fresh volume's first start pays a download. Running straight off the
+# read-only bind is fine: it is world-readable, PYTHONDONTWRITEBYTECODE stops
+# .pyc writes, and a manual reload happens after a save (no partial files). With
+# no bind, nothing is installed and the container runs without a sidecar.
+GROOM_TOOL_BIN="$CLAUDE_HOME/.local/bin"
+GROOM_SIDECAR="$GROOM_TOOL_BIN/groom-sidecar"
+if [ -d /mnt/groom-src ]; then
+    gosu nobody env HOME="$CLAUDE_HOME" UV_TOOL_BIN_DIR="$GROOM_TOOL_BIN" \
+        uv tool install --editable /mnt/groom-src --no-sources >/dev/null 2>&1 || true
+fi
 
-# Supervised reload: the recopy must happen while the sidecar is NOT running —
-# a process can't cleanly copy over its own imported source and re-exec from it.
-# So this shell (PID 1) owns the loop and the sidecar signals a reload by
-# exiting with code 3 (groom sends it a `reload` over the socket it already
-# holds). Any other exit stops the loop, so a reload that lands on unimportable
-# code fails safe — the sidecar stays down rather than restart-storming; a
-# `docker restart` reruns this entrypoint and recopies the now-fixed source.
+# Supervised reload owned by this shell (PID 1): the sidecar signals a reload by
+# exiting with code 3 (groom sends `reload` over the socket it holds) and the
+# loop simply restarts it — the editable install imports the live bind source,
+# so no copy or reinstall is needed. Any other exit stops the loop, so a reload
+# that lands on unimportable code fails safe (no restart storm); a
+# `docker restart` reruns this entrypoint. No installed sidecar (no bind, or a
+# failed install) → the loop returns immediately and the workflow runs without one.
 run_sidecar() {
+    [ -x "$GROOM_SIDECAR" ] || return 0
     while :; do
-        copy_groom
         gosu nobody env HOME="$CLAUDE_HOME" PYTHONDONTWRITEBYTECODE=1 \
-            uv run groom-sidecar >/dev/null 2>&1 && rc=0 || rc=$?
+            "$GROOM_SIDECAR" >/dev/null 2>&1 && rc=0 || rc=$?
         [ "$rc" = 3 ] || break
     done
 }
@@ -124,7 +128,8 @@ rc=0
 wait "$wf_pid" || rc=$?
 
 # Best-effort exit notice (reuses the sidecar's identity/host/port logic); must
-# never change the container's own exit status.
-gosu nobody env HOME="$CLAUDE_HOME" uv run groom-sidecar --exit-code "$rc" >/dev/null 2>&1 || true
+# never change the container's own exit status. Skipped when no sidecar was
+# installed (no groom bind); `|| true` keeps any failure off the exit code.
+[ -x "$GROOM_SIDECAR" ] && gosu nobody env HOME="$CLAUDE_HOME" "$GROOM_SIDECAR" --exit-code "$rc" >/dev/null 2>&1 || true
 
 exit "$rc"

@@ -77,23 +77,29 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 
 WORKDIR /app
 
-# Copy project files (pyproject.toml, uv.lock, workhorse + groom + ostler packages).
-# groom itself never runs here — only its `groom-sidecar` console script does,
-# watching this container's own /workspace + /runs and pushing to the host's
-# groom dashboard (see entrypoint.sh). workhorse's own pyproject.toml/deps are
-# unaffected by groom/ostler being present in the synced workspace.
-# ostler must be baked in globally: workflow script nodes (validate-artifacts.py,
-# verify-surface-coverage.py, reconcile-artifacts.py, ostler-doctor.py) shell out
-# to `ostler` directly as workhorse subprocesses, not through an agent's own shell —
-# an agent ad hoc `uv tool install ostler`-ing itself mid-run does not make the
-# binary visible to those sibling script processes.
+# Copy project files (pyproject.toml, uv.lock, workhorse + ostler packages).
+# groom is NOT baked here: the in-container groom-sidecar is installed at
+# container start as an editable uv *tool* (the `pipx install --editable` model)
+# from a bind of the host groom/ source — see entrypoint.sh. `uv tool install
+# --editable … --no-sources` installs it standalone, pulling workhorse-agent +
+# groom's deps from PyPI (cached on the persistent claude-state volume) rather
+# than resolving this uv workspace, so groom needs no workspace-member source in
+# the image and an edit reaches the sidecar with no image rebuild. A container
+# with no groom bind just runs without a sidecar.
+# ostler, by contrast, must be baked in globally: workflow script nodes
+# (validate-artifacts.py, verify-surface-coverage.py, reconcile-artifacts.py,
+# ostler-doctor.py) shell out to `ostler` directly as workhorse subprocesses,
+# not through an agent's own shell — an agent ad hoc `uv tool install ostler`-ing
+# itself mid-run does not make the binary visible to those sibling script processes.
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY workhorse/ workhorse/
-COPY groom/ groom/
 COPY ostler/ ostler/
 
-# Install Python deps — run as root during build, nobody at runtime
-RUN uv sync --frozen --package workhorse-agent --package groom --package ostler \
+# Install Python deps — run as root during build, nobody at runtime. groom is
+# omitted (installed at runtime as an editable tool from the bind); workhorse +
+# ostler are baked so the workflow runs offline. A missing groom/ workspace
+# member is tolerated by `uv sync` (farrier is likewise never copied).
+RUN uv sync --frozen --package workhorse-agent --package ostler \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
     && chown -R nobody:nogroup /app \
     && mkdir -p /opt/uv-python \

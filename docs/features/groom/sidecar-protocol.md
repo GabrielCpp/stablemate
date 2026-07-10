@@ -52,8 +52,10 @@ up to groom, and groom queries the container's sidecar back down.
   new push.
 - **Linux networking gotcha:** the compose `host-gateway` maps to the docker
   bridge, not the host loopback. groom must therefore bind a bridge-reachable
-  address (`0.0.0.0` / the bridge IP with `--allow-non-loopback`), **not**
-  `127.0.0.1`, or every push is silently dropped.
+  address, which is why `groom serve` now **defaults to `0.0.0.0`** (a
+  `127.0.0.1`-only bind silently drops every push/socket from a container).
+  It warns on the non-loopback bind since groom has no auth; `--host 127.0.0.1`
+  restores loopback-only.
 - The `--query` snapshot is a bounded, safe one-shot `docker exec`; it walks
   `/workspace` skipping vendor dirs (`.git`, `.venv`, `node_modules`,
   `__pycache__`).

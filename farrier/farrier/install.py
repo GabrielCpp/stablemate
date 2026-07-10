@@ -883,16 +883,17 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
     image: *agent-image
     build: *agent-build
     extra_hosts:
-      # Lets the container's groom-sidecar (baked into the agent image) reach
-      # a loopback-bound `groom` dashboard running on the host, regardless of
-      # which docker network this compose project uses.
+      # Lets the container's groom-sidecar — installed as an editable uv tool
+      # when the GROOM_SRC bind below is set — reach a loopback-bound `groom`
+      # dashboard on the host, regardless of which docker network this compose
+      # project uses.
       #
       # NOTE (native Linux Docker Engine): host-gateway resolves to the
       # docker bridge's own gateway IP (e.g. 172.17.0.1), NOT the host's real
       # loopback interface — that equivalence only holds on Docker Desktop's
-      # (Mac/Windows) VM-proxied host.docker.internal. So on Linux, `groom
-      # serve` must itself bind that bridge IP explicitly (see its --host /
-      # --allow-non-loopback flags) rather than the 127.0.0.1 default.
+      # (Mac/Windows) VM-proxied host.docker.internal. `groom serve` therefore
+      # defaults to binding 0.0.0.0 (reachable over the bridge); if you override
+      # it with --host, use the bridge IP, not 127.0.0.1.
       - "host.docker.internal:host-gateway"
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{CLAUDE_CODE_OAUTH_TOKEN:-}}
@@ -931,6 +932,17 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
       # - type: bind
       #   source: ${{WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}}
       #   target: /mnt/workspace-host
+      # Optional: the groom-sidecar (dashboard monitoring + live reload). groom is
+      # not baked into the image; uncomment this and set GROOM_SRC to your host
+      # `groom/` checkout (e.g. .../stablemate/groom) to have the entrypoint
+      # install it as an editable uv tool from the bind. Edits then reach the
+      # sidecar via a `reload` over the socket (or `docker restart`) with no image
+      # rebuild — the `pipx install --editable` model. Omit it and the workflow
+      # runs without a sidecar.
+      # - type: bind
+      #   source: ${{GROOM_SRC:?Set GROOM_SRC to your host groom/ checkout}}
+      #   target: /mnt/groom-src
+      #   read_only: true
       - type: volume
         source: workspace-{wf}
         target: /workspace

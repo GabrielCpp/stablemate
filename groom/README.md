@@ -36,7 +36,15 @@ a container has genuinely stopped.
 ## Usage
 
 ```
-uv run groom serve                # binds 127.0.0.1:8787 by default
+uv run groom serve                # binds 0.0.0.0:8787 by default (see note below)
+uv run groom serve --host 127.0.0.1   # loopback only (no container access)
 ```
+
+> **Binding.** groom defaults to `0.0.0.0` so the in-container `groom-sidecar`s
+> can reach it over the docker bridge (`host.docker.internal` → the bridge
+> gateway on Linux, not loopback). groom has **no authentication** — it controls
+> docker and answers operator gates — so only run it on a trusted machine; it
+> prints a one-line warning on any non-loopback bind (`--allow-non-loopback`
+> silences it). Use `--host 127.0.0.1` to bind loopback only.
 
 See `docs/features/groom.md` at the repo root for the full design.
