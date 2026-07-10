@@ -14,7 +14,7 @@ from unittest.mock import patch
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import discovery, state
+from groom import discovery, sidecar_hub, state
 from groom.models import AnswerResult, GateInfo, WorkflowContainer, WorkflowState
 
 
@@ -22,6 +22,27 @@ def _reset() -> None:
     state.WORKFLOWS.clear()
     state._gate_locks.clear()
     state.CLIENTS.clear()
+    sidecar_hub.CONNECTIONS.clear()
+
+
+class _FakeConn:
+    """A stand-in sidecar connection registered directly into the hub, so the
+    data-plane handlers exercise the socket-preferred path without a real
+    WebSocket."""
+
+    def __init__(self, container_id: str, *, result=None, error: bool = False) -> None:
+        self.container_id = container_id
+        self._result = result
+        self._error = error
+        self.reloaded = False
+
+    async def rpc(self, method, params):
+        if self._error:
+            raise sidecar_hub.SidecarError("socket unavailable")
+        return self._result
+
+    async def send_reload(self):
+        self.reloaded = True
 
 
 def _hermetic_client() -> TestClient:
@@ -270,6 +291,170 @@ def test_background_scan_clears_scanning_on_error():
 
     asyncio.run(_scenario())
     assert state.SCANNING is False
+
+
+# ---- Data plane prefers the live sidecar socket, falls back to volume reads ----
+def test_files_prefers_sidecar_socket_when_connected():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": ["a.py", "b.py"]})
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "list_files") as lf:
+            resp = client.get("/files/abc123", params={"repo": "predykt"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "a.py\nb.py"
+    lf.assert_not_called()  # socket served it; no throwaway container
+
+
+def test_files_falls_back_to_volume_when_socket_errors():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", error=True)
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "list_files", return_value=["README.md"]) as lf:
+            resp = client.get("/files/abc123", params={"repo": "predykt"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "README.md"
+    assert lf.call_args[0] == ("ws-vol", "predykt")
+
+
+def test_file_content_prefers_sidecar_socket():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"content": "print(1)\n"})
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "read_file") as rf:
+            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "a.py"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "print(1)\n"
+    rf.assert_not_called()
+
+
+def test_diff_prefers_sidecar_socket():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"diff": "diff --git a/x b/x\n"})
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "git_diff") as gd:
+            resp = client.get("/diff/abc123", params={"repo": "predykt"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "diff --git a/x b/x\n"
+    gd.assert_not_called()
+
+
+# ---- /reload broadcasts to connected sidecars ----
+def test_reload_broadcasts_to_all_connected_sidecars():
+    _reset()
+    c1, c2 = _FakeConn("a"), _FakeConn("b")
+    sidecar_hub.CONNECTIONS["a"] = c1
+    sidecar_hub.CONNECTIONS["b"] = c2
+
+    client = _hermetic_client()
+    try:
+        resp = client.post("/reload")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": True, "reloaded": 2}
+    assert c1.reloaded and c2.reloaded
+
+
+def test_reload_targets_one_container_when_id_given():
+    _reset()
+    c1, c2 = _FakeConn("a"), _FakeConn("b")
+    sidecar_hub.CONNECTIONS["a"] = c1
+    sidecar_hub.CONNECTIONS["b"] = c2
+
+    client = _hermetic_client()
+    try:
+        resp = client.post("/reload", params={"container_id": "a"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json()["reloaded"] == 1
+    assert c1.reloaded and not c2.reloaded
+
+
+# ---- hello advertise folds a connected container's full state into the fleet ----
+def _run_apply_hello(container_id: str, data: dict) -> None:
+    async def _noop_ensure(cid: str) -> None:  # skip docker inspect
+        pass
+
+    async def _noop_broadcast(fragment) -> None:
+        pass
+
+    async def _scenario() -> None:
+        with patch.object(groom_app, "_ensure_volumes", _noop_ensure), \
+             patch.object(state, "broadcast", _noop_broadcast):
+            await groom_app._apply_hello(container_id, data)
+
+    asyncio.run(_scenario())
+
+
+def test_apply_hello_marks_blocked_with_gate():
+    _reset()
+    _run_apply_hello(
+        "abc123def456",
+        {
+            "identity": {"container_id": "abc123def456", "name": "coder-1", "repo_name": "Predykt", "repo_branch": "main"},
+            "snapshot": {"current_node": "await_operator", "terminal": "", "gates": [{"file_path": "docs/gate.md", "question": "Which?"}]},
+        },
+    )
+    wf = state.WORKFLOWS["abc123def456"]
+    assert wf.state == WorkflowState.BLOCKED
+    assert wf.current_node == "await_operator"
+    assert wf.repo_name == "Predykt"
+    assert "docs/gate.md" in wf.gates
+
+
+def test_apply_hello_running_when_no_gates():
+    _reset()
+    _run_apply_hello(
+        "abc123def456",
+        {"identity": {"container_id": "abc123def456", "name": "coder-1"}, "snapshot": {"current_node": "build", "terminal": "", "gates": []}},
+    )
+    assert state.WORKFLOWS["abc123def456"].state == WorkflowState.RUNNING
+
+
+def test_apply_hello_finished_when_terminal():
+    _reset()
+    _run_apply_hello(
+        "abc123def456",
+        {"identity": {"container_id": "abc123def456", "name": "coder-1"}, "snapshot": {"current_node": "done", "terminal": "done", "gates": []}},
+    )
+    assert state.WORKFLOWS["abc123def456"].state == WorkflowState.FINISHED
+
+
+def test_apply_hello_reconnect_rebuilds_gates_authoritatively():
+    _reset()
+    # A stale gate lingers from a previous session; the fresh hello has none.
+    wf = WorkflowContainer(container_id="abc123def456", name="w", state=WorkflowState.BLOCKED)
+    wf.gates["docs/old.md"] = GateInfo(workflow_id="abc123def456", file_path="docs/old.md", question="stale?")
+    state.WORKFLOWS["abc123def456"] = wf
+
+    _run_apply_hello(
+        "abc123def456",
+        {"identity": {"container_id": "abc123def456"}, "snapshot": {"current_node": "build", "terminal": "", "gates": []}},
+    )
+    # Re-advertise is authoritative: the stale gate is gone and the worker is running again.
+    assert state.WORKFLOWS["abc123def456"].gates == {}
+    assert state.WORKFLOWS["abc123def456"].state == WorkflowState.RUNNING
 
 
 if __name__ == "__main__":

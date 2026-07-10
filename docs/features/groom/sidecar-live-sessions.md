@@ -2,18 +2,18 @@
 type: feature
 slug: sidecar-live-sessions
 title: Sidecar live sessions — persistent socket data plane + dev reload
-status: proposed
+status: implemented
 id: stablemate-6
 area: groom
 ---
 # Sidecar live sessions — persistent socket data plane + dev reload
 
-**Status: proposed.** This is a design direction, not shipped behaviour. It
-evolves the current best-effort push/pull channel (see
-[sidecar-protocol](sidecar-protocol.md)) into a persistent, stateful session and
-uses that session as the data plane for groom's interactive panels. It also
-specifies the local development loop for iterating on the sidecar without an
-image rebuild.
+**Status: implemented.** This evolves the earlier best-effort push/pull channel
+(see [sidecar-protocol](sidecar-protocol.md)) into a persistent, stateful
+session and uses that session as the data plane for groom's interactive panels.
+It also ships the local development loop for iterating on the sidecar without an
+image rebuild. See the [Implementation](#implementation) section for the
+concrete message schema and where each piece lives.
 
 ## Motivation
 
@@ -211,16 +211,65 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
 - **Graph lives in the bind, runtime in the image.** Preserve the separation that
   makes recreate-to-upgrade safe: never bake a workflow's graph into the image.
 
-## Open questions
+## Implementation
 
-- Exact socket message schema: the `hello` frame, the `getTree`/`getFile`/`getDiff`
-  RPC envelope (correlation ids, error shape), and the `reload` command.
-- `inotify` overflow (`IN_Q_OVERFLOW`) and rename handling for an incrementally
-  maintained file tree — likely "on overflow, full rescan".
-- Whether any volume-read fallback is worth keeping for a *finished* run's
-  files/diff, or whether "recreate to review" is always acceptable (current
-  decision: recreate; no fallback).
-- Backpressure/coalescing for streamed diff deltas on a busy checkout.
+The sidecar dials `ws://$GROOM_HOST:$GROOM_PORT/sidecar` and holds it open;
+groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
+`type` discriminator.
+
+**Sidecar → groom**
+
+- `{"type":"hello", "identity":{container_id,name,repo_name,repo_branch},
+  "snapshot":{current_node,terminal,gates:[{file_path,question}]}}` — sent on
+  every (re)connect. groom folds it in (`_apply_hello`), rebuilding gates
+  **authoritatively** from the snapshot. `identity` carries only what the
+  container env exposes; the docker-level bits (workflow type, volume names)
+  are still resolved once via `_ensure_volumes` (`docker inspect`) for the
+  answer/fallback paths.
+- `{"type":"progress","current_node":…}` / `{"type":"blocked",file_path,question}`
+  — inotify deltas, streamed over the same socket (`_apply_socket_progress` /
+  `_apply_socket_blocked`).
+- `{"type":"rpc_result","id":…,"ok":true,"data":…}` or
+  `{…,"ok":false,"error":…}` — the reply to one RPC.
+
+**groom → sidecar**
+
+- `{"type":"rpc","id":…,"method":"getTree"|"getFile"|"getDiff","params":{repo,path}}`
+  — correlation id is a per-connection counter (`SidecarConnection`), answered
+  from local disk. `getTree`→`{paths:[…]}`, `getFile`→`{content}`,
+  `getDiff`→`{diff}`.
+- `{"type":"reload"}` — the sidecar closes and `exit(3)`s.
+
+**Decisions on the former open questions**
+
+- **Volume-read fallback is kept** (a strictly-better superset of the
+  "retire it" non-goal): `/files` `/file` `/diff` prefer the socket and fall
+  back to the throwaway-container read when no sidecar is connected, so a
+  stopped/finished/legacy container is still browsable. `_sidecar_rpc` returns
+  `None` on no-connection-or-error and the handler drops through.
+- **Liveness is soft.** A socket close unregisters the RPC connection (and fails
+  its in-flight RPCs) but does **not** delete the workflow row — the reconcile
+  scan still owns removal, so a transient drop or a groom restart doesn't flap
+  the fleet. Re-advertise-on-reconnect is what restores authority.
+- **`inotify` overflow / streamed-diff backpressure / coalescing** are not yet
+  optimized: the tree is walked per `getTree` (not incrementally maintained) and
+  diffs are request/response, not streamed deltas. The socket + fallback shape
+  leaves room to add incremental maintenance later without a protocol change.
+
+**Where it lives**
+
+- `groom/groom/sidecar.py` — the async session (`run`/`_serve`/`_run_session`),
+  RPC handlers (`_rpc_get_tree`/`_rpc_get_file`/`_rpc_get_diff`, `_safe_relpath`),
+  `_hello_frame`, `_classify_event`, `ReloadRequested`/`RELOAD_EXIT_CODE`.
+- `groom/groom/sidecar_hub.py` — host-side `SidecarConnection` (RPC correlation,
+  send lock) + the `CONNECTIONS` registry.
+- `groom/groom/app.py` — `dashboard_sidecar` (`/sidecar`), the socket-preferred
+  `/files`/`/file`/`/diff`, `/reload`, `_apply_hello`.
+- `workhorse/entrypoint.sh` — `copy_groom` + the `run_sidecar` exit-3 supervising
+  loop. `workhorse/compose.yaml` — the read-only `../groom:/mnt/groom-src` dev
+  bind. `groom/pyproject.toml` — the `websockets` dependency.
+- Tests: `groom/tests/test_sidecar_hub.py`, `test_sidecar_session.py`, and the
+  socket-path/`/reload`/`hello` cases in `test_app.py`.
 
 ## Related
 

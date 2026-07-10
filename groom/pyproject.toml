@@ -21,6 +21,11 @@ dependencies = [
   "litestar[standard]>=2.10",
   "workhorse-agent",
   "inotify-simple>=1.3.5",
+  # The in-container sidecar dials groom as a WebSocket client for its
+  # persistent session (see groom/sidecar.py). websockets also arrives
+  # transitively via litestar[standard]'s uvicorn, but the sidecar imports it
+  # directly, so declare it.
+  "websockets>=13",
 ]
 
 [project.optional-dependencies]
