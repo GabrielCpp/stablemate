@@ -30,13 +30,13 @@ with a YAML frontmatter block (only hard requirement: non-empty `type`) plus a m
 There is **no** `seed.json`, `dependencies.json`, `inventory.json`, or `epics-todo.json`. An epic's
 seeds and its story dependency-DAG live entirely inside that epic's own `epic.md`.
 
-| `type` | Location | Identity | Required frontmatter |
-|---|---|---|---|
-| `epic` | `docs/epics/<epic>/epic.md` | `<epic>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
-| `feature` | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
+| `type`                                  | Location                                                             | Identity               | Required frontmatter     |
+| --------------------------------------- | -------------------------------------------------------------------- | ---------------------- | ------------------------ |
+| `epic`                                  | `docs/epics/<epic>/epic.md`                                          | `<epic>` (dir name)    | `type`, `id`, `title`    |
+| `story`                                 | `docs/epics/<epic>/stories/<slug>/story.md`                          | `<slug>`               | `type`, `slug`, `status` |
+| `knowledge`                             | `docs/knowledge/<area>/<name>.md`                                    | path (`surface` alias) | `type`, `surface`        |
+| `feature`                               | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>`        | `type`, `slug`, `title`  |
+| `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md`                                             | path                   | `type`                   |
 
 Not Concepts (managed markdown, left in place as-is): `docs/backlog.md` (intake list), `docs/epics/index.md`
 (epics queue).
@@ -48,7 +48,7 @@ Not Concepts (managed markdown, left in place as-is): `docs/backlog.md` (intake 
 type: epic
 id: pred-15
 title: Account Credits "Aperçu" Billing Body at Legacy Parity
-status: in-progress        # optional: planned | in-progress | done
+status: in-progress # optional: planned | in-progress | done
 ---
 
 Free narrative prose (any headings: ## Goal, ## Method, ## Acceptance, …).
@@ -56,9 +56,10 @@ Free narrative prose (any headings: ## Goal, ## Method, ## Acceptance, …).
 ## Seeds
 
 ### apercu-landing-body
-- status: researched       # backlog | researched | covered | resolved | dropped | deferred
+
+- status: researched # backlog | researched | covered | resolved | dropped | deferred
 - surface: account-billing/apercu-billing-body
-- legacySurface: /{_locale}/employe/profile/edit (BuyCreditsAction)
+- legacySurface: /{\_locale}/employe/profile/edit (BuyCreditsAction)
 - backing: GET /billing/customer → CustomerDetails
 
 The first paragraph after the metadata bullets is the seed summary; further prose is free markdown.
@@ -66,6 +67,7 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 ## Stories
 
 ### 01-apercu-billing-body
+
 - title: Account Credits "Aperçu" Billing Body at Legacy Parity
 - id: pred-16
 - covers: apercu-landing-body, apercu-subscription-change-plan-link
@@ -86,12 +88,14 @@ markdown in place.
 **Global**: `ostler --version`, `ostler -C/--chdir DIR <command> …`
 
 **Inspect**
+
 ```bash
 ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
 ostler trace  <id|slug|gap|surface|path>             # walk the graph from any node
 ```
 
 **Retrieve**
+
 ```bash
 ostler list   --type epic|story|knowledge|feature|spec|seed|gap [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--owner O] [--tag G] [--json]   # full-text match over node prose
@@ -99,7 +103,7 @@ ostler query  gaps-in-story|stories-covering-seed|surfaces-referenced-by-story <
 ostler graph  [selectors…] [--tree|--ids|--json]     # query the node/edge/bullet graph
 ```
 
-`ostler graph` is the **structural** query `search` can't do — it walks the *typed, nested* node
+`ostler graph` is the **structural** query `search` can't do — it walks the _typed, nested_ node
 tree (every node carries its `- key: value` bullets, its resolved out-edges, and its
 `title_path`/`type_path` hierarchy), so you filter precisely instead of by prose, **without `jq`**.
 Selectors compose (AND); output is `--tree` (default), `--ids`, or `--json`:
@@ -114,9 +118,10 @@ ostler graph --orphans                           # nodes no edge points to (unre
 ```
 
 - **dedup before you scaffold** — `--bullet 'code=<symbol>'`: if a node already grounds it, enrich
-  that node, don't make a second one. (`--path` for "does *this* nested node already exist?")
+  that node, don't make a second one. (`--path` for "does _this_ nested node already exist?")
 - **inventory coverage** — `--has-bullet code` lists every grounded node; diff against source symbols.
 - **orphans** — `--orphans` is unreachable nodes, first-class (no `jq` walk).
+
 ```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
@@ -124,6 +129,7 @@ ostler path spec <slug> | story <epic> <slug> | branch <slug> [--epic] [--is_epi
 ```
 
 **Mutate** (allocates ids, writes markdown)
+
 ```bash
 ostler create epic    <name>  --title T [--prefix P] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
@@ -138,9 +144,11 @@ ostler set-status  <story> <status>
 ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
 ```
+
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
 
 **Repair / approve**
+
 ```bash
 ostler edit set-owner <gap> <story> [--write]   # dry-run by default; --write applies
 ostler edit relink    <old-path> <new-path> [--write]
@@ -150,17 +158,20 @@ ostler unfreeze <ident>
 ```
 
 **OKF UI profile** (surfaces / elements / behaviors — see "The OKF UI profile" below)
+
 ```bash
 ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]  # new node, canonically placed
 ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/headings; --check = no writes, exit 1 if unclean
 ```
 
 **Visual-fidelity check** (used by `coder`'s QA gates — see [[coder-workflow]])
+
 ```bash
 ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --slug S [--state s] [--iou-threshold 0.5] [--json]
 ```
 
 **Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `docs/specs/<slug>/`)
+
 ```bash
 ostler artifact scaffold <kind> --spec DIR [--force]   # write the kind's skeleton into the spec dir
 ostler artifact vet      <kind> --spec DIR [--json]    # validate the artifact against its contract
@@ -200,25 +211,26 @@ the check.
 
 ## The OKF UI profile — surfaces, elements, behaviors
 
-A *profile* of OKF for describing UIs, CLIs, HTTP/WS servers, and the concepts they serve as a
+A _profile_ of OKF for describing UIs, CLIs, HTTP/WS servers, and the concepts they serve as a
 navigable graph (full spec: `docs/okf-ui-profile.md`). Ostler recognizes these UI types as
 first-class Concepts — listed, searched, traced, scaffolded, formatted, **linted**, and queryable
 with `ostler graph`. Use these instead of prose when you want a machine-readable hook: enumerate a
 screen's components, a concept's methods, a format's fields, or follow which interaction fires.
 
-| Role | GUI | CLI | HTTP/WS | shared |
-|---|---|---|---|---|
-| **surface** (you interact with it) | `screen` | `cli` | `server` | |
-| **element** (part of a surface) | `component` | `command` | `endpoint` | |
-| **behavior** (one event or call) | `interaction` | `invocation` | `invocation` | |
-| **member** (of a concept/format) | | | | `method`, `field` |
-| **journey** (ordered path) | | | | `flow` |
-| **noun** (domain *or* code) | | | | `concept` |
-| **artifact / data shape** | | | | `format` |
+| Role                               | GUI           | CLI          | HTTP/WS      | shared            |
+| ---------------------------------- | ------------- | ------------ | ------------ | ----------------- |
+| **surface** (you interact with it) | `screen`      | `cli`        | `server`     |                   |
+| **element** (part of a surface)    | `component`   | `command`    | `endpoint`   |                   |
+| **behavior** (one event or call)   | `interaction` | `invocation` | `invocation` |                   |
+| **member** (of a concept/format)   |               |              |              | `method`, `field` |
+| **journey** (ordered path)         |               |              |              | `flow`            |
+| **noun** (domain _or_ code)        |               |              |              | `concept`         |
+| **artifact / data shape**          |               |              |              | `format`          |
 
 **File vs section (author's choice).** A node is either its **own file** (identity = path; every
-top-level `concept` gets one so others can link it) *or* a **section** inside a larger doc,
+top-level `concept` gets one so others can link it) _or_ a **section** inside a larger doc,
 identified by `path#anchor`. A section gets its type two ways — use whichever reads best:
+
 - **container heading** — a `### <id>` under a typed `## Heading`: `## Components`→`component`,
   `## Commands`→`command`, `## Endpoints`→`endpoint`, `## Interactions`→`interaction`,
   `## Invocations`→`invocation`, `## Methods`→`method`, `## Fields`→`field`.
@@ -244,12 +256,12 @@ link: `parent:` (part-of/containment) and `extends:` (is-a/reuse). A selector ch
 implementation of an abstraction via a plain `refs:` link (see the profile §7.11 pattern).
 
 **Document flags & arguments item-by-item, not as a token dump.** Write `flags:` / `args:` as a
-**nested bullet list** — one child per flag / positional — each saying *what it does, in which
-context it applies* (fresh start vs resume, which mode, its default), with inline links to the
+**nested bullet list** — one child per flag / positional — each saying _what it does, in which
+context it applies_ (fresh start vs resume, which mode, its default), with inline links to the
 `concept`/`format`/command it touches. `- flags: --a, --b, --c` with no explanation is a smell.
 
 **No orphans — everything reachable from the surface root.** Every node links outward to what it
-relates to, and the `screen`/`cli`/`server` index links its key concepts/formats in its *own*
+relates to, and the `screen`/`cli`/`server` index links its key concepts/formats in its _own_
 body so `ostler trace <root>` walks to every node. Don't bury a structural pointer (a flag that
 selects a concept, a format's consumer) in prose only — put it in the node's bullets. After
 authoring, `ostler trace <root>` should reach the whole subgraph; a node nothing links to needs a
@@ -263,9 +275,9 @@ regenerate behavior-equivalent code** from the docs plus the team's stack skills
 - **Spec-complete per node** — fields with `type`/`required`/`default`, flags/args item-by-item,
   `does:` as ordered effects, algorithms as ordered steps, errors/exit/status codes, and for UI the
   `dom:`/`props:`/`states:`/`a11y:` contract. A lone `code:` stub is below bar.
-- **Spec, not implementation** — the node says *what* the code does; the *how* (patterns, idioms,
+- **Spec, not implementation** — the node says _what_ the code does; the _how_ (patterns, idioms,
   libraries, structure) lives in the stack skills, never the book. `code:` anchors the impl.
-- **The book, not a changelog** — a story is a delta; its doc step *merges* into these nodes so
+- **The book, not a changelog** — a story is a delta; its doc step _merges_ into these nodes so
   they read as the complete current reality (never "this story added X").
 
 Completeness is a **review** standard (the doc gates + the auditor), not a `doctor` gate — a linter
@@ -278,6 +290,7 @@ can't judge "enough to regenerate." Reach for [[documentation]] (one-story merge
 ostler scaffold screen changes-view --service groom --title "Changes view"   # file node → gui/screens/
 ostler scaffold interaction click-file-opens-diff --in <the screen doc>       # section node under ## Interactions
 ```
+
 `scaffold` writes the node in its canonical place with frontmatter, the H1, its bullet **stubs**,
 and (for surfaces) the `required_sections` skeleton. Then **author the prose and fill the bullets
 by editing the `.md` directly** — the body is yours. Finally:
@@ -297,15 +310,15 @@ Unlike the draft profile's original "warns, never blocks" stance, UI conformance
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
 mechanical fix, so a workflow node can gate on `ostler doctor` and always converge.
 
-| Code | Means | Remedy |
-|---|---|---|
-| `unknown-type` | `type:` isn't a recognized OKF type | fix the frontmatter `type:` |
-| `bad-heading-type` | `## interactions` (wrong casing of a known heading) | `ostler fmt` |
-| `missing-required-section` | a surface lacks a required `## Heading` (e.g. `cli` without `## Commands`) | `ostler scaffold` / add the heading |
-| `missing-required-bullet` | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
-| `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
-| `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
-| `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
+| Code                       | Means                                                                      | Remedy                                               |
+| -------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `unknown-type`             | `type:` isn't a recognized OKF type                                        | fix the frontmatter `type:`                          |
+| `bad-heading-type`         | `## interactions` (wrong casing of a known heading)                        | `ostler fmt`                                         |
+| `missing-required-section` | a surface lacks a required `## Heading` (e.g. `cli` without `## Commands`) | `ostler scaffold` / add the heading                  |
+| `missing-required-bullet`  | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
+| `unresolved-relation`      | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve                | fix the link target                                  |
+| `dangling-link`            | a plain link's target **file** is missing                                  | fix the path or create the target                    |
+| `missing-anchor`           | file exists but `#anchor` heading isn't there                              | fix the anchor                                       |
 
 **Link validation is document-wide.** `dangling-link` / `missing-anchor` are checked for **every
 link in every doc file**, not only links inside an indexed node — a broken link is broken whether or
@@ -314,8 +327,8 @@ skipped, so `arr[i](x)` in a snippet is never mistaken for a link.
 
 **Convergence contract:** `missing-required-bullet` checks that the **key** is present, not its
 value — so `scaffold`'s stubs clear it. **`code:` / `verify:` bullets are code refs
-(`path::symbol`), grounded at a *later* QA gate, never at author time** — doctor deliberately does
-*not* flag them as dangling links.
+(`path::symbol`), grounded at a _later_ QA gate, never at author time** — doctor deliberately does
+_not_ flag them as dangling links.
 
 ### Navigating the UI graph
 
@@ -341,3 +354,158 @@ UI-node bodies; `ostler trace <id|slug|anchor>` walks a node's outbound links (w
   (`scaffold`/`fmt`/`doctor`) above; for the create-or-refresh loop after a story, load
   [[documentation]]; to model a whole app's surface graph from scratch or from existing code, load
   [[okf-modeling]].
+- Any QA node that needs a deterministic, agent-unwritable execution log → `ostler qa run`/`ostler
+qa start/step/assert/stop` (see below).
+
+---
+
+## `ostler qa` — deterministic QA run bookkeeping
+
+`ostler qa` solves the "agent is both executor and narrator" trust gap. It is the deterministic
+intermediary that owns the run log: every command the QA agent calls is recorded in an
+append-only NDJSON file (`qa-run.ndjson`) **written by ostler**, not by the agent. Pass/fail
+verdicts for assertions are **executed** by ostler; the agent cannot supply a verdict.
+
+Full design rationale: `ostler/docs/QA-RUN.md`.
+
+### The two invocation modes
+
+**Preferred: batch plan execution (`ostler qa run`)**
+
+The agent authors a `qa-plan.yml` file in `<spec_dir>/qa/` **before** any live commands run.
+A human can inspect and abort the plan. Then ostler executes it in one call and writes the log.
+
+```bash
+ostler qa validate <spec_dir>/qa/qa-plan.yml   # check plan before executing
+ostler qa run      <spec_dir>/qa/qa-plan.yml --spec <spec_dir> [--stop-on-fail]
+```
+
+**Interactive: start → step → assert → stop**
+
+For scripts or agents that need to interleave live decisions with recorded steps:
+
+```bash
+ostler qa start  <run-id> --story <story> --spec <spec_dir> \
+                 [--env KEY=VALUE ...] \
+                 [--daemon name:cmd[:ready_url] ...]
+
+ostler qa step   --spec <spec_dir> --id <id> --label <text> \
+                 --mechanism live|synthetic|fixture \
+                 --cmd '<shell command>' \
+                 [--capture key=$.jq.path ...] \
+                 [--out <relative-path>] \
+                 [--allow-fail]
+
+ostler qa assert --spec <spec_dir> --id <id> --label <text> \
+                 --check cloudwatch_filter|event_present|field_equal|http_status|no_duplicate \
+                 [KEY=VALUE ...]      # check-specific parameters
+
+ostler qa stop   --spec <spec_dir>   # kills daemons, writes session_stop summary; exits 1 if ≥1 fail
+
+ostler qa report --spec <spec_dir>   # human-readable action ledger (paste into Jira)
+ostler qa replay --spec <spec_dir>   # emit a replay shell script of all step commands
+```
+
+### The run log (`qa-run.ndjson`)
+
+Written to `<spec_dir>/qa/qa-run.ndjson`. Append-only NDJSON — one JSON object per line.
+Record kinds: `session_start`, `daemon_start`, `step`, `assert`, `daemon_stop`, `session_stop`.
+
+The log is **the evidence**. A reviewer opens one file and sees the complete ordered record of
+every action and every check, with timestamps, raw outputs, and verdicts — all written by ostler.
+If a step is not in the log, it did not happen through `ostler qa`.
+
+### The `qa-plan.yml` format
+
+```yaml
+run_id: CASE-4352
+story: CASE-4352
+env:
+  aws_profile: dev-case-management
+  region: us-east-2
+
+background: # daemons ostler starts before step 1 and kills on stop
+  - name: eventbridge-tail
+    cmd: go run ./tools/eventbridge-tail --event-bus olympus-dev --port 7890
+    ready_check: http://localhost:7890/events # URL ostler polls (HTTP 200) before advancing
+
+steps:
+  - id: login
+    label: Create session via mobile-gateway
+    mechanism: live # REQUIRED on every step: live | synthetic | fixture
+    cmd: >
+      curl -s -w "\n%{http_code}" -X POST https://…/auth/login
+      -H "Content-Type: application/json" -d @qa/payloads/login-payload.json
+    expect_http: 200 # ostler checks the curl %{http_code} suffix
+    capture: # JSONPath applied to step stdout
+      session_id: $.session_id
+    out: qa/steps/login-response.json # ostler writes captured stdout here
+
+  - id: ttl_invoke
+    label: Invoke dynamo-stream handler with synthetic TTL REMOVE event
+    mechanism: synthetic
+    cmd: >
+      AWS_PROFILE={{env.aws_profile}} aws lambda invoke
+      --function-name dynamo-stream
+      --payload file://qa/payloads/ttl-invoke-payload.json /dev/stdout
+    out: qa/steps/ttl-invoke-response.json
+    cloudwatch_confirm: # ostler runs filter-log-events; PASS if ≥1 match
+      log_group: /aws/lambda/dynamo-stream
+      filter: qa-synth-ttl-1
+
+  - id: wait_ttl_event
+    label: Confirm no-duplicate publish for TTL scenario
+    mechanism: synthetic
+    cmd: >
+      curl -s 'http://localhost:7890/events?detail_type=AppLogoutNotification+V1
+      &causation_id=qa-synth-ttl-1&n=5'
+    assert_contains: qa-synth-ttl-1 # ostler checks stdout
+    assert_count: 1 # exactly 1 event (no_duplicate)
+```
+
+**Inline assertion keys** (all executed by ostler — agent writes spec, ostler runs check):
+
+| Key                  | What ostler checks                                                         |
+| -------------------- | -------------------------------------------------------------------------- |
+| `assert_contains`    | step stdout contains the literal string (after `{{key}}` expansion)        |
+| `expect_http`        | last stdout line (curl `%{http_code}` suffix) equals the integer           |
+| `assert_count`       | stdout parsed as JSON array has exactly N elements                         |
+| `cloudwatch_confirm` | `aws logs filter-log-events` with `filter` over last hour returns ≥1 match |
+
+**Substitutions in `cmd` and assertion strings:**
+
+- `{{key}}` → value captured by a prior step's `capture` map
+- `{{env.NAME}}` → from the plan's top-level `env` block
+- `{{run_id}}`, `{{story}}` → top-level metadata
+
+### What the agent does (and does NOT do)
+
+**The agent's role in the QA `run` batch mode:**
+
+1. Read the story's ACs and the QA runbook (`qa-plan.md`).
+2. Compose payload files under `<spec_dir>/qa/payloads/` (these are inputs, not evidence).
+3. Write `<spec_dir>/qa/qa-plan.yml` (the plan file).
+4. Call `ostler qa validate <plan_file>` to confirm it is valid.
+5. Call `ostler qa run <plan_file> --spec <spec_dir>`.
+6. Call `ostler qa report --spec <spec_dir>` and copy the output into the Jira comment.
+
+**The agent does NOT:**
+
+- Write files directly into `qa/` (except payload files and the plan itself — those are inputs).
+- Start, stop, or read output from `eventbridge-tail` or `dynamo-stream-tail` directly.
+- Supply pass/fail verdicts — it writes check _specifications_, ostler executes the checks.
+- Write `qa-run.ndjson` — it is append-only and written exclusively by ostler.
+
+### Integration with `qa-evidence.json`
+
+`qa-evidence.json` remains the workflow gate's source of truth. When `qa_run_log` is present in it,
+`ostler artifact vet qa-evidence` adds a new semantic rule: every `Pass` criterion must cite ≥1
+step or assert id from the run log, and every cited assert must have `result: PASS`.
+
+```json
+{
+  "runId": "qa-20260710T170910-CASE-4352",
+  "qa_run_log": "qa/qa-run.ndjson",
+  ...
+}
+```

@@ -30,38 +30,57 @@ from . import (
 )
 from . import vet as vet_mod
 from . import artifact as artifact_mod
+from . import qa as qa_mod
 from .model import load
 
-_TYPES = (tuple(t.name for t in registry.REGISTRY) + ("seed", "gap")
-          + tuple(t.name for t in registry.UI_TYPES))
+_TYPES = (
+    tuple(t.name for t in registry.REGISTRY)
+    + ("seed", "gap")
+    + tuple(t.name for t in registry.UI_TYPES)
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="ostler", description="Tend your documentation graph.")
-    p.add_argument("--version", action="version", version=f"ostler {_pkg_version('ostler')}")
+    p = argparse.ArgumentParser(
+        prog="ostler", description="Tend your documentation graph."
+    )
+    p.add_argument(
+        "--version", action="version", version=f"ostler {_pkg_version('ostler')}"
+    )
     p.add_argument("-C", "--chdir", metavar="DIR", help="operate as if run from DIR")
     sub = p.add_subparsers(dest="command", required=True)
 
     d = sub.add_parser("doctor", help="referential-integrity check")
     d.add_argument("--epic", help="restrict checks to one epic (name or folder)")
-    d.add_argument("--json", action="store_true", help="emit the structured report as JSON")
-    d.add_argument("--no-schema", action="store_true", help="skip JSON Schema validation")
+    d.add_argument(
+        "--json", action="store_true", help="emit the structured report as JSON"
+    )
+    d.add_argument(
+        "--no-schema", action="store_true", help="skip JSON Schema validation"
+    )
 
     t = sub.add_parser("trace", help="walk the graph from a node")
     t.add_argument("token", help="seed id, story slug, gap id, surface or doc path")
 
     # ---- retrieval --------------------------------------------------------
     ls = sub.add_parser("list", help="list Concepts of a type")
-    ls.add_argument("--type", required=True, dest="etype",
-                    help=f"one of {', '.join(_TYPES)}, or a template-declared kind")
+    ls.add_argument(
+        "--type",
+        required=True,
+        dest="etype",
+        help=f"one of {', '.join(_TYPES)}, or a template-declared kind",
+    )
     ls.add_argument("--epic")
     ls.add_argument("--status")
     ls.add_argument("--json", action="store_true")
 
     se = sub.add_parser("search", help="full-text search over Concepts")
     se.add_argument("q")
-    se.add_argument("--type", dest="etype",
-                    help=f"one of {', '.join(_TYPES)}, or a template-declared kind")
+    se.add_argument(
+        "--type",
+        dest="etype",
+        help=f"one of {', '.join(_TYPES)}, or a template-declared kind",
+    )
     se.add_argument("--owner")
     se.add_argument("--tag")
     se.add_argument("--json", action="store_true")
@@ -71,19 +90,38 @@ def _build_parser() -> argparse.ArgumentParser:
     qy.add_argument("arg")
     qy.add_argument("--json", action="store_true")
 
-    gp = sub.add_parser("graph", help="query the node/edge/bullet graph (nested + typed)")
+    gp = sub.add_parser(
+        "graph", help="query the node/edge/bullet graph (nested + typed)"
+    )
     gp.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
-    gp.add_argument("--type", dest="etype", help="nodes of this type (concept, field, method, …)")
+    gp.add_argument(
+        "--type", dest="etype", help="nodes of this type (concept, field, method, …)"
+    )
     gp.add_argument("--title", help="title contains this text")
-    gp.add_argument("--path", help="hierarchy path, e.g. 'concept:agent / field:timeout' (/ = "
-                                   "descendant, > = direct child; each segment is type:title)")
-    gp.add_argument("--under", metavar="ID", help="only nodes contained under this node id")
+    gp.add_argument(
+        "--path",
+        help="hierarchy path, e.g. 'concept:agent / field:timeout' (/ = "
+        "descendant, > = direct child; each segment is type:title)",
+    )
+    gp.add_argument(
+        "--under", metavar="ID", help="only nodes contained under this node id"
+    )
     gp.add_argument("--depth", type=int, help="with --under: cap descent to N levels")
-    gp.add_argument("--has-bullet", dest="has_bullet", metavar="KEY",
-                    help="nodes that declare this bullet")
-    gp.add_argument("--bullet", metavar="KEY=VAL", help="nodes whose KEY bullet contains VAL")
-    gp.add_argument("--links-to", dest="links_to", metavar="ID",
-                    help="nodes with an out-edge to this node")
+    gp.add_argument(
+        "--has-bullet",
+        dest="has_bullet",
+        metavar="KEY",
+        help="nodes that declare this bullet",
+    )
+    gp.add_argument(
+        "--bullet", metavar="KEY=VAL", help="nodes whose KEY bullet contains VAL"
+    )
+    gp.add_argument(
+        "--links-to",
+        dest="links_to",
+        metavar="ID",
+        help="nodes with an out-edge to this node",
+    )
     gp.add_argument("--orphans", action="store_true", help="nodes no edge points to")
     out = gp.add_mutually_exclusive_group()
     out.add_argument("--tree", action="store_true", help="indented outline (default)")
@@ -138,7 +176,9 @@ def _build_parser() -> argparse.ArgumentParser:
     gf.add_argument("name", nargs="?")
     gf.add_argument("--json", action="store_true")
 
-    gs = sub.add_parser("set", help="edit fields on an instance of a template-declared kind")
+    gs = sub.add_parser(
+        "set", help="edit fields on an instance of a template-declared kind"
+    )
     gs.add_argument("kind")
     gs.add_argument("name")
     gs.add_argument("fields", nargs="+", metavar="key=value")
@@ -149,21 +189,28 @@ def _build_parser() -> argparse.ArgumentParser:
     gr.add_argument("name")
     gr.add_argument("--json", action="store_true")
 
-    tp = sub.add_parser("template", help="define/apply OKF hierarchies (.agents/templates.yml)")
+    tp = sub.add_parser(
+        "template", help="define/apply OKF hierarchies (.agents/templates.yml)"
+    )
     tps = tp.add_subparsers(dest="op", required=True)
-    tpn = tps.add_parser("new", help="declare a new template, optionally stubbing kinds")
+    tpn = tps.add_parser(
+        "new", help="declare a new template, optionally stubbing kinds"
+    )
     tpn.add_argument("name")
     tpn.add_argument("kinds", nargs="*")
     tpn.add_argument("--json", action="store_true")
-    tpe = tps.add_parser("edit", help="patch a template's kinds via --set kind.field=value")
+    tpe = tps.add_parser(
+        "edit", help="patch a template's kinds via --set kind.field=value"
+    )
     tpe.add_argument("name")
     tpe.add_argument("--set", action="append", default=[], dest="assignments")
     tpf = tps.add_parser("find", help="list templates, or one template's definition")
     tpf.add_argument("name", nargs="?")
     tpf.add_argument("--json", action="store_true")
     tps.add_parser("delete").add_argument("name")
-    tps.add_parser("apply", help="scaffold doc_root dirs + inject CLAUDE.md guidance") \
-        .add_argument("name")
+    tps.add_parser(
+        "apply", help="scaffold doc_root dirs + inject CLAUDE.md guidance"
+    ).add_argument("name")
 
     sd = sub.add_parser("seed", help="add/remove a seed in an epic")
     sds = sd.add_subparsers(dest="op", required=True)
@@ -205,10 +252,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ---- edit / freeze ----------------------------------------------------
     write_parent = argparse.ArgumentParser(add_help=False)
-    write_parent.add_argument("--write", action="store_true", default=argparse.SUPPRESS,
-                              help="apply changes (default: dry-run)")
-    e = sub.add_parser("edit", parents=[write_parent],
-                       help="structured edits (dry-run unless --write)")
+    write_parent.add_argument(
+        "--write",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="apply changes (default: dry-run)",
+    )
+    e = sub.add_parser(
+        "edit", parents=[write_parent], help="structured edits (dry-run unless --write)"
+    )
     esub = e.add_subparsers(dest="op", required=True)
     so = esub.add_parser("set-owner", parents=[write_parent])
     so.add_argument("gap")
@@ -219,24 +271,41 @@ def _build_parser() -> argparse.ArgumentParser:
     rn = esub.add_parser("rename", parents=[write_parent])
     rn.add_argument("old_slug")
     rn.add_argument("new_slug")
-    sr = esub.add_parser("settle-review", parents=[write_parent],
-                         help="flip a story's status from its review-resolution.json, "
-                              "gated on the artifacts/assertions the verdict cites")
+    sr = esub.add_parser(
+        "settle-review",
+        parents=[write_parent],
+        help="flip a story's status from its review-resolution.json, "
+        "gated on the artifacts/assertions the verdict cites",
+    )
     sr.add_argument("slug")
 
-    sc = sub.add_parser("scaffold", help="create a UI-profile node in the right place (§9)")
+    sc = sub.add_parser(
+        "scaffold", help="create a UI-profile node in the right place (§9)"
+    )
     sc.add_argument("type", help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
     sc.add_argument("name")
-    sc.add_argument("--service", help="file-level types: the service subtree (docs/features/<svc>/)")
-    sc.add_argument("--in", dest="in_file",
-                    help="section-level types: the surface doc to insert the `### id` into")
+    sc.add_argument(
+        "--service", help="file-level types: the service subtree (docs/features/<svc>/)"
+    )
+    sc.add_argument(
+        "--in",
+        dest="in_file",
+        help="section-level types: the surface doc to insert the `### id` into",
+    )
     sc.add_argument("--title")
     sc.add_argument("--json", action="store_true")
 
-    fm = sub.add_parser("fmt", help="canonicalize UI-profile docs (frontmatter/bullets/headings)")
-    fm.add_argument("paths", nargs="*", help="files to format (default: all docs/features/**/*.md)")
-    fm.add_argument("--check", action="store_true",
-                    help="don't write; exit 1 if any file is not already canonical")
+    fm = sub.add_parser(
+        "fmt", help="canonicalize UI-profile docs (frontmatter/bullets/headings)"
+    )
+    fm.add_argument(
+        "paths", nargs="*", help="files to format (default: all docs/features/**/*.md)"
+    )
+    fm.add_argument(
+        "--check",
+        action="store_true",
+        help="don't write; exit 1 if any file is not already canonical",
+    )
 
     # ---- path resolution -----------------------------------------------------
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
@@ -248,10 +317,16 @@ def _build_parser() -> argparse.ArgumentParser:
     pa_story.add_argument("slug")
     pa_branch = pas.add_parser("branch", help="git branch name for a slug")
     pa_branch.add_argument("slug")
-    pa_branch.add_argument("--epic", action="store_true", dest="is_epic",
-                           help="emit feat/<slug> instead of story/<slug>")
+    pa_branch.add_argument(
+        "--epic",
+        action="store_true",
+        dest="is_epic",
+        help="emit feat/<slug> instead of story/<slug>",
+    )
 
-    fz = sub.add_parser("freeze", help="pin an approved story/seed as immutable ground truth")
+    fz = sub.add_parser(
+        "freeze", help="pin an approved story/seed as immutable ground truth"
+    )
     fz.add_argument("ident")
     fz.add_argument("--by", default="")
     fz.add_argument("--note", default="")
@@ -259,8 +334,9 @@ def _build_parser() -> argparse.ArgumentParser:
     uf.add_argument("ident")
 
     # ---- vet ---------------------------------------------------------------
-    vt = sub.add_parser("vet", parents=[write_parent],
-                        help="deterministic visual-fidelity check")
+    vt = sub.add_parser(
+        "vet", parents=[write_parent], help="deterministic visual-fidelity check"
+    )
     vt.add_argument("screenshot", type=Path)
     vt.add_argument("--manifest", required=True, type=Path)
     vt_group = vt.add_mutually_exclusive_group(required=True)
@@ -271,12 +347,20 @@ def _build_parser() -> argparse.ArgumentParser:
     vt.add_argument("--iou-threshold", type=float, default=0.5, dest="iou_threshold")
     vt.add_argument("--json", action="store_true")
 
-    ar = sub.add_parser("artifact", help="schema-checked workflow artifacts (scaffold/vet/list)")
+    ar = sub.add_parser(
+        "artifact", help="schema-checked workflow artifacts (scaffold/vet/list)"
+    )
     ars = ar.add_subparsers(dest="what", required=True)
-    arsc = ars.add_parser("scaffold", help="write the kind's skeleton into the spec dir")
+    arsc = ars.add_parser(
+        "scaffold", help="write the kind's skeleton into the spec dir"
+    )
     arsc.add_argument("kind")
-    arsc.add_argument("--spec", required=True, type=Path,
-                      help="spec directory (absolute, or relative to the repo root)")
+    arsc.add_argument(
+        "--spec",
+        required=True,
+        type=Path,
+        help="spec directory (absolute, or relative to the repo root)",
+    )
     arsc.add_argument("--force", action="store_true")
     arvt = ars.add_parser("vet", help="validate the artifact against its contract")
     arvt.add_argument("kind")
@@ -284,6 +368,116 @@ def _build_parser() -> argparse.ArgumentParser:
     arvt.add_argument("--json", action="store_true")
     arls = ars.add_parser("list", help="show registered artifact kinds")
     arls.add_argument("--json", action="store_true")
+
+    # ---- qa ----------------------------------------------------------------
+    qa = sub.add_parser(
+        "qa", help="deterministic QA run bookkeeping (start/step/assert/stop/run/…)"
+    )
+    qas = qa.add_subparsers(dest="op", required=True)
+
+    qa_start = qas.add_parser("start", help="open a QA session and start daemons")
+    qa_start.add_argument("run_id")
+    qa_start.add_argument("--story", required=True)
+    qa_start.add_argument(
+        "--spec",
+        required=True,
+        type=Path,
+        help="spec directory (absolute or repo-relative)",
+    )
+    qa_start.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="environment variable for the session (repeatable)",
+    )
+    qa_start.add_argument(
+        "--daemon",
+        action="append",
+        default=[],
+        metavar="NAME:CMD",
+        dest="daemons",
+        help="background daemon to start (repeatable); "
+        "append :READY_URL to poll before advancing",
+    )
+
+    qa_step = qas.add_parser(
+        "step", help="execute a command and record it in the run log"
+    )
+    qa_step.add_argument("--id", required=True)
+    qa_step.add_argument("--label", required=True)
+    qa_step.add_argument(
+        "--mechanism", required=True, choices=["live", "synthetic", "fixture"]
+    )
+    qa_step.add_argument("--cmd", required=True)
+    qa_step.add_argument("--spec", required=True, type=Path)
+    qa_step.add_argument(
+        "--capture",
+        action="append",
+        default=[],
+        metavar="KEY=$.path",
+        help="extract value from step stdout JSON (repeatable)",
+    )
+    qa_step.add_argument(
+        "--out",
+        default=None,
+        metavar="PATH",
+        help="write step stdout to this path as a sidecar file",
+    )
+    qa_step.add_argument(
+        "--allow-fail",
+        action="store_true",
+        dest="allow_fail",
+        help="do not exit non-zero if the step command fails",
+    )
+
+    qa_assert = qas.add_parser(
+        "assert", help="execute a named check and record PASS/FAIL"
+    )
+    qa_assert.add_argument("--id", required=True)
+    qa_assert.add_argument("--label", required=True)
+    qa_assert.add_argument(
+        "--check",
+        required=True,
+        choices=[
+            "cloudwatch_filter",
+            "event_present",
+            "field_equal",
+            "http_status",
+            "no_duplicate",
+        ],
+    )
+    qa_assert.add_argument("--spec", required=True, type=Path)
+    qa_assert.add_argument(
+        "param",
+        nargs="*",
+        metavar="KEY=VALUE",
+        help="check-specific parameters (KEY=VALUE pairs)",
+    )
+
+    qa_stop = qas.add_parser("stop", help="kill daemons and write session_stop summary")
+    qa_stop.add_argument("--spec", required=True, type=Path)
+
+    qa_report = qas.add_parser("report", help="render a human-readable action ledger")
+    qa_report.add_argument("--spec", required=True, type=Path)
+
+    qa_replay = qas.add_parser(
+        "replay", help="emit a replay shell script from the run log"
+    )
+    qa_replay.add_argument("--spec", required=True, type=Path)
+
+    qa_validate = qas.add_parser(
+        "validate", help="validate a qa-plan.yml without executing"
+    )
+    qa_validate.add_argument("plan_file", type=Path)
+    qa_validate.add_argument("--spec", default=None, type=Path)
+
+    qa_run = qas.add_parser("run", help="execute a qa-plan.yml in batch mode")
+    qa_run.add_argument("plan_file", type=Path)
+    qa_run.add_argument("--spec", default=None, type=Path)
+    qa_run.add_argument("--stop-on-fail", action="store_true", dest="stop_on_fail")
+    qa_run.add_argument("--json", action="store_true")
+
     return p
 
 
@@ -317,12 +511,16 @@ def _cmd_doctor(graph, args) -> int:
     print(f"org: {report.org}   profile: {report.profile}")
     for facts in report.epics:
         orphans = facts["orphanActiveSeeds"]
-        print(f"  epic {facts['dir']}: {facts['storyCount']} stories, "
-              f"{facts['activeSeedCount']} active seeds ({facts['coveredActiveSeeds']} covered)"
-              + (f"  orphans: {', '.join(orphans)}" if orphans else ""))
+        print(
+            f"  epic {facts['dir']}: {facts['storyCount']} stories, "
+            f"{facts['activeSeedCount']} active seeds ({facts['coveredActiveSeeds']} covered)"
+            + (f"  orphans: {', '.join(orphans)}" if orphans else "")
+        )
     if report.findings:
         print()
-        for fnd in sorted(report.findings, key=lambda x: (x.severity != "error", x.code)):
+        for fnd in sorted(
+            report.findings, key=lambda x: (x.severity != "error", x.code)
+        ):
             mark = "✗" if fnd.severity == "error" else "⚠"
             scope = f"[{fnd.epic}] " if fnd.epic else ""
             print(f"  {mark} {fnd.code}: {scope}{fnd.message}")
@@ -333,14 +531,19 @@ def _cmd_doctor(graph, args) -> int:
 def _cmd_fmt(graph, args) -> int:
     result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
     for path in result.changed:
-        rel = path.relative_to(graph.root).as_posix() if path.is_relative_to(graph.root) \
+        rel = (
+            path.relative_to(graph.root).as_posix()
+            if path.is_relative_to(graph.root)
             else path.as_posix()
+        )
         print(f"{'would reformat' if args.check else 'reformatted'}: {rel}")
     if not result.changed:
         print("all files already canonical")
         return 0
     if args.check:
-        print(f"\n{len(result.changed)} file(s) not canonical (run `ostler fmt` to fix)")
+        print(
+            f"\n{len(result.changed)} file(s) not canonical (run `ostler fmt` to fix)"
+        )
         return 1
     print(f"\nreformatted {len(result.changed)} file(s)")
     return 0
@@ -360,7 +563,9 @@ def _cmd_edit(graph, args) -> int:
         return 1
     if getattr(args, "write", False):
         plan.apply()
-        print(f"\napplied: {len(plan.changes)} file(s) changed, {len(plan.moves)} move(s)")
+        print(
+            f"\napplied: {len(plan.changes)} file(s) changed, {len(plan.moves)} move(s)"
+        )
     elif plan.changes or plan.moves:
         print("\n(dry-run — pass --write to apply)")
     return 0
@@ -368,9 +573,14 @@ def _cmd_edit(graph, args) -> int:
 
 def _cmd_vet(graph, args) -> int:
     outcome, plan = vet_mod.run_vet(
-        graph, args.screenshot, args.manifest, args.slug,
-        cdp_url=args.cdp_url, regions_file=args.regions_file,
-        state=args.state, iou_threshold=args.iou_threshold,
+        graph,
+        args.screenshot,
+        args.manifest,
+        args.slug,
+        cdp_url=args.cdp_url,
+        regions_file=args.regions_file,
+        state=args.state,
+        iou_threshold=args.iou_threshold,
     )
     if outcome.error:
         if args.json:
@@ -395,7 +605,9 @@ def _cmd_artifact(graph, args) -> int:
     if args.what == "list":
         return _emit(artifact_mod.list_kinds(), args.json)
     if args.what == "scaffold":
-        outcome = artifact_mod.scaffold(args.kind, args.spec, graph.root, force=args.force)
+        outcome = artifact_mod.scaffold(
+            args.kind, args.spec, graph.root, force=args.force
+        )
         if outcome.error:
             print(f"error: {outcome.error}")
             return 1
@@ -413,6 +625,115 @@ def _cmd_artifact(graph, args) -> int:
             for problem in outcome.problems:
                 print(f"  - {problem}")
     return 0 if outcome.status == "clean" else 1
+
+
+def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
+    root = graph.root
+    op = args.op
+
+    def _resolve_spec(spec_arg: Path | None) -> Path:
+        if spec_arg is None:
+            print("error: --spec is required")
+            sys.exit(2)
+        return spec_arg if spec_arg.is_absolute() else root / spec_arg
+
+    if op == "start":
+        spec_dir = _resolve_spec(args.spec)
+        env = dict(kv.split("=", 1) for kv in args.env if "=" in kv)
+        daemons: list[tuple[str, str, str | None]] = []
+        for raw in args.daemons:
+            parts = raw.split(":", 2)
+            name = parts[0]
+            if len(parts) == 2:
+                daemons.append((name, parts[1], None))
+            elif len(parts) == 3:
+                daemons.append((name, parts[1], parts[2]))
+            else:
+                print(
+                    f"error: invalid --daemon format: {raw!r} (expected NAME:CMD[:READY_URL])"
+                )
+                return 2
+        result = qa_mod.cmd_start(
+            args.run_id, args.story, spec_dir, env=env, daemons=daemons
+        )
+        print(result.message)
+        return 0 if result.ok else 1
+
+    if op == "step":
+        spec_dir = _resolve_spec(args.spec)
+        captures: list[tuple[str, str]] = []
+        for raw in args.capture:
+            if "=" not in raw:
+                print(f"error: --capture must be KEY=$.path, got {raw!r}")
+                return 2
+            k, _, v = raw.partition("=")
+            captures.append((k.strip(), v.strip()))
+        result = qa_mod.cmd_step(
+            spec_dir,
+            args.id,
+            args.label,
+            args.mechanism,
+            args.cmd,
+            captures=captures,
+            out_path=args.out,
+            allow_fail=args.allow_fail,
+        )
+        print(result.message)
+        return 0 if result.ok else 1
+
+    if op == "assert":
+        spec_dir = _resolve_spec(args.spec)
+        params: dict = {}
+        for raw in args.param:
+            if "=" not in raw:
+                print(f"error: assert params must be KEY=VALUE, got {raw!r}")
+                return 2
+            k, _, v = raw.partition("=")
+            params[k.strip()] = v.strip()
+        result = qa_mod.cmd_assert(
+            spec_dir, args.id, args.label, args.check, params, root=root
+        )
+        print(result.message)
+        return 0 if result.ok else 1
+
+    if op == "stop":
+        spec_dir = _resolve_spec(args.spec)
+        result = qa_mod.cmd_stop(spec_dir)
+        print(result.message)
+        return 0 if result.ok else 1
+
+    if op == "report":
+        spec_dir = _resolve_spec(args.spec)
+        result = qa_mod.cmd_report(spec_dir)
+        return 0 if result.ok else 1
+
+    if op == "replay":
+        spec_dir = _resolve_spec(args.spec)
+        result = qa_mod.cmd_replay(spec_dir)
+        return 0 if result.ok else 1
+
+    if op == "validate":
+        spec_dir = args.spec
+        if spec_dir is not None and not spec_dir.is_absolute():
+            spec_dir = root / spec_dir
+        result = qa_mod.cmd_validate(args.plan_file, spec_dir)
+        print(result.message)
+        return 0 if result.ok else 1
+
+    if op == "run":
+        spec_dir = args.spec
+        if spec_dir is not None and not spec_dir.is_absolute():
+            spec_dir = root / spec_dir
+        result = qa_mod.cmd_run(
+            args.plan_file, spec_dir, stop_on_fail=args.stop_on_fail, root=root
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(result.data, indent=2))
+        else:
+            print(result.message)
+        return 0 if result.ok else 1
+
+    return 2
 
 
 def _split(csv: str) -> list[str]:
@@ -436,7 +757,9 @@ def _parse_fields(pairs: list[str]) -> dict | None:
 def _cmd_template(graph, args) -> int:
     root = graph.root
     if args.op == "new":
-        return _result(templates_mod.new(root, args.name, args.kinds), getattr(args, "json", False))
+        return _result(
+            templates_mod.new(root, args.name, args.kinds), getattr(args, "json", False)
+        )
     if args.op == "edit":
         return _result(templates_mod.edit(root, args.name, args.assignments))
     if args.op == "find":
@@ -461,13 +784,28 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "graph":
         data = graph_mod.build(graph, surface=args.surface)
         sel = graph_mod.select(
-            data, node_type=args.etype, title=args.title, path=args.path, under=args.under,
-            depth=args.depth, has_bullet=args.has_bullet, bullet=args.bullet,
-            links_to=args.links_to, orphans=args.orphans)
+            data,
+            node_type=args.etype,
+            title=args.title,
+            path=args.path,
+            under=args.under,
+            depth=args.depth,
+            has_bullet=args.has_bullet,
+            bullet=args.bullet,
+            links_to=args.links_to,
+            orphans=args.orphans,
+        )
         if args.json:
             ids = {n["id"] for n in sel}
-            print(json.dumps({"counts": {"nodes": len(sel)}, "nodes": sel,
-                              "edges": [e for e in data["edges"] if e["from"] in ids]}))
+            print(
+                json.dumps(
+                    {
+                        "counts": {"nodes": len(sel)},
+                        "nodes": sel,
+                        "edges": [e for e in data["edges"] if e["from"] in ids],
+                    }
+                )
+            )
         elif args.ids:
             print(graph_mod.render_ids(sel))
         else:
@@ -476,13 +814,20 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
-            print(f"error: argument --type: invalid choice: '{args.etype}' "
-                  f"(choose from {', '.join(valid_types)})")
+            print(
+                f"error: argument --type: invalid choice: '{args.etype}' "
+                f"(choose from {', '.join(valid_types)})"
+            )
             return 2
     if c == "list":
-        return _emit(query_mod.list_entities(graph, args.etype, args.epic, args.status), args.json)
+        return _emit(
+            query_mod.list_entities(graph, args.etype, args.epic, args.status),
+            args.json,
+        )
     if c == "search":
-        return _emit(query_mod.search(graph, args.q, args.etype, args.owner, args.tag), args.json)
+        return _emit(
+            query_mod.search(graph, args.q, args.etype, args.owner, args.tag), args.json
+        )
     if c == "query":
         return _emit(query_mod.query(graph, args.name, args.arg), args.json)
     if c == "next-epic":
@@ -493,10 +838,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         if args.what == "epic":
             res = crud.create_epic(graph, args.name, args.title, args.prefix)
         elif args.what == "story":
-            res = crud.create_story(graph, args.epic, args.slug, args.title,
-                                    _split(args.covers), _split(args.depends), args.prefix)
+            res = crud.create_story(
+                graph,
+                args.epic,
+                args.slug,
+                args.title,
+                _split(args.covers),
+                _split(args.depends),
+                args.prefix,
+            )
         else:
-            res = crud.create_feature(graph, args.slug, args.title, args.area, args.route, args.prefix)
+            res = crud.create_feature(
+                graph, args.slug, args.title, args.area, args.route, args.prefix
+            )
         return _result(res, getattr(args, "json", False))
     if c == "delete":
         if args.what == "epic":
@@ -506,10 +860,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return _result(crud.delete_feature(graph, args.slug))
     if c == "seed":
         if args.op == "add":
-            meta = {"surface": args.surface, "legacySurface": args.legacy_surface,
-                    "backing": args.backing, "prerequisites": args.prerequisites,
-                    "sourceBullet": args.source_bullet}
-            return _result(crud.add_seed(graph, args.epic, args.id, args.status, args.summary, meta))
+            meta = {
+                "surface": args.surface,
+                "legacySurface": args.legacy_surface,
+                "backing": args.backing,
+                "prerequisites": args.prerequisites,
+                "sourceBullet": args.source_bullet,
+            }
+            return _result(
+                crud.add_seed(
+                    graph, args.epic, args.id, args.status, args.summary, meta
+                )
+            )
         return _result(crud.remove_seed(graph, args.epic, args.id))
     if c == "set-status":
         return _result(crud.set_status(graph, args.slug, args.status))
@@ -518,7 +880,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
             return _result(backlog_mod.add(graph, args.id, args.text, args.section))
         if args.op == "prune":
             return _result(backlog_mod.prune(graph, args.id))
-        return _emit([{"id": i, "text": t} for i, t in backlog_mod.items(graph)], args.json)
+        return _emit(
+            [{"id": i, "text": t} for i, t in backlog_mod.items(graph)], args.json
+        )
     if c == "todo":
         if args.op == "add":
             return _result(todo_mod.add(graph, args.name, front=args.front))
@@ -536,9 +900,17 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
             print(path_mod.resolve_branch(args.slug, epic=args.is_epic))
         return 0
     if c == "scaffold":
-        return _result(scaffold_mod.scaffold(
-            graph, args.type, args.name, service=args.service,
-            in_file=args.in_file, title=args.title), getattr(args, "json", False))
+        return _result(
+            scaffold_mod.scaffold(
+                graph,
+                args.type,
+                args.name,
+                service=args.service,
+                in_file=args.in_file,
+                title=args.title,
+            ),
+            getattr(args, "json", False),
+        )
     if c == "fmt":
         return _cmd_fmt(graph, args)
     if c == "edit":
@@ -549,7 +921,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         if plan.error:
             return 1
         plan.apply()
-        print(f"frozen — recorded in {(graph.root / '.agents' / 'ids.json').as_posix()}")
+        print(
+            f"frozen — recorded in {(graph.root / '.agents' / 'ids.json').as_posix()}"
+        )
         return 0
     if c == "unfreeze":
         plan = freeze_mod.unfreeze(graph, args.ident)
@@ -562,13 +936,17 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return _cmd_vet(graph, args)
     if c == "artifact":
         return _cmd_artifact(graph, args)
+    if c == "qa":
+        return _cmd_qa(graph, args)
     if c == "new":
         fields = _parse_fields(args.fields)
         if fields is None:
             print("invalid field (expected key=value)")
             return 2
-        return _result(crud_generic.create_instance(graph, args.kind, args.name, fields),
-                       getattr(args, "json", False))
+        return _result(
+            crud_generic.create_instance(graph, args.kind, args.name, fields),
+            getattr(args, "json", False),
+        )
     if c == "find":
         return _emit(crud_generic.find_instance(graph, args.kind, args.name), args.json)
     if c == "set":
@@ -576,11 +954,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         if fields is None:
             print("invalid field (expected key=value)")
             return 2
-        return _result(crud_generic.edit_instance(graph, args.kind, args.name, fields),
-                       getattr(args, "json", False))
+        return _result(
+            crud_generic.edit_instance(graph, args.kind, args.name, fields),
+            getattr(args, "json", False),
+        )
     if c == "remove":
-        return _result(crud_generic.delete_instance(graph, args.kind, args.name),
-                       getattr(args, "json", False))
+        return _result(
+            crud_generic.delete_instance(graph, args.kind, args.name),
+            getattr(args, "json", False),
+        )
     if c == "template":
         return _cmd_template(graph, args)
     return 2
