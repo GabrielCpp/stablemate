@@ -173,6 +173,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="component", kind="section", heading="Components",
         bullet_keys=(
             BulletKey("selector"),
+            BulletKey("role"),       # ARIA/semantic role — the accessibility contract + robust
+            BulletKey("name"),       # accessible name — Playwright `getByRole(role, {name})`
+            BulletKey("keyboard"),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
             BulletKey("parent", link=True),
             BulletKey("states"),
@@ -211,6 +214,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("on", required=True, link=True),
             BulletKey("trigger", required=True),
+            BulletKey("role"),       # role/name of the target — the robust locator basis…
+            BulletKey("name"),       # …`getByRole(role, {name})` instead of a brittle selector
+            BulletKey("keyboard"),   # key/shortcut that fires it (e.g. `⌘K`)
             BulletKey("when"),
             BulletKey("does", required=True, nested=True),
             BulletKey("code", link=True),

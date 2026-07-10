@@ -1046,7 +1046,7 @@ class Renderer:
         self.repo = repo
         self.prefix = prefix
         self.repo_context = dict(repo_config)
-        self.repo_context.setdefault("name", repo.name)
+        self.repo_context.setdefault("name", kebab(repo.name))
         self.repo_context["prefix"] = prefix
         self.repo_context["root"] = repo.as_posix()
         self.template_values = template_values
@@ -1379,7 +1379,7 @@ class Renderer:
         meta.setdefault("repo_url", "REPLACE_ME-git-remote-url")
         meta.setdefault("branch", "main")
         meta.setdefault("agents_dir", DEFAULT_AGENTS_DIR)
-        meta.setdefault("repo_name", self.repo.name)
+        meta.setdefault("repo_name", kebab(self.repo.name))
         ordered = sorted(workflows)
         outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk(ordered, meta)
 
@@ -1651,7 +1651,7 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         repo, prefix, repo_config, collect_template_values(config), skills, prompts
     )
     workflow_meta = resolve_workflow_meta(
-        config, repo, str(repo_config.get("name") or repo.name)
+        config, repo, str(repo_config.get("name") or kebab(repo.name))
     )
     workflow_meta["repo_src_default"] = repo.as_posix()
     outputs = renderer.render(agents, roots, workflows, workflow_meta)

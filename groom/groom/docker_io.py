@@ -182,6 +182,44 @@ def grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]:
     return paths
 
 
+def list_files(volume: str, repo_dir: str = "") -> list[str]:
+    """Repo-relative paths of every file in one checkout inside ``volume`` —
+    the tree shown in groom's Files panel. Heavy vendor/VCS dirs are pruned with
+    ``find`` (same set as the gate sweep) so a real checkout with a full
+    ``.venv``/``.git`` stays fast. ``repo_dir`` is the volume-relative checkout
+    dir (from :func:`list_repo_dirs`); "" means the volume root itself is the
+    repo. Shell-free; sorted for a stable tree order; ``[]`` on any docker
+    failure or an empty repo.
+    """
+    base = f"/vol/{repo_dir}".rstrip("/") if repo_dir else "/vol"
+    prune: list[str] = []
+    for i, name in enumerate(_SKIP_DIRS):
+        if i:
+            prune.append("-o")
+        prune += ["-name", name]
+    proc = _run(
+        [
+            "docker", "run", "--rm",
+            "-v", f"{volume}:/vol:ro",
+            ALPINE_IMAGE,
+            "find", base,
+            "(", "-type", "d", "(", *prune, ")", "-prune", ")",
+            "-o",
+            "(", "-type", "f", "-print", ")",
+        ],
+        timeout=DOCKER_TIMEOUT,
+    )
+    if proc.returncode != 0:
+        return []
+    prefix = base + "/"
+    files = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if line.startswith(prefix):
+            files.append(line[len(prefix):])
+    return sorted(files)
+
+
 def list_run_dirs(volume: str) -> list[str]:
     """Volume-relative top-level directory names under a ``/runs`` volume,
     sorted ascending. Run-id directories embed a sortable timestamp

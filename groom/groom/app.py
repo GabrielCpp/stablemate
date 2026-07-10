@@ -19,7 +19,7 @@ from litestar.static_files import create_static_files_router
 
 from . import discovery, docker_io, render, state
 from .gates import answer_gate
-from .models import GateInfo, WorkflowState
+from .models import GateInfo, WorkflowContainer, WorkflowState
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 _DASHBOARD_HTML = (Path(__file__).parent / "templates" / "dashboard.html").read_bytes()
@@ -63,11 +63,63 @@ async def index() -> Response:
 
 @get("/search", include_in_schema=False)
 async def search(q: str = "") -> Response:
-    # Filter the two list regions; counts stay fleet-wide (the status bar is a
+    # Filter the inbox message list; counts stay fleet-wide (the status bar is a
     # dashboard, not a result count), so it is not part of the search response.
-    workflows = _all_workflows()
-    fragment = render.render_tree(workflows, q, oob=True) + render.render_inbox(workflows, q, oob=True)
+    fragment = render.render_inbox(_all_workflows(), q, oob=True)
     return Response(content=fragment, media_type=MediaType.HTML)
+
+
+@get("/repos", include_in_schema=False)
+async def repos() -> Response:
+    """The container+repo picker menu: one ``<workflow>-<runid>/<repo>`` entry
+    per (container, checkout). There is always one workflow per container, so
+    the container name *is* the ``<workflow>-<runid>`` label; a multi-repo
+    workspace contributes several entries for the one container. Repos are
+    enumerated per container concurrently (each is a throwaway docker run) and
+    only for workflows whose workspace volume is known.
+    """
+    workflows = [wf for wf in _all_workflows() if wf.workspace_volume]
+
+    async def _repos_for(wf: WorkflowContainer) -> tuple:  # (wf, [repo_dir, ...])
+        dirs = await asyncio.to_thread(docker_io.list_repo_dirs, wf.workspace_volume)
+        return wf, dirs
+
+    resolved = await asyncio.gather(*(_repos_for(wf) for wf in workflows)) if workflows else []
+    return Response(content=render.render_repo_menu(resolved), media_type=MediaType.HTML)
+
+
+@get("/files/{container_id:str}", include_in_schema=False)
+async def files(container_id: str, repo: str = "") -> Response:
+    """Newline-separated repo-relative file paths for one checkout, fetched
+    client-side and turned into a collapsible tree by dashboard.html. ``repo``
+    is the volume-relative checkout dir from the picker (empty = volume root).
+    """
+    wf = state.WORKFLOWS.get(container_id)
+    volume = wf.workspace_volume if wf else ""
+    if not volume:
+        return Response(content="", media_type=MediaType.TEXT)
+    paths = await asyncio.to_thread(docker_io.list_files, volume, repo)
+    return Response(content="\n".join(paths), media_type=MediaType.TEXT)
+
+
+@get("/file/{container_id:str}", include_in_schema=False)
+async def file_content(container_id: str, repo: str = "", path: str = "") -> Response:
+    """Raw text of one file in a checkout, fetched client-side and
+    syntax-highlighted by extension (highlight.js) in dashboard.html. The
+    combined ``repo/path`` runs through ``safe_relpath`` in docker_io, so a
+    crafted path can't escape the mounted volume. "" on any failure or missing
+    file — the viewer shows an empty state.
+    """
+    wf = state.WORKFLOWS.get(container_id)
+    volume = wf.workspace_volume if wf else ""
+    rel = f"{repo}/{path}".lstrip("/") if repo else path
+    if not volume or not rel:
+        return Response(content="", media_type=MediaType.TEXT)
+    try:
+        text = await asyncio.to_thread(docker_io.read_file, volume, rel)
+    except ValueError:
+        return Response(content="", media_type=MediaType.TEXT)
+    return Response(content=text or "", media_type=MediaType.TEXT)
 
 
 @get("/worker/{container_id:str}", include_in_schema=False)
@@ -80,28 +132,19 @@ async def worker_detail(container_id: str) -> Response:
     return Response(content=render.render_worker_detail(wf), media_type=MediaType.HTML)
 
 
-@get("/changes", include_in_schema=False)
-async def changes() -> Response:
-    """The Changes activity-mode pane: a per-repo tree of every worker's
-    working-tree diff, fetched on demand into ``#detail``. The diffs themselves
-    are still lazy-loaded per worker via ``GET /diff/{id}`` and rendered by
-    diff2html client-side.
-    """
-    return Response(content=render.render_changes(_all_workflows()), media_type=MediaType.HTML)
-
-
 @get("/diff/{container_id:str}", include_in_schema=False)
-async def diff(container_id: str) -> Response:
-    """Plain-text git diff for a workflow's working tree, fetched client-side
+async def diff(container_id: str, repo: str = "") -> Response:
+    """Plain-text git diff for one checkout's working tree, fetched client-side
     and rendered into HTML by diff2html (see dashboard.html) rather than
     rendered server-side, since diff2html's coloring/file-list needs to run
-    in the browser against the raw unified diff text.
+    in the browser against the raw unified diff text. ``repo`` is the
+    volume-relative checkout dir from the picker (empty = first repo found).
     """
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     if not volume:
         return Response(content="", media_type=MediaType.TEXT)
-    text = await asyncio.to_thread(docker_io.git_diff, volume)
+    text = await asyncio.to_thread(docker_io.git_diff, volume, repo)
     return Response(content=text, media_type=MediaType.TEXT)
 
 
@@ -303,8 +346,10 @@ def create_app() -> Litestar:
         route_handlers=[
             index,
             search,
+            repos,
+            files,
+            file_content,
             worker_detail,
-            changes,
             diff,
             refresh,
             push_progress,

@@ -23,14 +23,14 @@ def _blocked(container_id="abc123", file_path="docs/a.md", question="Which one?"
 # ---- OOB regions carry stable ids (hx-swap-oob no-ops without a match) ----
 def test_dynamic_regions_have_stable_ids_and_oob_flag():
     wfs = [_wf(state=WorkflowState.RUNNING)]
-    assert 'id="tree"' in render.render_tree(wfs)
     assert 'id="inbox-list"' in render.render_inbox(wfs)
     assert 'id="statusbar"' in render.render_statusbar(wfs)
-    assert 'hx-swap-oob="true"' in render.render_tree(wfs, oob=True)
     assert 'hx-swap-oob="true"' in render.render_inbox(wfs, oob=True)
     assert 'hx-swap-oob="true"' in render.render_statusbar(wfs, oob=True)
+    # The broadcast is now just the two live regions — the Files/Diff panels are
+    # container+repo scoped and fetched on demand, not broadcast.
     shell = render.render_shell_data(wfs)
-    assert 'id="tree"' in shell and 'id="inbox-list"' in shell and 'id="statusbar"' in shell
+    assert 'id="inbox-list"' in shell and 'id="statusbar"' in shell
 
 
 # ---- status bar counts the fleet by state ----
@@ -84,18 +84,24 @@ def test_worker_detail_not_found_and_no_gate_states():
     assert "No open gate" in render.render_worker_detail(running)
 
 
-# ---- type badge + repo grouping in the picker ----
-def test_tree_groups_workers_by_repo_and_badges_type():
-    wfs = [
-        _wf("a", repo_name="predykt", repo_branch="main", workflow_type="coder", state=WorkflowState.RUNNING),
-        _wf("b", repo_name="predykt", repo_branch="main", workflow_type="author", state=WorkflowState.IDLE),
-        _wf("c", repo_name="yenta", repo_branch="dev", workflow_type="coder", state=WorkflowState.RUNNING),
-    ]
-    html = render.render_tree(wfs)
-    assert html.count('class="repo"') == 2          # two repo groups
-    assert 'data-type="coder"' in html
-    assert 'data-type="author"' in html
-    assert "predykt@main" in html
+# ---- container+repo picker menu (Files / Diff panels) ----
+def test_repo_menu_one_entry_per_container_repo():
+    wf_a = _wf("a", name="coder-001", workflow_type="coder", state=WorkflowState.RUNNING)
+    wf_b = _wf("b", name="author-002", workflow_type="author", state=WorkflowState.IDLE)
+    html = render.render_repo_menu([(wf_a, ["predykt", "yenta"]), (wf_b, [])])
+    # wf_a contributes one entry per checkout; wf_b (no repo found) still gets a
+    # single volume-root entry so it can be browsed.
+    assert html.count('role="option"') == 3
+    assert 'data-container="a"' in html and 'data-repo="predykt"' in html
+    assert 'data-label="coder-001/predykt"' in html
+    assert 'data-label="coder-001/yenta"' in html
+    # empty repo_dir -> label is just the container name, repo attribute is empty
+    assert 'data-container="b"' in html and 'data-label="author-002"' in html
+    assert 'data-type="coder"' in html and 'data-type="author"' in html
+
+
+def test_repo_menu_empty_when_no_entries():
+    assert "No repositories available." in render.render_repo_menu([])
 
 
 def test_inbox_shows_only_workers_with_open_gates():
@@ -160,62 +166,29 @@ def test_exit_code_hint_only_on_finished_with_code():
     assert "exited" not in render.render_worker_detail(running)
 
 
-# ---- empty regions show a spinner while discovery is still in flight ----
-def test_empty_regions_show_spinner_while_scanning():
+# ---- empty inbox shows a spinner while discovery is still in flight ----
+def test_empty_inbox_shows_spinner_while_scanning():
     from groom import state
 
     prev = state.SCANNING
     state.SCANNING = True
     try:
-        tree = render.render_tree([])
         inbox = render.render_inbox([])
     finally:
         state.SCANNING = prev
-    assert "Discovering containers…" in tree and "spin" in tree
-    assert "Discovering containers…" in inbox
+    assert "Discovering containers…" in inbox and "spin" in inbox
 
 
-def test_empty_regions_show_empty_state_when_not_scanning():
+def test_empty_inbox_shows_empty_state_when_not_scanning():
     from groom import state
 
     prev = state.SCANNING
     state.SCANNING = False
     try:
-        tree = render.render_tree([])
         inbox = render.render_inbox([])
     finally:
         state.SCANNING = prev
-    assert "No workers." in tree and "Discovering" not in tree
-    assert "No incoming messages" in inbox
-
-
-# ---- changes view: per-repo tree of working-tree diffs (Changes activity mode) ----
-def test_changes_groups_diffs_per_repo():
-    wfs = [
-        _wf("a", repo_name="predykt", repo_branch="main", state=WorkflowState.RUNNING),
-        _wf("b", repo_name="predykt", repo_branch="main", state=WorkflowState.IDLE),
-        _wf("c", repo_name="yenta", repo_branch="dev", state=WorkflowState.RUNNING),
-    ]
-    html = render.render_changes(wfs)
-    assert html.count('class="chg-repo"') == 2       # two repo groups
-    assert "predykt@main" in html and "yenta@dev" in html
-    # one lazy file-tree container + one diff panel per worker (diff shown on
-    # file click, filled client-side); no diff is rendered server-side.
-    assert html.count("data-files-for=") == 3
-    assert html.count("data-filediff-for=") == 3
-    assert 'data-container="a"' in html
-    assert 'data-files-for="a"' in html
-
-
-def test_changes_empty_message():
-    from groom import state
-
-    prev = state.SCANNING
-    state.SCANNING = False
-    try:
-        assert "No repositories with changes." in render.render_changes([])
-    finally:
-        state.SCANNING = prev
+    assert "No incoming messages" in inbox and "Discovering" not in inbox
 
 
 def test_search_with_query_shows_empty_not_spinner_even_while_scanning():
@@ -226,10 +199,10 @@ def test_search_with_query_shows_empty_not_spinner_even_while_scanning():
     prev = state.SCANNING
     state.SCANNING = True
     try:
-        tree = render.render_tree([], query="nomatch")
+        inbox = render.render_inbox([], query="nomatch")
     finally:
         state.SCANNING = prev
-    assert "No workers." in tree and "Discovering" not in tree
+    assert "No incoming messages" in inbox and "Discovering" not in inbox
 
 
 if __name__ == "__main__":

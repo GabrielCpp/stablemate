@@ -21,9 +21,9 @@ body {
 
 .app {
   display:grid; height:100vh;
-  grid-template-columns:48px 264px 1fr;
+  grid-template-columns:48px 1fr;
   grid-template-rows:1fr 24px;
-  grid-template-areas:"act picker main" "status status status";
+  grid-template-areas:"act main" "status status";
 }
 
 /* ---- activity bar ---- */
@@ -36,36 +36,13 @@ body {
 .act-btn svg { width:20px; height:20px; }
 .act-spacer { flex:1; }
 
-/* ---- picker ---- */
-#picker { grid-area:picker; background:var(--bg-1); border-right:1px solid var(--border);
-  display:flex; flex-direction:column; overflow:hidden; }
-.picker-head { padding:6px 8px; border-bottom:1px solid var(--border); }
-.picker-title { font-size:11px; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--text-2); margin-bottom:6px; }
-.filter { width:100%; background:var(--bg-2); border:1px solid var(--border); border-radius:4px;
+/* ---- shared bits (filter box, empty/loading states) ---- */
+.filter { background:var(--bg-2); border:1px solid var(--border); border-radius:4px;
   color:var(--text-0); font-size:12px; padding:4px 8px; outline:none; font-family:var(--sans); }
 .filter:focus { border-color:var(--accent); }
-.tree { overflow-y:auto; flex:1; padding:4px 0; }
 .empty { color:var(--text-2); font-size:12px; padding:12px; }
 .empty.loading { display:flex; align-items:center; gap:8px; }
 .empty.loading .spin { width:12px; height:12px; border:2px solid var(--bg-3); border-top-color:var(--running); border-radius:50%; animation:spin .7s linear infinite; }
-.repo { padding:5px 8px; display:flex; align-items:center; gap:6px; cursor:pointer;
-  color:var(--text-1); white-space:nowrap; }
-.repo:hover { background:var(--bg-2); }
-.repo .chev { color:var(--text-2); font-size:10px; width:10px; flex:none; transition:transform .1s; }
-.repo.collapsed .chev { transform:rotate(-90deg); }
-.repo .name { font-family:var(--mono); font-size:12px; color:var(--text-0); flex:none; }
-.repo .sum { flex:1; min-width:0; text-align:right; overflow:hidden; text-overflow:ellipsis;
-  font-size:10px; color:var(--text-2); font-family:var(--mono); }
-.repo .bpill { flex:none; font-family:var(--mono); font-size:10px; color:#fff; background:var(--blocked);
-  border-radius:8px; padding:0 5px; }
-.worker { padding:3px 8px 3px 24px; display:flex; align-items:center; gap:6px; cursor:pointer;
-  font-size:12.5px; border-left:2px solid transparent; }
-.worker:hover { background:var(--bg-2); }
-.worker.selected { background:var(--bg-3); border-left-color:var(--accent); }
-.worker .wid { font-family:var(--mono); color:var(--text-1); }
-.worker .node { font-family:var(--mono); font-size:11px; color:var(--text-2);
-  margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:96px; }
 
 /* dots + badges */
 .dot { width:8px; height:8px; border-radius:50%; flex:none; }
@@ -81,11 +58,13 @@ body {
 .badge[data-type="coder"] { background:#2f9e8f; }
 .badge[data-type="author"] { background:#8a6ff0; }
 
-/* ---- main split ---- */
-#main { grid-area:main; display:grid; grid-template-columns:1.1fr 1.4fr; overflow:hidden; }
+/* ---- main: one panel at a time (see mode visibility below) ---- */
+#main { grid-area:main; position:relative; overflow:hidden; }
+.pane { display:none; height:100%; overflow:hidden; }
 #inbox { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 .pane-head { padding:6px 10px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;
   font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2); }
+.pane-head .filter { margin-left:auto; text-transform:none; letter-spacing:0; max-width:160px; }
 .inbox-list { overflow-y:auto; flex:1; }
 .row { padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;
   border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px; }
@@ -131,26 +110,46 @@ body {
 .settings-panel h2 { font-size:13px; margin:0 0 10px; }
 .settings-panel .row-set { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--text-1); font-size:12.5px; }
 
-/* ---- changes view (per-repo tree of working-tree diffs) ---- */
-.changes { overflow-y:auto; padding:12px; flex:1; }
-.chg-repo { margin-bottom:16px; }
-.chg-repo-head { display:flex; align-items:center; gap:8px; padding:4px 0 6px; border-bottom:1px solid var(--border); margin-bottom:8px; }
-.chg-repo-head .name { font-family:var(--mono); font-size:12.5px; color:var(--text-0); }
-.chg-repo-head .sum { flex:1; text-align:right; color:var(--text-2); font-size:11px; }
-.chg-worker { margin:0 0 12px 10px; padding-left:8px; border-left:1px solid var(--border); }
-.chg-worker-head { display:flex; align-items:center; gap:6px; margin-bottom:6px; cursor:pointer; padding:2px 4px; border-radius:3px; }
-.chg-worker-head:hover { background:var(--bg-2); }
-.chg-worker-head .tchev { color:var(--text-2); font-size:9px; width:9px; transition:transform .1s; }
-.chg-worker.collapsed > .chg-worker-head .tchev { transform:rotate(-90deg); }
-.chg-worker.collapsed > .chg-worker-body { display:none; }
-.chg-worker-head .node { font-family:var(--mono); font-size:11px; color:var(--text-2); }
-.chg-loading, .chg-empty { color:var(--text-2); font-size:11.5px; padding:6px 2px; }
-/* two-pane: changed-file treeview on the left, the clicked file's diff on the right */
-.chg-worker-body { display:flex; gap:14px; align-items:flex-start; }
-.chg-files { flex:0 0 300px; max-width:44%; max-height:70vh; overflow:auto; font-family:var(--mono); font-size:12px; }
-.chg-filediff { flex:1 1 auto; min-width:0; max-height:70vh; overflow:auto; font-size:12px;
-  border:1px solid var(--border); border-radius:5px; background:var(--bg-0); }
-.chg-filediff .chg-empty { padding:14px; }
+/* ---- container+repo picker bar (Files / Diff panels) ---- */
+.picker-bar { padding:6px 10px; border-bottom:1px solid var(--border); flex:none; }
+.repo-picker { display:inline-flex; align-items:center; gap:8px; max-width:100%;
+  background:var(--bg-2); border:1px solid var(--border); border-radius:5px; cursor:pointer;
+  color:var(--text-0); font-family:var(--mono); font-size:12px; padding:5px 10px; }
+.repo-picker:hover { border-color:var(--border-2); }
+.repo-picker .repo-picker-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.repo-picker .caret { color:var(--text-2); flex:none; }
+
+/* ---- Zed-style repo menu (floating, positioned under the active picker) ---- */
+#repo-menu-wrap { position:fixed; inset:0; display:none; z-index:55; }
+#repo-menu-wrap.open { display:block; }
+.repo-menu-box { position:absolute; width:max-content; max-width:min(560px,90vw);
+  background:var(--bg-2); border:1px solid var(--border-2); border-radius:8px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5); overflow:hidden; }
+.repo-menu-box #repo-search { width:100%; background:transparent; border:none;
+  border-bottom:1px solid var(--border); color:var(--text-0); font-size:13px; padding:9px 12px;
+  outline:none; font-family:var(--sans); }
+#repo-menu { max-height:min(360px,60vh); overflow-y:auto; padding:4px 0; }
+.repo-item { padding:6px 12px; display:flex; align-items:center; gap:8px; cursor:pointer;
+  font-family:var(--mono); font-size:12px; color:var(--text-1); white-space:nowrap; }
+.repo-item:hover { background:var(--bg-3); }
+.repo-item .repo-item-label { overflow:hidden; text-overflow:ellipsis; }
+.repo-empty { color:var(--text-2); font-size:12px; padding:12px; }
+
+/* ---- Files / Diff panels: file/changeset tree + viewer ---- */
+.fd-split { flex:1 1 auto; display:grid; grid-template-columns:300px 1fr; min-height:0; overflow:hidden; }
+.fd-tree { border-right:1px solid var(--border); overflow:auto; padding:6px 4px;
+  font-family:var(--mono); font-size:12px; }
+.fd-view { overflow:auto; min-width:0; background:var(--bg-1); display:flex; flex-direction:column; }
+.fd-empty { color:var(--text-2); font-size:12px; padding:16px 12px; }
+.file-head { padding:6px 12px; border-bottom:1px solid var(--border); flex:none;
+  font-family:var(--mono); font-size:11.5px; color:var(--text-1);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-body { overflow:auto; flex:1 1 auto; }
+.file-pre { margin:0; padding:10px 12px; font-family:var(--mono); font-size:12px; line-height:1.5;
+  background:var(--bg-0); tab-size:4; }
+.file-pre code { font-family:var(--mono); background:none; padding:0; }
+
+/* file/changeset treeview (shared by Files + Diff panels) */
 .tree-children { margin-left:12px; }
 .tree-dir.collapsed > .tree-children { display:none; }
 .tree-dir-head { display:flex; align-items:center; gap:4px; padding:2px 4px; color:var(--text-1); cursor:pointer; border-radius:3px; white-space:nowrap; }
@@ -168,13 +167,11 @@ body {
    theme is class-based so it never bleeds into those bare cells. */
 .diff-wrap a { text-decoration:none; color:inherit; }
 
-/* ---- mode visibility (activity bar) ---- */
-.app[data-mode="fleet"]   #main { grid-template-columns:1fr; }
-.app[data-mode="fleet"]   #detail { display:none; }
-.app[data-mode="changes"] #main { grid-template-columns:1fr; }
-.app[data-mode="changes"] #inbox { display:none; }
-.app[data-mode="settings"] #main { grid-template-columns:1fr; }
-.app[data-mode="settings"] #inbox { display:none; }
+/* ---- mode visibility (activity bar): show one panel at a time ---- */
+.app[data-mode="inbox"]    #inbox-pane    { display:grid; grid-template-columns:1.1fr 1.4fr; }
+.app[data-mode="files"]    #files-pane    { display:flex; flex-direction:column; }
+.app[data-mode="diff"]     #diff-pane     { display:flex; flex-direction:column; }
+.app[data-mode="settings"] #settings-pane { display:block; overflow:auto; }
 
 /* ---- status bar ---- */
 #statusbar { grid-area:status; background:var(--bg-1); border-top:1px solid var(--border);

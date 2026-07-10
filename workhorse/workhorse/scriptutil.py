@@ -43,6 +43,14 @@ def load_json(path: Path, label: str, logger: logging.Logger) -> dict:
     return {}
 
 
+def _repo_name_from_dir(path: Path) -> str:
+    """Fallback repo name when agents.yml carries no ``repo.name``: the directory
+    name normalized the same way farrier's kebab() derives it, so a checkout at
+    ``.../Predykt`` and a config value ``predykt`` resolve to the same key."""
+    name = re.sub(r"[^a-zA-Z0-9/-]+", "-", path.name.replace(".", "-").replace("_", "-"))
+    return re.sub(r"-+", "-", name).strip("-").lower()
+
+
 def _read_workspace_file(workspace_env_key: str) -> tuple[list[dict], Path] | None:
     """Parse the `.code-workspace` file named by ``workspace_env_key``, if set.
 
@@ -86,11 +94,11 @@ def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, di
         if agents_yml.exists():
             try:
                 meta = yaml.safe_load(agents_yml.read_text(encoding="utf-8")) or {}
-                cwd_name = (meta.get("repo") or {}).get("name") or cwd.name
+                cwd_name = (meta.get("repo") or {}).get("name") or _repo_name_from_dir(cwd)
             except (yaml.YAMLError, OSError):
-                cwd_name = cwd.name
+                cwd_name = _repo_name_from_dir(cwd)
         else:
-            cwd_name = cwd.name
+            cwd_name = _repo_name_from_dir(cwd)
         folders = [{"name": cwd_name, "path": str(cwd)}]
         ws_dir = cwd.parent
 

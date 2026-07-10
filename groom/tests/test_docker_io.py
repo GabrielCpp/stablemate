@@ -97,6 +97,38 @@ def test_grep_awaiting_files_empty_on_docker_failure():
         assert docker_io.grep_awaiting_files("vol-1") == []
 
 
+def test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs():
+    captured = {}
+
+    def _fake_run(args, **kwargs):
+        captured["args"] = args
+        return _completed(stdout="/vol/Predykt/src/a.py\n/vol/Predykt/README.md\n")
+
+    with patch.object(docker_io.subprocess, "run", _fake_run):
+        paths = docker_io.list_files("workhorse_workspace", "Predykt")
+
+    # Paths are returned relative to the repo dir (not the volume) and sorted.
+    assert paths == ["README.md", "src/a.py"]
+    assert "find" in captured["args"] and "/vol/Predykt" in captured["args"]
+    assert "-prune" in captured["args"]
+    for skip in docker_io._SKIP_DIRS:
+        assert skip in captured["args"]
+
+
+def test_list_files_volume_root_when_repo_dir_empty():
+    def _fake_run(args, **kwargs):
+        assert "/vol" in args and "/vol/" not in args  # base is the volume root
+        return _completed(stdout="/vol/top.txt\n/vol/sub/x.py\n")
+
+    with patch.object(docker_io.subprocess, "run", _fake_run):
+        assert docker_io.list_files("vol-1") == ["sub/x.py", "top.txt"]
+
+
+def test_list_files_empty_on_docker_failure():
+    with patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=1)):
+        assert docker_io.list_files("vol-1", "Predykt") == []
+
+
 def test_docker_exec_builds_user_and_env_flags():
     captured = {}
 

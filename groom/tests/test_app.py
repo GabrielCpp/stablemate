@@ -63,6 +63,88 @@ def test_push_exited_rejects_missing_container_id():
     assert resp.json() == {"ok": False}
 
 
+# ---- Files/Diff panels: container+repo picker and per-checkout reads ----
+def test_repos_endpoint_lists_one_entry_per_container_repo():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="coder-001", workspace_volume="ws-vol", state=WorkflowState.RUNNING
+    )
+    state.WORKFLOWS["novol"] = WorkflowContainer(container_id="novol", name="pending")  # no volume → skipped
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "list_repo_dirs", return_value=["predykt", "yenta"]):
+            resp = client.get("/repos")
+    finally:
+        client.__exit__(None, None, None)
+
+    body = resp.text
+    assert body.count('role="option"') == 2
+    assert 'data-label="coder-001/predykt"' in body and 'data-label="coder-001/yenta"' in body
+    assert "pending" not in body  # volume-less workflow contributes no entry
+
+
+def test_files_endpoint_returns_newline_separated_paths():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "list_files", return_value=["README.md", "src/a.py"]) as lf:
+            resp = client.get("/files/abc123", params={"repo": "predykt"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "README.md\nsrc/a.py"
+    assert lf.call_args[0] == ("ws-vol", "predykt")
+
+
+def test_file_endpoint_joins_repo_and_path_and_returns_content():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "read_file", return_value="print(1)\n") as rf:
+            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "src/a.py"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "print(1)\n"
+    assert rf.call_args[0] == ("ws-vol", "predykt/src/a.py")
+
+
+def test_file_endpoint_swallows_unsafe_path():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    client = _hermetic_client()
+    try:
+        # read_file raises ValueError on a traversal path; the handler must not 500.
+        with patch.object(groom_app.docker_io, "read_file", side_effect=ValueError("unsafe")):
+            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "../../etc/passwd"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.status_code == 200
+    assert resp.text == ""
+
+
+def test_diff_endpoint_passes_repo_through():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.docker_io, "git_diff", return_value="diff --git a/x b/x\n") as gd:
+            resp = client.get("/diff/abc123", params={"repo": "predykt"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.text == "diff --git a/x b/x\n"
+    assert gd.call_args[0] == ("ws-vol", "predykt")
+
+
 # ---- /refresh prunes containers the scan no longer sees ----
 def test_refresh_prunes_vanished_containers():
     _reset()
