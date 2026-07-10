@@ -1,9 +1,9 @@
 ---
 type: feature
 slug: design-system
-area: groom-redesign
 title: groom — IDE console design system
 status: implemented
+area: groom-redesign
 ---
 # groom — IDE console design system
 
@@ -130,7 +130,7 @@ consistent chip without code changes.
 - **Status bar** — segmented counts with the state dots, ws-live indicator
   (green when connected), right-aligned repo/worker totals.
 
-## Interaction / motion
+## Motion and interaction
 
 - Selection and hover are instant (no transition). Toasts fade/slide ~150ms.
 - Blocked dots pulse subtly (1.5s) to draw the eye; respect

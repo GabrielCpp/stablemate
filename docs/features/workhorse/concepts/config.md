@@ -6,9 +6,11 @@ title: workhorse config file
 # workhorse config file
 
 Workhorse's own small persistent settings file — a TOML file holding `library_dir`,
-`stablemate_dir`, and a `[power.<tier>.<backend>]` model/effort table. Read and written by
+`stablemate_dir`, a `[power.<tier>.<backend>]` model/effort table, and a per-backend
+`[default.<backend>]` model/effort fallback table. Read and written by
 [workhorse config](../workhorse.md#config); the `power` table is consumed at run time by
-`resolve_power` to satisfy a workflow node's [`power:`](../workflow-format.md) tier. The
+`resolve_power` to satisfy a workflow node's [`power:`](../workflow-format.md) tier, and the
+`default` table by `resolve_backend_default` to fill whatever that left unset. The
 `library_dir` key is also read at run time — via `get_config_value` — by [`workhorse
 run`](../workhorse.md#run)'s `_resolve_library_dir`, which resolves a bare workflow NAME against
 the prompt library.
@@ -71,10 +73,24 @@ own default applies.
   non-empty string.
 - code: `workhorse/workhorse/config.py::resolve_power`
 
+## resolve_backend_default
+
+Resolves the active backend name to the top-level `[default.<backend>]` table — the configurable
+counterpart of a backend's hardcoded `default_model`. Consumed by `_resolve_power_settings` as the
+last config-side fallback: it fills whatever the node's power tier (or the absence of one) left
+unset, so power-less nodes stop silently falling through to the harness's own auto-picked model.
+Any missing/non-dict step (no `default` table, no such backend section) yields an empty mapping
+rather than an error.
+
+- **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
+- **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
+  non-empty string.
+- code: `workhorse/workhorse/config.py::resolve_backend_default`
+
 ## PowerMapping
 
-The frozen dataclass `resolve_power` returns: `model: str | None = None`, `effort: str | None =
-None`. Both fields default to unset so an unconfigured tier/backend combination is a no-op
-override, not an error.
+The frozen dataclass `resolve_power` and `resolve_backend_default` return: `model: str | None =
+None`, `effort: str | None = None`. Both fields default to unset so an unconfigured tier/backend
+combination is a no-op override, not an error.
 
 - code: `workhorse/workhorse/config.py::PowerMapping`

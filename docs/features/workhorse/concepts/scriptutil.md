@@ -38,7 +38,7 @@ trailing commas before a closing `}`/`]`, neither valid in strict JSON.
 - **Raises:** propagates `json.JSONDecodeError` if the rewritten text still isn't valid JSON.
 - code: `workhorse/workhorse/scriptutil.py::load_jsonc`
 
-Used by [`_read_workspace_file`](#resolve_workspace) (shared by `resolve_workspace` and
+Used by [`_read_workspace_file`](#resolve_workspace-build-the-repo-map) (shared by `resolve_workspace` and
 `checkout_workspace`) to read a `.code-workspace` file.
 
 ## `load_json` — best-effort JSON file loader
@@ -58,8 +58,8 @@ node outright.
 
 Builds `{repo_name: {path, template, ...}}` describing every repo a script node might operate on,
 merging in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
-[`build_dispatch_list`](#build_dispatch_list), [`get_repo_config`](#get_repo_config), and
-[`get_affected_repos`](#get_affected_repos) all key off.
+[`build_dispatch_list`](#build_dispatch_list-ordered-per-service-dispatch-records), [`get_repo_config`](#get_repo_config-read-one-agentsyml-workspace-value), and
+[`get_affected_repos`](#get_affected_repos-repos-actually-touched-by-a-plan) all key off.
 
 - **Input:** `workspace_env_key: str = "WORKSPACE_FILE"` — the env var name to read; callers pass
   their own convention (e.g. `"CODER_WORKSPACE"`) rather than this module assuming one.
@@ -72,10 +72,10 @@ merging in each repo's own `agents.yml` `workspace:` section. This is the primar
      returns `None`, fall back to a **single-folder** workspace: resolve the repo root as
      `AGENT_REPO_DIR` if set, else `Path.cwd()` (script nodes run with cwd = the workflow
      definition's own directory, not the consuming repo — `AGENT_REPO_DIR` is the correct signal,
-     mirroring [`find_repo_root`](#find_repo_root)); name it from that root's own `agents.yml`
+     mirroring [`find_repo_root`](#find_repo_root-locate-the-consuming-repo)); name it from that root's own `agents.yml`
      `repo.name` if present, else the directory's basename; `ws_dir` is that root's **parent** (so
      the folder's `path` resolves back to the root itself). When `_read_workspace_file` does return
-     `(folders, ws_dir)`, it parsed the `.code-workspace` file (via [`load_jsonc`](#load_jsonc)) at
+     `(folders, ws_dir)`, it parsed the `.code-workspace` file (via [`load_jsonc`](#load_jsonc-json-with-comments-parser)) at
      the env var's path and returned its `folders:` list (each `{"name"?, "path"}`, VSCode's own
      schema) plus `ws_dir` = that file's parent directory, which folder `path`s are resolved
      relative to.
@@ -108,7 +108,7 @@ runs.
   `"workhorse.checkout"` logger configured to stderr at `INFO`.
 - **Algorithm:**
   1. **Locate folders**, via the shared `_read_workspace_file(workspace_env_key)` helper (see
-     [`resolve_workspace`](#resolve_workspace) — same helper, same `.code-workspace` parse). If it
+     [`resolve_workspace`](#resolve_workspace-build-the-repo-map) — same helper, same `.code-workspace` parse). If it
      returns `None` (no workspace file set): read `REPO_URL`; if empty, log and return without doing
      anything; else synthesize one folder `{"name": REPO_NAME or "repo", "url": REPO_URL, "branch":
      REPO_BRANCH or "main"}` — this keeps the 1-repo and N-repo cases on one code path.
@@ -152,7 +152,7 @@ whenever the two diverge.
 
 - **Input:** `docs_path: str = ""` — an explicit path (typically a workflow `var`).
 - **Output:** `Path`, resolved in priority order: 1) `docs_path` if given (absolute as-is, else
-  joined under [`find_repo_root()`](#find_repo_root)); 2) the `CODER_DOCS_PATH` env var, same
+  joined under [`find_repo_root()`](#find_repo_root-locate-the-consuming-repo)); 2) the `CODER_DOCS_PATH` env var, same
   absolute/relative handling; 3) `find_repo_root()` itself if neither is set.
 - code: `workhorse/workhorse/scriptutil.py::find_docs_root`
 
@@ -160,7 +160,7 @@ whenever the two diverge.
 
 - **Input:** `repo_name: str`, `key: str`, `default=None`, `repos: dict | None = None` (keyword-only).
 - **Output:** `repo.get(key, default)` where `repo = repos.get(repo_name, {})`; when `repos` is
-  omitted, it's built by calling [`resolve_workspace()`](#resolve_workspace) with its default env
+  omitted, it's built by calling [`resolve_workspace()`](#resolve_workspace-build-the-repo-map) with its default env
   var (`"WORKSPACE_FILE"`) — pass `repos` explicitly when the caller already resolved the workspace
   under a different env var.
 - code: `workhorse/workhorse/scriptutil.py::get_repo_config`
@@ -169,12 +169,12 @@ whenever the two diverge.
 
 Joins a plan's `services`/`implementation_order` (a workflow-supplied `plan_ctx` dict — its exact
 schema is owned by whichever workflow builds it, not by workhorse) against the
-[`resolve_workspace`](#resolve_workspace) repo map, producing one ordered dict per service ready to
+[`resolve_workspace`](#resolve_workspace-build-the-repo-map) repo map, producing one ordered dict per service ready to
 drive a dispatch/fan-out step.
 
 - **Input:** `plan_ctx: dict` — expected shape `{"services": [{"repo", "path", "type"?,
   "plan_file"?, "skills"?}, ...], "implementation_order": [str, ...]}` (both keys optional, default
-  `[]`); `repos: dict[str, dict]` — a [`resolve_workspace`](#resolve_workspace) result;
+  `[]`); `repos: dict[str, dict]` — a [`resolve_workspace`](#resolve_workspace-build-the-repo-map) result;
   `fallback: bool = False` (keyword-only).
 - **Output:** `list[dict]`, each record:
   - `service` — `"<repo>::<path>"`, the same key `implementation_order` entries use.
@@ -200,8 +200,8 @@ drive a dispatch/fan-out step.
 ## `get_affected_repos` — repos actually touched by a plan
 
 - **Input:** `plan_ctx: dict` (same `services` shape as
-  [`build_dispatch_list`](#build_dispatch_list)); `repos: dict[str, dict]` — a
-  [`resolve_workspace`](#resolve_workspace) result.
+  [`build_dispatch_list`](#build_dispatch_list-ordered-per-service-dispatch-records)); `repos: dict[str, dict]` — a
+  [`resolve_workspace`](#resolve_workspace-build-the-repo-map) result.
 - **Output:** `list[str]` — the sorted, deduplicated set of `svc["repo"]` values from `plan_ctx`
   that are also keys of `repos` (a service naming a repo outside the resolved workspace is
   excluded).
@@ -231,7 +231,7 @@ drive a dispatch/fan-out step.
 
 - Every workflow **[script](../workflow-format.md#script)** node's script may import from this
   module (available because workhorse is installed editable).
-- `entrypoint.sh` invokes [`checkout_workspace`](#checkout_workspace) once, before the graph starts.
-- `farrier/farrier/install.py` references [`checkout_workspace`](#checkout_workspace) in a comment
+- `entrypoint.sh` invokes [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) once, before the graph starts.
+- `farrier/farrier/install.py` references [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) in a comment
   (the pattern a generated workflow launcher's checkout step should follow) but does not import this
   module itself — farrier and workhorse stay independent packages.

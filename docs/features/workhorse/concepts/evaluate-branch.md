@@ -23,7 +23,7 @@ crash a week-long run.
 
 ## Contract
 
-- **Input:** `node: BranchNode` (the [`branch` node](workflow-format.md#branch) — `path`, `cases`,
+- **Input:** `node: BranchNode` (the [`branch` node](../workflow-format.md#branch) — `path`, `cases`,
   `conditions`, `default`), `context: WorkflowContext`.
 - **Output:** `tuple[str, Any]` = `(next_node_id, resolved_value)`. `next_node_id` is always one of
   the ids the `BranchNode`'s edges validated against the graph (a `cases` value, a `conditions[].next`,
@@ -36,7 +36,7 @@ crash a week-long run.
   algorithm below (unresolvable path with no `default`; resolved value matches nothing and no
   `default`). Raises `ValueError` if a `conditions[].op` isn't one of `_OPS`'s six keys — dead in
   practice since `BranchCondition.op` is a `Literal` Pydantic validates at load time
-  ([`workflow-format.md`](workflow-format.md#branch)), kept as a defensive guard against a
+  ([`workflow-format.md`](../workflow-format.md#branch)), kept as a defensive guard against a
   hand-built `BranchNode`.
 - Reads the node's target path via
   [`context.get_dotpath`](workflow-context.md#get_dotpathpath-default_missing---any) — `evaluate` is
@@ -62,7 +62,7 @@ crash a week-long run.
    same path gets the `cases` entry.
 4. **`conditions` (ordered comparisons).** Iterate `node.conditions` in declaration order; for each,
    look up its `op` in `_OPS` (raising `ValueError` if unknown — see Contract) and call
-   `op_fn(str_value, cond.value)` — both operands go through [`_coerce`](#_coercev---private) inside
+   `op_fn(str_value, cond.value)` — both operands go through [`_coerce`](#_coercev-private) inside
    the operator (except `==`/`!=`, which compare the raw operand values, not `str_value`/`cond.value`
    directly — see the `_OPS` table). Return `(cond.next, value)` on the first match; `conditions`
    are OR'd but order matters only for which `next` wins when more than one would match.

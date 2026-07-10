@@ -58,11 +58,12 @@ A leaf of the per-worker file tree.
 # ---------------------------------------------------------------------------
 # §3 — registry recognition
 # ---------------------------------------------------------------------------
-def test_eleven_ui_types_registered():
-    assert len(registry.UI_TYPES) == 11
+def test_ui_types_registered():
     assert set(registry.UI_TYPES_BY_NAME) == {
         "screen", "component", "interaction", "cli", "command", "server", "endpoint",
         "invocation", "flow", "concept", "format",
+        "method", "field",   # nested typed sections (Methods/Fields containers + inline `type:`)
+        "untyped",           # any other heading, promoted so its links/hierarchy are captured
     }
 
 
@@ -70,6 +71,7 @@ def test_heading_to_type_map():
     assert registry.UI_HEADING_TO_TYPE == {
         "Components": "component", "Commands": "command", "Endpoints": "endpoint",
         "Interactions": "interaction", "Invocations": "invocation",
+        "Methods": "method", "Fields": "field",
     }
 
 

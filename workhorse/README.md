@@ -141,9 +141,11 @@ workhorse --workflow ./wf/workflow.yaml --cli opencode       # OpenRouter-native
 
 The backend default model is overridable per run with the `AGENT_MODEL` env var.
 Workflows can request an abstract `power` tier per node; your user-wide config maps
-that tier to concrete backend model/effort settings. If a tier/backend mapping is
-unset, Workhorse leaves model/effort unset and the selected harness uses its own
-defaults. The resilience/timeout knobs are env vars too — see
+that tier to concrete backend model/effort settings. Nodes with no `power:` (and
+tiers with no mapping) fall through to `AGENT_MODEL`, then to a per-backend
+`[default.<backend>]` config table (see [Node power selection](#node-power-selection)).
+If nothing supplies a value, Workhorse leaves model/effort unset and the selected
+harness uses its own defaults. The resilience/timeout knobs are env vars too — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 | Backend | CLI | Default model | In-place compaction |
@@ -193,6 +195,24 @@ effort = "high"
 model = "openai/gpt-5.5"
 effort = "high"
 ```
+
+#### Per-backend default model (`[default.<backend>]`)
+
+Nodes without a `power:` tier (and tiers you left unmapped) would otherwise run on
+whatever the harness itself defaults to — for `opencode`/`codex`/`copilot` that is
+the CLI's own auto-picked model, which may not be what you want. Pin a per-backend
+fallback in the same config file:
+
+```toml
+[default.opencode]
+model = "openai/gpt-5.5"
+effort = "high"
+```
+
+Model resolution order per node: `power.<tier>.<backend>` mapping → `AGENT_MODEL` /
+`AGENT_CLAUDE_MODEL` env vars → `[default.<backend>]` → the backend's built-in
+default (`sonnet` for claude; unset for the others, meaning the harness decides).
+Effort resolves as: power mapping → `[default.<backend>]` (no env override exists).
 
 Inspect or set config:
 

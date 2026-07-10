@@ -79,7 +79,7 @@ into the caller's context.
    straight out of `_run_flow` uncaught.
 9. **Finalize the child run.** `child_writer.write_final_context(child_ctx.as_dict())` then
    `child_writer.finish(terminal=term)` —
-   [writes](artifact-writer.md#write_final_context) the child's final context snapshot and
+   [writes](artifact-writer.md#write_final_contextcontext) the child's final context snapshot and
    [marks](artifact-writer.md#finishterminal) its `run.json` terminal, exactly like the root
    graph does at the end of [`run`](workflow.md#execution).
 10. **Lift the declared outputs.** Returns `{spec.key: child_ctx.get_dotpath(spec.key,

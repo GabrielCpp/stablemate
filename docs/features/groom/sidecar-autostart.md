@@ -1,10 +1,10 @@
 ---
 type: feature
-id: stablemate-5
 slug: sidecar-autostart
 title: Sidecar autostart — launched by the container entrypoint
-area: groom
 status: implemented
+id: stablemate-5
+area: groom
 ---
 # Sidecar autostart — launched by the container entrypoint
 
@@ -46,5 +46,4 @@ host-side groom (if one is listening).
 
 ## Related
 
-- [sidecar-protocol](sidecar-protocol.md) · architecture overview:
-  [../groom.md](../groom.md)
+- [sidecar-protocol](sidecar-protocol.md)

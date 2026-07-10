@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -154,20 +155,22 @@ def _ctx_after(runs_dir: Path, run_name: str, node_id: str) -> dict:
     return json.loads((runs_dir / run_name / node_id / "context_after.json").read_text())
 
 
-def test_call_node_end_to_end(tmp_path):
-    wf_dir = tmp_path / "wf"
-    wf_dir.mkdir()
-    (wf_dir / "workflow.yaml").write_text(_WORKFLOW)
-    runs_dir = tmp_path / "runs"
-    runs_dir.mkdir()
+def test_call_node_end_to_end():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        wf_dir = tmp_path / "wf"
+        wf_dir.mkdir()
+        (wf_dir / "workflow.yaml").write_text(_WORKFLOW)
+        runs_dir = tmp_path / "runs"
+        runs_dir.mkdir()
 
-    rc = m.run(wf_dir / "workflow.yaml", runs_dir, run_id="run1")
-    assert rc == 0
+        rc = m.run(wf_dir / "workflow.yaml", runs_dir, run_id="run1")
+        assert rc == 0
 
-    # Run dir is named "<graph-name>-<run-id>" by the artifact writer.
-    run_dir = next(runs_dir.iterdir())
-    ctx = json.loads((run_dir / "incr_counter" / "context_after.json").read_text())
-    assert ctx["count"] == {"value": 1}
+        # Run dir is named "<graph-name>-<run-id>" by the artifact writer.
+        run_dir = next(runs_dir.iterdir())
+        ctx = json.loads((run_dir / "incr_counter" / "context_after.json").read_text())
+        assert ctx["count"] == {"value": 1}
 
 
 # ── DOT renderer test ────────────────────────────────────────────────────────

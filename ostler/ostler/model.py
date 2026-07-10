@@ -108,6 +108,8 @@ class UINode:
     anchor: str = ""            # section nodes only
     title: str = ""
     line: int = 0               # 1-based, file-absolute (the file's H1 / the `### id` line)
+    level: int = 0              # heading depth 1-6 (file node = 1); drives the hierarchy
+    parent: str = ""            # id of the enclosing node (containment); "" for a file/root node
     meta: dict = field(default_factory=dict)                 # parsed `- key: value` bullets
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
@@ -392,17 +394,66 @@ def _file_main_section(doc: markdown.MarkdownDoc) -> markdown.Section | None:
     return doc.sections[0] if doc.sections else None
 
 
+def _inline_type(title: str) -> tuple[str | None, str]:
+    """``field: timeout`` **or** the colon-less ``field timeout`` → (type, description) when the
+    first token is a **known** UI type; otherwise ``(None, title)``. A first word that isn't a real
+    type (``Contract``, ``The ladder``) is left for the caller to promote as ``untyped``.
+    Inline-typed headings are always *section* nodes, whatever the type's usual file/section kind."""
+    prefix, sep, rest = title.partition(":")
+    if sep and registry.UI_TYPES_BY_NAME.get(prefix.strip().lower()) is not None:
+        return registry.UI_TYPES_BY_NAME[prefix.strip().lower()].name, rest.strip()
+    first, _, rest2 = title.partition(" ")
+    t = registry.UI_TYPES_BY_NAME.get(first.strip().lower())
+    if t is not None and rest2.strip():
+        return t.name, rest2.strip()
+    return None, title
+
+
+def _promote_section(section: markdown.Section, rel: str, path: Path, offset: int,
+                     parent_id: str, container_type: str | None, nodes: list[UINode]) -> None:
+    """Promote **every** heading to a section node so its links are captured and it nests. Its type
+    comes from an inline ``type:`` prefix / first-word (`### field: timeout`, `## field timeout`) or
+    its enclosing container (`## Methods` → its children are ``method``s); a heading that names no
+    real type is promoted as **``untyped``** (caught by ``--title``, not a garbage type). Nesting
+    composes at any depth: each node is the ``parent`` of its descendants."""
+    title = section.title.strip()
+    if not title:
+        return
+    # A registered container heading (`## Components`/`## Methods`/…) isn't itself a node; it
+    # types its *direct* children. Containers work at any depth, so nesting composes.
+    child_container = registry.UI_HEADING_TO_TYPE.get(title)
+    if child_container is not None:
+        for sub in section.children:
+            _promote_section(sub, rel, path, offset, parent_id, child_container, nodes)
+        return
+    ntype, ntitle = _inline_type(title)                # inline type: / first word wins…
+    ntype = ntype or container_type or "untyped"       # …else container's type, else untyped
+    anchor = anchor_of(title)                          # the rendered heading anchor
+    node_id = f"{rel}#{anchor}"
+    nodes.append(UINode(
+        type=ntype, kind="section", id=node_id, path=path, anchor=anchor,
+        title=ntitle, level=section.level, parent=parent_id,
+        line=offset + section.line_start + 1,
+        meta=_meta_from_bullets(section), links=section.refs.links,
+    ))
+    # container_type applies only to a container's direct children, so it resets on descent.
+    for sub in section.children:
+        _promote_section(sub, rel, path, offset, node_id, None, nodes)
+
+
 def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
-    """File-level node (if the frontmatter `type:` is a UI file-type) + every section node
-    (`### id` under a typed `## Heading`, whatever the file's own type)."""
+    """File-level node (if the frontmatter `type:` is a UI file-type) + every typed section node,
+    nested. A section is typed by its enclosing container heading or an inline `type:` prefix; see
+    `_promote_section`."""
     rel = path.relative_to(root).as_posix()
     offset = doc.body_offset
     nodes: list[UINode] = []
 
     fm = doc.frontmatter or {}
     ftype = registry.ui_type(registry.type_of(fm))
+    main = _file_main_section(doc)
+    file_id = ""
     if ftype is not None and ftype.kind == "file":
-        main = _file_main_section(doc)
         meta = _meta_from_bullets(main) if main else {}
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
@@ -412,26 +463,17 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
             line = offset + main.line_start + 1
         else:
             text, line = doc.body, offset + 1
+        file_id = rel
         nodes.append(UINode(
-            type=ftype.name, kind="file", id=rel, path=path,
+            type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
             line=line, meta=meta, links=markdown.extract_refs(text).links, data=fm,
         ))
 
-    for section in doc.walk_sections():
-        if section.level != 2 or section.title.strip() not in registry.UI_HEADING_TO_TYPE:
-            continue
-        stype = registry.UI_HEADING_TO_TYPE[section.title.strip()]
-        for sub in section.children:
-            title = sub.title.strip()
-            if not title:
-                continue
-            anchor = anchor_of(title)
-            nodes.append(UINode(
-                type=stype, kind="section", id=f"{rel}#{anchor}", path=path,
-                anchor=anchor, title=title, line=offset + sub.line_start + 1,
-                meta=_meta_from_bullets(sub), links=sub.refs.links,
-            ))
+    # Recurse the heading tree: the H1's children (or the doc's root sections) hang off the file node.
+    top = main.children if (main is not None and main.level == 1) else doc.sections
+    for sec in top:
+        _promote_section(sec, rel, path, offset, file_id, None, nodes)
     return nodes
 
 

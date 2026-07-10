@@ -24,8 +24,25 @@ _FENCE = "---"
 GAP_TAG_RE = re.compile(r"\[gap:\s*([A-Za-z0-9][\w-]*)\s*\]")
 KNOWLEDGE_PATH_RE = re.compile(r"docs/knowledge/[^\s)\]'\"`]+\.(?:json|md)")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)  # fenced code blocks
+_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")        # inline code spans
 
 _MD = MarkdownIt("commonmark")
+
+
+def _mask_code(text: str) -> str:
+    """Blank out fenced blocks and inline-code spans (same length, newlines kept) so a link/ref
+    regex never matches *inside code* — e.g. `strategies[idx](x)` in a snippet is not a link. Byte
+    offsets and line numbers are preserved for locating the real links that remain."""
+    blank = lambda m: re.sub(r"[^\n]", " ", m.group(0))  # noqa: E731
+    return _INLINE_CODE_RE.sub(blank, _FENCE_RE.sub(blank, text))
+
+
+def iter_links(text: str):
+    """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based."""
+    masked = _mask_code(text)
+    for m in LINK_RE.finditer(masked):
+        yield m.group(1), m.group(2), masked.count("\n", 0, m.start()) + 1
 
 
 @dataclass
@@ -39,7 +56,7 @@ def extract_refs(text: str) -> References:
     return References(
         gap_tags=sorted(set(GAP_TAG_RE.findall(text))),
         knowledge_paths=sorted(set(KNOWLEDGE_PATH_RE.findall(text))),
-        links=LINK_RE.findall(text),
+        links=LINK_RE.findall(_mask_code(text)),  # links inside code are not links
     )
 
 

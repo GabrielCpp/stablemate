@@ -25,6 +25,14 @@ Three rules govern the content (profile §2, §8):
   item-by-item, `does:` as ordered effects, algorithms as ordered steps, errors/exit/status codes,
   and for UI the `dom:`/`props:`/`states:`/`a11y:` contract. The per-type checklist is profile §8
   (mirrored in [[ostler]]). A one-line stub is below bar.
+- **Structure it so the graph can *see* it — don't bury spec in prose.** A field or method described
+  in a sentence is invisible to `ostler graph`; the same thing as a **nested typed section** is a
+  first-class node you can query. Model a concept's methods as `### method:` sections and a format's
+  fields as `### field:` sections (or under `## Methods`/`## Fields`), and give each its **own
+  filterable bullets** — `sig:`/`abstract:`/`raises:` for a method, `type:`/`default:`/`required:`
+  for a field — one per attribute, never crammed into one line. Then
+  `ostler graph --path 'concept:X / method:foo'` walks straight to it. Reserve prose for the summary,
+  not the spec.
 - **Spec, not implementation** — document *what* the code does; the *how* (patterns, idioms,
   libraries, structure) is owned by the stack skills, never the book. `code:` anchors the impl; the
   prose never prescribes a technique.

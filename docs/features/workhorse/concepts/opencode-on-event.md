@@ -68,7 +68,7 @@ other JSONL backends are [`_codex_on_event`](codex-on-event.md) and
      `_opencode_on_event` only extracts the resume id, the accumulated answer text, and error
      signals; it does not track turn progress beyond the live echo above.
 
-The `diagnostics` append feeds [`_stream_jsonl`](stream-jsonl.md#cap-abort-early-exit-on-a-spending-capurl-limit)'s
+The `diagnostics` append feeds [`_stream_jsonl`](stream-jsonl.md#cap-abort-early-exit-on-a-spending-capusage-limit)'s
 per-line cap-abort scan (run by its caller immediately after `on_event` returns) and, at the end of
 the stream, [`_finalize_turn`](finalize-turn.md)'s classification — an opencode structured error
 event surfaces through this branch the same way a raw non-JSON `--print-logs` diagnostic line does

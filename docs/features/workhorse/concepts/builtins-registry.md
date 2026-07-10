@@ -19,7 +19,7 @@ bookkeeping (counters, placeholder values) that doesn't warrant a full [script](
   single JSON-serializable value (the `raw_result` [`run_call`](run-call.md#algorithm) wraps per
   output spec).
 - **Members:**
-  - `"incr"` → [`incr`](#incrvalue-0---int)
+  - `"incr"` → [`incr`](#incrvalue0---int)
   - `"seed"` → [`seed`](#seedkwargs---int)
 
 ## `incr(value=0) -> int`

@@ -25,7 +25,7 @@ the node's `outputs` via [`_extract_outputs`](#_extract_outputsstdout-node-priva
     into `ctx`, the base every `render_string` call in this function renders against.
   - `workflow_dir: Path` — the workflow's own directory; `node.script` is resolved relative to it,
     and it is the last-resort fallback for the subprocess `cwd`.
-  - `graph_env: dict[str, str] | None` — the [`Workflow`](workflow.md#context--vars-and-env)-level
+  - `graph_env: dict[str, str] | None` — the [`Workflow`](workflow.md#context-vars-and-env)-level
     `env` map from the containing graph, merged in **before** `node.env` so a node's own `env` key
     overrides the graph-level default for the same key.
 - **Output:** `(cmd_str, outputs)` — `cmd_str: str` is the assembled command joined with spaces (the
