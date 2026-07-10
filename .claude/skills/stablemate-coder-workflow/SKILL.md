@@ -26,20 +26,21 @@ Load this skill when reading, modifying, or debugging `agents/workflows/coder/wo
 
 Only **user-supplied params** live in `vars:`. Internal state (values produced by script nodes at runtime) is NOT declared here — it is accessed via `get_node_output()`.
 
-| Var | Default | Notes |
-|-----|---------|-------|
-| `mode` | `"epic"` | `"epic"` = full queue; `"story"` = single story, own branch, no merge |
-| `docs_path` | `""` | Docs repo root. Empty → `AGENT_REPO_DIR` (where workhorse launched) |
-| `story` | `""` | Story slug (e.g. `"CASE-1234"`). Required in story mode; ignored in epic mode |
-| `epic` | `""` | Optional: override which epic to run, skips queue pick |
-| `max_qa_reworks` | `"3"` | Max QA-fix cycles per story |
-| `max_setup_reworks` | `"2"` | Max setup-fix cycles when QA env is broken |
-| `max_ci_reworks` | `"3"` | Max fix_ci cycles per epic PR |
-| `max_merge_reworks` | `"2"` | Max fix_merge cycles per epic PR |
-| `operator_mode` | `"auto"` | `"auto"` = resolve_* agent stands in; `"human"` = always halt |
-| `target_env` | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment |
+| Var                 | Default   | Notes                                                                         |
+| ------------------- | --------- | ----------------------------------------------------------------------------- |
+| `mode`              | `"epic"`  | `"epic"` = full queue; `"story"` = single story, own branch, no merge         |
+| `docs_path`         | `""`      | Docs repo root. Empty → `AGENT_REPO_DIR` (where workhorse launched)           |
+| `story`             | `""`      | Story slug (e.g. `"CASE-1234"`). Required in story mode; ignored in epic mode |
+| `epic`              | `""`      | Optional: override which epic to run, skips queue pick                        |
+| `max_qa_reworks`    | `"3"`     | Max QA-fix cycles per story                                                   |
+| `max_setup_reworks` | `"2"`     | Max setup-fix cycles when QA env is broken                                    |
+| `max_ci_reworks`    | `"3"`     | Max fix_ci cycles per epic PR                                                 |
+| `max_merge_reworks` | `"2"`     | Max fix_merge cycles per epic PR                                              |
+| `operator_mode`     | `"auto"`  | `"auto"` = resolve\_\* agent stands in; `"human"` = always halt               |
+| `target_env`        | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment                    |
 
 Override any var at launch:
+
 ```
 workhorse run coder --params '{"mode":"story","story":"CASE-1234"}'
 ```
@@ -84,18 +85,19 @@ args:
 
 ### Canonical Source Map
 
-| Key | Source Node | Used by |
-|-----|-------------|---------|
-| `story_path` | `prepare_story` | dev, review, qa flow args; replan_epic; commit; PR nodes |
-| `spec_dir` | `prepare_story` | dev, review, qa flow args; replan_epic; commit; PR nodes |
-| `story_slug` | `prepare_story` | dev, qa flow args; commit nodes; qa_give_up; open_story_pr |
-| `base_branch` | `branch_story` (story) or `init_base` (epic) | branch_epic, open_pr, open_story_pr |
-| `epic` | `select_epic` | branch_epic, open_pr, prune_epic, replan_epic, qa_give_up, commit_story |
-| `ci_epic` | `open_pr` | await_ci, push_ci, fix_ci, merge, flag_ci_fail, await_ci_operator, fix_merge, push_merge, flag_merge_fail, await_merge_operator |
-| `ci_base` | `open_pr` | await_ci, merge, fix_merge, flag_merge_fail, await_merge_operator |
-| `ci_summary` | `await_ci` | fix_ci, flag_ci_fail, await_ci_operator |
+| Key           | Source Node                                  | Used by                                                                                                                         |
+| ------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `story_path`  | `prepare_story`                              | dev, review, qa flow args; replan_epic; commit; PR nodes                                                                        |
+| `spec_dir`    | `prepare_story`                              | dev, review, qa flow args; replan_epic; commit; PR nodes                                                                        |
+| `story_slug`  | `prepare_story`                              | dev, qa flow args; commit nodes; qa_give_up; open_story_pr                                                                      |
+| `base_branch` | `branch_story` (story) or `init_base` (epic) | branch_epic, open_pr, open_story_pr                                                                                             |
+| `epic`        | `select_epic`                                | branch_epic, open_pr, prune_epic, replan_epic, qa_give_up, commit_story                                                         |
+| `ci_epic`     | `open_pr`                                    | await_ci, push_ci, fix_ci, merge, flag_ci_fail, await_ci_operator, fix_merge, push_merge, flag_merge_fail, await_merge_operator |
+| `ci_base`     | `open_pr`                                    | await_ci, merge, fix_merge, flag_merge_fail, await_merge_operator                                                               |
+| `ci_summary`  | `await_ci`                                   | fix_ci, flag_ci_fail, await_ci_operator                                                                                         |
 
 **Dual-source pattern** — when a value can come from two nodes depending on mode:
+
 ```yaml
 # base_branch: story mode → branch_story, epic mode → init_base
 - "{{ get_node_output('branch_story', 'base_branch') or get_node_output('init_base', 'base_branch') }}"
@@ -109,12 +111,14 @@ args:
 ## Node Topology
 
 ### Story Mode
+
 ```
 decide_mode → branch_story → prepare_story → dev → review → qa_phase
            → decide_post_sentinel → commit_story_pr → open_story_pr → done
 ```
 
 ### Epic Mode
+
 ```
 decide_mode → init_base → select_epic → decide_epic → branch_epic
            → select_story → decide_story → prepare_story → dev → review → qa_phase
@@ -154,6 +158,7 @@ In epic mode: `select_story` → `decide_story` → `prepare_story` (resolves fr
 Ostler resolves slugs to canonical paths. Scripts call it instead of hardcoding path patterns.
 
 ### CLI Subcommands
+
 ```bash
 ostler path spec <slug>              # → docs/specs/<slug>
 ostler path story <epic> <slug>      # → docs/epics/<epic>/stories/<slug>/story.md
@@ -164,6 +169,7 @@ ostler path branch <slug> --epic     # → feat/<slug>
 All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs_root>` when not running from the docs repo CWD.
 
 ### In Scripts (Python)
+
 ```python
 import subprocess, shutil
 from pathlib import Path
@@ -199,6 +205,7 @@ Scripts that accept `docs_path` as argv[1]: `prepare-story.py`, `select-next-epi
 ## Script Conventions
 
 ### Output Protocol
+
 Every script prints one JSON object to stdout and exits 0. Non-zero exit means a hard failure (e.g. `await_operator.py` exits 2 for "blocked").
 
 ```python
@@ -210,6 +217,7 @@ def emit(**kwargs) -> None:
 ```
 
 ### Declared Outputs
+
 Every emitted key must be listed under `outputs:` in the workflow node. The engine extracts only declared keys.
 
 ```yaml
@@ -220,13 +228,14 @@ outputs:
 ```
 
 ### Refuel Keys
+
 `refuel:` on a script node tops up the gas tank when the named key **changes** (real forward progress). Use the key that uniquely identifies the unit of work:
 
-| Node | `refuel:` | Why |
-|------|-----------|-----|
-| `branch_story` | `story` | Story mode entry: new story starts |
-| `select_epic` | `epic` | New epic selected from queue |
-| `select_story` | `story_slug` | New story selected within epic |
+| Node           | `refuel:`    | Why                                |
+| -------------- | ------------ | ---------------------------------- |
+| `branch_story` | `story`      | Story mode entry: new story starts |
+| `select_epic`  | `epic`       | New epic selected from queue       |
+| `select_story` | `story_slug` | New story selected within epic     |
 
 ---
 
@@ -238,11 +247,11 @@ flow's local var, not the parent context.
 
 **`vars:` default convention:**
 
-| Default value | Meaning |
-|---------------|---------|
+| Default value              | Meaning                                                      |
+| -------------------------- | ------------------------------------------------------------ |
 | `null` (absent/no default) | Required — caller must supply; missing key → error at launch |
-| `""` (empty string) | Optional — caller may omit; flow uses `""` if absent |
-| any other value | Default used when caller doesn't supply |
+| `""` (empty string)        | Optional — caller may omit; flow uses `""` if absent         |
+| any other value            | Default used when caller doesn't supply                      |
 
 ```yaml
 flows:
@@ -286,3 +295,76 @@ The parent passes resolved values back into the flow's args after `prepare_story
 - [ ] Ostler called with `-C <docs_root>` for path resolution; hardcoded fallback provided
 - [ ] `refuel:` set if the node marks forward progress (new story/epic)
 - [ ] YAML validated after edits: `python3 -c "import yaml; yaml.safe_load(open('workflow.yaml'))"`
+
+---
+
+## QA Phase — `ostler qa` Integration
+
+### Why the agent doesn't drive QA directly
+
+The QA agent in previous versions was both the executor (running curl, aws lambda invoke) and the
+narrator (writing evidence files). This creates a trust gap: a reviewer cannot verify that the
+narrated sequence is what actually ran. `ostler qa` is the deterministic intermediary that closes
+this gap — see `ostler/docs/QA-RUN.md` for the full rationale.
+
+### What changes in the `qa` flow
+
+The `plan_qa` agent node now produces **two artifacts** instead of one:
+
+1. `qa-plan.md` — the human-readable QA runbook (unchanged, for review and fallback)
+2. `qa-plan.yml` — the machine-executable ostler plan (new; this is the primary execution vehicle)
+
+The `qa` agent node now:
+
+1. Reads `qa-plan.md` to understand the ACs.
+2. Writes payload files into `<spec_dir>/qa/payloads/` (inputs, not evidence).
+3. Writes `<spec_dir>/qa/qa-plan.yml` (the ostler plan).
+4. Calls `ostler qa validate <spec_dir>/qa/qa-plan.yml` to confirm validity.
+5. Calls `ostler qa run <spec_dir>/qa/qa-plan.yml --spec <spec_dir>`.
+6. Calls `ostler qa report --spec <spec_dir>` and writes the output to `qa/jira-comment.md` or
+   includes it in `qa-evidence.json`.
+
+### `qa-plan.yml` authoring rules (for the QA agent)
+
+When writing `qa-plan.yml`, the agent must:
+
+- Set `mechanism` on **every step** (`live` | `synthetic` | `fixture`) — it is enforced and
+  required; omitting it is a validation error.
+- Use `{{key}}` substitutions (not shell variables) to thread captured values across steps; forward
+  references are rejected at validation time.
+- Write payload files into `<spec_dir>/qa/payloads/` **before** the step that uses them.
+- Declare background daemons (`eventbridge-tail`, `dynamo-stream-tail`) in the `background:` block;
+  ostler owns their lifecycle. The agent must **not** start or stop them manually.
+- Use `cloudwatch_confirm:` for Lambda invocations to confirm execution in CloudWatch Logs —
+  CloudWatch is the independent oracle the agent cannot fake.
+- Use `assert_count: 1` for "no-duplicate" checks.
+
+### `qa-evidence.json` — updated contract
+
+The `qa-evidence.json` artifact gains a `qa_run_log` field pointing to `qa/qa-run.ndjson`.
+When present, `ostler artifact vet qa-evidence` enforces that every `Pass` criterion cites ≥1
+step or assert id from the log, and every cited assert has `result: PASS`.
+
+```json
+{
+  "runId": "qa-20260710T170910-CASE-4352",
+  "qa_run_log": "qa/qa-run.ndjson",
+  "criteria": [
+    {
+      "id": "ac1",
+      "verdict": "Pass",
+      "evidence": ["qa/steps/login-response.json"],
+      "log_refs": ["login", "wait_logout_event"]
+    }
+  ]
+}
+```
+
+### Checklist: QA agent output
+
+- [ ] `qa/payloads/*.json` written before the plan is executed
+- [ ] `qa/qa-plan.yml` written and validated (`ostler qa validate`) before `ostler qa run`
+- [ ] Every step has `mechanism:` declared
+- [ ] All `{{key}}` refs resolve to prior `capture:` keys (forward refs rejected)
+- [ ] `out:` paths are relative to `<spec_dir>` and do not escape it
+- [ ] `qa-evidence.json` includes `qa_run_log: "qa/qa-run.ndjson"` and `log_refs:` per criterion
