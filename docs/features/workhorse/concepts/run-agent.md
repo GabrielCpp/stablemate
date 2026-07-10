@@ -5,7 +5,7 @@ title: run_agent — the agent-node resilience ladder
 ---
 # run_agent — the agent-node resilience ladder
 
-Runs one [`agent` node](../workflow-format.md#agent): renders its Jinja2 prompt, drives the
+Runs one [`agent` node](../workflow-format.md#concept-agent-run-an-llm-turn): renders its Jinja2 prompt, drives the
 active [AgentBackend](agent-backend.md) through a turn, and extracts the node's declared
 `outputs` — escalating through a four-layer resilience ladder instead of raising, because
 [workflow execution](workflow.md#execution) calls it once per `agent` node of a run built to
@@ -39,7 +39,7 @@ session continuity between turns is read back by [`_read_session_id`](read-sessi
 ## Contract
 
 - **Input:**
-  - `node: AgentNode` — the [agent node](../workflow-format.md#agent) to run.
+  - `node: AgentNode` — the [agent node](../workflow-format.md#concept-agent-run-an-llm-turn) to run.
   - `context: WorkflowContext` — the run's live [context](workflow-context.md); rendered to a
     dict once (`context.as_dict()`) as the Jinja base for the prompt/args.
   - `workflow_dir: Path` — base dir the prompt template path is resolved against.
@@ -59,7 +59,7 @@ session continuity between turns is read back by [`_read_session_id`](read-sessi
   `output.json` and the context merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
 - **Raises:** `BackendInvocationError` when a non-recoverable backend failure occurs, or when every
   layer of the ladder is exhausted and `AGENT_USE_DEFAULT_OUTPUTS=false`. Never raises for a
-  recoverable failure while `USE_DEFAULT_OUTPUTS` is on — see [Layer 4](#layer-4-default-to-next).
+  recoverable failure while `USE_DEFAULT_OUTPUTS` is on — see [Layer 4](#the-ladder).
   When this propagates out of `main.py`'s run loop, its top-level handler calls
   [`terminate_active`](stream-subprocess.md#terminate_active) to clean up the in-flight subprocess
   before the run exits.
@@ -68,7 +68,7 @@ session continuity between turns is read back by [`_read_session_id`](read-sessi
 
 1. **Timeout.** `effective_timeout = node.timeout or DEFAULT_RESULT_TIMEOUT_S` (env
    `AGENT_RESULT_TIMEOUT_S`, default `3600`); `node.timeout == float("inf")` (from
-   [`timeout: infinity`](../workflow-format.md#agent)) short-circuits to `unbounded = True`, which
+   [`timeout: infinity`](../workflow-format.md#field-timeout)) short-circuits to `unbounded = True`, which
    the stream loops honor natively (`elapsed > inf` never trips) and which is surfaced to the
    prompt as the literal string `"unbounded"` rather than `int(inf)`.
 2. **Render `cwd`.** `rendered_cwd = render_string(node.cwd, ctx)` if set, else `None`.
@@ -87,7 +87,7 @@ session continuity between turns is read back by [`_read_session_id`](read-sessi
    redundant.
 6. **Resolve the backend and model.** `backend = get_backend()` (the run's `--cli`/`AGENT_CLI`
    choice); `model, node_effort = _resolve_power_settings(node.power, backend.name, os.environ)`
-   maps the node's abstract [`power:`](../workflow-format.md#agent) tier through
+   maps the node's abstract [`power:`](../workflow-format.md#field-power) tier through
    [workhorse config](config.md#resolve_power), falling back to `AGENT_MODEL`/`AGENT_CLAUDE_MODEL`
    then `backend.default_model` if config leaves it unset.
 7. **Session hygiene.** If `resume_session` is `False` and `session_id_path` exists, delete it —

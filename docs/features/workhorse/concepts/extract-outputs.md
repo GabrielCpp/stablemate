@@ -5,7 +5,7 @@ title: _extract_outputs — parse agent JSON into declared outputs
 ---
 # _extract_outputs — parse agent JSON into declared outputs
 
-Turns one agent-CLI turn's raw text into the [node](../workflow-format.md#agent)'s declared
+Turns one agent-CLI turn's raw text into the [node](../workflow-format.md#concept-agent-run-an-llm-turn)'s declared
 `outputs` dict. Called once per attempt by [`_invoke_and_parse`](invoke-and-parse.md#algorithm)
 (step 2), which treats a raised `OutputParseError` as a same-session-retry signal, and ultimately by
 [`run_agent`](run-agent.md)'s ladder, which treats an escaped `OutputParseError` as a reframe

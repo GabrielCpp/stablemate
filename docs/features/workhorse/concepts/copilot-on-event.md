@@ -49,7 +49,7 @@ Dispatches on `event.get("type") or ""` (`etype`):
    `_copilot_on_event` only extracts the final answer text, the resume id, the exit code, and error
    signals; it does not track turn progress beyond the live echo above.
 
-Both `diagnostics` appends feed [`_stream_jsonl`](stream-jsonl.md#cap-abort-early-exit-on-a-spending-capurl-limit)'s
+Both `diagnostics` appends feed [`_stream_jsonl`](stream-jsonl.md#cap-abort-early-exit-on-a-spending-capusage-limit)'s
 per-line cap-abort scan (run by its caller immediately after `on_event` returns) and, at the end of
 the stream, [`_finalize_turn`](finalize-turn.md)'s classification — a copilot cap or context-overflow
 marker surfaces through whichever of these two branches captures the event carrying it, same as a

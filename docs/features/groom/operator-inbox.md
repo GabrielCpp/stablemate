@@ -1,10 +1,10 @@
 ---
 type: feature
-id: stablemate-2
 slug: operator-inbox
 title: Operator inbox — incoming gate messages only
-area: groom
 status: implemented
+id: stablemate-2
+area: groom
 ---
 # Operator inbox — incoming gate messages only
 
@@ -44,5 +44,4 @@ one, is not a message and never appears here. The whole fleet lives in the
 
 ## Related
 
-- [worker-tree](worker-tree.md) · [sidecar-protocol](sidecar-protocol.md) ·
-  architecture overview: [../groom.md](../groom.md)
+- [worker-tree](worker-tree.md) · [sidecar-protocol](sidecar-protocol.md)

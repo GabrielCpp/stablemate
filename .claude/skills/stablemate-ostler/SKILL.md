@@ -1,6 +1,6 @@
 ---
 name: stablemate-ostler
-description: "ostler CLI reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's eleven surface/element/behavior/concept types): command interface, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, and when a workflow agent should call it."
+description: "ostler CLI reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): command interface, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
 metadata:
   generated_by: farrier
   source: library/skills/stablemate/ostler/SKILL.md
@@ -96,17 +96,27 @@ ostler trace  <id|slug|gap|surface|path>             # walk the graph from any n
 ostler list   --type epic|story|knowledge|feature|spec|seed|gap [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--owner O] [--tag G] [--json]   # full-text match over node prose
 ostler query  gaps-in-story|stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
-ostler graph  [--type T] [--surface SVC] [--json]    # dump EVERY node + its bullets + resolved edges
+ostler graph  [selectors…] [--tree|--ids|--json]     # query the node/edge/bullet graph
 ```
 
-`ostler graph --json` is the **structural** query `search` can't do: it emits every node with its
-parsed `- key: value` bullets and resolved out-edges (plus a flat edge list), so you filter the
-graph precisely instead of by prose. Use it to:
-- **dedup before you scaffold** — `… | jq '.nodes[] | select(.bullets.code=="mod.py::Sym")'`: if a
-  node already grounds that symbol, enrich it, don't make a second one.
-- **check inventory coverage** — collect every `.bullets.code` and diff against the source symbols;
-  what's missing is undocumented (an ABC's other implementations, a non-entry module).
-- **find orphans** — a node that appears in no edge's `to` is unreachable from the surface root.
+`ostler graph` is the **structural** query `search` can't do — it walks the *typed, nested* node
+tree (every node carries its `- key: value` bullets, its resolved out-edges, and its
+`title_path`/`type_path` hierarchy), so you filter precisely instead of by prose, **without `jq`**.
+Selectors compose (AND); output is `--tree` (default), `--ids`, or `--json`:
+
+```bash
+ostler graph --surface SVC                       # the whole service, as an outline tree
+ostler graph --path 'concept:agent / field:timeout'   # relative hierarchy query (/ =descendant, > =direct)
+ostler graph --type field --under <id> --depth 1 # a node's direct children of a type
+ostler graph --bullet 'code=mod.py::Sym' --ids   # dedup: is this symbol already grounded?
+ostler graph --has-bullet code                   # coverage: every grounded node
+ostler graph --orphans                           # nodes no edge points to (unreachable)
+```
+
+- **dedup before you scaffold** — `--bullet 'code=<symbol>'`: if a node already grounds it, enrich
+  that node, don't make a second one. (`--path` for "does *this* nested node already exist?")
+- **inventory coverage** — `--has-bullet code` lists every grounded node; diff against source symbols.
+- **orphans** — `--orphans` is unreachable nodes, first-class (no `jq` walk).
 ```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
@@ -191,25 +201,35 @@ the check.
 ## The OKF UI profile — surfaces, elements, behaviors
 
 A *profile* of OKF for describing UIs, CLIs, HTTP/WS servers, and the concepts they serve as a
-navigable graph (full spec: `docs/okf-ui-profile.md`). Ostler recognizes **eleven** UI types as
-first-class Concepts — listed, searched, traced, scaffolded, formatted, and **linted**. Use these
-instead of prose when you want a machine-readable hook: enumerate a screen's components, follow
-which interaction fires on a click, or check whether a documented link still resolves.
+navigable graph (full spec: `docs/okf-ui-profile.md`). Ostler recognizes these UI types as
+first-class Concepts — listed, searched, traced, scaffolded, formatted, **linted**, and queryable
+with `ostler graph`. Use these instead of prose when you want a machine-readable hook: enumerate a
+screen's components, a concept's methods, a format's fields, or follow which interaction fires.
 
 | Role | GUI | CLI | HTTP/WS | shared |
 |---|---|---|---|---|
 | **surface** (you interact with it) | `screen` | `cli` | `server` | |
 | **element** (part of a surface) | `component` | `command` | `endpoint` | |
 | **behavior** (one event or call) | `interaction` | `invocation` | `invocation` | |
+| **member** (of a concept/format) | | | | `method`, `field` |
 | **journey** (ordered path) | | | | `flow` |
 | **noun** (domain *or* code) | | | | `concept` |
 | **artifact / data shape** | | | | `format` |
 
 **File vs section (author's choice).** A node is either its **own file** (identity = path; every
-`concept` gets one so others can link it) *or* a **`### <id>` section** under a typed `## Heading`
-inside a larger surface doc. The section's type is *implied by its heading* — no per-heading
-marker: `## Components`→`component`, `## Commands`→`command`, `## Endpoints`→`endpoint`,
-`## Interactions`→`interaction`, `## Invocations`→`invocation`.
+top-level `concept` gets one so others can link it) *or* a **section** inside a larger doc,
+identified by `path#anchor`. A section gets its type two ways — use whichever reads best:
+- **container heading** — a `### <id>` under a typed `## Heading`: `## Components`→`component`,
+  `## Commands`→`command`, `## Endpoints`→`endpoint`, `## Interactions`→`interaction`,
+  `## Invocations`→`invocation`, `## Methods`→`method`, `## Fields`→`field`.
+- **inline `type:` prefix** — `## concept: the agent node runs a turn`, `### field: timeout` — the
+  token before the first `:` is the type, the rest is a human summary.
+
+**Sections nest.** A typed section's typed descendants become its children at any depth, so a
+`concept` can hold `### method:`s, a `format` can hold `### field:`s, and `ostler graph --path
+'concept:agent / field:timeout'` walks straight to it. Put a member's precise, filterable attributes
+in its own `- key: value` bullets (`sig:`/`abstract:` for a method; `type:`/`default:`/`required:`
+for a field) — the heading is the summary, the bullets are what you query.
 
 **Where nodes live — per service, then by context.** Each service owns `docs/features/<service>/`.
 A multi-context service splits by context (`gui/screens/`, `gui/components/`, `http/`); a
@@ -286,6 +306,11 @@ mechanical fix, so a workflow node can gate on `ostler doctor` and always conver
 | `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
 | `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
 | `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
+
+**Link validation is document-wide.** `dangling-link` / `missing-anchor` are checked for **every
+link in every doc file**, not only links inside an indexed node — a broken link is broken whether or
+not the graph happens to cover it. Links **inside code** (fenced blocks and `` `inline` `` spans) are
+skipped, so `arr[i](x)` in a snippet is never mistaken for a link.
 
 **Convergence contract:** `missing-required-bullet` checks that the **key** is present, not its
 value — so `scaffold`'s stubs clear it. **`code:` / `verify:` bullets are code refs

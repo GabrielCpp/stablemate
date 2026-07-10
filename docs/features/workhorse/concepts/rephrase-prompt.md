@@ -34,7 +34,8 @@ re-states the whole task rather than assuming any prior turn is still in context
 output_keys = [o.key for o in node.outputs]
 strategies = [strategy_1, strategy_2, strategy_3]     # ordered, most- to least-faithful
 idx = min(attempt - 1, len(strategies) - 1)            # attempt 4+ repeats strategy 3
-return strategies[idx](original_prompt)
+strategy = strategies[idx]
+return strategy(original_prompt)
 ```
 
 Three fixed strategies, each strictly more aggressive at trading task fidelity for a parseable

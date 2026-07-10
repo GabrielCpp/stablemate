@@ -1,10 +1,10 @@
 ---
 type: feature
-id: stablemate-1
 slug: changes-view
 title: Changes view — per-repo tree of working-tree diffs
-area: groom
 status: implemented
+id: stablemate-1
+area: groom
 ---
 # Changes view — per-repo tree of working-tree diffs
 
@@ -51,6 +51,4 @@ file's diff; nothing else is rendered until you click.
 
 ## Related
 
-- [worker-tree](worker-tree.md) · [operator-inbox](operator-inbox.md) ·
-  design result: [../groom-redesign/README.md](../groom-redesign/README.md) ·
-  architecture overview: [../groom.md](../groom.md)
+- [worker-tree](worker-tree.md) · [operator-inbox](operator-inbox.md)

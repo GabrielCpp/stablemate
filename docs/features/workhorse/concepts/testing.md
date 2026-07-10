@@ -24,14 +24,14 @@ of the real binary.
 
 ### the claude shim (`_CLAUDE_SHIM`)
 Installed under the name `claude`, and also under whatever `--cli` name the test selects (see
-[`WorkflowRun.run`](#workflowrun)'s `cli` argument), so workhorse finds an executable by either
+[`WorkflowRun.run`](#workflowrun-drive-one-workflow-run-against-a-sandbox)'s `cli` argument), so workhorse finds an executable by either
 name.
 - **Per invocation:** reads `WORKHORSE_SHIM_DIR` and `WORKHORSE_NODE_ID` from its environment
   (workhorse sets `WORKHORSE_NODE_ID` when it starts the agent-CLI subprocess) and all of stdin.
 - **Records the call** as `<shim_dir>/calls/claude/<seq>.json` — `{seq, node_id, args, stdin, cwd}`,
   `seq` a zero-padded counter of prior recorded calls for `claude`.
 - **Tracks a per-node call index** in `<shim_dir>/call_counts/<node_id>.txt`, incremented each
-  call — drives [`mock_agent_sequence`](#workflowrun)'s "successive responses" behavior.
+  call — drives [`mock_agent_sequence`](#workflowrun-drive-one-workflow-run-against-a-sandbox)'s "successive responses" behavior.
 - **Looks up its mock** at `<shim_dir>/agent_mocks/<node_id>.json`. If the file is a JSON list
     (a sequence mock), selects `list[min(call_idx, len(list)-1)]` (the last entry repeats once
     exhausted); otherwise uses the single dict as-is. Each selected entry has `response` (str,
@@ -47,7 +47,7 @@ name.
   (`runner/agent.py`) parses to extract the agent's response text — then exits with `exit_code`.
 
 ### the generic command shim (`_COMMAND_SHIM_TEMPLATE`)
-Written per name registered via [`mock_command`](#workflowrun) (e.g. `git`, `gh`), with `CMD_NAME`
+Written per name registered via [`mock_command`](#workflowrun-drive-one-workflow-run-against-a-sandbox) (e.g. `git`, `gh`), with `CMD_NAME`
 substituted into the template at write time.
 - **Records the call** the same way as the claude shim, under `<shim_dir>/calls/<CMD_NAME>/`.
 - **Looks up its mock** at `<shim_dir>/command_mocks/<CMD_NAME>.json`. Missing file → prints a
@@ -89,7 +89,7 @@ Writes `<sandbox>/.workhorse-test/command_mocks/<name>.json` for a PATH command 
 
 ### `run(*, params=None, flow=None, cli="claude", timeout=120, extra_env=None) -> RunResult`
 Executes `workhorse --workflow <workflow> [<flow>] --runs-dir <sandbox>/.workhorse-test/runs
-[--params <json>]` as a real subprocess with `cwd=sandbox`, and returns a [`RunResult`](#runresult).
+[--params <json>]` as a real subprocess with `cwd=sandbox`, and returns a [`RunResult`](#runresult-the-outcome-of-one-workflowrunrun-call).
 - **Input:** `params: dict | None` — merged into `--params` JSON; `flow: str | None` — runs one
   named `flows:` sub-graph standalone instead of the whole graph (its params must supply every var
   the flow requires); `cli: str = "claude"` — which agent-CLI name the mocked shim answers to
@@ -154,11 +154,11 @@ failure (standard pytest-collected assertions, not custom exceptions):
   is a `dict`, every key/value pair in it must be present and equal in the parsed file (extra keys
   in the file are ignored); if `subset` is a `list`, the parsed JSON must equal it exactly.
 - `assert_step_output(result, node_id, key, expected)` — `result.step_outputs(node_id)[key] ==
-  expected` (via [`RunResult.step_outputs`](#runresult)).
+  expected` (via [`RunResult.step_outputs`](#runresult-the-outcome-of-one-workflowrunrun-call)).
 - `assert_prompt_contains(result, node_id, text)` — `result.prompt(node_id)` is non-empty and
-  contains `text` (via [`RunResult.prompt`](#runresult)).
+  contains `text` (via [`RunResult.prompt`](#runresult-the-outcome-of-one-workflowrunrun-call)).
 - `assert_command_called(result, command, args_contain)` — at least one of `result.calls(command)`
-  (via [`RunResult.calls`](#runresult)) has an arg containing `args_contain`.
+  (via [`RunResult.calls`](#runresult-the-outcome-of-one-workflowrunrun-call)) has an arg containing `args_contain`.
 
 - code: `workhorse/workhorse/testing.py::assert_file`, `workhorse/workhorse/testing.py::assert_file_contains`, `workhorse/workhorse/testing.py::assert_json_file`, `workhorse/workhorse/testing.py::assert_step_output`, `workhorse/workhorse/testing.py::assert_prompt_contains`, `workhorse/workhorse/testing.py::assert_command_called`
 

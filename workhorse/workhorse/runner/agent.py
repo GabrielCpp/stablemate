@@ -12,7 +12,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from ..config import resolve_power
+from ..config import resolve_backend_default, resolve_power
 from ..graph.nodes import AgentNode
 
 try:
@@ -495,17 +495,20 @@ def _resolve_power_settings(
 ) -> tuple[str | None, str | None]:
     """Resolve a node's abstract ``power`` into concrete backend settings.
 
-    User config wins when present. If the config or the specific power/backend entry
-    is unset, model falls through to legacy run-level env overrides and effort stays
-    unset so the harness default applies.
+    Per field, the power mapping wins when present. Model then falls through to the
+    run-level env overrides, then the config's ``[default.<backend>]`` table; effort
+    falls through to that table directly (it has no env override). Anything still
+    unset stays None so the harness default applies.
     """
     mapped = resolve_power(power, backend_name)
+    fallback = resolve_backend_default(backend_name)
     model = (
         mapped.model
         or environ.get("AGENT_MODEL")
         or environ.get("AGENT_CLAUDE_MODEL")
+        or fallback.model
     )
-    return model, mapped.effort
+    return model, mapped.effort or fallback.effort
 
 
 def run_agent(

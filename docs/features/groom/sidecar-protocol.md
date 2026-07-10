@@ -1,10 +1,10 @@
 ---
 type: feature
-id: stablemate-4
 slug: sidecar-protocol
 title: Sidecar protocol — two-way groom to container channel
-area: groom
 status: implemented
+id: stablemate-4
+area: groom
 ---
 # Sidecar protocol — two-way groom to container channel
 
@@ -66,5 +66,4 @@ change needed.
 
 ## Related
 
-- [sidecar-autostart](sidecar-autostart.md) · [operator-inbox](operator-inbox.md) ·
-  signal model: [../groom.md](../groom.md)
+- [sidecar-autostart](sidecar-autostart.md) · [operator-inbox](operator-inbox.md)

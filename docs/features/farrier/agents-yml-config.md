@@ -37,7 +37,7 @@ and reachable as `repo.<key>` in library templates.
   the per-run `repo.*` template context, but pinned to `"."` in the generated context manifest
   (`Renderer.context_manifest`) so the committed adapter is machine-independent.
 
-### agents    <!-- required -->
+### agents
 - type: `mapping` of `codex`/`claude`/`copilot` → `bool`, **or** a `list` of the enabled names —
   required: yes — default: none (installing errors: `"No agents selected in config"`)
 

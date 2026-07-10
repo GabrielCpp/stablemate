@@ -53,6 +53,15 @@ def load_config() -> dict[str, Any]:
     return tomllib.loads(path.read_text())
 
 
+def _mapping_from_table(table: dict[str, Any]) -> PowerMapping:
+    model = table.get("model")
+    effort = table.get("effort")
+    return PowerMapping(
+        model=model if isinstance(model, str) and model else None,
+        effort=effort if isinstance(effort, str) and effort else None,
+    )
+
+
 def resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping:
     if not power:
         return PowerMapping()
@@ -66,12 +75,25 @@ def resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = 
     backend_table = level_table.get(backend) or level_table.get("default")
     if not isinstance(backend_table, dict):
         return PowerMapping()
-    model = backend_table.get("model")
-    effort = backend_table.get("effort")
-    return PowerMapping(
-        model=model if isinstance(model, str) and model else None,
-        effort=effort if isinstance(effort, str) and effort else None,
-    )
+    return _mapping_from_table(backend_table)
+
+
+def resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping:
+    """Per-backend default model/effort from the top-level ``[default.<backend>]`` table.
+
+    The configurable counterpart of a backend's hardcoded ``default_model``: it fills
+    whatever a node's power tier (or the absence of one) left unset, so power-less
+    nodes stop silently falling through to the harness's own default model. Missing
+    table/backend sections yield an empty mapping, never an error.
+    """
+    data = cfg if cfg is not None else load_config()
+    default_table = data.get("default")
+    if not isinstance(default_table, dict):
+        return PowerMapping()
+    backend_table = default_table.get(backend)
+    if not isinstance(backend_table, dict):
+        return PowerMapping()
+    return _mapping_from_table(backend_table)
 
 
 def get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any:

@@ -71,11 +71,24 @@ def _build_parser() -> argparse.ArgumentParser:
     qy.add_argument("arg")
     qy.add_argument("--json", action="store_true")
 
-    gp = sub.add_parser("graph", help="dump every node + edges + bullets to filter on")
-    gp.add_argument("--type", dest="etype",
-                    help=f"scope to one node type ({', '.join(t.name for t in registry.UI_TYPES)})")
+    gp = sub.add_parser("graph", help="query the node/edge/bullet graph (nested + typed)")
     gp.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
-    gp.add_argument("--json", action="store_true")
+    gp.add_argument("--type", dest="etype", help="nodes of this type (concept, field, method, …)")
+    gp.add_argument("--title", help="title contains this text")
+    gp.add_argument("--path", help="hierarchy path, e.g. 'concept:agent / field:timeout' (/ = "
+                                   "descendant, > = direct child; each segment is type:title)")
+    gp.add_argument("--under", metavar="ID", help="only nodes contained under this node id")
+    gp.add_argument("--depth", type=int, help="with --under: cap descent to N levels")
+    gp.add_argument("--has-bullet", dest="has_bullet", metavar="KEY",
+                    help="nodes that declare this bullet")
+    gp.add_argument("--bullet", metavar="KEY=VAL", help="nodes whose KEY bullet contains VAL")
+    gp.add_argument("--links-to", dest="links_to", metavar="ID",
+                    help="nodes with an out-edge to this node")
+    gp.add_argument("--orphans", action="store_true", help="nodes no edge points to")
+    out = gp.add_mutually_exclusive_group()
+    out.add_argument("--tree", action="store_true", help="indented outline (default)")
+    out.add_argument("--ids", action="store_true", help="bare node ids, one per line")
+    out.add_argument("--json", action="store_true", help="filtered {nodes, edges}")
 
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
@@ -446,8 +459,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         print("\n".join(lines))
         return 0 if found else 1
     if c == "graph":
-        data = graph_mod.build(graph, etype=args.etype, surface=args.surface)
-        print(json.dumps(data) if args.json else graph_mod.render_text(data))
+        data = graph_mod.build(graph, surface=args.surface)
+        sel = graph_mod.select(
+            data, node_type=args.etype, title=args.title, path=args.path, under=args.under,
+            depth=args.depth, has_bullet=args.has_bullet, bullet=args.bullet,
+            links_to=args.links_to, orphans=args.orphans)
+        if args.json:
+            ids = {n["id"] for n in sel}
+            print(json.dumps({"counts": {"nodes": len(sel)}, "nodes": sel,
+                              "edges": [e for e in data["edges"] if e["from"] in ids]}))
+        elif args.ids:
+            print(graph_mod.render_ids(sel))
+        else:
+            print(graph_mod.render_tree(sel))
         return 0
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)

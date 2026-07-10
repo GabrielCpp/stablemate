@@ -298,51 +298,62 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                 _check_ui_file(graph, path, f)
 
     resolver = links_mod.LinkResolver(graph)
-    seen: set = set()
+
+    # required-bullet checks stay per-node — they need the node's declared type + schema.
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
         if uitype is None:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
-        where = node.id
-
         for bk in uitype.bullet_keys:
             if bk.required and bk.key not in node.meta:
                 f.append(Finding("error", "missing-required-bullet",
-                                 f"{where}: {node.type} missing required `{bk.key}:`",
+                                 f"{node.id}: {node.type} missing required `{bk.key}:`",
                                  path=rel, line=node.line, ref=bk.key,
                                  suggestion=f"- {bk.key}:", fixable=True))
 
-        # relation bullets (on/parent/extends/detail/…) — their broken link is an unresolved
-        # *relation* (more specific than a bare dangling-link); everything else is a plain link.
-        relation_hrefs: dict[str, str] = {}
+    # A broken link that comes from a relation bullet (on/parent/extends/detail/…) is the more
+    # specific `unresolved-relation`; index those (file, href) pairs so the link scan can classify.
+    relation_hrefs: dict[tuple[str, str], str] = {}
+    for node in graph.ui_nodes:
         for key in registry.RELATION_KEYS:
             for _text, href in markdown.extract_refs(node.meta.get(key, "")).links:
-                relation_hrefs[href] = key
+                relation_hrefs[(str(node.path), href)] = key
 
-        for _text, href in node.links:
-            if not links_mod.is_doc_link(href):
+    # LINK validation is **document-wide**: resolve every link in every doc file, whether or not it
+    # sits inside an indexed node — a broken link is broken either way. (Links inside code are
+    # skipped by `markdown.iter_links`.)
+    if froot is not None and froot.is_dir():
+        for path in sorted(froot.rglob("*.md")):
+            if not path.is_file() or path.name in registry.RESERVED_FILES:
                 continue
-            dedupe = (str(node.path), href)
-            if dedupe in seen:
+            rel = path.relative_to(graph.root).as_posix()
+            try:
+                body = path.read_text(encoding="utf-8")
+            except OSError:
                 continue
-            seen.add(dedupe)
-            target = resolver.resolve(node.path, href)
-            if target is None or target.resolved:
-                continue
-            if href in relation_hrefs:
-                f.append(Finding("error", "unresolved-relation",
-                                 f"{rel}: `{relation_hrefs[href]}:` target '{href}' does not "
-                                 f"resolve", path=rel, line=node.line, ref=href, fixable=True))
-            elif not target.file_exists:
-                f.append(Finding("error", "dangling-link",
-                                 f"{rel}: link '{href}' target file does not exist",
-                                 path=rel, line=node.line, ref=href, fixable=True))
-            else:
-                f.append(Finding("error", "missing-anchor",
-                                 f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
-                                 f"heading not found", path=rel, line=node.line, ref=href,
-                                 fixable=True))
+            seen: set = set()
+            for _text, href, line in markdown.iter_links(body):
+                if not links_mod.is_doc_link(href) or href in seen:
+                    continue
+                seen.add(href)
+                target = resolver.resolve(path, href)
+                if target is None or target.resolved:
+                    continue
+                rkey = relation_hrefs.get((str(path), href))
+                if rkey:
+                    f.append(Finding("error", "unresolved-relation",
+                                     f"{rel}: `{rkey}:` target '{href}' does not resolve",
+                                     path=rel, line=line, ref=href, fixable=True))
+                elif not target.file_exists:
+                    f.append(Finding("error", "dangling-link",
+                                     f"{rel}: link '{href}' target file does not exist",
+                                     path=rel, line=line, ref=href, fixable=True))
+                else:
+                    f.append(Finding("error", "missing-anchor",
+                                     f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
+                                     f"heading not found", path=rel, line=line, ref=href,
+                                     fixable=True))
 
 
 def _check_knowledge(graph: Graph, f: list[Finding]) -> None:

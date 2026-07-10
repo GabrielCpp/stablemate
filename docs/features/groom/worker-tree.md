@@ -1,10 +1,10 @@
 ---
 type: feature
-id: stablemate-3
 slug: worker-tree
 title: Worker tree — repository to worker picker
-area: groom
 status: implemented
+id: stablemate-3
+area: groom
 ---
 # Worker tree — repository to worker picker
 
@@ -43,5 +43,4 @@ idle, blocked, and finished — organised per repo.
 
 ## Related
 
-- [operator-inbox](operator-inbox.md) · [changes-view](changes-view.md) ·
-  architecture overview: [../groom.md](../groom.md)
+- [operator-inbox](operator-inbox.md) · [changes-view](changes-view.md)

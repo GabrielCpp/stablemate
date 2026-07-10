@@ -33,6 +33,22 @@ def test_unknown_type(repo: Path):
     assert finding.path == "docs/features/x.md" and finding.line == 1
 
 
+def test_link_validation_is_document_wide(repo: Path):
+    # a broken link in a PROSE section (owned by no typed node) is still caught — link-correctness
+    # is independent of the graph.
+    write(repo / "docs/features/x.md",
+          "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\nSee [gone](./nope.md).\n")
+    assert "dangling-link" in codes(_run(repo))
+
+
+def test_link_validation_skips_code(repo: Path):
+    # a `](` inside inline code or a fence is not a link — no false dangling-link.
+    write(repo / "docs/features/x.md",
+          "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\n"
+          "Inline `arr[i](nope.md)` and\n\n```\nf = g[i](also-nope.md)\n```\n")
+    assert "dangling-link" not in codes(_run(repo))
+
+
 def test_known_types_not_flagged(repo: Path):
     write(repo / "docs/features/x.md", "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n")
     assert "unknown-type" not in codes(_run(repo))

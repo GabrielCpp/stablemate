@@ -59,13 +59,45 @@ one; each is also runnable standalone via [`workhorse run <workflow> <flow>`](wo
 Every node has `id: string` (**required**) and `type: enum` (**required**, the discriminator).
 All `next`/target ids must resolve within the same graph (`terminal`/`fail` take no `next`).
 
-### agent
-Run an LLM turn. Fields: `prompt: path` (**required**, Jinja2 template); `args: map<string,string>`
-(Jinja2, rendered into the prompt; default `{}`); `outputs: list<OutputSpec>` (default `[]`);
-`power: enum{low,medium,high}|null` (default null → backend default); `timeout: float|null`
-(seconds; default `3600`; `0`/null → engine default `AGENT_RESULT_TIMEOUT_S`; `infinity`/`inf`/
-`unbounded`/`never` → no limit); `cwd: string|null` (Jinja2; default process CWD); `add_dirs:
-list<string>|string` (Jinja2; extra dirs granted; default `[]`); `next: string|null`.
+### concept: agent — run an LLM turn
+
+An `agent` node runs one LLM turn against a rendered prompt. `next: string|null`.
+
+#### field: prompt
+- type: `path`
+- required: yes
+- semantics: Jinja2 template
+
+#### field: args
+- type: `map<string,string>`
+- default: `{}`
+- semantics: Jinja2, rendered into the prompt
+
+#### field: outputs
+- type: `list<OutputSpec>`
+- default: `[]`
+
+#### field: power
+- type: `enum{low,medium,high}|null`
+- default: null → backend default
+
+#### field: timeout
+- type: `float|null`
+- default: `3600`
+- semantics: seconds; `0`/null → engine default `AGENT_RESULT_TIMEOUT_S`; `infinity`/`inf`/`unbounded`/`never` → no limit
+
+#### field: cwd
+- type: `string|null`
+- default: process CWD
+- semantics: Jinja2
+
+#### field: add_dirs
+- type: `list<string>|string`
+- default: `[]`
+- semantics: Jinja2; extra dirs granted
+
+#### field: next
+- type: `string|null`
 
 ### script
 Run a script, capturing one JSON object from stdout as its outputs. Fields: `script: path`

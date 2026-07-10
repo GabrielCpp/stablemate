@@ -67,7 +67,7 @@ generically instead of linking its real path). All three names are the *same fun
 kept as aliases for prompts written against any of the historical names.
 
 ### `prompt_ref(name="")` (aliased as `prompt_file`)
-Same shape as [`instruction_ref`](#instruction_ref-name-aliased-as-instruction_file-skill_file) but
+Same shape as [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file) but
 reads `context["_prompts"]` (the [context manifest](../context-manifest.md#prompts) prompt-id →
 path map) and its placeholder reads `f"generated {name} prompt when installed"`.
 
@@ -101,5 +101,5 @@ backends:
 All manifest-sourced values are read once at the top of `_farrier_globals` (not per-call), from the
 reserved keys a [context manifest](../context-manifest.md) sets: `_instructions`, `_prompts`,
 `_used_skills`, `_skill_dir`; `_run_dir` is read separately by
-[`get_node_output`](#get_node_output-node_id-key-default) since it names a run artifact, not a
+[`get_node_output`](#get_node_outputnode_id-key-default) since it names a run artifact, not a
 manifest field.

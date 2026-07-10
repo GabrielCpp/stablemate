@@ -6,10 +6,10 @@ status: implemented
 ---
 # `groom` — operator-gate dashboard and push notifications
 
-> **Surfaces (per-surface Concepts):** [operator-inbox](groom/operator-inbox.md) ·
-> [worker-tree](groom/worker-tree.md) · [changes-view](groom/changes-view.md) ·
-> [sidecar-protocol](groom/sidecar-protocol.md) ·
-> [sidecar-autostart](groom/sidecar-autostart.md). This doc is the architecture
+> **Surfaces (per-surface Concepts):** [operator-inbox](operator-inbox.md) ·
+> [worker-tree](worker-tree.md) · [changes-view](changes-view.md) ·
+> [sidecar-protocol](sidecar-protocol.md) ·
+> [sidecar-autostart](sidecar-autostart.md). This doc is the architecture
 > overview; each Concept above documents one as-built surface.
 
 Status: **implemented** (2026-07-06) — `stablemate/groom/` (Litestar app, in-container sidecar,

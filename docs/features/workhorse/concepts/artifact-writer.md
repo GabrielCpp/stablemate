@@ -26,7 +26,7 @@ back what it writes.
 
 Every constructor sets the same five attributes: `run_dir: Path`, `_started_at: str` (ISO-8601
 UTC, set once and preserved across a resume), `_workflow_name: str`, `_run_id: str`, and
-`_seq: int` — the monotonic checkpoint sequence (see [`write_checkpoint`](#write_checkpoint)).
+`_seq: int` — the monotonic checkpoint sequence (see [`write_checkpoint`](#write_checkpointcurrent_id-context)).
 
 ## Constructors
 
@@ -65,7 +65,7 @@ A fresh writer rooted directly at `run_dir` (no `runs_dir/<name>-<id>` derivatio
 `__init__`'s fresh-start hygiene — creates `run_dir`, drops any stale `CHECKPOINT_FILE`/
 `EVENTS_FILE`, sets `_started_at`/`_workflow_name`/`_run_id`/`_seq = 0`, and calls
 `_write_run_json(terminal=None)`. Used for a flow's nested scope (the fresh-entry branch of
-[`subscope`](#subscope)), where the run dir is a node's own subdirectory rather than a sibling of
+[`subscope`](#subscopenode_id-flow_name-resumefalse---artifactwriter)), where the run dir is a node's own subdirectory rather than a sibling of
 other runs under `runs_dir`.
 
 ### `subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
@@ -108,7 +108,7 @@ Writes the artifact for a `branch` node — routing only, no prompt/output/conte
 ### `finish(terminal)`
 Ends the run.
 1. Write `context.json` = `"{}"` — a placeholder immediately overwritten by the caller's
-   [`write_final_context`](#write_final_context); callers (`run()`, `_run_flow`) always call
+   [`write_final_context`](#write_final_contextcontext); callers (`run()`, `_run_flow`) always call
    `write_final_context` first, so this only guards a caller that doesn't.
 2. `_write_run_json(terminal=terminal)`.
 3. `_append_event(node_id="<run>", phase="terminal", terminal=terminal)`.

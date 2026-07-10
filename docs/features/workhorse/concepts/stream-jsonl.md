@@ -41,7 +41,7 @@ per-line JSON parsing, non-JSON passthrough, and the early-abort-on-cap scan. A 
     populate both keys as their CLI's events arrive.
   - `diagnostics: str` — every non-JSON line and every diagnostic `on_event` appended, newline-joined.
   - `timed_out: bool` — `True` when `stream_subprocess` timed out/was watchdog-killed **or** the
-    cap-abort path fired (see [Cap abort](#cap-abort-early-exit-on-a-spending-capurl-limit)).
+    cap-abort path fired (see [Cap abort](#cap-abort-early-exit-on-a-spending-capusage-limit)).
   - `returncode: int` — the child's exit code, verbatim from `stream_subprocess`.
 - **Raises:** nothing turn-specific — a `stream_subprocess` `Popen` failure propagates as its
   normal `OSError`.

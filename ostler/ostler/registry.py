@@ -230,11 +230,37 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", link=True),
         ),
     ),
+    # A callable on a concept/format — a nested `### method: …` or a `## Methods` child.
+    UINodeType(
+        name="method", kind="section", heading="Methods",
+        bullet_keys=(
+            BulletKey("sig"),
+            BulletKey("abstract"),
+            BulletKey("raises"),
+            BulletKey("returns"),
+            BulletKey("code", link=True),
+            BulletKey("verify", link=True),
+        ),
+    ),
+    # A typed attribute — a nested `### field: …` or a `## Fields` child.
+    UINodeType(
+        name="field", kind="section", heading="Fields",
+        bullet_keys=(
+            BulletKey("type"),
+            BulletKey("default"),
+            BulletKey("required"),
+            BulletKey("semantics"),
+        ),
+    ),
+    # A heading that names no type — promoted anyway so every section is a node (its links are
+    # captured, it nests, it's queryable) without inventing a garbage type from prose.
+    UINodeType(name="untyped", kind="section"),
 )
 
 UI_TYPES_BY_NAME: dict[str, UINodeType] = {t.name: t for t in UI_TYPES}
 # ``## Heading`` → the section-node type it contains (profile §4's implicit-type table).
-UI_HEADING_TO_TYPE: dict[str, str] = {t.heading: t.name for t in UI_TYPES if t.kind == "section"}
+UI_HEADING_TO_TYPE: dict[str, str] = {
+    t.heading: t.name for t in UI_TYPES if t.kind == "section" and t.heading}
 UI_SECTION_HEADINGS: frozenset[str] = frozenset(UI_HEADING_TO_TYPE)
 
 
