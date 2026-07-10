@@ -5,6 +5,8 @@
 #   - ostler/     -> ostler           (tends a repo's docs/ knowledge graph)
 #   - groom/      -> groom            (local dashboard + push notifications for
 #                                       workhorse operator gates)
+#   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
+#                                       lease and release test identities)
 #
 # The prompt-library *content* itself lives in a separate repository; farrier is
 # pointed at it via `farrier config set-library <path>`.
@@ -18,11 +20,11 @@
 [project]
 name = "stablemate"
 version = "0.0.0"
-description = "Workspace anchor for the workhorse-agent, farrier, ostler and groom packages (not published)."
+description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom and saddlebag packages (not published)."
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["workhorse", "farrier", "ostler", "groom"]
+members = ["workhorse", "farrier", "ostler", "groom", "saddlebag"]
 
 [dependency-groups]
 dev = [

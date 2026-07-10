@@ -25,11 +25,13 @@ install: ## Create/sync the workspace venv from the root uv.lock
 	uv sync
 
 # Serve knobs — override on the command line, e.g. `make run PORT=9000`.
-HOST ?= 127.0.0.1
+# Default 0.0.0.0 so the in-container sidecars reach groom over the docker bridge
+# (HOST=127.0.0.1 to bind loopback only). groom has no auth — trusted networks only.
+HOST ?= 0.0.0.0
 PORT ?= 8787
 
 .PHONY: run
-run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 127.0.0.1:8787)
+run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 0.0.0.0:8787)
 	uv run groom serve --host $(HOST) --port $(PORT)
 
 .PHONY: lint

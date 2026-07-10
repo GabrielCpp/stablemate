@@ -122,49 +122,58 @@ container is connected. The `safe_relpath` traversal guard moves into the sideca
   scan repopulates `WORKFLOWS`, so a host restart is near-invisible and needs no
   graceful self-exec.
 
-## Development loop: bind mount + copy-on-start
+## Development loop: editable uv tool from a bind
 
-Iterating on `groom/sidecar.py` should not require an image rebuild. Until groom
-is published to PyPI (at which point the story becomes "`pipx upgrade` +
-reload"), use a bind mount — placed **directly in the repo's `compose.yaml`**,
-not a separate override. The image is the repo's own dev/reference harness (it is
-not shipped with the `workhorse-agent` PyPI package, and third parties bring
-their own image), so there is no external consumer whose build-time immutability
-must be protected.
+Iterating on `groom/sidecar.py` should not require an image rebuild. groom is
+**not baked** into the image; it is installed at container start as an editable
+uv **tool** — the `pipx install --editable` model — from a bind of the host
+`groom/` source:
 
-The process must **not** run straight off the live bind — a mid-save on the host
-would expose partial files, and the bind carries host ownership rather than the
-`nobody`-readable perms the sidecar needs. Instead:
+- Bind the host groom source read-only, e.g. `../groom:/mnt/groom-src:ro`
+  (**directly in the repo's `compose.yaml`**, not a separate override).
+- The entrypoint runs `uv tool install --editable /mnt/groom-src --no-sources`,
+  which installs `groom-sidecar` into an isolated tool venv under
+  `HOME=/claude-state` and points it at the live bind. The install is idempotent
+  and the tool venv + uv cache persist on the `claude-state` volume, so only a
+  fresh volume's first start pays a download.
 
-- Bind the host groom source to a **read-only staging path**, e.g.
-  `/mnt/groom-src:ro`.
-- The entrypoint **copies** `/mnt/groom-src` → `/app/groom` (the location `uv run`
-  resolves the editable package from) with `chown nobody` + `a+rX`, on startup and
-  before **every** relaunch. The running copy is thus always private and
-  correctly-permissioned, and the copy is what picks up an edit.
+Two subtleties, both handled:
 
-This keeps the baked `COPY groom/` in the base Dockerfile for release; the bind
-mount only shadows it during development.
+- **`--no-sources`.** groom declares `workhorse-agent = { workspace = true }` in
+  `tool.uv.sources`, so a plain `uv sync`/`uv pip install` refuses to build it
+  outside the uv workspace. `pip`/`pipx` ignore `tool.uv.sources` entirely, and
+  `--no-sources` is uv's equivalent — it installs groom **standalone**, pulling
+  `workhorse-agent` and groom's deps from PyPI. (So groom *can* be a standalone
+  editable install; it is only `uv`'s workspace-aware resolvers that couple it.)
+- **Running off a read-only bind.** No copy is needed: the bind is world-readable,
+  `PYTHONDONTWRITEBYTECODE=1` stops `.pyc` writes into it, and a reload is done
+  manually after a save (no partial files). The editable install writes only into
+  its own tool venv, never back to the host checkout.
+
+Because it is editable, a reload just **restarts** the process — the live bind
+source is re-imported, no reinstall. Without the bind, nothing is installed and
+the container simply runs without a sidecar (the sidecar is best-effort). When
+groom eventually ships to PyPI this becomes a literal `pipx install --editable` /
+`uv tool install` from the index instead of a bind.
 
 ## Sidecar reload
 
 Reloading the sidecar to pick up edited code is a **supervised restart**, not a
-self-`execv`. The key constraint: **the recopy must happen while the sidecar is
-not running** — a process cannot cleanly copy over its own imported source and
-re-exec from it. So the entrypoint (PID 1) owns a supervising loop and the
-sidecar signals a reload by **exiting with code 3**:
+self-`execv`: a process can't cleanly re-exec from its own imported source. So
+the entrypoint (PID 1) owns a supervising loop and the sidecar signals a reload
+by **exiting with code 3**. Because the install is *editable* off the bind, the
+restart alone picks up the edit — no copy, no reinstall:
 
 ```sh
-copy_groom() {
-  cp -a /mnt/groom-src/. /app/groom/      # or rsync --delete
-  chown -R nobody:nogroup /app/groom
-}
+# once, at startup (installs groom-sidecar into an isolated tool venv, editable
+# off the live bind; --no-sources pulls workhorse-agent + deps from PyPI):
+gosu nobody env HOME=/claude-state UV_TOOL_BIN_DIR=/claude-state/.local/bin \
+  uv tool install --editable /mnt/groom-src --no-sources
 
 run_sidecar() {
   while :; do
-    copy_groom
     gosu nobody env HOME=/claude-state PYTHONDONTWRITEBYTECODE=1 \
-      uv run groom-sidecar
+      /claude-state/.local/bin/groom-sidecar
     rc=$?
     [ "$rc" = 3 ] || break                # 3 = reload request; anything else = stop
   done
@@ -174,19 +183,18 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
 
 - **Trigger is a manual, socket-broadcast reload**, not `inotify` on the source.
   groom sends a `reload` command over the sockets it already holds; the sidecar
-  cleanly closes and `exit(3)`s; the entrypoint recopies the edited source and
-  relaunches; the new process re-dials and re-advertises. Not watching the source
-  removes the `__pycache__` feedback loop, debouncing, and compile-guarding that
-  automatic detection would need. (`PYTHONDONTWRITEBYTECODE=1` above is belt-and-
-  suspenders against pyc churn.)
+  cleanly closes and `exit(3)`s; the entrypoint restarts it and the new process
+  re-imports the live bind source, then re-dials and re-advertises. Not watching
+  the source removes the `__pycache__` feedback loop, debouncing, and
+  compile-guarding that automatic detection would need. (`PYTHONDONTWRITEBYTECODE=1`
+  above also keeps the read-only bind free of `.pyc` churn.)
 - **Fleet-wide by construction.** Because groom holds a socket to every sidecar,
   one edit + one broadcast reloads the whole fleet — or a single container, since
   the operator picks the blast radius. Reloading does **not** perturb running
   workflows: the sidecar is a background helper; workhorse in the foreground never
   notices.
-- **Manual timing removes the race.** The operator reloads *after* saving, so a
-  recopy never races a half-written file; the stage-and-`mv` atomicity precaution
-  is optional.
+- **Manual timing removes the race.** The operator reloads *after* saving, so the
+  restart never re-imports a half-written file.
 - **Bad-code recovery.** If a reload lands on code that fails to import, the
   sidecar exits non-3, the loop stops, and it stays down (the safe failure — no
   restart storm). Recovery without a shell into the container: `docker restart
@@ -265,9 +273,15 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
   send lock) + the `CONNECTIONS` registry.
 - `groom/groom/app.py` — `dashboard_sidecar` (`/sidecar`), the socket-preferred
   `/files`/`/file`/`/diff`, `/reload`, `_apply_hello`.
-- `workhorse/entrypoint.sh` — `copy_groom` + the `run_sidecar` exit-3 supervising
-  loop. `workhorse/compose.yaml` — the read-only `../groom:/mnt/groom-src` dev
-  bind. `groom/pyproject.toml` — the `websockets` dependency.
+- `workhorse/entrypoint.sh` — `uv tool install --editable /mnt/groom-src
+  --no-sources` at startup, then the `run_sidecar` exit-3 supervising loop
+  (restart-only; the editable install makes edits live). `workhorse/Dockerfile`
+  — does **not** bake groom (drops `COPY groom/` + `--package groom`); groom is
+  the editable tool installed at runtime. `workhorse/compose.yaml` — the
+  read-only `../groom:/mnt/groom-src` bind; `farrier`'s generated compose
+  (`farrier/farrier/install.py`) emits the same bind commented, gated on
+  `GROOM_SRC`, so a consuming repo (e.g. predykt) can install the sidecar.
+  `groom/pyproject.toml` — the `websockets` dependency.
 - Tests: `groom/tests/test_sidecar_hub.py`, `test_sidecar_session.py`, and the
   socket-path/`/reload`/`hello` cases in `test_app.py`.
 

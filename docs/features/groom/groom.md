@@ -129,10 +129,11 @@ consuming repo's `.agents/local.compose.yaml`) adds `extra_hosts: ["host.docker.
 to each workflow service, so every workflow container can always reach a loopback-bound `groom` on
 the host at a fixed hostname regardless of which docker network the compose project uses (this
 mapping is Linux-only-relevant; Docker Desktop on Mac/Windows already resolves
-`host.docker.internal` via its VM proxy). `groom` itself keeps binding `127.0.0.1` only by default
-(`serve()` refuses a non-loopback `--host` without `--allow-non-loopback`) — `host.docker.internal`
-resolves to the host's own loopback from inside the container via the gateway route, so this
-doesn't require exposing `groom` beyond the host.
+`host.docker.internal` via its VM proxy). `groom` **defaults to binding `0.0.0.0`** so the in-container sidecars can reach
+it over the docker bridge (`host.docker.internal` → the bridge gateway on Linux, not loopback);
+since groom has no auth, `serve()` prints a one-line exposure warning on any non-loopback bind
+(`--allow-non-loopback` silences it, `--host 127.0.0.1` restores loopback-only). Run it only on
+a trusted machine.
 
 ## Architecture — package layout
 
@@ -233,7 +234,9 @@ lazily fetched from `/diff/{container_id}` and rendered with the vendored `diff2
 - Container genuinely removed (not just stopped) → no automatic recovery; see Non-goals.
 - Secrets in container env → read server-side only for the specific known keys `groom` needs
   (repo/container identity), never serialized into any API/websocket/log output.
-- Non-loopback exposure → `groom serve` hard-refuses without `--allow-non-loopback`.
+- Non-loopback exposure → default now, so the sidecars can reach the host over the docker
+  bridge; `groom serve` prints an exposure warning on any non-loopback bind (no auth), and
+  `--host 127.0.0.1` restores loopback-only.
 - Sidecar unreachable/crashed/missing, or `groom` itself not running → must be (and is) a pure
   no-op for the workflow; the wait script's own `inotify` loop and exit path never depend on
   either.
@@ -262,6 +265,7 @@ second submission is rejected once the first has been consumed. Stop `groom`, le
 container running, and confirm its behavior and eventual exit code are completely unaffected
 (sidecar and backstop pushes fail silently). Restart `groom` against a still-blocked container
 that existed before `groom` started and confirm the startup reconciliation scan picks it up.
-Confirm `groom serve --host 0.0.0.0` (no `--allow-non-loopback`) refuses to bind. Confirm
+Confirm `groom serve` (default `0.0.0.0`) binds and prints the exposure warning, and that
+`groom serve --host 127.0.0.1` binds loopback-only without a warning. Confirm
 `workhorse`'s own `pyproject.toml` and `main.py` are untouched by this package (`git diff --stat`
 scoped to `stablemate/workhorse/` should be empty).
