@@ -12,6 +12,18 @@ groom and each workflow container talk to each other through the in-container
 `groom-sidecar`. The channel is **bidirectional**: the container pushes events
 up to groom, and groom queries the container's sidecar back down.
 
+> **Superseded as the primary channel.** The steady-state channel is now the
+> persistent WebSocket session in
+> [sidecar-live-sessions](sidecar-live-sessions.md): the sidecar advertises
+> full state on connect and streams `progress`/`blocked` over the socket, and
+> groom serves the Files/Diff panels via `getTree`/`getFile`/`getDiff` RPC over
+> the same socket instead of `docker exec … --query` + throwaway volume reads.
+> What remains of the HTTP path below is **residual best-effort**: the one-shot
+> `exited` notice the entrypoint fires after workhorse returns, and the
+> `await_operator.py` backstop POST to `/push/blocked`. The `--query` snapshot
+> is still the sidecar's `hello` payload, and the volume reads are still the
+> fallback for a container with no live sidecar.
+
 ## Container → host (fire-and-forget push)
 
 - `groom-sidecar` watches `/workspace` + `/runs` with `inotify` and POSTs

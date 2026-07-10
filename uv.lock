@@ -397,6 +397,7 @@ source = { editable = "groom" }
 dependencies = [
     { name = "inotify-simple" },
     { name = "litestar", extra = ["standard"] },
+    { name = "websockets" },
     { name = "workhorse-agent" },
 ]
 
@@ -410,6 +411,7 @@ requires-dist = [
     { name = "inotify-simple", specifier = ">=1.3.5" },
     { name = "litestar", extras = ["standard"], specifier = ">=2.10" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "websockets", specifier = ">=13" },
     { name = "workhorse-agent", editable = "workhorse" },
 ]
 provides-extras = ["test"]

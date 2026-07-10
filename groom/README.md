@@ -13,10 +13,15 @@ a container has genuinely stopped.
 ## How it works
 
 - Each workflow container runs a tiny in-container sidecar, `groom-sidecar`,
-  that watches its own `/workspace` and `/runs` mounts with `inotify` and
-  pushes fire-and-forget HTTP updates to the host's `groom` process over
-  `host.docker.internal`. Pushes are best-effort and silent on failure —
-  a container with no `groom` listening behaves exactly as it does today.
+  that watches its own `/workspace` and `/runs` mounts with `inotify` and holds
+  one persistent WebSocket open to the host's `groom` (dialing out over
+  `host.docker.internal`, so no inbound reachability is needed). It advertises
+  full state on connect, streams `progress`/`blocked` deltas, and serves the
+  Files/Diff panels from local disk via `getTree`/`getFile`/`getDiff` RPC over
+  the same socket. The connection is best-effort and re-syncs on reconnect —
+  a container with no `groom` listening behaves exactly as it does today. See
+  `docs/features/groom/sidecar-live-sessions.md` for the message schema and the
+  local `reload` dev loop.
 - `groom` itself holds all state in memory (no database, no broker) and
   pushes updates to open browser tabs over a websocket using htmx +
   htmx-ext-ws. Gate questions render as Markdown (`marked`, sanitized with

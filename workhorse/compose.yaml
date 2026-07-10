@@ -79,6 +79,19 @@ services:
       #   source: ${WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}
       #   target: /mnt/workspace-host
 
+      # Dev source shadow for the in-container groom-sidecar. The host groom/
+      # source is bind-mounted read-only; entrypoint.sh copies it to /app/groom
+      # (chowned to nobody) before every sidecar launch, so edits reach the
+      # sidecar without an image rebuild — a `reload` over the socket (or a
+      # `docker restart`) picks them up. This shadows the baked-in `COPY groom/`
+      # only during development; a released/third-party image has no such bind,
+      # and copy_groom then no-ops onto the baked source. Read-only so a
+      # container can never write back into the repo checkout.
+      - type: bind
+        source: ../groom
+        target: /mnt/groom-src
+        read_only: true
+
       # Agent working tree (repo clones, branches, commits) — PERSISTS across
       # container restarts and reboots so in-progress work is never lost.
       - type: volume

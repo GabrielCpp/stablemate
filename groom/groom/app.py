@@ -17,7 +17,7 @@ from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.static_files import create_static_files_router
 
-from . import discovery, docker_io, render, state
+from . import discovery, docker_io, render, sidecar_hub, state
 from .gates import answer_gate
 from .models import GateInfo, WorkflowContainer, WorkflowState
 
@@ -88,12 +88,33 @@ async def repos() -> Response:
     return Response(content=render.render_repo_menu(resolved), media_type=MediaType.HTML)
 
 
+async def _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | None:
+    """Serve a data-plane read from the container's live sidecar socket, or
+    ``None`` when no sidecar is connected or the RPC fails — the caller then
+    falls back to the throwaway-container volume read. Preferring the socket is
+    what collapses the per-read container-create latency to a local-disk read.
+    """
+    conn = sidecar_hub.get(container_id)
+    if conn is None:
+        return None
+    try:
+        return await conn.rpc(method, params)
+    except sidecar_hub.SidecarError:
+        return None
+
+
 @get("/files/{container_id:str}", include_in_schema=False)
 async def files(container_id: str, repo: str = "") -> Response:
     """Newline-separated repo-relative file paths for one checkout, fetched
     client-side and turned into a collapsible tree by dashboard.html. ``repo``
     is the volume-relative checkout dir from the picker (empty = volume root).
+    Served from the live sidecar when one is connected; otherwise from a
+    throwaway volume read.
     """
+    served = await _sidecar_rpc(container_id, "getTree", {"repo": repo})
+    if served is not None:
+        return Response(content="\n".join(served.get("paths") or []), media_type=MediaType.TEXT)
+
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     if not volume:
@@ -106,10 +127,15 @@ async def files(container_id: str, repo: str = "") -> Response:
 async def file_content(container_id: str, repo: str = "", path: str = "") -> Response:
     """Raw text of one file in a checkout, fetched client-side and
     syntax-highlighted by extension (highlight.js) in dashboard.html. The
-    combined ``repo/path`` runs through ``safe_relpath`` in docker_io, so a
-    crafted path can't escape the mounted volume. "" on any failure or missing
-    file — the viewer shows an empty state.
+    combined ``repo/path`` runs through the traversal guard (``safe_relpath`` in
+    the sidecar or docker_io), so a crafted path can't escape the mounted
+    volume. "" on any failure or missing file — the viewer shows an empty state.
+    Served from the live sidecar when one is connected; otherwise a volume read.
     """
+    served = await _sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})
+    if served is not None:
+        return Response(content=served.get("content") or "", media_type=MediaType.TEXT)
+
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     rel = f"{repo}/{path}".lstrip("/") if repo else path
@@ -140,6 +166,10 @@ async def diff(container_id: str, repo: str = "") -> Response:
     in the browser against the raw unified diff text. ``repo`` is the
     volume-relative checkout dir from the picker (empty = first repo found).
     """
+    served = await _sidecar_rpc(container_id, "getDiff", {"repo": repo})
+    if served is not None:
+        return Response(content=served.get("diff") or "", media_type=MediaType.TEXT)
+
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     if not volume:
@@ -313,6 +343,122 @@ async def dashboard_ws(socket: WebSocket) -> None:
         state.remove_client(queue)
 
 
+async def _apply_hello(container_id: str, data: dict) -> None:
+    """Fold a sidecar's on-connect ``hello`` into the fleet. Re-advertising is
+    authoritative for a connected container, so gates are rebuilt from the
+    snapshot rather than merged — a reconnect after a groom restart self-heals
+    to exactly the container's current state. ``_ensure_volumes`` still fills
+    the docker-level bits (workflow type, volume names) the sidecar can't know,
+    once, for the answer/fallback paths.
+    """
+    identity = data.get("identity") or {}
+    snapshot = data.get("snapshot") or {}
+    await _ensure_volumes(container_id)
+    wf = state.upsert_workflow(
+        container_id,
+        name=identity.get("name"),
+        repo_name=identity.get("repo_name"),
+        repo_branch=identity.get("repo_branch"),
+    )
+    wf.current_node = snapshot.get("current_node") or wf.current_node
+    wf.gates.clear()
+    if snapshot.get("terminal"):
+        wf.state = WorkflowState.FINISHED
+    else:
+        for gate in snapshot.get("gates") or []:
+            file_path = str(gate.get("file_path", ""))
+            if not file_path:
+                continue
+            wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
+        wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
+    await _broadcast_shell()
+
+
+async def _apply_socket_progress(container_id: str, data: dict) -> None:
+    state.upsert_workflow(container_id, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
+    await _broadcast_shell()
+
+
+async def _apply_socket_blocked(container_id: str, data: dict) -> None:
+    file_path = str(data.get("file_path", ""))
+    if not file_path:
+        return
+    question = str(data.get("question", ""))
+    wf = state.upsert_workflow(container_id, state=WorkflowState.BLOCKED)
+    wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
+    fragment = render.render_shell_data(_all_workflows(), oob=True)
+    fragment += render.render_notify_script(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
+    await state.broadcast(fragment)
+
+
+@websocket("/sidecar")
+async def dashboard_sidecar(socket: WebSocket) -> None:
+    """The container-dialed data-plane socket (distinct from the browser
+    ``/ws``): the sidecar is the client, so no inbound reachability into the
+    container is needed. The first ``hello`` establishes identity and registers
+    the connection in :mod:`groom.sidecar_hub`; thereafter this loop applies
+    streamed ``progress``/``blocked`` deltas and resolves the ``rpc_result``
+    replies to the ``getTree``/``getFile``/``getDiff`` requests the panel
+    handlers issue. On disconnect the connection is unregistered and its pending
+    RPCs fail fast to the volume-read fallback.
+    """
+    await socket.accept()
+    conn: sidecar_hub.SidecarConnection | None = None
+    try:
+        while True:
+            data = await socket.receive_json()
+            if not isinstance(data, dict):
+                continue
+            mtype = data.get("type")
+            if mtype == "hello":
+                container_id = str((data.get("identity") or {}).get("container_id", ""))[:12]
+                if not container_id:
+                    continue
+                conn = sidecar_hub.SidecarConnection(container_id, socket)
+                sidecar_hub.register(conn)
+                await _apply_hello(container_id, data)
+            elif conn is None:
+                continue  # ignore anything before hello establishes identity
+            elif mtype == "rpc_result":
+                conn.resolve(
+                    str(data.get("id", "")),
+                    ok=bool(data.get("ok")),
+                    data=data.get("data"),
+                    error=str(data.get("error", "")),
+                )
+            elif mtype == "progress":
+                await _apply_socket_progress(conn.container_id, data)
+            elif mtype == "blocked":
+                await _apply_socket_blocked(conn.container_id, data)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if conn is not None:
+            sidecar_hub.unregister(conn)
+
+
+@post("/reload", include_in_schema=False)
+async def reload(container_id: str = "") -> dict:
+    """Broadcast a ``reload`` to connected sidecars (all, or one when
+    ``container_id`` is given). Each sidecar closes and exits with code 3; the
+    container entrypoint recopies the edited source and relaunches. A no-op for
+    a container without a live socket — reload is a dev-loop convenience, never
+    workflow-critical.
+    """
+    targets = [container_id] if container_id else sidecar_hub.connected_ids()
+    reloaded = 0
+    for cid in targets:
+        conn = sidecar_hub.get(cid)
+        if conn is None:
+            continue
+        try:
+            await conn.send_reload()
+            reloaded += 1
+        except Exception:  # noqa: BLE001 - a dead socket just means nothing to reload there
+            pass
+    return {"ok": True, "reloaded": reloaded}
+
+
 # Held module-side so the background scan task isn't garbage-collected while it
 # runs (asyncio keeps only a weak reference to bare tasks).
 _scan_task: asyncio.Task | None = None
@@ -356,6 +502,8 @@ def create_app() -> Litestar:
             push_blocked,
             push_exited,
             dashboard_ws,
+            dashboard_sidecar,
+            reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
         on_startup=[_spawn_scan],

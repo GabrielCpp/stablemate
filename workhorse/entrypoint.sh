@@ -64,13 +64,43 @@ gosu nobody env HOME="$CLAUDE_HOME" git config --global user.name "${GIT_AUTHOR_
 gosu nobody env HOME="$CLAUDE_HOME" uv run python3 -c \
     "from workhorse.scriptutil import checkout_workspace; checkout_workspace()"
 
-# Launch the groom-sidecar watcher in the background, ahead of the main run
-# command below. It only ever observes /workspace + /runs and pushes
-# fire-and-forget updates to a host-side `groom` dashboard (if one is
-# listening); it never affects this script's own exit code. stdout/stderr are
-# discarded so a noisy or crashing sidecar never interleaves with or pollutes
-# the workflow's own logs.
-gosu nobody env HOME="$CLAUDE_HOME" uv run groom-sidecar >/dev/null 2>&1 &
+# Launch the groom-sidecar session in the background, ahead of the main run
+# command below. It only ever observes /workspace + /runs and holds a WebSocket
+# to a host-side `groom` dashboard (if one is listening); it never affects this
+# script's own exit code. stdout/stderr are discarded so a noisy or crashing
+# sidecar never interleaves with or pollutes the workflow's own logs.
+#
+# Dev source shadow: in the repo's own compose harness the host groom/ source is
+# bind-mounted read-only at /mnt/groom-src, so edits reach the sidecar without
+# an image rebuild. The process must never run straight off that bind — a
+# mid-save would expose partial files and the bind carries host ownership, not
+# the nobody-readable perms the sidecar needs. So copy it into /app/groom (the
+# location `uv run` resolves the editable package from), chowned to nobody,
+# before every launch. When the bind is absent (a released image, or a third
+# party's own image) copy_groom is a no-op and the baked-in groom is used.
+copy_groom() {
+    if [ -d /mnt/groom-src ]; then
+        cp -a /mnt/groom-src/. /app/groom/
+        chown -R nobody:nogroup /app/groom
+    fi
+}
+
+# Supervised reload: the recopy must happen while the sidecar is NOT running —
+# a process can't cleanly copy over its own imported source and re-exec from it.
+# So this shell (PID 1) owns the loop and the sidecar signals a reload by
+# exiting with code 3 (groom sends it a `reload` over the socket it already
+# holds). Any other exit stops the loop, so a reload that lands on unimportable
+# code fails safe — the sidecar stays down rather than restart-storming; a
+# `docker restart` reruns this entrypoint and recopies the now-fixed source.
+run_sidecar() {
+    while :; do
+        copy_groom
+        gosu nobody env HOME="$CLAUDE_HOME" PYTHONDONTWRITEBYTECODE=1 \
+            uv run groom-sidecar >/dev/null 2>&1 && rc=0 || rc=$?
+        [ "$rc" = 3 ] || break
+    done
+}
+run_sidecar &
 
 # Run workhorse in the background (not `exec`) so this shell survives its exit
 # and can fire a one-shot "workflow exited" push to groom. The container tears
