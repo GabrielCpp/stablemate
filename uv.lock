@@ -285,7 +285,7 @@ wheels = [
 
 [[package]]
 name = "farrier"
-version = "1.5.1"
+version = "1.6.0"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -1495,6 +1495,7 @@ version = "0.1.0"
 source = { editable = "saddlebag" }
 dependencies = [
     { name = "keyring" },
+    { name = "platformdirs" },
 ]
 
 [package.optional-dependencies]
@@ -1509,6 +1510,7 @@ vault = [
 requires-dist = [
     { name = "hvac", marker = "extra == 'vault'", specifier = ">=2.0" },
     { name = "keyring", specifier = ">=25.0" },
+    { name = "platformdirs", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
 ]
 provides-extras = ["vault", "test"]

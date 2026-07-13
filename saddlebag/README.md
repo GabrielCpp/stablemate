@@ -30,8 +30,14 @@ pipx install saddlebag                 # OS keyring backend
 pipx install 'saddlebag[vault]'        # + HashiCorp Vault, for hosts with no keyring
 ```
 
-Requires Python ≥ 3.12. Pool metadata lives in a local SQLite file
-(`~/.local/share/saddlebag/pool.db` by default, overridable via `SADDLEBAG_DB`).
+Requires Python ≥ 3.12. Pool metadata lives in a local SQLite file whose location
+follows each OS's convention (via `platformdirs`), overridable with `SADDLEBAG_DB`:
+
+| OS | Default pool location |
+|---|---|
+| Linux | `~/.local/share/saddlebag/pool.db` (or `$XDG_DATA_HOME`) |
+| macOS | `~/Library/Application Support/saddlebag/pool.db` |
+| Windows | `%LOCALAPPDATA%\saddlebag\pool.db` |
 
 ---
 
@@ -74,6 +80,14 @@ operating systems; Linux's Secret Service exposes a `preferred_collection` D-Bus
 hook, but Keychain and Credential Manager have no equivalent, so relying on it would
 be a Linux-only path that silently no-ops elsewhere.
 
+**Per-credential keys are project-qualified.** Within that service, each secret's key
+is `project/id` (or the bare `id` when unscoped). The keyring is one global namespace,
+so this is what lets two *separate per-project pools* — e.g. a repo-local
+`SADDLEBAG_DB` in each of two checkouts — both mint `cred-001` without one's password
+clobbering the other's: they resolve to `repo-a/cred-001` and `repo-b/cred-001`. The
+key is derived from the credential's own stored project, so `acquire`/`remove`/`doctor`
+find the secret regardless of the directory you run them from.
+
 > **Vault mode shares secrets, not the pool.** The metadata and lease table still
 > live in the local `pool.db`, so two machines pointed at one Vault share passwords
 > but keep independent pools and independent leases. A genuinely shared, collision-
@@ -93,6 +107,7 @@ A test identity with metadata the AI can reason over:
   "id":        "cred-007",
   "username":  "admin@staging.example.com",
   "env":       "staging",
+  "project":   "checkout-web",
   "roles":     ["admin", "billing"],
   "features":  ["mfa_enabled", "eu_region"],
   "surface":   "checkout/login",
@@ -125,15 +140,26 @@ even if nobody released it, so a crashed run cannot strand an identity forever.
 # Add a credential (the password only ever arrives on stdin)
 printf '%s' "$PASSWORD" | saddlebag add \
   --env staging \
+  --project checkout-web \
   --username admin@staging.example.com \
   --password-stdin \
   --roles admin billing \
   --features mfa_enabled eu_region \
   --surface checkout/login
 
+# Or import the password from a variable in a .env file
+saddlebag add \
+  --env staging \
+  --username admin@staging.example.com \
+  --password-env-file app.env --password-var STAGING_ADMIN_PASSWORD \
+  --roles admin billing \
+  --surface checkout/login
+
 # List the pool (never emits passwords)
-saddlebag list
+saddlebag list                               # scoped to the current project (see below)
 saddlebag list --env staging --json
+saddlebag list --project checkout-web        # a different project
+saddlebag list --all-projects                # the whole pool, unscoped
 
 # Remove a credential and its password
 saddlebag remove cred-007
@@ -141,6 +167,51 @@ saddlebag remove cred-007
 # Health check — store reachable? locked or stale leases? orphaned metadata?
 saddlebag doctor
 ```
+
+#### Project scoping
+
+A credential belongs to a **project**, and by default that project is inferred
+from where you run saddlebag — the enclosing git repository's name (stable from
+any subdirectory), or the current directory's name outside a repo. So inside the
+`stablemate` checkout, `saddlebag add` tags the new credential `stablemate` and
+`saddlebag list` / `saddlebag scan` show only that project's credentials, with no
+flag needed.
+
+Override it explicitly with `--project NAME`, opt a credential out with
+`--project ''`, and ignore scoping entirely with `--all-projects`:
+
+```bash
+saddlebag add --username … --env staging …        # project inferred, e.g. stablemate
+saddlebag add --username … --project checkout-web  # explicit project
+saddlebag list                                     # only the current project
+saddlebag list --all-projects                      # every project
+```
+
+#### Importing from a `.env`
+
+A credential is a *structured identity* — username, env, roles, features, surface —
+but a `.env` is a flat `KEY=value` list that holds only the secret. It carries none
+of that metadata. So you import **one variable at a time**: the `.env` supplies the
+password via `--password-env-file`/`--password-var`, and every piece of metadata is
+supplied as a flag on the same `add` command.
+
+```bash
+# app.env  — real-world .env: secrets only, no saddlebag metadata
+#   DATABASE_URL=postgres://localhost/app
+#   STAGING_ADMIN_PASSWORD="s3kr#t with spaces"
+#   STRIPE_KEY=sk_test_123
+
+saddlebag add \
+  --username admin@staging.example.com --env staging \
+  --roles admin billing --surface checkout/login \
+  --password-env-file app.env --password-var STAGING_ADMIN_PASSWORD
+```
+
+There is no bulk `import` command and a `.env` cannot describe several credentials,
+because it has nowhere to put each one's distinct metadata. Value handling favours
+secrets: a value wrapped in matching quotes is taken literally (spaces and `#`
+included), and inline `#` comments are **not** stripped — quote any value that
+contains spaces or `#`.
 
 ### Scan and select
 

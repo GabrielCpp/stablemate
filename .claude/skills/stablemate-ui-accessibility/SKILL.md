@@ -1,10 +1,10 @@
 ---
-name: stablemate-accessibility
-description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, htmx-accessibility, flutter-ui) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
+name: stablemate-ui-accessibility
+description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-ui) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
 metadata:
   generated_by: farrier
-  source: library/skills/accessibility/accessibility/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-accessibility/SKILL.md"
+  source: library/skills/ui/ui-accessibility/SKILL.md
+  resolve: "farrier source .claude/skills/stablemate-ui-accessibility/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
@@ -14,7 +14,7 @@ This is the framework-neutral definition of what "accessible" means. It states t
 the concrete mechanics of meeting it are framework-specific — pair this with the matching framework
 skill for the stack you're in:
 
-- HTMX / server-rendered HTML / vanilla JS → [`../stablemate-htmx-accessibility/SKILL.md`](../stablemate-htmx-accessibility/SKILL.md)
+- HTMX / server-rendered HTML / vanilla JS → [`../stablemate-python-htmx-accessibility/SKILL.md`](../stablemate-python-htmx-accessibility/SKILL.md)
 - React Router + MUI → the `react-router-a11y` skill
 - Flutter → the `flutter-ui` skill
 

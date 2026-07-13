@@ -18,7 +18,7 @@ farrier never bundles content — it only renders whatever library it is aimed a
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
   packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
-  scaffolds/<group>/...        # literal seed files copied into the repo
+  scaffolds/*.yml              # scaffold definitions applied via `farrier scaffold <id>`
   workflows/<workflow>/        # workhorse workflow.yaml + prompts + scripts
 ```
 
@@ -152,7 +152,7 @@ skills:
 prompts:
   - go/*
 scaffolds:
-  - go/**                # literal seed files
+  - go-service           # scaffold ids from scaffolds/*.yml
 workflows:
   - coder                # a workflows/ directory
 includes:
@@ -166,22 +166,35 @@ from the consumer's `localInstructions`, not a pack.
 - Every key is a list of patterns matched (case-insensitively, via `fnmatch`)
   against source ids, public ids, and relative paths — so `go/*`, `go-testing`,
   and `skills/go/go-testing` all resolve.
-- `includes:` composes packs; sets union and a later pack's scaffold dest-mapping
-  overrides an earlier one. Include cycles are detected and rejected.
+- `includes:` composes packs; selections union. Include cycles are detected
+  and rejected. Scaffold entries are literal ids (no globs).
 - Packs selected in `agents.yml` are merged before rendering; nothing in the
   library is installed unless some selected pack pulls it in.
 
-## `scaffolds/` — literal seed files
+## `scaffolds/` — scaffold definitions
 
-Scaffolds are copied **verbatim** (not name-mangled like skills/prompts) into the
-repo. The output path mirrors the source with its leading namespace segment
-stripped, e.g. `scaffolds/shared/docs/README.md` → `docs/README.md`.
+Scaffolds are **not** rendered at install time. Each `scaffolds/*.yml` file maps
+scaffold ids to a definition — `description`, `params` (defaults; a `~`/null
+default means required), and a `tree` of files (inline string content,
+`{url: ...}` downloads, null/`{}` empty directories; `$param` placeholders substitute
+in paths and inline content, plus built-ins `$repo_name`/`$repo_title`):
 
-Because service-folder names are project-specific, a pack/`agents.yml` may use
-the `{src-prefix: dest-dir}` mapping form to retarget a folder-agnostic scaffold
-(e.g. point `scaffolds/flutter/.gitignore` at the repo's actual `app/` folder).
-Per-service `.gitignore` seeds are written once and then owned by the repo (never
-overwritten, exempt from `--check`).
+```yaml
+go-service:
+  description: Seed a Go service folder.
+  params:
+    dir: api
+  tree:
+    $dir/.gitignore: |
+      bin/
+```
+
+A repo applies one with `farrier scaffold <id> --param dir=api`; the ids listed
+under `scaffolds:` in its `agents.yml` and its selected packs form the catalog
+it may use (every library id when no `agents.yml` exists yet). Because
+service-folder names are project-specific, placement is a `--param`, never a
+library path. Scaffolded files are seeds: written once, never overwritten, and
+invisible to `--check`.
 
 ## `workflows/<name>/` — workhorse workflows
 

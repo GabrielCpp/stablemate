@@ -106,7 +106,7 @@ class VaultStore:
         addr = os.environ.get("VAULT_ADDR")
         if not addr:
             raise StoreUnavailableError("VAULT_ADDR is not set")
-        client = hvac.Client(addr=addr, token=os.environ.get("VAULT_TOKEN"))
+        client = hvac.Client(url=addr, token=os.environ.get("VAULT_TOKEN"))
         if not client.is_authenticated():
             raise StoreUnavailableError("Vault rejected the token in VAULT_TOKEN")
         return client

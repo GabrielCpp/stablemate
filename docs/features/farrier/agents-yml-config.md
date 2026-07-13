@@ -6,8 +6,9 @@ title: agents.yml (installer config)
 # agents.yml (installer config)
 
 The YAML mapping [`install`](farrier.md#install) reads to decide which skills, prompts, roots,
-scaffolds, and workflows from the resolved [library directory](concepts/library-directory.md) get
-rendered into a target repo's Codex/Claude/Copilot adapters, and how the generated launcher
+and workflows from the resolved [library directory](concepts/library-directory.md) get rendered
+into a target repo's Codex/Claude/Copilot adapters, which scaffold ids
+[`farrier scaffold`](farrier.md#scaffold) may apply, and how the generated launcher
 (`.agents/agents.mk`, `.agents/local.compose.yaml`) is parameterized. Every top-level key is
 optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit("Missing config:
 <path>")` if not), parses it with `yaml.safe_load` (an empty file yields `{}` rather than `None`,
@@ -94,31 +95,25 @@ a replacement of pack-selected items). `skills`/`prompts` entries may be glob pa
   `.agents/local.compose.yaml`, and turns on the workflow-run targets in `.agents/agents.mk`.
 
 ### scaffolds
-- type: `list` of (`string` glob, **or** single-key `mapping` `{source-prefix: dest-dir}`) —
-  required: no — default: `[]`
+- type: `list` of `string` (scaffold definition ids) — required: no — default: `[]`
 
-Seed/template files copied from the library's `scaffolds/` tree (`parse_scaffold_entries`,
-`select_scaffolds`). Two entry shapes, both selecting **and** placing output:
-
-- a bare glob string — selects matching scaffold sources (same `matches()` semantics as
-  `skills`/`prompts`); each selected source's output path is its library-relative path with the
-  leading namespace segment stripped (e.g. `scaffolds/go/**` → repo root, minus the `go/` prefix).
-- `{source-prefix: dest-dir}` — selects every scaffold source whose relative path equals or starts
-  with `source-prefix`, and retargets it under `dest-dir` (preserving the remainder of the path
-  below the matched prefix) instead of the namespace-stripped default. When multiple mappings could
-  match a source, the **longest** matching `source-prefix` wins (`scaffold_mapping_for`).
-
-A scaffold output whose basename is `.gitignore` is a **seed**: written only if the target doesn't
-already exist (`is_seed_output`, `SEED_SCAFFOLD_BASENAMES`), never overwritten on re-install, and
-exempt from `--check` drift detection — the repo owns it after first write.
+The catalog of scaffold ids this repo may apply with the
+[`farrier scaffold <id>` command](farrier.md#scaffold), unioned with the ids contributed by
+every selected pack's own `scaffolds:` list. Ids name definitions in the library's
+`scaffolds/*.yml` files (parameterized file trees; see the command doc for the definition
+format). **`install` renders no scaffold files** — this key only gates which ids `scaffold`
+accepts. Each entry must be a plain string; the legacy `{source-prefix: dest-dir}` mapping form
+from the retired install-time file-tree scaffolds raises a `SystemExit` with a migration hint
+(`parse_scaffold_ids`) — placement folders are now `--param` values at invocation time.
 
 ### exclude
-- type: `mapping` with optional `skills`/`prompts`/`scaffolds` keys, each a `list` of `string`
-  glob — required: no — default: `{}`
+- type: `mapping` with optional `skills`/`prompts` keys, each a `list` of `string` glob —
+  required: no — default: `{}`
 
 Removes items the merged `packs`/top-level selections would otherwise include, applied last
-(same `matches()` glob semantics) before rendering. Only these three sub-keys are read — there is
-no `exclude.roots` or `exclude.workflows`; an unwanted root or workflow must simply not be listed.
+(same `matches()` glob semantics) before rendering. Only these two sub-keys are read — there is
+no `exclude.roots`, `exclude.workflows`, or `exclude.scaffolds`; an unwanted root or workflow
+must simply not be listed, and an unwanted scaffold id is simply never invoked.
 
 ### template / vars
 - type: `mapping` (arbitrary keys) — required: no — default: `{}`
@@ -145,8 +140,9 @@ auto-loads those rules from any ancestor directory without an explicit skill inv
   several already-selected skills, concatenated in list order, separated by a `\n\n---\n\n` rule.
   Takes precedence over `skill` when both are present.
 - `paths` — type: `list` of `string` (repo-relative directories) — required: no (no-op if
-  omitted/empty) — default: `[]`. Each path must already exist, or be a directory this same
-  install run scaffolds; otherwise `SystemExit("Local instruction path does not exist: <rel>")`.
+  omitted/empty) — default: `[]`. Each path must already exist (scaffold it first — e.g.
+  `farrier scaffold shared-docs`); otherwise `SystemExit("Local instruction path does not
+  exist: <rel> ...")`.
 - `includeReadme` — type: `enum{inline,import,none}` or `bool` — required: no — default: `inline`.
   Controls how a sibling `README.md` (in the same directory) is folded in when present:
   `inline` copies its rendered body under a `## Local README` heading; `import` emits Claude's

@@ -9,3 +9,9 @@ agents:
 packs:
   - python-workflow
   - stablemate
+
+# groom's web UI is HTMX + server-rendered HTML — select its a11y skills
+# directly (only this repo needs them; packs are for bundles reused by ≥2 repos).
+skills:
+  - ui/ui-accessibility
+  - stacks/python/python-htmx-accessibility

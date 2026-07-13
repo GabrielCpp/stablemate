@@ -1,17 +1,17 @@
 ---
-name: stablemate-htmx-accessibility
+name: stablemate-python-htmx-accessibility
 description: "Accessibility for an HTMX + server-rendered HTML + vanilla-JS app (no SPA framework, no bundler) — semantic templates, ARIA on hand-authored HTML, focus management across hx-swap, aria-live for websocket/out-of-band pushes, accessible command palettes and keyboard nav, and keeping sanitized markdown perceivable. The concrete mechanics behind the universal contract for this stack. Applies to **/templates/**/*.html,**/assets/**/*.js."
 metadata:
   generated_by: farrier
-  source: library/skills/htmx/htmx-accessibility/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-htmx-accessibility/SKILL.md"
+  source: library/skills/stacks/python/python-htmx-accessibility/SKILL.md
+  resolve: "farrier source .claude/skills/stablemate-python-htmx-accessibility/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
 # Accessibility in an HTMX + Server-Rendered HTML App
 
 The universal obligations — role, name, keyboard, focus, perceivable state — are defined once in
-[`../stablemate-accessibility/SKILL.md`](../stablemate-accessibility/SKILL.md). **Read that
+[`../stablemate-ui-accessibility/SKILL.md`](../stablemate-ui-accessibility/SKILL.md). **Read that
 first.** This skill is the concrete *how* for a stack that is hand-authored HTML templates + HTMX
 (`hx-*` attributes, `hx-swap`, `hx-ext="ws"`) + vanilla JS, with **no JSX, no component framework,
 and no build step** — so there is no `eslint-plugin-jsx-a11y` to catch anything; the roles and

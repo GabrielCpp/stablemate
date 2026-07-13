@@ -21,6 +21,8 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+import platformdirs
+
 from .models import Credential, Lease, Requirement, utcnow
 
 #: Default lease lifetime, in seconds (2 hours).
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS credentials (
     id          TEXT PRIMARY KEY,
     username    TEXT NOT NULL,
     env         TEXT NOT NULL,
+    project     TEXT,
     roles       TEXT NOT NULL DEFAULT '[]',
     features    TEXT NOT NULL DEFAULT '[]',
     surface     TEXT,
@@ -40,7 +43,19 @@ CREATE TABLE IF NOT EXISTS credentials (
     acquired_at REAL,
     expires_at  REAL
 );
+"""
+
+# Columns added after the initial release, applied to pre-existing pools on open.
+# Each entry is (column_name, "ALTER TABLE ... ADD COLUMN ..." statement).
+_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("project", "ALTER TABLE credentials ADD COLUMN project TEXT"),
+)
+
+# Indexes are created after migrations, so an index may reference a migrated
+# column that an old pool did not originally have.
+_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_credentials_env ON credentials(env);
+CREATE INDEX IF NOT EXISTS idx_credentials_project ON credentials(project);
 CREATE INDEX IF NOT EXISTS idx_credentials_run ON credentials(run_id);
 """
 
@@ -52,12 +67,18 @@ class PoolError(RuntimeError):
 
 
 def default_db_path() -> Path:
-    """``$SADDLEBAG_DB``, else ``$XDG_DATA_HOME/saddlebag/pool.db``."""
+    """Where the pool lives, honouring each OS's convention.
+
+    ``$SADDLEBAG_DB`` overrides everything. Otherwise the location follows the
+    platform's user-data directory via :mod:`platformdirs`:
+
+    * Linux:   ``~/.local/share/saddlebag/pool.db`` (or ``$XDG_DATA_HOME``)
+    * macOS:   ``~/Library/Application Support/saddlebag/pool.db``
+    * Windows: ``%LOCALAPPDATA%\\saddlebag\\pool.db``
+    """
     if override := os.environ.get("SADDLEBAG_DB"):
         return Path(override).expanduser()
-    data_home = os.environ.get("XDG_DATA_HOME")
-    base = Path(data_home).expanduser() if data_home else Path.home() / ".local" / "share"
-    return base / "saddlebag" / "pool.db"
+    return Path(platformdirs.user_data_dir("saddlebag")) / "pool.db"
 
 
 def _dt(value: float | None) -> datetime | None:
@@ -79,6 +100,21 @@ class Pool:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+        self._conn.executescript(_INDEXES)
+
+    def _migrate(self) -> None:
+        """Bring a pre-existing pool up to the current schema.
+
+        ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so a pool
+        created before a column existed keeps the old shape. Add any missing
+        column here — additively, so an old pool opened by a new saddlebag simply
+        gains the column (NULL for existing rows) rather than erroring.
+        """
+        have = {r["name"] for r in self._conn.execute("PRAGMA table_info(credentials)")}
+        for column, statement in _MIGRATIONS:
+            if column not in have:
+                self._conn.execute(statement)
 
     def close(self) -> None:
         self._conn.close()
@@ -96,6 +132,7 @@ class Pool:
             id=row["id"],
             username=row["username"],
             env=row["env"],
+            project=row["project"],
             roles=tuple(json.loads(row["roles"])),
             features=tuple(json.loads(row["features"])),
             surface=row["surface"],
@@ -125,14 +162,16 @@ class Pool:
         """Credentials satisfying ``requirement``.
 
         ``roles`` and ``features`` are **superset** matches: a credential
-        qualifies when it holds every required role, extras allowed. ``env`` and
-        ``surface`` are exact.
+        qualifies when it holds every required role, extras allowed. ``env``,
+        ``project`` and ``surface`` are exact.
         """
         now = now or utcnow()
         req = requirement or Requirement()
         out: list[Credential] = []
         for cred in self.all():
             if req.env and cred.env != req.env:
+                continue
+            if req.project and cred.project != req.project:
                 continue
             if req.surface and cred.surface != req.surface:
                 continue
@@ -174,6 +213,7 @@ class Pool:
         *,
         username: str,
         env: str,
+        project: str | None = None,
         roles: Iterable[str] = (),
         features: Iterable[str] = (),
         surface: str | None = None,
@@ -183,18 +223,20 @@ class Pool:
             id=credential_id or self._next_id(),
             username=username,
             env=env,
+            project=project,
             roles=tuple(roles),
             features=tuple(features),
             surface=surface,
         )
         try:
             self._conn.execute(
-                "INSERT INTO credentials (id, username, env, roles, features, surface) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO credentials (id, username, env, project, roles, features, surface) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     cred.id,
                     cred.username,
                     cred.env,
+                    cred.project,
                     json.dumps(list(cred.roles)),
                     json.dumps(list(cred.features)),
                     cred.surface,

@@ -23,6 +23,9 @@ dependencies = [
   # Manager on Windows, Secret Service on Linux. Secrets are namespaced by the
   # `saddlebag` service name — the only scoping mechanism the cross-OS API has.
   "keyring>=25.0",
+  # Locates the pool database in each OS's conventional user-data directory
+  # (Application Support on macOS, %LOCALAPPDATA% on Windows, XDG on Linux).
+  "platformdirs>=4.0",
 ]
 
 [project.optional-dependencies]
