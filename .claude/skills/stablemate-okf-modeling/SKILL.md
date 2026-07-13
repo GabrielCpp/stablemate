@@ -3,7 +3,7 @@ name: stablemate-okf-modeling
 description: "How to model a whole app's UI/CLI/server surface graph as an OKF UI-profile subgraph under docs/features/<service>/ — two playbooks that produce the same conformant output: FROM A DESCRIPTION (a human hands you intent, greenfield/design-time) and FROM EXISTING CODE (you interrogate a running codebase, reverse-engineering surfaces, elements, behaviors and concepts). Load when building or backfilling a service's OKF docs in bulk, not for a single-story update."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/okf-modeling/SKILL.md
+  source: library/skills/stablemate/stablemate-okf-modeling/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-okf-modeling/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

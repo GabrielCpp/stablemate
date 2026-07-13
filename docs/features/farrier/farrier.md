@@ -49,20 +49,19 @@ already current.
     and validate `agents:` selects at least one of `codex`/`claude`/`copilot` (`normalize_agents`)
     — else `SystemExit("No agents selected in config")`
   - run: resolve the [`agents.yml`](agents-yml-config.md) selection (packs ∪ top-level
-    `skills`/`prompts`/`roots`/`scaffolds`/`workflows`, minus `exclude`) against the library's
-    skill/prompt/scaffold sources; `SystemExit("Selected packs did not match any skills, prompts,
-    scaffolds, or workflows")` if nothing at all was selected
+    `skills`/`prompts`/`roots`/`workflows`, minus `exclude`) against the library's skill/prompt
+    sources; `SystemExit("Selected packs did not match any skills, prompts, or workflows")` if
+    nothing at all was selected. (The `scaffolds:` lists are collected but consumed only by the
+    [`scaffold`](#scaffold) command — install renders no scaffold files.)
   - run: build a [`Renderer`](concepts/renderer.md) over the selected skills/prompts and render
     every enabled agent's skill/command files, the `roots`-driven Copilot instructions, and the
     always-on launcher scaffolding (`.agents/agents.mk`, plus `.agents/agents-context*.json` /
     `.agents/local.compose.yaml` / a thin root `Makefile` when >= 1 workflow is selected)
-  - run: render each selected scaffold into its mapped or namespace-stripped destination, and each
-    [`localInstructions`](agents-yml-config.md#localinstructions) entry into its target
-    directories' `CLAUDE.md`/`AGENTS.md`/`CODEX.md` — together these compute the full
-    `{output path: content}` map (`render_expected`) that `--check`/install below act on
-  - run (`--check`): skip any output whose path is a [seed output](agents-yml-config.md#scaffolds)
-    (`is_seed_output`) — a seed is never flagged missing or changed once it exists
-  - run (`--check`): for each remaining expected output, record `missing: <repo-relative path>` if
+  - run: render each [`localInstructions`](agents-yml-config.md#localinstructions) entry into its
+    target directories' `CLAUDE.md`/`AGENTS.md`/`CODEX.md` (every target directory must already
+    exist — `SystemExit` pointing at `farrier scaffold` otherwise) — together these compute the
+    full `{output path: content}` map (`render_expected`) that `--check`/install below act on
+  - run (`--check`): for each expected output, record `missing: <repo-relative path>` if
     the file doesn't exist on disk, or `changed: <repo-relative path>` if its on-disk text differs
     from the expected content (both sides normalized to a single trailing newline before comparing)
   - run (`--check`): scan every directory farrier owns for files not present in the expected output
@@ -132,6 +131,46 @@ Mirrors workhorse's `config` interface (`show`/`get`/`set-library`/`set-stablema
 
 Lets an agent go from a generated adapter under `.claude/`/`.agents/`/`.github/` back to its
 editable source of truth in the library, using only the generated file's front matter.
+
+### scaffold
+- usage: `farrier scaffold [<id>] [--param KEY=VALUE]... [--repo DIR] [--list] [--library DIR]`
+- flags:
+  - `<id>` — the scaffold definition id to apply. Omitted (or with `--list`): print the scaffolds
+    available to `--repo` with their params/defaults and exit `0`.
+  - `--param KEY=VALUE` — set a scaffold parameter (repeatable). Unknown keys error listing the
+    accepted params; a declared param with a `~`/null default is required.
+  - `--repo <dir>` — repository root to scaffold into. Default: current working directory.
+  - `--library <dir>` — same resolution override as `install`.
+- does:
+  - run: resolve the [library directory](concepts/library-directory.md) and load every scaffold
+    definition from the library's `scaffolds/*.yml`/`*.yaml` files (`load_scaffold_defs`) — each
+    file maps scaffold ids to `{description?, params?, tree}`; a duplicate id across files or a
+    definition without a `tree:` mapping is a `SystemExit`
+  - run: compute the repo's catalog (`available_scaffold_ids`): with a `<repo>/agents.yml`, the
+    union of its `scaffolds:` list and every selected pack's `scaffolds:` list (ids must be plain
+    strings — the legacy `{source-prefix: dest}` mapping form errors with a migration hint,
+    `parse_scaffold_ids`); with no `agents.yml` (bootstrapping a fresh repo), every library id
+  - run: `SystemExit` when `<id>` is not defined in the library (lists the defined ids) or not in
+    the repo's catalog (points at the `agents.yml` `scaffolds:` list)
+  - run: resolve params (`resolve_scaffold_params`): declared defaults overlaid with `--param`
+    values, plus built-ins `repo_name` (kebab-cased `--repo` dirname) and `repo_title`
+    (title-cased words) unless shadowed
+  - run: flatten the definition's `tree:` (`flatten_scaffold_tree`) — a string value is inline
+    file content, a `{url: ...}` mapping is downloaded at write time (30s timeout, `SystemExit`
+    on failure), any other mapping is a nested sub-tree, and a null value (bare `dir:` key) or
+    empty mapping is an empty directory (created and reported like files, `created:`/`exists
+    (kept):` with a trailing `/`); substitute `$param` placeholders strictly in each path
+    (unknown param or a path
+    escaping the repo is a `SystemExit`) and leniently (`safe_substitute`) in inline content
+  - run: write each file that does not already exist (`created: <rel>`) and keep any that does
+    (`exists (kept): <rel>`) — every scaffolded file is a seed the repo owns after first write;
+    re-running is always a no-op for existing files; print a summary count and return `0`
+- code: `farrier/farrier/install.py::_run_scaffold`
+- verify: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
+
+Lets an agent stand up a new repo or service folder from the library's parameterized scaffold
+definitions (per-stack `.gitignore` seeds, the standard `docs/` hierarchy) instead of hand-writing
+boilerplate — placement folders are `--param` values, never baked into the library.
 
 ### version
 - usage: `farrier version`

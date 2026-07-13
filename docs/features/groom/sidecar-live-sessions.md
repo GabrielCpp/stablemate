@@ -266,7 +266,8 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 
 **Where it lives**
 
-- `groom/groom/sidecar.py` — the async session (`run`/`_serve`/`_run_session`),
+- `groom/groom/sidecar.py` — the [sidecar live session runner](concepts/sidecar-live-session-runner.md)
+  and async session (`run`/`_serve`/`_run_session`),
   RPC handlers (`_rpc_get_tree`/`_rpc_get_file`/`_rpc_get_diff`, `_safe_relpath`),
   `_hello_frame`, `_classify_event`, `ReloadRequested`/`RELOAD_EXIT_CODE`.
 - `groom/groom/sidecar_hub.py` — host-side `SidecarConnection` (RPC correlation,

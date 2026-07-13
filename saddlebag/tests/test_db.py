@@ -7,8 +7,24 @@ from pathlib import Path
 
 import pytest
 
-from saddlebag.db import Pool, PoolError, _dt
+import platformdirs
+
+from saddlebag.db import Pool, PoolError, _dt, default_db_path
 from saddlebag.models import Requirement
+
+
+def test_default_db_path_honours_the_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("SADDLEBAG_DB", str(tmp_path / "custom.db"))
+    assert default_db_path() == tmp_path / "custom.db"
+
+
+def test_default_db_path_uses_the_platform_data_dir(monkeypatch):
+    """No hard-coded ~/.local/share: the location follows each OS's convention
+    (Application Support on macOS, %LOCALAPPDATA% on Windows, XDG on Linux)."""
+    monkeypatch.delenv("SADDLEBAG_DB", raising=False)
+    path = default_db_path()
+    assert path.name == "pool.db"
+    assert path.parent == Path(platformdirs.user_data_dir("saddlebag"))
 
 
 def test_epoch_zero_round_trips_as_an_instant_not_none():
@@ -64,6 +80,53 @@ def test_features_match_as_a_superset(populated: Pool):
 def test_env_and_surface_match_exactly(populated: Pool):
     assert [c.id for c in populated.find(Requirement(env="prod"))] == ["cred-003"]
     assert populated.find(Requirement(env="prod", surface="checkout/login")) == []
+
+
+def test_project_is_stored_and_filters_exactly(pool: Pool):
+    pool.add(username="a@x.com", env="staging", project="checkout-web")
+    pool.add(username="b@x.com", env="staging", project="billing-api")
+    pool.add(username="c@x.com", env="staging")  # no project
+
+    assert pool.get("cred-001").project == "checkout-web"
+    assert [c.id for c in pool.find(Requirement(project="checkout-web"))] == ["cred-001"]
+    # A project filter excludes credentials with no project.
+    assert [c.id for c in pool.find(Requirement(project="billing-api"))] == ["cred-002"]
+    # No project filter returns all three.
+    assert len(pool.find(Requirement())) == 3
+
+
+def test_project_composes_with_other_filters(pool: Pool):
+    pool.add(username="a@x.com", env="staging", project="checkout-web", roles=("admin",))
+    pool.add(username="b@x.com", env="prod", project="checkout-web", roles=("admin",))
+
+    found = pool.find(Requirement(project="checkout-web", env="staging", roles=("admin",)))
+    assert [c.id for c in found] == ["cred-001"]
+
+
+def test_a_pool_without_the_project_column_is_migrated_on_open(db_path):
+    """An old pool.db predates `project`; opening it with a current Pool must add
+    the column additively, not error, and existing rows read project as None."""
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        "CREATE TABLE credentials ("
+        "  id TEXT PRIMARY KEY, username TEXT NOT NULL, env TEXT NOT NULL,"
+        "  roles TEXT NOT NULL DEFAULT '[]', features TEXT NOT NULL DEFAULT '[]',"
+        "  surface TEXT, last_used REAL, lease_id TEXT UNIQUE, run_id TEXT,"
+        "  acquired_at REAL, expires_at REAL);"
+        "INSERT INTO credentials (id, username, env) VALUES ('cred-001', 'old@x.com', 'staging');"
+    )
+    conn.commit()
+    conn.close()
+
+    with Pool(db_path) as pool:
+        cred = pool.get("cred-001")
+        assert cred is not None
+        assert cred.project is None
+        # And the migrated pool now accepts a project on new rows.
+        pool.add(username="new@x.com", env="staging", project="checkout-web")
+        assert pool.get("cred-002").project == "checkout-web"
 
 
 def test_unconstrained_find_returns_everything(populated: Pool):

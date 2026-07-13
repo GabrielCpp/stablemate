@@ -9,6 +9,8 @@ import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
+from . import envfile
+from .context import infer_project
 from .db import DEFAULT_TTL, Pool, PoolError, default_db_path
 from .models import AcquiredCredential, Credential, Requirement, utcnow
 from .selector import SelectionError, select
@@ -18,13 +20,40 @@ from .workhorse import write_credential
 logger = logging.getLogger(__name__)
 
 
+def _resolve_project(args: argparse.Namespace) -> str | None:
+    """The project to assign (add) or filter by (list, scan).
+
+    ``--all-projects`` means "no project scoping". An explicit ``--project`` wins
+    next (empty string is an explicit "no project"). Otherwise it is inferred from
+    the working directory — usually the enclosing repo's name.
+    """
+    if getattr(args, "all_projects", False):
+        return None
+    if args.project is not None:
+        return args.project or None
+    return infer_project()
+
+
 def _requirement(args: argparse.Namespace) -> Requirement:
     return Requirement(
         env=args.env,
+        project=_resolve_project(args),
         roles=tuple(args.roles or ()),
         features=tuple(args.features or ()),
         surface=args.surface,
     )
+
+
+def _store_key(cred: Credential) -> str:
+    """The secret-store key for a credential.
+
+    Project-qualified, so per-project pools (via ``SADDLEBAG_DB``) cannot collide
+    in the global keyring namespace: two repos each minting ``cred-001`` resolve to
+    ``repo-a/cred-001`` and ``repo-b/cred-001``. An unscoped credential keeps the
+    bare id — which is also what every credential created before projects existed
+    used, so no already-stored secret needs migrating.
+    """
+    return f"{cred.project}/{cred.id}" if cred.project else cred.id
 
 
 def _emit(data: object) -> None:
@@ -38,10 +67,13 @@ def _table(creds: list[Credential]) -> None:
         return
     now = utcnow()
     width = max(len(c.id) for c in creds)
+    pwidth = max((len(c.project or "-") for c in creds), default=1)
     for c in creds:
         state = "locked" if c.is_locked(now) else "free"
         roles = ",".join(c.roles) or "-"
-        print(f"{c.id:<{width}}  {state:<6}  {c.env:<10}  {roles:<24}  {c.username}")
+        project = c.project or "-"
+        print(f"{c.id:<{width}}  {state:<6}  {project:<{pwidth}}  {c.env:<10}  "
+              f"{roles:<24}  {c.username}")
 
 
 def _read_password() -> str:
@@ -52,25 +84,55 @@ def _read_password() -> str:
     return password
 
 
+def _resolve_password(args: argparse.Namespace) -> str:
+    """The password to store, from whichever source was requested.
+
+    Two sources, never argv: stdin, or a named variable in a ``.env`` file. The
+    ``.env`` carries only the secret — every piece of metadata comes from the
+    ``add`` flags, because a flat ``.env`` cannot express it.
+    """
+    if args.password_env_file:
+        if not args.password_var:
+            logger.error("--password-env-file requires --password-var NAME")
+            raise SystemExit(2)
+        try:
+            value = envfile.read_var(args.password_env_file, args.password_var)
+        except FileNotFoundError:
+            logger.error("no such env file: %s", args.password_env_file)
+            raise SystemExit(2) from None
+        except KeyError:
+            logger.error("variable %s not found in %s", args.password_var, args.password_env_file)
+            raise SystemExit(2) from None
+        if not value:
+            logger.error("variable %s in %s is empty", args.password_var, args.password_env_file)
+            raise SystemExit(2)
+        return value
+    if args.password_stdin:
+        return _read_password()
+    logger.error(
+        "a password source is required: --password-stdin, "
+        "or --password-env-file FILE --password-var NAME"
+    )
+    raise SystemExit(2)
+
+
 # -- commands ---------------------------------------------------------------
 
 
 def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
-    if not args.password_stdin:
-        logger.error("--password-stdin is required (saddlebag never takes a password as an argument)")
-        return 2
-    password = _read_password()
+    password = _resolve_password(args)
     store = _open_store(args)
 
     cred = pool.add(
         username=args.username,
         env=args.env,
+        project=_resolve_project(args),
         roles=args.roles or (),
         features=args.features or (),
         surface=args.surface,
     )
     try:
-        store.put(cred.id, password)
+        store.put(_store_key(cred), password)
     except Exception:
         # Never leave metadata pointing at a secret that was not stored.
         pool.remove(cred.id)
@@ -79,7 +141,8 @@ def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
     if args.json:
         _emit(cred.to_dict())
     else:
-        print(f"added {cred.id} ({cred.username}) to the {store.name} store")
+        scope = f" in project {cred.project}" if cred.project else ""
+        print(f"added {cred.id} ({cred.username}){scope} to the {store.name} store")
     return 0
 
 
@@ -101,7 +164,7 @@ def cmd_remove(args: argparse.Namespace, pool: Pool) -> int:
         logger.error("%s is leased; release it first or pass --force", cred.id)
         return 1
 
-    _open_store(args).delete(cred.id)
+    _open_store(args).delete(_store_key(cred))
     pool.remove(cred.id)
     print(f"removed {cred.id}")
     return 0
@@ -137,8 +200,13 @@ def cmd_acquire(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) -> int:
+    cred = pool.get(credential_id)
+    if cred is None:
+        logger.error("no such credential: %s", credential_id)
+        return 1
+
     store = _open_store(args)
-    password = store.get(credential_id)
+    password = store.get(_store_key(cred))
     if password is None:
         logger.error(
             "%s has no password in the %s store — the pool and the store disagree; "
@@ -149,8 +217,6 @@ def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) ->
         return 1
 
     lease = pool.acquire(credential_id, ttl=args.ttl, run_id=args.run_id)
-    cred = pool.get(credential_id)
-    assert cred is not None  # just leased it
     acquired = AcquiredCredential(credential=cred, lease=lease, password=password)
 
     if args.output:
@@ -203,7 +269,7 @@ def cmd_doctor(args: argparse.Namespace, pool: Pool) -> int:
 
     orphans: list[str] = []
     if store is not None:
-        orphans = [c.id for c in creds if store.get(c.id) is None]
+        orphans = [c.id for c in creds if store.get(_store_key(c)) is None]
         problems.extend(f"{cid}: metadata in pool, no password in store" for cid in orphans)
 
     if args.json:
@@ -243,6 +309,8 @@ def _open_store(args: argparse.Namespace) -> SecretStore:
 
 def _add_requirement_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--env", help="environment, e.g. staging")
+    parser.add_argument("--project", help="project scope (default: inferred from the working "
+                        "directory; pass '' for none)")
     parser.add_argument("--roles", nargs="+", metavar="ROLE", help="roles the credential must hold")
     parser.add_argument("--features", nargs="+", metavar="FEATURE", help="features it must have")
     parser.add_argument("--surface", help="ostler surface, e.g. checkout/login")
@@ -265,13 +333,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("add", help="add a credential to the pool")
     a.add_argument("--username", required=True)
-    a.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+    pw = a.add_mutually_exclusive_group()
+    pw.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+    pw.add_argument("--password-env-file", metavar="ENVFILE",
+                    help="read the password from a variable in a .env file")
+    a.add_argument("--password-var", metavar="NAME",
+                   help="the variable in --password-env-file to import as the password")
     a.add_argument("--json", action="store_true")
     _add_requirement_flags(a)
     a.set_defaults(func=cmd_add)
 
     ls = sub.add_parser("list", help="list the pool (never shows passwords)")
     ls.add_argument("--json", action="store_true")
+    ls.add_argument("--all-projects", action="store_true",
+                    help="do not scope to the current project")
     _add_requirement_flags(ls)
     ls.set_defaults(func=cmd_list)
 
@@ -281,6 +356,8 @@ def build_parser() -> argparse.ArgumentParser:
     rm.set_defaults(func=cmd_remove)
 
     sc = sub.add_parser("scan", help="find candidates, optionally let an agent pick one")
+    sc.add_argument("--all-projects", action="store_true",
+                    help="do not scope to the current project")
     _add_requirement_flags(sc)
     _add_lease_flags(sc)
     sc.add_argument("--select-via", metavar="CLI", help="agent CLI that picks the credential, e.g. claude")

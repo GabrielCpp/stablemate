@@ -1,9 +1,9 @@
 ---
 name: stablemate-python-cli
-description: "Generic Python CLI conventions — Python 3.12+, type hints, logging, subprocess, pathlib, exit codes. Applies to all Python files."
+description: "Generic Python CLI conventions — Python 3.12+, type hints, code organization, logging, subprocess, pathlib, exit codes. Applies to all Python files."
 metadata:
   generated_by: farrier
-  source: library/skills/python/python-cli/SKILL.md
+  source: library/skills/stacks/python/python-cli/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-cli/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
@@ -87,7 +87,7 @@ if result.returncode != 0:
 
 Never use `shell=True`.
 
-## Filesystem — `pathlib.Path` over `os.path`
+## Filesystem — `pathlib.Path` over string paths
 
 ```python
 from pathlib import Path
@@ -96,6 +96,8 @@ root = Path(__file__).resolve().parent
 config = root / "config.json"
 data = config.read_text(encoding="utf-8")
 ```
+
+Prefer `Path` values throughout the codebase. Convert to `str(path)` only at API boundaries that require strings, such as subprocess `cwd` or third-party libraries without `PathLike` support.
 
 ## JSON I/O
 
@@ -112,7 +114,11 @@ def write_json(path: Path, data: dict) -> None:
 
 Always specify `encoding="utf-8"` — never rely on platform default.
 
-## Structured data — dataclasses or TypedDict over raw dicts
+## Structured data — Pydantic for parsing, dataclasses for trusted records
+
+Any model that parses, validates, coerces, or accepts data from outside the current function must use Pydantic. This includes CLI config, JSON/YAML/TOML files, environment-derived settings, API payloads, and workflow/script input.
+
+Use frozen dataclasses or `TypedDict` for trusted in-memory records that only store values and do not need validation.
 
 ```python
 from dataclasses import dataclass
@@ -126,6 +132,15 @@ class ServiceRecord:
 ```
 
 Prefer frozen dataclasses for records that shouldn't mutate.
+
+## Code organization and object boundaries
+
+- Group stateless functions by module around the capability they provide, the same way related methods would be grouped on a class. For example, path construction for configuration files belongs in a config/path module rather than scattered as ad hoc string assembly at call sites.
+- Prefer small modules with cohesive tools over broad utility modules. A module should have a clear noun or capability: config paths, manifest parsing, GitHub PR lookup, workflow output formatting.
+- Use `Path` composition for filesystem logic; avoid manually assembling paths with plain strings.
+- If an object holds state and has defined ways that state can change or be updated, model it as a class. This assumes there is meaningful behavior around the state, not just storage.
+- If an object is primarily behavior or orchestration rather than value storage, name and treat it as a service. Services may depend on other services and should be instantiated through dependency injection rather than hidden global construction.
+- If multiple implementations can provide the same behavior, put them behind an interface. In Python, prefer `typing.Protocol` for structural interfaces; use an abstract base class only when inheritance or shared base behavior is required.
 
 ## Error handling
 

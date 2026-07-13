@@ -3,7 +3,7 @@ name: stablemate-workhorse-scripting
 description: "Workhorse workflow scripting — JSON output protocol, shared lib import, workspace resolution, WorkflowRun test API. Applies to scripts/**/*.py."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/workhorse-scripting/SKILL.md
+  source: library/skills/stablemate/stablemate-workhorse-scripting/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-workhorse-scripting/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
@@ -40,6 +40,50 @@ must never learn the shape of one workflow's data.
 
 Litmus test before touching `workhorse/**`: *would a totally different workflow want this
 unchanged?* If it only makes sense for the coder workflow, it belongs in the workflow.
+
+---
+
+## Flows — factor a phase for reuse and standalone runs
+
+A **flow** is a named sub-graph declared under a top-level `flows:` map, each a self-contained
+mini-workflow with its own `vars` (its parameter contract), `start`, and `nodes`. Two ways to run it:
+
+- **Inline** — a `type: flow` node in the parent graph calls it like a function: `args:` are
+  Jinja-rendered against the parent context and are the *only* values that cross the boundary;
+  `outputs:` lift declared keys back out; `next:` continues the parent.
+- **Standalone** — `workhorse run <workflow> <flow> --params '{"service":"groom"}'`. The flow's
+  `vars` are the param contract, so it runs on its own with no parent.
+
+
+```yaml
+# parent graph invokes it:
+- id: run_walkthrough_web
+  type: flow
+  name: walkthrough-web      # must match a key under `flows:`
+  args: { service: "{{ service }}", docs_path: "{{ docs_path }}" }
+  next: done
+flows:
+  walkthrough-web:
+    name: walkthrough-web
+    start: detect_webapp     # resolves its OWN paths — no pre-resolved input needed
+    vars:
+      service: null          # null default = REQUIRED (missing param -> launch error)
+      docs_path: ""          # "" = optional (empty when the caller omits it)
+    nodes: [ ... ]
+```
+
+
+**Vars contract:** `null` = required, `""` = optional, any other value = default (see
+`workhorse/docs/WORKFLOW.md` §2.6 for the authoritative schema).
+
+**When to factor a phase into a flow:** when it should be **independently runnable** — a re-QA
+entrypoint, or a verification pass over an already-built artifact — or reused from more than one
+place. Make the flow **self-contained**: its `start` node should resolve its own paths/roots from
+the params (e.g. a `prepare`/`detect` script that runs `find_docs_root(docs_path)`), so a
+standalone run needs no state the parent would otherwise have supplied. Isolation implications for
+the scripts you write: a flow node's scripts see only `{manifest, flow.vars, rendered_args}` — the
+parent's context does **not** leak in, so pass every value a flow script needs through `args:`, and
+emit back through the flow node's `outputs:` anything the parent must observe.
 
 ---
 

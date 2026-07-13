@@ -3,7 +3,7 @@ name: stablemate-groom
 description: "groom — the operator-gate dashboard and push-notification service for workhorse workflows: architecture, signal model, and how a workflow/script should integrate with it (gate-file convention, sidecar, backstop push)."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/groom/SKILL.md
+  source: library/skills/stablemate/stablemate-groom/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-groom/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
@@ -89,10 +89,10 @@ paging requires a dashboard tab open with notification permission granted.
 
 ## Accessibility (the dashboard is a real UI — it owes the contract)
 
-groom's stack is exactly the one [`../stablemate-htmx-accessibility/SKILL.md`](../stablemate-htmx-accessibility/SKILL.md)
+groom's stack is exactly the one [`../stablemate-python-htmx-accessibility/SKILL.md`](../stablemate-python-htmx-accessibility/SKILL.md)
 governs — server-rendered `templates/dashboard.html` + HTMX/`hx-ext="ws"` + vanilla JS, no bundler
 — which in turn realizes the universal
-[`../stablemate-accessibility/SKILL.md`](../stablemate-accessibility/SKILL.md) contract. Load
+[`../stablemate-ui-accessibility/SKILL.md`](../stablemate-ui-accessibility/SKILL.md) contract. Load
 both when touching the template or `assets/*.js`. Concrete gaps in the dashboard as built (fix these
 to the contract, don't add more like them):
 

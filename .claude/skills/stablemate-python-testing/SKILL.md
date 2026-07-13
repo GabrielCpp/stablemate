@@ -3,7 +3,7 @@ name: stablemate-python-testing
 description: "Generic pytest patterns — fixtures, parametrize, subprocess testing, parallel safety. Applies to test files."
 metadata:
   generated_by: farrier
-  source: library/skills/python/python-testing/SKILL.md
+  source: library/skills/stacks/python/python-testing/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-testing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

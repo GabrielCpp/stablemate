@@ -38,6 +38,7 @@ class Credential:
     id: str
     username: str
     env: str
+    project: str | None = None
     roles: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
     surface: str | None = None
@@ -64,6 +65,7 @@ class Credential:
             "id": self.id,
             "username": self.username,
             "env": self.env,
+            "project": self.project,
             "roles": list(self.roles),
             "features": list(self.features),
             "surface": self.surface,
@@ -129,6 +131,7 @@ class Requirement:
     """What a run needs. Mirrors an ostler seed's spec fields."""
 
     env: str | None = None
+    project: str | None = None
     roles: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
     surface: str | None = None
@@ -138,6 +141,8 @@ class Requirement:
         parts: list[str] = []
         if self.env:
             parts.append(f"env={self.env}")
+        if self.project:
+            parts.append(f"project={self.project}")
         if self.roles:
             parts.append(f"roles=[{', '.join(self.roles)}]")
         if self.features:

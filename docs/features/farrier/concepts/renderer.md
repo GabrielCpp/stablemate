@@ -5,13 +5,13 @@ title: Renderer
 ---
 # Renderer
 
-Turns a resolved [`agents.yml`](../agents-yml-config.md) selection (skills, prompts, scaffolds,
-workflows) into the concrete `{output path: file content}` map that
+Turns a resolved [`agents.yml`](../agents-yml-config.md) selection (skills, prompts, workflows)
+into the concrete `{output path: file content}` map that
 [`render_expected`](../farrier.md#install) writes (or, under `--check`, diffs against disk). One
 `Renderer` is constructed per `install` run; its methods each cover one class of generated output —
-`render()` (skills/prompts/launcher), `render_scaffold()` (scaffold files), and
-`render_local_instruction()` (`localInstructions` aggregates) are the three `render_expected` calls
-directly.
+`render()` (skills/prompts/launcher) and `render_local_instruction()` (`localInstructions`
+aggregates) are the two `render_expected` calls directly. (Scaffolds are no longer rendered at
+install time — see the [`scaffold` command](../farrier.md#scaffold).)
 
 - code: `farrier/farrier/install.py::Renderer`
 
@@ -39,7 +39,7 @@ directly.
 
 ## `render_templates` — the Jinja helper surface
 
-`render_templates(content, target, from_file)` renders a skill/prompt/scaffold body with Jinja2
+`render_templates(content, target, from_file)` renders a skill/prompt body with Jinja2
 (`StrictUndefined` — an unresolved `template.*`/`vars.*` reference raises unless the source guards
 it with `| default(...)`) if `content` contains any of a fixed token list (`instruction_file(`,
 `instruction_ref(`, `skill_file(`, `prompt_file(`, `prompt_ref(`, `skill_dir(`,
@@ -63,7 +63,7 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
   run time (e.g. `{{ workhorse_var('plan_path') }}` → `{{ plan_path }}` in the installed file).
 - `repo` / `template` / `vars` — the construction-time contexts above (`vars` and `template` are the
   same merged mapping under two names).
-- `target` — the render target string (`"claude"` / `"codex"` / `"copilot"` / `"scaffold"`).
+- `target` — the render target string (`"claude"` / `"codex"` / `"copilot"`).
 
 - code: `farrier/farrier/install.py::Renderer.render_templates`
 
@@ -150,12 +150,8 @@ and the body through `render_templates`, then re-emit front matter carrying the
 - code: `farrier/farrier/install.py::Renderer.generated_skill`
 - code: `farrier/farrier/install.py::Renderer.generated_command`
 
-## `render_scaffold` / `render_local_instruction`
+## `render_local_instruction`
 
-- `render_scaffold(source, output_path)` — a scaffold source's content, Jinja-rendered with
-  `target="scaffold"` (so scaffold content can reference `repo.*`/`template.*`/`vars.*` like any
-  other library source). Called once per selected scaffold, from `render_expected` directly (not
-  from `render()`).
 - `render_local_instruction(skill_names, target, output_path, readme_mode)` — concatenates each
   named skill's rendered body (`\n\n---\n\n`-joined) for a
   [`localInstructions`](../agents-yml-config.md#localinstructions) entry, then folds in a sibling
@@ -164,7 +160,6 @@ and the body through `render_templates`, then re-emit front matter carrying the
   inlining for non-Claude targets); otherwise the rendered README body is appended under a `##
   Local README` heading.
 
-- code: `farrier/farrier/install.py::Renderer.render_scaffold`
 - code: `farrier/farrier/install.py::Renderer.render_local_instruction`
 
 ## `validate_workflow_dependencies`

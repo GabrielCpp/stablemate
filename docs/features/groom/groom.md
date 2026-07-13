@@ -8,9 +8,11 @@ status: implemented
 
 > **Surfaces (per-surface Concepts):** [operator-inbox](operator-inbox.md) ·
 > [worker-tree](worker-tree.md) · [changes-view](changes-view.md) ·
+> [groom](groom-cli.md) · [groom-sidecar](groom-sidecar.md) ·
 > [sidecar-protocol](sidecar-protocol.md) ·
 > [sidecar-autostart](sidecar-autostart.md). This doc is the architecture
-> overview; each Concept above documents one as-built surface.
+> overview; each Concept above documents one as-built surface. Shared Docker
+> volume and container access is centralized by the [Groom Docker I/O module](concepts/groom-docker-io-module.md).
 
 Status: **implemented** (2026-07-06) — `stablemate/groom/` (Litestar app, in-container sidecar,
 vendored htmx/diff2html UI, `tests/test_*.py`); wired into `farrier`'s generated compose template
@@ -85,7 +87,7 @@ Workflow state (`/workspace`, `/runs`) lives in named Docker volumes, which aren
 host-side process for direct `inotify` watching, and host-side polling (`docker inspect`/`docker
 run` on a timer) would mean both latency and a steady subprocess spawn rate.
 
-Instead, **`groom` ships a second console script, `groom-sidecar`, that runs inside the agent
+Instead, **`groom` ships a second console script, [`groom-sidecar`](groom-sidecar.md), that runs inside the agent
 container itself** (installed into the agent image via `stablemate`'s shared Dockerfile;
 `workhorse`'s own package/deps are untouched). `groom-sidecar` (`groom/sidecar.py`):
 

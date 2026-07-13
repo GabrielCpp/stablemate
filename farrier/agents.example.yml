@@ -3,9 +3,9 @@
 # ============================================================================
 #
 # Copy this file to your repository root as `agents.yml`, then prune it to the
-# keys you need. farrier reads it to decide which skills, prompts, roots,
-# scaffolds, and workflows from the prompt library to render into your repo's
-# adapter files.
+# keys you need. farrier reads it to decide which skills, prompts, roots, and
+# workflows from the prompt library to render into your repo's adapter files,
+# and which scaffold ids `farrier scaffold` may apply.
 #
 # Run it (after `pipx install farrier` and pointing farrier at the library):
 #   farrier config set-library /path/to/the/library     # one-time
@@ -69,16 +69,16 @@ roots:
 
 
 # ---------------------------------------------------------------------------
-# scaffolds — seed files copied from the library scaffolds/ tree. Each entry is
-# either a glob (namespace stripped from the output path) or a single-key
-# mapping `source: dest` that retargets a folder-agnostic scaffold to a
-# repo-specific directory. Seed files (e.g. .gitignore) are write-once and are
-# never overwritten on re-install.
+# scaffolds — scaffold ids (from the library's scaffolds/*.yml definitions)
+# this repo may apply with `farrier scaffold <id> --param key=value`. Applied
+# on demand, never at install time; placement folders are --param values.
+# Scaffolded files are seeds: never overwritten once present, exempt from
+# --check. Packs contribute ids too (union).
 # ---------------------------------------------------------------------------
 scaffolds:
-  - shared-docs           # glob: scaffolds/shared-docs/** → repo root
-  - flutter: app          # mapping: scaffolds/flutter/**  → app/
-  - go: api               # mapping: scaffolds/go/**        → api/
+  - shared-docs           # standard docs/ hierarchy (default dir: docs)
+  - flutter-app           # curated Flutter .gitignore (e.g. --param dir=app)
+  - go-service            # curated Go .gitignore     (e.g. --param dir=api)
 
 
 # ---------------------------------------------------------------------------

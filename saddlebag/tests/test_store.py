@@ -181,3 +181,52 @@ def test_vault_without_addr_reports_the_missing_var(monkeypatch: pytest.MonkeyPa
     pytest.importorskip("hvac")
     with pytest.raises(StoreUnavailableError, match="VAULT_ADDR is not set"):
         open_store("vault")
+
+
+def test_vault_connect_uses_the_hvac_client_contract(monkeypatch: pytest.MonkeyPatch):
+    """Guard the hvac call shape without a live server.
+
+    The mocked ``open_store`` tests replace ``VaultStore`` wholesale, so they
+    cannot catch a wrong kwarg name inside it — a real server found ``addr=``
+    where hvac wants ``url=``. This pins the client contract directly.
+    """
+    hvac = pytest.importorskip("hvac")
+
+    seen: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, url: str, token: str | None) -> None:
+            seen["url"] = url
+            seen["token"] = token
+
+        def is_authenticated(self) -> bool:
+            return True
+
+    monkeypatch.setattr(hvac, "Client", FakeClient)
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    monkeypatch.setenv("VAULT_TOKEN", "root")
+
+    from saddlebag.store import VaultStore
+
+    VaultStore()
+    assert seen == {"url": "http://127.0.0.1:8200", "token": "root"}
+
+
+def test_vault_rejects_a_bad_token(monkeypatch: pytest.MonkeyPatch):
+    hvac = pytest.importorskip("hvac")
+
+    class FakeClient:
+        def __init__(self, *, url: str, token: str | None) -> None:
+            pass
+
+        def is_authenticated(self) -> bool:
+            return False
+
+    monkeypatch.setattr(hvac, "Client", FakeClient)
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    monkeypatch.setenv("VAULT_TOKEN", "bad")
+
+    from saddlebag.store import VaultStore
+
+    with pytest.raises(StoreUnavailableError, match="rejected the token"):
+        VaultStore()
