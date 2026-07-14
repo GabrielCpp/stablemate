@@ -7,6 +7,7 @@ session operations and produces human-readable / JSON output.
 from __future__ import annotations
 
 import json
+import signal
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,17 @@ from typing import Any
 import yaml
 
 from .session import QaSession, RUN_LOG, _expand
+
+
+def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
+    """SIGTERM's default action kills the process immediately, bypassing any
+    `finally` block — unlike SIGINT, which Python turns into a catchable
+    `KeyboardInterrupt`. Installing this handler makes a SIGTERM (e.g. from a
+    caller's process-group kill on Ctrl+C, such as workhorse's agent-interrupt
+    cleanup) behave the same as a direct Ctrl+C, so `cmd_run`'s `finally` still
+    runs and background daemons still get stopped instead of orphaned.
+    """
+    raise KeyboardInterrupt
 
 
 @dataclass
@@ -340,49 +352,56 @@ def cmd_run(
         return QaOutcome(ok=False, message=str(exc))
 
     overall_pass = True
-    for step in plan.get("steps", []):
-        step_id = str(step.get("id", ""))
-        label = str(step.get("label", ""))
-        mechanism = str(step.get("mechanism", ""))
-        raw_cmd = str(step.get("cmd", ""))
-        out = step.get("out")
-        capture_map: list[tuple[str, str]] = [
-            (k, v) for k, v in (step.get("capture") or {}).items()
-        ]
+    prev_sigterm = signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+    try:
+        for step in plan.get("steps", []):
+            step_id = str(step.get("id", ""))
+            label = str(step.get("label", ""))
+            mechanism = str(step.get("mechanism", ""))
+            raw_cmd = str(step.get("cmd", ""))
+            out = step.get("out")
+            capture_map: list[tuple[str, str]] = [
+                (k, v) for k, v in (step.get("capture") or {}).items()
+            ]
 
-        # Run the step
-        try:
-            record = session.run_step(
-                step_id,
-                label,
-                mechanism,
-                raw_cmd,
-                captures=capture_map,
-                out_path=str(out) if out else None,
-                allow_fail=True,
-            )
-        except (ValueError, RuntimeError) as exc:
-            overall_pass = False
-            print(f"[ERROR] step '{step_id}': {exc}", file=sys.stderr)
-            if stop_on_fail:
-                break
-            continue
+            # Run the step
+            try:
+                record = session.run_step(
+                    step_id,
+                    label,
+                    mechanism,
+                    raw_cmd,
+                    captures=capture_map,
+                    out_path=str(out) if out else None,
+                    allow_fail=True,
+                )
+            except (ValueError, RuntimeError) as exc:
+                overall_pass = False
+                print(f"[ERROR] step '{step_id}': {exc}", file=sys.stderr)
+                if stop_on_fail:
+                    break
+                continue
 
-        step_failed = record.get("exit_code", 0) != 0
+            step_failed = record.get("exit_code", 0) != 0
 
-        # Run inline assertions
-        inline_passed = _run_inline_asserts(session, step, record, root)
-        if not inline_passed:
-            overall_pass = False
-            if stop_on_fail:
-                break
-        elif step_failed:
-            overall_pass = False
-            if stop_on_fail:
-                break
-
-    # Always stop (kills daemons, writes summary)
-    summary = session.close()
+            # Run inline assertions
+            inline_passed = _run_inline_asserts(session, step, record, root)
+            if not inline_passed:
+                overall_pass = False
+                if stop_on_fail:
+                    break
+            elif step_failed:
+                overall_pass = False
+                if stop_on_fail:
+                    break
+    finally:
+        # Always stop daemons and write the closing summary here — even if the loop
+        # above was interrupted (Ctrl+C/SIGTERM, now normalized to KeyboardInterrupt
+        # by the handler above) or raised an unexpected exception. An orphaned
+        # background daemon (screen recorder, event tail) left running in its own
+        # detached process group is worse than an early, clean stop.
+        signal.signal(signal.SIGTERM, prev_sigterm)
+        summary = session.close()
     fail_count = summary.get("fail_count", 0)
     step_count = summary.get("step_count", 0)
     pass_count = summary.get("pass_count", 0)
