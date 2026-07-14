@@ -425,16 +425,30 @@ def _resolve_out(out_path: str, spec_dir: Path) -> Path:
 
 
 def _kill_pid(pid: int) -> int:
-    """Try SIGTERM then SIGKILL; return the effective signal number negated (like subprocess)."""
-    try:
-        os.kill(pid, signal.SIGTERM)
-        time.sleep(0.3)
+    """Escalate SIGINT -> SIGTERM -> SIGKILL; return the effective signal (negated,
+    like subprocess) that actually stopped the process.
+
+    SIGINT — the same signal a terminal Ctrl+C sends — is tried first and given a
+    real grace window. Well-behaved daemons (scrcpy/ffmpeg finalizing a recording,
+    eventbridge-tail flushing its queue) treat SIGINT as "stop and clean up", not
+    "die immediately" the way a fast SIGKILL would. SIGTERM and SIGKILL remain as
+    escalating fallbacks for a daemon that doesn't respond to SIGINT.
+    """
+    for sig, grace_seconds in ((signal.SIGINT, 2.0), (signal.SIGTERM, 1.0)):
         try:
-            os.kill(pid, 0)  # check still alive
-            os.kill(pid, signal.SIGKILL)
-            return -signal.SIGKILL
+            os.kill(pid, sig)
         except ProcessLookupError:
-            return -signal.SIGTERM
+            return 0
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)  # check still alive
+            except ProcessLookupError:
+                return -sig
+            time.sleep(0.05)
+    try:
+        os.kill(pid, signal.SIGKILL)
+        return -signal.SIGKILL
     except ProcessLookupError:
         return 0
 
