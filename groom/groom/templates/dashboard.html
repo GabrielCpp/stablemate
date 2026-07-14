@@ -17,20 +17,23 @@
 <body>
   <div class="app" data-mode="inbox" hx-ext="ws" ws-connect="/ws">
     <!-- activity bar: the three panels + settings -->
-    <div id="activitybar">
-      <div class="act-btn active" data-mode="inbox" title="Inbox">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14v14H5z"/></svg>
-      </div>
-      <div class="act-btn" data-mode="files" title="Files">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h6l2 2h8v11H4z"/></svg>
-      </div>
-      <div class="act-btn" data-mode="diff" title="Diff">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
-      </div>
+    <div id="activitybar" role="toolbar" aria-label="Activity">
+      <button type="button" class="act-btn active" data-mode="inbox" title="Inbox" aria-label="Inbox" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14v14H5z"/></svg>
+      </button>
+      <button type="button" class="act-btn" data-mode="files" title="Files" aria-label="Files" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h6l2 2h8v11H4z"/></svg>
+      </button>
+      <button type="button" class="act-btn" data-mode="diff" title="Diff" aria-label="Diff" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
+      </button>
+      <button type="button" class="act-btn" data-mode="telemetry" title="Telemetry" aria-label="Telemetry" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
+      </button>
       <div class="act-spacer"></div>
-      <div class="act-btn" data-mode="settings" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
-      </div>
+      <button type="button" class="act-btn" data-mode="settings" title="Settings" aria-label="Settings" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
+      </button>
     </div>
 
     <!-- main: one panel at a time, chosen by data-mode -->
@@ -44,7 +47,7 @@
                    placeholder="Filter messages…"
                    hx-get="/search" hx-trigger="input changed delay:250ms, search" hx-swap="none">
           </div>
-          <div class="inbox-list" id="inbox-list"></div>
+          <div class="inbox-list" id="inbox-list" role="log" aria-live="polite" aria-label="Blocked workers inbox"></div>
         </div>
         <div id="detail"><div class="detail-empty">Select a message to answer its gate.</div></div>
       </div>
@@ -75,6 +78,29 @@
         </div>
       </div>
 
+      <!-- 4) TELEMETRY: SQLite-backed trace search (runs export via OTLP) -->
+      <div id="telemetry-pane" class="pane">
+        <div id="telemetry">
+          <div class="pane-head">
+            <span>Telemetry — fleet traces</span>
+            <form id="traces-filter" class="traces-filter"
+                  hx-get="/traces" hx-target="#traces-list" hx-swap="innerHTML"
+                  hx-trigger="input changed delay:300ms, change, submit">
+              <input class="filter" type="search" name="run" aria-label="Filter by run id" placeholder="run id…">
+              <input class="filter" type="search" name="node" aria-label="Filter by node" placeholder="node…">
+              <select class="filter" name="status" aria-label="Filter by span status">
+                <option value="">any status</option>
+                <option value="ERROR">ERROR</option>
+                <option value="OK">OK</option>
+                <option value="UNSET">UNSET</option>
+              </select>
+              <input class="filter" type="search" name="slower_than" aria-label="Minimum duration in seconds" placeholder="slower than (s)…">
+            </form>
+          </div>
+          <div class="traces-list" id="traces-list"><div class="empty">No telemetry yet.</div></div>
+        </div>
+      </div>
+
       <!-- settings -->
       <div id="settings-pane" class="pane">
         <div class="settings-panel">
@@ -88,27 +114,29 @@
     </div>
 
     <!-- status bar -->
-    <div id="statusbar"></div>
+    <div id="statusbar" role="status" aria-live="polite"></div>
   </div>
 
   <!-- shared Zed-style container+repo menu (positioned under the active picker) -->
   <div id="repo-menu-wrap">
     <div class="repo-menu-box">
-      <input id="repo-search" type="text" aria-label="Search container / repo" placeholder="Search container / repo…">
-      <div id="repo-menu"></div>
+      <input id="repo-search" type="text" aria-label="Search container / repo" placeholder="Search container / repo…"
+             role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list">
+      <div id="repo-menu" role="listbox" aria-label="Containers and repositories"></div>
     </div>
   </div>
 
   <!-- command palette -->
-  <div id="palette">
+  <div id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
     <div class="palette-box">
       <input id="palette-input" type="text" aria-label="Jump to a worker or blocked gate"
-             placeholder="Jump to a worker or blocked gate…">
-      <div class="palette-results" id="palette-results"></div>
+             placeholder="Jump to a worker or blocked gate…"
+             role="combobox" aria-expanded="false" aria-controls="palette-results" aria-autocomplete="list">
+      <div class="palette-results" id="palette-results" role="listbox" aria-label="Workers"></div>
     </div>
   </div>
 
-  <div id="toasts"></div>
+  <div id="toasts" role="alert" aria-live="assertive"></div>
 
   <script>
     // ---------- notifications (permission requested once) ----------
@@ -135,7 +163,10 @@
     var selected = null;
     function applySelection() {
       document.querySelectorAll("[data-worker-id]").forEach(function (el) {
-        el.classList.toggle("selected", el.dataset.workerId === selected);
+        var on = el.dataset.workerId === selected;
+        el.classList.toggle("selected", on);
+        if (on) el.setAttribute("aria-current", "true");
+        else el.removeAttribute("aria-current");
       });
     }
     function select(id) {
@@ -174,25 +205,59 @@
     var menuEl = document.getElementById("repo-menu");
     var repoSearch = document.getElementById("repo-search");
 
+    var menuInvoker = null;
+    function visibleRepoItems() {
+      return [].slice.call(menuEl.querySelectorAll(".repo-item")).filter(function (it) {
+        return it.style.display !== "none";
+      });
+    }
+    // combobox active-option state: aria-activedescendant on the search input, DOM focus stays put
+    function setActiveRepoItem(it) {
+      menuEl.querySelectorAll(".repo-item.active").forEach(function (x) {
+        x.classList.remove("active"); x.setAttribute("aria-selected", "false");
+      });
+      if (it) {
+        it.classList.add("active"); it.setAttribute("aria-selected", "true");
+        it.scrollIntoView({ block: "nearest" });
+        repoSearch.setAttribute("aria-activedescendant", it.id);
+      } else {
+        repoSearch.removeAttribute("aria-activedescendant");
+      }
+    }
     function openRepoMenu(btn) {
       var r = btn.getBoundingClientRect();
+      menuInvoker = btn;
       menuBox.style.left = r.left + "px";
       menuBox.style.top = (r.bottom + 4) + "px";
       menuBox.style.minWidth = Math.max(r.width, 240) + "px";
       menuWrap.classList.add("open");
+      repoSearch.setAttribute("aria-expanded", "true");
       menuEl.innerHTML = '<div class="repo-empty">Loading…</div>';
       repoSearch.value = "";
       fetch("/repos").then(function (r) { return r.text(); }).then(function (html) {
         menuEl.innerHTML = html || '<div class="repo-empty">No repositories available.</div>';
+        menuEl.querySelectorAll(".repo-item").forEach(function (it, i) {
+          it.id = "repo-opt-" + i;
+          it.setAttribute("aria-selected", "false");
+        });
+        setActiveRepoItem(visibleRepoItems()[0] || null);
       });
       repoSearch.focus();
     }
-    function closeRepoMenu() { menuWrap.classList.remove("open"); }
+    function closeRepoMenu() {
+      if (!menuWrap.classList.contains("open")) return;
+      menuWrap.classList.remove("open");
+      repoSearch.setAttribute("aria-expanded", "false");
+      repoSearch.removeAttribute("aria-activedescendant");
+      // Escape/Enter close with focus still in the box: return it to the picker, never <body>
+      if (menuInvoker && menuWrap.contains(document.activeElement)) menuInvoker.focus();
+    }
     function filterRepoMenu(q) {
       q = q.toLowerCase();
       menuEl.querySelectorAll(".repo-item").forEach(function (it) {
         it.style.display = (!q || (it.dataset.label || "").toLowerCase().indexOf(q) >= 0) ? "" : "none";
       });
+      setActiveRepoItem(visibleRepoItems()[0] || null);
     }
     function selectRepo(container, repo, label) {
       sel.container = container; sel.repo = repo || ""; sel.label = label;
@@ -205,6 +270,19 @@
       else if (mode === "diff") loadDiff();
     }
     repoSearch.addEventListener("input", function (e) { filterRepoMenu(e.target.value); });
+    repoSearch.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        var items = visibleRepoItems();
+        if (!items.length) return;
+        var idx = items.findIndex(function (it) { return it.classList.contains("active"); });
+        setActiveRepoItem(items[Math.max(0, Math.min(items.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)))]);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        var it = menuEl.querySelector(".repo-item.active") || visibleRepoItems()[0];
+        if (it) { selectRepo(it.dataset.container, it.dataset.repo, it.dataset.label); closeRepoMenu(); }
+      }
+    });
     menuEl.addEventListener("click", function (e) {
       var it = e.target.closest(".repo-item");
       if (it) { selectRepo(it.dataset.container, it.dataset.repo, it.dataset.label); closeRepoMenu(); }
@@ -238,11 +316,11 @@
     function renderPathTree(node) {
       var html = "";
       Object.keys(node.dirs).sort().forEach(function (d) {
-        html += '<div class="tree-dir"><div class="tree-dir-head"><span class="tchev">▾</span>' + escHtml(d) + "</div>" +
+        html += '<div class="tree-dir"><button type="button" class="tree-dir-head" aria-expanded="true"><span class="tchev" aria-hidden="true">▾</span>' + escHtml(d) + "</button>" +
                 '<div class="tree-children">' + renderPathTree(node.dirs[d]) + "</div></div>";
       });
       node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
-        html += '<div class="tree-file" data-path="' + escHtml(f.path) + '"><span class="fname">' + escHtml(f.name) + "</span></div>";
+        html += '<button type="button" class="tree-file" data-path="' + escHtml(f.path) + '"><span class="fname">' + escHtml(f.name) + "</span></button>";
       });
       return html;
     }
@@ -265,11 +343,18 @@
     }
     document.getElementById("files-tree").addEventListener("click", function (e) {
       var dh = e.target.closest(".tree-dir-head");
-      if (dh) { dh.parentNode.classList.toggle("collapsed"); return; }
+      if (dh) {
+        var collapsed = dh.parentNode.classList.toggle("collapsed");
+        dh.setAttribute("aria-expanded", String(!collapsed));
+        return;
+      }
       var row = e.target.closest(".tree-file");
       if (!row) return;
-      this.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
+      this.querySelectorAll(".tree-file.active").forEach(function (x) {
+        x.classList.remove("active"); x.removeAttribute("aria-current");
+      });
       row.classList.add("active");
+      row.setAttribute("aria-current", "true");
       openFile(row.dataset.path);
     });
     function openFile(path) {
@@ -336,12 +421,12 @@
     function renderDiffTree(node) {
       var html = "";
       Object.keys(node.dirs).sort().forEach(function (d) {
-        html += '<div class="tree-dir"><div class="tree-dir-head"><span class="tchev">▾</span>' + escHtml(d) + "</div>" +
+        html += '<div class="tree-dir"><button type="button" class="tree-dir-head" aria-expanded="true"><span class="tchev" aria-hidden="true">▾</span>' + escHtml(d) + "</button>" +
                 '<div class="tree-children">' + renderDiffTree(node.dirs[d]) + "</div></div>";
       });
       node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
-        html += '<div class="tree-file" data-file-idx="' + f.idx + '"><span class="fname">' + escHtml(f.name) + "</span>" +
-                '<span class="fstat"><span class="add">+' + f.add + '</span> <span class="del">-' + f.del + "</span></span></div>";
+        html += '<button type="button" class="tree-file" data-file-idx="' + f.idx + '"><span class="fname">' + escHtml(f.name) + "</span>" +
+                '<span class="fstat"><span class="add">+' + f.add + '</span> <span class="del">-' + f.del + "</span></span></button>";
       });
       return html;
     }
@@ -364,11 +449,18 @@
     }
     document.getElementById("diff-tree").addEventListener("click", function (e) {
       var dh = e.target.closest(".tree-dir-head");
-      if (dh) { dh.parentNode.classList.toggle("collapsed"); return; }
+      if (dh) {
+        var collapsed = dh.parentNode.classList.toggle("collapsed");
+        dh.setAttribute("aria-expanded", String(!collapsed));
+        return;
+      }
       var row = e.target.closest(".tree-file");
       if (!row) return;
-      this.querySelectorAll(".tree-file.active").forEach(function (x) { x.classList.remove("active"); });
+      this.querySelectorAll(".tree-file.active").forEach(function (x) {
+        x.classList.remove("active"); x.removeAttribute("aria-current");
+      });
       row.classList.add("active");
+      row.setAttribute("aria-current", "true");
       document.getElementById("diff-view").innerHTML = Diff2Html.html([this._files[+row.dataset.fileIdx]],
         { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" });
     });
@@ -377,11 +469,18 @@
     function setMode(mode) {
       document.querySelector(".app").dataset.mode = mode;
       document.querySelectorAll(".act-btn").forEach(function (b) {
-        b.classList.toggle("active", b.dataset.mode === mode);
+        var on = b.dataset.mode === mode;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-pressed", String(on));
       });
       closeRepoMenu();
       if (mode === "files") loadFiles();
       else if (mode === "diff") loadDiff();
+      else if (mode === "telemetry") loadTraces();
+    }
+    // Re-run the current filter through htmx (its submit handler owns the swap).
+    function loadTraces() {
+      document.getElementById("traces-filter").requestSubmit();
     }
     document.getElementById("activitybar").addEventListener("click", function (e) {
       var btn = e.target.closest(".act-btn");
@@ -396,6 +495,8 @@
       if (node) { select(node.dataset.workerId); return; }
       var refreshBtn = e.target.closest("#btn-refresh, #btn-refresh-bar");
       if (refreshBtn) { doRefresh(refreshBtn); return; }
+      var palBtn = e.target.closest("#btn-palette");
+      if (palBtn) { openPalette(palBtn); return; }
       if (e.target.id === "btn-notify" && "Notification" in window) { Notification.requestPermission(); }
     });
 
@@ -413,8 +514,32 @@
     var pal = document.getElementById("palette");
     var palIn = document.getElementById("palette-input");
     var palRes = document.getElementById("palette-results");
-    function openPalette() { pal.classList.add("open"); palIn.value = ""; renderPalette(""); palIn.focus(); }
-    function closePalette() { pal.classList.remove("open"); }
+    var palInvoker = null; // focus goes back here on close — never dropped to <body>
+    function openPalette(invoker) {
+      palInvoker = invoker || document.activeElement;
+      pal.classList.add("open");
+      palIn.setAttribute("aria-expanded", "true");
+      palIn.value = ""; renderPalette(""); palIn.focus();
+    }
+    function closePalette() {
+      if (!pal.classList.contains("open")) return;
+      pal.classList.remove("open");
+      palIn.setAttribute("aria-expanded", "false");
+      palIn.removeAttribute("aria-activedescendant");
+      if (palInvoker && palInvoker.focus && pal.contains(document.activeElement)) palInvoker.focus();
+    }
+    function setActivePalResult(el) {
+      palRes.querySelectorAll(".presult.active").forEach(function (x) {
+        x.classList.remove("active"); x.setAttribute("aria-selected", "false");
+      });
+      if (el) {
+        el.classList.add("active"); el.setAttribute("aria-selected", "true");
+        el.scrollIntoView({ block: "nearest" });
+        palIn.setAttribute("aria-activedescendant", el.id);
+      } else {
+        palIn.removeAttribute("aria-activedescendant");
+      }
+    }
     function renderPalette(q) {
       q = q.toLowerCase();
       var rows = [].slice.call(document.querySelectorAll("#inbox-list .row"));
@@ -423,12 +548,22 @@
         return { id: r.dataset.workerId, state: r.dataset.state, text: text };
       }).filter(function (x) { return !q || x.text.toLowerCase().indexOf(q) >= 0; })
         .map(function (x, i) {
-          return '<div class="presult ' + (i === 0 ? "active" : "") + '" data-id="' + x.id + '">' +
-            '<span class="dot ' + x.state + '"></span><span class="rb">' + x.text + '</span>' +
+          return '<div class="presult ' + (i === 0 ? "active" : "") + '" role="option" id="presult-' + i + '"' +
+            ' aria-selected="' + (i === 0 ? "true" : "false") + '" data-id="' + x.id + '">' +
+            '<span class="dot ' + x.state + '" aria-hidden="true"></span><span class="rb">' + x.text + '</span>' +
             '<span class="hint">' + (x.state === "blocked" ? "gate" : x.state) + '</span></div>';
         }).join("");
+      setActivePalResult(palRes.querySelector(".presult") || null);
     }
     palIn.addEventListener("input", function (e) { renderPalette(e.target.value); });
+    palIn.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      var items = [].slice.call(palRes.querySelectorAll(".presult"));
+      if (!items.length) return;
+      var idx = items.findIndex(function (it) { return it.classList.contains("active"); });
+      setActivePalResult(items[Math.max(0, Math.min(items.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)))]);
+    });
     palRes.addEventListener("click", function (e) {
       var r = e.target.closest(".presult");
       if (r) { setMode("inbox"); select(r.dataset.id); closePalette(); }
@@ -440,6 +575,8 @@
         e.preventDefault(); pal.classList.contains("open") ? closePalette() : openPalette(); return;
       }
       if (e.key === "Escape") { closePalette(); closeRepoMenu(); return; }
+      // modal focus trap: the palette's only focusable element is its input
+      if (pal.classList.contains("open") && e.key === "Tab") { e.preventDefault(); palIn.focus(); return; }
       if (pal.classList.contains("open") && e.key === "Enter") {
         var a = palRes.querySelector(".presult.active") || palRes.querySelector(".presult");
         if (a) { setMode("inbox"); select(a.dataset.id); closePalette(); }

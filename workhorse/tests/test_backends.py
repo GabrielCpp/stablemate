@@ -769,6 +769,41 @@ def test_opencode_cap_structured_error_event_aborts_stream_early():
     assert "usage limit" in diag.lower()
 
 
+def test_opencode_provider_header_timeout_aborts_into_short_retry():
+    """A provider transport timeout must escape opencode's internal retry loop and
+    reach Workhorse as a short transient, not as a full node-budget timeout."""
+    state, diag, timed_out, rc = _drive_stream_jsonl(
+        [
+            '{"type":"step_start","sessionID":"ses_1","part":{}}\n',
+            'timestamp=2026-07-14T15:43:57.871Z level=ERROR message="stream error" '
+            'error.error="ProviderHeaderTimeoutError: Provider response headers timed '
+            'out after 10000ms"\n',
+            '{"type":"text","part":{"text":"SHOULD NOT BE READ"}}\n',
+        ],
+        backends._opencode_on_event,
+    )
+
+    assert timed_out is True
+    assert "ProviderHeaderTimeoutError" in diag
+    assert state["result_text"] == "", "stream must stop before a later result"
+    try:
+        agent.classify_turn(
+            "opencode",
+            "investigate",
+            result_text=None,
+            diagnostics=diag,
+            timed_out=timed_out,
+            returncode=rc,
+            timeout=3600,
+        )
+        raise AssertionError("expected a transient BackendInvocationError")
+    except agent.BackendInvocationError as exc:
+        assert exc.transient is True
+        assert exc.timed_out is False, "provider timeout did not spend the node budget"
+        assert "ProviderHeaderTimeoutError" in str(exc)
+        assert "Timeout waiting for result" not in str(exc)
+
+
 if __name__ == "__main__":
     fns = [
         v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)

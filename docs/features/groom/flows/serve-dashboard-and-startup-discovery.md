@@ -98,4 +98,4 @@ and every live shell update is emitted through the
   groom/tests/test_render.py::test_dynamic_regions_have_stable_ids_and_oob_flag,
   groom/tests/test_render.py::test_empty_inbox_shows_spinner_while_scanning,
   groom/tests/test_render.py::test_statusbar_counts_states
-- screenshot: .agents/okf-build/walkthrough/groom/serve-dashboard-and-startup-discovery-post-discovery.png
+- screenshot: docs/features/groom/gui/screenshots/serve-dashboard-and-startup-discovery-post-discovery.png

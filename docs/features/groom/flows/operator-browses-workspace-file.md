@@ -47,5 +47,5 @@ This journey covers the as-built operator path through the [groom dashboard](../
   groom/tests/test_render.py::test_repo_menu_one_entry_per_container_repo,
   groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs,
   groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
-- screenshot: .agents/okf-build/walkthrough/groom/operator-browses-workspace-file-repo-menu-open.png
-- screenshot: .agents/okf-build/walkthrough/groom/operator-browses-workspace-file-file-loaded.png
+- screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-repo-menu-open.png
+- screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-file-loaded.png

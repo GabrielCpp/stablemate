@@ -1,0 +1,742 @@
+{
+  "slug": "groom-dashboard",
+  "state": "post-discovery",
+  "screenshot": "docs/features/groom/gui/screenshots/serve-dashboard-and-startup-discovery-post-discovery.png",
+  "manifest": "docs/specs/groom-dashboard/vet/post-discovery-manifest.json",
+  "regions": "docs/specs/groom-dashboard/vet/post-discovery-regions.json",
+  "cdpUrl": "http://127.0.0.1:9222",
+  "manifestErrors": [],
+  "config": {
+    "iouThreshold": 0.5
+  },
+  "summary": {
+    "status": "disagreements",
+    "matchedCount": 6,
+    "missingCount": 0,
+    "unexpectedCount": 34,
+    "unlabeledCount": 7
+  },
+  "matched": [
+    {
+      "dom": {
+        "selector": ".act-btn[data-mode=\"inbox\"]",
+        "name": "activity-inbox-mode",
+        "role": "",
+        "bbox": {
+          "x": -0.5,
+          "y": 6.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": -0.5,
+          "y": 6.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "role": "button",
+        "selectors": [
+          "button.act-btn.active:nth(18)"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-activity-inbox-mode.png"
+    },
+    {
+      "dom": {
+        "selector": ".act-btn[data-mode=\"files\"]",
+        "name": "activity-files-mode",
+        "role": "",
+        "bbox": {
+          "x": -0.5,
+          "y": 50.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": -0.5,
+          "y": 50.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "role": "button",
+        "selectors": [
+          "button.act-btn:nth(22)"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-activity-files-mode.png"
+    },
+    {
+      "dom": {
+        "selector": ".act-btn[data-mode=\"diff\"]",
+        "name": "activity-diff-mode",
+        "role": "",
+        "bbox": {
+          "x": -0.5,
+          "y": 94.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": -0.5,
+          "y": 94.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "role": "button",
+        "selectors": [
+          "button.act-btn:nth(25)"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-activity-diff-mode.png"
+    },
+    {
+      "dom": {
+        "selector": ".act-btn[data-mode=\"settings\"]",
+        "name": "activity-settings-mode",
+        "role": "",
+        "bbox": {
+          "x": -0.5,
+          "y": 425.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": -0.5,
+          "y": 425.0,
+          "width": 48.0,
+          "height": 44.0
+        },
+        "role": "button",
+        "selectors": [
+          "button.act-btn:nth(30)"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-activity-settings-mode.png"
+    },
+    {
+      "dom": {
+        "selector": "input.filter[name=\"q\"]",
+        "name": "inbox-filter-input",
+        "role": "searchbox",
+        "bbox": {
+          "x": 199.078125,
+          "y": 6.0,
+          "width": 160.0,
+          "height": 27.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": 199.078125,
+          "y": 6.0,
+          "width": 160.0,
+          "height": 27.0
+        },
+        "role": "searchbox",
+        "selectors": [
+          "input.filter:nth(39)"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-inbox-filter-input.png"
+    },
+    {
+      "dom": {
+        "selector": "#btn-refresh-bar",
+        "name": "statusbar-refresh-button",
+        "role": "button",
+        "bbox": {
+          "x": 651.28125,
+          "y": 473.0,
+          "width": 21.59375,
+          "height": 17.0
+        },
+        "visible": true,
+        "state": null
+      },
+      "region": {
+        "bbox": {
+          "x": 651.28125,
+          "y": 473.0,
+          "width": 21.59375,
+          "height": 17.0
+        },
+        "role": "button",
+        "selectors": [
+          "#btn-refresh-bar"
+        ],
+        "crop": null
+      },
+      "iou": 1.0,
+      "crop": "vet/post-discovery-statusbar-refresh-button.png"
+    }
+  ],
+  "missing": [],
+  "unexpected": [
+    {
+      "bbox": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 48.0,
+        "height": 469.0
+      },
+      "role": "toolbar",
+      "selectors": [
+        "#activitybar"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 14.5,
+        "y": 18.0,
+        "width": 20.0,
+        "height": 20.0
+      },
+      "role": "button",
+      "selectors": [
+        "svg:nth(19)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 17.0,
+        "y": 28.833332061767578,
+        "width": 15.0,
+        "height": 2.5
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(20)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 18.66666603088379,
+        "y": 22.16666603088379,
+        "width": 11.666666030883789,
+        "height": 11.666666030883789
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(21)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 14.5,
+        "y": 62.0,
+        "width": 20.0,
+        "height": 20.0
+      },
+      "role": "button",
+      "selectors": [
+        "svg:nth(23)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 17.83333396911621,
+        "y": 66.16666412353516,
+        "width": 13.333332061767578,
+        "height": 10.833335876464844
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(24)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 14.5,
+        "y": 106.0,
+        "width": 20.0,
+        "height": 20.0
+      },
+      "role": "button",
+      "selectors": [
+        "svg:nth(26)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 20.33333396911621,
+        "y": 109.33333587646484,
+        "width": 8.333333969116211,
+        "height": 5.0
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(27)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 20.33333396911621,
+        "y": 117.66666412353516,
+        "width": 8.333333969116211,
+        "height": 5.0
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(28)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 14.5,
+        "y": 437.0,
+        "width": 20.0,
+        "height": 20.0
+      },
+      "role": "button",
+      "selectors": [
+        "svg:nth(31)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 22.0,
+        "y": 444.5,
+        "width": 5.0,
+        "height": 5.0
+      },
+      "role": "button",
+      "selectors": [
+        "circle:nth(32)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 17.0,
+        "y": 439.5,
+        "width": 15.0,
+        "height": 15.0
+      },
+      "role": "button",
+      "selectors": [
+        "path:nth(33)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 48.0,
+        "y": 40.0,
+        "width": 321.078125,
+        "height": 429.0
+      },
+      "role": "log",
+      "selectors": [
+        "#inbox-list"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 48.0,
+        "y": 40.0,
+        "width": 321.078125,
+        "height": 40.796875
+      },
+      "role": "log",
+      "selectors": [
+        "div.empty:nth(41)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 0.0,
+        "y": 469.0,
+        "width": 780.0,
+        "height": 24.0
+      },
+      "role": "status",
+      "selectors": [
+        "#statusbar"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 10.0,
+        "y": 473.453125,
+        "width": 73.40625,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.stat:nth(74)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 10.0,
+        "y": 477.5,
+        "width": 8.0,
+        "height": 8.0
+      },
+      "role": "status",
+      "selectors": [
+        "span.dot.blocked:nth(75)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 23.0,
+        "y": 473.453125,
+        "width": 6.9375,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.n:nth(76)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 97.40625,
+        "y": 473.453125,
+        "width": 73.40625,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.stat:nth(77)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 97.40625,
+        "y": 477.5,
+        "width": 8.0,
+        "height": 8.0
+      },
+      "role": "status",
+      "selectors": [
+        "span.dot.running:nth(78)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 110.40625,
+        "y": 473.453125,
+        "width": 6.9375,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.n:nth(79)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 184.8125,
+        "y": 473.453125,
+        "width": 52.640625,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.stat:nth(80)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 184.8125,
+        "y": 477.5,
+        "width": 8.0,
+        "height": 8.0
+      },
+      "role": "status",
+      "selectors": [
+        "span.dot.idle:nth(81)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 197.8125,
+        "y": 473.453125,
+        "width": 6.9375,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.n:nth(82)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 251.453125,
+        "y": 473.453125,
+        "width": 80.328125,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.stat:nth(83)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 251.453125,
+        "y": 477.5,
+        "width": 8.0,
+        "height": 8.0
+      },
+      "role": "status",
+      "selectors": [
+        "span.dot.finished:nth(84)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 264.453125,
+        "y": 473.453125,
+        "width": 6.9375,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.n:nth(85)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 452.015625,
+        "y": 471.15625,
+        "width": 317.984375,
+        "height": 20.6875
+      },
+      "role": "status",
+      "selectors": [
+        "span.status-right:nth(86)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 452.015625,
+        "y": 473.453125,
+        "width": 131.5625,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span:nth(87)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 597.578125,
+        "y": 473.453125,
+        "width": 39.703125,
+        "height": 16.09375
+      },
+      "role": "status",
+      "selectors": [
+        "span.stat:nth(88)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 597.578125,
+        "y": 478.0,
+        "width": 7.0,
+        "height": 7.0
+      },
+      "role": "status",
+      "selectors": [
+        "span.ws-dot:nth(89)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 655.28125,
+        "y": 474.0,
+        "width": 13.59375,
+        "height": 15.0
+      },
+      "role": "button",
+      "selectors": [
+        "span:nth(91)"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 686.875,
+        "y": 471.15625,
+        "width": 83.125,
+        "height": 20.6875
+      },
+      "role": "button",
+      "selectors": [
+        "#btn-palette"
+      ],
+      "crop": null
+    },
+    {
+      "bbox": {
+        "x": 690.875,
+        "y": 473.15625,
+        "width": 22.65625,
+        "height": 16.6875
+      },
+      "role": "button",
+      "selectors": [
+        "span.kbd:nth(93)"
+      ],
+      "crop": null
+    }
+  ],
+  "unlabeled": [
+    {
+      "bbox": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 780.0,
+        "height": 493.0
+      },
+      "role": null,
+      "selectors": [
+        "html:nth(0)",
+        "body:nth(15)",
+        "div.app:nth(16)"
+      ],
+      "crop": "vet/post-discovery-residual-0.png"
+    },
+    {
+      "bbox": {
+        "x": 48.0,
+        "y": 0.0,
+        "width": 732.0,
+        "height": 469.0
+      },
+      "role": null,
+      "selectors": [
+        "#main",
+        "#inbox-pane"
+      ],
+      "crop": "vet/post-discovery-residual-1.png"
+    },
+    {
+      "bbox": {
+        "x": 48.0,
+        "y": 0.0,
+        "width": 322.078125,
+        "height": 469.0
+      },
+      "role": null,
+      "selectors": [
+        "#inbox"
+      ],
+      "crop": "vet/post-discovery-residual-2.png"
+    },
+    {
+      "bbox": {
+        "x": 48.0,
+        "y": 0.0,
+        "width": 321.078125,
+        "height": 40.0
+      },
+      "role": null,
+      "selectors": [
+        "div.pane-head:nth(37)"
+      ],
+      "crop": "vet/post-discovery-residual-3.png"
+    },
+    {
+      "bbox": {
+        "x": 58.0,
+        "y": 11.796875,
+        "width": 122.15625,
+        "height": 15.390625
+      },
+      "role": null,
+      "selectors": [
+        "span:nth(38)"
+      ],
+      "crop": "vet/post-discovery-residual-4.png"
+    },
+    {
+      "bbox": {
+        "x": 370.078125,
+        "y": 0.0,
+        "width": 409.90625,
+        "height": 469.0
+      },
+      "role": null,
+      "selectors": [
+        "#detail"
+      ],
+      "crop": "vet/post-discovery-residual-5.png"
+    },
+    {
+      "bbox": {
+        "x": 370.078125,
+        "y": 0.0,
+        "width": 409.90625,
+        "height": 66.1875
+      },
+      "role": null,
+      "selectors": [
+        "div.detail-empty:nth(43)"
+      ],
+      "crop": "vet/post-discovery-residual-6.png"
+    }
+  ]
+}

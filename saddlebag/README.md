@@ -2,10 +2,17 @@
 
 > Carry the right credentials for every ride.
 
-`saddlebag` is the runtime credential pool for the stablemate ecosystem. It stores,
-scans, and leases test identities so that `workhorse` workflows — and the AI agents
-driving them — can acquire the right credential for a run without ever touching a
-secret directly.
+`saddlebag` carries the material a run needs, so that `workhorse` workflows — and
+the AI agents driving them — never touch a secret directly. It holds two kinds of
+material, in one pool:
+
+- a **credential** — a test identity, scanned, selected and leased for the run;
+- an **environment** — the `.env`-shaped configuration a dev stack needs to *boot*,
+  secret and non-secret alike, rendered to a file on demand.
+
+Saddlebag is not only a vault. It is what **packages an environment**: an
+environment holding no secrets at all is still worth owning here, because the value
+of the pool is reproducing a stack anywhere, not merely hiding its passwords.
 
 ---
 
@@ -16,10 +23,11 @@ secret directly.
 | **ostler** | Tends the knowledge graph — epics, stories, seeds, specs |
 | **farrier** | Fits the shared prompt library onto each repo |
 | **workhorse** | Runs the workflow graph unattended |
-| **saddlebag** | Carries credentials — scan, select, lease, release |
+| **saddlebag** | Carries credentials and environments — scan, select, lease, render |
 
 Ostler owns the *spec* of what a test needs (roles, envs, surface). Saddlebag owns
-the *runtime identity* that satisfies that spec. They don't overlap.
+the *runtime identity* that satisfies that spec, and the *environment material* the
+stack boots with. They don't overlap.
 
 ---
 
@@ -129,6 +137,49 @@ This makes parallel cross-env runs safe without collisions.
 
 The TTL is a hard backstop, not a hint: once it elapses the credential is reusable
 even if nobody released it, so a crashed run cannot strand an identity forever.
+
+### Environment
+
+The second first-class concept — a named, ordered set of **entries** answering
+"what does the stack need to boot?", where a credential answers "who do I sign in
+as?".
+
+| Concept | Unit | Leased? |
+|---|---|---|
+| **Credential** | one test identity | yes — exclusive |
+| **Environment** | one `.env`-shaped bundle | no — shared, so ten runs may render it at once |
+
+Each entry is one `KEY` plus a declaration of where its value comes from:
+
+| Entry kind | Value lives in | Use for |
+|---|---|---|
+| `config` | the pool DB, in the clear | hosts, ports, project ids, emulator addresses — material that is not sensitive and *is* worth diffing and reviewing |
+| `secret` | the secret store (keyring / Vault) | API keys, tokens, anything the repo would not check in |
+| `credential-ref` | resolved at render time from a **leased credential** | `TEST_USER_PASSWORD` — the join between the two concepts |
+| `pending` | nowhere yet | a key that has been named but not supplied. `env doctor` reports these, and that list is exactly what a human still has to provide |
+
+The `config`/`secret` split is what lets environments share the credential pool's
+database without breaking its invariant. The DB holds an environment's key manifest
+and its *non-sensitive* values; every sensitive value goes to the store. So
+`env list` and `env show` stay **structurally incapable** of leaking a secret — the
+same property that makes `list` and `scan` safe.
+
+#### The channel decides the kind
+
+Not a default, and not a flag you have to remember — **how you supply the value**:
+
+```bash
+saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=predykt          # argv  -> config
+printf '%s' "$KEY" | saddlebag env set web-local API_KEY --secret-stdin  # stdin -> secret
+saddlebag env set web-local TEST_USER_PASSWORD --from-credential cred-007:password
+```
+
+A value on argv is already in the process table and your shell history: it cannot be
+treated as a secret without lying about its exposure, so it is `config`. A value on
+stdin is a `secret` — the same discipline `add --password-stdin` enforces. This is
+self-enforcing rather than conventional: **there is no way to put a secret in the
+pool DB by accident**, because the only channel that reaches the DB is the one that
+has already published the value.
 
 ---
 
@@ -278,6 +329,112 @@ saddlebag expire
 `release` is idempotent: releasing an already-released lease succeeds, so a cleanup
 step cannot fail a build.
 
+### Environments
+
+Populate the pool once per repo, then reconstitute it anywhere:
+
+```bash
+# Define an environment and its render target
+saddlebag env add web-local --env local --target web/.env.local
+
+# Seed the key manifest from the checked-in example — keys only, values discarded
+saddlebag env import web-local --from web/.env.example
+#   -> every key lands `pending`. Nothing has been guessed, and `env doctor` now
+#      reports exactly what still has to be supplied.
+
+# Supply values (the channel decides the kind)
+saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=predykt
+saddlebag env set web-local VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+  --note "unset this to point the web app at real Firebase Auth"
+printf '%s' "$KEY" | saddlebag env set web-local VITE_FIREBASE_API_KEY --secret-stdin
+saddlebag env set web-local TEST_USER_PASSWORD --from-credential cred-007:password
+
+# Inspect — these CANNOT emit a secret value
+saddlebag env list [--project P] [--all-projects] [--json]
+saddlebag env show web-local [--json]   # config in the clear; a secret reads as <set>
+
+# Package and move
+saddlebag env export web-local --output env/web-local.yaml   # safe to commit
+saddlebag env import web-local --from env/web-local.yaml     # reconstitute anywhere
+
+# Materialize — the only command that turns a secret into a file
+saddlebag env render web-local [--output PATH] [--run-id RUN]
+saddlebag env render web-local --check    # resolve everything, write nothing
+
+# Health, and cleanup
+saddlebag env doctor [--project P] [--json]
+saddlebag env unset web-local SOME_KEY    # drops the key and its stored secret
+saddlebag env remove web-local
+```
+
+#### The manifest — how configuration becomes a package
+
+The pool DB is local and unsynced. For credentials that is tolerable; for
+configuration it would defeat the point, because an environment that cannot leave
+the laptop it was defined on has not packaged anything. So the thing that travels is
+not the database but a **manifest** — a checkable-in YAML rendering of an
+environment. It carries **no secret values**, by construction:
+
+```yaml
+# env/web-local.yaml — safe to commit
+name: web-local
+env: local
+target: web/.env.local
+format: dotenv
+entries:
+  - key: VITE_FIREBASE_PROJECT_ID
+    kind: config
+    value: predykt
+  - key: VITE_FIREBASE_API_KEY
+    kind: secret          # the value lives in the store, keyed predykt/env-001/VITE_FIREBASE_API_KEY
+  - key: TEST_USER_PASSWORD
+    kind: credential-ref
+    from: cred-007:password
+```
+
+The two halves then meet cleanly: **the manifest carries the configuration, the
+store carries the secrets.** On a fresh container, `env import` plus a reachable
+Vault reconstitutes the whole environment; with no Vault it reconstitutes everything
+*except* the secrets, and `env doctor` names exactly which ones are missing. Neither
+half can leak the other. A manifest that tries to carry a `value:` on a `secret`
+entry is rejected on import, not imported.
+
+This subsumes `.env.example` rather than living beside it — the example file is a key
+list with no kinds, notes, required flags, target or values, and the manifest is a
+strict superset. `env import --from .env.example` stays supported precisely so an
+existing repo can bootstrap its first manifest from what it already has.
+
+#### Config-only environments need no secret store
+
+Saddlebag refuses to run without a store — deliberately, because a credential
+without one is meaningless. But an environment made entirely of `config` entries
+needs no store at all, and the hosts where that matters most are exactly the ones
+with no keyring: containers, CI, headless boxes — the places a stack most needs to
+be reproducible. So the store is opened **lazily, and only when an entry actually
+requires it**:
+
+- an environment whose entries are all `config` renders on any host, with no
+  keyring, no Vault and no configuration whatsoever;
+- the moment one `secret` or `credential-ref` entry is in play, the store must open,
+  and if it cannot, saddlebag fails rather than rendering a partial file.
+
+The no-plaintext-fallback rule is untouched: it governs material that *is* secret. It
+was never a claim that non-secret material must be treated as if it were.
+
+#### `render` and `--check`
+
+`render` is the single point where a secret becomes a file. It writes through the
+same `0600`-before-content path as the credential file, and prints nothing to stdout
+but the path it wrote. Nothing is written until *everything* resolves, so a missing
+key can never leave a half-rendered file behind; if a required key has no value,
+render exits non-zero and **names the exact keys a human must supply**.
+
+`--check` is the gate: it resolves every entry, takes no lease, writes nothing, and
+diffs the result against the target file, reporting missing, extra and drifted keys.
+It is safe to run anywhere, in CI or in an agent's context, because its report names
+keys and never values — including for drift, where the comparison looks at values but
+the output does not.
+
 ---
 
 ## Workhorse integration
@@ -328,6 +485,31 @@ credential the run holds, including those acquired in parallel branches:
 Output files belong under `.workhorse/`, which workhorse's default scaffolding
 gitignores.
 
+### Bringing the stack up
+
+An environment renders in the same shape, and needs no new release node — the
+existing one already covers any `credential-ref` leases that `render` took out:
+
+```yaml
+  - id: ensure_env
+    type: script
+    script: saddlebag env render {{ env_name }} --run-id {{ run_id }}
+    next: qa
+
+  # ... and at the end of the run, the release node that is already there:
+  - id: release_credentials
+    type: script
+    script: saddlebag release --run-id {{ run_id }}
+```
+
+This is what lets an environment fixer stop touching `.env` files at all. The stack's
+environment material is owned by saddlebag, not by files in the repo: an agent runs
+`env render` to materialize it, and never reads, writes, or invents the contents of a
+`.env`. If render reports pending required keys, that is a human-only wall — the
+agent reports it and names the exact keys, rather than guessing a value and producing
+a silently wrong stack. Once that sanctioned path exists, a permission layer can deny
+agent reads of `.env*` outright.
+
 ---
 
 ## Ostler integration
@@ -361,17 +543,29 @@ Ostler seed frontmatter can carry two optional fields saddlebag understands:
 
 ## Security model
 
-- Passwords are held by the **OS keyring or Vault**, never by saddlebag itself and
-  never in the pool database.
-- A password is only ever *entered* on stdin (`--password-stdin`) — never as an
-  argv element, where it would land in the process table and shell history.
-- `list`, `scan` and the agent selection prompt read pool metadata only, and so
-  cannot emit a password. `acquire` is the sole reader of the store.
-- The credential file written by `--output` is created `0600` before the secret is
-  written, and belongs in gitignored `.workhorse/`.
+- Secrets are held by the **OS keyring or Vault**, never by saddlebag itself and
+  never in the pool database. For environment entries this is enforced by the
+  database itself: a `CHECK (kind = 'config' OR value IS NULL)` constraint means a
+  bug in a caller — or a caller that has not been written yet — *cannot* quietly put
+  a secret in a row.
+- A secret is only ever *entered* on stdin (`--password-stdin`, `--secret-stdin`) —
+  never as an argv element, where it would land in the process table and shell
+  history. A value supplied on argv is therefore `config`, by definition rather than
+  by policy.
+- `list`, `scan`, `env list`, `env show`, `env doctor` and the agent selection prompt
+  read pool metadata only, and so cannot emit a secret. `acquire` and `env render`
+  are the sole readers of the store.
+- The credential file written by `--output`, and the file written by `env render`,
+  are created `0600` before the secret is written. `env render` prints only the path
+  it wrote, never the contents.
+- The **manifest** (`env export`) is the artefact meant to be committed, and carries
+  no secret values by construction. A manifest that tries to smuggle one in is
+  rejected on import.
 - Leases have a hard TTL (default 2h). `saddlebag expire` in CI cleanup force-releases
   anything that leaked.
-- When no secret store is available, saddlebag **fails** rather than degrading.
+- When no secret store is available, saddlebag **fails** rather than degrading — for
+  material that *is* secret. A config-only environment needs no store and renders
+  anyway; that is not a fallback, it is the absence of a secret.
 
 ---
 
@@ -381,11 +575,16 @@ Ostler seed frontmatter can carry two optional fields saddlebag understands:
 saddlebag/
 ├── __init__.py
 ├── cli.py               # argparse entry point: add, list, remove, scan, acquire,
-│                        #   release, expire, doctor
-├── db.py                # SQLite pool — schema, metadata CRUD, lease management
+│                        #   release, expire, doctor, and the `env` subcommands
+├── db.py                # SQLite pool — schema, metadata CRUD, lease management,
+│                        #   environments and their entries
 ├── store.py             # Secret stores: OS keyring (default) + Vault (fallback)
 ├── selector.py          # AI selection: build prompt, call agent CLI, parse response
-├── models.py            # Credential, Lease, AcquiredCredential, Requirement
+├── models.py            # Credential, Lease, AcquiredCredential, Requirement,
+│                        #   Environment, EnvironmentEntry
+├── envfile.py           # Minimal `.env` reader/writer (no python-dotenv)
+├── manifest.py          # The checkable-in YAML an environment travels as
+├── render.py            # Resolve an environment to values; the `--check` gate
 └── workhorse.py         # `.workhorse/credential.json` contract (0600 output)
 ```
 

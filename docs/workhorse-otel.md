@@ -2,7 +2,7 @@
 type: feature
 slug: workhorse-otel
 title: workhorse OpenTelemetry, collected by groom
-status: proposed
+status: implemented
 ---
 # workhorse OpenTelemetry, collected by groom
 
@@ -10,7 +10,19 @@ status: proposed
 > (the push path this partly subsumes) · [operator-inbox](groom/operator-inbox.md) (the answer
 > write-back OTel does *not* replace). This doc is a pre-implementation design brief.
 
-Status: **proposed** (2026-07-08). Instrument the `workhorse` engine with OpenTelemetry (opt-in,
+Status: **implemented** (2026-07-13) — phases 1–3 plus the Plane-3 guards landed as designed:
+`workhorse/otel.py` (+ the `otel` extra, node spans via the `_append_event` choke point, agent-turn
+spans, cap-wait heartbeat, watchdog/ladder span events, gas metrics, `WORKHORSE_MAX_RUNTIME_S`);
+`groom/{otlp,store,alerts,notify}.py` + `/v1/traces`, `/v1/metrics`, `/traces` and the dashboard
+telemetry pane; the coder workflow's zero-diff guard + `make groom-serve`. The one deliberate
+deviation: give-up detection is node-NAME based in groom (`GROOM_GIVEUP_NODES`, default
+`qa_give_up,fix_give_up`) rather than a workhorse-emitted span event, keeping the engine
+workflow-agnostic. Phase 4's sidecar retirement is still pending, as planned — OTel and the
+sidecar coexist until the gate-over-OTel path is proven. Operator docs: `workhorse/docs/GUARDRAILS.md`
+(producer env) and `groom/README.md` (collector + alert rules). The design brief below is preserved as
+written.
+
+Proposed 2026-07-08. Instrument the `workhorse` engine with OpenTelemetry (opt-in,
 no-op by default) and extend `groom` into a local OTLP collector + searchable store + alerter, so an
 away-from-keyboard operator is paged when the `coder` workflow churns or hangs — instead of finding a
 run that burned days.

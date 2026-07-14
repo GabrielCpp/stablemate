@@ -1,0 +1,38 @@
+[
+  {
+    "name": "activity-inbox-mode",
+    "selector": ".act-btn[data-mode=\"inbox\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 6,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "activity-files-mode",
+    "selector": ".act-btn[data-mode=\"files\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 50,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "inbox-list",
+    "selector": "#inbox-list",
+    "role": "",
+    "bbox": {
+      "x": 48,
+      "y": 40,
+      "width": 321.078125,
+      "height": 429
+    },
+    "visible": true
+  }
+]

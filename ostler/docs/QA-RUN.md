@@ -1,6 +1,13 @@
 # `ostler qa` — deterministic QA run bookkeeping
 
-Status: **design** (2026-07-10) — not yet implemented.
+Status: **implemented** (2026-07-14).
+
+This document describes the original version-1 command runner. The universal
+version-2 plan, OKF impact packet, Playwright and Maestro adapters, recording
+contract, and coder-workflow integration are specified in
+[`../../docs/ostler-qa-verification.md`](../../docs/ostler-qa-verification.md).
+That document supersedes this one where the contracts differ, especially the
+placement of `qa-plan.yml` and static inputs outside disposable `qa/`.
 
 ## Why this exists
 
@@ -257,19 +264,20 @@ ostler qa run <plan-file> [--spec <spec-dir>]
 
 ---
 
-## Run plan YAML format (`qa-plan.yml`)
+## Version-1 run plan YAML format (`qa-plan.yml`)
 
-The plan file is written by the agent into the `qa/` directory _before_ `ostler qa run` is
-called. Because it is written before execution, a human can inspect and abort if anything
-looks wrong. Because ostler executes it rather than the agent, the captured outputs and
-verdicts are trustworthy.
+The plan file is written to `<spec_dir>/qa-plan.yml` before `ostler qa run` is
+called. Static inputs live under `<spec_dir>/qa-inputs/`. Nothing required to
+start a run may live under `qa/`, because the runner deletes that complete
+directory after validation and before execution. A human can inspect and abort
+the plan before Ostler executes it.
 
 Assertions are **inline** on the step that produces the evidence. This keeps the proof
 co-located with the action: you read one step block and see both what was called and how
 it was confirmed, without cross-referencing a separate `asserts:` section.
 
 ```yaml
-# qa/qa-plan.yml — agent writes this; human reviews before ostler executes
+# qa-plan.yml — agent writes this; human reviews before ostler executes
 
 run_id: CASE-4352
 story: CASE-4352
@@ -300,7 +308,7 @@ steps:
     cmd: >
       curl -s -w "\n%{http_code}"
       -X POST https://mobile-gateway.cm.safely-you.cloud/auth/login
-      -H "Content-Type: application/json" -d @qa/payloads/login-payload.json
+      -H "Content-Type: application/json" -d @qa-inputs/login-payload.json
     expect_http: 200
     capture: # JSONPath applied to step stdout
       session_id: $.session_id
@@ -330,7 +338,7 @@ steps:
     cmd: >
       AWS_PROFILE={{env.aws_profile}} aws dynamodb put-item
       --region {{env.region}} --table-name sessions
-      --item file://qa/payloads/ttl-session-item.json
+      --item file://qa-inputs/ttl-session-item.json
 
   - id: ttl_invoke
     label: Invoke dynamo-stream handler with synthetic TTL REMOVE event
@@ -338,7 +346,7 @@ steps:
     cmd: >
       AWS_PROFILE={{env.aws_profile}} aws lambda invoke
       --function-name dynamo-stream
-      --payload file://qa/payloads/ttl-invoke-payload.json /dev/stdout
+      --payload file://qa-inputs/ttl-invoke-payload.json /dev/stdout
     out: qa/steps/ttl-invoke-response.json
     expect_http: 200
     cloudwatch_confirm: # ostler runs filter-log-events; PASS if ≥ 1 match
@@ -360,7 +368,7 @@ steps:
     cmd: >
       AWS_PROFILE={{env.aws_profile}} aws lambda invoke
       --function-name dynamo-stream
-      --payload file://qa/payloads/modify-overwrite-invoke-payload.json /dev/stdout
+      --payload file://qa-inputs/modify-overwrite-invoke-payload.json /dev/stdout
     out: qa/steps/modify-invoke-response.json
     expect_http: 200
     cloudwatch_confirm:

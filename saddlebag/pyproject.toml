@@ -26,6 +26,9 @@ dependencies = [
   # Locates the pool database in each OS's conventional user-data directory
   # (Application Support on macOS, %LOCALAPPDATA% on Windows, XDG on Linux).
   "platformdirs>=4.0",
+  # The environment manifest: the checkable-in YAML that lets an environment
+  # travel off the machine it was defined on. Config only — never a secret value.
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

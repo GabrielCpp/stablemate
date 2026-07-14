@@ -410,6 +410,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mechanism", required=True, choices=["live", "synthetic", "fixture"]
     )
     qa_step.add_argument("--cmd", required=True)
+    qa_step.add_argument("--timeout", type=float, default=60)
     qa_step.add_argument("--spec", required=True, type=Path)
     qa_step.add_argument(
         "--capture",
@@ -471,12 +472,36 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_validate.add_argument("plan_file", type=Path)
     qa_validate.add_argument("--spec", default=None, type=Path)
+    qa_validate.add_argument("--json", action="store_true")
 
     qa_run = qas.add_parser("run", help="execute a qa-plan.yml in batch mode")
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
     qa_run.add_argument("--stop-on-fail", action="store_true", dest="stop_on_fail")
     qa_run.add_argument("--json", action="store_true")
+
+    qa_context = qas.add_parser(
+        "context", help="build the base/head changed-code to OKF obligation packet"
+    )
+    qa_context.add_argument("--base", required=True)
+    qa_context.add_argument("--head", default="WORKTREE")
+    qa_context.add_argument("--spec", required=True, type=Path)
+    qa_context.add_argument("--features-root", default="docs/features")
+    qa_context.add_argument(
+        "--source-root",
+        action="append",
+        default=[],
+        metavar="SURFACE=PATH",
+        help="associate a production source root with an OKF surface (repeatable)",
+    )
+    qa_context.add_argument("--story-file", type=Path)
+    qa_context.add_argument("--json", action="store_true")
+
+    qa_context_validate = qas.add_parser(
+        "context-validate", help="validate qa-okf-context.json"
+    )
+    qa_context_validate.add_argument("--spec", required=True, type=Path)
+    qa_context_validate.add_argument("--json", action="store_true")
 
     return p
 
@@ -677,6 +702,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             captures=captures,
             out_path=args.out,
             allow_fail=args.allow_fail,
+            timeout=args.timeout,
         )
         print(result.message)
         return 0 if result.ok else 1
@@ -716,8 +742,11 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         spec_dir = args.spec
         if spec_dir is not None and not spec_dir.is_absolute():
             spec_dir = root / spec_dir
-        result = qa_mod.cmd_validate(args.plan_file, spec_dir)
-        print(result.message)
+        result = qa_mod.cmd_validate(args.plan_file, spec_dir, root=root)
+        if args.json:
+            print(json.dumps(result.data, indent=2))
+        else:
+            print(result.message)
         return 0 if result.ok else 1
 
     if op == "run":
@@ -732,6 +761,53 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             print(result.message)
         return 0 if result.ok else 1
+
+    if op == "context":
+        spec_dir = _resolve_spec(args.spec)
+        source_roots: dict[str, list[str]] = {}
+        for raw in args.source_root:
+            if "=" not in raw:
+                print(f"error: --source-root must be SURFACE=PATH, got {raw!r}")
+                return 2
+            surface, path = raw.split("=", 1)
+            source_roots.setdefault(surface.strip(), []).append(path.strip())
+        story_file = args.story_file
+        if story_file is not None and not story_file.is_absolute():
+            story_file = root / story_file
+        try:
+            packet = qa_mod.build_context(
+                root,
+                base=args.base,
+                head=args.head,
+                source_roots=source_roots,
+                features_root=args.features_root,
+                story_file=story_file,
+            )
+            paths = qa_mod.write_context(packet, spec_dir)
+        except (OSError, RuntimeError, ValueError) as exc:
+            output = {"status": "invalid", "message": str(exc)}
+            print(json.dumps(output, indent=2) if args.json else f"error: {exc}")
+            return 1
+        if args.json:
+            print(json.dumps(packet, indent=2))
+        else:
+            print(f"wrote {paths[0]} and {paths[1]}")
+        return 0 if not any(f.get("severity") == "error" for f in packet["healthFindings"]) else 1
+
+    if op == "context-validate":
+        spec_dir = _resolve_spec(args.spec)
+        context_file = spec_dir / "qa-okf-context.json"
+        try:
+            packet = json.loads(context_file.read_text(encoding="utf-8"))
+            problems = qa_mod.validate_context(packet)
+        except (OSError, json.JSONDecodeError) as exc:
+            problems = [str(exc)]
+        output = {"status": "invalid" if problems else "passed", "problems": problems}
+        if args.json:
+            print(json.dumps(output, indent=2))
+        else:
+            print("Context is valid." if not problems else "Context validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
+        return 1 if problems else 0
 
     return 2
 

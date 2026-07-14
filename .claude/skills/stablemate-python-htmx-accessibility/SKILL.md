@@ -29,6 +29,15 @@ ships. So:
   `<button>` (in-page action) or `<a href>` (navigation): you get role, focusability, Enter/Space
   activation, and the disabled/`aria-pressed` vocabulary for free. A `<div hx-post>` is invisible to
   keyboard and screen reader and is an `ostler graph` doc-gap too.
+- **A delegated listener is still a click-only div — and statically invisible.**
+  `container.addEventListener("click", e => e.target.closest(".act-btn") && …)` leaves *no
+  attribute on the element*, so an attribute-keyed lint rule can't even see the control. The fix is
+  the same (real `<button>`s — delegation itself is fine, `closest()` matches buttons too), plus a
+  test that pins the control's tag (see Linting below). Two mechanical consequences of the swap:
+  button content is phrasing content, so inner wrappers become `<span>`s (not `<div>`s), and the
+  control's existing classes must reset UA button styling (`background/border/padding/font/
+  text-align`) or the layout shifts. Concrete incident: a dashboard's four-mode activity rail of
+  delegation-wired `div`s that passed template lint for months.
 - **Structure uses the structural element.** A list of workers is `<ul>`/`<li>` (or `role="list"`);
   a data grid is a real `<table>`/`<tr>`/`<td>`; page regions are `<nav>`/`<main>`/`<header>` with
   one `<h1>` and a sane heading order. A screen-reader user navigates by these landmarks and
@@ -72,6 +81,11 @@ unless the target is a live region.
 - Keep the live region **present in the initial HTML and stable** — screen readers only announce
   changes to a live region that already existed. Swap *content into* it; don't swap the live region
   itself in and out.
+- **When the push target IS the swapped element** (`hx-swap-oob="true"` replaces the target
+  outright), the `aria-live`/`role` attributes must be emitted **on the pushed fragment by the
+  server-render function**, not only on the initial template host — otherwise the very first push
+  silently replaces the live region with a non-live copy. Keep template and render function in
+  sync, and lint the rendered fragment (below) so drift is caught.
 - A pushed browser `Notification` (permission-gated) is a nice-to-have on top, **not a substitute** —
   it's dismissible, easily denied, and invisible to a user watching the tab.
 
@@ -90,7 +104,17 @@ owes the complete pattern:
   keep it on the input and let `aria-activedescendant` do the announcing), and Enter activates it.
 - A visible shortcut hint (`⌘K`) is decorative — the real requirement is the `keydown` handler plus
   the ARIA above. If a shortcut is the *only* way to reach an action, that action fails keyboard
-  users who don't know it; give it a visible, focusable control too.
+  users who don't know it; give it a visible, focusable control too (e.g. the hint itself becomes a
+  real `<button aria-label="Open command palette">` that opens the widget).
+- **The same combobox pattern covers any popup picker** — a repo/container menu with a filter
+  input, a mention picker: filter input `role="combobox"` + `aria-expanded`/`aria-controls`,
+  container `role="listbox"`, option rows `role="option"` with ids and `aria-selected`, arrows move
+  `aria-activedescendant`, Enter selects, Escape closes and returns focus to the button that opened
+  it. Options managed this way are correctly non-focusable — no `tabindex` on them.
+- **Set ARIA state where you toggle the class.** Every `classList.toggle("active"/"collapsed"/
+  "selected", …)` on a stateful control gets a sibling `setAttribute` — `aria-pressed` (mode
+  toggles), `aria-expanded` (disclosure heads), `aria-current`/`aria-selected` (the selected row/
+  option). One without the other is state a screen reader never hears.
 
 ## Sanitized/agent-authored markdown must stay perceivable
 
@@ -109,10 +133,22 @@ There is no JSX linter here, so a11y is enforced by a **static HTML linter** plu
   This lints hand-authored HTML directly and is the natural per-service `lint` command in
   `agents.yml` (e.g. `html-validate <service>/templates/`). It catches missing labels, invalid
   roles, and bad heading order at write time — exactly the gaps this stack is prone to.
+- **No Node at all?** A dependency-free stdlib linter over the templates holds the same core bar —
+  `html.parser` walking role/name/focusability/live-region rules (groom's `a11y_lint.py` is the
+  reference: 7 rules, zero deps, `python -m <pkg>.a11y_lint` as the `lint` target). One rule
+  nuance: do **not** require focusability of `role="option"` (activedescendant-managed, correctly
+  non-focusable).
+- **Lint the rendered fragments, not just the template files.** Server-render functions emit half
+  the interactive markup (rows, menus, status bars) and OOB fragments carry the live regions — call
+  them in a unit test with fixture models and feed the output through the same linter, holding it
+  to the same zero-findings bar. Add a pin test for delegation-wired controls the linter cannot see
+  (e.g. "every `.act-btn` in the template parses as a `<button>` with an `aria-label`").
 - **Runtime (needs the app up): `pa11y` or `@axe-core/*`** against the served page — this is the
   only way to check the *composed, post-swap* DOM and the live regions actually announcing. Run it
   in the QA phase on the live harness, after a swap/push has occurred, not just against the static
-  first paint.
+  first paint. A computed-role DOM scan (`ostler vet`) doubles as a live detector: an
+  interactive-looking region in its `unlabeled` bucket is a role-less control found in production
+  DOM.
 - **Manual smoke:** open the palette and drive the whole dashboard — open a gate, answer it, dismiss
   the palette — with the mouse untouched; confirm focus is always somewhere sensible and pushed
   updates are announced.
@@ -120,7 +156,9 @@ There is no JSX linter here, so a11y is enforced by a **static HTML linter** plu
 ## Done means
 
 Everything in the universal contract's "Done means", plus, specific to this stack: no `hx-*`/`ws-*`
-attribute sits on a non-interactive element; every focus-holding `hx-swap` restores or re-homes
-focus; every push target is a stable `aria-live` region; every hand-rolled keyboard widget
-implements its full ARIA pattern with a real focus trap and Escape-restores-focus; and
-`html-validate` on the templates is clean.
+attribute sits on a non-interactive element **and no delegation-wired control is a bare div**;
+every focus-holding `hx-swap` restores or re-homes focus; every push target is a stable `aria-live`
+region **whose attributes ride the OOB fragment itself**; every hand-rolled keyboard widget
+implements its full ARIA pattern with a real focus trap and Escape-restores-focus; every state
+class toggle has its ARIA state twin; and the linter is clean over **both** the template files and
+the server-rendered fragments.

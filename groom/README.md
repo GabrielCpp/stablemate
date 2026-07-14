@@ -47,4 +47,43 @@ uv run groom serve --host 127.0.0.1   # loopback only (no container access)
 > prints a one-line warning on any non-loopback bind (`--allow-non-loopback`
 > silences it). Use `--host 127.0.0.1` to bind loopback only.
 
+## Telemetry collector (OTLP) + AFK alerting
+
+`groom` is also the default local **OpenTelemetry collector** for `workhorse`
+runs (see `docs/workhorse-otel.md` at the repo root). The same uvicorn process
+and port expose standard OTLP/HTTP receivers — `POST /v1/traces` and
+`POST /v1/metrics` — so a run started with
+
+```bash
+pip install 'workhorse-agent[otel]'
+WORKHORSE_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787 workhorse run coder
+```
+
+streams node/agent-turn spans and gas/heartbeat metrics into `groom`. Because a
+pushed span carries its own identity, **native (non-Docker) runs appear too** —
+no discovery gate. Spans and metrics persist in an embedded SQLite file
+(`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
+from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=…&
+slower_than=…`, or with raw `sqlite3` queries. Rows older than
+`GROOM_RETENTION_DAYS` (14) are pruned at startup.
+
+Alert rules run on every ingest plus a periodic tick, and page you through
+browser notifications **and** an away-from-keyboard push — configure
+`GROOM_NTFY_TOPIC` (posts to `https://ntfy.sh/<topic>`; override the server
+with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
+
+| Rule | Fires when | Knob (default) |
+|---|---|---|
+| STALL | no span AND no cap-wait heartbeat from a live run | `GROOM_STALL_MIN` (90) |
+| BUDGET | a run still live past the wall-clock ceiling | `GROOM_MAX_HOURS` (24) |
+| CHURN | the same node span repeats with no gas refuel | `GROOM_CHURN_REPEATS` (5) |
+| WATCHDOG | a `watchdog_kill` span event arrives | — |
+| GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
+
+The crux: a legitimate multi-day spending-cap sleep **heartbeats** (the
+`workhorse.cap_wait.heartbeat` metric), so it never false-STALLs — silence is
+provably a hang. Alerts dedupe per `(run, rule)`. Run `groom serve` under
+nohup/systemd as the always-on collector (the consuming repo's
+`make groom-serve` target does exactly that).
+
 See `docs/features/groom.md` at the repo root for the full design.

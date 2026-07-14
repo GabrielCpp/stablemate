@@ -18,12 +18,21 @@ import re
 import sqlite3
 import uuid
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import platformdirs
 
-from .models import Credential, Lease, Requirement, utcnow
+from .models import (
+    FORMATS,
+    Credential,
+    Environment,
+    EnvironmentEntry,
+    Lease,
+    Requirement,
+    utcnow,
+)
 
 #: Default lease lifetime, in seconds (2 hours).
 DEFAULT_TTL = 7200
@@ -43,6 +52,32 @@ CREATE TABLE IF NOT EXISTS credentials (
     acquired_at REAL,
     expires_at  REAL
 );
+
+CREATE TABLE IF NOT EXISTS environments (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    project     TEXT,
+    env         TEXT NOT NULL,
+    target      TEXT,
+    format      TEXT NOT NULL DEFAULT 'dotenv',
+    description TEXT,
+    last_used   REAL,
+    UNIQUE (project, name)
+);
+
+CREATE TABLE IF NOT EXISTS environment_entries (
+    environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+    key            TEXT NOT NULL,
+    kind           TEXT NOT NULL DEFAULT 'pending',
+    value          TEXT,
+    cred_ref       TEXT,
+    required       INTEGER NOT NULL DEFAULT 1,
+    note           TEXT,
+    position       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (environment_id, key),
+    CHECK (kind IN ('pending', 'config', 'secret', 'credential-ref')),
+    CHECK (kind = 'config' OR value IS NULL)
+);
 """
 
 # Columns added after the initial release, applied to pre-existing pools on open.
@@ -57,9 +92,12 @@ _INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_credentials_env ON credentials(env);
 CREATE INDEX IF NOT EXISTS idx_credentials_project ON credentials(project);
 CREATE INDEX IF NOT EXISTS idx_credentials_run ON credentials(run_id);
+CREATE INDEX IF NOT EXISTS idx_environments_project ON environments(project);
+CREATE INDEX IF NOT EXISTS idx_environments_env ON environments(env);
 """
 
-_ID_RE = re.compile(r"^cred-(\d+)$")
+_CRED_ID_RE = re.compile(r"^cred-(\d+)$")
+_ENV_ID_RE = re.compile(r"^env-(\d+)$")
 
 
 class PoolError(RuntimeError):
@@ -88,6 +126,18 @@ def _dt(value: float | None) -> datetime | None:
     return datetime.fromtimestamp(value, tz=UTC) if value is not None else None
 
 
+def _row_to_entry(row: sqlite3.Row) -> EnvironmentEntry:
+    return EnvironmentEntry(
+        key=row["key"],
+        kind=row["kind"],
+        value=row["value"],
+        cred_ref=row["cred_ref"],
+        required=bool(row["required"]),
+        note=row["note"],
+        position=row["position"],
+    )
+
+
 class Pool:
     """The credential pool. Metadata and leases only — never a password."""
 
@@ -99,6 +149,10 @@ class Pool:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
+        # Off by default in SQLite, and the environment_entries -> environments
+        # cascade is load-bearing: without it, removing an environment would strand
+        # its entries as unreachable rows.
+        self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._conn.executescript(_INDEXES)
@@ -203,10 +257,14 @@ class Pool:
 
     # -- writes --------------------------------------------------------------
 
+    def _mint_id(self, table: str, prefix: str, pattern: re.Pattern[str]) -> str:
+        """Mint the next free ``<prefix>-NNN``. ``table`` is always a module literal."""
+        rows = self._conn.execute(f"SELECT id FROM {table}").fetchall()
+        used = [int(m.group(1)) for r in rows if (m := pattern.match(r["id"]))]
+        return f"{prefix}-{max(used, default=0) + 1:03d}"
+
     def _next_id(self) -> str:
-        rows = self._conn.execute("SELECT id FROM credentials").fetchall()
-        used = [int(m.group(1)) for r in rows if (m := _ID_RE.match(r["id"]))]
-        return f"cred-{max(used, default=0) + 1:03d}"
+        return self._mint_id("credentials", "cred", _CRED_ID_RE)
 
     def add(
         self,
@@ -312,3 +370,204 @@ class Pool:
         return self._clear(
             "lease_id IS NOT NULL AND expires_at <= ?", (now.timestamp(),)
         )
+
+    # -- environments --------------------------------------------------------
+    #
+    # An environment is *not* leased — it is shared, read-only configuration, so
+    # ten runs may render it concurrently. Only the credentials its credential-ref
+    # entries point at are exclusive, and those go through `acquire` above.
+
+    def _entries_of(self, environment_id: str) -> tuple[EnvironmentEntry, ...]:
+        rows = self._conn.execute(
+            "SELECT * FROM environment_entries WHERE environment_id = ? "
+            "ORDER BY position, key",
+            (environment_id,),
+        ).fetchall()
+        return tuple(_row_to_entry(r) for r in rows)
+
+    def _row_to_environment(self, row: sqlite3.Row) -> Environment:
+        return Environment(
+            id=row["id"],
+            name=row["name"],
+            env=row["env"],
+            project=row["project"],
+            target=row["target"],
+            format=row["format"],
+            description=row["description"],
+            last_used=_dt(row["last_used"]),
+            entries=self._entries_of(row["id"]),
+        )
+
+    def env_get(self, environment_id: str) -> Environment | None:
+        row = self._conn.execute(
+            "SELECT * FROM environments WHERE id = ?", (environment_id,)
+        ).fetchone()
+        return self._row_to_environment(row) if row else None
+
+    def env_by_name(self, name: str, project: str | None = None) -> Environment | None:
+        """Look an environment up the way a human refers to it: by name, within a project.
+
+        ``project IS ?`` rather than ``=``: SQL equality against NULL is never true,
+        so an unscoped environment would be unfindable with ``=``.
+        """
+        row = self._conn.execute(
+            "SELECT * FROM environments WHERE name = ? AND project IS ?", (name, project)
+        ).fetchone()
+        return self._row_to_environment(row) if row else None
+
+    def env_all(self) -> list[Environment]:
+        """Every environment in the pool, unscoped."""
+        rows = self._conn.execute("SELECT * FROM environments ORDER BY id").fetchall()
+        return [self._row_to_environment(r) for r in rows]
+
+    def env_find(self, project: str | None) -> list[Environment]:
+        """The environments in one project — where ``None`` means *the unscoped ones*.
+
+        Distinct from :meth:`env_all`, and the distinction matters: ``None`` here is
+        a project to match (with ``IS``, so it matches NULL), not an absent filter.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM environments WHERE project IS ? ORDER BY id", (project,)
+        ).fetchall()
+        return [self._row_to_environment(r) for r in rows]
+
+    def env_add(
+        self,
+        *,
+        name: str,
+        env: str,
+        project: str | None = None,
+        target: str | None = None,
+        format: str = "dotenv",
+        description: str | None = None,
+        environment_id: str | None = None,
+    ) -> Environment:
+        if format not in FORMATS:
+            raise PoolError(f"unknown format {format!r} (expected one of {', '.join(FORMATS)})")
+        # UNIQUE (project, name) does not catch a duplicate when project is NULL —
+        # in SQL, two NULLs are not equal — so the unscoped case is checked here.
+        if self.env_by_name(name, project) is not None:
+            scope = f" in project {project}" if project else ""
+            raise PoolError(f"environment {name} already exists{scope}")
+
+        environment = Environment(
+            id=environment_id or self._mint_id("environments", "env", _ENV_ID_RE),
+            name=name,
+            env=env,
+            project=project,
+            target=target,
+            format=format,
+            description=description,
+        )
+        try:
+            self._conn.execute(
+                "INSERT INTO environments (id, name, project, env, target, format, description) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    environment.id,
+                    environment.name,
+                    environment.project,
+                    environment.env,
+                    environment.target,
+                    environment.format,
+                    environment.description,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise PoolError(f"environment {environment.id} already exists") from exc
+        return environment
+
+    def env_update(
+        self,
+        environment_id: str,
+        *,
+        env: str | None = None,
+        target: str | None = None,
+        format: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        """Update an environment's metadata. ``None`` means "leave this field alone"."""
+        if format is not None and format not in FORMATS:
+            raise PoolError(f"unknown format {format!r} (expected one of {', '.join(FORMATS)})")
+        fields = {"env": env, "target": target, "format": format, "description": description}
+        assignments = {k: v for k, v in fields.items() if v is not None}
+        if not assignments:
+            return
+        columns = ", ".join(f"{k} = ?" for k in assignments)
+        self._conn.execute(
+            f"UPDATE environments SET {columns} WHERE id = ?",
+            (*assignments.values(), environment_id),
+        )
+
+    def env_remove(self, environment_id: str) -> bool:
+        """Drop an environment. Its entries go with it, via ON DELETE CASCADE."""
+        cur = self._conn.execute("DELETE FROM environments WHERE id = ?", (environment_id,))
+        return cur.rowcount > 0
+
+    def env_touch(self, environment_id: str, now: datetime | None = None) -> None:
+        """Record that an environment was rendered."""
+        self._conn.execute(
+            "UPDATE environments SET last_used = ? WHERE id = ?",
+            ((now or utcnow()).timestamp(), environment_id),
+        )
+
+    def env_put_entry(self, environment_id: str, entry: EnvironmentEntry) -> EnvironmentEntry:
+        """Insert or replace one entry.
+
+        A new key lands at the end of the render order; an existing key keeps the
+        position it already had, so re-supplying a value never reshuffles a file.
+        Passing a non-zero ``position`` pins it explicitly (that is what manifest
+        import does).
+        """
+        position = entry.position
+        if not position:
+            existing = self._conn.execute(
+                "SELECT position FROM environment_entries WHERE environment_id = ? AND key = ?",
+                (environment_id, entry.key),
+            ).fetchone()
+            if existing is not None:
+                position = existing["position"]
+            else:
+                row = self._conn.execute(
+                    "SELECT COALESCE(MAX(position), 0) + 1 AS next "
+                    "FROM environment_entries WHERE environment_id = ?",
+                    (environment_id,),
+                ).fetchone()
+                position = row["next"]
+
+        stored = replace(entry, position=position)
+        try:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO environment_entries "
+                "(environment_id, key, kind, value, cred_ref, required, note, position) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    environment_id,
+                    stored.key,
+                    stored.kind,
+                    stored.value,
+                    stored.cred_ref,
+                    int(stored.required),
+                    stored.note,
+                    stored.position,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            # The CHECK constraints are the last line of the no-secret-in-the-DB
+            # defence; surface a breach as an error, never as a silent write.
+            raise PoolError(f"rejected entry {stored.key}: {exc}") from exc
+        return stored
+
+    def env_get_entry(self, environment_id: str, key: str) -> EnvironmentEntry | None:
+        row = self._conn.execute(
+            "SELECT * FROM environment_entries WHERE environment_id = ? AND key = ?",
+            (environment_id, key),
+        ).fetchone()
+        return _row_to_entry(row) if row else None
+
+    def env_remove_entry(self, environment_id: str, key: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM environment_entries WHERE environment_id = ? AND key = ?",
+            (environment_id, key),
+        )
+        return cur.rowcount > 0

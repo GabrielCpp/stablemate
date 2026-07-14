@@ -308,4 +308,4 @@ Serializes the short terminal-status tail used by row and detail renderers when 
 - gated-only: workers without open gates never appear in the inbox, even if they are running, idle, finished with an exit code, or matched by the text query.
 - answer lifecycle: answering the last gate removes the workflow from the inbox on the next rendered snapshot or live broadcast.
 - fleet counts: inbox filtering never redefines status-bar totals; those counts remain global to the workflow registry.
-- row accessibility gap: inbox rows are clickable `div` elements without a semantic role, accessible name, or direct keyboard activation; keyboard row movement exists as separate global `j`/`k` behavior on the dashboard.
+- row accessibility: inbox rows are native `<button type="button">` elements named by their visible text and directly activatable with Enter or Space; keyboard row movement also exists as separate global `j`/`k` behavior on the dashboard.

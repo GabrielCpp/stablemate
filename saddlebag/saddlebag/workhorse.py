@@ -4,9 +4,12 @@ A workhorse workflow bookends its agent work with two ``script`` nodes: one that
 scans and leases a credential into ``.workhorse/credential.json``, and one that
 releases the lease afterwards. These helpers own that file's shape.
 
-The output file is the only artefact in saddlebag that contains a password, so
-it is written with owner-only permissions and belongs under ``.workhorse/``,
-which workhorse's default scaffolding gitignores.
+Two artefacts leave saddlebag carrying a secret — the credential file, and an
+environment rendered by ``saddlebag env render``. Both go through
+:func:`write_private`, so both are owner-only *before* they hold anything. The
+credential file belongs under ``.workhorse/``, which workhorse's default
+scaffolding gitignores; a rendered environment lands wherever the environment's
+target says, which is the repo's own already-gitignored ``.env`` path.
 """
 
 from __future__ import annotations
@@ -23,10 +26,10 @@ from .models import AcquiredCredential
 WORKHORSE_DIR = ".workhorse"
 
 
-def write_credential(path: Path | str, acquired: AcquiredCredential) -> Path:
-    """Serialise a leased credential to ``path`` with ``0600`` permissions.
+def write_private(path: Path | str, text: str) -> Path:
+    """Write ``text`` to ``path`` with ``0600`` permissions.
 
-    The mode is applied before the secret is written, so the password is never
+    The mode is applied before the secret is written, so the content is never
     momentarily world-readable. ``os.open``'s mode argument only takes effect when
     the file is *created*, so an ``fchmod`` follows it — otherwise overwriting an
     existing, permissive file would silently leave it group- and world-readable.
@@ -38,9 +41,13 @@ def write_credential(path: Path | str, acquired: AcquiredCredential) -> Path:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, owner_only)
     os.fchmod(fd, owner_only)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(acquired.to_dict(), handle, indent=2)
-        handle.write("\n")
+        handle.write(text)
     return path
+
+
+def write_credential(path: Path | str, acquired: AcquiredCredential) -> Path:
+    """Serialise a leased credential to ``path`` with ``0600`` permissions."""
+    return write_private(path, json.dumps(acquired.to_dict(), indent=2) + "\n")
 
 
 def read_credential(path: Path | str) -> dict[str, Any]:

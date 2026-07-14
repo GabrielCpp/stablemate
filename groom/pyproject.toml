@@ -26,6 +26,13 @@ dependencies = [
   # transitively via litestar[standard]'s uvicorn, but the sidecar imports it
   # directly, so declare it.
   "websockets>=13",
+  # Decode standard OTLP/HTTP protobuf on /v1/traces + /v1/metrics (groom is
+  # workhorse's default local collector — see groom/otlp.py). Proto classes
+  # only; groom needs no OTel SDK.
+  "opentelemetry-proto>=1.25",
+  # groom.store places groom.db in the platform data dir (already transitive
+  # via workhorse-agent, but imported directly, so declared).
+  "platformdirs>=4.0",
 ]
 
 [project.optional-dependencies]

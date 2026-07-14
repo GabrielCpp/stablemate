@@ -10,22 +10,48 @@ from pydantic import BaseModel
 
 from .geometry import BBox
 
-# Landmark roles (explicit `role="..."` or implicit via tag) `_WALK_JS` resolves per element,
-# walking up to the nearest ancestor that carries one.
+# Computed roles (explicit `role="..."` or the implicit HTML→ARIA mapping — landmarks plus
+# the common element roles an accessibility tree would compute) `_WALK_JS` resolves per
+# element, walking up to the nearest ancestor that carries one.
 _WALK_JS = """
 () => {
-  const LANDMARK_TAGS = {
+  const IMPLICIT_TAGS = {
     NAV: "navigation", ASIDE: "complementary", HEADER: "banner",
     MAIN: "main", FORM: "form", FOOTER: "contentinfo", DIALOG: "dialog",
+    BUTTON: "button", SUMMARY: "button", TEXTAREA: "textbox", OPTION: "option",
+    IMG: "img", UL: "list", OL: "list", LI: "listitem",
+    H1: "heading", H2: "heading", H3: "heading", H4: "heading",
+    H5: "heading", H6: "heading",
+    TABLE: "table", TR: "row", TH: "columnheader", TD: "cell",
+    PROGRESS: "progressbar", HR: "separator", FIELDSET: "group", DETAILS: "group",
   };
+  const INPUT_TYPES = {
+    checkbox: "checkbox", radio: "radio", range: "slider", number: "spinbutton",
+    search: "searchbox", button: "button", submit: "button", reset: "button",
+    image: "button", hidden: "",
+  };
+
+  function ownRole(el) {
+    const explicit = el.getAttribute && el.getAttribute("role");
+    if (explicit) return explicit;
+    if (el.tagName === "A") return el.hasAttribute("href") ? "link" : "";
+    if (el.tagName === "SELECT") {
+      return (el.multiple || el.size > 1) ? "listbox" : "combobox";
+    }
+    if (el.tagName === "INPUT") {
+      const t = (el.getAttribute("type") || "text").toLowerCase();
+      return t in INPUT_TYPES ? INPUT_TYPES[t] : "textbox";
+    }
+    return IMPLICIT_TAGS[el.tagName] || "";
+  }
 
   function landmarkRole(el) {
     let node = el;
     while (node && node !== document.documentElement.parentNode) {
-      const explicit = node.getAttribute && node.getAttribute("role");
-      if (explicit) return explicit;
-      const implicit = LANDMARK_TAGS[node.tagName];
-      if (implicit) return implicit;
+      if (node.getAttribute) {
+        const role = ownRole(node);
+        if (role) return role;
+      }
       node = node.parentElement;
     }
     return "";

@@ -63,6 +63,22 @@ def test_report_round_trips_through_json():
     assert "manifestErrors" in dumped
 
 
+def test_vet_concept_lists_matched_components_with_crops():
+    match_result = _clean_match_result()
+    match_result.matched[0].crop = "vet/default-nav.png"
+    raw = build_vet_concept(None, _build(match_result))
+    assert "### Matched (documented components registered on screen)" in raw
+    assert "crop: vet/default-nav.png" in raw
+
+
+def test_matched_crop_round_trips_through_json():
+    match_result = _clean_match_result()
+    match_result.matched[0].crop = "vet/default-nav.png"
+    report = _build(match_result)
+    restored = VetReport.model_validate(json.loads(report.model_dump_json(by_alias=True)))
+    assert restored.matched[0].crop == "vet/default-nav.png"
+
+
 def test_build_vet_concept_creates_fresh():
     report = _build(_clean_match_result())
     raw = build_vet_concept(None, report)

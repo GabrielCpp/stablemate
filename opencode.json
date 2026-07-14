@@ -3,7 +3,7 @@
   "mcp": {
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp@latest", "--headless"],
+      "command": ["npx", "-y", "@playwright/mcp@latest", "--headless", "--cdp-endpoint=http://127.0.0.1:9222"],
       "enabled": true,
       "timeout": 60000
     }

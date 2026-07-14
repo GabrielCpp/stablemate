@@ -50,3 +50,28 @@ class WorkflowContainer:
 class AnswerResult:
     ok: bool
     message: str = ""
+
+
+@dataclass
+class RunTelemetry:
+    """Per-run alert-rule state, updated on every OTLP ingest (the hot cache
+    beside the durable SQLite store). Spans export on COMPLETION, so "the run
+    ended" is signalled by the root ``run:*`` span arriving (``terminal``), and
+    "the run started" is approximated by the first span/metric seen
+    (``first_seen_ts``) — good enough for the BUDGET clock.
+    """
+
+    run_id: str
+    workflow: str = ""
+    repo: str = ""
+    branch: str = ""
+    first_seen_ts: float = 0.0
+    last_span_ts: float = 0.0
+    last_heartbeat_ts: float = 0.0
+    terminal: str = ""  # root span's terminal status; "" while the run is live
+    # Node-span repeats since the last gas refuel — the churn signal. A refuel
+    # (forward progress) resets it; the same node re-completing N times on one
+    # tank is a loop that will burn gas for hours before the tank trips.
+    node_counts: dict[str, int] = field(default_factory=dict)
+    # Alert dedupe: rule names already fired for this run (one page per rule).
+    fired: set[str] = field(default_factory=set)

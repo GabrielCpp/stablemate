@@ -12,6 +12,7 @@ from .geometry import BBox
 
 class DomElement(BaseModel):
     selector: str
+    name: str = ""  # the documented component's slug; names its per-component crop
     role: str = ""
     bbox: BBox
     visible: bool = True
