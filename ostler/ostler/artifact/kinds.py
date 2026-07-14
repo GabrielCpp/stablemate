@@ -13,6 +13,7 @@ that context; ostler validates everything knowable from the repository alone.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,6 +127,7 @@ def _qa_evidence_scaffold() -> dict:
     return {
         "overall": "Pass | Fail | Blocked",
         "runId": "",
+        "qa_run_log": "qa/qa-run.ndjson",
         "criteria": [
             {
                 "id": "AC1",
@@ -136,6 +138,7 @@ def _qa_evidence_scaffold() -> dict:
             }
         ],
         "visual_fidelity": [],
+        "obligations": [],
     }
 
 
@@ -145,12 +148,17 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     problems: list[str] = []
 
     criteria = data.get("criteria")
-    if not isinstance(criteria, list) or not criteria:
+    obligations = data.get("obligations", [])
+    if not isinstance(criteria, list):
         return [
-            "no non-empty 'criteria' array "
+            "no 'criteria' array "
             f"(found keys: {sorted(data.keys())}) — one entry per acceptance criterion with "
             "{'id', 'kind', 'verdict', 'evidence'} is required."
         ]
+    if not isinstance(obligations, list):
+        return ["'obligations' must be an array when present."]
+    if not criteria and not obligations:
+        return ["qa-evidence must contain at least one criterion or OKF obligation."]
 
     overall = str(data.get("overall", "")).strip().lower()
     any_fail = False
@@ -243,8 +251,10 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if overall == "pass" and any_fail:
         problems.append("overall is Pass but at least one criterion verdict is Fail — inconsistent.")
 
-    # Run-id coherence (opt-in: enforced only when the QA pass stamped a runId).
+    # A pass is valid only when it is backed by the current runner-owned ledger.
     run_id = str(data.get("runId", "")).strip()
+    if overall == "pass" and not run_id:
+        problems.append("overall Pass requires a non-empty runner-produced runId.")
     if run_id:
         manifest_path = spec_dir / "qa" / "run-manifest.json"
         if not manifest_path.is_file():
@@ -265,26 +275,107 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                         f"qa-evidence runId '{run_id}' — evidence and summary must come from "
                         f"the same execution."
                     )
-                basenames = {
-                    Path(str(a).strip()).name
-                    for a in (manifest.get("artifacts") or [])
-                    if _is_nonempty_str(a)
-                }
-                for c in criteria:
-                    if not isinstance(c, dict) or str(c.get("verdict", "")).strip().lower() != "pass":
+                artifacts: dict[str, dict[str, Any]] = {}
+                for artifact in manifest.get("artifacts") or []:
+                    if not isinstance(artifact, dict) or not _is_nonempty_str(artifact.get("path")):
+                        problems.append("run-manifest artifacts must be objects with path and sha256.")
                         continue
-                    cid = str(c.get("id") or c.get("title") or "?")
-                    evidence = c.get("evidence") or []
+                    path = str(artifact["path"]).strip()
+                    artifacts[path] = artifact
+                    resolved = (spec_dir / path).resolve()
+                    if not resolved.is_relative_to(spec_dir.resolve()) or not resolved.is_file():
+                        problems.append(f"manifest artifact '{path}' is missing or escapes spec_dir.")
+                        continue
+                    digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
+                    if artifact.get("sha256") != digest:
+                        problems.append(f"manifest artifact '{path}' has a stale or invalid sha256.")
+
+                log_ref = data.get("qa_run_log")
+                if not _is_nonempty_str(log_ref):
+                    problems.append("runId is present but qa_run_log is missing.")
+                    records = []
+                else:
+                    log_path = (spec_dir / str(log_ref)).resolve()
+                    if not log_path.is_relative_to(spec_dir.resolve()) or not log_path.is_file():
+                        problems.append("qa_run_log is missing or escapes spec_dir.")
+                        records = []
+                    else:
+                        records = _strict_ndjson(log_path, problems)
+                        normalized_log = _relative_evidence_path(log_ref, spec_dir)
+                        if normalized_log not in artifacts:
+                            problems.append("qa_run_log is not registered in the current run manifest.")
+                terminal = [record for record in records if record.get("kind") == "session_stop"]
+                if not terminal or terminal[-1].get("run_id") != run_id:
+                    problems.append("qa_run_log has no matching terminal session_stop record.")
+
+                for row in [*criteria, *obligations]:
+                    if not isinstance(row, dict) or str(row.get("verdict", "")).strip().lower() != "pass":
+                        continue
+                    item_id = str(row.get("id") or row.get("title") or "?")
+                    evidence = row.get("evidence") or []
                     if isinstance(evidence, str):
                         evidence = [evidence]
-                    if not any(Path(str(e).strip()).name in basenames for e in evidence):
+                    normalized = [_relative_evidence_path(item, spec_dir) for item in evidence]
+                    if not any(path in artifacts for path in normalized if path):
                         problems.append(
-                            f"{cid}: no cited evidence file appears in this run's manifest "
-                            f"(runId {run_id}) — every Pass criterion must cite at least one "
-                            f"artifact produced by the current execution."
+                            f"{item_id}: no cited evidence file appears by exact path in this "
+                            f"run's manifest (runId {run_id})."
                         )
+                    refs = row.get("log_refs") or []
+                    if not isinstance(refs, list) or not refs:
+                        problems.append(f"{item_id}: Pass requires at least one assertion log_ref.")
+                        continue
+                    for ref in refs:
+                        if not _passing_log_ref(str(ref), item_id, records):
+                            problems.append(
+                                f"{item_id}: log_ref '{ref}' does not resolve to a passing "
+                                "runner assertion covering this obligation."
+                            )
 
     return problems
+
+
+def _strict_ndjson(path: Path, problems: list[str]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            problems.append(f"qa_run_log line {number} is invalid JSON ({exc}).")
+            continue
+        if not isinstance(record, dict):
+            problems.append(f"qa_run_log line {number} is not an object.")
+            continue
+        records.append(record)
+    return records
+
+
+def _relative_evidence_path(value: Any, spec_dir: Path) -> str:
+    if not _is_nonempty_str(value):
+        return ""
+    path = Path(str(value))
+    resolved = (path if path.is_absolute() else spec_dir / path).resolve()
+    try:
+        return resolved.relative_to(spec_dir.resolve()).as_posix()
+    except ValueError:
+        return ""
+
+
+def _passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> bool:
+    parts = ref.rsplit(":assert:", 1)
+    if len(parts) != 2:
+        return False
+    scenario, action = parts
+    return any(
+        record.get("kind") == "assert"
+        and record.get("result") == "PASS"
+        and record.get("scenario") == scenario
+        and str(record.get("action", "")) == action
+        and item_id in record.get("covers", [])
+        for record in records
+    )
 
 
 # ---------------------------------------------------------------------------

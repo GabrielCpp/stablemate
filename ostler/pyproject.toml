@@ -25,8 +25,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "playwright>=1.40"]
-vet = ["playwright>=1.40"]
+dev = ["pytest>=8.0", "playwright>=1.40", "pillow>=10.0"]
+vet = ["playwright>=1.40", "pillow>=10.0"]
+qa = ["playwright>=1.40"]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate"

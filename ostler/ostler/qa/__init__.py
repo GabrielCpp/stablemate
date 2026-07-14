@@ -24,6 +24,7 @@ from .run import (
     cmd_stop,
     cmd_validate,
 )
+from .context import build_context, render_context, validate_context, write_context
 
 __all__ = [
     "QaOutcome",
@@ -35,4 +36,8 @@ __all__ = [
     "cmd_replay",
     "cmd_run",
     "cmd_validate",
+    "build_context",
+    "write_context",
+    "render_context",
+    "validate_context",
 ]

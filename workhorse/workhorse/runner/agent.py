@@ -12,6 +12,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from .. import otel
 from ..config import resolve_backend_default, resolve_power
 from ..graph.nodes import AgentNode
 
@@ -145,6 +146,11 @@ def _arm_watchdog(
             f"[{node_id}] ⏱ watchdog: turn exceeded {int(timeout)}s + "
             f"{int(_WATCHDOG_GRACE_S)}s grace — SIGKILLing process group",
             flush=True,
+        )
+        # Runs on the watchdog's daemon thread — otel.turn_event is the one
+        # instrumentation call that must be (and is) thread-safe.
+        otel.turn_event(
+            "watchdog_kill", error=True, node=node_id, timeout_s=int(timeout)
         )
         if on_fire is not None:
             on_fire()
@@ -447,6 +453,18 @@ def classify_turn(
             reset_at=cap_reset_at,
         )
 
+    # JSONL backends ask stream_subprocess to stop as soon as an error event/log
+    # identifies a short transient. That intentional early abort uses the same
+    # ``timed_out`` transport signal as the wall-clock watchdog, so preserve the
+    # provider error as the cause and do not tell the retry it exhausted its node
+    # budget. This is what turns e.g. OpenCode's ProviderHeaderTimeoutError into
+    # Workhorse's bounded backoff instead of waiting for the CLI's internal loop.
+    if timed_out and _is_transient(diagnostics):
+        raise BackendInvocationError(
+            f"Transient {backend_name} provider failure for node '{node_id}'{tail}",
+            transient=True,
+        )
+
     if timed_out:
         raise BackendInvocationError(
             f"Timeout waiting for result from {backend_name} for node '{node_id}'"
@@ -675,6 +693,7 @@ def run_agent(
                     f"and continuing (attempt {attempt_no}/{max_compact_attempts})",
                     flush=True,
                 )
+                otel.turn_event("compact", node=node.id, attempt=attempt_no)
                 if backend.compact(session_id_path, node.id, model):
                     continue  # retry same prompt on the compacted session
                 print(
@@ -707,6 +726,7 @@ def run_agent(
                     f"[{node.id}] ⚠ node failed ({exc}); will reframe and retry",
                     flush=True,
                 )
+                otel.turn_event("reframe", node=node.id, attempt=rephrase + 1)
                 # Brief, escalating pause so a reframe doesn't hammer a struggling
                 # service back-to-back.
                 time.sleep(min(10 * (rephrase + 1), 60))
@@ -720,6 +740,7 @@ def run_agent(
                     f"({exc}); using default outputs to advance to the next node",
                     flush=True,
                 )
+                otel.turn_event("default_outputs", error=True, node=node.id)
                 return rendered_prompt, _default_outputs(node)
             raise
 
@@ -802,11 +823,17 @@ def _invoke_claude(
     while True:
         try:
             print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
-            return backend.run_turn(
+            # One agent-turn span per CLI invocation; the result event's
+            # duration/usage attach via otel.turn_result (see _stream_events).
+            otel.turn_start(node_id, model, effort, timeout)
+            result = backend.run_turn(
                 attempt_prompt, node_id, session_id_path, model, timeout=timeout,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
+            otel.turn_end()
+            return result
         except BackendInvocationError as exc:
+            otel.turn_end(error=str(exc))
             print(f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True)
             if not exc.transient:
                 raise
@@ -837,6 +864,9 @@ def _invoke_claude(
                     f"resets, so the run sleeps through it. ({str(exc).strip()})",
                     flush=True,
                 )
+                otel.turn_event(
+                    "cap_wait", node=node_id, delay_s=int(delay), resume_around=when
+                )
                 _sleep_with_notice(delay, node_id, "cap reset")
                 print(f"[{node_id}] ▶ cap wait elapsed — resuming node", flush=True)
                 continue
@@ -849,6 +879,9 @@ def _invoke_claude(
                 f"(attempt {short_attempt}/{max_invoke_retries}): {exc}; "
                 f"retrying in {int(delay)}s",
                 flush=True,
+            )
+            otel.turn_event(
+                "retry", node=node_id, attempt=short_attempt, delay_s=int(delay)
             )
             time.sleep(delay)
 
@@ -1094,12 +1127,16 @@ def _cap_delay_seconds(exc: BackendInvocationError, now: float | None = None) ->
 
 def _sleep_with_notice(total_s: float, node_id: str, label: str) -> None:
     """Sleep ``total_s`` seconds, printing a 'still paused' line every _CAP_TICK_S
-    so a long, legitimate wait can't be mistaken for a hang."""
+    so a long, legitimate wait can't be mistaken for a hang. Each tick also emits
+    the cap-wait heartbeat metric — the external liveness proof that lets a
+    collector tell a legitimate multi-day cap sleep from an actual hang."""
     remaining = total_s
+    otel.heartbeat(node_id, remaining)
     while remaining > 0:
         chunk = min(remaining, _CAP_TICK_S)
         time.sleep(chunk)
         remaining -= chunk
+        otel.heartbeat(node_id, remaining)
         if remaining > 0:
             print(
                 f"[{node_id}] ⏸ still paused ({label}); ~{int(remaining)}s remaining",
@@ -1226,6 +1263,9 @@ def _stream_events(
         etype = event.get("type")
         if etype == "result":
             st["result_text"] = event.get("result", "") or st["result_text"]
+            # Attach the turn's duration + token usage to the open turn span so
+            # per-node latency/cost attribution needs no artifact join.
+            otel.turn_result(event)
             # An error result carries the reason in its subtype / is_error flag.
             if event.get("is_error") or event.get("subtype") not in (None, "success"):
                 diagnostics.append(str(event.get("subtype") or "") + " " + str(event.get("result") or ""))

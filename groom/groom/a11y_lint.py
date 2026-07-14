@@ -192,7 +192,10 @@ def lint_html(text: str, path: str) -> list[Finding]:
                 f"'{action}' on <{tag}> — use a real <button>/<a> so it is keyboard-operable")
 
         role = a.get("role", "").strip()
-        if role in WIDGET_ROLES and not _is_focusable(node):
+        # `option` is exempt: in the combobox/listbox pattern the options are managed via
+        # aria-activedescendant while DOM focus stays on the input, so they are correctly
+        # non-focusable (ARIA Authoring Practices).
+        if role in WIDGET_ROLES and role != "option" and not _is_focusable(node):
             add(node, "A11Y005",
                 f"role={role} on <{tag}> is not keyboard focusable (add tabindex=0)")
 

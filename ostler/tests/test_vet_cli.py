@@ -116,6 +116,43 @@ def test_missing_regions_file_is_a_run_error(repo: Path):
     assert plan.writes == []
 
 
+def test_matched_components_get_named_crops(repo: Path):
+    Image = pytest.importorskip("PIL.Image")
+    screenshot = repo / "shot.png"
+    Image.new("RGB", (100, 100), "white").save(screenshot)
+    manifest = _write_manifest(repo, [
+        {**NAV_ELEMENT, "name": "activity-inbox-mode"},
+        {"selector": "#anon", "bbox": {"x": 20, "y": 20, "width": 5, "height": 5}},
+    ])
+    regions = _write_regions(repo, [
+        NAV_REGION,
+        {"bbox": {"x": 20, "y": 20, "width": 5, "height": 5}, "role": "form",
+         "selectors": ["#anon"]},
+    ])
+
+    outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    plan.apply()
+
+    vet_dir = repo / "docs/specs/01-foo/vet"
+    assert (vet_dir / "default-activity-inbox-mode.png").exists()
+    assert (vet_dir / "default-component-1.png").exists()  # empty-name positional fallback
+    report = json.loads((vet_dir / "default-report.json").read_text())
+    crops = {p["dom"]["name"]: p["crop"] for p in report["matched"]}
+    assert crops["activity-inbox-mode"] == "vet/default-activity-inbox-mode.png"
+    assert crops[""] == "vet/default-component-1.png"
+    assert outcome.report.summary.status == "clean"
+
+
+def test_unreadable_screenshot_leaves_matched_crops_unset(repo: Path):
+    pytest.importorskip("PIL")
+    manifest = _write_manifest(repo, [{**NAV_ELEMENT, "name": "nav"}])
+    regions = _write_regions(repo, [NAV_REGION])
+    screenshot = _screenshot(repo)  # not a real PNG
+
+    outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    assert outcome.report.matched[0].crop is None
+
+
 def test_cli_exit_code_is_zero_when_clean(repo: Path, capsys):
     manifest = _write_manifest(repo, [NAV_ELEMENT])
     regions = _write_regions(repo, [NAV_REGION])

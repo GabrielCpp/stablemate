@@ -1,0 +1,74 @@
+[
+  {
+    "name": "activity-inbox-mode",
+    "selector": ".act-btn[data-mode=\"inbox\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 6,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "activity-files-mode",
+    "selector": ".act-btn[data-mode=\"files\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 50,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "activity-diff-mode",
+    "selector": ".act-btn[data-mode=\"diff\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 94,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "activity-settings-mode",
+    "selector": ".act-btn[data-mode=\"settings\"]",
+    "role": "",
+    "bbox": {
+      "x": -0.5,
+      "y": 425,
+      "width": 48,
+      "height": 44
+    },
+    "visible": true
+  },
+  {
+    "name": "inbox-filter-input",
+    "selector": "input.filter[name=\"q\"]",
+    "role": "searchbox",
+    "bbox": {
+      "x": 199.078125,
+      "y": 6,
+      "width": 160,
+      "height": 27
+    },
+    "visible": true
+  },
+  {
+    "name": "statusbar-refresh-button",
+    "selector": "#btn-refresh-bar",
+    "role": "button",
+    "bbox": {
+      "x": 651.28125,
+      "y": 473,
+      "width": 21.59375,
+      "height": 17
+    },
+    "visible": true
+  }
+]

@@ -1,9 +1,10 @@
-"""A minimal ``.env`` reader — just enough to pull one variable out as a password.
+"""A minimal ``.env`` reader and writer.
 
-saddlebag imports credentials *one variable at a time*: the ``.env`` supplies a
-single secret, and the credential's metadata (env, roles, surface) is supplied as
-CLI flags. A ``.env`` is a flat ``KEY=value`` list and carries none of that
-metadata, which is exactly why it cannot stand alone as a credential source.
+Two callers, one format. :func:`read_var` pulls a single variable out of a
+``.env`` as a credential's password — the ``.env`` supplies the secret and the
+metadata (env, roles, surface) comes from CLI flags, because a flat ``KEY=value``
+list carries none of it. :func:`dumps` goes the other way, rendering an
+environment's resolved entries back out as a ``.env`` file.
 
 Deliberately no dependency on ``python-dotenv``. The value contract is kept
 predictable for secrets:
@@ -19,13 +20,23 @@ predictable for secrets:
 Inline comments after an unquoted value are *not* stripped: a password may
 legitimately contain ``#``, so removing it would corrupt the secret. Quote any
 value that contains spaces, ``#``, or leading/trailing whitespace.
+
+:func:`dumps` is the exact inverse of :func:`parse`: it quotes whenever a bare
+value would read back as something else, so ``parse(dumps(v)) == v`` for every
+value it accepts. There is no escaping in the contract above, so the handful of
+values it *cannot* represent raise rather than round-trip to something subtly
+different — a corrupted secret is worse than a failed render.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 _EXPORT = "export "
+_QUOTES = ("'", '"')
+#: Characters that make a bare value parse back as something else.
+_NEEDS_QUOTING = (" ", "\t", "#")
 
 
 def parse(path: Path | str) -> dict[str, str]:
@@ -60,3 +71,38 @@ def read_var(path: Path | str, name: str) -> str:
     if name not in env:
         raise KeyError(name)
     return env[name]
+
+
+def read_keys(path: Path | str) -> list[str]:
+    """The variable names in a ``.env``, in file order — **values discarded**.
+
+    This is what seeds an environment's key manifest from a checked-in
+    ``.env.example``. Nothing is guessed and nothing is stored: the caller gets a
+    list of names, every one of which lands ``pending`` until a human supplies it.
+    """
+    return list(parse(path))
+
+
+def quote(value: str) -> str:
+    """Render one value as a ``.env`` field that :func:`parse` reads back unchanged."""
+    if "\n" in value or "\r" in value:
+        raise ValueError("a dotenv value cannot contain a newline; use --format json")
+
+    looks_quoted = len(value) >= 2 and value[0] == value[-1] and value[0] in _QUOTES
+    if not (looks_quoted or value != value.strip() or any(c in value for c in _NEEDS_QUOTING)):
+        return value
+
+    # parse() strips one matching pair and takes the inside literally, so the
+    # wrapping quote simply has to be a character the value does not contain.
+    for q in ('"', "'"):
+        if q not in value:
+            return f"{q}{value}{q}"
+    raise ValueError(
+        "a dotenv value containing both ' and \" and needing quotes cannot be "
+        "represented without escaping; use --format json"
+    )
+
+
+def dumps(values: Mapping[str, str]) -> str:
+    """Render resolved entries as ``.env`` text, in the order given."""
+    return "".join(f"{key}={quote(value)}\n" for key, value in values.items())

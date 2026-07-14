@@ -225,7 +225,8 @@ __marimo__/
 !.aider.model.settings.yml
 !.aider.model.metadata.json
 
+.playwright-mcp
+
 /.agents/*
 !/.agents/agents.mk
 !/.agents/flavors/
-.playwright-mcp

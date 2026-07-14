@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import otel
+
 
 class ArtifactWriter:
     CHECKPOINT_FILE = "checkpoint.json"
@@ -39,6 +41,16 @@ class ArtifactWriter:
         # artifact from an earlier loop visit" (must re-run).
         self._seq = 0
         self._write_run_json(terminal=None)
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    @property
+    def started_at(self) -> str:
+        """ISO-8601 UTC start time. For a resumed run this is the ORIGINAL
+        start restored from run.json, so wall-clock budgets survive --resume."""
+        return self._started_at
 
     @classmethod
     def resume(cls, run_dir: Path) -> "ArtifactWriter":
@@ -138,6 +150,11 @@ class ArtifactWriter:
                 f.write(json.dumps(record) + "\n")
         except OSError:
             pass
+        # Mirror the record to the opt-in OTel exporter — this is the one choke
+        # point every enter/done/terminal already funnels through (root run and
+        # nested flow scopes alike), so node spans need no other hook. A no-op
+        # unless WORKHORSE_OTEL is set; never raises (see workhorse/otel.py).
+        otel.record_event(record)
 
     def read_events(self) -> list[dict[str, Any]]:
         """Read the append-only event log in order (empty if absent/unwritten).

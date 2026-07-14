@@ -33,6 +33,11 @@ SERVICE = "saddlebag"
 VAULT_MOUNT = "secret"
 VAULT_PREFIX = "saddlebag"
 
+#: The KV field a Vault secret's value is written under, and the field earlier
+#: versions used — read for back-compat, never written.
+VALUE_FIELD = "value"
+LEGACY_VALUE_FIELD = "password"
+
 
 class StoreUnavailableError(RuntimeError):
     """No secret store could be opened. Carries operator-facing remediation."""
@@ -40,7 +45,13 @@ class StoreUnavailableError(RuntimeError):
 
 @runtime_checkable
 class SecretStore(Protocol):
-    """Put/get/delete a password, keyed by credential id."""
+    """Put/get/delete a string-keyed secret.
+
+    The key is whatever the caller says it is: a credential's password lives under
+    ``<project>/<cred-id>``, an environment's secret entry under
+    ``<project>/<env-id>/<KEY>``. The store neither knows nor cares which — it is a
+    namespaced string→secret map, and the parameter names below are historical.
+    """
 
     name: str
 
@@ -81,10 +92,15 @@ class KeyringStore:
 
 
 class VaultStore:
-    """Passwords in a Vault KV v2 mount, one secret per credential id.
+    """Secrets in a Vault KV v2 mount, one Vault secret per store key.
 
     Requires the ``vault`` extra (``pip install 'saddlebag[vault]'``) and the
     usual ``VAULT_ADDR`` / ``VAULT_TOKEN`` environment variables.
+
+    The KV field is :data:`VALUE_FIELD`. It used to be ``password``, which was a
+    lie the moment an environment's ``VITE_FIREBASE_API_KEY`` started living here;
+    reads still fall back to the old field so a Vault written by an earlier
+    saddlebag keeps resolving.
     """
 
     name = "vault"
@@ -117,7 +133,7 @@ class VaultStore:
     def put(self, credential_id: str, password: str) -> None:
         self._client.secrets.kv.v2.create_or_update_secret(
             path=self._path(credential_id),
-            secret={"password": password},
+            secret={VALUE_FIELD: password},
             mount_point=self.mount,
         )
 
@@ -132,7 +148,10 @@ class VaultStore:
             )
         except hvac.exceptions.InvalidPath:
             return None
-        return resp["data"]["data"].get("password")
+        data = resp["data"]["data"]
+        if VALUE_FIELD in data:
+            return data[VALUE_FIELD]
+        return data.get(LEGACY_VALUE_FIELD)
 
     def delete(self, credential_id: str) -> None:
         self._client.secrets.kv.v2.delete_metadata_and_all_versions(

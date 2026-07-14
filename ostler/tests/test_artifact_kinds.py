@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 from ostler.artifact import get_kind, list_kinds, scaffold, vet
@@ -77,7 +78,47 @@ def test_qa_evidence_missing_criteria_is_actionable(tmp_path: Path):
 
 def test_qa_evidence_valid_passes(tmp_path: Path):
     spec = _spec(tmp_path)
-    assert _qa_evidence_vet(_passing_evidence(spec), spec, tmp_path) == []
+    data = _passing_evidence(spec)
+    data.update({"runId": "qa-run-1", "qa_run_log": "qa/qa-run.ndjson"})
+    data["criteria"][0]["log_refs"] = ["scenario-1:assert:1"]
+    proof = spec / "qa" / "ac1.txt"
+    (spec / "qa" / "qa-run.ndjson").write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in [
+                {
+                    "kind": "assert",
+                    "scenario": "scenario-1",
+                    "action": 1,
+                    "result": "PASS",
+                    "covers": ["AC1"],
+                },
+                {"kind": "session_stop", "run_id": "qa-run-1"},
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    ledger = spec / "qa" / "qa-run.ndjson"
+    (spec / "qa" / "run-manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "qa-run-1",
+                "artifacts": [
+                    {
+                        "path": "qa/ac1.txt",
+                        "sha256": hashlib.sha256(proof.read_bytes()).hexdigest(),
+                    },
+                    {
+                        "path": "qa/qa-run.ndjson",
+                        "sha256": hashlib.sha256(ledger.read_bytes()).hexdigest(),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _qa_evidence_vet(data, spec, tmp_path) == []
 
 
 def test_qa_evidence_pass_without_real_evidence_fails(tmp_path: Path):
@@ -128,18 +169,53 @@ def test_qa_evidence_runid_manifest_coherence(tmp_path: Path):
     spec = _spec(tmp_path)
     data = _passing_evidence(spec)
     data["runId"] = "qa-run-1"
+    data["qa_run_log"] = "qa/qa-run.ndjson"
+    data["criteria"][0]["log_refs"] = ["scenario-1:assert:1"]
     manifest = spec / "qa" / "run-manifest.json"
+    proof = spec / "qa" / "ac1.txt"
+    (spec / "qa" / "qa-run.ndjson").write_text(
+        json.dumps(
+            {
+                "kind": "assert",
+                "scenario": "scenario-1",
+                "action": 1,
+                "result": "PASS",
+                "covers": ["AC1"],
+            }
+        )
+        + "\n"
+        + json.dumps({"kind": "session_stop", "run_id": "qa-run-1"})
+        + "\n",
+        encoding="utf-8",
+    )
+    ledger = spec / "qa" / "qa-run.ndjson"
 
-    manifest.write_text(json.dumps({"runId": "qa-run-1", "artifacts": ["qa/ac1.txt"]}))
+    manifest.write_text(
+        json.dumps(
+            {
+                "runId": "qa-run-1",
+                "artifacts": [
+                        {
+                            "path": "qa/ac1.txt",
+                            "sha256": hashlib.sha256(proof.read_bytes()).hexdigest(),
+                        },
+                        {
+                            "path": "qa/qa-run.ndjson",
+                            "sha256": hashlib.sha256(ledger.read_bytes()).hexdigest(),
+                        },
+                ],
+            }
+        )
+    )
     assert _qa_evidence_vet(data, spec, tmp_path) == []
 
-    manifest.write_text(json.dumps({"runId": "qa-run-STALE", "artifacts": ["qa/ac1.txt"]}))
+    manifest.write_text(json.dumps({"runId": "qa-run-STALE", "artifacts": []}))
     problems = _qa_evidence_vet(data, spec, tmp_path)
     assert any("does not match" in p for p in problems)
 
-    manifest.write_text(json.dumps({"runId": "qa-run-1", "artifacts": ["qa/other.txt"]}))
+    manifest.write_text(json.dumps({"runId": "qa-run-1", "artifacts": []}))
     problems = _qa_evidence_vet(data, spec, tmp_path)
-    assert any("current execution" in p for p in problems)
+    assert any("exact path" in p for p in problems)
 
 
 # ---------------------------------------------------------------------------

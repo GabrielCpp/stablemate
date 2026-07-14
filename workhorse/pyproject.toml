@@ -32,6 +32,13 @@ dependencies = [
 # which drive the real CLI as a subprocess per test) are subprocess/CPU-bound and
 # shard cleanly across cores — their pytest.ini sets `-n auto`, which needs xdist.
 test = ["pytest>=8.0", "pytest-xdist>=3.0"]
+# Opt-in OpenTelemetry instrumentation (see workhorse/otel.py): without this
+# extra — or without WORKHORSE_OTEL set — telemetry is a no-op and workhorse
+# keeps zero required telemetry deps.
+otel = [
+  "opentelemetry-sdk>=1.25",
+  "opentelemetry-exporter-otlp-proto-http>=1.25",
+]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"

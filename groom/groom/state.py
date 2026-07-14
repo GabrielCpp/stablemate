@@ -7,11 +7,16 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 
-from .models import WorkflowContainer
+from .models import RunTelemetry, WorkflowContainer
 
 WORKFLOWS: dict[str, WorkflowContainer] = {}
 LOG: deque[dict] = deque(maxlen=200)
 CLIENTS: set[asyncio.Queue] = set()
+
+# Telemetry hot cache: run_id → alert-rule state, updated on every OTLP ingest
+# (groom.alerts). The durable copy is groom.store's SQLite file; this map only
+# carries what the rules need between ingests. Single event loop ⇒ no locks.
+RUNS: dict[str, RunTelemetry] = {}
 
 # True while the initial (or a manual) container-discovery pass is still in
 # flight. The UI renders a spinner instead of the "no workers" empty state so a

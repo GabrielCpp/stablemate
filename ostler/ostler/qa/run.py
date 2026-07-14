@@ -7,6 +7,7 @@ session operations and produces human-readable / JSON output.
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sys
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from typing import Any
 import yaml
 
 from .session import QaSession, RUN_LOG, _expand
+from .plan import load_plan, resolve_spec_dir, validate_v2
+from .v2 import run_plan as run_v2_plan
 
 
 def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
@@ -34,6 +37,12 @@ class QaOutcome:
     ok: bool
     message: str
     data: dict[str, Any] = field(default_factory=dict)
+    status: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.status:
+            self.status = "passed" if self.ok else "failed"
+        self.data.setdefault("status", self.status)
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +57,7 @@ def cmd_start(
     *,
     env: dict[str, str] | None = None,
     daemons: list[tuple[str, str, str | None]] | None = None,
+    secret_values: dict[str, str] | None = None,
 ) -> QaOutcome:
     """Open a new QA session and optionally start background daemons.
 
@@ -55,7 +65,13 @@ def cmd_start(
     """
     env = env or {}
     try:
-        session = QaSession.create(spec_dir, run_id, story, env)
+        session = QaSession.create(
+            spec_dir,
+            run_id,
+            story,
+            env,
+            secret_values=secret_values,
+        )
     except FileExistsError as exc:
         return QaOutcome(ok=False, message=str(exc))
 
@@ -65,9 +81,13 @@ def cmd_start(
         try:
             pid = session.start_daemon(name, cmd, ready_check=ready_check)
             pids[name] = pid
-        except TimeoutError as exc:
+        except (OSError, TimeoutError) as exc:
+            session.close(status="blocked")
+            session.finalize_log_artifact()
             return QaOutcome(
-                ok=False, message=f"daemon '{name}' ready_check failed: {exc}"
+                ok=False,
+                message=f"daemon '{name}' ready_check failed: {exc}",
+                status="blocked",
             )
 
     msg = f"QA session started: run_id={run_id}, story={story}"
@@ -91,6 +111,7 @@ def cmd_step(
     captures: list[tuple[str, str]] | None = None,
     out_path: str | None = None,
     allow_fail: bool = False,
+    timeout: float = 60,
 ) -> QaOutcome:
     """Execute a command and record it in the run log."""
     try:
@@ -107,6 +128,8 @@ def cmd_step(
             captures=captures,
             out_path=out_path,
             allow_fail=allow_fail,
+            timeout=timeout,
+            cwd=spec_dir,
         )
         return QaOutcome(ok=True, message=f"step '{step_id}' recorded", data=record)
     except (ValueError, RuntimeError) as exc:
@@ -151,6 +174,7 @@ def cmd_stop(spec_dir: Path) -> QaOutcome:
         return QaOutcome(ok=False, message=str(exc))
 
     summary = session.close()
+    session.finalize_log_artifact()
     fail_count = summary.get("fail_count", 0)
     verdict = "PASS" if fail_count == 0 else "FAIL"
     return QaOutcome(
@@ -273,20 +297,42 @@ def cmd_replay(spec_dir: Path) -> QaOutcome:
 # ---------------------------------------------------------------------------
 
 
-def cmd_validate(plan_file: Path, spec_dir: Path | None = None) -> QaOutcome:
+def cmd_validate(
+    plan_file: Path,
+    spec_dir: Path | None = None,
+    *,
+    root: Path | None = None,
+) -> QaOutcome:
     """Validate a qa-plan.yml file without executing it."""
-    if not plan_file.is_file():
-        return QaOutcome(ok=False, message=f"plan file not found: {plan_file}")
+    root = (root or Path.cwd()).resolve()
+    resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
+    if not resolved_plan.is_file():
+        return QaOutcome(
+            ok=False,
+            message=f"plan file not found: {resolved_plan}",
+            status="invalid",
+        )
 
     try:
-        plan = yaml.safe_load(plan_file.read_text(encoding="utf-8"))
+        plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        return QaOutcome(ok=False, message=f"YAML parse error: {exc}")
+        return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
 
-    problems = _validate_plan(plan, spec_dir)
+    resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
+    if isinstance(plan, dict) and plan.get("version") == 2:
+        document, load_problems = load_plan(resolved_plan, resolved_spec, root)
+        problems = load_problems or validate_v2(document)  # type: ignore[arg-type]
+    else:
+        problems = _validate_plan(plan, resolved_spec)
+        problems.extend(_validate_v1_files(plan, resolved_plan, resolved_spec))
     if problems:
         msg = "Plan validation failed:\n" + "\n".join(f"  - {p}" for p in problems)
-        return QaOutcome(ok=False, message=msg, data={"problems": problems})
+        return QaOutcome(
+            ok=False,
+            message=msg,
+            data={"problems": problems},
+            status="invalid",
+        )
     return QaOutcome(ok=True, message="Plan is valid.", data={})
 
 
@@ -308,25 +354,58 @@ def cmd_run(
     Returns PASS/FAIL verdict.
     """
     # Validate first
-    validate_result = cmd_validate(plan_file, spec_dir)
+    resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
+    resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
+    validate_result = cmd_validate(resolved_plan, resolved_spec, root=root)
     if not validate_result.ok:
         return validate_result
 
     try:
-        plan = yaml.safe_load(plan_file.read_text(encoding="utf-8"))
+        plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        return QaOutcome(ok=False, message=f"YAML parse error: {exc}")
+        return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
+
+    if plan.get("version") == 2:
+        document, problems = load_plan(resolved_plan, resolved_spec, root)
+        if problems or document is None:
+            return QaOutcome(
+                ok=False,
+                message="Plan loading failed:\n" + "\n".join(problems),
+                data={"problems": problems},
+                status="invalid",
+            )
+        status, message, data = run_v2_plan(
+            document,
+            root=root,
+            stop_on_fail=stop_on_fail,
+        )
+        return QaOutcome(
+            ok=status == "passed",
+            message=message,
+            data=data,
+            status=status,
+        )
 
     # Resolve spec_dir from plan or argument
-    if spec_dir is None:
-        raw_spec = plan.get("spec_dir", "")
-        spec_dir = Path(raw_spec) if raw_spec else plan_file.parent.parent
-    if not spec_dir.is_absolute():
-        spec_dir = root / spec_dir
+    spec_dir = resolved_spec
 
     run_id = str(plan.get("run_id", ""))
     story = str(plan.get("story", ""))
     env = {k: str(v) for k, v in plan.get("env", {}).items()}
+    secret_values: dict[str, str] = {}
+    for name, declaration in plan.get("secrets", {}).items():
+        env_name = declaration["from_env"]
+        if env_name not in os.environ:
+            return QaOutcome(
+                ok=False,
+                message=f"QA run blocked: secret '{name}' requires {env_name}",
+                status="blocked",
+            )
+        secret_values[name] = os.environ[env_name]
+    variables = {
+        f"input.{name}": str((spec_dir / str(path)).resolve())
+        for name, path in plan.get("inputs", {}).items()
+    }
     background = plan.get("background", [])
 
     # Wipe the qa/ directory for a clean run: removes the stale session file,
@@ -338,11 +417,34 @@ def cmd_run(
 
         shutil.rmtree(qa_dir)
     qa_dir.mkdir(parents=True, exist_ok=True)
+    (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
 
     # Build daemon list
-    daemons = [(d["name"], d["cmd"], d.get("ready_check")) for d in background]
+    daemons = [
+        (
+            d["name"],
+            _expand(
+                d["cmd"],
+                {},
+                env,
+                variables=variables,
+                secrets=secret_values,
+                run_id=run_id,
+                story=story,
+            ),
+            d.get("ready_check"),
+        )
+        for d in background
+    ]
 
-    start_result = cmd_start(run_id, story, spec_dir, env=env, daemons=daemons)
+    start_result = cmd_start(
+        run_id,
+        story,
+        spec_dir,
+        env=env,
+        daemons=daemons,
+        secret_values=secret_values,
+    )
     if not start_result.ok:
         return start_result
 
@@ -350,9 +452,11 @@ def cmd_run(
         session = QaSession.open(spec_dir)
     except FileNotFoundError as exc:
         return QaOutcome(ok=False, message=str(exc))
+    session.configure_secrets(secret_values)
 
     overall_pass = True
     prev_sigterm = signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+    summary: dict[str, Any] = {}
     try:
         for step in plan.get("steps", []):
             step_id = str(step.get("id", ""))
@@ -374,6 +478,9 @@ def cmd_run(
                     captures=capture_map,
                     out_path=str(out) if out else None,
                     allow_fail=True,
+                    timeout=float(step.get("timeout", 60)),
+                    cwd=root,
+                    variables=variables,
                 )
             except (ValueError, RuntimeError) as exc:
                 overall_pass = False
@@ -401,7 +508,8 @@ def cmd_run(
         # background daemon (screen recorder, event tail) left running in its own
         # detached process group is worse than an early, clean stop.
         signal.signal(signal.SIGTERM, prev_sigterm)
-        summary = session.close()
+        summary = session.close(status="passed" if overall_pass else "failed")
+        session.finalize_log_artifact()
     fail_count = summary.get("fail_count", 0)
     step_count = summary.get("step_count", 0)
     pass_count = summary.get("pass_count", 0)
@@ -413,6 +521,7 @@ def cmd_run(
         message=f"QA run {verdict}: {pass_count} asserts passed, "
         f"{fail_count} failed, {step_count} steps",
         data=summary,
+        status="passed" if final_ok else "failed",
     )
 
 
@@ -445,6 +554,9 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
 
     valid_mechs = {"live", "synthetic", "fixture"}
     seen_captures: set[str] = set()
+    version = plan.get("version", 1)
+    if version != 1:
+        problems.append("'version' must be 1 for a command steps plan")
     steps = plan.get("steps", [])
     if not isinstance(steps, list):
         problems.append("'steps' must be a list")
@@ -460,10 +572,17 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
         r"|\$\(python.*uuid"  # $(python -c '...uuid...')
     )
 
+    seen_steps: set[str] = set()
     for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            problems.append(f"steps[{i}] must be a mapping")
+            continue
         label = f"steps[{i}] (id={step.get('id', '?')})"
         if not step.get("id"):
             problems.append(f"{label}: 'id' is required")
+        elif step["id"] in seen_steps:
+            problems.append(f"{label}: duplicate step id '{step['id']}'")
+        seen_steps.add(str(step.get("id", "")))
         if not step.get("mechanism"):
             problems.append(
                 f"{label}: 'mechanism' is required (live | synthetic | fixture)"
@@ -472,13 +591,16 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
             problems.append(f"{label}: mechanism must be one of {sorted(valid_mechs)}")
         if not step.get("cmd"):
             problems.append(f"{label}: 'cmd' is required")
+        timeout = step.get("timeout", 60)
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            problems.append(f"{label}: timeout must be positive")
         # Forward-reference check for {{key}} in cmd
         mech = step.get("mechanism", "")
         cmd_str = str(step.get("cmd", ""))
         refs = re.findall(r"\{\{([^}]+)\}\}", cmd_str)
         for ref in refs:
             ref = ref.strip()
-            if ref.startswith("env.") or ref in ("run_id", "story"):
+            if ref.startswith(("env.", "input.", "secret.")) or ref in ("run_id", "story"):
                 continue
             if ref not in seen_captures:
                 problems.append(
@@ -517,6 +639,34 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
         # Collect captures
         for cap_key in step.get("capture") or {}:
             seen_captures.add(cap_key)
+    return problems
+
+
+def _validate_v1_files(plan: Any, plan_file: Path, spec_dir: Path) -> list[str]:
+    if not isinstance(plan, dict):
+        return []
+    problems: list[str] = []
+    if plan_file.is_relative_to(spec_dir / "qa"):
+        problems.append("qa-plan.yml cannot live under disposable qa/")
+    inputs = plan.get("inputs", {})
+    if not isinstance(inputs, dict):
+        problems.append("'inputs' must be a mapping")
+    else:
+        for name, raw in inputs.items():
+            path = (spec_dir / str(raw)).resolve()
+            if not path.is_relative_to(spec_dir.resolve()):
+                problems.append(f"input '{name}' escapes spec_dir")
+            elif path.is_relative_to((spec_dir / "qa").resolve()):
+                problems.append(f"input '{name}' is under disposable qa/")
+            elif not path.is_file():
+                problems.append(f"input '{name}' does not exist: {raw}")
+    secrets = plan.get("secrets", {})
+    if not isinstance(secrets, dict):
+        problems.append("'secrets' must be a mapping")
+    else:
+        for name, declaration in secrets.items():
+            if not isinstance(declaration, dict) or set(declaration) != {"from_env"}:
+                problems.append(f"secret '{name}' must contain only 'from_env'")
     return problems
 
 

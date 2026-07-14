@@ -158,5 +158,5 @@ fallback readers.
   groom/tests/test_app.py::test_push_exited_rejects_missing_container_id,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
-- screenshot: .agents/okf-build/walkthrough/groom/residual-sidecar-push-and-query-fallback-files-file-selected.png
-- screenshot: .agents/okf-build/walkthrough/groom/residual-sidecar-push-and-query-fallback-diff-file-selected.png
+- screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-files-file-selected.png
+- screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-diff-file-selected.png

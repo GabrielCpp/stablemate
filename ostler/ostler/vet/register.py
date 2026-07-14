@@ -17,6 +17,7 @@ class MatchedPair(BaseModel):
     dom: DomElement
     region: RegionBox
     iou: float
+    crop: str | None = None  # set by crop.maybe_crop() when the screenshot is croppable
 
 
 class MatchResult(BaseModel):

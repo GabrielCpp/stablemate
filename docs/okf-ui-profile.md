@@ -110,8 +110,20 @@ grammar.
 
 When a machine-readable hook helps, add a plain bullet. All optional.
 
+**`screen`**
+- `route:` — the landed URL path, captured live during a walkthrough.
+- `screenshot:` — a full-page capture of the screen in a named state, living **in the
+  book** at `docs/features/<service>/gui/screenshots/<screen-slug>-<state>.png`
+  (repo-relative path; one bullet per captured state). Evidence, not a code ref —
+  never in `code:`/`verify:`.
+- `vet:` — a link to the screen's visual-registration Concept,
+  `docs/specs/<screen-slug>/vet.md` (`type: spec.vet`), written by `ostler vet --write`.
+
 **`component`**
 - `selector:` — the stable DOM hook (`#detail`, `.tree-file`, `[data-worker-id]`).
+- `screenshot:` — the component's own visual snippet, cropped by `ostler vet` from the
+  screen capture when the component visually registers
+  (`docs/specs/<screen-slug>/vet/<state>-<component>.png`).
 - `code:` — where it's rendered, `path::symbol` (`groom/groom/render.py::_inbox_row`).
 - `parent:` — a link to its containing component/screen (see §5).
 - `extends:` — a link to a shared/library component it reuses (see §5).
@@ -178,6 +190,26 @@ When a machine-readable hook helps, add a plain bullet. All optional.
 - `file:` — the glob it applies to (`**/workflow.yaml`); `code:` — the loader/model
   (`graph/loader.py::load_workflow`) or the OpenAPI doc path. Fields as `### <key>`
   sections.
+
+### Visual evidence & registration (walkthrough outputs)
+
+The live walkthrough proves each screen doc against the running app and leaves committed
+visual evidence in two places:
+
+- **Screen captures** — full-page PNGs under `docs/features/<service>/gui/screenshots/`,
+  named `<screen-slug>-<state>.png` and referenced by `screenshot:` bullets on the screen
+  and flow docs. Captured at top scroll so document and screenshot coordinates agree.
+- **Per-component registration** — `ostler vet` cross-checks a manifest derived from the
+  screen doc's component `selector:` bullets against its own CDP scan of the live DOM.
+  Its artifacts live under `docs/specs/<screen-slug>/vet/`: the authored
+  `<state>-manifest.json`, the scanned `<state>-regions.json`, the `<state>-report.json`
+  (matched / missing / unexpected / unlabeled), and one crop PNG per **matched**
+  documented component (`<state>-<component>.png`, the component's `screenshot:` bullet
+  target). The accumulating per-state summary is the `spec.vet` Concept at
+  `docs/specs/<screen-slug>/vet.md`, linked from the screen via its `vet:` bullet.
+  A `missing` finding means a documented component did not render; `unexpected` /
+  `unlabeled` means the page shows UI the book doesn't know — both are drift the
+  walkthrough heals.
 
 ### Documenting flags & arguments (context + pointers)
 

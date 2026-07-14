@@ -1,4 +1,5 @@
-"""Optional nicety: crop `unlabeled` bboxes out of the screenshot for a downstream VLM step.
+"""Optional nicety: crop region bboxes out of the screenshot as small PNGs — `unlabeled`
+residuals for a downstream VLM step, and each *matched* documented component's visual snippet.
 
 `Pillow` is imported lazily and this degrades cleanly (no crop, just bbox + screenshot path)
 when it isn't installed — the only place an image library is ever touched, and it's optional.
@@ -16,8 +17,8 @@ from pathlib import Path
 from .regions import RegionBox
 
 
-def maybe_crop(screenshot: Path, unlabeled: list[RegionBox]) -> dict[int, bytes]:
-    """Return {index into *unlabeled*: PNG bytes} for every region actually cropped."""
+def maybe_crop(screenshot: Path, regions: list[RegionBox]) -> dict[int, bytes]:
+    """Return {index into *regions*: PNG bytes} for every region actually cropped."""
     try:
         from PIL import Image
     except ImportError:
@@ -28,7 +29,7 @@ def maybe_crop(screenshot: Path, unlabeled: list[RegionBox]) -> dict[int, bytes]
     crops: dict[int, bytes] = {}
     try:
         with Image.open(screenshot) as img:
-            for i, region in enumerate(unlabeled):
+            for i, region in enumerate(regions):
                 b = region.bbox
                 box = (int(b.x), int(b.y), int(b.x + b.width), int(b.y + b.height))
                 buf = io.BytesIO()

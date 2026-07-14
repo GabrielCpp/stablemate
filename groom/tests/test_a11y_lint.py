@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from groom import a11y_lint
+from groom import a11y_lint, render
+from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
 
 def codes(html: str) -> set[str]:
@@ -84,6 +85,12 @@ def test_role_button_with_tabindex_ok():
     assert "A11Y005" not in codes(_doc('<div role="button" tabindex="0" aria-label="Close">x</div>'))
 
 
+def test_role_option_without_tabindex_ok():
+    # options are aria-activedescendant-managed (focus stays on the combobox input),
+    # so non-focusable options are the correct pattern, not a fault.
+    assert "A11Y005" not in codes(_doc('<div role="option" data-label="x">x</div>'))
+
+
 # ---- A11Y006 accessible name ----
 def test_icon_only_button_flagged():
     assert "A11Y006" in codes(_doc('<button><svg></svg></button>'))
@@ -121,3 +128,51 @@ def test_shipped_dashboard_is_clean():
     tpl = Path(a11y_lint.__file__).parent / "templates" / "dashboard.html"
     findings = a11y_lint.lint_html(tpl.read_text(encoding="utf-8"), str(tpl))
     assert findings == [], "\n".join(str(f) for f in findings)
+
+
+def test_dashboard_activity_rail_is_native_buttons():
+    # The activity rail is wired by JS delegation, which the linter cannot see — this pin
+    # keeps the mode switches real <button>s (focusable, Enter/Space) rather than divs.
+    tpl = Path(a11y_lint.__file__).parent / "templates" / "dashboard.html"
+    tree = a11y_lint._Tree()
+    tree.feed(tpl.read_text(encoding="utf-8"))
+    rail = [n for n in tree.nodes if "act-btn" in n.attrs.get("class", "")]
+    assert len(rail) == 5  # inbox / files / diff / telemetry / settings
+    assert all(n.tag == "button" for n in rail), [n.tag for n in rail]
+    assert all(n.attrs.get("aria-label") for n in rail)
+
+
+# ---- server-rendered fragments stay within the same bar ----
+def _wf(container_id="abc123", **kwargs) -> WorkflowContainer:
+    return WorkflowContainer(container_id=container_id, name=kwargs.pop("name", "demo"), **kwargs)
+
+
+def _blocked(container_id="abc123") -> WorkflowContainer:
+    wf = _wf(container_id, state=WorkflowState.BLOCKED)
+    wf.gates["docs/a.md"] = GateInfo(
+        workflow_id=container_id, file_path="docs/a.md", question="Which one?")
+    return wf
+
+
+def test_rendered_fragments_are_lint_clean():
+    # The linter only sees templates on disk; these are the delegation-wired fragments
+    # render.py pushes at runtime — hold them to the same zero-findings bar.
+    wfs = [_blocked("a"), _wf("b", state=WorkflowState.RUNNING)]
+    fragments = {
+        "render_inbox": render.render_inbox(wfs),
+        "render_inbox_oob": render.render_inbox(wfs, oob=True),
+        "render_statusbar": render.render_statusbar(wfs, oob=True),
+        "render_worker_detail": render.render_worker_detail(_blocked("a")),
+        "render_repo_menu": render.render_repo_menu([(_wf("a"), ["repo1", "repo2"])]),
+    }
+    for name, html in fragments.items():
+        findings = a11y_lint.lint_html(html, name)
+        assert findings == [], f"{name}:\n" + "\n".join(str(f) for f in findings)
+
+
+def test_inbox_rows_are_native_buttons():
+    html = render.render_inbox([_blocked("a")])
+    tree = a11y_lint._Tree()
+    tree.feed(html)
+    rows = [n for n in tree.nodes if "row" in n.attrs.get("class", "").split()]
+    assert rows and all(n.tag == "button" for n in rows), [n.tag for n in rows]

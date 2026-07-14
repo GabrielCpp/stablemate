@@ -25,7 +25,10 @@ through three layers before it can ever crash the run (see
 
 1. **Transient retries** — rate limits, overloads, network blips, timeouts, and
    *empty results* (the `No 'result' event received` case above) are retried with
-   exponential backoff. **Scheduled-reset caps** — spending cap, usage/weekly
+   exponential backoff. For JSONL backends, a matching provider error event or
+   error log (for example OpenCode's `ProviderHeaderTimeoutError`) immediately
+   stops the CLI's internal retry loop so Workhorse owns the bounded retry and
+   backoff. **Scheduled-reset caps** — spending cap, usage/weekly
    limit, *session limit*, quota — are instead *waited out* until the window
    reopens and then retried; the run pauses rather than reframing or defaulting,
    since re-asking a capped subscription can't help (`_invoke_claude`). The wait
@@ -118,6 +121,34 @@ The following environment variables control the guardrail behavior:
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
 | `AGENT_MAX_CAP_WAITS` | 48 | Maximum consecutive cap waits before giving up |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
+
+### Engine-level guards (workhorse/main.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKHORSE_GAS` | 5000 | Progress-metered loop guard: units burned per node step, refilled on real forward progress (a refuel node's value changing). 0 disables. A cycle that never progresses burns one tank and fails loudly (`OutOfGasError`). |
+| `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between nodes; trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the gas tank: gas catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |
+
+### Observability (opt-in OpenTelemetry)
+
+Install the extra and set two env vars to stream spans/metrics to a local
+collector (`groom` by default — it pages you on stall/budget/churn; see
+`docs/workhorse-otel.md` in the repo root):
+
+```bash
+pip install 'workhorse-agent[otel]'
+export WORKHORSE_OTEL=1
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # the default
+```
+
+Unset (the default), telemetry is a complete no-op with zero added
+dependencies. When enabled, workhorse emits a root span per run, a span per
+node visit, a span per agent-CLI turn (with duration + token usage),
+retry/reframe/compact/watchdog span events, the gas gauge, and — the crux for
+AFK monitoring — a **cap-wait heartbeat** metric each pause tick, so a
+collector can prove a multi-day spending-cap sleep is alive rather than hung.
+Exports are best-effort: a down collector never slows or crashes a run
+(`events.jsonl` on disk remains the durable record).
 
 ## Usage Examples
 

@@ -94,6 +94,11 @@ def _state_section_lines(title: str, report: VetReport) -> list[str]:
         f"- unlabeled: {report.summary.unlabeledCount}",
         "",
     ]
+    if report.matched:
+        lines += ["### Matched (documented components registered on screen)", ""]
+        lines += [f"- `{p.dom.name or p.dom.selector}` — iou {p.iou:.2f}"
+                 f"{f' — crop: {p.crop}' if p.crop else ''}" for p in report.matched]
+        lines.append("")
     if report.missing:
         lines += ["### Missing (expected, not rendered)", ""]
         lines += [f"- `{dom.selector}` (role: {dom.role or 'unlabeled'})" for dom in report.missing]

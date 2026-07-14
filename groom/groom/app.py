@@ -1,6 +1,8 @@
 """The Litestar web app: dashboard page, one websocket for live push +
 answer/restart, HTTP push endpoints for the in-container sidecar (and the
-``await_operator.py`` backstop push), and a plain-HTTP search endpoint.
+``await_operator.py`` backstop push), a plain-HTTP search endpoint, and the
+OTLP collector endpoints (``/v1/traces``, ``/v1/metrics``) that make groom the
+default local backend for workhorse's opt-in OpenTelemetry instrumentation.
 
 All state lives in :mod:`groom.state` — this module only wires HTTP/websocket
 handlers to it.
@@ -9,15 +11,16 @@ handlers to it.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
-from litestar import Litestar, Response, get, post, websocket
+from litestar import Litestar, Request, Response, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.static_files import create_static_files_router
 
-from . import discovery, docker_io, render, sidecar_hub, state
+from . import alerts, discovery, docker_io, notify, otlp, render, sidecar_hub, state, store
 from .gates import answer_gate
 from .models import GateInfo, WorkflowContainer, WorkflowState
 
@@ -25,6 +28,10 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 _DASHBOARD_HTML = (Path(__file__).parent / "templates" / "dashboard.html").read_bytes()
 
 _QUESTION_NOTIFY_LIMIT = 200
+
+# How often the absence-driven alert rules (STALL/BUDGET) are evaluated. Silence
+# never triggers an ingest, so these need their own clock.
+RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
 
 
 def _all_workflows() -> list:
@@ -287,6 +294,65 @@ async def push_exited(data: dict) -> dict:
     return {"ok": True}
 
 
+async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
+    """Fan one batch of newly-fired alerts out to every channel: the activity
+    log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and
+    the browser notification path blocked-gates already use."""
+    for alert in fired:
+        state.record_log(
+            {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
+        )
+        await asyncio.to_thread(notify.push, f"groom: {alert.rule}", alert.message)
+        await state.broadcast(render.render_notify_script(f"[{alert.rule}] {alert.message}"))
+
+
+@post("/v1/traces", include_in_schema=False)
+async def otlp_traces(request: Request) -> Response:
+    """Standard OTLP/HTTP trace receiver — parse → store → eval rules →
+    broadcast, mirroring push_blocked's shape. A pushed span carries its own
+    identity in the payload, so native (non-Docker) runs appear here without
+    passing the discovery gate."""
+    try:
+        spans = otlp.parse_traces(await request.body())
+    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
+        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
+    store.insert_spans(spans)
+    await _dispatch_alerts(alerts.ingest_spans(spans))
+    # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
+    # defines success as 200 (Litestar's POST default would be 201).
+    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
+
+
+@post("/v1/metrics", include_in_schema=False)
+async def otlp_metrics(request: Request) -> Response:
+    """Standard OTLP/HTTP metric receiver. The cap-wait heartbeat lands here —
+    the liveness signal that suppresses a false STALL during a legitimate
+    multi-hour/day spending-cap sleep."""
+    try:
+        points = otlp.parse_metrics(await request.body())
+    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
+        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
+    store.insert_metrics(points)
+    await _dispatch_alerts(alerts.ingest_metrics(points))
+    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
+
+
+@get("/traces", include_in_schema=False)
+async def traces(
+    run: str = "", node: str = "", status: str = "", slower_than: str = ""
+) -> Response:
+    """Telemetry search over the SQLite spans table (unlike /search, which only
+    filters the live in-memory worker list), rendered as an HTML fragment for
+    the dashboard's telemetry pane. Raw SQL on groom.db stays the ad-hoc path."""
+    try:
+        threshold = float(slower_than) if slower_than.strip() else None
+    except ValueError:
+        threshold = None
+    spans = store.query_spans(run=run, node=node, status=status, slower_than=threshold)
+    fragment = render.render_traces(store.run_summaries(), spans, state.RUNS)
+    return Response(content=fragment, media_type=MediaType.HTML)
+
+
 async def _handle_command(data: dict) -> None:
     if data.get("cmd") != "answer":
         return
@@ -462,6 +528,32 @@ async def reload(container_id: str = "") -> dict:
 # Held module-side so the background scan task isn't garbage-collected while it
 # runs (asyncio keeps only a weak reference to bare tasks).
 _scan_task: asyncio.Task | None = None
+_rules_task: asyncio.Task | None = None
+
+
+async def _rules_loop() -> None:
+    """Periodic evaluation of the time-based alert rules. Each tick is wrapped
+    so one bad evaluation (or an unreachable notifier) never kills the loop —
+    the STALL watch itself must not be able to stall."""
+    while True:
+        await asyncio.sleep(RULES_TICK_S)
+        try:
+            await _dispatch_alerts(alerts.check_time_rules())
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _spawn_rules() -> None:
+    """on_startup hook: bound groom.db's growth once per serve, then start the
+    STALL/BUDGET ticker."""
+    global _rules_task
+    store.prune()
+    _rules_task = asyncio.create_task(_rules_loop())
+
+
+async def _stop_rules() -> None:
+    if _rules_task is not None:
+        _rules_task.cancel()
 
 
 async def _background_scan() -> None:
@@ -501,10 +593,14 @@ def create_app() -> Litestar:
             push_progress,
             push_blocked,
             push_exited,
+            otlp_traces,
+            otlp_metrics,
+            traces,
             dashboard_ws,
             dashboard_sidecar,
             reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
-        on_startup=[_spawn_scan],
+        on_startup=[_spawn_scan, _spawn_rules],
+        on_shutdown=[_stop_rules],
     )

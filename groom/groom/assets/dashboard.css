@@ -26,10 +26,14 @@ body {
   grid-template-areas:"act main" "status status";
 }
 
+/* keyboard users get a visible focus ring everywhere (a11y contract: never bare) */
+:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
 /* ---- activity bar ---- */
 #activitybar { grid-area:act; background:var(--bg-0); border-right:1px solid var(--border);
   display:flex; flex-direction:column; align-items:center; padding-top:6px; }
 .act-btn { width:48px; height:44px; display:flex; align-items:center; justify-content:center;
+  background:none; border:0; padding:0; font:inherit;
   color:var(--text-2); cursor:pointer; border-left:2px solid transparent; }
 .act-btn:hover { color:var(--text-1); }
 .act-btn.active { color:var(--text-0); border-left-color:var(--accent); }
@@ -66,7 +70,8 @@ body {
   font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2); }
 .pane-head .filter { margin-left:auto; text-transform:none; letter-spacing:0; max-width:160px; }
 .inbox-list { overflow-y:auto; flex:1; }
-.row { padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;
+.row { padding:6px 10px; cursor:pointer; background:none; font:inherit; color:inherit;
+  text-align:left; width:100%; border:0; border-bottom:1px solid var(--border);
   border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px; }
 .row:hover { background:var(--bg-2); }
 .row.selected { background:var(--bg-3); border-left-color:var(--accent); }
@@ -76,7 +81,7 @@ body {
 .row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2); }
 .row .gate { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
-.row .q { font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .q { display:block; font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* ---- detail ---- */
 #detail { display:flex; flex-direction:column; overflow:hidden; background:var(--bg-1); }
@@ -152,11 +157,13 @@ body {
 /* file/changeset treeview (shared by Files + Diff panels) */
 .tree-children { margin-left:12px; }
 .tree-dir.collapsed > .tree-children { display:none; }
-.tree-dir-head { display:flex; align-items:center; gap:4px; padding:2px 4px; color:var(--text-1); cursor:pointer; border-radius:3px; white-space:nowrap; }
+.tree-dir-head { display:flex; align-items:center; gap:4px; padding:2px 4px; color:var(--text-1); cursor:pointer; border-radius:3px; white-space:nowrap;
+  background:none; border:0; font:inherit; width:100%; text-align:left; }
 .tree-dir-head:hover { background:var(--bg-2); }
 .tree-dir-head .tchev { color:var(--text-2); font-size:9px; width:9px; flex:none; transition:transform .1s; }
 .tree-dir.collapsed > .tree-dir-head .tchev { transform:rotate(-90deg); }
-.tree-file { display:flex; align-items:center; gap:8px; padding:2px 6px; cursor:pointer; border-radius:3px; }
+.tree-file { display:flex; align-items:center; gap:8px; padding:2px 6px; cursor:pointer; border-radius:3px;
+  background:none; border:0; font:inherit; color:inherit; width:100%; text-align:left; }
 .tree-file:hover { background:var(--bg-2); }
 .tree-file.active { background:var(--bg-2); box-shadow:inset 2px 0 0 var(--accent); }
 .tree-file .fname { color:var(--text-0); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -168,10 +175,36 @@ body {
 .diff-wrap a { text-decoration:none; color:inherit; }
 
 /* ---- mode visibility (activity bar): show one panel at a time ---- */
-.app[data-mode="inbox"]    #inbox-pane    { display:grid; grid-template-columns:1.1fr 1.4fr; }
-.app[data-mode="files"]    #files-pane    { display:flex; flex-direction:column; }
-.app[data-mode="diff"]     #diff-pane     { display:flex; flex-direction:column; }
-.app[data-mode="settings"] #settings-pane { display:block; overflow:auto; }
+.app[data-mode="inbox"]     #inbox-pane     { display:grid; grid-template-columns:1.1fr 1.4fr; }
+.app[data-mode="files"]     #files-pane     { display:flex; flex-direction:column; }
+.app[data-mode="diff"]      #diff-pane      { display:flex; flex-direction:column; }
+.app[data-mode="settings"]  #settings-pane  { display:block; overflow:auto; }
+.app[data-mode="telemetry"] #telemetry-pane { display:flex; flex-direction:column; }
+
+/* ---- telemetry pane (trace search over the SQLite fleet index) ---- */
+#telemetry { display:flex; flex-direction:column; min-height:0; flex:1; }
+.traces-filter { margin-left:auto; display:flex; gap:6px; align-items:center; }
+.traces-filter .filter { max-width:130px; }
+.traces-filter select.filter { appearance:none; }
+.traces-list { flex:1; overflow:auto; padding:8px 10px; }
+.run-cards { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.run-card { background:var(--bg-1); border:1px solid var(--border); border-radius:5px;
+  padding:6px 10px; display:flex; flex-direction:column; gap:3px; min-width:220px; }
+.run-card .line1 { display:flex; align-items:center; gap:7px; }
+.run-card .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-0); }
+.run-card .wid { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+.run-card .run-meta { font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
+.run-card .tr-err { color:var(--blocked); }
+.alert-chip { font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
+  padding:0 5px; border-radius:3px; border:1px solid var(--blocked); color:var(--blocked); }
+table.traces { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11.5px; }
+table.traces th { text-align:left; color:var(--text-2); font-weight:500; padding:3px 8px;
+  border-bottom:1px solid var(--border); position:sticky; top:-8px; background:var(--bg-0); }
+table.traces td { padding:3px 8px; border-bottom:1px solid var(--bg-2); color:var(--text-1); white-space:nowrap; }
+table.traces .tr-run { color:var(--text-2); }
+table.traces .tr-dur { text-align:right; color:var(--text-0); }
+table.traces .tr-status { color:var(--text-2); }
+table.traces .tr-status.tr-error { color:var(--blocked); font-weight:600; }
 
 /* ---- status bar ---- */
 #statusbar { grid-area:status; background:var(--bg-1); border-top:1px solid var(--border);
@@ -182,6 +215,9 @@ body {
 .ws-dot { width:7px; height:7px; border-radius:50%; background:var(--running); }
 .kbd { font-family:var(--mono); font-size:10.5px; color:var(--text-2); border:1px solid var(--border-2); border-radius:3px; padding:0 4px; }
 .statusbar-refresh { background:transparent; border:none; color:var(--text-2); cursor:pointer; font-size:13px; line-height:1; padding:2px 4px; border-radius:3px; }
+.palette-open { background:none; border:0; font:inherit; color:var(--text-2); cursor:pointer;
+  display:inline-flex; align-items:center; gap:4px; padding:2px 4px; border-radius:3px; }
+.palette-open:hover { color:var(--text-0); background:var(--bg-3); }
 .statusbar-refresh:hover { color:var(--text-0); background:var(--bg-3); }
 .statusbar-refresh.spinning { animation:spin .7s linear infinite; color:var(--running); }
 @keyframes spin { to { transform:rotate(360deg); } }

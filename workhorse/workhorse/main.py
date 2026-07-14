@@ -5,10 +5,13 @@ import json
 import os
 import shutil
 import sys
+import time
 from collections import Counter, deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import otel
 from .artifacts import ArtifactWriter
 from .config import config_path, get_config_value, load_config, write_config_key
 from .graph.context import WorkflowContext
@@ -172,6 +175,10 @@ def run(
 
     tank = _GasTank(_configured_gas())
 
+    # Opt-in telemetry (WORKHORSE_OTEL): the run's root span opens here and every
+    # node/turn span nests under it; end_run flushes on every exit path below.
+    otel.start_run(graph.name, writer.run_id)
+
     try:
         terminal_type = _step_loop(
             graph,
@@ -183,6 +190,7 @@ def run(
             workflow_dir=workflow_dir,
             session_id_path=session_id_path,
             tank=tank,
+            deadline=_runtime_deadline(writer.started_at),
         )
     except KeyboardInterrupt:
         agent_runner.terminate_active()
@@ -191,6 +199,7 @@ def run(
             f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
             file=sys.stderr,
         )
+        otel.end_run("interrupted", error="KeyboardInterrupt")
         sys.exit(130)
     except OutOfGasError as e:
         # A never-terminating cycle: fail the run loudly (non-zero) instead of letting
@@ -198,6 +207,17 @@ def run(
         agent_runner.terminate_active()
         print(f"[workhorse] ERROR: {e}", file=sys.stderr)
         writer.finish(terminal="fail")
+        otel.end_run("fail", error=str(e))
+        return 1
+    except RunBudgetExceeded as e:
+        # The engine wall-clock budget (WORKHORSE_MAX_RUNTIME_S) ran out — the
+        # self-defense backstop for a run nothing is watching. Fail loudly like
+        # OutOfGasError; the run dir stays resumable if the operator raises the
+        # budget (the clock counts from the ORIGINAL start, surviving --resume).
+        agent_runner.terminate_active()
+        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
+        writer.finish(terminal="fail")
+        otel.end_run("fail", error=str(e))
         return 1
     except BackendInvocationError as e:
         # An agent-CLI turn failed in a way the resilience ladder couldn't recover
@@ -212,13 +232,22 @@ def run(
             file=sys.stderr,
         )
         writer.finish(terminal="fail")
+        otel.end_run("fail", error=str(e))
         return 1
-
-    writer.write_final_context(ctx.as_dict())
-    writer.finish(terminal=terminal_type)
-    success = terminal_type == "terminal"
-    print(f"[workhorse] {terminal_type.upper()} — run artifacts: {writer.run_dir}")
-    return 0 if success else 1
+    else:
+        writer.write_final_context(ctx.as_dict())
+        writer.finish(terminal=terminal_type)
+        otel.end_run(
+            terminal_type, error=None if terminal_type == "terminal" else terminal_type
+        )
+        success = terminal_type == "terminal"
+        print(f"[workhorse] {terminal_type.upper()} — run artifacts: {writer.run_dir}")
+        return 0 if success else 1
+    finally:
+        # Backstop for exits that bypass the handlers above (e.g. a script node's
+        # sys.exit propagating as SystemExit): close and flush whatever telemetry
+        # is still open. A no-op when a handler (or the success path) already did.
+        otel.end_run("aborted", error="run aborted before finalize")
 
 
 # Hard ceiling on flow nesting (a flow calling a flow calling a flow …). Real
@@ -242,6 +271,46 @@ _DEFAULT_GAS = 5000
 
 class OutOfGasError(RuntimeError):
     """Raised when a run burns a full gas tank without forward progress — a loop."""
+
+
+class RunBudgetExceeded(RuntimeError):
+    """Raised when the run outlives its wall-clock budget (WORKHORSE_MAX_RUNTIME_S).
+
+    A self-defense backstop complementary to the gas tank: gas catches a cycle
+    that never progresses, this catches a run that progresses forever (or crawls)
+    past the operator's absolute time ceiling with nothing watching it. Counted
+    from the run's ORIGINAL start (writer.started_at), so it survives --resume.
+    Unset/0 disables it (the default — most runs are bounded by their graph).
+    """
+
+
+def _configured_max_runtime_s() -> float:
+    raw = (os.environ.get("WORKHORSE_MAX_RUNTIME_S") or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        print(
+            f"[workhorse] ⚠ ignoring non-numeric WORKHORSE_MAX_RUNTIME_S={raw!r}; "
+            f"runtime budget disabled",
+            file=sys.stderr,
+        )
+        return 0.0
+
+
+def _runtime_deadline(started_at_iso: str) -> float | None:
+    """Absolute unix-epoch deadline for this run, or None when no budget is set.
+    Anchored to the writer's original ISO start time so a resumed run keeps the
+    same deadline instead of restarting the clock."""
+    budget = _configured_max_runtime_s()
+    if budget <= 0:
+        return None
+    try:
+        started = datetime.fromisoformat(started_at_iso)
+    except ValueError:
+        started = datetime.now(timezone.utc)
+    return started.timestamp() + budget
 
 
 def _configured_gas() -> int:
@@ -280,12 +349,15 @@ class _GasTank:
         if value != sentinel:
             self._last_refuel[node_id] = value
             self.gas = self.capacity
+            otel.gas_refuel(node_id)
+            otel.gas_level(self.gas, self.capacity)
 
     def burn(self, node_id: str) -> None:
         if self.capacity <= 0:  # guard disabled
             return
         self._recent.append(node_id)
         self.gas -= 1
+        otel.gas_level(self.gas, self.capacity)
         if self.gas < 0:
             hot = ", ".join(
                 f"{nid}×{n}" for nid, n in Counter(self._recent).most_common(8)
@@ -318,18 +390,31 @@ def _step_loop(
     session_id_path: Path,
     tank: _GasTank,
     depth: int = 0,
+    deadline: float | None = None,
 ) -> str:
     """Step ``graph`` from ``current_id`` until a TerminalNode, mutating ``ctx`` in
     place. Returns the terminal node's type ("terminal" | "fail") WITHOUT finalizing
     the writer — the caller (top-level run, or a flow handler) decides what to do with
     that result. This is the shared engine for both the root graph and every flow
     sub-graph (see the FlowNode branch). ``tank`` is the run-wide gas guard, shared
-    across the root and all flows so a non-progressing cycle anywhere fails loudly."""
+    across the root and all flows so a non-progressing cycle anywhere fails loudly;
+    ``deadline`` is the run-wide wall-clock budget (unix epoch, None = unbounded),
+    likewise shared so a flow can't outlive the run's ceiling."""
     while True:
         node = graph.nodes[current_id]
 
         if isinstance(node, TerminalNode):
             return node.type
+
+        # Engine wall-clock budget: checked between nodes (not mid-turn) so a
+        # node always finishes cleanly and the run dir stays resumable.
+        if deadline is not None and time.time() > deadline:
+            raise RunBudgetExceeded(
+                f"run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget "
+                f"(deadline passed {int(time.time() - deadline)}s ago, counted from "
+                f"the run's original start). Raise the budget and resume, or "
+                f"inspect the run dir for why it is still going."
+            )
 
         # Infinite-loop guard: spend one unit of gas for this step (across root +
         # flows). Refuel happens below, after a progress-marking node advances.
@@ -474,6 +559,7 @@ def _step_loop(
                 session_id_path=session_id_path,
                 tank=tank,
                 depth=depth,
+                deadline=deadline,
                 resume=is_flow_resume,
             )
             ctx.merge(outputs)
@@ -536,6 +622,7 @@ def _run_flow(
     session_id_path: Path,
     tank: _GasTank,
     depth: int,
+    deadline: float | None = None,
     resume: bool = False,
 ) -> dict[str, Any]:
     """Run the flow named by ``node`` as a child graph and return its declared
@@ -573,6 +660,7 @@ def _run_flow(
         session_id_path=child_writer.run_dir / ".session_id",
         tank=tank,
         depth=depth + 1,
+        deadline=deadline,
     )
     child_writer.write_final_context(child_ctx.as_dict())
     child_writer.finish(terminal=term)

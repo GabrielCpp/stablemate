@@ -147,6 +147,9 @@ tiers with no mapping) fall through to `AGENT_MODEL`, then to a per-backend
 If nothing supplies a value, Workhorse leaves model/effort unset and the selected
 harness uses its own defaults. The resilience/timeout knobs are env vars too — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
+JSONL provider error events and logs that identify a transient failure are aborted
+immediately and retried by Workhorse's bounded backoff instead of being left to a
+CLI's opaque internal retry loop.
 
 | Backend | CLI | Default model | In-place compaction |
 |---|---|---|---|
@@ -370,6 +373,30 @@ Artifacts are written under `--runs-dir` (default `<workflow-dir>/runs`). The
 Docker harness redirects them to a persistent volume instead — see
 [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
+## Telemetry (opt-in OpenTelemetry)
+
+For away-from-keyboard monitoring of long runs, workhorse can stream OpenTelemetry
+spans and metrics to a local OTLP collector — by default `groom`, which stores them
+in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn:
+
+```bash
+pip install 'workhorse-agent[otel]'
+export WORKHORSE_OTEL=1
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # groom serve (the default)
+```
+
+Emitted: a root span per run, a span per node visit (nested through flows), a span
+per agent-CLI turn with duration + token usage, span events for the recovery ladder
+(retry/reframe/compact/watchdog-kill), the gas gauge, and a **cap-wait heartbeat**
+metric each pause tick — the signal that lets a collector distinguish a legitimate
+multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). Unset,
+telemetry is a complete no-op and adds no dependencies; exports are best-effort, so
+a down collector can never slow or wedge a run. Any standard OTLP/HTTP backend
+(Jaeger, Grafana Tempo) works unchanged. There is also an engine wall-clock ceiling,
+`WORKHORSE_MAX_RUNTIME_S` — see
+[docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)
+for both.
+
 ## Repository isolation
 
 `workhorse` is repository-agnostic — it never assumes a particular repo or working
@@ -505,6 +532,7 @@ agents/local-worker/          # source repo dir for the workhorse controller
 │   ├── main.py                # CLI + the graph walk loop: checkpoint → run node → advance
 │   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
 │   ├── artifacts.py           # ArtifactWriter: run dir, checkpoints, per-step artifacts
+│   ├── otel.py                # Opt-in OpenTelemetry facade (no-op unless WORKHORSE_OTEL is set)
 │   ├── graph/
 │   │   ├── nodes.py           # Pydantic node models (AgentNode/ScriptNode/BranchNode/TerminalNode) + Graph
 │   │   ├── loader.py          # Parse + validate workflow.yaml into a Graph

@@ -1,6 +1,6 @@
 ---
 name: stablemate-ui-accessibility
-description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-ui) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
+description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-a11y, react-native-a11y) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
 metadata:
   generated_by: farrier
   source: library/skills/ui/ui-accessibility/SKILL.md
@@ -16,7 +16,8 @@ skill for the stack you're in:
 
 - HTMX / server-rendered HTML / vanilla JS → [`../stablemate-python-htmx-accessibility/SKILL.md`](../stablemate-python-htmx-accessibility/SKILL.md)
 - React Router + MUI → the `react-router-a11y` skill
-- Flutter → the `flutter-ui` skill
+- Flutter → the `flutter-a11y` skill
+- React Native → the `react-native-a11y` skill
 
 Accessibility is the actual goal — screen-reader users, keyboard-only users, and low-vision users
 must be able to operate the thing. **Machine-legibility is a free consequence, not the reason.** A
@@ -59,6 +60,9 @@ Every piece of UI you touch owes all five. None is optional, none substitutes fo
   Enter/Space handling — or, better, *is* a real `<button>`, which gets this for free.
 - **No keyboard traps:** the user can always Tab or Escape out of any widget that is not an
   intentional modal focus trap.
+- **The one correct exception:** options inside a combobox/listbox managed via
+  `aria-activedescendant` are deliberately *not* focusable — DOM focus stays on the input and the
+  attribute does the announcing. Don't "fix" them with `tabindex="0"`; that breaks the pattern.
 - Motor-impaired users, screen-reader users, and many power users never touch a mouse.
 
 ### 4. Focus — focus is always somewhere deliberate
@@ -77,6 +81,11 @@ Every piece of UI you touch owes all five. None is optional, none substitutes fo
 - **Never convey state through color alone** (error, required, success, disabled). Pair color with
   an icon, text, or an ARIA attribute (`aria-invalid`, `aria-required`, `aria-disabled`,
   `aria-describedby`) so a color-blind or non-visual user gets the same information.
+- **Widget state lives in ARIA state attributes, not only CSS classes.** A toggle exposes
+  `aria-pressed`, a disclosure `aria-expanded`, the current selection `aria-current`/
+  `aria-selected`. Wherever code toggles a styling class (`active`, `selected`, `collapsed`),
+  update the matching state attribute in the same statement — the class is invisible to a screen
+  reader, and a highlighted-but-unannounced state is color-only state by another name.
 - **Async and pushed state must be announced, not just shown.** Loading, an arriving error, a
   background update pushed from the server — put the text in an `aria-live` region
   (`polite` for status, `assertive` for errors needing immediate attention), not a spinner or a
@@ -105,3 +114,12 @@ Every piece of UI you touch owes all five. None is optional, none substitutes fo
   coder-workflow lint/QA gate runs; see the framework skill for the exact command.
 - **Manual smoke:** Tab through the touched surface with the mouse untouched — confirm every control
   is reachable, operable, and its purpose is announced by focus alone.
+- **Know static lint's two blind spots and close them.** A template/JSX linter cannot see
+  (a) controls wired by **JS event delegation** — one listener on a container, nothing on the
+  element marks it interactive — or (b) markup **rendered at runtime** (server-rendered fragments,
+  client-JS-built widgets). Close both: run the same linter over the server-rendered fragments in
+  unit tests, pin load-bearing controls as native elements in a test, and where the toolchain has
+  it, verify the *live* DOM with a computed-role scan (`ostler vet` labels every rendered region
+  with its computed ARIA role — an interactive-looking region in its `unlabeled` bucket is an a11y
+  gap caught live). Concrete incident this comes from: a dashboard's mode rail of clickable `div`s
+  passed template lint for months because its only wiring was one delegated click listener.

@@ -176,20 +176,33 @@ class Graph:
 # ---------------------------------------------------------------------------
 # epic.md body parsing  (## Seeds / ## Stories → SeedItem / Story)
 # ---------------------------------------------------------------------------
-def _meta_from_bullets(section: markdown.Section) -> dict[str, str]:
+def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
     Keys are lowercased; the first ``:`` separates key and value (so ``depends on: a, b`` keeps the
     spaced key). Bullets without a ``:`` are ignored.
     """
-    meta: dict[str, str] = {}
+    meta: dict[str, str | list[str]] = {}
     for bullet in section.bullets:
         text = bullet.text.strip()
         if ":" not in text:
             continue
         key, _, value = text.partition(":")
-        meta[key.strip().lower()] = value.strip()
+        key = key.strip().lower()
+        value = value.strip()
+        previous = meta.get(key)
+        if previous is None:
+            meta[key] = value
+        elif isinstance(previous, list):
+            previous.append(value)
+        else:
+            meta[key] = [previous, value]
     return meta
+
+
+def _meta_scalar(meta: dict[str, str | list[str]], key: str, default: str = "") -> str:
+    value = meta.get(key, default)
+    return value[0] if isinstance(value, list) and value else str(value)
 
 
 def _first_paragraph(section: markdown.Section) -> str:
@@ -226,7 +239,7 @@ def _parse_seeds(doc: markdown.MarkdownDoc) -> list[SeedItem]:
             continue
         meta = _meta_from_bullets(sub)
         summary = _first_paragraph(sub)
-        status = meta.get("status") or registry.DEFAULT_SEED_STATUS
+        status = _meta_scalar(meta, "status") or registry.DEFAULT_SEED_STATUS
         raw = {"id": sid, "status": status, "summary": summary, **meta}
         seeds.append(SeedItem(id=sid, status=status, summary=summary, raw=raw))
     return seeds
@@ -243,13 +256,13 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
         if not slug:
             continue
         meta = _meta_from_bullets(sub)
-        seed_items = _split_list(meta.get(registry.STORY_COVERS_KEY, ""))
-        dependencies = _split_list(meta.get(registry.STORY_DEPENDS_KEY, ""))
+        seed_items = _split_list(_meta_scalar(meta, registry.STORY_COVERS_KEY))
+        dependencies = _split_list(_meta_scalar(meta, registry.STORY_DEPENDS_KEY))
         rel = (epic_dir / "stories" / slug / "story.md").relative_to(root).as_posix()
         raw = {"slug": slug, "seedItems": seed_items, "dependencies": dependencies, **meta}
         stories.append(Story(
             slug=slug,
-            title=meta.get("title", ""),
+            title=_meta_scalar(meta, "title"),
             path=rel,
             seed_items=seed_items,
             dependencies=dependencies,

@@ -30,4 +30,13 @@ members = ["workhorse", "farrier", "ostler", "groom", "saddlebag"]
 dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.20",
+    # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the
+    # okf-builder walkthrough that runs against this workspace's .venv.
+    "playwright>=1.40",
+    "pillow>=10.0",
+    # workhorse's opt-in `otel` extra, pinned here so the dev venv can run the
+    # producer→groom-collector path end-to-end (production installs opt in via
+    # `pip install 'workhorse-agent[otel]'`).
+    "opentelemetry-sdk>=1.25",
+    "opentelemetry-exporter-otlp-proto-http>=1.25",
 ]

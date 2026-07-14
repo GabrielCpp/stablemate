@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -28,6 +29,13 @@ def _relative(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _crop_stem(name: str, i: int) -> str:
+    """A filename-safe stem for a matched component's crop; positional fallback when the
+    manifest entry carries no `name`."""
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")
+    return stem or f"component-{i}"
 
 
 def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
@@ -67,6 +75,16 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
     for i, data in crops.items():
         name = f"{state}-residual-{i}.png"
         match_result.unlabeled[i].crop = f"vet/{name}"
+        writes.append(report_mod.VetFileWrite(vet_dir / name, data))
+
+    # Every matched documented component also gets its own visual snippet, cut from the
+    # rendered region (not the manifest's expected bbox).
+    component_crops = crop_mod.maybe_crop(
+        screenshot, [pair.region for pair in match_result.matched])
+    for i, data in component_crops.items():
+        pair = match_result.matched[i]
+        name = f"{state}-{_crop_stem(pair.dom.name, i)}.png"
+        pair.crop = f"vet/{name}"
         writes.append(report_mod.VetFileWrite(vet_dir / name, data))
 
     vet_report = report_mod.build_report(

@@ -163,7 +163,7 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
     diagnostics so failure classification can see them."""
     state: dict = {"result_text": "", "session_id": None}
     diagnostics: list[str] = []
-    cap_abort = [False]
+    early_abort = [""]
 
     def on_line(raw: str) -> bool:
         line = raw.strip()
@@ -177,21 +177,24 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
             diagnostics.append(line)
         else:
             on_event(event, state, node_id, diagnostics)
-        # As soon as a cap marker appears — whether it arrived as a raw --print-logs
-        # line (the JSON-decode path) or a structured error event (via on_event) —
-        # abort early and let the runner wait the window out, rather than blocking for
-        # tens of minutes while opencode retries internally until the watchdog reaps
-        # it. Scan only the lines this call added so it stays O(n) over the stream.
+        # As soon as a recoverable provider failure appears — whether as a raw log
+        # line or a structured error event — abort the CLI's internal retry loop and
+        # hand recovery to Workhorse's bounded backoff policy. Caps retain their
+        # separate scheduled-reset path. Scan only newly-added diagnostics so this
+        # stays O(n) over the stream.
         new_diag = "\n".join(diagnostics[before:])
-        if not cap_abort[0] and new_diag and _agent._is_cap(new_diag):
-            cap_abort[0] = True
+        if not early_abort[0] and new_diag and _agent._is_cap(new_diag):
+            early_abort[0] = "cap"
+            return True  # signal stream_subprocess to break and kill the process
+        if not early_abort[0] and new_diag and _agent._is_transient(new_diag):
+            early_abort[0] = "transient"
             return True  # signal stream_subprocess to break and kill the process
         return False
 
     timed_out, returncode = _agent.stream_subprocess(
         cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd
     )
-    return state, "\n".join(diagnostics), timed_out or cap_abort[0], returncode
+    return state, "\n".join(diagnostics), timed_out or bool(early_abort[0]), returncode
 
 
 def _finalize_turn(

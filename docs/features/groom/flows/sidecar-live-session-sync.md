@@ -185,6 +185,6 @@ and the visible workflow row state is stored as a [workflow container](../concep
   groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars,
   groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
-- screenshot: .agents/okf-build/walkthrough/groom/sidecar-live-session-sync-detail-diff.png
-- screenshot: .agents/okf-build/walkthrough/groom/sidecar-live-session-sync-files-pane.png
-- screenshot: .agents/okf-build/walkthrough/groom/sidecar-live-session-sync-diff-file-selected.png
+- screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-detail-diff.png
+- screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-files-pane.png
+- screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-diff-file-selected.png

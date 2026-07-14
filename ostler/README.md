@@ -184,6 +184,29 @@ ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed a
 ostler unfreeze <ident>
 ```
 
+**Verification control plane**
+
+```bash
+# Build and validate deterministic base/head impact and obligation scope.
+ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
+  --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
+ostler qa context-validate --spec docs/specs/<story>
+
+# Review, validate, and execute one universal command/browser/mobile plan.
+ostler qa validate docs/specs/<story>/qa-plan.yml --json
+ostler qa run docs/specs/<story>/qa-plan.yml --json
+```
+
+Version-2 plans declare command, Playwright, and Maestro targets and map every
+scenario to acceptance-criterion and OKF obligation IDs. Validation rejects
+unknown coverage, unsupported actions and locators, disposable pre-run inputs,
+literal secrets, and coverage without a machine assertion. Each run starts with
+an empty `qa/`, writes an append-only ledger and content-hashed manifest, and
+returns `passed`, `failed`, `blocked`, or `invalid`. Browser and mobile targets
+record continuously by default. See
+[`docs/QA-RUN.md`](docs/QA-RUN.md) and
+[`../docs/ostler-qa-verification.md`](../docs/ostler-qa-verification.md).
+
 ## The coverage model
 
 ```
