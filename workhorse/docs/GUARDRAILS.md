@@ -89,6 +89,7 @@ Errors are now classified as:
 ### 5. Enhanced Logging
 
 Each operation logs:
+- the path to the rendered `prompt.md` before each agent invocation
 - 🚀 When Claude is invoked
 - 🔄 When resuming a session / reframing a prompt
 - ⚠️ When errors occur with diagnostics

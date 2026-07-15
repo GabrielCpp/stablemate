@@ -37,21 +37,29 @@ def test_library_dir_from_workhorse_config():
             assert m._resolve_library_dir() == Path("/srv/agents")
 
 
-def test_library_dir_none_when_unconfigured():
+def test_library_dir_none_when_unconfigured_and_no_base():
+    # The base library is the floor under the overlay, so "nothing configured" only
+    # means "nothing at all" when the stablemate-library wheel is absent too.
+    # Layered resolution itself is covered in test_library_layers.py.
     with tempfile.TemporaryDirectory() as home:  # no config.toml inside
         env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
         env["WORKHORSE_CONFIG"] = str(Path(home) / "config.toml")
-        with patch.dict(os.environ, env, clear=True):
+        with patch.dict(os.environ, env, clear=True), patch.object(
+            m, "_base_library_dir", lambda: None
+        ):
             assert m._resolve_library_dir() is None
 
 
 # ── --workflow resolution ───────────────────────────────────────────────────
 
 def test_bare_name_resolves_against_library():
-    with patch.object(m, "_resolve_library_dir", lambda: Path("/srv/agents")):
-        assert m._resolve_workflow_path("author") == Path(
-            "/srv/agents/workflows/author/workflow.yaml"
-        )
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = Path(tmp) / "agents"
+        wf = lib / "workflows" / "author" / "workflow.yaml"
+        wf.parent.mkdir(parents=True)
+        wf.write_text("name: author\n")
+        with patch.object(m, "_library_layers", lambda: [lib]):
+            assert m._resolve_workflow_path("author") == wf.resolve()
 
 
 def test_explicit_absolute_path_passes_through():
@@ -59,22 +67,22 @@ def test_explicit_absolute_path_passes_through():
         wf = Path(tmp) / "workflow.yaml"
         wf.write_text("name: x\n")
         # Even with a library configured, a path-like value is used verbatim.
-        with patch.object(m, "_resolve_library_dir", lambda: Path("/srv/agents")):
+        with patch.object(m, "_library_layers", lambda: [Path("/srv/agents")]):
             assert m._resolve_workflow_path(str(wf)) == wf.resolve()
 
 
 def test_relative_path_is_not_treated_as_library_name():
     # Contains a separator → path, resolved against cwd, never the library.
-    with patch.object(m, "_resolve_library_dir", lambda: Path("/srv/agents")):
+    with patch.object(m, "_library_layers", lambda: [Path("/srv/agents")]):
         got = m._resolve_workflow_path("sub/workflow.yaml")
     assert got == (Path.cwd() / "sub" / "workflow.yaml").resolve()
 
 
 def test_bare_name_without_library_errors():
-    with patch.object(m, "_resolve_library_dir", lambda: None):
+    with patch.object(m, "_library_layers", list):
         try:
             m._resolve_workflow_path("author")
-            raise AssertionError("expected SystemExit when no library configured")
+            raise AssertionError("expected SystemExit when no library is available")
         except SystemExit as e:
             assert e.code == 1
 

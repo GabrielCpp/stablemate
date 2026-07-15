@@ -40,12 +40,12 @@ def test_push_progress_posts_expected_shape():
         return _FakeResponse()
 
     with patch.object(sidecar.urllib.request, "urlopen", _fake_urlopen), \
-         patch.dict(sidecar.os.environ, {"REPO_NAME": "Predykt", "REPO_BRANCH": "fixes/x"}, clear=False):
+         patch.dict(sidecar.os.environ, {"REPO_NAME": "Acme", "REPO_BRANCH": "fixes/x"}, clear=False):
         sidecar.push_progress("resolve_integrity")
 
     assert captured["url"] == f"http://{sidecar.GROOM_HOST}:{sidecar.GROOM_PORT}/push/progress"
     assert captured["body"]["current_node"] == "resolve_integrity"
-    assert captured["body"]["repo_name"] == "Predykt"
+    assert captured["body"]["repo_name"] == "Acme"
     assert captured["body"]["repo_branch"] == "fixes/x"
     assert "container_id" in captured["body"]
 

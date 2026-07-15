@@ -362,15 +362,17 @@ runs/
     ├── run.json                  # start/end time, terminal state
     ├── context.json              # final context snapshot
     ├── <step-id>/
-    │   ├── prompt.md             # rendered Jinja2 prompt sent to Claude
+    │   ├── prompt.md             # rendered prompt, written before agent invocation
     │   ├── output.json           # extracted JSON outputs
     │   └── context_after.json    # context state after this step
     └── <branch-id>/
         └── branch.json           # { path, value, next }
 ```
 
-Artifacts are written under `--runs-dir` (default `<workflow-dir>/runs`). The
-Docker harness redirects them to a persistent volume instead — see
+Artifacts are written under `--runs-dir` (default `<workflow-dir>/runs`). Before
+each agent turn, workhorse writes the rendered `prompt.md` and logs only that path
+so failed or interrupted nodes remain inspectable without dumping variables. The
+Docker harness redirects artifacts to a persistent volume instead — see
 [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Telemetry (opt-in OpenTelemetry)
@@ -545,7 +547,7 @@ agents/local-worker/          # source repo dir for the workhorse controller
 ├── tests/                     # Standalone test files (see below)
 ├── compose.yaml               # Service, env, mounts, named volumes
 ├── Dockerfile                 # Ubuntu + uv + Claude CLI + the controller package
-├── entrypoint.sh              # Auth seeding, perms, exec `workhorse`
+├── entrypoint.sh              # Non-root auth seeding, checkout, exec `workhorse`
 ├── Makefile                   # install / test / build / publish tasks (`make help`)
 ├── pyproject.toml / uv.lock   # Python deps (jinja2, pyyaml, pydantic); managed with uv
 ├── README.md                  # This file (usage + development)

@@ -118,9 +118,9 @@ errors if a `localInstructions` path does not exist yet.
 The installed skill name is the prefix (`repo.prefix`, else `repo.name`, else
 the repo directory name) prepended to the skill's library name. Library names
 already carry a unique domain prefix (`go-*`, `process-*`, `stablemate-*`,
-`predykt-*`), and farrier does not double a prefix the name already starts
-with — a skill named `predykt-auth` installed into the `predykt` repo stays
-`predykt-auth`.
+`acme-*`), and farrier does not double a prefix the name already starts
+with — a skill named `acme-auth` installed into the `acme` repo stays
+`acme-auth`.
 
 ```
 library/skills/process/process-story-docs/SKILL.md

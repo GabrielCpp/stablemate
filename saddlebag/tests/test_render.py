@@ -21,10 +21,10 @@ from saddlebag.models import (
 @pytest.fixture
 def web(pool: Pool, tmp_path: Path):
     """A realistic environment: config, a secret, and a credential-ref."""
-    environment = pool.env_add(name="web-local", env="local", project="predykt",
+    environment = pool.env_add(name="web-local", env="local", project="acme",
                                target=str(tmp_path / ".env.local"))
     for entry in (
-        EnvironmentEntry(key="PROJECT_ID", kind=KIND_CONFIG, value="predykt"),
+        EnvironmentEntry(key="PROJECT_ID", kind=KIND_CONFIG, value="acme"),
         EnvironmentEntry(key="API_KEY", kind=KIND_SECRET),
         EnvironmentEntry(key="TEST_USER_PASSWORD", kind=KIND_CREDENTIAL_REF,
                          cred_ref="cred-001:password"),
@@ -37,7 +37,7 @@ def web(pool: Pool, tmp_path: Path):
 def seeded(pool: Pool, store, web):
     """The secret is in the store, and the referenced credential exists."""
     store.put(web.store_key("API_KEY"), "AIzaSy-REAL-KEY")
-    cred = pool.add(username="qa@predykt.example", env="local", project="predykt",
+    cred = pool.add(username="qa@acme.example", env="local", project="acme",
                     credential_id="cred-001")
     store.put(cred.store_key, "hunter2")
     return web
@@ -63,7 +63,7 @@ def test_resolve_reads_config_from_the_pool_secrets_from_the_store(pool, store, 
     resolution = render.resolve(seeded, pool, opener(store))
     assert resolution.resolvable
     assert resolution.values == {
-        "PROJECT_ID": "predykt",
+        "PROJECT_ID": "acme",
         "API_KEY": "AIzaSy-REAL-KEY",
         "TEST_USER_PASSWORD": "hunter2",
     }
@@ -141,7 +141,7 @@ def test_username_and_password_refs_share_one_lease(pool: Pool, store, seeded):
                                                    cred_ref="cred-001:username"))
     resolution = render.resolve(pool.env_get(seeded.id), pool, opener(store), run_id="run-42")
 
-    assert resolution.values["TEST_USER_EMAIL"] == "qa@predykt.example"
+    assert resolution.values["TEST_USER_EMAIL"] == "qa@acme.example"
     assert list(resolution.leases) == ["cred-001"]
 
 
@@ -165,7 +165,7 @@ def test_check_takes_no_lease(pool: Pool, store, seeded):
 
 def test_a_failed_lease_hands_back_the_ones_taken_beside_it(pool: Pool, store, seeded):
     """A render that cannot complete must not strand a lease behind it."""
-    other = pool.add(username="b@x.com", env="local", project="predykt")
+    other = pool.add(username="b@x.com", env="local", project="acme")
     store.put(other.store_key, "pw")
     pool.env_put_entry(seeded.id, EnvironmentEntry(
         key="OTHER_PASSWORD", kind=KIND_CREDENTIAL_REF, cred_ref=f"{other.id}:password"))

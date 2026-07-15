@@ -88,13 +88,13 @@ def test_worker_detail_not_found_and_no_gate_states():
 def test_repo_menu_one_entry_per_container_repo():
     wf_a = _wf("a", name="coder-001", workflow_type="coder", state=WorkflowState.RUNNING)
     wf_b = _wf("b", name="author-002", workflow_type="author", state=WorkflowState.IDLE)
-    html = render.render_repo_menu([(wf_a, ["predykt", "yenta"]), (wf_b, [])])
+    html = render.render_repo_menu([(wf_a, ["acme", "globex"]), (wf_b, [])])
     # wf_a contributes one entry per checkout; wf_b (no repo found) still gets a
     # single volume-root entry so it can be browsed.
     assert html.count('role="option"') == 3
-    assert 'data-container="a"' in html and 'data-repo="predykt"' in html
-    assert 'data-label="coder-001/predykt"' in html
-    assert 'data-label="coder-001/yenta"' in html
+    assert 'data-container="a"' in html and 'data-repo="acme"' in html
+    assert 'data-label="coder-001/acme"' in html
+    assert 'data-label="coder-001/globex"' in html
     # empty repo_dir -> label is just the container name, repo attribute is empty
     assert 'data-container="b"' in html and 'data-label="author-002"' in html
     assert 'data-type="coder"' in html and 'data-type="author"' in html

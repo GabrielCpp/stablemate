@@ -1,0 +1,289 @@
+shared-docs:
+  description: Standard docs/ knowledge hierarchy (epics, specs, features, roadmaps, assets).
+  params:
+    dir: docs
+  tree:
+    $dir/.gitignore: |
+      # Generated QA console logs (make check/test output)
+      epics/**/qa/*.txt
+
+      # Workflow completion markers
+      specs/**/.workflow-complete
+    $dir/README.md: |
+      # $repo_title Docs Guide For AI Agents
+
+      This file explains how repository documentation and AI-agent workflow artifacts are organized. Use it to decide where product artifacts, planning artifacts, review notes, QA reports, QA evidence, prompts, generated adapter files, and durable documentation assets belong.
+
+      ## Source Of Truth Order
+
+      When working on product direction, roadmaps, epics, or stories, read documents in this order:
+
+      1. `docs/roadmaps/starting-point.md`
+      2. `docs/company.md`
+      3. `docs/product-vision.md`
+      4. `docs/roadmaps/mvp.md`
+      5. Existing files under `docs/epics/`
+      6. Existing files under `docs/specs/` for the specific story being executed
+
+      Use implementation code as evidence for current behavior, but do not let speculative implementation ideas override the written roadmap unless the user asks for a roadmap update.
+
+      ## Directory Map
+
+      ```text
+      docs/
+        README.md
+        CODEX.md
+        company.md
+        product-vision.md
+        assets/
+        features/
+        roadmaps/
+          starting-point.md
+          mvp.md
+        epics/
+          epics-todo.json
+          <epic-short-name>/
+            epic.md
+            dependencies.json
+            stories/
+              <story-short-name>/
+                story.md
+                qa/
+                  screenshots-and-other-evidence
+        specs/
+          <story-short-name>/
+            executive.md
+            plan.md
+            plan-overview.md
+            plan-go.md
+            plan-cli.md
+            plan-mobile.md
+            plan-infra.md
+            plan-review.md
+            review.md
+            qa.md
+      ```
+
+      `docs/` is for human-readable product, roadmap, planning, and verification documents. Do not put generated source code, build output, dependency caches, or temporary scratch files here.
+
+      ## Top-Level Documents
+
+      - `docs/company.md`: company direction, mission, product philosophy, and strategic bets.
+      - `docs/product-vision.md`: high-level product vision, core interactions, monetization philosophy, and plan shapes.
+      - `docs/CODEX.md`: docs-specific guidance for AI agents.
+      - `docs/README.md`: this documentation structure guide.
+
+      Top-level docs are for broad orientation. Do not put implementation epics, stories, plans, review notes, or QA reports directly at the top level.
+
+      ## Assets And Images
+
+      Durable documentation images and diagrams live in:
+
+      `docs/assets/`
+
+      Use `docs/assets/` for diagrams, architecture pictures, product screenshots used by feature docs, and other long-lived docs media.
+
+      Raw QA evidence belongs beside the story instead:
+
+      `docs/epics/<epic-short-name>/stories/<story-short-name>/qa/`
+
+      Use story-local `qa/` folders for screenshots, screen recordings, logs, API response captures, emulator exports, fixture snapshots, and other files that support a QA report.
+
+      ## Feature Documentation
+
+      Feature docs live in:
+
+      `docs/features/`
+
+      Each file documents one user-facing feature from the user's perspective. These files describe observable behavior, states, constraints, and edge cases. They should not become engineering tickets or implementation plans.
+
+      ## Roadmaps
+
+      Roadmaps live in:
+
+      `docs/roadmaps/`
+
+      Recommended roadmap files:
+
+      - `docs/roadmaps/starting-point.md`: factual state report of the app as implemented.
+      - `docs/roadmaps/mvp.md`: epic-level path from the current app to a viable MVP.
+
+      Roadmaps are higher level than epics and stories. They define sequencing, product bets, risks, and acceptance criteria at epic granularity.
+
+      ## Epics
+
+      Epic planning lives under:
+
+      `docs/epics/`
+
+      Use one folder per epic:
+
+      `docs/epics/<epic-short-name>/`
+
+      Each epic folder should contain:
+
+      - `epic.md`: the planning document for that epic.
+      - `dependencies.json`: optional machine-readable story dependency graph.
+      - `stories/`: story folders for implementation work.
+
+      The queued epic execution order lives at:
+
+      `docs/epics/epics-todo.json`
+
+      This file is a JSON list of epic folder names. Completed epics are removed from the list after the coder workflow finishes the entire epic.
+
+      ## Stories
+
+      Story files live under the parent epic's `stories/` directory:
+
+      `docs/epics/<epic-short-name>/stories/<story-short-name>/story.md`
+
+      Stories should be below epic level but above tiny implementation tasks. A story should represent a coherent, reviewable increment.
+
+      Each story may include an `## Implementation Status` section. If it is missing and an agent starts work, add it near the top of the story:
+
+      ```markdown
+      ## Implementation Status
+
+      - **Status**: Not started | Planned | Plan reviewed | Implemented | Reviewed | Review fixes applied | QA fixes applied | QA passed | Blocked
+      - **Plan**: `docs/specs/<story-short-name>/`
+      - **Review**: `docs/specs/<story-short-name>/review.md`
+      - **QA report**: `docs/specs/<story-short-name>/qa.md`
+      - **QA raw evidence**: `docs/epics/<epic-short-name>/stories/<story-short-name>/qa/`
+      - **Verification**:
+      - **Remaining follow-ups**:
+      ```
+
+      Use the story folder name as `<story-short-name>` unless the user explicitly provides another slug.
+
+      ## Specs And AI Artifacts
+
+      All AI-produced planning, review, and QA artifacts for a story live under:
+
+      `docs/specs/<story-short-name>/`
+
+      This directory is the working record for a story execution. It should contain only artifacts for that one story.
+
+      Expected files:
+
+      - `executive.md`: human-readable planning summary.
+      - `plan.md`: implementation plan for a single-layer story.
+      - `plan-overview.md`: cross-layer plan for a multi-layer story.
+      - `plan-go.md`: Go API plan.
+      - `plan-cli.md`: Go CLI plan.
+      - `plan-mobile.md`: mobile or frontend plan.
+      - `plan-infra.md`: infrastructure plan.
+      - `plan-review.md`: planning review findings.
+      - `review.md`: implementation review findings and review-fix resolutions.
+      - `qa.md`: QA scenarios, commands, evidence links, and result.
+
+      Do not put plans, review files, or QA report files beside `story.md`. Do not put implementation code in `docs/specs/`. Raw QA evidence is the exception and belongs in the story-local `qa/` directory.
+
+      ## AI Configuration
+
+      Agent instructions, reusable prompts, and optional workflow runners are selected by the repository root `agents.yml` file.
+
+      The canonical prompt library renders generated adapter files under `.codex/`, `.claude/`, `.github/`, local `AGENTS.md` / `CODEX.md` / `CLAUDE.md`, optional workflow assets under `.agents/workflows/`, and scaffolded docs files selected by packs.
+
+      After changing `agents.yml` or the central agents library, regenerate adapters and scaffolds with:
+
+      ```bash
+      farrier --repo /path/to/repo
+      ```
+
+      To verify generated files are current without rewriting them, run:
+
+      ```bash
+      farrier --repo /path/to/repo --check
+      ```
+
+      ## Development Flow
+
+      The standard story workflow is:
+
+      1. Plan the story.
+      2. Review the plan.
+      3. Implement the approved plan.
+      4. Review the implementation.
+      5. Apply review fixes.
+      6. QA the story.
+      7. Apply QA fixes when needed.
+      8. Update story status.
+
+      Do not skip review or QA just because automated tests pass.
+    $dir/specs:
+    $dir/epics:
+    $dir/features:
+    $dir/features/journeys/README.md: |
+      # User journeys
+
+      A **user journey** is the ordered path a real user takes through the UI to reach a feature — by
+      navigating (tapping / clicking) from a known entry point, **never** by jumping straight to a deep
+      link, URL, route, or screen id. QA follows the documented journey to reach the screen under test the
+      way a user actually does, and records the journey it used so the next run inherits it.
+
+      Why this exists: jumping straight to a deep link skips the very navigation a story has to make work,
+      and a hand-typed link can land in a state no real user reaches (e.g. a deep link 500s while the same
+      screen *reached through the picker* is fine). The only navigation that proves the journey is the journey.
+
+      ## Journeys are per platform
+
+      A project may ship a **web UI, a mobile app, or both**, and the same feature is reached differently on
+      each (a browser nav bar vs. a mobile tab bar; Playwright vs. Maestro). So journeys are organized by
+      platform:
+
+      ```
+      docs/features/journeys/
+        web/      <flow>.md     # driven with the web QA tool (e.g. Playwright)
+        mobile/   <flow>.md     # driven with the mobile QA tool (e.g. Maestro)
+        …                       # add a folder per platform the project ships (desktop, cli, …)
+      ```
+
+      A single-platform project may keep the files flat under `journeys/` and name the platform in each file.
+      Two platforms that genuinely share the identical flow can use one file that lists both platforms.
+
+      ## One journey file = one flow
+
+      Keep it **tool-agnostic** — describe what the user *does*, not selectors or URLs:
+
+      ```markdown
+      ---
+      platform: web          # web | mobile | desktop | cli  (or "web, mobile" if identical)
+      entry: sign-in page    # where the journey starts
+      ---
+
+      # Create a project and open it
+
+      1. Sign in.
+      2. Open the **Projects** selector in the top nav / tab bar.
+      3. Tap/click **+ Add** → fill the form → **Save**.
+      4. You land on the new project; reopen it later from the same selector.
+
+      > Reach every later screen by continuing from here — never deep-link a URL / route / screen id.
+      ```
+
+      ## Rules QA follows
+
+      - **Drive the UI from the entry point**; never deep-link past it. The sole exception is a story whose
+        explicit, written subject *is* direct-URL / deep-link entry — then that IS the test; say so.
+      - **An error on any step** (error page / overlay / 500 / crash / blank feature) is a QA **fail** —
+        report the failing step; never navigate somewhere that works and screenshot *that* as a pass.
+      - **Missing or stale journey?** Write or fix it here as part of the QA pass, then proceed. The proof
+        screenshot must be of the target feature **reached through the journey**.
+
+      ## Executable backing (regression suite)
+
+      Each journey should also have a **committed regression test** that walks the same path against the
+      **real stack** and **fails on any server error (5xx) / crash / error page** — so a journey that breaks
+      outside any single story's scope (the classic "a widget renders on top of a 500 page" miss) is caught
+      automatically. The test driver is per platform:
+
+      - **web** → a Playwright spec `web/e2e/journeys/<flow>.journey.spec.ts`, run with `make e2e-journeys`
+        (drives the live API + auth emulator, **no** `/api` mocking). See `web/e2e/journeys/README.md`.
+      - **mobile** → a Maestro flow (e.g. `app/maestro_flows/<flow>.yaml`), run on the emulator.
+
+      The coder workflow's **regression** step runs the suite for the touched platform on any UI change and
+      routes a failure into the QA-fix loop. When you add or change a journey markdown here, add or update its
+      backing spec too.
+    $dir/roadmaps:
+    $dir/assets:

@@ -19,11 +19,11 @@ WEB_LOCAL = Environment(
     id="env-001",
     name="web-local",
     env="local",
-    project="predykt",
+    project="acme",
     target="web/.env.local",
     entries=(
         EnvironmentEntry(key="VITE_FIREBASE_PROJECT_ID", kind=KIND_CONFIG,
-                         value="predykt", position=1),
+                         value="acme", position=1),
         EnvironmentEntry(key="VITE_FIREBASE_AUTH_EMULATOR_HOST", kind=KIND_CONFIG,
                          value="127.0.0.1:9099", position=2,
                          note="unset this to point the web app at real Firebase Auth"),
@@ -40,7 +40,7 @@ WEB_LOCAL = Environment(
 
 def test_a_secret_entry_exports_as_a_declaration_never_as_a_secret(store):
     """The property that makes a manifest safe to commit."""
-    store.put("predykt/env-001/VITE_FIREBASE_API_KEY", "AIzaSy-REAL-KEY")
+    store.put("acme/env-001/VITE_FIREBASE_API_KEY", "AIzaSy-REAL-KEY")
     text = manifest.dumps(WEB_LOCAL)
 
     assert "AIzaSy-REAL-KEY" not in text
@@ -54,7 +54,7 @@ def test_export_carries_config_values_notes_and_flags():
     assert data["name"] == "web-local"
     assert data["target"] == "web/.env.local"
     assert data["entries"][0] == {
-        "key": "VITE_FIREBASE_PROJECT_ID", "kind": "config", "value": "predykt",
+        "key": "VITE_FIREBASE_PROJECT_ID", "kind": "config", "value": "acme",
     }
     assert data["entries"][1]["note"].startswith("unset this")
     assert data["entries"][3]["from"] == "cred-007:password"

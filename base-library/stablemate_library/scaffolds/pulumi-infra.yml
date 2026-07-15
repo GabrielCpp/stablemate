@@ -1,0 +1,29 @@
+pulumi-infra:
+  description: Seed a Pulumi infrastructure folder with a curated .gitignore.
+  params:
+    dir: pulumi
+  tree:
+    $dir/.gitignore: |
+      # Dependencies
+      node_modules/
+
+      # Build output
+      bin/
+      *.tsbuildinfo
+
+      # Pulumi local state & backups (committed Pulumi.<stack>.yaml files are kept)
+      .pulumi/
+      Pulumi.*.yaml.bak
+
+      # Environment
+      .env
+      .env.*
+
+      # Logs
+      *.log
+      npm-debug.log*
+
+      # OS / IDE
+      .DS_Store
+      .idea/
+      .vscode/

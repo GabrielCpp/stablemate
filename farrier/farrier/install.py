@@ -35,34 +35,85 @@ import yaml
 from jinja2 import Environment, StrictUndefined
 from platformdirs import user_config_dir
 
-# Library content roots. Populated by ``set_library_globals()`` once the library
-# directory is resolved in ``main()``. They are module globals because the
-# rendering helpers below reference them directly.
-AGENTS: Path = None  # type: ignore[assignment]
-LIBRARY: Path = None  # type: ignore[assignment]
-PACKS: Path = None  # type: ignore[assignment]
-SKILLS: Path = None  # type: ignore[assignment]
-PROMPTS: Path = None  # type: ignore[assignment]
-ROOTS: Path = None  # type: ignore[assignment]
-SCAFFOLDS: Path = None  # type: ignore[assignment]
-WORKFLOWS: Path = None  # type: ignore[assignment]
+@dataclass(frozen=True)
+class Layer:
+    """One library root in the resolution stack.
+
+    ``name`` labels the layer in provenance banners and error messages. Without it,
+    an overlay silently shadowing a base skill is invisible — you would open the
+    base copy, edit it, and watch the overlay's copy get rendered instead.
+    """
+
+    root: Path
+    name: str
+
+
+# Library content resolves across an ordered stack of layers, highest precedence
+# first: the overlay (--library / $FARRIER_LIBRARY_DIR / home config), then the base
+# library shipped as the `stablemate-library` wheel. A higher layer shadows a lower
+# one name-for-name, which is how a private overlay overrides a base skill, pack or
+# workflow without forking it. Populated by ``set_layers()`` in ``main()``; a module
+# global because the rendering helpers below reference it directly.
+LAYERS: list[Layer] = []
+
+BASE_LAYER_NAME = "stablemate-library (base)"
 
 # OS-appropriate user config dir (~/.config/farrier on Linux,
 # ~/Library/Application Support/farrier on macOS, %APPDATA%\farrier on Windows).
 CONFIG_PATH = Path(user_config_dir("farrier")) / "config.toml"
 
 
-def set_library_globals(root: Path) -> None:
-    """Point the library content globals at the resolved library directory."""
-    global AGENTS, LIBRARY, PACKS, SKILLS, PROMPTS, ROOTS, SCAFFOLDS, WORKFLOWS
-    AGENTS = root
-    LIBRARY = root / "library"
-    PACKS = root / "packs"
-    SKILLS = LIBRARY / "skills"
-    PROMPTS = LIBRARY / "prompts"
-    ROOTS = LIBRARY / "roots"
-    SCAFFOLDS = root / "scaffolds"
-    WORKFLOWS = root / "workflows"
+def base_library_dir() -> Path | None:
+    """The base library root, or None when the `stablemate-library` wheel is absent.
+
+    Discovered with an *optional* import on purpose. The base package depends on
+    farrier (its workflows drive this CLI), so a hard dependency the other way would
+    close a cycle — and it would drag every content edit into a farrier release. With
+    the wheel absent, farrier behaves exactly as it did before: overlay-only.
+    """
+    try:
+        from stablemate_library import base_dir
+    except ImportError:
+        return None
+    return base_dir()
+
+
+def set_layers(overlay: Path | None) -> None:
+    """Point the resolution stack at the overlay (if any), then the base (if installed)."""
+    global LAYERS
+    layers: list[Layer] = []
+    if overlay is not None:
+        layers.append(Layer(root=overlay, name=str(overlay)))
+    base = base_library_dir()
+    if base is not None:
+        layers.append(Layer(root=base, name=BASE_LAYER_NAME))
+    LAYERS = layers
+
+
+def layer_dirs(*parts: str) -> list[tuple[Layer, Path]]:
+    """(layer, dir) for every layer holding ``<root>/<parts>``, in precedence order."""
+    found: list[tuple[Layer, Path]] = []
+    for layer in LAYERS:
+        candidate = layer.root.joinpath(*parts)
+        if candidate.is_dir():
+            found.append((layer, candidate))
+    return found
+
+
+def find_in_layers(*parts: str) -> tuple[Layer, Path] | None:
+    """The highest-precedence layer holding ``<root>/<parts>``, or None."""
+    for layer in LAYERS:
+        candidate = layer.root.joinpath(*parts)
+        if candidate.exists():
+            return layer, candidate
+    return None
+
+
+def searched_layers() -> str:
+    """The layer stack, for the 'here is where I looked' half of an error message."""
+    if not LAYERS:
+        return "  (no library layers — none configured, and no base library installed)"
+    return "\n".join(f"  - {layer.name}" for layer in LAYERS)
 
 
 def read_config() -> dict[str, Any]:
@@ -104,15 +155,23 @@ def resolve_stablemate_dir() -> "Path | None":
 
 
 def is_library_dir(path: Path) -> bool:
-    """A directory is a usable library root when it holds library/ and packs/."""
-    return (path / "library").is_dir() and (path / "packs").is_dir()
+    """A usable library root holds content: ``library/`` (skills, prompts) or ``workflows/``.
+
+    ``packs/`` is deliberately *not* required. The base library ships workflows,
+    scaffolds and the stablemate skills with no packs at all — a repo selects from it
+    directly in ``agents.yml`` (``skills: [stablemate/*]``), and packs remain a
+    convenience an overlay may add.
+    """
+    return (path / "library").is_dir() or (path / "workflows").is_dir()
 
 
-def resolve_library_dir(cli_library: Path | None) -> Path:
-    """Resolve the library root: --library > $FARRIER_LIBRARY_DIR > home config.
+def resolve_library_dir(cli_library: Path | None) -> Path | None:
+    """Resolve the *overlay* library root: --library > $FARRIER_LIBRARY_DIR > home config.
 
-    Raises SystemExit with a setup hint when nothing resolves or the resolved
-    path is not a usable library directory.
+    Returns None when no overlay is configured but a base library is installed — the
+    base alone is a usable library, so that is a supported setup, not an error. Exits
+    with a setup hint only when there is neither an overlay nor a base, or when a
+    configured path is not a usable library directory.
     """
     candidate: Path | None = None
     source = ""
@@ -129,18 +188,23 @@ def resolve_library_dir(cli_library: Path | None) -> Path:
             candidate, source = Path(configured), f"{CONFIG_PATH}"
 
     if candidate is None:
+        if base_library_dir() is not None:
+            return None
         raise SystemExit(
-            "error: no library directory configured.\n"
-            "Set it once with:\n"
-            "    farrier config set-library <path-to>/vigilant-octo/agents\n"
-            "or pass --library DIR / set $FARRIER_LIBRARY_DIR."
+            "error: no library available — no overlay configured, and the base "
+            "library is not installed.\n"
+            "Install the base:\n"
+            "    pip install stablemate-library\n"
+            "or point farrier at an overlay library:\n"
+            "    farrier config set-library <path-to-your-library>\n"
+            "(or pass --library DIR / set $FARRIER_LIBRARY_DIR)."
         )
 
     root = candidate.expanduser().resolve()
     if not is_library_dir(root):
         raise SystemExit(
             f"error: {root} (from {source}) is not a usable library directory "
-            "— it must contain library/ and packs/."
+            "— it must contain library/ or workflows/."
         )
     return root
 
@@ -242,6 +306,9 @@ class Source:
     path: Path
     rel: str
     id: str
+    # Which library layer this source was read from. None only for sources built
+    # outside the layer stack (tests); everything ``load_sources`` produces has one.
+    layer: Layer | None = None
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -414,7 +481,7 @@ def public_name(prefix: str, source: Source) -> str:
     return f"{prefix}-{base}"
 
 
-def load_sources(root: Path, kind: str) -> list[Source]:
+def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
     sources: list[Source] = []
     # Load SKILL.md files (new open skill format: <name>/SKILL.md).
     # Also support flat *.md files for backwards compatibility during migration.
@@ -423,8 +490,27 @@ def load_sources(root: Path, kind: str) -> list[Source]:
         + [p for p in root.rglob("*.md") if p.name != "SKILL.md"]
     ):
         rel = path.relative_to(root).as_posix()
-        sources.append(Source(kind=kind, path=path, rel=rel, id=source_id(root, path)))
+        sources.append(
+            Source(
+                kind=kind, path=path, rel=rel, id=source_id(root, path), layer=layer
+            )
+        )
     return sources
+
+
+def load_layered_sources(kind: str, *parts: str) -> list[Source]:
+    """Sources of one kind across every layer, with the higher layer winning.
+
+    Ids are computed relative to each layer's own content root, so ``stablemate/ostler``
+    means the same thing in the overlay and in the base — which is exactly what makes
+    shadowing work: an overlay skill with a base skill's id replaces it wholesale.
+    """
+    by_id: dict[str, Source] = {}
+    for layer, root in layer_dirs(*parts):
+        for source in load_sources(root, kind, layer):
+            # layer_dirs is precedence-ordered, so the first writer of an id wins.
+            by_id.setdefault(source.id, source)
+    return sorted(by_id.values(), key=lambda source: source.id)
 
 
 def split_front_matter(content: str) -> tuple[dict[str, str], str]:
@@ -500,9 +586,15 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
         raise SystemExit(f"Pack include cycle detected at {pack_id}")
     seen.add(pack_id)
 
-    path = PACKS / f"{pack_id}.yml"
-    if not path.exists():
-        raise SystemExit(f"Unknown pack: {pack_id}")
+    hit = find_in_layers("packs", f"{pack_id}.yml")
+    if hit is None:
+        raise SystemExit(
+            f"error: unknown pack: {pack_id}\n"
+            f"No library layer provides it. Searched:\n{searched_layers()}\n"
+            "If this pack lives in a private overlay library, point farrier at it:\n"
+            "    farrier config set-library <path-to-your-library>"
+        )
+    _layer, path = hit
     data = read_yaml(path)
 
     merged: dict[str, Any] = {
@@ -621,25 +713,25 @@ def collect_template_values(config: dict[str, Any]) -> dict[str, Any]:
 
 def resolve_workflow_meta(
     config: dict[str, Any], repo: Path, repo_name: str
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Resolve repo_url / branch / agents-dir for the launcher scaffolding.
 
     Precedence: explicit `agents.yml` `workflow:` block, then the repo's own
     git origin + DEFAULT branch (master/main — NOT the branch currently checked
     out), then a clearly-marked placeholder. REPO_BRANCH is the trunk the worker
     clones and the coder workflow targets/merges PRs into, so it must be the
-    long-lived integration branch, not the install-time HEAD. The default run mode
-    is a local read-only bind-mount clone, so a placeholder URL is fine for
-    `make agent-run` (it is only used by GitHub-default workflow runs).
+    long-lived integration branch, not the install-time HEAD. An explicit repo URL
+    selects authenticated remote checkout; otherwise local runs clone a read-only
+    bind mount of the host repository.
     """
     workflow_cfg = config.get("workflow") or {}
     if not isinstance(workflow_cfg, dict):
         raise SystemExit("workflow must be a YAML mapping when present")
 
     repo_url = workflow_cfg.get("repoUrl") or workflow_cfg.get("repo_url")
+    remote_checkout = bool(repo_url)
     branch = workflow_cfg.get("branch")
     agents_dir = workflow_cfg.get("agentsDir") or workflow_cfg.get("agents_dir")
-
     # Host env vars to forward into the Docker run (interpolated from the local
     # env at `docker compose up` time). E.g. a GitHub token for opening PRs.
     env_passthrough = (
@@ -648,7 +740,6 @@ def resolve_workflow_meta(
     if not isinstance(env_passthrough, list):
         raise SystemExit("workflow.envPassthrough must be a list of env var names")
     env_passthrough = [str(name) for name in env_passthrough]
-
     if not repo_url:
         repo_url = get_git_remote(repo)
     if not branch:
@@ -660,10 +751,11 @@ def resolve_workflow_meta(
         "agents_dir": str(agents_dir) if agents_dir else DEFAULT_AGENTS_DIR,
         "repo_name": repo_name,
         "env_passthrough": env_passthrough,
+        "remote_checkout": remote_checkout,
     }
 
 
-def render_agents_mk(workflows: list[str], meta: dict[str, str]) -> str:
+def render_agents_mk(workflows: list[str], meta: dict[str, Any]) -> str:
     """Generic, workflow-name-parameterized make launcher (.agents/agents.mk).
 
     ALWAYS generated: its regeneration targets (`agent-install`/`agent-check`)
@@ -757,8 +849,12 @@ WF           ?= {default_wf}
 # runs check that this CLI is on PATH and forward it to workhorse; it also selects
 # the per-assistant context manifest below.
 AGENT_CLI    ?= claude
-# Workflows run straight from the library — not copied into this repo.
-WORKFLOW_DIR ?= $(AGENTS_DIR)/workflows/$(WF)
+# Workflows run straight from the library — not copied into this repo. A workflow may
+# live in the configured overlay OR in the base library wheel (site-packages), so the
+# launcher does NOT build a path: it passes the workflow NAME and lets workhorse resolve
+# it across the same layers farrier uses. Set WORKFLOW_DIR to pin a specific checkout.
+WORKFLOW_DIR ?=
+WORKFLOW_ARG := $(if $(WORKFLOW_DIR),$(WORKFLOW_DIR)/workflow.yaml,$(WF))
 # Per-repo context manifest the library prompts render against (generated by
 # `make agent-install`). Prefer the per-assistant manifest for $(AGENT_CLI) so a
 # Codex/Copilot run resolves instruction_ref to its own adapters; fall back to the
@@ -767,6 +863,7 @@ CONTEXT_FILE ?= $(firstword $(wildcard $(CURDIR)/.agents/agents-context.$(AGENT_
 REPO_NAME    ?= {meta["repo_name"]}
 REPO_BRANCH  ?= {meta["branch"]}
 {repo_url_line}
+REPO_CONFIG  ?= $(CURDIR)/agents.yml
 # Compose project name (default = first compose file's directory) → volume prefix.
 PROJECT      ?= local-worker
 # Native runs use the installed workhorse binary by default.
@@ -788,10 +885,10 @@ AGENT_ARGS := $(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(PARAMS),--params '$(PA
 # Layer the local-run override on top of the generic worker compose. Each
 # installed workflow is its own named service in local.compose.yaml (sharing one
 # build via a YAML anchor) — $(WF) below selects which one runs.
-COMPOSE := docker compose \\
+COMPOSE := docker compose -p $(PROJECT) \\
 \t-f $(LOCAL_WORKER)/compose.yaml \\
 \t-f $(CURDIR)/.agents/local.compose.yaml
-ENVV := LOCAL_WORKER="$(LOCAL_WORKER)" STABLEMATE_DIR="$(STABLEMATE_DIR)" AGENTS_DIR="$(AGENTS_DIR)" REPO_SRC="$(CURDIR)" REPO_BRANCH="$(REPO_BRANCH)" REPO_NAME="$(REPO_NAME)"
+ENVV := PROJECT="$(PROJECT)" LOCAL_WORKER="$(LOCAL_WORKER)" STABLEMATE_DIR="$(STABLEMATE_DIR)" AGENTS_DIR="$(AGENTS_DIR)" REPO_SRC="$(CURDIR)" REPO_URL="$(REPO_URL)" REPO_CONFIG="$(REPO_CONFIG)" REPO_BRANCH="$(REPO_BRANCH)" REPO_NAME="$(REPO_NAME)"
 
 # Per-workflow run log + pid (under the gitignored .agents/runs/).
 RUNS_DIR     := $(CURDIR)/.agents/runs
@@ -802,29 +899,29 @@ PID          := $(RUNS_DIR)/$(WF).pid
         wf_targets = """
 agent-run: ## Run the selected workflow (Docker, local clone). Override with WF=<name>
 \t@mkdir -p $(RUNS_DIR)
-\t$(ENVV) $(COMPOSE) up --abort-on-container-exit $(WF) 2>&1 | tee $(LOG)
+\t@bash -o pipefail -c '$(ENVV) $(COMPOSE) up --abort-on-container-exit --exit-code-from $(WF) $(WF) 2>&1 | tee "$(LOG)"'
 
 agent-native: ## Run natively (no Docker, pipx) on THIS tree; logs tee'd to .agents/runs/$(WF).log
 \t@mkdir -p $(RUNS_DIR)
 \t@command -v $(AGENT_CLI) >/dev/null || { echo "error: '$(AGENT_CLI)' CLI not on PATH (set AGENT_CLI=claude|codex|copilot)"; exit 1; }
 \t@echo "using workhorse-agent $(WORKHORSE_VERSION) (AGENT_CLI=$(AGENT_CLI))"
 \tPYTHONUNBUFFERED=1 AGENT_CLI="$(AGENT_CLI)" AGENT_REPO_DIR="$(CURDIR)" $(WORKHORSE) \\
-\t\t--workflow $(WORKFLOW_DIR)/workflow.yaml --context-file $(CONTEXT_FILE) --runs-dir $(RUNS_DIR) $(AGENT_ARGS) 2>&1 | tee $(LOG)
+\t\t--workflow $(WORKFLOW_ARG) --context-file $(CONTEXT_FILE) --runs-dir $(RUNS_DIR) $(AGENT_ARGS) 2>&1 | tee $(LOG)
 
 agent-native-bg: ## Detached native run; saves pid to .agents/runs/$(WF).pid (watch: make agent-logs)
 \t@mkdir -p $(RUNS_DIR)
 \t@command -v $(AGENT_CLI) >/dev/null || { echo "error: '$(AGENT_CLI)' CLI not on PATH (set AGENT_CLI=claude|codex|copilot)"; exit 1; }
 \t@echo "using workhorse-agent $(WORKHORSE_VERSION) (AGENT_CLI=$(AGENT_CLI))"
 \t@PYTHONUNBUFFERED=1 AGENT_CLI="$(AGENT_CLI)" AGENT_REPO_DIR="$(CURDIR)" nohup $(WORKHORSE) \\
-\t\t--workflow $(WORKFLOW_DIR)/workflow.yaml --context-file $(CONTEXT_FILE) --runs-dir $(RUNS_DIR) $(AGENT_ARGS) >$(LOG) 2>&1 </dev/null & \\
+\t\t--workflow $(WORKFLOW_ARG) --context-file $(CONTEXT_FILE) --runs-dir $(RUNS_DIR) $(AGENT_ARGS) >$(LOG) 2>&1 </dev/null & \\
 \t\techo $$! >$(PID); echo "started native run (pid $$(cat $(PID))) — follow: make agent-logs WF=$(WF) ; stop: make agent-stop WF=$(WF)"
 
 agent-build: ## Rebuild the worker image, then run the workflow
 \t@mkdir -p $(RUNS_DIR)
-\t$(ENVV) $(COMPOSE) up --build --abort-on-container-exit $(WF) 2>&1 | tee $(LOG)
+\t@bash -o pipefail -c '$(ENVV) $(COMPOSE) up --build --abort-on-container-exit --exit-code-from $(WF) $(WF) 2>&1 | tee "$(LOG)"'
 
 agent-hello: ## Smoke-test the worker + auth with the hello-world workflow
-\tWORKFLOW_DIR="$(AGENTS_DIR)/workflows/hello-world" docker compose -f $(LOCAL_WORKER)/compose.yaml up --abort-on-container-exit
+\tWORKFLOW_DIR="$(AGENTS_DIR)/workflows/hello-world" PROJECT="$(PROJECT)" docker compose -p $(PROJECT) -f $(LOCAL_WORKER)/compose.yaml up --abort-on-container-exit
 
 agent-logs: ## Follow the current run's log (.agents/runs/$(WF).log)
 \t@mkdir -p $(RUNS_DIR); touch $(LOG); tail -n +1 -F $(LOG)
@@ -874,16 +971,53 @@ agent-check: ## Verify generated agent adapters are up to date (no writes)
 """
 
 
-def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
+def render_local_compose(workflows: list[str], meta: dict[str, Any]) -> str:
     """Generic local-run compose override (.agents/local.compose.yaml).
 
     One named service per installed workflow (e.g. `coder:`, `author:`), sharing
     a single build definition — and image tag, so compose builds it only once —
-    via the `x-agent-build`/`x-agent-image` anchors below. Each service clones
-    this repo from a read-only bind mount instead of GitHub; the bind mount
-    target is /mnt/<repo-name>-src (derived from the repo, not hardcoded).
+    via the `x-agent-build`/`x-agent-image` anchors below. An explicit
+    ``workflow.repoUrl`` clones the remote with the configured token; otherwise
+    each service clones a read-only bind mount of the host working tree.
     """
     src_target = f"/mnt/{kebab(meta['repo_name'])}-src"
+    remote_checkout = bool(meta.get("remote_checkout"))
+    agents = meta.get("agents") or {}
+    claude_enabled = bool(agents.get("claude"))
+    if remote_checkout:
+        repo_environment = (
+            f"      # Explicit agents.yml workflow.repoUrl: clone the remote repository.\n"
+            f"      REPO_URL: ${{REPO_URL:-{meta['repo_url']}}}\n"
+            "      AGENT_CONFIG_FILE: /repo-config/agents.yml\n"
+        )
+        repo_source_mount = (
+            "      - type: bind\n"
+            f"        source: ${{REPO_CONFIG:-{meta.get('repo_config_default', './agents.yml')}}}\n"
+            "        target: /repo-config/agents.yml\n"
+            "        read_only: true\n"
+        )
+        checkout_description = (
+            "# Each service clones the remote configured by agents.yml workflow.repoUrl.\n"
+            "# Workflow scripts own authentication using opaque envPassthrough values;\n"
+            "# Farrier does not interpret credential configuration.\n"
+            "# Each clone lives in that workflow's own workspace volume.\n"
+        )
+    else:
+        repo_environment = (
+            "      # No explicit workflow.repoUrl: clone the read-only host checkout.\n"
+            f"      REPO_URL: {src_target}\n"
+        )
+        repo_source_mount = (
+            "      - type: bind\n"
+            f"        source: ${{REPO_SRC:-{meta.get('repo_src_default', '.')}}}\n"
+            f"        target: {src_target}\n"
+            "        read_only: true\n"
+        )
+        checkout_description = (
+            "# Each service clones this repo from a READ-ONLY bind mount of your working\n"
+            "# tree instead of GitHub, so the host working tree is never mutated.\n"
+            "# Each clone lives in that workflow's own workspace volume.\n"
+        )
     # Forward declared host env vars into the container, interpolated from the
     # local env at `docker compose up` time (e.g. a GitHub token for PRs).
     passthrough = meta.get("env_passthrough") or []
@@ -894,6 +1028,19 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
             "      # (interpolated from the local env at `docker compose up`; empty if unset).\n"
             + "".join(f"      {name}: ${{{name}:-}}\n" for name in passthrough)
         )
+
+    claude_environment_block = ""
+    claude_credentials_mount = ""
+    if claude_enabled:
+        claude_environment_block = (
+            "      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}\n"
+        )
+        claude_credentials_mount = """      # Claude subscription credentials — seeded into /claude-state by the workhorse entrypoint.
+      - type: bind
+        source: ${HOME}/.claude/.credentials.json
+        target: /mnt/claude-credentials.json
+        read_only: true
+"""
 
     # Docker-outside-of-Docker: lets the coder container bring up this product's
     # own dev stack (docker compose) for QA against the story's `## Verification
@@ -910,6 +1057,9 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
         f"""  {wf}:
     image: *agent-image
     build: *agent-build
+    # Run the workflow container as nobody from process start; mounted volumes
+    # must already be writable by this container user.
+    user: "nobody"
     extra_hosts:
       # Lets the container's groom-sidecar — installed as an editable uv tool
       # when the GROOM_SRC bind below is set — reach a loopback-bound `groom`
@@ -924,13 +1074,11 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
       # it with --host, use the bridge IP, not 127.0.0.1.
       - "host.docker.internal:host-gateway"
     environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{CLAUDE_CODE_OAUTH_TOKEN:-}}
+{claude_environment_block}      # Workflow runtime.
       WORKFLOW_PATH: /workflow/workflow.yaml
       AGENT_RUNS_DIR: /runs
       DISABLE_AUTOUPDATER: "1"
-      # setup.sh / checkout_workspace() prefer these over the workflow's
-      # GitHub defaults.
-      REPO_URL: {src_target}
+{repo_environment}
       REPO_BRANCH: ${{REPO_BRANCH:-{meta["branch"]}}}
       # Repository name → /workspace/$REPO_NAME inside the container.
       REPO_NAME: ${{REPO_NAME:-{meta["repo_name"]}}}
@@ -940,17 +1088,10 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
       # not the checkout_workspace() clone under /workspace.
       AGENT_REPO_DIR: /workspace/${{REPO_NAME:-{meta["repo_name"]}}}
 {passthrough_block}    volumes:
-      - type: bind
-        source: ${{HOME}}/.claude/.credentials.json
-        target: /mnt/claude-credentials.json
-        read_only: true
-      - type: bind
+{claude_credentials_mount}      - type: bind
         source: ${{AGENTS_DIR:-{meta["agents_dir"]}}}/workflows/{wf}
         target: /workflow
-      - type: bind
-        source: ${{REPO_SRC:-{meta.get("repo_src_default", ".")}}}
-        target: {src_target}
-        read_only: true
+{repo_source_mount}
       # Optional: host directory containing a .code-workspace file, for
       # multi-repo runs (or non-git sibling folders that can't be cloned — see
       # workhorse/workhorse/scriptutil.py's checkout_workspace()). Uncomment and
@@ -1004,11 +1145,8 @@ def render_local_compose(workflows: list[str], meta: dict[str, str]) -> str:
 # built once no matter how many workflow services run (`docker compose up
 # {" ".join(workflows)}` runs them together from this one file).
 #
-# Each service clones this repo from a READ-ONLY bind mount of your working
-# tree instead of GitHub — so no SSH key, token, or network is needed, and your
-# host working tree is never mutated (the clone lives in that workflow's own
-# workspace-<name> volume — each workflow gets its own, they are never shared).
-# checkout_workspace() only fast-forwards a clean checkout to the host's latest
+{checkout_description}# Workflow workspace volumes are never shared.
+# checkout_workspace() only fast-forwards a clean checkout to the configured
 # committed state on $REPO_BRANCH; if the container's copy has uncommitted
 # changes or commits not yet on origin/$REPO_BRANCH (e.g. a run that blocked
 # mid-way), it leaves the checkout alone so that work survives a restart.
@@ -1105,7 +1243,7 @@ class Renderer:
         key = name.replace(".", "-")
         source = self.skill_lookup.get(key)
         if source is None and self.prefix and not key.startswith(f"{self.prefix}-"):
-            # A repo-prefixed overlay skill (e.g. predykt-developer) stays
+            # A repo-prefixed overlay skill (e.g. acme-developer) stays
             # addressable by its generic name ("developer") so shared workflow
             # prompts can reference the repo's overlay without knowing the repo.
             source = self.skill_lookup.get(f"{self.prefix}-{key}")
@@ -1373,8 +1511,9 @@ class Renderer:
                 outputs[output_path] = content
 
             for root in roots:
-                root_path = ROOTS / f"{root}.md"
-                if root_path.exists():
+                root_hit = find_in_layers("library", "roots", f"{root}.md")
+                if root_hit is not None:
+                    _root_layer, root_path = root_hit
                     for output_path in [
                         self.repo / ".github" / "copilot-instructions.md",
                         self.repo / ".github" / "agents" / "copilot-instructions.md",
@@ -1411,12 +1550,16 @@ class Renderer:
                     source, "claude", output_path
                 )
 
-        # Workflows are NOT installed/copied — they run directly from the library
-        # (see render_agents_mk: WORKFLOW_DIR points at $(AGENTS_DIR)/workflows/$(WF)).
+        # Workflows are NOT installed/copied — they run directly from whichever library
+        # layer holds them (see render_agents_mk: the launcher passes the workflow NAME
+        # and workhorse resolves it across the same layers).
         # Validate the selection is known so a typo still fails loudly here.
         for workflow in workflows:
-            if not (WORKFLOWS / workflow).exists():
-                raise SystemExit(f"Unknown workflow: {workflow}")
+            if find_in_layers("workflows", workflow) is None:
+                raise SystemExit(
+                    f"error: unknown workflow: {workflow}\n"
+                    f"No library layer provides it. Searched:\n{searched_layers()}"
+                )
 
         # The launcher (.agents/agents.mk) is generated for EVERY repo: its
         # agent-install/agent-check targets are useful even with no workflow, and
@@ -1427,6 +1570,7 @@ class Renderer:
         meta.setdefault("branch", "main")
         meta.setdefault("agents_dir", DEFAULT_AGENTS_DIR)
         meta.setdefault("repo_name", kebab(self.repo.name))
+        meta["agents"] = dict(agents)
         ordered = sorted(workflows)
         outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk(ordered, meta)
 
@@ -1518,7 +1662,10 @@ class Renderer:
 
         Returns a list of missing dependencies (empty if all satisfied).
         """
-        workflow_root = WORKFLOWS / workflow_name
+        hit = find_in_layers("workflows", workflow_name)
+        if hit is None:
+            return []
+        _layer, workflow_root = hit
         required_skills, required_prompts = extract_workflow_dependencies(workflow_root)
 
         missing = []
@@ -1625,12 +1772,12 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     exclude = config.get("exclude") or {}
 
     skills = selected_sources(
-        load_sources(SKILLS, "skill"),
+        load_layered_sources("skill", "library", "skills"),
         include_skills,
         set(exclude.get("skills", []) or []),
     )
     prompts = selected_sources(
-        load_sources(PROMPTS, "prompt"),
+        load_layered_sources("prompt", "library", "prompts"),
         include_prompts,
         set(exclude.get("prompts", []) or []),
     )
@@ -1646,6 +1793,7 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         config, repo, str(repo_config.get("name") or kebab(repo.name))
     )
     workflow_meta["repo_src_default"] = repo.as_posix()
+    workflow_meta["repo_config_default"] = (repo / "agents.yml").as_posix()
     outputs = renderer.render(agents, roots, workflows, workflow_meta)
 
     for mapping in config.get("localInstructions", []) or []:
@@ -1865,7 +2013,7 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_install(args: argparse.Namespace) -> int:
-    set_library_globals(resolve_library_dir(args.library))
+    set_layers(resolve_library_dir(args.library))
     repo = args.repo.resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"
     config = read_yaml(config_path)
@@ -1959,7 +2107,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     include_skills, _, _, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     skills = selected_sources(
-        load_sources(SKILLS, "skill"),
+        load_layered_sources("skill", "library", "skills"),
         include_skills,
         set(exclude.get("skills", []) or []),
     )
@@ -1982,8 +2130,7 @@ def _run_source(args: argparse.Namespace) -> int:
     generated = args.file.resolve()
     if not generated.is_file():
         raise SystemExit(f"error: {args.file} is not a file")
-    root = resolve_library_dir(args.library)
-    set_library_globals(root)
+    set_layers(resolve_library_dir(args.library))
     text = generated.read_text(encoding="utf-8")
     # Skills/commands stamp one source in front matter. Local instruction files
     # resolve through the repo's agents.yml — the live mapping — and only fall
@@ -2007,13 +2154,20 @@ def _run_source(args: argparse.Namespace) -> int:
             "farrier banner — it is not a farrier-generated file."
         )
     for rel in rel_sources:
-        abs_source = (root / rel).resolve()
-        if not abs_source.is_file():
+        hit = find_in_layers(rel)
+        if hit is None or not hit[1].is_file():
             raise SystemExit(
-                f"error: source '{rel}' does not exist under the library at "
-                f"{root} (looked for {abs_source}). The generated file may predate a "
-                "library move/rename — check `farrier config show library_dir`."
+                f"error: source '{rel}' does not exist in any library layer.\n"
+                f"Searched:\n{searched_layers()}\n"
+                "The generated file may predate a library move/rename — check "
+                "`farrier config show library_dir`."
             )
+        layer, abs_source = hit
+        # With more than one layer, *which* copy you are about to edit is the whole
+        # question — an overlay shadowing the base means the base copy is inert.
+        # stdout stays the bare path so callers can `$(farrier source ...)` it.
+        if len(LAYERS) > 1:
+            print(f"note: resolved from layer {layer.name}", file=sys.stderr)
         print(abs_source)
     return 0
 
@@ -2045,33 +2199,40 @@ SCAFFOLD_TREE_FILE_KEYS = {"url"}
 
 
 def load_scaffold_defs() -> dict[str, dict[str, Any]]:
-    """All scaffold definitions in the library, keyed by scaffold id.
+    """All scaffold definitions across the layers, keyed by scaffold id.
 
-    A duplicate id across definition files is a hard error — ids are the public
-    lookup key (`farrier scaffold <id>`), like skill names.
+    A duplicate id *within one layer* is a hard error — ids are the public lookup key
+    (`farrier scaffold <id>`), like skill names. Across layers it is not an error but
+    the point: an overlay redefining a base scaffold id shadows it, same as for skills.
     """
     defs: dict[str, dict[str, Any]] = {}
     origin: dict[str, Path] = {}
-    if not SCAFFOLDS.is_dir():
-        return defs
-    for path in sorted(list(SCAFFOLDS.glob("*.yml")) + list(SCAFFOLDS.glob("*.yaml"))):
-        data = read_yaml(path)
-        for scaffold_id, definition in data.items():
-            sid = str(scaffold_id)
-            if sid in defs:
-                raise SystemExit(
-                    f"Duplicate scaffold id {sid!r}: defined in {origin[sid]} "
-                    f"and {path}"
-                )
-            if not isinstance(definition, dict) or not isinstance(
-                definition.get("tree"), dict
-            ):
-                raise SystemExit(
-                    f"Scaffold {sid!r} in {path} must be a mapping with a "
-                    "`tree:` mapping"
-                )
-            defs[sid] = definition
-            origin[sid] = path
+    for layer, scaffolds_dir in layer_dirs("scaffolds"):
+        layer_origin: dict[str, Path] = {}
+        for path in sorted(
+            list(scaffolds_dir.glob("*.yml")) + list(scaffolds_dir.glob("*.yaml"))
+        ):
+            data = read_yaml(path)
+            for scaffold_id, definition in data.items():
+                sid = str(scaffold_id)
+                if sid in layer_origin:
+                    raise SystemExit(
+                        f"Duplicate scaffold id {sid!r} in layer {layer.name}: "
+                        f"defined in {layer_origin[sid]} and {path}"
+                    )
+                if not isinstance(definition, dict) or not isinstance(
+                    definition.get("tree"), dict
+                ):
+                    raise SystemExit(
+                        f"Scaffold {sid!r} in {path} must be a mapping with a "
+                        "`tree:` mapping"
+                    )
+                layer_origin[sid] = path
+                # layer_dirs is precedence-ordered: a lower layer never overwrites
+                # an id a higher one already claimed.
+                if sid not in defs:
+                    defs[sid] = definition
+                    origin[sid] = path
     return defs
 
 
@@ -2238,7 +2399,7 @@ def _list_scaffolds(
 
 
 def _run_scaffold(args: argparse.Namespace) -> int:
-    set_library_globals(resolve_library_dir(args.library))
+    set_layers(resolve_library_dir(args.library))
     repo = args.repo.resolve()
     defs = load_scaffold_defs()
     available = available_scaffold_ids(repo, defs)

@@ -25,7 +25,7 @@ block via `inotify` instead of exiting.
 ## Context
 
 `author`/`coder` autonomous workflows (run via `workhorse` + Docker Compose, defined in the
-central `vigilant-octo/agents` prompt library and consumed by repos like Predykt) block on
+central `vigilant-octo/agents` prompt library and consumed by repos like Acme) block on
 "operator gates": the in-container wait script (`await_operator.py`/`await-operator.py`) parks on
 an `inotify` watch of the gate file until its `STATUS:` line flips to `ANSWERED`, then resumes in
 place. With more than one workflow running at once, having no aggregate visibility — no dashboard,

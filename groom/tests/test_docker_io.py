@@ -35,9 +35,9 @@ def test_list_container_ids_empty_when_no_containers():
 
 def test_find_repo_dir_extracts_parent_of_dot_git():
     with patch.object(
-        docker_io.subprocess, "run", return_value=_completed(stdout="/vol/Predykt/.git\n")
+        docker_io.subprocess, "run", return_value=_completed(stdout="/vol/Acme/.git\n")
     ):
-        assert docker_io.find_repo_dir("vol-1") == "Predykt"
+        assert docker_io.find_repo_dir("vol-1") == "Acme"
 
 
 def test_find_repo_dir_returns_empty_when_none_found():
@@ -57,17 +57,17 @@ def test_git_diff_returns_empty_when_no_repo_found():
 
 def test_git_diff_returns_stdout_on_success():
     diff_text = "diff --git a/x b/x\n+added line\n"
-    with patch.object(docker_io, "find_repo_dir", return_value="Predykt"), \
+    with patch.object(docker_io, "find_repo_dir", return_value="Acme"), \
          patch.object(docker_io.subprocess, "run", return_value=_completed(stdout=diff_text)) as run:
         result = docker_io.git_diff("vol-1")
     assert result == diff_text
     args = run.call_args[0][0]
-    assert "/vol/Predykt" in args
+    assert "/vol/Acme" in args
     assert "safe.directory=*" in args
 
 
 def test_git_diff_returns_empty_on_git_failure():
-    with patch.object(docker_io, "find_repo_dir", return_value="Predykt"), \
+    with patch.object(docker_io, "find_repo_dir", return_value="Acme"), \
          patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=128)):
         assert docker_io.git_diff("vol-1") == ""
 
@@ -102,14 +102,14 @@ def test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs():
 
     def _fake_run(args, **kwargs):
         captured["args"] = args
-        return _completed(stdout="/vol/Predykt/src/a.py\n/vol/Predykt/README.md\n")
+        return _completed(stdout="/vol/Acme/src/a.py\n/vol/Acme/README.md\n")
 
     with patch.object(docker_io.subprocess, "run", _fake_run):
-        paths = docker_io.list_files("workhorse_workspace", "Predykt")
+        paths = docker_io.list_files("workhorse_workspace", "Acme")
 
     # Paths are returned relative to the repo dir (not the volume) and sorted.
     assert paths == ["README.md", "src/a.py"]
-    assert "find" in captured["args"] and "/vol/Predykt" in captured["args"]
+    assert "find" in captured["args"] and "/vol/Acme" in captured["args"]
     assert "-prune" in captured["args"]
     for skip in docker_io._SKIP_DIRS:
         assert skip in captured["args"]
@@ -126,7 +126,7 @@ def test_list_files_volume_root_when_repo_dir_empty():
 
 def test_list_files_empty_on_docker_failure():
     with patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=1)):
-        assert docker_io.list_files("vol-1", "Predykt") == []
+        assert docker_io.list_files("vol-1", "Acme") == []
 
 
 def test_docker_exec_builds_user_and_env_flags():

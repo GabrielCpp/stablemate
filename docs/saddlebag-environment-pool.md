@@ -45,7 +45,7 @@ exactly one kind of material: a **test identity** (`username` + one password, ta
 
 ### The incident
 
-A `coder` run on Predykt reached QA, which blocked with "web not reachable on :5173". The
+A `coder` run on Acme reached QA, which blocked with "web not reachable on :5173". The
 autonomous operator (`resolve_qa`) went to diagnose the dev stack and tried to read
 `web/.env.local`. The agent-CLI permission layer **auto-rejected the read**. That turn then
 died without emitting its JSON contract, workhorse retried by *resuming* the session, and the
@@ -133,7 +133,7 @@ by the same project-qualified convention credentials already use. So `saddlebag 
 that makes `list` and `scan` safe today.
 
 Config is a **first-class** kind, not a tolerated exception. Most of what a dev stack needs to
-boot is not sensitive at all — of Predykt's five keys in §1, the two that actually define the
+boot is not sensitive at all — of Acme's five keys in §1, the two that actually define the
 stack's *shape* (`VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_AUTH_EMULATOR_HOST`) carry no secret
 whatsoever, and they are precisely the ones an agent needed and could not get. An environment
 holding nothing but config entries is a normal environment, and §7 makes sure it works on a host
@@ -170,7 +170,7 @@ in `_MIGRATIONS` is needed (that list is for `ALTER TABLE ... ADD COLUMN` on the
 CREATE TABLE IF NOT EXISTS environments (
     id          TEXT PRIMARY KEY,           -- env-001, minted like cred-001
     name        TEXT NOT NULL,              -- web-local
-    project     TEXT,                       -- predykt — inferred from the git repo, as today
+    project     TEXT,                       -- acme — inferred from the git repo, as today
     env         TEXT NOT NULL,              -- local | staging — same vocabulary as credentials.env
     target      TEXT,                       -- default render path, repo-relative: web/.env.local
     format      TEXT NOT NULL DEFAULT 'dotenv',   -- dotenv | json
@@ -207,7 +207,7 @@ secret.
 Secret entries key into the existing `SecretStore` as:
 
 ```
-<project>/<environment_id>/<KEY>        e.g.  predykt/env-001/VITE_FIREBASE_API_KEY
+<project>/<environment_id>/<KEY>        e.g.  acme/env-001/VITE_FIREBASE_API_KEY
 (bare <environment_id>/<KEY> when the environment is unscoped)
 ```
 
@@ -233,7 +233,7 @@ saddlebag env import web-local --from web/.env.example
 #     what still has to be supplied, and nothing has been guessed.
 
 # Supply values — the channel decides the kind (§4)
-saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=predykt              # → config
+saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=acme              # → config
 saddlebag env set web-local VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099   # → config
 printf '%s' "$KEY" | saddlebag env set web-local VITE_FIREBASE_API_KEY --secret-stdin  # → secret
 saddlebag env set web-local TEST_USER_PASSWORD --from-credential cred-007:password     # → credential-ref
@@ -316,13 +316,13 @@ format: dotenv
 entries:
   - key: VITE_FIREBASE_PROJECT_ID
     kind: config
-    value: predykt
+    value: acme
   - key: VITE_FIREBASE_AUTH_EMULATOR_HOST
     kind: config
     value: 127.0.0.1:9099
     note: unset this to point the web app at real Firebase Auth
   - key: VITE_FIREBASE_API_KEY
-    kind: secret          # value lives in the store, keyed predykt/env-001/VITE_FIREBASE_API_KEY
+    kind: secret          # value lives in the store, keyed acme/env-001/VITE_FIREBASE_API_KEY
   - key: TEST_USER_PASSWORD
     kind: credential-ref
     from: cred-007:password
@@ -407,7 +407,7 @@ repo — plus the store, for whichever keys are genuinely secret.
    `--check`, the `0600` write path, `--run-id` plumbing, and the `credential-ref` join with the
    existing lease machinery.
 4. **Workflow adoption.** The `setup-fix.md` rewrite, the `ensure_env` node, and the permission
-   rule denying agent reads of `.env*`. Populate Predykt's pool from `web/.env.example` as the
+   rule denying agent reads of `.env*`. Populate Acme's pool from `web/.env.example` as the
    first real consumer.
 
 Phases 1–3 are self-contained in saddlebag and land with unit tests in the existing style; a pool

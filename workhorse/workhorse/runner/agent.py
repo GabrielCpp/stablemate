@@ -497,13 +497,19 @@ def classify_turn(
     return result_text
 
 
-def _print_prompt_summary(node_id: str, prompt_path: "str | Path", variables: dict[str, Any]) -> None:
-    """Echo the prompt's template path and the resolved variables, without the rendered text."""
-    print(f"[{node_id}] ┌─ prompt " + "─" * 24, flush=True)
-    print(f"[{node_id}] path: {prompt_path}", flush=True)
-    for key in sorted(variables):
-        print(f"[{node_id}] {key} = {variables[key]!r}", flush=True)
-    print(f"[{node_id}] └─ end prompt " + "─" * 34, flush=True)
+def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
+    """Persist the rendered prompt before invocation so failed nodes are inspectable."""
+    if run_dir is None:
+        return None
+    prompt_path = run_dir / node_id / "prompt.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    return prompt_path
+
+
+def _print_prompt_path(node_id: str, prompt_path: Path) -> None:
+    """Echo where the rendered prompt was written, without dumping variables."""
+    print(f"[{node_id}] prompt: {prompt_path}", flush=True)
 
 
 def _resolve_power_settings(
@@ -538,6 +544,7 @@ def run_agent(
     max_rephrase_attempts: int = DEFAULT_MAX_REPHRASE_ATTEMPTS,
     max_compact_attempts: int = DEFAULT_MAX_COMPACT_ATTEMPTS,
     resume_session: bool = False,
+    run_dir: Path | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Render the prompt, invoke Claude, and parse its declared outputs — resiliently.
@@ -584,7 +591,7 @@ def run_agent(
 
     # Render per-node CWD first so it can be forwarded into the prompt context.
     # _flavor_override uses _node_cwd to look up flavors relative to the per-node
-    # repo root (e.g. delphi) rather than the global _repo_root (the orchestrating
+    # repo root (e.g. web-app) rather than the global _repo_root (the orchestrating
     # repo), enabling each workspace repo to provide its own flavor independently.
     rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
 
@@ -599,12 +606,15 @@ def run_agent(
     }
     rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
-    # Echo the prompt's template path and resolved variables before launching the agent,
-    # rather than the full rendered text — enough to catch a mis-resolved variable
-    # without flooding the log on every step. On (default); WORKHORSE_PRINT_PROMPT=0
-    # silences it. The full rendered prompt is still persisted to the run dir's prompt.md.
-    if os.environ.get("WORKHORSE_PRINT_PROMPT", "1").lower() not in ("0", "false", "no", ""):
-        _print_prompt_summary(node.id, node.prompt, prompt_ctx)
+    # Persist the full rendered prompt before launching the agent so even failed or
+    # interrupted nodes are inspectable. Console output stays compact: only the path.
+    prompt_path = _write_prompt_for_inspection(node.id, rendered_prompt, run_dir)
+    if (
+        prompt_path is not None
+        and os.environ.get("WORKHORSE_PRINT_PROMPT", "1").lower()
+        not in ("0", "false", "no", "")
+    ):
+        _print_prompt_path(node.id, prompt_path)
 
     # Render additional directories and the rest of the per-node dispatch config.
     if isinstance(node.add_dirs, str):

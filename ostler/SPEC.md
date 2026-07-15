@@ -135,7 +135,7 @@ Edges (`covers`/`depends on`) live in the epic's `## Stories` section, **not** h
 
 ## 5. The knowledge Concept
 
-Markdown + frontmatter (already the yenta shape; Predykt `.json` records convert to this). Required:
+Markdown + frontmatter (already the globex shape; Acme `.json` records convert to this). Required:
 `type: knowledge`, `surface`. Typed fields (`route`, `sourceRefs`, `old[]`, `new[]`, `gaps[]`,
 `openGaps[]`, `journeys[]`, `provenance`) live in frontmatter; the body is free prose
 (`## Components`, `## Gaps`, …). A `gap` has `id` (required) and optional `owner` (a story slug),

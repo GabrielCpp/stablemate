@@ -18,7 +18,7 @@ from saddlebag.models import (
 
 @pytest.fixture
 def web(pool: Pool):
-    return pool.env_add(name="web-local", env="local", project="predykt",
+    return pool.env_add(name="web-local", env="local", project="acme",
                         target="web/.env.local")
 
 
@@ -61,7 +61,7 @@ def test_add_mints_sequential_env_ids(pool: Pool):
 
 def test_a_duplicate_name_in_the_same_project_is_rejected(pool: Pool, web):
     with pytest.raises(PoolError, match="already exists"):
-        pool.env_add(name="web-local", env="local", project="predykt")
+        pool.env_add(name="web-local", env="local", project="acme")
 
 
 def test_a_duplicate_name_is_rejected_even_when_unscoped(pool: Pool):
@@ -85,7 +85,7 @@ def test_env_by_name_finds_an_unscoped_environment(pool: Pool):
 
 def test_env_find_scopes_to_one_project(pool: Pool, web):
     pool.env_add(name="api-local", env="local", project="other-repo")
-    assert [e.name for e in pool.env_find("predykt")] == ["web-local"]
+    assert [e.name for e in pool.env_find("acme")] == ["web-local"]
     assert [e.name for e in pool.env_find(None)] == []
     assert len(pool.env_all()) == 2
 
@@ -160,7 +160,7 @@ def test_needs_store_is_false_for_a_config_only_environment(pool: Pool, web):
 
 
 def test_the_store_key_is_project_qualified(pool: Pool, web):
-    assert web.store_key("VITE_FIREBASE_API_KEY") == "predykt/env-001/VITE_FIREBASE_API_KEY"
+    assert web.store_key("VITE_FIREBASE_API_KEY") == "acme/env-001/VITE_FIREBASE_API_KEY"
 
 
 def test_an_unscoped_environment_uses_a_bare_store_key(pool: Pool):

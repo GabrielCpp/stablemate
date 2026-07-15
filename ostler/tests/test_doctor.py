@@ -65,7 +65,7 @@ def test_missing_type_is_flagged(repo: Path):
 
 
 def test_seedless_epic_no_covers_warning(repo: Path):
-    # a wholly-seedless epic (yenta-style) must not raise story-covers-no-seed
+    # a wholly-seedless epic (globex-style) must not raise story-covers-no-seed
     write(repo / "docs/epics/epic-c/epic.md", epic_md(
         "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [], [])]))
     write(repo / "docs/epics/epic-c/stories/01-x/story.md",

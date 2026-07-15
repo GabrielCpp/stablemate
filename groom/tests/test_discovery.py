@@ -20,9 +20,9 @@ def _inspect(**overrides) -> dict:
         "State": {"Running": True, "ExitCode": 0},
         "Config": {
             "Env": [
-                "REPO_NAME=Predykt",
+                "REPO_NAME=Acme",
                 "REPO_BRANCH=fixes/03-datasheet-header",
-                "PREDYKT_GITHUB_TOKEN=super-secret-value",
+                "ACME_GITHUB_TOKEN=super-secret-value",
                 "PATH=/usr/bin",
             ],
         },
@@ -55,13 +55,13 @@ def test_container_from_inspect_reads_env_name_and_volumes():
     wf = discovery.container_from_inspect(_inspect())
     assert wf.container_id == "abcdef012345"
     assert wf.name == "workhorse-author-1"
-    assert wf.repo_name == "Predykt"
+    assert wf.repo_name == "Acme"
     assert wf.repo_branch == "fixes/03-datasheet-header"
     assert wf.workspace_volume == "author-1-workspace"
     assert wf.runs_volume == "author-1-runs"
     assert wf.state == WorkflowState.RUNNING
     # Secrets present in the container's own env must never surface here.
-    assert "PREDYKT_GITHUB_TOKEN" not in vars(wf).values()
+    assert "ACME_GITHUB_TOKEN" not in vars(wf).values()
     assert "super-secret-value" not in vars(wf).values()
 
 
@@ -78,7 +78,7 @@ def test_workflow_type_falls_back_to_compose_service_label():
     # A bind straight at .../workflow gives the generic basename, so the compose
     # service name is used instead.
     wf = discovery.container_from_inspect(_inspect(Config={
-        "Env": ["REPO_NAME=Predykt"],
+        "Env": ["REPO_NAME=Acme"],
         "Labels": {"com.docker.compose.service": "author"},
     }))
     assert wf.workflow_type == "author"

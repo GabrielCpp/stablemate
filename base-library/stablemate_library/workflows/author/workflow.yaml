@@ -1,0 +1,2265 @@
+name: author
+# The `author` workflow turns a high-level feature backlog into coder-ready epics and
+# stories. It is the producer counterpart to the `coder` workflow (the consumer): it emits
+# exactly the artifact contract coder's select-next-story.py + the story-docs skill require —
+# all ostler-managed OKF markdown: the docs/epics/index.md queue, per-epic epic.md whose body
+# folds the seeds (## Seeds) and story dependency-DAG (## Stories), and per-story story.md with an
+# `## Implementation Status` / `- **Status**: Not started` line.
+#
+# Control structure (nested loops, validation at two altitudes):
+#   1. EPIC SPLIT      decompose the backlog into coding-ordered epics (ostler create epic +
+#                      ostler todo add → the docs/epics/index.md queue)
+#   2. per epic:
+#      2a. WRITE EPIC  author the epic.md narrative + record in-scope seeds into its ## Seeds
+#                      (ostler seed add; each traceable to a backlog bullet via sourceBullet)
+#      2b. STORY SPLIT record stories into the epic.md ## Stories DAG (ostler create story —
+#                      slugs, `depends on`, and the seeds each story `covers`)
+#      2c. per story:  WRITE STORY (research + evidence capture) → VALIDATE STORY (hard)
+#      2d. VALIDATE EPIC COVERAGE  every seed item covered + adequacy ("not too few/too coarse")
+#   3. VALIDATE ARTIFACTS  final coder-consumability check → done
+#
+# Operator interaction is ON-DEMAND only (no mandatory approval gate): any producer that is
+# genuinely blocked returns status `blocked`, which routes to an await-operator node that
+# RECORDS the questions in a context.md and HALTS (resumable). The operator answers inline and
+# re-runs; the producer re-reads its context.md and continues. Each await node loops back to
+# its producer, so the recorded answer is consumed exactly once (await-operator.py state
+# machine) and re-arms if the producer blocks again. Bounded rework loops escalate to the same
+# operator gate. Runs on the local-worker controller (Claude), same engine as coder/research.
+vars:
+  # Mode: "epic" (default) decomposes the whole backlog into epics+stories; "survey"
+  # first exhaustively surveys code units into generated backlog bullets, then runs the
+  # same epic pipeline with full coverage; "story" turns ONE bullet into a single story
+  # appended to an existing epic of your choice. Story mode requires `epic` + `bullet`; override with
+  # --params '{"mode":"story","epic":"<slug>","bullet":"<[id] or text>"}'.
+  mode: "epic"
+  epic: "" # mode=story: target epic slug (must already exist). [mode=epic: set by select_epic]
+  bullet: "" # mode=story: a backlog `[id]` OR literal bullet text to author into a story.
+  backlog:
+    "docs/backlog.md" # repo-relative path to the markdown backlog (bullet list).
+    # Default docs/backlog.md; override with --params '{"backlog":"..."}'.
+  epics_dir: "docs/epics"
+  # Survey mode inputs. Use mode=survey for bullets/initiatives whose work-list is the
+  # codebase itself rather than a human-curated backlog item.
+  rubric: "docs/survey/rubric.md"
+  survey_dir: "docs/survey"
+  # Inventory-diff survey. This mode emits one backlog bullet per missing baseline surface and
+  # stops; a normal epic run then consumes those bullets through the unchanged author pipeline.
+  baseline_inventory: ""
+  target_features: "docs/features"
+  parity_survey_dir: "docs/survey/legacy-vs-new"
+  # Max rework cycles before escalating to the operator. Enforced as literals in the guard
+  # branches below (branch condition values can't be Jinja) — keep these comments in sync.
+  max_reworks: "3"
+  # Max auto-operator resolve attempts per gate before forcing human escalation. Enforced
+  # as literals in the corresponding guard_*_resolve branches below (branch condition
+  # values can't be Jinja) — keep these comments in sync with those literals.
+  max_surface_coverage_resolves: "2" # guard_surface_coverage_resolve
+  max_reconcile_resolves: "2" # guard_reconcile_resolve
+  max_integrity_resolves: "2" # guard_integrity_resolve
+  max_epics_resolves: "2" # guard_epics_resolve
+  max_write_epic_resolves: "2" # guard_write_epic_resolve
+  max_split_resolves: "2" # guard_split_resolve
+  max_write_story_resolves: "2" # guard_write_story_resolve
+  # How operator blocks are handled. "auto" (default): at every gate a high-effort
+  # `resolve_*` agent stands in for the human — it investigates, decides, and writes the
+  # answer into that stage's context.md so the run continues; it escalates to a real human
+  # (halts at the await gate) only when the block needs something it genuinely cannot supply
+  # or it has already answered the same block without resolving it. "human": the original
+  # behaviour — every block halts and waits for a person. Override per run with
+  # --params '{"operator_mode":"human"}'.
+  operator_mode: "auto"
+  # Surface-coverage gate mode (epic/survey modes). "grounding" (default, always-on): every
+  # surface the authored work claims to touch must exist in the feature set — catches phantom
+  # scope without flagging untouched screens, so an incremental backlog is not forced to
+  # re-cover the whole app. "full": the migration / greenfield-buildout assertion — every
+  # in-scope feature-set surface must be covered by the backlog. Override per run with
+  # --params '{"coverage_mode":"full"}'.
+  coverage_mode: "grounding"
+  cfg: "" # set by load_config (repo_root, knowledge_dir, features_dir, layers, …)
+
+start: load_config
+
+nodes:
+  # ── Load config (paths + layer hints) and validate the backlog exists ──────────────
+  - id: load_config
+    type: script
+    script: scripts/load-config.py
+    args:
+      - "{{ backlog }}"
+      - "{{ epics_dir }}"
+    outputs:
+      - key: cfg
+    next: branch_author
+
+  # ── Cut the working branch for this author run (branch-per-run) ──────────────────
+  # Mirrors the coder workflow's branch_story: capture the branch the run started
+  # from as the PR base, then cut a fresh branch keyed off this run's own run_dir
+  # (stable across a mid-run resume). Single repo only — author never touches code
+  # repos, so there is no multi-repo branching step here.
+  - id: branch_author
+    type: script
+    script: scripts/branch-author.py
+    args:
+      - "{{ workhorse_var('_run_dir') }}"
+      - "{{ mode }}"
+    outputs:
+      - key: base_branch
+      - key: author_branch
+    next: decide_mode
+
+  # ── Mode dispatch: epic, survey, or story (one bullet → existing epic) ────────────
+  # Mirrors the coder workflow's decide_mode. "epic" (default) enters Stage 1 exactly
+  # as before; "survey" first produces author's backlog+manifest contract from a
+  # codebase survey, then enters Stage 1; "story" jumps to story_setup, which registers
+  # ONE bullet into the epic named by `epic` and then runs the shared per-story pipeline
+  # once (no epic split, epic write, story split, or whole-epic coverage).
+  - id: decide_mode
+    type: branch
+    path: mode
+    cases:
+      epic: build_inventory
+      survey: survey_intake
+      parity-survey: parity_survey_intake
+      story: story_setup
+    default: build_inventory
+
+  # ── Survey intake: exhaustive discovery for complex/cross-cutting bullets ─────────
+  # Surveyor is intentionally an author subflow, not a sibling workflow: it emits the
+  # same generated backlog + unit manifest that the normal author pipeline consumes.
+  # The parent owns the branch, final validation, commit, and PR.
+  - id: survey_intake
+    type: flow
+    name: surveyor
+    args:
+      rubric: "{{ rubric }}"
+      survey_dir: "{{ survey_dir }}"
+      backlog: "{{ backlog }}"
+      operator_mode: "{{ operator_mode }}"
+    outputs:
+      - key: emit_ok
+      - key: emit_errors
+      - key: bullet_count
+      - key: emit_note
+    next: build_inventory
+
+  - id: parity_survey_intake
+    type: flow
+    name: parity-surveyor
+    args:
+      baseline_inventory: "{{ baseline_inventory }}"
+      target_features: "{{ target_features }}"
+      survey_dir: "{{ parity_survey_dir }}"
+      backlog: "{{ backlog }}"
+      epics_dir: "{{ epics_dir }}"
+    outputs:
+      - key: emit_ok
+      - key: emit_errors
+      - key: bullet_count
+      - key: emit_note
+    next: parity_survey_done
+
+  - id: parity_survey_done
+    type: terminal
+
+  # ── Intake: compile the human feature set into the derived surface manifest ───────
+  # The human source of truth is plain-markdown feature docs (one per screen) under
+  # cfg.features_dir; under the OKF model those docs ARE the typed feature Concepts ostler reads.
+  # This regenerates cfg.surface_manifest from those docs (non-lossy merge: undeclared fields
+  # like `mockup` are preserved) so the coverage gate below always checks a fresh manifest.
+  # Opt-in by presence: with no feature docs on disk it is a clean skip and leaves any existing
+  # manifest untouched. Always flows on — a build problem degrades to skip, never blocks.
+  - id: build_inventory
+    type: script
+    script: scripts/build-inventory.py
+    args:
+      - "{{ cfg.features_dir }}"
+      - "{{ cfg.surface_manifest }}"
+    outputs:
+      - key: inventory_built
+      - key: inventory_path
+      - key: surface_count
+      - key: inventory_note
+    next: reset_surface_coverage_resolve
+
+  # Seed the resolver-retry budget once per stage entry (mirrors reset_*_rework).
+  # Bounds how many times auto-mode's resolver gets to fix-and-recheck before this
+  # gate gives up and escalates to a human, instead of trusting a single unverified
+  # resolver pass or looping on a non-converging resolver forever.
+  - id: reset_surface_coverage_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "surface_coverage_resolve_count"
+    outputs:
+      - key: surface_coverage_resolve_count
+    next: verify_surface_coverage
+
+  # ── Site-surface coverage / grounding gate (epic mode only) ───────────────────────
+  # Relate the authored work to the feature set (the surface manifest). Default mode
+  # "grounding": every surface the work claims to touch must exist in the feature set —
+  # catches phantom scope without flagging untouched screens, so an incremental backlog is
+  # NOT forced to re-cover the whole app. Mode "full" (coverage_mode=full): the migration /
+  # greenfield-buildout assertion — every in-scope surface must be covered by the backlog.
+  # Opt-in by file presence: with no manifest on disk the gate is a clean skip (greenfield).
+  # A failure routes to the same operator gate as the other stages, not a hard fail.
+  - id: verify_surface_coverage
+    type: script
+    script: scripts/verify-surface-coverage.py
+    args:
+      - "{{ cfg.surface_manifest }}"
+      - "{{ epics_dir }}"
+      - "{{ backlog }}"
+      - "{{ cfg.knowledge_dir }}"
+      - "{{ 'full' if mode == 'survey' else coverage_mode }}"
+    outputs:
+      - key: surface_coverage_ok
+      - key: surface_coverage_errors
+    next: decide_surface_coverage
+
+  - id: decide_surface_coverage
+    type: branch
+    path: surface_coverage_ok
+    cases:
+      "no": gate_surface_coverage
+    default: reset_epics_rework # "yes" or "skip" → proceed into Stage 1
+
+  - id: gate_surface_coverage
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_surface_coverage
+      auto: guard_surface_coverage_resolve
+    default: guard_surface_coverage_resolve
+
+  # Bounded retry: once the resolver has already had max_surface_coverage_resolves
+  # (== 2) attempts at fixing-and-rechecking this gate without converging, stop
+  # trusting it further and force human escalation instead of looping forever.
+  - id: guard_surface_coverage_resolve
+    type: branch
+    path: surface_coverage_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_surface_coverage_resolves; literal so no Jinja in branch
+        next: await_surface_coverage
+    default: resolve_surface_coverage
+
+  # Auto-operator for the surface-coverage block. Records the uncovered surfaces in
+  # <epics_dir>/_author-context.md and either answers (add the bullets / declare out of
+  # scope) or escalates to a human, then flows into decide_surface_coverage_resolve,
+  # which re-verifies the fix via verify_surface_coverage rather than trusting the
+  # resolver's own say-so.
+  - id: resolve_surface_coverage
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epics_dir }}/_author-context.md"
+      epic_dir: "{{ epics_dir }}"
+      block_stage: "surface-coverage"
+      block_notes: "{{ surface_coverage_errors }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: decide_surface_coverage_resolve
+
+  # An "escalated" resolver decision means the resolver itself gave up on this pass
+  # (it could not supply an answer) — skip the recheck and go straight to the human
+  # gate rather than re-running verify_surface_coverage on an unchanged state.
+  - id: decide_surface_coverage_resolve
+    type: branch
+    path: resolve_status.decision
+    cases:
+      escalated: await_surface_coverage
+    default: incr_surface_coverage_resolve
+
+  - id: incr_surface_coverage_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "surface_coverage_resolve_count"
+      - "{{ surface_coverage_resolve_count.value }}"
+    outputs:
+      - key: surface_coverage_resolve_count
+    next: verify_surface_coverage # loop back to the SAME deterministic check
+
+  # On-demand operator gate for the surface-coverage stage. Records the uncovered surfaces
+  # in <epics_dir>/_author-context.md, halts, and on resume (operator added the bullets or
+  # marked them out of scope) proceeds into Stage 1 — decompose_epics re-reads the updated
+  # backlog. One-shot: it does not loop back to re-verify (the operator is trusted).
+  - id: await_surface_coverage
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epics_dir }}/_author-context.md"
+      - "{{ surface_coverage_errors }}"
+    outputs:
+      - key: operator_input
+    next: reset_epics_rework
+
+  # ── Story mode setup: append one bullet to an existing epic ───────────────────────
+  # Adds one seed to the epic's ## Seeds (ostler seed add) + one story to its ## Stories
+  # (ostler create story — the same contract split-stories emits) and scaffolds the story
+  # folder, then flows into the per-story loop's body (reset_story_rework → gather → write →
+  # validate). Hard-fails if the epic (its epic.md) is missing — story mode appends to an
+  # existing epic, it never creates one.
+  - id: story_setup
+    type: script
+    script: scripts/seed-story.py
+    args:
+      - "{{ epic }}"
+      - "{{ epics_dir }}"
+      - "{{ bullet }}"
+      - "{{ cfg.knowledge_dir }}"
+    outputs:
+      - key: epic_dir
+      - key: story_slug
+      - key: story_dir
+      - key: story_path
+      - key: bullet_id
+      - key: from_backlog
+      - key: reason
+    next: reset_story_rework
+
+  # ── 1. EPIC SPLIT ───────────────────────────────────────────────────────────────
+  - id: reset_epics_rework
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "epics_rework_count"
+    outputs:
+      - key: epics_rework_count
+    next: reset_epics_resolve
+
+  # Seed the resolver-retry budget once per stage entry (mirrors reset_epics_rework).
+  - id: reset_epics_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "epics_resolve_count"
+    outputs:
+      - key: epics_resolve_count
+    next: decompose_epics
+
+  - id: decompose_epics
+    type: agent
+    power: high
+    prompt: prompts/decompose-epics.md
+    args:
+      backlog: "{{ backlog }}"
+      epics_dir: "{{ epics_dir }}"
+    outputs:
+      - key: decompose_result
+    next: review_epics
+
+  - id: review_epics
+    type: agent
+    power: high
+    prompt: prompts/review-epics.md
+    args:
+      backlog: "{{ backlog }}"
+      epics_dir: "{{ epics_dir }}"
+    outputs:
+      - key: review_epics_result
+    next: decide_epics
+
+  - id: decide_epics
+    type: branch
+    path: review_epics_result.status
+    cases:
+      approved: select_epic
+      needs_rework: guard_epics
+      blocked: gate_epics
+    default: guard_epics
+
+  - id: guard_epics
+    type: branch
+    path: epics_rework_count.value
+    conditions:
+      - op: ">="
+        value: "3" # == vars.max_reworks; literal so no Jinja in branch
+        next: gate_epics
+    default: rework_epics
+
+  - id: rework_epics
+    type: agent
+    power: high
+    prompt: prompts/rework-epics.md
+    args:
+      backlog: "{{ backlog }}"
+      epics_dir: "{{ epics_dir }}"
+      review_notes: "{{ review_epics_result.notes }}"
+    outputs:
+      - key: decompose_result
+    next: incr_epics
+
+  - id: incr_epics
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "epics_rework_count"
+      - "{{ epics_rework_count.value }}"
+    outputs:
+      - key: epics_rework_count
+    next: review_epics
+
+  # Operator-mode switch for the epic-split gate. "auto" (default) routes to a
+  # high-effort resolver that answers the block into context.md; "human" halts at the
+  # await node. Reached on a `blocked` review and on a non-converging epic-split loop.
+  - id: gate_epics
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_epics
+      auto: guard_epics_resolve
+    default: guard_epics_resolve
+
+  # Bounded retry: once the resolver has already had max_epics_resolves (== 2)
+  # attempts at this block without review_epics converging, stop trusting it further
+  # and force human escalation instead of looping forever.
+  - id: guard_epics_resolve
+    type: branch
+    path: epics_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_epics_resolves; literal so no Jinja in branch
+        next: await_epics
+    default: resolve_epics
+
+  # Auto-operator for the epic-split block. Writes the answer into
+  # <epics_dir>/_author-context.md (STATUS: ANSWERED) — or STATUS: AWAITING_OPERATOR to
+  # escalate — then flows into incr_epics_resolve/await_epics, which consumes an
+  # answered file and proceeds (re-entering decompose_epics → review_epics, the real
+  # re-verification), or halts on an awaiting one (the human fallback).
+  - id: resolve_epics
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epics_dir }}/_author-context.md"
+      epic_dir: "{{ epics_dir }}"
+      block_stage: "epic-split"
+      block_notes: "{{ review_epics_result.notes }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: incr_epics_resolve
+
+  - id: incr_epics_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "epics_resolve_count"
+      - "{{ epics_resolve_count.value }}"
+    outputs:
+      - key: epics_resolve_count
+    next: await_epics
+
+  # On-demand operator gate for the epic-split stage. Records Q&A in
+  # <epics_dir>/_author-context.md, halts, and on resume resets the rework budget and
+  # re-enters decompose (which reads the context answers and continues).
+  - id: await_epics
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epics_dir }}/_author-context.md"
+      - "{{ review_epics_result.notes }}"
+      - "epics_rework_count"
+    outputs:
+      - key: operator_input
+      - key: epics_rework_count
+    next: decompose_epics
+
+  # ── 2. PER-EPIC LOOP ──────────────────────────────────────────────────────────────
+  - id: select_epic
+    type: script
+    script: scripts/select-epic.py
+    args:
+      - "{{ epics_dir }}"
+    outputs:
+      - key: has_epic
+      - key: epic
+      - key: epic_dir
+      - key: reason
+    next: decide_epic
+
+  - id: decide_epic
+    type: branch
+    path: has_epic
+    cases:
+      "yes": reset_write_epic_resolve
+      "no": reset_reconcile_resolve
+    default: reset_reconcile_resolve
+
+  # Seed the resolver-retry budget once per epic entry (not on the await_write_epic
+  # loop-back, which re-enters write_epic directly to preserve the budget across
+  # rework attempts within the same epic).
+  - id: reset_write_epic_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "write_epic_resolve_count"
+    outputs:
+      - key: write_epic_resolve_count
+    next: write_epic
+
+  # ── 2a. WRITE EPIC (epic.md narrative + ## Seeds via ostler seed add) ──────────────
+  - id: write_epic
+    type: agent
+    power: high
+    prompt: prompts/write-epic.md
+    args:
+      epic: "{{ epic }}"
+      epic_dir: "{{ epic_dir }}"
+      backlog: "{{ backlog }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+    outputs:
+      - key: write_epic_result
+    next: decide_write_epic
+
+  - id: decide_write_epic
+    type: branch
+    path: write_epic_result.status
+    cases:
+      complete: reset_cov_rework
+      blocked: gate_write_epic
+    default: reset_cov_rework
+
+  - id: gate_write_epic
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_write_epic
+      auto: guard_write_epic_resolve
+    default: guard_write_epic_resolve
+
+  # Bounded retry: once the resolver has already had max_write_epic_resolves (== 2)
+  # attempts at this block without write_epic converging, stop trusting it further
+  # and force human escalation instead of looping forever.
+  - id: guard_write_epic_resolve
+    type: branch
+    path: write_epic_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_write_epic_resolves; literal so no Jinja in branch
+        next: await_write_epic
+    default: resolve_write_epic
+
+  - id: resolve_write_epic
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epic_dir }}/context.md"
+      epic_dir: "{{ epic_dir }}"
+      block_stage: "write-epic"
+      block_notes: "{{ write_epic_result.notes }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: incr_write_epic_resolve
+
+  - id: incr_write_epic_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "write_epic_resolve_count"
+      - "{{ write_epic_resolve_count.value }}"
+    outputs:
+      - key: write_epic_resolve_count
+    next: await_write_epic
+
+  - id: await_write_epic
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epic_dir }}/context.md"
+      - "{{ write_epic_result.notes }}"
+    outputs:
+      - key: operator_input
+    next: write_epic
+
+  # ── 2b. STORY SPLIT (epic.md ## Stories DAG via ostler create story) ───────────────
+  - id: reset_cov_rework
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "cov_rework_count"
+    outputs:
+      - key: cov_rework_count
+    next: reset_split_resolve
+
+  # Seed the resolver-retry budget once per epic entry (not on the guard_coverage/
+  # await_coverage loop-backs into split_stories, which are a different loop).
+  - id: reset_split_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "split_resolve_count"
+    outputs:
+      - key: split_resolve_count
+    next: split_stories
+
+  - id: split_stories
+    type: agent
+    power: high
+    prompt: prompts/split-stories.md
+    args:
+      epic: "{{ epic }}"
+      epic_dir: "{{ epic_dir }}"
+    outputs:
+      - key: split_result
+    next: decide_split
+
+  - id: decide_split
+    type: branch
+    path: split_result.status
+    cases:
+      complete: select_story
+      blocked: gate_split
+    default: select_story
+
+  - id: gate_split
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_split
+      auto: guard_split_resolve
+    default: guard_split_resolve
+
+  # Bounded retry: once the resolver has already had max_split_resolves (== 2)
+  # attempts at this block without split_stories converging, stop trusting it
+  # further and force human escalation instead of looping forever.
+  - id: guard_split_resolve
+    type: branch
+    path: split_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_split_resolves; literal so no Jinja in branch
+        next: await_split
+    default: resolve_split
+
+  - id: resolve_split
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epic_dir }}/context.md"
+      epic_dir: "{{ epic_dir }}"
+      block_stage: "story-split"
+      block_notes: "{{ split_result.notes }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: incr_split_resolve
+
+  - id: incr_split_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "split_resolve_count"
+      - "{{ split_resolve_count.value }}"
+    outputs:
+      - key: split_resolve_count
+    next: await_split
+
+  - id: await_split
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epic_dir }}/context.md"
+      - "{{ split_result.notes }}"
+    outputs:
+      - key: operator_input
+    next: split_stories
+
+  # ── 2c. PER-STORY LOOP ────────────────────────────────────────────────────────────
+  - id: select_story
+    type: script
+    script: scripts/select-story.py
+    args:
+      - "{{ epic_dir }}"
+    outputs:
+      - key: has_story
+      - key: story_path
+      - key: story_slug
+      - key: story_dir
+      - key: reason
+    next: decide_story
+
+  - id: decide_story
+    type: branch
+    path: has_story
+    cases:
+      "yes": reset_story_rework
+      "no": validate_coverage
+    default: validate_coverage
+
+  - id: reset_story_rework
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "story_rework_count"
+    outputs:
+      - key: story_rework_count
+    next: reset_write_story_resolve
+
+  # Seed the resolver-retry budget once per story entry (not on the
+  # await_write_story loop-back, which re-enters write_story directly to preserve
+  # the budget across rework attempts within the same story).
+  - id: reset_write_story_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "write_story_resolve_count"
+    outputs:
+      - key: write_story_resolve_count
+    next: gather_knowledge
+
+  # ── Gather surface knowledge (the durable, accumulating source of derived truth) ──
+  # Before writing the story, observe the surface by interaction + code (NOT screenshots)
+  # and write/enrich its two-sided old↔new record under cfg.knowledge_dir, classifying the
+  # gaps that become the story's scope. Idempotent + resumable. Advisory in the graph: it
+  # always flows on to write_story (a genuinely unreachable surface is recorded via openGaps
+  # and escalated by write_story's own `blocked` path, not here).
+  - id: gather_knowledge
+    type: agent
+    power: high
+    prompt: prompts/gather-surface-knowledge.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+      features_dir: "{{ cfg.features_dir }}"
+      surface_manifest: "{{ cfg.surface_manifest }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+    outputs:
+      - key: gather_result
+    next: reset_knowledge_fix
+
+  # Reset the bounded YAML-repair budget before validating, so a malformed record gets a
+  # small, finite number of fix attempts (knowledge_fix below) and never loops forever.
+  - id: reset_knowledge_fix
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "knowledge_fix_count"
+    outputs:
+      - key: knowledge_fix_count
+    next: validate_knowledge
+
+  - id: validate_knowledge
+    type: script
+    script: scripts/validate-knowledge.py
+    args:
+      - "{{ gather_result.record }}"
+    outputs:
+      - key: knowledge_ok
+      - key: knowledge_errors
+    next: decide_knowledge
+
+  # Advisory gate: a structurally-valid record proceeds; an invalid one (the common case being a
+  # malformed YAML front-matter that the gather agent wrote) is routed to a bounded repair loop
+  # instead of being ignored — or, before the script fix below, crashing the whole run. "skip"
+  # (no record produced) and "yes" both flow straight on; only "no" attempts a fix.
+  - id: decide_knowledge
+    type: branch
+    path: knowledge_ok
+    cases:
+      "no": guard_knowledge_fix
+    default: design_mockup # "yes" or "skip" → proceed
+
+  # Bound the repair loop. A YAML/structural fix is mechanical and should converge in one or two
+  # passes; if it still does not validate after the budget is spent, proceed anyway (this stage is
+  # advisory — write_story reads the record as text and the operator gates downstream still apply).
+  - id: guard_knowledge_fix
+    type: branch
+    path: knowledge_fix_count.value
+    conditions:
+      - op: ">="
+        value: "2" # small dedicated cap; a syntax repair should not need more
+        next: design_mockup
+    default: fix_knowledge
+
+  # Ask a model to repair the knowledge record so it parses + validates, preserving all content.
+  - id: fix_knowledge
+    type: agent
+    power: high
+    prompt: prompts/fix-knowledge.md
+    args:
+      record_path: "{{ gather_result.record }}"
+      knowledge_errors: "{{ knowledge_errors }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+    outputs:
+      - key: fix_knowledge_result
+        default: { status: "fixed" }
+    next: incr_knowledge_fix
+
+  - id: incr_knowledge_fix
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "knowledge_fix_count"
+      - "{{ knowledge_fix_count.value }}"
+    outputs:
+      - key: knowledge_fix_count
+    next: validate_knowledge
+
+  # ── Design a mockup for a genuinely new screen (greenfield only) ───────────────────
+  # When the gathered record marks a new surface (a missing/new component for which no
+  # built screen exists), produce a visual reference in the app's style using the
+  # superdesign skill (HTML written under cfg.mockup_dir), and return its path so
+  # write_story can link it. For a story on an EXISTING surface (an already-built screen)
+  # this is a pass-through no-op. Advisory: always flows on to write_story — a
+  # missing/failed mockup must not block authoring (write_story falls back to the
+  # feature doc).
+  - id: design_mockup
+    type: agent
+    power: high
+    prompt: prompts/design-mockup.md
+    args:
+      epic: "{{ epic }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_record: "{{ gather_result.record }}"
+      features_dir: "{{ cfg.features_dir }}"
+      surface_manifest: "{{ cfg.surface_manifest }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+    outputs:
+      - key: mockup_result
+    next: write_story
+
+  - id: write_story
+    type: agent
+    power: high
+    prompt: prompts/write-story.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+      knowledge_record: "{{ gather_result.record }}"
+      features_dir: "{{ cfg.features_dir }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+      mockup_path: "{{ mockup_result.mockup }}"
+    outputs:
+      - key: write_story_result
+    next: decide_write_story
+
+  - id: decide_write_story
+    type: branch
+    path: write_story_result.status
+    cases:
+      written: validate_story
+      blocked: gate_write_story
+    default: validate_story
+
+  # Operator-mode switch for the per-story write gate (mirrors gate_split/gate_coverage).
+  # In "auto" (default) a high-effort resolver answers the block into the story's
+  # context.md; in "human" the original halt-and-wait await runs. Reached on a
+  # write_story `blocked` and on a non-converging story rework loop (guard_story).
+  - id: gate_write_story
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_write_story
+      auto: guard_write_story_resolve
+    default: guard_write_story_resolve
+
+  # Bounded retry: once the resolver has already had max_write_story_resolves (== 2)
+  # attempts at this block without write_story converging, stop trusting it further
+  # and force human escalation instead of looping forever.
+  - id: guard_write_story_resolve
+    type: branch
+    path: write_story_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_write_story_resolves; literal so no Jinja in branch
+        next: await_write_story
+    default: resolve_write_story
+
+  # Auto-operator for a per-story write block. Writes the answer into the story's
+  # context.md (STATUS: ANSWERED) — or STATUS: AWAITING_OPERATOR to escalate — then
+  # flows into await_write_story, which consumes an answered file and proceeds, or
+  # halts on an awaiting one (the human fallback). block_notes falls back to the
+  # validator's story_errors for the guard-after-reworks entry path, where the write
+  # agent's own notes may be stale.
+  - id: resolve_write_story
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ story_dir }}/context.md"
+      epic_dir: "{{ epic_dir }}"
+      block_stage: "write-story"
+      block_notes: "{{ write_story_result.notes or story_errors }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: incr_write_story_resolve
+
+  - id: incr_write_story_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "write_story_resolve_count"
+      - "{{ write_story_resolve_count.value }}"
+    outputs:
+      - key: write_story_resolve_count
+    next: await_write_story
+
+  - id: await_write_story
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ story_dir }}/context.md"
+      # write_story `blocked` notes; fall back to the validator's errors for the
+      # guard-after-reworks entry path, where the write agent's notes may be stale.
+      - "{{ write_story_result.notes or story_errors }}"
+      - "story_rework_count"
+    outputs:
+      - key: operator_input
+      - key: story_rework_count
+    next: write_story
+
+  - id: validate_story
+    type: script
+    script: scripts/validate-story.py
+    args:
+      - "{{ story_dir }}"
+    outputs:
+      - key: story_ok
+      - key: story_errors
+    next: decide_validate_story
+
+  - id: decide_validate_story
+    type: branch
+    path: story_ok
+    cases:
+      "yes": check_story_grounding # structural pass → grounding gate → adversarial audit
+      "no": guard_story
+    default: guard_story
+
+  # ── Grounding gate + adversarial audit (author analog of coder's verify_qa → audit_qa) ──
+  # The structural validator proved the story IS a coder-ready contract; it cannot prove the
+  # story is GROUNDED or that its ACs are buildable/verifiable. Two more independent judges,
+  # exactly like the coder QA stage: a cheap deterministic grounding gate, then a skeptical
+  # auditor that tries to refute coder-readiness. A failure on either re-enters the existing
+  # bounded story rework loop (guard_story → rework_story → … → validate_story), escalating to
+  # the existing operator gate after max_reworks. No new counter, no new operator gate.
+  - id: check_story_grounding
+    type: script
+    script: scripts/check-story-grounding.py
+    args:
+      - "{{ story_dir }}"
+      - "{{ epic_dir }}"
+      - "{{ cfg.knowledge_dir }}"
+      - "{{ cfg.features_dir }}"
+    outputs:
+      - key: story_grounding_ok
+      - key: story_grounding_errors
+    next: decide_story_grounding
+
+  - id: decide_story_grounding
+    type: branch
+    path: story_grounding_ok
+    cases:
+      "yes": audit_story
+      "no": guard_story
+    default: guard_story
+
+  - id: audit_story
+    type: agent
+    power: high
+    prompt: prompts/audit-story.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_record: "{{ gather_result.record }}"
+      features_dir: "{{ cfg.features_dir }}"
+    outputs:
+      - key: audit_result
+        default: { status: "passed" }
+    next: decide_story_audit
+
+  - id: decide_story_audit
+    type: branch
+    path: audit_result.status
+    cases:
+      passed: check_story_feedback # upheld — poll operator feedback before next story
+      failed: guard_story # refuted — rework (bounded), then re-validate → re-ground → re-audit
+    default: check_story_feedback
+
+  - id: guard_story
+    type: branch
+    path: story_rework_count.value
+    conditions:
+      - op: ">="
+        value: "3" # == vars.max_reworks; literal so no Jinja in branch
+        next: gate_write_story
+    default: record_attempt
+
+  # Append this failed attempt to the story's durable attempts ledger and emit the full
+  # ledger, so rework reads the negative constraints ("these approaches already failed —
+  # don't repeat them") instead of only the latest error. File-native (a tracked markdown
+  # file), never halts. The failure note is whichever gate failed this pass.
+  - id: record_attempt
+    type: script
+    script: scripts/ledger.py
+    args:
+      - "{{ story_dir }}/attempts.md"
+      - "{{ story_rework_count.value }}"
+      - "{{ story_errors or audit_result.notes or story_grounding_errors }}"
+    outputs:
+      - key: prior_attempts
+      - key: ledger
+    next: rework_story
+
+  - id: rework_story
+    type: agent
+    power: high
+    prompt: prompts/rework-story.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+      knowledge_record: "{{ gather_result.record }}"
+      features_dir: "{{ cfg.features_dir }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+      # The rework worklist: validator errors, else the story auditor's refutations, else
+      # the grounding-gate failures — whichever failed this pass (same fall-back idiom as
+      # resolve_write_story.block_notes).
+      validation_errors: "{{ story_errors or audit_result.notes or story_grounding_errors }}"
+      # Negative constraints from earlier failed attempts (the attempts ledger) — don't repeat them.
+      prior_attempts: "{{ prior_attempts }}"
+    outputs:
+      - key: write_story_result
+    next: incr_story
+
+  - id: incr_story
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "story_rework_count"
+      - "{{ story_rework_count.value }}"
+    outputs:
+      - key: story_rework_count
+    next: validate_story
+
+  # ── Non-blocking operator-feedback checkpoint (per story) ─────────────────────────
+  # The story passed validation. Before advancing to
+  # the next story, poll <story_dir>/feedback.md for human feedback dropped while the run
+  # was busy. NEVER halts: with feedback it routes ONE rework pass through rework-story
+  # (with the feedback as required changes) then re-validates; with none it advances.
+  # check_feedback.py marks the inbox CONSUMED on read, so each drop reworks once.
+  - id: check_story_feedback
+    type: script
+    script: scripts/check_feedback.py
+    args:
+      - "{{ story_dir }}/feedback.md"
+    outputs:
+      - key: feedback
+    next: decide_story_feedback
+
+  - id: decide_story_feedback
+    type: branch
+    path: feedback.present
+    cases:
+      "yes": apply_story_feedback # operator left feedback — rework once, then re-validate
+      "no": detect_okf # no feedback — emit the OKF surface skeleton (if any), then advance
+    default: detect_okf
+
+  # ── Document the surface (OKF UI profile, design time) ────────────────────────────
+  # The story is approved. If it describes a user-facing surface/concept, emit or refresh
+  # its OKF UI-profile skeleton from the story's intent (Playbook A) so the coder inherits
+  # a target graph. Gated by detect_okf so it only fires where docs are ostler-managed;
+  # fail-soft everywhere else (author runs on many non-OKF repos). Never halts.
+  - id: detect_okf
+    type: script
+    script: scripts/detect-okf-docs.py
+    args:
+      - "{{ cfg.repo_root }}"
+      - "{{ cfg.features_dir }}"
+    outputs:
+      - key: has_okf
+      - key: features_root
+    next: decide_okf
+
+  - id: decide_okf
+    type: branch
+    path: has_okf
+    cases:
+      "yes": document_surface
+      "no": decide_story_loop
+    default: decide_story_loop
+
+  - id: document_surface
+    type: agent
+    # medium: skeleton authoring from intent — no code to ground yet, lighter than write_story.
+    power: medium
+    prompt: prompts/document-surface.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_dir: "{{ story_dir }}"
+      story_slug: "{{ story_slug }}"
+      features_root: "{{ features_root }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+    outputs:
+      - key: doc_status
+        default: skipped
+    next: decide_story_loop
+
+  # The story passed and has no pending feedback. In epic mode, advance to the next
+  # story in the epic (today's behaviour). In story mode, this was the one story we
+  # were asked to author — prune its consumed backlog bullet and finish.
+  - id: decide_story_loop
+    type: branch
+    path: mode
+    cases:
+      epic: select_story
+      story: story_prune
+    default: select_story
+
+  # Story mode tail: best-effort remove the single consumed `[bullet_id]` from the
+  # backlog (only if it came from the backlog), then done. Never halts.
+  - id: story_prune
+    type: script
+    script: scripts/prune-bullet.py
+    args:
+      - "{{ backlog }}"
+      - "{{ bullet_id }}"
+      - "{{ from_backlog }}"
+    outputs:
+      - key: backlog_pruned
+    next: done
+
+  - id: apply_story_feedback
+    type: agent
+    power: high
+    prompt: prompts/rework-story.md
+    args:
+      epic: "{{ epic }}"
+      story_path: "{{ story_path }}"
+      story_slug: "{{ story_slug }}"
+      story_dir: "{{ story_dir }}"
+      knowledge_dir: "{{ cfg.knowledge_dir }}"
+      knowledge_record: "{{ gather_result.record }}"
+      features_dir: "{{ cfg.features_dir }}"
+      mockup_dir: "{{ cfg.mockup_dir }}"
+      validation_errors: "" # none — the operator feedback is the work
+      operator_feedback: "{{ feedback.content }}"
+    outputs:
+      - key: write_story_result
+    next: validate_story # re-validate
+
+  # ── 2d. VALIDATE EPIC COVERAGE ────────────────────────────────────────────────────
+  # First the deterministic check (every seed item covered, acyclic deps, slug==folder,
+  # paths exist), then an LLM adequacy judge ("not too few / too coarse"). Either failing
+  # routes through the bounded guard back to split_stories to add/refine stories.
+  - id: validate_coverage
+    type: script
+    script: scripts/validate-epic-coverage.py
+    args:
+      - "{{ epic_dir }}"
+      - "{{ cfg.knowledge_dir }}"
+      - "{{ backlog }}"
+    outputs:
+      - key: coverage_ok
+      - key: coverage_errors
+    next: decide_coverage_validate
+
+  - id: decide_coverage_validate
+    type: branch
+    path: coverage_ok
+    cases:
+      "yes": review_coverage
+      "no": guard_coverage
+    default: guard_coverage
+
+  - id: review_coverage
+    type: agent
+    power: high
+    prompt: prompts/review-coverage.md
+    args:
+      epic: "{{ epic }}"
+      epic_dir: "{{ epic_dir }}"
+    outputs:
+      - key: coverage_result
+    next: decide_coverage_review
+
+  - id: decide_coverage_review
+    type: branch
+    path: coverage_result.status
+    cases:
+      ok: prune_backlog # epic fully authored — prune its bullets, then next epic
+      gaps: guard_coverage
+      blocked: gate_coverage
+    default: guard_coverage
+
+  # Epic fully authored: remove its consumed bullets from the backlog so the file
+  # stays a live worklist (mirrors how coder prunes finished epics from docs/epics/index.md).
+  # Best-effort: matches each seed item's `sourceBullet` against backlog lines; a
+  # failure to write never halts the run.
+  - id: prune_backlog
+    type: script
+    script: scripts/prune-backlog.py
+    args:
+      - "{{ backlog }}"
+      - "{{ epic_dir }}"
+    outputs:
+      - key: backlog_pruned
+    next: select_epic
+
+  - id: guard_coverage
+    type: branch
+    path: cov_rework_count.value
+    conditions:
+      - op: ">="
+        value: "3" # == vars.max_reworks; literal so no Jinja in branch
+        next: gate_coverage
+    default: incr_cov
+
+  - id: incr_cov
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "cov_rework_count"
+      - "{{ cov_rework_count.value }}"
+    outputs:
+      - key: cov_rework_count
+    next: split_stories
+
+  - id: gate_coverage
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_coverage
+      auto: resolve_coverage
+    default: resolve_coverage
+
+  - id: resolve_coverage
+    type: agent
+    power: high
+    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epic_dir }}/context.md"
+      epic_dir: "{{ epic_dir }}"
+      block_stage: "coverage"
+      block_notes: "{{ coverage_result.notes or coverage_errors }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: await_coverage
+
+  - id: await_coverage
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epic_dir }}/context.md"
+      # The blocking question comes from the review agent (coverage_result.notes);
+      # fall back to the deterministic validator's errors for the guard-after-reworks
+      # entry path, where the review may not have run this iteration.
+      - "{{ coverage_result.notes or coverage_errors }}"
+      - "cov_rework_count"
+    outputs:
+      - key: operator_input
+      - key: cov_rework_count
+    next: split_stories
+
+  # ── 3. WRITE-TIME RECONCILIATION GATE (scope-drop vs git baseline) ────────────────
+  # Catches what the integrity gate can't: a clean removal — a seed item / story this run
+  # silently dropped vs the last committed version, with no dangling ref left behind (the
+  # "dropped scope" / forgot-its-own-prior-self failure). Drops block and route to the
+  # operator to confirm intentional (record the disposition) or restore; additions never
+  # block. Skips cleanly when there is no git baseline (a brand-new epic / non-git repo).
+  - id: reset_reconcile_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "reconcile_resolve_count"
+    outputs:
+      - key: reconcile_resolve_count
+    next: verify_reconcile
+
+  - id: verify_reconcile
+    type: script
+    script: scripts/reconcile-artifacts.py
+    args:
+      - "{{ epics_dir }}"
+      - "" # baseline ref (default HEAD = last committed)
+    outputs:
+      - key: reconcile_ok
+      - key: reconcile_errors
+      - key: reconcile_report
+    next: decide_reconcile
+
+  - id: decide_reconcile
+    type: branch
+    path: reconcile_ok
+    cases:
+      "no": gate_reconcile
+    default: reset_integrity_resolve # "yes" / "skip" → proceed to the integrity gate
+
+  - id: gate_reconcile
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_reconcile
+      auto: guard_reconcile_resolve
+    default: guard_reconcile_resolve
+
+  # Bounded retry: once the resolver has already had max_reconcile_resolves (== 2)
+  # attempts at fixing-and-rechecking this gate without converging, stop trusting it
+  # further and force human escalation instead of looping forever.
+  - id: guard_reconcile_resolve
+    type: branch
+    path: reconcile_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_reconcile_resolves; literal so no Jinja in branch
+        next: await_reconcile
+    default: resolve_reconcile
+
+  # Auto-operator for a scope-drop: investigate whether each removed entity was meant to go
+  # (record the disposition/reason) or is a regression to restore. Uses the generic resolver,
+  # then flows into decide_reconcile_resolve, which re-verifies the fix via verify_reconcile
+  # rather than trusting the resolver's own say-so.
+  - id: resolve_reconcile
+    type: agent
+    power: high
+    timeout: infinity
+    prompt: prompts/resolve-operator.md
+    args:
+      context_path: "{{ epics_dir }}/_author-context.md"
+      epic_dir: "{{ epics_dir }}"
+      block_stage: "reconciliation"
+      block_notes: "{{ reconcile_errors }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: decide_reconcile_resolve
+
+  # An "escalated" resolver decision means the resolver itself gave up on this pass —
+  # skip the recheck and go straight to the human gate rather than re-running
+  # verify_reconcile on an unchanged state.
+  - id: decide_reconcile_resolve
+    type: branch
+    path: resolve_status.decision
+    cases:
+      escalated: await_reconcile
+    default: incr_reconcile_resolve
+
+  - id: incr_reconcile_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "reconcile_resolve_count"
+      - "{{ reconcile_resolve_count.value }}"
+    outputs:
+      - key: reconcile_resolve_count
+    next: verify_reconcile # loop back to the SAME deterministic check
+
+  - id: await_reconcile
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epics_dir }}/_author-context.md"
+      - "{{ reconcile_errors }}"
+    outputs:
+      - key: operator_input
+    next: reset_integrity_resolve
+
+  # ── 4. REFERENTIAL-INTEGRITY GATE (ostler doctor) ─────────────────────────────────
+  # Mechanical cross-run drift check over the whole planning-doc graph: dangling gap
+  # owners, cross-epic seed/dependency refs, orphan seeds, dangling tags/paths — the
+  # "AI forgot what it created itself" class the coverage gates don't catch. Error-level
+  # findings block and route to the operator/resolver, which reconciles via `ostler edit`
+  # (set-owner / relink / rename) and is forbidden from deleting refs to go green;
+  # warnings never block. Skips cleanly if ostler isn't installed (opt-in by presence).
+  # One-shot operator (like the surface-coverage gate): the resolver self-verifies with
+  # `ostler doctor` before finishing, then the run proceeds to final artifact validation.
+  - id: reset_integrity_resolve
+    type: script
+    script: scripts/init_counter.py
+    args:
+      - "integrity_resolve_count"
+    outputs:
+      - key: integrity_resolve_count
+    next: verify_integrity
+
+  - id: verify_integrity
+    type: script
+    script: scripts/ostler-doctor.py
+    args:
+      - "" # whole graph (no epic filter) — validate everything the run produced
+    outputs:
+      - key: integrity_ok
+      - key: integrity_errors
+      - key: integrity_report
+    next: decide_integrity
+
+  - id: decide_integrity
+    type: branch
+    path: integrity_ok
+    cases:
+      "no": gate_integrity
+    default: validate_artifacts # "yes" / "skip" → proceed to final validation
+
+  - id: gate_integrity
+    type: branch
+    path: operator_mode
+    cases:
+      human: await_integrity
+      auto: guard_integrity_resolve
+    default: guard_integrity_resolve
+
+  # Bounded retry: once the resolver has already had max_integrity_resolves (== 2)
+  # attempts at fixing-and-rechecking this gate without converging, stop trusting it
+  # further and force human escalation instead of looping forever.
+  - id: guard_integrity_resolve
+    type: branch
+    path: integrity_resolve_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_integrity_resolves; literal so no Jinja in branch
+        next: await_integrity
+    default: resolve_integrity
+
+  # Auto-operator for the integrity block. Reconciles each graph break with `ostler edit`
+  # (never by deleting a reference), records the resolution in _author-context.md, or
+  # escalates a break whose real target genuinely does not exist. Flows into
+  # decide_integrity_resolve, which re-verifies via `ostler doctor` (verify_integrity)
+  # rather than trusting the resolver's own self-check alone.
+  - id: resolve_integrity
+    type: agent
+    power: high
+    # Unbounded: open-ended reconciliation work that must not be cut off mid-fix.
+    timeout: infinity
+    prompt: prompts/resolve-integrity.md
+    args:
+      context_path: "{{ epics_dir }}/_author-context.md"
+      epics_dir: "{{ epics_dir }}"
+      integrity_errors: "{{ integrity_errors }}"
+    outputs:
+      - key: resolve_status
+        default: { decision: "answered" }
+    next: decide_integrity_resolve
+
+  # An "escalated" resolver decision means the resolver itself gave up on this pass —
+  # skip the recheck and go straight to the human gate rather than re-running
+  # verify_integrity (ostler doctor) on an unchanged state.
+  - id: decide_integrity_resolve
+    type: branch
+    path: resolve_status.decision
+    cases:
+      escalated: await_integrity
+    default: incr_integrity_resolve
+
+  - id: incr_integrity_resolve
+    type: script
+    script: scripts/incr_counter.py
+    args:
+      - "integrity_resolve_count"
+      - "{{ integrity_resolve_count.value }}"
+    outputs:
+      - key: integrity_resolve_count
+    next: verify_integrity # loop back to the SAME deterministic check
+
+  # On-demand operator gate: records the integrity errors in _author-context.md and halts
+  # for a human (human mode); in auto mode the resolver has already answered and the fix
+  # has been re-verified by the guard loop above, so this reads the answer and proceeds.
+  # It does not loop back to re-run ostler doctor itself — final validate_artifacts is
+  # still the backstop for whatever the resolver/human path leaves behind.
+  - id: await_integrity
+    type: script
+    script: scripts/await-operator.py
+    args:
+      - "{{ epics_dir }}/_author-context.md"
+      - "{{ integrity_errors }}"
+    outputs:
+      - key: operator_input
+    next: validate_artifacts
+
+  # ── 5. FINAL VALIDATION ───────────────────────────────────────────────────────────
+  - id: validate_artifacts
+    type: script
+    script: scripts/validate-artifacts.py
+    args:
+      - "{{ epics_dir }}"
+    outputs:
+      - key: artifacts_ok
+      - key: artifacts_errors
+    next: decide_artifacts
+
+  - id: decide_artifacts
+    type: branch
+    path: artifacts_ok
+    cases:
+      "yes": commit_author
+      "no": author_failed
+    default: author_failed
+
+  # ── 6. GIT: commit the authored docs and open a PR ────────────────────────────────
+  # A successful, validated run always ends in an open PR instead of leaving the
+  # work on a local branch inside the container. Single repo only (see branch_author).
+  - id: commit_author
+    type: script
+    script: scripts/commit-author.py
+    args:
+      - "{{ mode }}"
+      - "{{ epic }}"
+      - "{{ bullet }}"
+    outputs:
+      - key: committed
+    next: open_author_pr
+
+  - id: open_author_pr
+    type: script
+    script: scripts/open-author-pr.py
+    args:
+      - "{{ get_node_output('branch_author', 'base_branch') }}"
+      - "{{ get_node_output('branch_author', 'author_branch') }}"
+      - "{{ mode }}"
+      - "{{ epic }}"
+      - "{{ bullet }}"
+    outputs:
+      - key: author_pr
+      - key: pr_url
+    next: done
+
+  - id: done
+    type: terminal
+
+  - id: author_failed
+    type: fail
+
+flows:
+  # ── parity-surveyor: baseline inventory vs current OKF book ───────────────────────
+  # Reuses surveyor's frozen inventory and one-unit-at-a-time assessment mechanics, but emits
+  # one backlog bullet per uncovered baseline surface instead of creating knowledge/gap nodes or
+  # clustering several surfaces into one synthetic finding.
+  parity-surveyor:
+    name: parity-surveyor
+    start: parity_load_config
+    vars:
+      baseline_inventory: null
+      target_features: "docs/features"
+      survey_dir: "docs/survey/legacy-vs-new"
+      backlog: "docs/backlog.md"
+      epics_dir: "docs/epics"
+    nodes:
+      - id: parity_load_config
+        type: script
+        script: surveyor/scripts/load-parity-config.py
+        args:
+          - "{{ baseline_inventory }}"
+          - "{{ target_features }}"
+          - "{{ survey_dir }}"
+          - "{{ backlog }}"
+          - "{{ epics_dir }}"
+        outputs:
+          - key: cfg
+        next: parity_expand_inventory
+
+      - id: parity_expand_inventory
+        type: script
+        script: surveyor/scripts/expand-parity-inventory.py
+        args:
+          - "{{ cfg.baseline_inventory }}"
+          - "{{ cfg.inventory }}"
+        outputs:
+          - key: expand_ok
+          - key: expand_errors
+          - key: unit_count
+          - key: inventory_note
+        next: parity_decide_expand
+
+      - id: parity_decide_expand
+        type: branch
+        path: expand_ok
+        cases:
+          "yes": parity_select_unit
+        default: parity_failed
+
+      - id: parity_select_unit
+        type: script
+        script: surveyor/scripts/select-next-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.findings_dir }}"
+        outputs:
+          - key: has_unit
+          - key: unit_id
+          - key: unit_path
+          - key: unit_kind
+          - key: record_path
+          - key: reason
+        refuel: unit_id
+        next: parity_decide_unit
+
+      - id: parity_decide_unit
+        type: branch
+        path: has_unit
+        cases:
+          "yes": parity_assess_unit
+          "no": parity_verify_records
+        default: parity_verify_records
+
+      - id: parity_assess_unit
+        type: agent
+        power: medium
+        prompt: surveyor/prompts/assess-parity-unit.md
+        args:
+          unit_id: "{{ unit_id }}"
+          unit_path: "{{ unit_path }}"
+          unit_kind: "{{ unit_kind }}"
+          record_path: "{{ record_path }}"
+          baseline_inventory: "{{ cfg.baseline_inventory }}"
+          target_features: "{{ cfg.target_features }}"
+          backlog: "{{ cfg.backlog }}"
+          epics_dir: "{{ cfg.epics_dir }}"
+        outputs:
+          - key: assess_result
+            default: { status: "assessed" }
+        next: parity_validate_record
+
+      - id: parity_validate_record
+        type: script
+        script: surveyor/scripts/validate-record.py
+        args:
+          - "{{ record_path }}"
+          - "{{ unit_id }}"
+        outputs:
+          - key: record_ok
+          - key: record_errors
+        next: parity_decide_record
+
+      - id: parity_decide_record
+        type: branch
+        path: record_ok
+        cases:
+          "yes": parity_mark_unit
+        default: parity_failed
+
+      - id: parity_mark_unit
+        type: script
+        script: surveyor/scripts/mark-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ unit_id }}"
+          - "{{ record_path }}"
+          - ""
+        outputs:
+          - key: marked
+          - key: unit_status
+          - key: mark_note
+        next: parity_select_unit
+
+      - id: parity_verify_records
+        type: script
+        script: surveyor/scripts/verify-records.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.findings_dir }}"
+          - ""
+        outputs:
+          - key: verify_ok
+          - key: verify_errors
+          - key: verify_report
+        next: parity_decide_verify
+
+      - id: parity_decide_verify
+        type: branch
+        path: verify_ok
+        cases:
+          "yes": parity_emit_artifacts
+        default: parity_failed
+
+      - id: parity_emit_artifacts
+        type: script
+        script: surveyor/scripts/emit-parity-backlog.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.findings_dir }}"
+          - "{{ cfg.backlog }}"
+          - "{{ cfg.unit_manifest }}"
+        outputs:
+          - key: emit_ok
+          - key: emit_errors
+          - key: bullet_count
+          - key: emit_note
+        next: parity_done
+
+      - id: parity_done
+        type: terminal
+
+      - id: parity_failed
+        type: fail
+
+  # ── surveyor: exhaustive discovery intake for complex authoring bullets ─────────
+  # This flow lives under author because its output is not a separate deliverable. It
+  # emits author's existing input contract: generated backlog bullets plus a unit
+  # manifest consumed by verify_surface_coverage in full mode.
+  surveyor:
+    name: surveyor
+    start: load_config
+    vars:
+      rubric: "docs/survey/rubric.md"
+      survey_dir: "docs/survey"
+      backlog: "docs/backlog.md"
+      max_plan_reworks: "2"
+      max_record_fixes: "2"
+      max_partition_reworks: "3"
+      max_verify_resolves: "2"
+      operator_mode: "auto"
+      cfg: ""
+      expand_errors: ""
+      record_errors: ""
+      split_errors: ""
+      partition_errors: ""
+    nodes:
+      - id: load_config
+        type: script
+        script: surveyor/scripts/load-config.py
+        args:
+          - "{{ rubric }}"
+          - "{{ survey_dir }}"
+          - "{{ backlog }}"
+        outputs:
+          - key: cfg
+        next: check_inventory
+
+      - id: check_inventory
+        type: script
+        script: surveyor/scripts/check-inventory.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.rules }}"
+        outputs:
+          - key: needs_plan
+          - key: check_note
+        next: reset_plan_rework
+
+      - id: reset_plan_rework
+        type: script
+        script: surveyor/scripts/init_counter.py
+        args:
+          - "plan_rework_count"
+        outputs:
+          - key: plan_rework_count
+        next: decide_plan
+
+      - id: decide_plan
+        type: branch
+        path: needs_plan
+        cases:
+          "yes": plan_units
+        default: expand_inventory
+
+      - id: plan_units
+        type: agent
+        power: high
+        prompt: surveyor/prompts/plan-units.md
+        args:
+          rubric: "{{ cfg.rubric }}"
+          rules_path: "{{ cfg.rules }}"
+          survey_dir: "{{ cfg.survey_dir }}"
+          context_path: "{{ cfg.context }}"
+          plan_errors: "{{ expand_errors }}"
+        outputs:
+          - key: plan_result
+            default: { status: "complete" }
+        next: decide_plan_result
+
+      - id: decide_plan_result
+        type: branch
+        path: plan_result.status
+        cases:
+          blocked: gate_plan
+        default: expand_inventory
+
+      - id: expand_inventory
+        type: script
+        script: surveyor/scripts/expand-inventory.py
+        args:
+          - "{{ cfg.rules }}"
+          - "{{ cfg.inventory }}"
+        outputs:
+          - key: expand_ok
+          - key: expand_errors
+          - key: unit_count
+          - key: inventory_note
+        next: decide_expand
+
+      - id: decide_expand
+        type: branch
+        path: expand_ok
+        cases:
+          "yes": reset_verify_resolve
+        default: guard_plan
+
+      - id: guard_plan
+        type: branch
+        path: plan_rework_count.value
+        conditions:
+          - op: ">="
+            value: "2"
+            next: gate_plan
+        default: incr_plan
+
+      - id: incr_plan
+        type: script
+        script: surveyor/scripts/incr_counter.py
+        args:
+          - "plan_rework_count"
+          - "{{ plan_rework_count.value }}"
+        outputs:
+          - key: plan_rework_count
+        next: plan_units
+
+      - id: gate_plan
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_plan
+          auto: resolve_plan
+        default: resolve_plan
+
+      - id: resolve_plan
+        type: agent
+        power: high
+        timeout: infinity
+        prompt: surveyor/prompts/resolve-operator.md
+        args:
+          context_path: "{{ cfg.context }}"
+          survey_dir: "{{ cfg.survey_dir }}"
+          block_stage: "plan-units"
+          block_notes: "{{ plan_result.notes or expand_errors }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: await_plan
+
+      - id: await_plan
+        type: script
+        script: surveyor/scripts/await-operator.py
+        args:
+          - "{{ cfg.context }}"
+          - "{{ plan_result.notes or expand_errors }}"
+          - "plan_rework_count"
+        outputs:
+          - key: operator_input
+          - key: plan_rework_count
+        next: plan_units
+
+      - id: reset_verify_resolve
+        type: script
+        script: surveyor/scripts/init_counter.py
+        args:
+          - "verify_resolve_count"
+        outputs:
+          - key: verify_resolve_count
+        next: select_unit
+
+      - id: select_unit
+        type: script
+        script: surveyor/scripts/select-next-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.findings_dir }}"
+        outputs:
+          - key: has_unit
+          - key: unit_id
+          - key: unit_path
+          - key: unit_kind
+          - key: record_path
+          - key: reason
+        refuel: unit_id
+        next: decide_unit
+
+      - id: decide_unit
+        type: branch
+        path: has_unit
+        cases:
+          "yes": reset_record_fix
+          "no": verify_records
+        default: verify_records
+
+      - id: reset_record_fix
+        type: script
+        script: surveyor/scripts/init_counter.py
+        args:
+          - "record_fix_count"
+        outputs:
+          - key: record_fix_count
+        next: assess_unit
+
+      - id: assess_unit
+        type: agent
+        power: medium
+        prompt: surveyor/prompts/assess-unit.md
+        args:
+          unit_id: "{{ unit_id }}"
+          unit_path: "{{ unit_path }}"
+          unit_kind: "{{ unit_kind }}"
+          record_path: "{{ record_path }}"
+          rubric: "{{ cfg.rubric }}"
+          context_path: "{{ cfg.context }}"
+        outputs:
+          - key: assess_result
+            default: { status: "assessed" }
+        next: decide_assess
+
+      - id: decide_assess
+        type: branch
+        path: assess_result.status
+        cases:
+          split: split_unit
+        default: validate_record
+
+      - id: split_unit
+        type: script
+        script: surveyor/scripts/split-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ unit_id }}"
+        outputs:
+          - key: split_ok
+          - key: children_count
+          - key: split_errors
+        next: decide_split
+
+      - id: decide_split
+        type: branch
+        path: split_ok
+        cases:
+          "yes": select_unit
+        default: mark_unit_unsplit
+
+      - id: mark_unit_unsplit
+        type: script
+        script: surveyor/scripts/mark-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ unit_id }}"
+          - "{{ record_path }}"
+          - "{{ split_errors }}"
+        outputs:
+          - key: marked
+          - key: unit_status
+          - key: mark_note
+        next: select_unit
+
+      - id: validate_record
+        type: script
+        script: surveyor/scripts/validate-record.py
+        args:
+          - "{{ record_path }}"
+          - "{{ unit_id }}"
+        outputs:
+          - key: record_ok
+          - key: record_errors
+        next: decide_record
+
+      - id: decide_record
+        type: branch
+        path: record_ok
+        cases:
+          "yes": mark_unit
+        default: guard_record_fix
+
+      - id: guard_record_fix
+        type: branch
+        path: record_fix_count.value
+        conditions:
+          - op: ">="
+            value: "2"
+            next: mark_unit_unfixable
+        default: fix_record
+
+      - id: fix_record
+        type: agent
+        power: medium
+        prompt: surveyor/prompts/fix-record.md
+        args:
+          record_path: "{{ record_path }}"
+          unit_id: "{{ unit_id }}"
+          record_errors: "{{ record_errors }}"
+        outputs:
+          - key: fix_record_result
+            default: { status: "fixed" }
+        next: incr_record_fix
+
+      - id: incr_record_fix
+        type: script
+        script: surveyor/scripts/incr_counter.py
+        args:
+          - "record_fix_count"
+          - "{{ record_fix_count.value }}"
+        outputs:
+          - key: record_fix_count
+        next: validate_record
+
+      - id: mark_unit
+        type: script
+        script: surveyor/scripts/mark-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ unit_id }}"
+          - "{{ record_path }}"
+          - ""
+        outputs:
+          - key: marked
+          - key: unit_status
+          - key: mark_note
+        next: select_unit
+
+      - id: mark_unit_unfixable
+        type: script
+        script: surveyor/scripts/mark-unit.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ unit_id }}"
+          - "{{ record_path }}"
+          - "{{ record_errors }}"
+        outputs:
+          - key: marked
+          - key: unit_status
+          - key: mark_note
+        next: select_unit
+
+      - id: verify_records
+        type: script
+        script: surveyor/scripts/verify-records.py
+        args:
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.findings_dir }}"
+          - ""
+        outputs:
+          - key: verify_ok
+          - key: verify_errors
+          - key: verify_report
+        next: decide_verify
+
+      - id: decide_verify
+        type: branch
+        path: verify_ok
+        cases:
+          "no": gate_verify
+        default: reset_partition_rework
+
+      - id: gate_verify
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_verify
+          auto: guard_verify_resolve
+        default: guard_verify_resolve
+
+      - id: guard_verify_resolve
+        type: branch
+        path: verify_resolve_count.value
+        conditions:
+          - op: ">="
+            value: "2"
+            next: await_verify
+        default: resolve_verify
+
+      - id: resolve_verify
+        type: agent
+        power: high
+        timeout: infinity
+        prompt: surveyor/prompts/resolve-operator.md
+        args:
+          context_path: "{{ cfg.context }}"
+          survey_dir: "{{ cfg.survey_dir }}"
+          block_stage: "survey-coverage"
+          block_notes: "{{ verify_errors }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: decide_verify_resolve
+
+      - id: decide_verify_resolve
+        type: branch
+        path: resolve_status.decision
+        cases:
+          escalated: await_verify
+        default: incr_verify_resolve
+
+      - id: incr_verify_resolve
+        type: script
+        script: surveyor/scripts/incr_counter.py
+        args:
+          - "verify_resolve_count"
+          - "{{ verify_resolve_count.value }}"
+        outputs:
+          - key: verify_resolve_count
+        next: select_unit
+
+      - id: await_verify
+        type: script
+        script: surveyor/scripts/await-operator.py
+        args:
+          - "{{ cfg.context }}"
+          - "{{ verify_errors }}"
+        outputs:
+          - key: operator_input
+        next: select_unit
+
+      - id: reset_partition_rework
+        type: script
+        script: surveyor/scripts/init_counter.py
+        args:
+          - "partition_rework_count"
+        outputs:
+          - key: partition_rework_count
+        next: partition_findings
+
+      - id: partition_findings
+        type: agent
+        power: high
+        prompt: surveyor/prompts/partition-findings.md
+        args:
+          findings_dir: "{{ cfg.findings_dir }}"
+          inventory: "{{ cfg.inventory }}"
+          partition_path: "{{ cfg.partition }}"
+          rubric: "{{ cfg.rubric }}"
+          context_path: "{{ cfg.context }}"
+          partition_errors: "{{ partition_errors }}"
+        outputs:
+          - key: partition_result
+            default: { status: "complete" }
+        next: decide_partition_agent
+
+      - id: decide_partition_agent
+        type: branch
+        path: partition_result.status
+        cases:
+          blocked: gate_partition
+        default: validate_partition
+
+      - id: validate_partition
+        type: script
+        script: surveyor/scripts/validate-partition.py
+        args:
+          - "{{ cfg.partition }}"
+          - "{{ cfg.inventory }}"
+        outputs:
+          - key: partition_ok
+          - key: partition_errors
+        next: decide_partition
+
+      - id: decide_partition
+        type: branch
+        path: partition_ok
+        cases:
+          "yes": emit_artifacts
+        default: guard_partition
+
+      - id: guard_partition
+        type: branch
+        path: partition_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3"
+            next: gate_partition
+        default: incr_partition
+
+      - id: incr_partition
+        type: script
+        script: surveyor/scripts/incr_counter.py
+        args:
+          - "partition_rework_count"
+          - "{{ partition_rework_count.value }}"
+        outputs:
+          - key: partition_rework_count
+        next: partition_findings
+
+      - id: gate_partition
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_partition
+          auto: resolve_partition
+        default: resolve_partition
+
+      - id: resolve_partition
+        type: agent
+        power: high
+        timeout: infinity
+        prompt: surveyor/prompts/resolve-operator.md
+        args:
+          context_path: "{{ cfg.context }}"
+          survey_dir: "{{ cfg.survey_dir }}"
+          block_stage: "partition"
+          block_notes: "{{ partition_result.notes or partition_errors }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: await_partition
+
+      - id: await_partition
+        type: script
+        script: surveyor/scripts/await-operator.py
+        args:
+          - "{{ cfg.context }}"
+          - "{{ partition_result.notes or partition_errors }}"
+          - "partition_rework_count"
+        outputs:
+          - key: operator_input
+          - key: partition_rework_count
+        next: partition_findings
+
+      - id: emit_artifacts
+        type: script
+        script: surveyor/scripts/emit-artifacts.py
+        args:
+          - "{{ cfg.partition }}"
+          - "{{ cfg.inventory }}"
+          - "{{ cfg.backlog }}"
+          - "{{ cfg.unit_manifest }}"
+        outputs:
+          - key: emit_ok
+          - key: emit_errors
+          - key: bullet_count
+          - key: emit_note
+        next: decide_emit
+
+      - id: decide_emit
+        type: branch
+        path: emit_ok
+        cases:
+          "yes": survey_done
+        default: survey_failed
+
+      - id: survey_done
+        type: terminal
+
+      - id: survey_failed
+        type: fail

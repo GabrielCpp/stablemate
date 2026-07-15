@@ -112,7 +112,7 @@ All records share:
   "kind": "daemon_start",
   "name": "eventbridge-tail",
   "pid": 12345,
-  "cmd": "go run ./tools/eventbridge-tail --event-bus olympus-dev --port 7890",
+  "cmd": "go run ./tools/eventbridge-tail --event-bus api-service-dev --port 7890",
   "ready_check": "http://localhost:7890/events"
 }
 ```
@@ -126,7 +126,7 @@ All records share:
   "id": "login",
   "label": "Create session via mobile-gateway",
   "mechanism": "live",
-  "cmd": "curl -s -X POST https://mobile-gateway.cm.safely-you.cloud/auth/login ...",
+  "cmd": "curl -s -X POST https://mobile-gateway.example.com/auth/login ...",
   "exit_code": 0,
   "http_status": 200,
   "stdout_file": "qa/steps/login-response.json",
@@ -290,7 +290,7 @@ env:
 # ready_check: URL ostler polls (HTTP 200) before advancing to the first step.
 background:
   - name: eventbridge-tail
-    cmd: go run ./tools/eventbridge-tail --event-bus olympus-dev --port 7890
+    cmd: go run ./tools/eventbridge-tail --event-bus api-service-dev --port 7890
     ready_check: http://localhost:7890/events
 
 steps:
@@ -307,7 +307,7 @@ steps:
     mechanism: live # required on every step: live | synthetic | fixture
     cmd: >
       curl -s -w "\n%{http_code}"
-      -X POST https://mobile-gateway.cm.safely-you.cloud/auth/login
+      -X POST https://mobile-gateway.example.com/auth/login
       -H "Content-Type: application/json" -d @qa-inputs/login-payload.json
     expect_http: 200
     capture: # JSONPath applied to step stdout
@@ -320,7 +320,7 @@ steps:
     mechanism: live
     cmd: >
       curl -s -w "\n%{http_code}"
-      -X POST https://mobile-gateway.cm.safely-you.cloud/auth/logout
+      -X POST https://mobile-gateway.example.com/auth/logout
       -H "Authorization: Bearer ..."
     expect_http: 200
 

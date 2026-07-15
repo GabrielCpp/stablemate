@@ -6,6 +6,26 @@ set -euo pipefail
 # across container restarts and reboots. HOME points here so the Claude CLI finds
 # ~/.claude there.
 CLAUDE_HOME=/claude-state
+export HOME="$CLAUDE_HOME"
+
+require_writable_dir() {
+    local path="$1"
+    if [ ! -d "$path" ] || [ ! -w "$path" ]; then
+        echo "[entrypoint] ERROR: $path must be writable by $(id -un):$(id -gn)." >&2
+        echo "[entrypoint] Prepare the named volume ownership before starting this non-root container." >&2
+        exit 13
+    fi
+}
+
+# The image and compose file run as nobody from process start.
+# Volume ownership must be prepared before launch; this container never repairs it
+# as root. The image pre-creates these mountpoints with nobody ownership so
+# fresh named volumes can inherit the intended owner, and existing volumes can be
+# fixed manually with chown when needed.
+require_writable_dir /workspace
+require_writable_dir /runs
+require_writable_dir "$CLAUDE_HOME"
+
 mkdir -p "$CLAUDE_HOME/.claude"
 
 # Optional Claude config (settings.json) — config, not a secret, so refresh each
@@ -39,30 +59,26 @@ if [ ! -f "$CLAUDE_HOME/.claude.json" ]; then
     echo '{"hasCompletedOnboarding": true}' > "$CLAUDE_HOME/.claude.json"
 fi
 
-chown -R nobody:nogroup "$CLAUDE_HOME"
-
-# The /workspace (agent clones) and /runs (artifacts) named volumes are root-owned
-# at creation. The controller runs as `nobody`, so hand it the mount roots; their
-# contents are then created by nobody. Non-recursive keeps re-runs fast (the clone
-# + venv under /workspace can be large).
-mkdir -p /workspace /runs
-chown nobody:nogroup /workspace /runs
-
 # Git identity for commits made inside the container (branch/commit/PR workflow
-# steps). `nobody`'s UID won't match the host clone owner, so safe.directory is
+# steps). `nobody`'s UID may not match a bind-mounted host clone owner, so safe.directory is
 # required regardless of where checkout happens — must run before any clone/
 # checkout step touches a repo. Overridable per product via GIT_AUTHOR_EMAIL/
 # GIT_AUTHOR_NAME (farrier can forward these through envPassthrough, same as
-# PREDYKT_GITHUB_TOKEN).
-gosu nobody env HOME="$CLAUDE_HOME" git config --global --add safe.directory '*'
-gosu nobody env HOME="$CLAUDE_HOME" git config --global user.email "${GIT_AUTHOR_EMAIL:-agent@predykt.local}"
-gosu nobody env HOME="$CLAUDE_HOME" git config --global user.name "${GIT_AUTHOR_NAME:-Predykt Agent}"
+# ACME_GITHUB_TOKEN).
+git config --global --add safe.directory '*'
+git config --global user.email "${GIT_AUTHOR_EMAIL:-agent@acme.local}"
+git config --global user.name "${GIT_AUTHOR_NAME:-Acme Agent}"
 
-# Clone/update every folder listed in the .code-workspace file (or the single
-# REPO_URL/REPO_NAME/REPO_BRANCH fallback repo) into /workspace, transparent to
-# whichever workflow graph runs next — neither coder nor author has a "setup" node.
-gosu nobody env HOME="$CLAUDE_HOME" uv run python3 -c \
-    "from workhorse.scriptutil import checkout_workspace; checkout_workspace()"
+# A workflow may own checkout preparation (for example, resolving its configured
+# credential before cloning a private remote). Otherwise use Workhorse's generic,
+# unauthenticated checkout. The hook convention is generic; provider/token policy
+# stays entirely in the workflow.
+if [ -f /workflow/scripts/checkout-workspace.py ]; then
+    uv run python3 /workflow/scripts/checkout-workspace.py
+else
+    uv run python3 -c \
+        "from workhorse.scriptutil import checkout_workspace; checkout_workspace()"
+fi
 
 # Launch the groom-sidecar session in the background, ahead of the main run
 # command below. It only ever observes /workspace + /runs and holds a WebSocket
@@ -85,8 +101,7 @@ gosu nobody env HOME="$CLAUDE_HOME" uv run python3 -c \
 GROOM_TOOL_BIN="$CLAUDE_HOME/.local/bin"
 GROOM_SIDECAR="$GROOM_TOOL_BIN/groom-sidecar"
 if [ -d /mnt/groom-src ]; then
-    gosu nobody env HOME="$CLAUDE_HOME" UV_TOOL_BIN_DIR="$GROOM_TOOL_BIN" \
-        uv tool install --editable /mnt/groom-src --no-sources >/dev/null 2>&1 || true
+    UV_TOOL_BIN_DIR="$GROOM_TOOL_BIN" uv tool install --editable /mnt/groom-src --no-sources >/dev/null 2>&1 || true
 fi
 
 # Supervised reload owned by this shell (PID 1): the sidecar signals a reload by
@@ -99,8 +114,7 @@ fi
 run_sidecar() {
     [ -x "$GROOM_SIDECAR" ] || return 0
     while :; do
-        gosu nobody env HOME="$CLAUDE_HOME" PYTHONDONTWRITEBYTECODE=1 \
-            "$GROOM_SIDECAR" >/dev/null 2>&1 && rc=0 || rc=$?
+        PYTHONDONTWRITEBYTECODE=1 "$GROOM_SIDECAR" >/dev/null 2>&1 && rc=0 || rc=$?
         [ "$rc" = 3 ] || break
     done
 }
@@ -112,7 +126,7 @@ run_sidecar &
 # can't reliably report the exit — the entrypoint has to, while still alive.
 # Point HOME at the volume so Claude CLI finds ~/.claude there.
 # CLAUDE_CODE_OAUTH_TOKEN (if set) is inherited from the environment.
-gosu nobody env HOME="$CLAUDE_HOME" uv run workhorse \
+uv run workhorse \
     --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}" \
     ${AGENT_RUNS_DIR:+--runs-dir "$AGENT_RUNS_DIR"} \
     "$@" &
@@ -130,6 +144,6 @@ wait "$wf_pid" || rc=$?
 # Best-effort exit notice (reuses the sidecar's identity/host/port logic); must
 # never change the container's own exit status. Skipped when no sidecar was
 # installed (no groom bind); `|| true` keeps any failure off the exit code.
-[ -x "$GROOM_SIDECAR" ] && gosu nobody env HOME="$CLAUDE_HOME" "$GROOM_SIDECAR" --exit-code "$rc" >/dev/null 2>&1 || true
+[ -x "$GROOM_SIDECAR" ] && "$GROOM_SIDECAR" --exit-code "$rc" >/dev/null 2>&1 || true
 
 exit "$rc"

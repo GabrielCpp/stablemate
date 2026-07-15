@@ -94,14 +94,14 @@ def test_repos_endpoint_lists_one_entry_per_container_repo():
 
     client = _hermetic_client()
     try:
-        with patch.object(groom_app.docker_io, "list_repo_dirs", return_value=["predykt", "yenta"]):
+        with patch.object(groom_app.docker_io, "list_repo_dirs", return_value=["acme", "globex"]):
             resp = client.get("/repos")
     finally:
         client.__exit__(None, None, None)
 
     body = resp.text
     assert body.count('role="option"') == 2
-    assert 'data-label="coder-001/predykt"' in body and 'data-label="coder-001/yenta"' in body
+    assert 'data-label="coder-001/acme"' in body and 'data-label="coder-001/globex"' in body
     assert "pending" not in body  # volume-less workflow contributes no entry
 
 
@@ -112,12 +112,12 @@ def test_files_endpoint_returns_newline_separated_paths():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "list_files", return_value=["README.md", "src/a.py"]) as lf:
-            resp = client.get("/files/abc123", params={"repo": "predykt"})
+            resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
     assert resp.text == "README.md\nsrc/a.py"
-    assert lf.call_args[0] == ("ws-vol", "predykt")
+    assert lf.call_args[0] == ("ws-vol", "acme")
 
 
 def test_file_endpoint_joins_repo_and_path_and_returns_content():
@@ -127,12 +127,12 @@ def test_file_endpoint_joins_repo_and_path_and_returns_content():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "read_file", return_value="print(1)\n") as rf:
-            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "src/a.py"})
+            resp = client.get("/file/abc123", params={"repo": "acme", "path": "src/a.py"})
     finally:
         client.__exit__(None, None, None)
 
     assert resp.text == "print(1)\n"
-    assert rf.call_args[0] == ("ws-vol", "predykt/src/a.py")
+    assert rf.call_args[0] == ("ws-vol", "acme/src/a.py")
 
 
 def test_file_endpoint_swallows_unsafe_path():
@@ -143,7 +143,7 @@ def test_file_endpoint_swallows_unsafe_path():
     try:
         # read_file raises ValueError on a traversal path; the handler must not 500.
         with patch.object(groom_app.docker_io, "read_file", side_effect=ValueError("unsafe")):
-            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "../../etc/passwd"})
+            resp = client.get("/file/abc123", params={"repo": "acme", "path": "../../etc/passwd"})
     finally:
         client.__exit__(None, None, None)
 
@@ -158,12 +158,12 @@ def test_diff_endpoint_passes_repo_through():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "git_diff", return_value="diff --git a/x b/x\n") as gd:
-            resp = client.get("/diff/abc123", params={"repo": "predykt"})
+            resp = client.get("/diff/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
     assert resp.text == "diff --git a/x b/x\n"
-    assert gd.call_args[0] == ("ws-vol", "predykt")
+    assert gd.call_args[0] == ("ws-vol", "acme")
 
 
 # ---- /refresh prunes containers the scan no longer sees ----
@@ -302,7 +302,7 @@ def test_files_prefers_sidecar_socket_when_connected():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "list_files") as lf:
-            resp = client.get("/files/abc123", params={"repo": "predykt"})
+            resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
@@ -318,12 +318,12 @@ def test_files_falls_back_to_volume_when_socket_errors():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "list_files", return_value=["README.md"]) as lf:
-            resp = client.get("/files/abc123", params={"repo": "predykt"})
+            resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
     assert resp.text == "README.md"
-    assert lf.call_args[0] == ("ws-vol", "predykt")
+    assert lf.call_args[0] == ("ws-vol", "acme")
 
 
 def test_file_content_prefers_sidecar_socket():
@@ -334,7 +334,7 @@ def test_file_content_prefers_sidecar_socket():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "read_file") as rf:
-            resp = client.get("/file/abc123", params={"repo": "predykt", "path": "a.py"})
+            resp = client.get("/file/abc123", params={"repo": "acme", "path": "a.py"})
     finally:
         client.__exit__(None, None, None)
 
@@ -350,7 +350,7 @@ def test_diff_prefers_sidecar_socket():
     client = _hermetic_client()
     try:
         with patch.object(groom_app.docker_io, "git_diff") as gd:
-            resp = client.get("/diff/abc123", params={"repo": "predykt"})
+            resp = client.get("/diff/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
@@ -412,14 +412,14 @@ def test_apply_hello_marks_blocked_with_gate():
     _run_apply_hello(
         "abc123def456",
         {
-            "identity": {"container_id": "abc123def456", "name": "coder-1", "repo_name": "Predykt", "repo_branch": "main"},
+            "identity": {"container_id": "abc123def456", "name": "coder-1", "repo_name": "Acme", "repo_branch": "main"},
             "snapshot": {"current_node": "await_operator", "terminal": "", "gates": [{"file_path": "docs/gate.md", "question": "Which?"}]},
         },
     )
     wf = state.WORKFLOWS["abc123def456"]
     assert wf.state == WorkflowState.BLOCKED
     assert wf.current_node == "await_operator"
-    assert wf.repo_name == "Predykt"
+    assert wf.repo_name == "Acme"
     assert "docs/gate.md" in wf.gates
 
 

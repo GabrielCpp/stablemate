@@ -1,6 +1,6 @@
 # `ostler artifact` — schema-checked workflow artifacts (design)
 
-Status: **implemented** (2026-07-03) — `ostler/artifact/` (kinds registry, scaffold, vet, CLI wiring, `tests/test_artifact_kinds.py`); consumer workflow gates union its problems in as a pre-check and the planner/QA prompts self-check with it. Registration via `.agents/templates.yml` (schema override/extension) remains future work; kinds are built-in for now. Motivated by two production incidents in the Predykt
+Status: **implemented** (2026-07-03) — `ostler/artifact/` (kinds registry, scaffold, vet, CLI wiring, `tests/test_artifact_kinds.py`); consumer workflow gates union its problems in as a pre-check and the planner/QA prompts self-check with it. Registration via `.agents/templates.yml` (schema override/extension) remains future work; kinds are built-in for now. Motivated by two production incidents in the Acme
 `epic-coder` run of 2026-07-02/03, both the same failure class: *an agent wrote a JSON artifact
 in an invented shape, and the deterministic consumer that reads it lived several pipeline stages
 downstream.*
@@ -32,7 +32,7 @@ artifacts.
    drifts far less than generate-from-memory.
 4. **Empty is not absent.** A present-but-unusable artifact (exists, parses, but yields an empty
    work-list for its consumer) is a *validation error*, never a silent no-op. Consumers should
-   never need defensive "is it secretly empty?" checks (the Predykt dispatcher now hard-fails on
+   never need defensive "is it secretly empty?" checks (the Acme dispatcher now hard-fails on
    this; with producer-side validation that guard should never fire).
 
 ## CLI surface
@@ -63,7 +63,7 @@ template-declared kinds): each entry maps `kind → {filename, schema, rules}`.
 | `qa-evidence` | `qa-evidence.json` | `criteria` non-empty; every criterion `verdict` ∈ {Pass, Fail}; every Pass criterion's `evidence[]` paths exist on disk; `kind: parity` requires a `checklist`; `kind: data-entry` requires a `persistence` proof; when `runId` present, `qa/run-manifest.json` must exist with the same id and every Pass criterion must cite ≥1 artifact from it. |
 | `backlog-items` | `backlog-items.json` | array of `{id, description}`; ids kebab-case and unique. |
 
-The `qa-evidence` semantic rules are a port of the Predykt workflow's
+The `qa-evidence` semantic rules are a port of the Acme workflow's
 `verify_qa_evidence.py`; once `ostler artifact vet qa-evidence` exists, that script should
 delegate to it (single implementation, gate and producer share it — the gate stops being the
 only holder of the contract).

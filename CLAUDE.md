@@ -5,6 +5,30 @@ workflow runner/engine), **farrier** (the installer), and **ostler** (the doc-gr
 validator). Python ≥ 3.12. Each subproject has its own README/CLAUDE.md — read those
 before changing that component.
 
+## stablemate is public (load-bearing)
+
+This repo ships publicly. No private overlay project's name may appear in it — not in
+prose, not in a fixture, not in a code comment. Examples use neutral placeholders:
+
+| Placeholder                          | Stands for                          |
+| ------------------------------------ | ----------------------------------- |
+| `acme`, `globex`                     | a client repo / brand               |
+| `api-service`, `web-app`, `mobile-app` | repos in a multi-repo workspace    |
+| `example.com`, `example-org`         | hostnames, GitHub orgs              |
+
+The banned names are deliberately **not written down anywhere in the tree** — a denylist
+publishes the words it bans, and so does a hash of one. `scripts/private_names.py` reads
+them from an untracked source instead: `$STABLEMATE_PRIVATE_NAMES`, or
+`$GIT_DIR/private-names` (one per line; `.git/` is never committed).
+
+```bash
+make hooks    # once per clone: installs .githooks/pre-commit
+```
+
+The hook blocks any commit whose staged paths or added lines carry a configured name.
+With no list configured (a public contributor) it is a no-op. The same resolver backs
+`base-library/tests/test_base_stands_alone.py`, which keeps the shipped base clean.
+
 ## Python linting (load-bearing)
 
 This repo is linted with **ruff**. Keep it clean — zero findings is the bar, and a

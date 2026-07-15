@@ -437,6 +437,7 @@ def _step_loop(
                     ctx,
                     workflow_dir,
                     session_id_path,
+                    run_dir=writer.run_dir,
                     resume_session=resume_interrupted_node,
                 )
                 # The resume only applies to the first re-entered node; every node
@@ -934,31 +935,62 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _resolve_library_dir() -> Path | None:
-    """Locate the installed prompt library (the dir holding ``workflows/<name>/``).
+def _base_library_dir() -> Path | None:
+    """The base library root, or None when the `stablemate-library` wheel is absent.
 
-    Resolution order:
-    1. ``$WORKHORSE_LIBRARY_DIR`` env var (explicit override).
-    2. ``library_dir`` key in workhorse's own config.toml (set via
-       ``workhorse config set-library <path>``).
-    Returns ``None`` when neither is set."""
+    Discovered with an *optional* import on purpose: the base package depends on
+    workhorse (its workflows are run by this CLI), so a hard dependency the other way
+    would close a cycle. Absent the wheel, workhorse behaves exactly as before —
+    a workflow name resolves only against a configured library."""
+    try:
+        from stablemate_library import base_dir
+    except ImportError:
+        return None
+    return base_dir()
+
+
+def _library_layers() -> list[Path]:
+    """The library search path for a bare workflow NAME, highest precedence first.
+
+    1. ``$WORKHORSE_LIBRARY_DIR`` env var (explicit override), else the ``library_dir``
+       key in workhorse's own config.toml (``workhorse config set-library <path>``) —
+       the overlay.
+    2. The base library shipped as the `stablemate-library` wheel.
+
+    An overlay shadows the base name-for-name, so a private library can override a
+    base workflow by defining one with the same name. Empty when neither exists."""
+    layers: list[Path] = []
     env = os.environ.get("WORKHORSE_LIBRARY_DIR")
     if env:
-        return Path(env).expanduser()
-    lib = get_config_value("library_dir")
-    if isinstance(lib, str) and lib:
-        return Path(lib).expanduser()
-    return None
+        layers.append(Path(env).expanduser())
+    else:
+        lib = get_config_value("library_dir")
+        if isinstance(lib, str) and lib:
+            layers.append(Path(lib).expanduser())
+    base = _base_library_dir()
+    if base is not None:
+        layers.append(base)
+    return layers
+
+
+def _resolve_library_dir() -> Path | None:
+    """The highest-precedence library root, or None when there is none.
+
+    Kept for callers that want a single directory; name resolution goes through
+    :func:`_library_layers` so a base workflow is still found when an overlay is
+    configured but does not define it."""
+    layers = _library_layers()
+    return layers[0] if layers else None
 
 
 def _resolve_workflow_path(spec: str) -> Path:
     """Resolve ``--workflow`` as either an explicit path or a bare library name.
 
     A value that looks like a path — contains a separator, ends in ``.yaml``/
-    ``.yml``, or names an existing filesystem entry — is used verbatim. Otherwise
-    it is treated as a bare workflow NAME and resolved against the configured
-    prompt library as ``<library_dir>/workflows/<name>/workflow.yaml`` (so
-    ``--workflow author`` runs the library's author workflow without a full path)."""
+    ``.yml``, or names an existing filesystem entry — is used verbatim. Otherwise it is
+    a bare workflow NAME, resolved as ``<layer>/workflows/<name>/workflow.yaml`` against
+    each library layer in turn (overlay, then the base library wheel), so
+    ``--workflow author`` runs the author workflow wherever it lives."""
     looks_like_path = (
         os.sep in spec
         or (os.altsep is not None and os.altsep in spec)
@@ -967,16 +999,30 @@ def _resolve_workflow_path(spec: str) -> Path:
     )
     if looks_like_path:
         return Path(spec).resolve()
-    library = _resolve_library_dir()
-    if library is None:
+
+    layers = _library_layers()
+    if not layers:
         print(
-            f"error: '{spec}' is not a path and no prompt library is configured.\n"
-            "Set library_dir in ~/.config/farrier/config.toml (or export "
+            f"error: '{spec}' is not a path and no prompt library is available.\n"
+            "Install the base library:\n"
+            "    pip install stablemate-library\n"
+            "or configure an overlay (`workhorse config set-library <path>` / export "
             "WORKHORSE_LIBRARY_DIR), or pass --workflow as a path to a workflow.yaml.",
             file=sys.stderr,
         )
         sys.exit(1)
-    return (library / "workflows" / spec / "workflow.yaml").resolve()
+
+    for layer in layers:
+        candidate = layer / "workflows" / spec / "workflow.yaml"
+        if candidate.is_file():
+            return candidate.resolve()
+
+    searched = "\n".join(f"  - {layer}" for layer in layers)
+    print(
+        f"error: no workflow named '{spec}' in any library layer.\nSearched:\n{searched}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _run_run(args: argparse.Namespace) -> None:

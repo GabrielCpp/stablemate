@@ -84,7 +84,7 @@ def _set_json_owner(raw: str, gap_id: str, owner: str) -> str | None:
     """Targeted, format-preserving edit: set the `owner` of the gap whose id is *gap_id*.
 
     Edits only that gap's `owner` value (or inserts one right after its `id`) so the rest of the
-    file — including predykt's inline-compact object style — is untouched.
+    file — including acme's inline-compact object style — is untouched.
     """
     id_match = re.search(r'"id"\s*:\s*"' + re.escape(gap_id) + r'"', raw)
     if not id_match:

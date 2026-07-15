@@ -229,7 +229,7 @@
     // ---- fake fleet data (stands in for the live websocket feed) ----
     const XSS_PROBE = "See the failing check below. <img src=x onerror=alert('xss')> and <script>alert(1)<\/script> should be inert.";
     const WORKERS = [
-      { id:"a1b2c3", repo:"predykt", branch:"main", type:"coder", state:"blocked",
+      { id:"a1b2c3", repo:"acme", branch:"main", type:"coder", state:"blocked",
         node:"fix_ci", gate:"docs/epics/checkout/story-4/ci-operator-context.md",
         question:
 `**CI is red on \`story-4\`** and I need a decision before continuing.
@@ -260,10 +260,10 @@ index 3f2a1b0..9c4d5e2 100644
      resp = client.post("/checkout", json=payload)
 +    assert resp.status_code == 200
      assert resp.json()["status"] == "paid"` },
-      { id:"c3d4e5", repo:"predykt", branch:"main", type:"author", state:"running", node:"write_epic", gate:"", question:"", diff:"" },
-      { id:"e5f6a7", repo:"yenta", branch:"dev", type:"coder", state:"running", node:"implement_story", gate:"", question:"", diff:"" },
-      { id:"778899", repo:"yenta", branch:"dev", type:"coder", state:"idle", node:"—", gate:"", question:"", diff:"" },
-      { id:"99aabb", repo:"yenta", branch:"dev", type:"author", state:"finished", node:"done", gate:"", question:"", diff:"" },
+      { id:"c3d4e5", repo:"acme", branch:"main", type:"author", state:"running", node:"write_epic", gate:"", question:"", diff:"" },
+      { id:"e5f6a7", repo:"globex", branch:"dev", type:"coder", state:"running", node:"implement_story", gate:"", question:"", diff:"" },
+      { id:"778899", repo:"globex", branch:"dev", type:"coder", state:"idle", node:"—", gate:"", question:"", diff:"" },
+      { id:"99aabb", repo:"globex", branch:"dev", type:"author", state:"finished", node:"done", gate:"", question:"", diff:"" },
     ];
     const ORDER = { blocked:0, running:1, idle:2, finished:3 };
     let selected = "a1b2c3";
@@ -428,7 +428,7 @@ index 3f2a1b0..9c4d5e2 100644
 
     // ---- boot ----
     renderTree(); renderInbox(); renderDetail();
-    setTimeout(()=>toast("⛔ predykt@main · coder blocked", "CI is red on story-4 — needs a decision"), 700);
+    setTimeout(()=>toast("⛔ acme@main · coder blocked", "CI is red on story-4 — needs a decision"), 700);
   </script>
 </body>
 </html>

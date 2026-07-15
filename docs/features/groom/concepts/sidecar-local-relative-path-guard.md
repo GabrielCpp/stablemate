@@ -55,9 +55,9 @@ Sidecar-local relative path guard is the sidecar data-plane validation layer use
 
 ## Examples
 
-- accepts: `predykt/src/a.py` returns `predykt/src/a.py`.
-- accepts: `predykt\\src\\a.py` returns `predykt/src/a.py`.
-- accepts: `predykt/./a.py` returns `predykt/./a.py`; the guard blocks traversal but does not collapse current-directory markers.
+- accepts: `acme/src/a.py` returns `acme/src/a.py`.
+- accepts: `acme\\src\\a.py` returns `acme/src/a.py`.
+- accepts: `acme/./a.py` returns `acme/./a.py`; the guard blocks traversal but does not collapse current-directory markers.
 - rejects: the empty string raises `ValueError` when passed directly to the guard.
 - rejects: `/etc/passwd` raises `ValueError`.
 - rejects: `\\etc\\passwd` raises `ValueError`.

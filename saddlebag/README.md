@@ -169,7 +169,7 @@ same property that makes `list` and `scan` safe.
 Not a default, and not a flag you have to remember — **how you supply the value**:
 
 ```bash
-saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=predykt          # argv  -> config
+saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=acme          # argv  -> config
 printf '%s' "$KEY" | saddlebag env set web-local API_KEY --secret-stdin  # stdin -> secret
 saddlebag env set web-local TEST_USER_PASSWORD --from-credential cred-007:password
 ```
@@ -343,7 +343,7 @@ saddlebag env import web-local --from web/.env.example
 #      reports exactly what still has to be supplied.
 
 # Supply values (the channel decides the kind)
-saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=predykt
+saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=acme
 saddlebag env set web-local VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
   --note "unset this to point the web app at real Firebase Auth"
 printf '%s' "$KEY" | saddlebag env set web-local VITE_FIREBASE_API_KEY --secret-stdin
@@ -384,9 +384,9 @@ format: dotenv
 entries:
   - key: VITE_FIREBASE_PROJECT_ID
     kind: config
-    value: predykt
+    value: acme
   - key: VITE_FIREBASE_API_KEY
-    kind: secret          # the value lives in the store, keyed predykt/env-001/VITE_FIREBASE_API_KEY
+    kind: secret          # the value lives in the store, keyed acme/env-001/VITE_FIREBASE_API_KEY
   - key: TEST_USER_PASSWORD
     kind: credential-ref
     from: cred-007:password

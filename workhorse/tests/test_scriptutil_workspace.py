@@ -14,12 +14,12 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.scriptutil import resolve_workspace
+from workhorse.scriptutil import _git_network_command, resolve_workspace
 
 
 def test_resolve_workspace_uses_agent_repo_dir_over_cwd():
     with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as workflow_dir:
-        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: predykt\n")
+        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: acme\n")
 
         env = dict(os.environ)
         env.pop("CODER_WORKSPACE", None)
@@ -28,13 +28,13 @@ def test_resolve_workspace_uses_agent_repo_dir_over_cwd():
             with patch("workhorse.scriptutil.Path.cwd", return_value=Path(workflow_dir)):
                 repos = resolve_workspace("CODER_WORKSPACE")
 
-        assert "predykt" in repos
-        assert repos["predykt"]["path"] == str(Path(repo_dir).resolve())
+        assert "acme" in repos
+        assert repos["acme"]["path"] == str(Path(repo_dir).resolve())
 
 
 def test_resolve_workspace_falls_back_to_cwd_without_agent_repo_dir():
     with tempfile.TemporaryDirectory() as repo_dir:
-        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: predykt\n")
+        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: acme\n")
 
         env = dict(os.environ)
         env.pop("CODER_WORKSPACE", None)
@@ -43,5 +43,26 @@ def test_resolve_workspace_falls_back_to_cwd_without_agent_repo_dir():
             with patch("workhorse.scriptutil.Path.cwd", return_value=Path(repo_dir)):
                 repos = resolve_workspace("CODER_WORKSPACE")
 
-        assert "predykt" in repos
-        assert repos["predykt"]["path"] == str(Path(repo_dir).resolve())
+        assert "acme" in repos
+        assert repos["acme"]["path"] == str(Path(repo_dir).resolve())
+
+
+def test_git_network_command_uses_configured_token_env():
+    with patch.dict(
+        os.environ,
+        {"WORKHORSE_GIT_TOKEN": "secret"},
+        clear=True,
+    ):
+        command = _git_network_command("clone", "https://github.com/example/private.git")
+
+    assert command[0:2] == ["git", "-c"]
+    assert "credential.helper=" in command[2]
+    assert "secret" not in command[2]
+    assert "$WORKHORSE_GIT_TOKEN" in command[2]
+    assert command[-2:] == ["clone", "https://github.com/example/private.git"]
+
+def test_git_network_command_needs_no_token_for_public_or_local_clone():
+    with patch.dict(os.environ, {}, clear=True):
+        command = _git_network_command("clone", "/mnt/repo-src")
+
+    assert command == ["git", "clone", "/mnt/repo-src"]

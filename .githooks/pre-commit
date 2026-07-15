@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Block private overlay project names from entering this public repo.
+#
+# The names themselves are NOT here — scripts/private_names.py reads them from
+# $STABLEMATE_PRIVATE_NAMES or $GIT_DIR/private-names, neither of which is
+# tracked. With no list configured this hook is a no-op.
+#
+# Enable:  make hooks     (sets core.hooksPath to .githooks)
+# Bypass:  git commit --no-verify
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+mapfile -t names < <(python3 "$repo_root/scripts/private_names.py")
+[ "${#names[@]}" -eq 0 ] && exit 0
+
+# One alternation, matched case-insensitively, against staged paths and staged
+# additions. -U0 so context lines from untouched code cannot trip the hook.
+pattern="$(IFS='|'; echo "${names[*]}")"
+
+paths=$(git diff --cached --name-only --diff-filter=ACMR | grep -inE "$pattern" || true)
+adds=$(git diff --cached --diff-filter=ACMR -U0 \
+        | grep -E '^\+' | grep -v '^+++' | grep -inE "$pattern" || true)
+
+if [ -z "$paths" ] && [ -z "$adds" ]; then
+  exit 0
+fi
+
+echo "pre-commit: private overlay names found in staged changes." >&2
+echo >&2
+[ -n "$paths" ] && { echo "  in file paths:" >&2; echo "$paths" | sed 's/^/    /' >&2; }
+[ -n "$adds" ]  && { echo "  in added lines:" >&2; echo "$adds" | sed 's/^/    /' >&2; }
+echo >&2
+echo "stablemate is public: replace these with neutral placeholders" >&2
+echo "(acme, globex, api-service, web-app, mobile-app, example.com)." >&2
+echo "To commit anyway: git commit --no-verify" >&2
+exit 1

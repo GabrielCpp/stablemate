@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "surface-knowledge-record",
+  "title": "Surface knowledge record",
+  "description": "Durable, accumulating, two-sided (old/new) record of a surface's components, their data sources, and the classified old->new gaps. The record is a Markdown file: this structured object is carried in its YAML **front-matter** (the leading `---` block), and the prose body below it holds the human-readable narrative (per-component `whatItDoes`/`behavior`, per-gap `oldState`/`newState`) — those narrative fields are optional in the front-matter and not machine-validated. Built by gather-surface-knowledge.md; consumed by write-story / plan / implement / QA. features/ is hand-curated and never written here. Legacy raw `.json` records still validate for back-compat.",
+  "type": "object",
+  "required": ["surface", "gaps"],
+  "additionalProperties": true,
+  "properties": {
+    "surface": { "type": "string", "minLength": 1, "description": "<area>/<surface-key>" },
+    "route": { "type": "string" },
+    "sourceRefs": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "features": { "type": "string" },
+        "legacy": { "type": "string" },
+        "openapi": { "type": "array", "items": { "type": "string" } },
+        "newCode": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "old": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "new": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "component": { "type": "string" },
+          "oldState": { "type": "string" },
+          "newState": { "type": "string" },
+          "kind": { "type": "string", "enum": ["missing", "broken", "divergent", "unreachable"] },
+          "chromeContext": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Context-conditional chrome: where this element is present vs. absent (e.g. a project picker shown outside a project but hidden inside one). Lets the author plan a presence/absence AC per context instead of catching it by luck at QA.",
+            "properties": {
+              "presentOn": { "type": "array", "items": { "type": "string" } },
+              "absentOn": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "feedbackKind": {
+            "type": "string",
+            "enum": ["transient", "steady"],
+            "description": "`transient` ⇒ feedback that appears then clears (save flash/toast, inline validation, optimistic UI) — the author plans an appear-then-disappear AC. `steady` ⇒ persistent state."
+          },
+          "disposition": {
+            "type": "string",
+            "enum": ["scoped", "deferred", "dropped"],
+            "description": "How this gap is handled relative to the authoring story. Absent ⇒ treated as `scoped` (this story closes it). `deferred` ⇒ a later owner closes it and `owner` MUST name that owner. `dropped` ⇒ intentionally not built (record the decision in newState)."
+          },
+          "owner": {
+            "type": "string",
+            "description": "Required iff disposition == 'deferred'. A resolvable owner of the deferred work: an existing story slug, an open backlog item id (the bare id, e.g. 'project-editor-section-tree-blank'), or a seed-item id of an already-authored epic."
+          },
+          "dataSource": { "$ref": "#/$defs/dataSource" },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "oldShot": { "type": "string" },
+              "newShot": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "openGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what"],
+        "additionalProperties": true,
+        "properties": {
+          "what": { "type": "string" },
+          "prerequisite": { "type": "string" }
+        }
+      }
+    },
+    "journeys": {
+      "type": "array",
+      "description": "Documented typical user journeys for this surface, read from the repo's feature docs. Each becomes a journey-level acceptance criterion the writer must include.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "surface": { "type": "string" },
+          "steps": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sourcesRead": { "type": "array", "items": { "type": "string" } },
+        "iteration": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "dataSource": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "type": "string", "enum": ["api", "computed", "static", "legacy"] },
+        "endpoint": { "type": "string" },
+        "field": { "type": "string" },
+        "template": { "type": "string" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string" },
+        "whatItDoes": { "type": "string" },
+        "behavior": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "interaction": { "type": "string" },
+            "options": { "type": "string" },
+            "async": { "type": "string" },
+            "states": { "type": "string" }
+          }
+        },
+        "dataSource": { "$ref": "#/$defs/dataSource" },
+        "entryPoint": { "type": "string" },
+        "chromeContext": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Context-conditional chrome: where this component is present vs. absent.",
+          "properties": {
+            "presentOn": { "type": "array", "items": { "type": "string" } },
+            "absentOn": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "feedbackKind": { "type": "string", "enum": ["transient", "steady"] }
+      }
+    }
+  }
+}

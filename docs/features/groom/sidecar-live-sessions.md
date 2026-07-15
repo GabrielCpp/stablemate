@@ -281,7 +281,7 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
   the editable tool installed at runtime. `workhorse/compose.yaml` — the
   read-only `../groom:/mnt/groom-src` bind; `farrier`'s generated compose
   (`farrier/farrier/install.py`) emits the same bind commented, gated on
-  `GROOM_SRC`, so a consuming repo (e.g. predykt) can install the sidecar.
+  `GROOM_SRC`, so a consuming repo (e.g. acme) can install the sidecar.
   `groom/pyproject.toml` — the `websockets` dependency.
 - Tests: `groom/tests/test_sidecar_hub.py`, `test_sidecar_session.py`, and the
   socket-path/`/reload`/`hello` cases in `test_app.py`.

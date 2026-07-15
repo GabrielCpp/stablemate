@@ -49,7 +49,7 @@ def target(tmp_path: Path) -> Path:
 def web(run, target: Path):
     """The environment from the incident: two config keys and one real secret."""
     run("env", "add", "web-local", "--env", "local", "--target", str(target))
-    run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=predykt")
+    run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=acme")
     run("env", "set", "web-local", "VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099")
     run("env", "set", "web-local", "VITE_FIREBASE_API_KEY", "--secret-stdin", stdin=SECRET)
     return "web-local"
@@ -66,11 +66,11 @@ def test_a_value_on_argv_is_config_and_lands_in_the_pool_db(run, db_path, store)
     """It is already in the process table and the shell history. Calling it a secret
     would be a lie about its exposure."""
     run("env", "add", "web-local", "--env", "local")
-    assert run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=predykt") == 0
+    assert run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=acme") == 0
 
     with Pool(db_path) as pool:
         entry = pool.env_get_entry("env-001", "VITE_FIREBASE_PROJECT_ID")
-    assert (entry.kind, entry.value) == ("config", "predykt")
+    assert (entry.kind, entry.value) == ("config", "acme")
     assert store.secrets == {}
 
 
@@ -155,11 +155,11 @@ def test_reimporting_does_not_clobber_a_supplied_value(run, tmp_path, db_path):
     example.write_text("PROJECT_ID=\n", encoding="utf-8")
     run("env", "add", "web-local", "--env", "local")
     run("env", "import", "web-local", "--from", str(example))
-    run("env", "set", "web-local", "PROJECT_ID=predykt")
+    run("env", "set", "web-local", "PROJECT_ID=acme")
 
     assert run("env", "import", "web-local", "--from", str(example)) == 0
     with Pool(db_path) as pool:
-        assert pool.env_get_entry("env-001", "PROJECT_ID").value == "predykt"
+        assert pool.env_get_entry("env-001", "PROJECT_ID").value == "acme"
 
 
 def test_import_into_an_unknown_environment_exits_one(run, tmp_path):
@@ -234,10 +234,10 @@ def test_show_json_never_carries_a_secret(run, web, capsys):
 
 
 def test_list_scopes_by_project(run, capsys, monkeypatch):
-    run("env", "add", "web-local", "--env", "local", "--project", "predykt")
+    run("env", "add", "web-local", "--env", "local", "--project", "acme")
     run("env", "add", "api-local", "--env", "local", "--project", "other-repo")
 
-    monkeypatch.setattr(cli, "infer_project", lambda: "predykt")
+    monkeypatch.setattr(cli, "infer_project", lambda: "acme")
     assert run("env", "list", "--json") == 0
     assert [e["name"] for e in json.loads(out(capsys))] == ["web-local"]
 
@@ -254,7 +254,7 @@ def test_render_writes_the_file_0600_and_prints_only_the_path(run, web, target, 
     assert out(capsys).strip() == str(target)     # the path, never the contents
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert target.read_text(encoding="utf-8") == (
-        "VITE_FIREBASE_PROJECT_ID=predykt\n"
+        "VITE_FIREBASE_PROJECT_ID=acme\n"
         "VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099\n"
         f"VITE_FIREBASE_API_KEY={SECRET}\n"
     )
@@ -289,7 +289,7 @@ def test_render_of_a_config_only_environment_needs_no_store(run, tmp_path, monke
 
 
 def test_render_leases_a_credential_ref_and_release_frees_it(run, store, web, target, db_path):
-    run("add", "--username", "qa@predykt.example", "--env", "local", "--password-stdin",
+    run("add", "--username", "qa@acme.example", "--env", "local", "--password-stdin",
         stdin="hunter2")
     run("env", "set", web, "TEST_USER_PASSWORD", "--from-credential", "cred-001:password")
 
@@ -339,7 +339,7 @@ def test_check_passes_once_the_file_matches(run, web):
 def test_check_reports_drift_by_key_name_only(run, web, target, capsys):
     run("env", "render", web)
     target.write_text(
-        target.read_text(encoding="utf-8").replace("predykt", "hand-edited"), encoding="utf-8")
+        target.read_text(encoding="utf-8").replace("acme", "hand-edited"), encoding="utf-8")
 
     assert run("env", "render", web, "--check", "--json") == 1
     payload = out(capsys)

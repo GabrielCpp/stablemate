@@ -23,7 +23,7 @@ from inotify_simple import flags
 # Data-plane RPC handlers (local-disk reads with the traversal guard)
 # --------------------------------------------------------------------------- #
 def test_safe_relpath_accepts_normal_and_rejects_traversal():
-    assert sidecar._safe_relpath("predykt/src/a.py") == "predykt/src/a.py"
+    assert sidecar._safe_relpath("acme/src/a.py") == "acme/src/a.py"
     for bad in ("/etc/passwd", "../x", "a/../../b", "", "a/../b"):
         try:
             sidecar._safe_relpath(bad)
@@ -35,30 +35,30 @@ def test_safe_relpath_accepts_normal_and_rejects_traversal():
 def test_rpc_get_tree_lists_files_skipping_vendor_dirs():
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp)
-        repo = ws / "predykt"
+        repo = ws / "acme"
         (repo / "src").mkdir(parents=True)
         (repo / "src" / "a.py").write_text("x")
         (repo / "README.md").write_text("y")
         (repo / ".git").mkdir()
         (repo / ".git" / "cfg").write_text("z")  # excluded dir
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
-            out = sidecar._rpc_get_tree({"repo": "predykt"})
+            out = sidecar._rpc_get_tree({"repo": "acme"})
     assert out == {"paths": ["README.md", "src/a.py"]}
 
 
 def test_rpc_get_file_reads_local_file():
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp)
-        (ws / "predykt").mkdir()
-        (ws / "predykt" / "a.py").write_text("print(1)\n")
+        (ws / "acme").mkdir()
+        (ws / "acme" / "a.py").write_text("print(1)\n")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
-            out = sidecar._rpc_get_file({"repo": "predykt", "path": "a.py"})
+            out = sidecar._rpc_get_file({"repo": "acme", "path": "a.py"})
     assert out == {"content": "print(1)\n"}
 
 
 def test_rpc_get_file_rejects_traversal():
     try:
-        sidecar._rpc_get_file({"repo": "predykt", "path": "../../etc/passwd"})
+        sidecar._rpc_get_file({"repo": "acme", "path": "../../etc/passwd"})
     except ValueError:
         return
     raise AssertionError("expected ValueError on a traversal path")
@@ -138,10 +138,10 @@ def test_handle_rpc_get_file_traversal_replies_error():
 # --------------------------------------------------------------------------- #
 def test_hello_frame_carries_identity_and_snapshot():
     with patch.object(sidecar, "snapshot", return_value={"current_node": "n1", "terminal": "", "gates": []}), \
-         patch.dict(sidecar.os.environ, {"REPO_NAME": "Predykt", "REPO_BRANCH": "main"}, clear=False):
+         patch.dict(sidecar.os.environ, {"REPO_NAME": "Acme", "REPO_BRANCH": "main"}, clear=False):
         frame = sidecar._hello_frame()
     assert frame["type"] == "hello"
-    assert frame["identity"]["repo_name"] == "Predykt"
+    assert frame["identity"]["repo_name"] == "Acme"
     assert frame["snapshot"]["current_node"] == "n1"
 
 

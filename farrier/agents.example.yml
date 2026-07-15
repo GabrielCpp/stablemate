@@ -65,7 +65,7 @@ skills:
 prompts:
   - review/*
 roots:
-  - olympus               # a root instruction (mainly used by copilot)
+  - api-service               # a root instruction (mainly used by copilot)
 
 
 # ---------------------------------------------------------------------------

@@ -298,7 +298,7 @@ The visible shell has four activity modes selected by the left activity bar: inb
 
 - selector: `#repo-menu .repo-item`
 - role: option; explicit `role="option"` on each rendered row, owned by `#repo-menu`, which carries `role="listbox"` and `aria-label="Containers and repositories"`.
-- name: visible text from the optional workflow type badge followed by the repository option label generated from workflow/container name and checkout directory, for example `coder coder-001/predykt` when a `coder` badge is rendered or `author-002` when no checkout directory and no badge are present.
+- name: visible text from the optional workflow type badge followed by the repository option label generated from workflow/container name and checkout directory, for example `coder coder-001/acme` when a `coder` badge is rendered or `author-002` when no checkout directory and no badge are present.
 - keyboard: managed through `aria-activedescendant` on the `#repo-search` combobox rather than DOM focus; ArrowUp and ArrowDown move the active option among visible rows, Enter selects the active option, and Escape closes the menu and returns focus to the invoking repository picker button.
 - parent: [groom dashboard](#groom-dashboard)
 - states: visible after [GET /repos](../../http/groom.md#get-repository-menu) replaces the menu loading state; filtered out when [repository menu search input](#repository-menu-search-input) sets inline `display: none`; active with the `active` class and `aria-selected="true"` when it is the option referenced by the combobox's `aria-activedescendant`, while every other loaded option carries `aria-selected="false"`; absent when no eligible repository entries exist and the menu instead renders `No repositories available.`

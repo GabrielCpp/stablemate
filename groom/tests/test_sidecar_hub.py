@@ -40,12 +40,12 @@ def test_rpc_sends_request_and_returns_resolved_data():
             conn.resolve(corr, ok=True, data={"paths": ["a.py", "b.py"]})
 
         reply = asyncio.create_task(_reply())
-        result = await conn.rpc("getTree", {"repo": "predykt"})
+        result = await conn.rpc("getTree", {"repo": "acme"})
         await reply
         return sock.sent[0], result
 
     frame, result = asyncio.run(_scenario())
-    assert frame == {"type": "rpc", "id": "1", "method": "getTree", "params": {"repo": "predykt"}}
+    assert frame == {"type": "rpc", "id": "1", "method": "getTree", "params": {"repo": "acme"}}
     assert result == {"paths": ["a.py", "b.py"]}
 
 

@@ -46,7 +46,7 @@ def load_json(path: Path, label: str, logger: logging.Logger) -> dict:
 def _repo_name_from_dir(path: Path) -> str:
     """Fallback repo name when agents.yml carries no ``repo.name``: the directory
     name normalized the same way farrier's kebab() derives it, so a checkout at
-    ``.../Predykt`` and a config value ``predykt`` resolve to the same key."""
+    ``.../Acme`` and a config value ``acme`` resolve to the same key."""
     name = re.sub(r"[^a-zA-Z0-9/-]+", "-", path.name.replace(".", "-").replace("_", "-"))
     return re.sub(r"-+", "-", name).strip("-").lower()
 
@@ -132,14 +132,45 @@ def _has_unsynced_work(dest: Path, branch: str) -> bool:
     """
     status = subprocess.run(
         ["git", "-C", str(dest), "status", "--porcelain"], capture_output=True, text=True, check=True,
+        timeout=10,
     )
     if status.stdout.strip():
         return True
     ahead = subprocess.run(
         ["git", "-C", str(dest), "rev-list", "--count", f"origin/{branch}..HEAD"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=10,
     )
     return ahead.stdout.strip() != "0"
+
+
+def _git_network_command(*args: str) -> list[str]:
+    """Build a Git command with transient credentials for clone/fetch.
+
+    A workflow-specific checkout hook may supply ``WORKHORSE_GIT_TOKEN`` after
+    resolving credentials according to that workflow's own configuration. The
+    generic checkout code does not know token names or provider conventions.
+    """
+    if not os.environ.get("WORKHORSE_GIT_TOKEN", ""):
+        return ["git", *args]
+    credential_helper = (
+        '!f() { echo username=x-access-token; echo "password=$WORKHORSE_GIT_TOKEN"; }; f'
+    )
+    return ["git", "-c", f"credential.helper={credential_helper}", *args]
+
+
+def _set_origin_url(dest: Path, url: str) -> None:
+    """Make an existing persistent checkout follow the configured source."""
+    current = subprocess.run(
+        ["git", "-C", str(dest), "remote", "get-url", "origin"],
+        capture_output=True, text=True, check=False, timeout=10,
+    )
+    if current.returncode == 0 and current.stdout.strip() == url:
+        return
+    action = "set-url" if current.returncode == 0 else "add"
+    subprocess.run(
+        ["git", "-C", str(dest), "remote", action, "origin", url],
+        check=True, timeout=10,
+    )
 
 
 def checkout_workspace(
@@ -164,9 +195,8 @@ def checkout_workspace(
     2. Otherwise (no workspace file set), synthesize a single folder from the existing
        REPO_URL/REPO_NAME/REPO_BRANCH env vars (today's single-primary-repo mechanism)
        and feed it through the exact same clone path — this keeps 1-repo and N-repo
-       runs on one code path with zero repo-name defaulting. Cloning from a local
-       bind-mounted path (Predykt's read-only host-working-tree trick) works exactly
-       like cloning from a remote, so nothing about that mechanism needs to change.
+        runs on one code path with zero repo-name defaulting. The URL may be a local
+        bind-mounted source or a remote authenticated through ``REPO_TOKEN_ENV``.
     """
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[checkout] %(message)s")
     logger = logging.getLogger("workhorse.checkout")
@@ -197,7 +227,11 @@ def checkout_workspace(
         dest = workspace_root / name
 
         if (dest / ".git").exists():
-            subprocess.run(["git", "-C", str(dest), "fetch", "--quiet", "origin"], check=True)
+            _set_origin_url(dest, url)
+            subprocess.run(
+                _git_network_command("-C", str(dest), "fetch", "--quiet", "origin"),
+                check=True, timeout=300,
+            )
             if _has_unsynced_work(dest, branch):
                 logger.info(
                     "%s has uncommitted changes or commits not on origin/%s — "
@@ -206,13 +240,21 @@ def checkout_workspace(
                 )
                 continue
             logger.info("updating %s from %s (%s)", name, url, branch)
-            subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", branch], check=True)
-            subprocess.run(["git", "-C", str(dest), "reset", "--quiet", "--hard", f"origin/{branch}"], check=True)
+            subprocess.run(
+                ["git", "-C", str(dest), "checkout", "--quiet", branch],
+                check=True, timeout=10,
+            )
+            subprocess.run(
+                ["git", "-C", str(dest), "reset", "--quiet", "--hard", f"origin/{branch}"],
+                check=True, timeout=10,
+            )
         else:
             logger.info("cloning %s from %s (%s)", name, url, branch)
             subprocess.run(
-                ["git", "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest)],
-                check=True,
+                _git_network_command(
+                    "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest)
+                ),
+                check=True, timeout=600,
             )
 
 
@@ -249,8 +291,8 @@ def get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | Non
     """Get a config value from a repo's agents.yml workspace section.
 
     Examples:
-        get_repo_config("olympus", "qa_mode")            # → "cli"
-        get_repo_config("olympus", "base_branch", "main") # → "develop"
+        get_repo_config("api-service", "qa_mode")            # → "cli"
+        get_repo_config("api-service", "base_branch", "main") # → "develop"
     """
     if repos is None:
         repos = resolve_workspace()

@@ -9,6 +9,7 @@ members = [
     "ostler",
     "saddlebag",
     "stablemate",
+    "stablemate-library",
     "workhorse-agent",
 ]
 
@@ -1751,6 +1752,7 @@ dev = [
     { name = "pillow" },
     { name = "playwright" },
     { name = "pytest" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 
@@ -1763,7 +1765,25 @@ dev = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.15.20" },
+]
+
+[[package]]
+name = "stablemate-library"
+version = "0.1.0"
+source = { editable = "base-library" }
+dependencies = [
+    { name = "farrier" },
+    { name = "ostler" },
+    { name = "workhorse-agent" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "farrier", editable = "farrier" },
+    { name = "ostler", editable = "ostler" },
+    { name = "workhorse-agent", editable = "workhorse" },
 ]
 
 [[package]]

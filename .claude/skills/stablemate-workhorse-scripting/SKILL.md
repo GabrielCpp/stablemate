@@ -226,7 +226,7 @@ Resolve the token first via `gh-token.py`, then pass it to `Github()`:
 from github import Github, GithubException
 
 gh = Github(token)
-gh_repo = gh.get_repo("SafelyYou-Inc/olympus")
+gh_repo = gh.get_repo("example-org/api-service")
 
 # Check for existing PR or create one
 owner = gh_repo.owner.login
@@ -237,7 +237,7 @@ else:
     pr = gh_repo.create_pull(title=title, body=body, head=branch, base=base)
 
 # Cross-reference comment
-pr.create_issue_comment("**Related PRs:**\n- delphi: https://...")
+pr.create_issue_comment("**Related PRs:**\n- web-app: https://...")
 ```
 
 Use `gh` CLI via subprocess for one-off token lookup. Use PyGithub when you need
