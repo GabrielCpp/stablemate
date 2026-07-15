@@ -12,90 +12,34 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 import sys
 from pathlib import Path
 
-from github import Github, GithubException
+from github import GithubException
 
-from workhorse.scriptutil import find_repo_root, get_affected_repos, load_json, resolve_workspace
-
-from lib import ghutil
+from workhorse.scriptutil import (
+    commits_ahead,
+    find_open_pr,
+    find_repo_root,
+    get_affected_repos,
+    load_json,
+    local_branch_exists,
+    push_branch,
+    resolve_github_token,
+    resolve_repo,
+    resolve_workspace,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def resolve_token(scripts_dir: Path) -> str:
-    try:
-        result = subprocess.run(
-            [sys.executable, str(scripts_dir / "gh-token.py")],
-            capture_output=True, text=True, check=False,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
-def parse_origin_slug(repo_path: Path) -> str:
-    """Return 'owner/repo' from the git remote origin URL, or empty string."""
-    try:
-        r = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, check=False, cwd=str(repo_path),
-        )
-        if r.returncode != 0:
-            return ""
-        url = r.stdout.strip()
-    except Exception:
-        return ""
-
-    if url.startswith("git@github.com:"):
-        slug = url.removeprefix("git@github.com:")
-    elif url.startswith("ssh://git@github.com/"):
-        slug = url.removeprefix("ssh://git@github.com/")
-    elif url.startswith("https://github.com/"):
-        slug = url.removeprefix("https://github.com/")
-    else:
-        return ""
-    return slug.removesuffix(".git")
-
-
-def has_commits_ahead(repo_path: Path, branch: str, base: str) -> bool:
-    count = ghutil.commits_ahead(branch, base, repo_path)
-    return count != 0  # unreachable (-1) counts as "yes"; assume yes and let push decide
-
-
-def push_branch(repo_path: Path, repo_name: str, branch: str, token: str) -> bool:
-    """Push branch via transient credential helper. Returns True on success."""
-    origin_slug = parse_origin_slug(repo_path)
-    if not origin_slug:
-        logger.warning("%s: origin not a github.com URL — skipping push", repo_name)
-        return False
-
-    push_url = f"https://github.com/{origin_slug}.git"
-    cred_helper = f'!f() {{ echo username=x-access-token; echo "password={token}"; }}; f'
-    try:
-        r = subprocess.run(
-            ["git", "-c", f"credential.helper={cred_helper}", "push", push_url, f"{branch}:{branch}"],
-            capture_output=True, text=True, check=False, cwd=str(repo_path), timeout=120,
-        )
-        if r.returncode != 0:
-            logger.warning("%s: push failed: %s", repo_name, r.stderr.strip())
-            return False
-        return True
-    except Exception as exc:
-        logger.warning("%s: push error: %s", repo_name, exc)
-        return False
-
-
 def open_or_find_pr(gh_repo, branch: str, base: str, slug: str):
     """Return an open PR for branch (existing or newly created). Returns None on error."""
-    owner = gh_repo.owner.login
     try:
-        existing = list(gh_repo.get_pulls(head=f"{owner}:{branch}", state="open"))
-        if existing:
+        existing = find_open_pr(gh_repo, branch)
+        if existing is not None:
             logger.info("%s: PR already open for %s", gh_repo.name, branch)
-            return existing[0]
+            return existing
         pr = gh_repo.create_pull(
             title=f"story/{slug}",
             body=f"## Story: {slug}\n\nPart of a multi-repo story.",
@@ -121,15 +65,14 @@ def main() -> None:
         return
 
     branch = f"story/{slug}"
-    scripts_dir = Path(__file__).resolve().parent
 
-    token = resolve_token(scripts_dir)
+    root = find_repo_root()
+    token = resolve_github_token(root)
     if not token:
         logger.info("no GitHub token — leaving %s for manual PRs", branch)
         print(json.dumps({"pr_urls": {}, "opened": "no"}))
         return
 
-    root = find_repo_root()
     repos = resolve_workspace("CODER_WORKSPACE")
 
     spec_dir_rel = os.environ.get("SPEC_DIR", "")
@@ -140,16 +83,14 @@ def main() -> None:
     )
     affected_names = get_affected_repos(plan_ctx, repos)
 
-    # Docs root + affected code repos
+    # Docs root + affected code repos.
     candidates: list[tuple[str, Path]] = [(root.name, root)]
     for name in affected_names:
         repo_path = Path(repos[name]["path"])
         if repo_path != root:
             candidates.append((name, repo_path))
 
-    gh = Github(token)
-
-    # First pass: push + open PR
+    # First pass: push + open PR.
     pr_records: list[tuple[str, object]] = []  # (repo_name, pr_object)
     pr_urls: dict[str, str] = {}
 
@@ -157,25 +98,24 @@ def main() -> None:
         if not (repo_path / ".git").exists():
             continue
 
-        if not ghutil.local_branch_exists(branch, repo_path):
+        if not local_branch_exists(repo_path, branch):
             logger.info("%s: branch %s not found — skipping", repo_name, branch)
             continue
 
-        if not has_commits_ahead(repo_path, branch, base):
+        # commits_ahead returns -1 when the range is unresolvable (e.g. no
+        # origin/<base> yet); treat that as "assume yes and let the push decide".
+        # Only a definite 0 (nothing ahead) skips the push.
+        if commits_ahead(repo_path, branch, base) == 0:
             logger.info("%s: nothing ahead of %s — skipping", repo_name, base)
             continue
 
-        if not push_branch(repo_path, repo_name, branch, token):
+        if not push_branch(repo_path, token, branch, verify=False):
+            logger.warning("%s: push failed — skipping", repo_name)
             continue
 
-        origin_slug = parse_origin_slug(repo_path)
-        if not origin_slug:
-            continue
-
-        try:
-            gh_repo = gh.get_repo(origin_slug)
-        except GithubException as exc:
-            logger.warning("%s: cannot access repo %s: %s", repo_name, origin_slug, exc)
+        gh_repo, origin_slug = resolve_repo(repo_path, token)
+        if gh_repo is None:
+            logger.warning("%s: origin %s not a reachable github.com repo — skipping", repo_name, origin_slug)
             continue
 
         pr = open_or_find_pr(gh_repo, branch, base, slug)
@@ -185,7 +125,7 @@ def main() -> None:
         pr_urls[repo_name] = pr.html_url
         pr_records.append((repo_name, pr))
 
-    # Second pass: cross-reference comments
+    # Second pass: cross-reference comments.
     if len(pr_urls) > 1:
         for repo_name, pr in pr_records:
             siblings = "\n".join(

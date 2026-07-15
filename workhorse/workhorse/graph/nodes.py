@@ -70,6 +70,21 @@ class ScriptNode(BaseModel):
     id: str
     script: str
     args: list[str] = Field(default_factory=list)
+
+    @field_validator("script")
+    @classmethod
+    def _reject_shell_scripts(cls, v: str) -> str:
+        """Only Python script nodes are supported. Shell scripts can't be run
+        in-process (which is how the test harness intercepts scriptutil calls),
+        so a workflow must port them to a Python script using ``workhorse.scriptutil``.
+        Enforced at load so a bad workflow fails before any run, not mid-run."""
+        if v.lower().endswith((".sh", ".bash")):
+            raise ValueError(
+                f"script node points at a shell script ({v!r}); shell scripts are "
+                "not supported — port it to a Python script (.py) using "
+                "workhorse.scriptutil"
+            )
+        return v
     outputs: list[OutputSpec] = Field(default_factory=list)
     # Per-node working directory (Jinja2-rendered). Sets the subprocess CWD for
     # the script. When empty/None, defaults to the workflow directory.

@@ -185,12 +185,14 @@ All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs
 
 ### In Scripts (Python)
 ```python
-import subprocess, shutil
 from pathlib import Path
 
+from workhorse.scriptutil import run_tool
+
 def _ostler_path(docs_root: Path, subcmd: str, *args: str) -> str:
-    cmd = ["ostler", "-C", str(docs_root), "path", subcmd, *args]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    # run_tool is the monkeypatchable seam for external CLIs (ostler, etc.) —
+    # an in-process test fakes it with no PATH shim.
+    result = run_tool(["ostler", "-C", str(docs_root), "path", subcmd, *args])
     return result.stdout.strip() if result.returncode == 0 else ""
 
 # Always provide a fallback in case ostler is unavailable

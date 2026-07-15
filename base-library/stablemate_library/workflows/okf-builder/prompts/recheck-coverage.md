@@ -70,6 +70,18 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
    fulfillment), each allowed to traverse several invocations. A small single-purpose service may
    need only 1-3. Set `needs_journeys: yes` with `coverage_complete: no` so the loop drains them,
    then re-checks. If representative flows exist, do not expand them merely for endpoint coverage.
+6. **Operational surface — the run surface must be a `runbook`** (the OKF runbook profile).
+   The inventory file carries an `operational` list —
+   the mechanical run surface (make/just targets, compose services, package/console scripts,
+   `__main__` entry points). Diff it against the graph: `ostler list runbook` / `ostler list
+   environment` (and `ostler graph --surface ‹service› --type runbook`). **The book is not complete
+   until the run surface is a runbook**: every driver the service exposes has a `runbook` whose
+   `## Steps` are ordered and executable and whose `environment` resolves, and each target
+   environment has an `environment` node. Queue a `runbook`/`environment` item for any driver or
+   target that is missing or below the §4.4 bar (a step with no real `run:`/`health:`, an
+   unresolved `environment:`/`surfaces:` link, a `service` step whose `health:` is a UI shell rather
+   than a real probe). A repo with genuinely nothing to boot still needs one `artifact`/`none`
+   runbook — its absence is a gap, not a pass.
 
 ## Output
 
@@ -80,7 +92,8 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
 ```
 
 Set `coverage_complete: yes` **only** when checks 1–4 find nothing (the code inventory is fully
-covered), `inventory_errors` is empty, and journeys exist. Otherwise `no` (with the items to drain).
+covered), the operational surface (check 6) is a complete `runbook`/`environment` set,
+`inventory_errors` is empty, and journeys exist. Otherwise `no` (with the items to drain).
 Batch uncovered source units by their nearest coherent module/package and emit one `layer` item per
 group, listing every uncovered unit in `context`; do not emit hundreds of one-symbol items. Batch a
 large surface's missing elements into `surface-slice` items by route/domain/screen region.

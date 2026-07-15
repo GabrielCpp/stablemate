@@ -17,7 +17,7 @@ from pathlib import Path
 
 from workhorse.testing import WorkflowRun
 
-from conftest import WORKFLOW, mock_all_agents_happy, story_params
+from conftest import WORKFLOW, git_mock_no_remote, mock_all_agents_happy, story_params
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "check_feedback.py"
 INBOX = "docs/specs/s-1/feedback.md"
@@ -109,10 +109,11 @@ def _write_inbox(sandbox: Path, body: str) -> Path:
     return p
 
 
-def test_no_feedback_runs_like_happy_path(story_sandbox):
+def test_no_feedback_runs_like_happy_path(story_sandbox, monkeypatch):
     """With no feedback.md the checkpoints fall through — run completes, no rework node."""
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    mock_all_agents_happy(wf)
+    mock_all_agents_happy(wf, monkeypatch)
     result = wf.run(params=story_params(story_sandbox))
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -120,14 +121,15 @@ def test_no_feedback_runs_like_happy_path(story_sandbox):
     assert [c for c in result.calls("claude") if c["node_id"] == "apply_qa_feedback"] == []
 
 
-def test_impl_feedback_routes_one_rework_then_proceeds(story_sandbox):
+def test_impl_feedback_routes_one_rework_then_proceeds(story_sandbox, monkeypatch):
     """feedback.md present after implementation → apply_impl_feedback once → re-review → QA → done.
 
     The post-impl check consumes the feedback, so the post-QA check sees it CONSUMED
     and does not fire — exactly one rework cycle for one drop."""
     inbox = _write_inbox(story_sandbox, "STATUS: NEW\n\n## Feedback\nRename the field to `slug`.\n")
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    mock_all_agents_happy(wf)
+    mock_all_agents_happy(wf, monkeypatch)
     wf.mock_agent("apply_impl_feedback", {"impl_result": {"status": "applied", "notes": ""}})
 
     result = wf.run(params=story_params(story_sandbox))
@@ -139,7 +141,7 @@ def test_impl_feedback_routes_one_rework_then_proceeds(story_sandbox):
     assert "CONSUMED" in inbox.read_text()
 
 
-def test_qa_feedback_routes_through_apply_qa_feedback(story_sandbox):
+def test_qa_feedback_routes_through_apply_qa_feedback(story_sandbox, monkeypatch):
     """Feedback dropped only at QA time → check_qa_feedback → apply_qa_feedback → re-QA → done.
 
     The feedback file must appear *during* the QA phase (so the post-impl check already
@@ -148,8 +150,9 @@ def test_qa_feedback_routes_through_apply_qa_feedback(story_sandbox):
     writes nothing, so the loop terminates after exactly one rework.
     """
     inbox_rel = "docs/specs/s-1/feedback.md"
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    mock_all_agents_happy(wf)
+    mock_all_agents_happy(wf, monkeypatch)
     wf.mock_agent_sequence("qa_interpret_and_explore", [
         {
             "response": {"qa_interpretation": {"action": "continue", "notes": ""}},

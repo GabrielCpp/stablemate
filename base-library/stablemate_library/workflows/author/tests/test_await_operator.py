@@ -2,16 +2,27 @@
 from __future__ import annotations
 
 import json
+import subprocess
+
+import pytest
 
 from conftest import run_script_raw
 
 CTX = "docs/epics/_author-context.md"
+BLOCK_TIMEOUT = 2
 
 
 def test_first_block_writes_context_and_halts(tmp_path):
     (tmp_path / "docs" / "epics").mkdir(parents=True)
-    proc = run_script_raw("await-operator.py", CTX, "Which plan?", "epics_rework_count", repo=tmp_path)
-    assert proc.returncode == 2
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_script_raw(
+            "await-operator.py",
+            CTX,
+            "Which plan?",
+            "epics_rework_count",
+            repo=tmp_path,
+            timeout=BLOCK_TIMEOUT,
+        )
     ctx = tmp_path / CTX
     assert ctx.is_file()
     assert "AWAITING_OPERATOR" in ctx.read_text()
@@ -22,8 +33,8 @@ def test_still_awaiting_halts(tmp_path):
     ctx = tmp_path / CTX
     ctx.parent.mkdir(parents=True)
     ctx.write_text("STATUS: AWAITING_OPERATOR\n\nq\n")
-    proc = run_script_raw("await-operator.py", CTX, "q", repo=tmp_path)
-    assert proc.returncode == 2
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_script_raw("await-operator.py", CTX, "q", repo=tmp_path, timeout=BLOCK_TIMEOUT)
 
 
 def test_answered_proceeds_and_resets_counter(tmp_path):
@@ -43,8 +54,8 @@ def test_consumed_reblock_rearms_and_halts(tmp_path):
     ctx = tmp_path / CTX
     ctx.parent.mkdir(parents=True)
     ctx.write_text("STATUS: CONSUMED\n\nold q\n")
-    proc = run_script_raw("await-operator.py", CTX, "new q", repo=tmp_path)
-    assert proc.returncode == 2
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_script_raw("await-operator.py", CTX, "new q", repo=tmp_path, timeout=BLOCK_TIMEOUT)
     text = ctx.read_text()
     assert "AWAITING_OPERATOR" in text
     assert "new q" in text

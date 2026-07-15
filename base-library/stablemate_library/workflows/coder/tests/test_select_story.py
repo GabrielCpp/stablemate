@@ -72,8 +72,8 @@ def test_skips_completed_story_returns_no_story(tmp_path):
     make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "QA passed (2026-01-01)."}])
     make_queue(tmp_path, ["epic-1"])
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), result.stderr
@@ -85,8 +85,8 @@ def test_prunes_completed_epic_from_queue(tmp_path):
     make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "QA passed (2026-01-01)."}])
     make_queue(tmp_path, ["epic-1"])
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), result.stderr
@@ -99,8 +99,8 @@ def test_missing_dependencies_json_returns_no_story(tmp_path):
     epic_dir.mkdir(parents=True)
     make_queue(tmp_path, ["epic-1"])
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), result.stderr
@@ -138,8 +138,8 @@ def test_unauthored_next_story_ends_epic_loop(tmp_path):
     # Simulate an unauthored story: drop its story.md (dependencies.json still lists it).
     (tmp_path / "docs" / "epics" / "epic-1" / "stories" / "s-1" / "story.md").unlink()
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"

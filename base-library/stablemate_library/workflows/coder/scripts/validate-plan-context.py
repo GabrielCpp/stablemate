@@ -19,6 +19,7 @@ import logging
 import sys
 from pathlib import Path
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,9 @@ def main() -> None:
     # stays below (ostler has no workspace context). Union its problems in;
     # ostler being absent never blocks validation itself.
     try:
-        import subprocess
-        ostler_out = subprocess.run(
+        ostler_out = scriptutil.run_tool(
             ["ostler", "artifact", "vet", "plan-context", "--spec", spec_dir_rel, "--json"],
-            capture_output=True, text=True, timeout=30, cwd=str(root),
+            cwd=root,
         )
         if ostler_out.stdout.strip():
             parsed = json.loads(ostler_out.stdout)

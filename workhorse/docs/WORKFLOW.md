@@ -91,15 +91,15 @@ continue (context overflow) → reframe in a fresh session → finally emit the
 declared `default` outputs and advance to `next`. Each node runs as a fresh
 prompt in a clean session; conversations are not chained between nodes.
 
-### 2.2 `script` — run a shell/Python script
+### 2.2 `script` — run a Python script
 
-Runs a script with the workflow dir as cwd, passes rendered args as positional
-arguments, and parses its **stdout as a single JSON object**.
+Runs a Python script with the workflow dir as cwd, passes rendered args as
+positional arguments, and parses its **stdout as a single JSON object**.
 
 ```yaml
 - id: init_counter
   type: script
-  script: scripts/init_counter.py    # .py → python3, .sh/.bash → bash, else run directly
+  script: scripts/init_counter.py    # Python only — run with sys.executable
   args:
     - "{{ story_path }}"
   outputs:

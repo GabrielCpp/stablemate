@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_docs_root
 
 BACKLOG_ID_RE = re.compile(r"^\s*-\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]\s*(.*)$")
@@ -37,13 +36,9 @@ def emit(**kwargs: str) -> None:
 
 def prune_via_ostler(root: Path, bullet_id: str) -> bool | None:
     """Return True/False on a definitive ostler result, None if ostler isn't usable here."""
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
     try:
-        proc = subprocess.run([ostler, "backlog", "prune", bullet_id], cwd=str(root),
-                              capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
+        proc = scriptutil.run_tool(["ostler", "backlog", "prune", bullet_id], cwd=root)
+    except OSError:
         return None
     return proc.returncode == 0
 

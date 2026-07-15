@@ -17,27 +17,29 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root, get_affected_repos, get_repo_config, load_json, resolve_workspace
+from github import GithubException
+
+from workhorse.scriptutil import (
+    branch_exists,
+    checkout,
+    commit_all,
+    current_branch,
+    find_open_pr,
+    find_repo_root,
+    get_affected_repos,
+    get_repo_config,
+    load_json,
+    push_branch,
+    resolve_github_token,
+    resolve_repo,
+    resolve_workspace,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def resolve_token(scripts_dir: Path) -> str:
-    """Resolve the GitHub token via gh-token.py."""
-    try:
-        result = subprocess.run(
-            [sys.executable, str(scripts_dir / "gh-token.py")],
-            capture_output=True, text=True, check=False,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
 
 
 def read_story_title(root: Path, story_path: str) -> str:
@@ -117,67 +119,35 @@ def push_and_pr(
     title: str,
     body: str,
     token: str,
-) -> str:
-    """Push branch and open PR in a single repo. Returns: opened|exists|skipped."""
-    os.chdir(str(repo_path))
-
-    # Verify branch exists
-    r = subprocess.run(["git", "rev-parse", "--verify", branch], capture_output=True, check=False)
-    if r.returncode != 0:
+) -> tuple[str, str]:
+    """Push branch and open PR in a single repo. Returns (status, pr_url) where
+    status is opened|exists|skipped."""
+    if not branch_exists(repo_path, branch):
         logger.warning("no branch %s in %s", branch, repo_path.name)
-        return "skipped"
+        return "skipped", ""
 
-    # Verify remote
-    r = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False)
-    if r.returncode != 0:
-        logger.warning("no 'origin' remote in %s", repo_path.name)
-        return "skipped"
-    origin_url = r.stdout.strip()
+    gh_repo, slug = resolve_repo(repo_path, token)
+    if gh_repo is None:
+        logger.warning("%s: origin %s not a reachable github.com repo — skipping", repo_path.name, slug)
+        return "skipped", ""
 
-    # Derive HTTPS push URL
-    if origin_url.startswith("git@github.com:"):
-        repo_slug = origin_url.removeprefix("git@github.com:").removesuffix(".git")
-    elif origin_url.startswith("ssh://git@github.com/"):
-        repo_slug = origin_url.removeprefix("ssh://git@github.com/").removesuffix(".git")
-    elif origin_url.startswith("https://github.com/"):
-        repo_slug = origin_url.removeprefix("https://github.com/").removesuffix(".git")
-    else:
-        logger.warning("origin '%s' not a github.com URL in %s", origin_url, repo_path.name)
-        return "skipped"
+    if not push_branch(repo_path, token, branch, verify=False):
+        logger.warning("push failed for %s in %s", branch, repo_path.name)
+        return "skipped", ""
 
-    push_url = f"https://github.com/{repo_slug}.git"
-    cred_helper = f'!f() {{ echo username=x-access-token; echo "password={token}"; }}; f'
-
-    # Push
-    r = subprocess.run(
-        ["git", "-c", f"credential.helper={cred_helper}", "push", push_url, f"{branch}:{branch}"],
-        capture_output=True, text=True, check=False, timeout=120,
-    )
-    if r.returncode != 0:
-        logger.warning("push failed for %s in %s: %s", branch, repo_path.name, r.stderr.strip())
-        return "skipped"
-
-    # Check if PR already exists
-    env = {**os.environ, "GH_TOKEN": token}
-    r = subprocess.run(
-        ["gh", "pr", "view", branch, "--json", "number"],
-        capture_output=True, text=True, check=False, env=env, cwd=str(repo_path),
-    )
-    if r.returncode == 0:
+    existing = find_open_pr(gh_repo, branch)
+    if existing is not None:
         logger.info("PR already open for %s in %s", branch, repo_path.name)
-        return "exists"
+        return "exists", existing.html_url
 
-    # Create PR
-    r = subprocess.run(
-        ["gh", "pr", "create", "--base", base, "--head", branch, "--title", title, "--body", body],
-        capture_output=True, text=True, check=False, env=env, cwd=str(repo_path), timeout=60,
-    )
-    if r.returncode != 0:
-        logger.warning("gh pr create failed in %s: %s", repo_path.name, r.stderr.strip())
-        return "skipped"
+    try:
+        pr = gh_repo.create_pull(base=base, head=branch, title=title, body=body)
+    except GithubException as exc:
+        logger.warning("PR create failed in %s: %s", repo_path.name, exc)
+        return "skipped", ""
 
     logger.info("opened PR for %s → %s in %s", branch, base, repo_path.name)
-    return "opened"
+    return "opened", pr.html_url
 
 
 def get_repo_base_branch(repo_path: Path, repo_name: str, repos: dict, fallback: str = "main") -> str:
@@ -185,48 +155,22 @@ def get_repo_base_branch(repo_path: Path, repo_name: str, repos: dict, fallback:
     declared = get_repo_config(repo_name, "base_branch", repos=repos)
     if declared:
         return declared
-    os.chdir(str(repo_path))
     for candidate in ("develop", "main", "master"):
-        r = subprocess.run(
-            ["git", "rev-parse", "--verify", candidate],
-            capture_output=True, check=False,
-        )
-        if r.returncode == 0:
+        if branch_exists(repo_path, candidate):
             return candidate
     return fallback
 
 
-def commit_story_in_repo(repo_path: Path, branch: str, title: str) -> bool:
+def commit_story_in_repo(repo_path: Path, branch: str, title: str) -> None:
     """Commit any uncommitted changes in a code repo on the story branch."""
-    os.chdir(str(repo_path))
-
-    # Ensure we're on the right branch
-    r = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False)
-    current = r.stdout.strip() if r.returncode == 0 else ""
-    if current != branch:
-        r = subprocess.run(["git", "checkout", branch], capture_output=True, check=False)
-        if r.returncode != 0:
-            # Branch doesn't exist — create it from current HEAD
-            r = subprocess.run(["git", "checkout", "-b", branch], capture_output=True, check=False)
-            if r.returncode != 0:
-                logger.warning("cannot checkout %s in %s", branch, repo_path.name)
-                return False
-
-    # Stage and commit
-    subprocess.run(["git", "add", "-A"], capture_output=True, check=False)
-    r = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True, check=False)
-    if r.returncode == 0:
-        # Nothing to commit — branch may already have commits ahead of base
-        return True
-
-    r = subprocess.run(
-        ["git", "commit", "-m", title],
-        capture_output=True, text=True, check=False,
-    )
-    if r.returncode != 0:
-        logger.warning("commit failed in %s: %s", repo_path.name, r.stderr.strip())
-        return False
-    return True
+    if current_branch(repo_path) != branch:
+        # Check out the branch, creating it from the current HEAD if it doesn't exist.
+        if not checkout(repo_path, branch) and not checkout(repo_path, branch, create=True):
+            logger.warning("cannot checkout %s in %s", branch, repo_path.name)
+            return
+    # A False here just means "nothing staged" — the branch may already carry the
+    # story's commits ahead of base, which is fine; not an error worth surfacing.
+    commit_all(repo_path, title)
 
 
 def main() -> None:
@@ -267,16 +211,9 @@ def main() -> None:
     summary = read_plan_summary(spec_dir) if spec_dir else ""
     screenshots = find_qa_screenshots(root, story_path)
 
-    # Resolve token
-    scripts_dir = Path(__file__).resolve().parent
-    token = resolve_token(scripts_dir)
+    token = resolve_github_token(root)
     if not token:
         logger.info("no GitHub token — leaving %s for manual PRs", branch)
-        print(json.dumps({"story_pr": "skipped", "pr_urls": []}))
-        return
-
-    if not subprocess.run(["which", "gh"], capture_output=True, check=False).returncode == 0:
-        logger.info("gh CLI not found — leaving %s for manual PRs", branch)
         print(json.dumps({"story_pr": "skipped", "pr_urls": []}))
         return
 
@@ -306,17 +243,10 @@ def main() -> None:
         # Build PR body tailored to this repo
         body = build_pr_body(summary, screenshots, name, is_ui_repo(repo_info))
 
-        result = push_and_pr(repo_path, branch, repo_base, title, body, token)
+        result, pr_url = push_and_pr(repo_path, branch, repo_base, title, body, token)
         results.append(result)
-        if result in ("opened", "exists"):
-            # Get the PR URL
-            env = {**os.environ, "GH_TOKEN": token}
-            r = subprocess.run(
-                ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
-                capture_output=True, text=True, check=False, env=env, cwd=str(repo_path),
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                pr_urls.append(r.stdout.strip())
+        if result in ("opened", "exists") and pr_url:
+            pr_urls.append(pr_url)
 
     # Overall status: best result wins
     if "opened" in results:

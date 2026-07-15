@@ -19,9 +19,15 @@ import os
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_docs_root, get_affected_repos, load_json, resolve_workspace
-
-from lib import ghutil
+from workhorse.scriptutil import (
+    checkout,
+    current_branch,
+    find_docs_root,
+    get_affected_repos,
+    load_json,
+    local_branch_exists,
+    resolve_workspace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +38,15 @@ def branch_repo(repo_path: Path, repo_name: str, branch: str) -> str:
         logger.warning("%s: not a git repo, skipping", repo_name)
         return "skipped"
 
-    if ghutil.current_branch(repo_path) == branch:
+    if current_branch(repo_path) == branch:
         logger.info("%s: already on %s", repo_name, branch)
         return "already_on_branch"
 
-    if ghutil.local_branch_exists(branch, repo_path):
-        ghutil.checkout(branch, repo_path)
+    if local_branch_exists(repo_path, branch):
+        checkout(repo_path, branch)
         logger.info("%s: checked out existing %s", repo_name, branch)
     else:
-        ghutil.checkout(branch, repo_path, create=True)
+        checkout(repo_path, branch, create=True)
         logger.info("%s: created %s", repo_name, branch)
     return "branched"
 
@@ -59,7 +65,7 @@ def main() -> None:
     if branch_arg:
         branch = branch_arg
     elif (docs_root / ".git").exists():
-        branch = ghutil.current_branch(docs_root)
+        branch = current_branch(docs_root)
     else:
         branch = "main"
         logger.warning("docs root %s is not a git repo and no branch arg — defaulting to 'main'", docs_root)

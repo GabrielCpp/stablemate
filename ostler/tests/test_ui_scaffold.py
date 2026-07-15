@@ -87,3 +87,30 @@ def test_scaffold_unknown_type(repo: Path):
 def test_scaffold_cli_command_roundtrip(repo: Path):
     assert main(["-C", str(repo), "scaffold", "concept", "diff", "--service", "groom"]) == 0
     assert (repo / "docs/features/groom/concepts/diff.md").exists()
+
+
+def test_scaffold_runbook_emits_steps_section_and_driver(repo: Path):
+    res = scaffold.scaffold(load(repo), "runbook", "web", service="groom")
+    assert res.ok
+    text = (repo / "docs/features/groom/ops/web.md").read_text()
+    assert text.startswith("---\ntype: runbook\n")
+    assert "- driver:" in text and "- surfaces:" in text
+    assert "## Steps" in text                  # required_sections skeleton
+    assert load(repo).ui_nodes_of_type("runbook")[0].id.endswith("ops/web.md")
+
+
+def test_scaffold_step_inserts_under_steps_heading(repo: Path):
+    scaffold.scaffold(load(repo), "runbook", "web", service="groom")
+    res = scaffold.scaffold(load(repo), "step", "serve", in_file="groom/ops/web.md")
+    assert res.ok
+    text = (repo / "docs/features/groom/ops/web.md").read_text()
+    assert "### serve" in text and "- kind:" in text
+    assert [s.anchor for s in load(repo).ui_nodes_of_type("step")] == ["serve"]
+
+
+def test_scaffold_runbook_trio_is_canonical(repo: Path):
+    scaffold.scaffold(load(repo), "environment", "local", service="groom")
+    scaffold.scaffold(load(repo), "runbook", "web", service="groom")
+    scaffold.scaffold(load(repo), "step", "prepare", in_file="groom/ops/web.md")
+    result = fmt.run_fmt(load(repo), [], check=True)
+    assert result.changed == []

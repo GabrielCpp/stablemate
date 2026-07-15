@@ -3,8 +3,8 @@
 init-base captures the PR / merge TARGET (the trunk). Regression: a prior,
 unfinished run leaves HEAD on its ``feat/<epic>`` branch; a fresh run started
 from that checkout must NOT capture the epic branch as the base (that makes
-``gh pr create --base feat/<epic> --head feat/<epic>`` fail with base==head
-and silently no-ops the open-PR / merge gate). These tests run the script against
+PR creation fail with base==head and silently no-ops the open-PR / merge gate).
+These tests run the script against
 a real temp git repo, since the workflow harness's git mock dispatches only on the
 subcommand and can't tell ``rev-parse --abbrev-ref HEAD`` from ``rev-parse --verify``.
 """

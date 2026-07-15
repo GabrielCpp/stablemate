@@ -106,6 +106,13 @@ grammar.
 - `format` — the shape of a file / artifact: a workflow file, a config, or an
   **OpenAPI** document (the machine source for an HTTP surface).
 
+**Operational profile (extension).** Three further built-in types model *how the system
+is run and observed* — `runbook` and `environment` (file-level) and `step` (section-level,
+under a runbook's `## Steps`). They reuse the surface types above via a runbook's
+`surfaces:` link; there is no new "surface" type. The full spec — driver/kind vocabularies,
+the spec-completeness bar, and how okf-builder generates and consumes them — lives in
+[okf-runbook.md](okf-runbook.md); their optional bullets are summarized below.
+
 ### Optional structured bullets (conventions, never required)
 
 When a machine-readable hook helps, add a plain bullet. All optional.
@@ -190,6 +197,36 @@ When a machine-readable hook helps, add a plain bullet. All optional.
 - `file:` — the glob it applies to (`**/workflow.yaml`); `code:` — the loader/model
   (`graph/loader.py::load_workflow`) or the OpenAPI doc path. Fields as `### <key>`
   sections.
+
+**`runbook`** (operational profile — [okf-runbook.md §4.1](okf-runbook.md))
+- `driver:` — the observe/drive mechanism: `web` / `mobile` / `http` / `cli` / `artifact`
+  / `iac` / `none`. **Required** — it selects which walkthrough consumer boots this recipe.
+- `environment:` — link to the `environment` node this boots (default: the repo's `local`).
+- `cli:` — link to the dev-CLI `cli` node this runbook drives with, when one exists.
+- `surfaces:` — links to the `screen` / `server` / `cli` / `format` nodes it exposes.
+- `code:` — the launch entry point (`path::symbol`), when there is one.
+- Required section: `## Steps` — the ordered `### <id>` `step` nodes.
+
+**`environment`** ([okf-runbook.md §4.2](okf-runbook.md))
+- `selector:` — how this environment is chosen (a stage env-var value, an env-file).
+- `services:` — nested; one child per service giving its URL/host **in this environment**
+  (ports/hosts are env-scoped; a child may carry a host-rewrite note with its reason).
+- `backing:` — nested; backing projects, databases, buckets, emulators it uses.
+- `local-only:` — `true` when tooling must refuse to target it without an explicit override.
+
+**`step`** (a `### id` under a runbook's `## Steps` — [okf-runbook.md §4.3](okf-runbook.md))
+- `kind:` — **required**: `prepare` / `service` / `seed` / `run` / `health` / `verify` /
+  `drive`.
+- `run:` — the exact bounded command; `working-directory:` — cwd when not the repo root;
+  `env:` — nested env-var wiring the step needs.
+- `health:` — for `service`/`health` steps, the **real** readiness signal (a URL to poll, a
+  command, `port-bound` / `log:<pattern>` / `ws:<frame>`) — never a shell served with the
+  backend down.
+- `produces:` — for `run` steps, the output artifact path(s)/glob(s) — the observable surface.
+- `verify:` — for `run`/`verify` steps, how success is confirmed (a golden compare, a
+  deterministic re-run, an assertion string, a test id).
+- `optional:` — `true` for best-effort steps; `depends-on:` — ordering hint (default:
+  document order); `provenance:` — `derived` (build pass) or `verified` (walkthrough §7).
 
 ### Visual evidence & registration (walkthrough outputs)
 
@@ -298,6 +335,7 @@ per-heading marker needed:
 | `## Endpoints` | `endpoint` |
 | `## Interactions` | `interaction` (GUI events) |
 | `## Invocations` | `invocation` (calls / messages) |
+| `## Steps` (in a `runbook`) | `step` (operational profile — [okf-runbook.md](okf-runbook.md)) |
 | `## Fields` (in a `format`) | fields (not nodes) |
 
 The file's own `type:` frontmatter sets the whole-file surface node
@@ -1022,7 +1060,9 @@ regenerate," so the author/coder documentation gates and the story auditor hold 
 
 The vocabulary now stands at **eleven** types across three surfaces — GUI
 (`screen`/`component`/`interaction`), CLI (`cli`/`command`), HTTP/WS
-(`server`/`endpoint`), and shared (`invocation`/`flow`/`concept`/`format`). Open calls:
+(`server`/`endpoint`), and shared (`invocation`/`flow`/`concept`/`format`) — plus the
+operational-profile extension (`runbook`/`environment`/`step`; [okf-runbook.md](okf-runbook.md)).
+Open calls:
 
 1. ~~`interaction.does` shape~~ — **RESOLVED: nested bullet list**, one effect per
    child bullet (ostler already parses nested bullets — `markdown.py::_parse_bullets`

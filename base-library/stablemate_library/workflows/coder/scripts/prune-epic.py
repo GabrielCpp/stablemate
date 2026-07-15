@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+
+from workhorse import scriptutil
 
 
 def find_repo_root() -> Path:
@@ -64,13 +64,9 @@ def _prune_json_sidecar(todo_path: Path, epic: str) -> str:
 
 
 def _prune_ostler(root: Path, epic: str) -> str:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return "no"
     try:
-        proc = subprocess.run([ostler, "todo", "prune", epic], cwd=str(root),
-                              capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
+        proc = scriptutil.run_tool(["ostler", "todo", "prune", epic], cwd=root)
+    except OSError:
         return "no"
     return "yes" if proc.returncode == 0 else "no"
 

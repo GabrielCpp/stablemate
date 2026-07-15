@@ -14,6 +14,7 @@ from typing import Any
 from . import otel
 from .artifacts import ArtifactWriter
 from .config import config_path, get_config_value, load_config, write_config_key
+from .config_run import RunConfig
 from .graph.context import WorkflowContext
 from .graph.loader import load_workflow
 from .graph.nodes import (
@@ -41,6 +42,46 @@ _BACKEND_SKILL_DIR: dict[str, str] = {
 }
 
 
+class Workhorse:
+    """The workflow engine handle: walks a graph node by node, driven by an
+    immutable :class:`RunConfig`. The config (resilience knobs, gas/runtime budgets,
+    backend and script-runner factories) is read from ``self.config`` rather than the
+    environment, so a run's behavior is fixed at construction and an in-process test
+    can drive the engine hermetically with explicit values instead of mutating global
+    state. The graph walk itself lives in module-level helpers that take ``config``
+    explicitly (``run``/``_step_loop``/``_run_flow``); this class is the public
+    object callers construct."""
+
+    def __init__(self, config: RunConfig | None = None) -> None:
+        self.config = config or RunConfig.from_env()
+
+    def run(
+        self,
+        workflow_path: Path,
+        runs_dir: Path,
+        *,
+        resume_run_dir: Path | None = None,
+        auto: bool = True,
+        run_id: str | None = None,
+        params: dict[str, Any] | None = None,
+        context_manifest: dict[str, Any] | None = None,
+        flow: str | None = None,
+        no_cache: bool = False,
+    ) -> int:
+        return run(
+            workflow_path,
+            runs_dir,
+            resume_run_dir,
+            auto=auto,
+            run_id=run_id,
+            params=params,
+            context_manifest=context_manifest,
+            flow=flow,
+            no_cache=no_cache,
+            config=self.config,
+        )
+
+
 def run(
     workflow_path: Path,
     runs_dir: Path,
@@ -51,7 +92,10 @@ def run(
     context_manifest: dict[str, Any] | None = None,
     flow: str | None = None,
     no_cache: bool = False,
+    *,
+    config: RunConfig | None = None,
 ) -> int:
+    cfg = config or RunConfig.from_env()
     graph = load_workflow(workflow_path)
     workflow_dir = workflow_path.parent
 
@@ -173,7 +217,7 @@ def run(
 
     session_id_path = writer.run_dir / ".session_id"
 
-    tank = _GasTank(_configured_gas())
+    tank = _GasTank(cfg.gas)
 
     # Opt-in telemetry (WORKHORSE_OTEL): the run's root span opens here and every
     # node/turn span nests under it; end_run flushes on every exit path below.
@@ -190,7 +234,8 @@ def run(
             workflow_dir=workflow_dir,
             session_id_path=session_id_path,
             tank=tank,
-            deadline=_runtime_deadline(writer.started_at),
+            deadline=_runtime_deadline(writer.started_at, cfg.max_runtime_s),
+            config=cfg,
         )
     except KeyboardInterrupt:
         agent_runner.terminate_active()
@@ -266,7 +311,7 @@ _MAX_FLOW_DEPTH = 16
 # the SAME unit forever burns exactly one tank and then halts LOUDLY with diagnostics.
 # So the tank is sized to ONE unit of progress (one story), NOT the whole run. Override
 # with WORKHORSE_GAS; set it to 0 to disable the guard entirely (not recommended).
-_DEFAULT_GAS = 5000
+# The configured size lives in RunConfig.gas (config_run._DEFAULT_GAS).
 
 
 class OutOfGasError(RuntimeError):
@@ -284,47 +329,18 @@ class RunBudgetExceeded(RuntimeError):
     """
 
 
-def _configured_max_runtime_s() -> float:
-    raw = (os.environ.get("WORKHORSE_MAX_RUNTIME_S") or "").strip()
-    if not raw:
-        return 0.0
-    try:
-        return max(0.0, float(raw))
-    except ValueError:
-        print(
-            f"[workhorse] ⚠ ignoring non-numeric WORKHORSE_MAX_RUNTIME_S={raw!r}; "
-            f"runtime budget disabled",
-            file=sys.stderr,
-        )
-        return 0.0
-
-
-def _runtime_deadline(started_at_iso: str) -> float | None:
+def _runtime_deadline(started_at_iso: str, budget_s: float) -> float | None:
     """Absolute unix-epoch deadline for this run, or None when no budget is set.
     Anchored to the writer's original ISO start time so a resumed run keeps the
-    same deadline instead of restarting the clock."""
-    budget = _configured_max_runtime_s()
-    if budget <= 0:
+    same deadline instead of restarting the clock. ``budget_s`` is the configured
+    wall-clock ceiling (RunConfig.max_runtime_s); <= 0 means unbounded."""
+    if budget_s <= 0:
         return None
     try:
         started = datetime.fromisoformat(started_at_iso)
     except ValueError:
         started = datetime.now(timezone.utc)
-    return started.timestamp() + budget
-
-
-def _configured_gas() -> int:
-    raw = (os.environ.get("WORKHORSE_GAS") or "").strip()
-    if raw:
-        try:
-            return max(0, int(raw))
-        except ValueError:
-            print(
-                f"[workhorse] ⚠ ignoring non-integer WORKHORSE_GAS={raw!r}; "
-                f"using default {_DEFAULT_GAS}",
-                file=sys.stderr,
-            )
-    return _DEFAULT_GAS
+    return started.timestamp() + budget_s
 
 
 class _GasTank:
@@ -389,6 +405,7 @@ def _step_loop(
     workflow_dir: Path,
     session_id_path: Path,
     tank: _GasTank,
+    config: RunConfig,
     depth: int = 0,
     deadline: float | None = None,
 ) -> str:
@@ -437,8 +454,14 @@ def _step_loop(
                     ctx,
                     workflow_dir,
                     session_id_path,
+                    max_output_retries=config.resilience.max_output_retries,
+                    max_rephrase_attempts=config.resilience.max_rephrase_attempts,
+                    max_compact_attempts=config.resilience.max_compact_attempts,
                     run_dir=writer.run_dir,
                     resume_session=resume_interrupted_node,
+                    backend=config.get_backend(),
+                    use_default_outputs=config.resilience.use_default_outputs,
+                    result_timeout=config.resilience.result_timeout_s,
                 )
                 # The resume only applies to the first re-entered node; every node
                 # the run advances to afterward is a fresh prompt / clean context.
@@ -479,7 +502,8 @@ def _step_loop(
             print(f"[workhorse] script → {node.id}")
             try:
                 cmd_str, outputs = script_runner.run_script(
-                    node, ctx, workflow_dir, graph.env or None
+                    node, ctx, workflow_dir, graph.env or None,
+                    runner=config.get_script_runner(),
                 )
                 ctx.merge(outputs)
                 # Refuel the gas tank on forward progress: when a node declares a
@@ -559,6 +583,7 @@ def _step_loop(
                 workflow_dir=workflow_dir,
                 session_id_path=session_id_path,
                 tank=tank,
+                config=config,
                 depth=depth,
                 deadline=deadline,
                 resume=is_flow_resume,
@@ -622,6 +647,7 @@ def _run_flow(
     workflow_dir: Path,
     session_id_path: Path,
     tank: _GasTank,
+    config: RunConfig,
     depth: int,
     deadline: float | None = None,
     resume: bool = False,
@@ -660,6 +686,7 @@ def _run_flow(
         workflow_dir=workflow_dir,
         session_id_path=child_writer.run_dir / ".session_id",
         tank=tank,
+        config=config,
         depth=depth + 1,
         deadline=deadline,
     )

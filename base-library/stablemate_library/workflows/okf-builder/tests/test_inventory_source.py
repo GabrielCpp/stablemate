@@ -68,6 +68,47 @@ def test_inventory_excludes_tests_generated_and_dependencies(tmp_path: Path) -> 
     assert paths == {"main.go"}
 
 
+def test_operational_surface_inventoried_from_generic_evidence(tmp_path: Path) -> None:
+    (tmp_path / "Makefile").write_text(
+        "VERSION = 1\n.PHONY: serve\nserve:\n\tgroom serve\ntest:\n\tpytest\n"
+        "%.o: %.c\n\tcc\n"
+    )
+    (tmp_path / "docker-compose.yml").write_text(
+        "services:\n  gateway:\n    image: x\n  db:\n    image: pg\nvolumes:\n  data:\n"
+    )
+    (tmp_path / "package.json").write_text('{"scripts": {"dev": "vite", "build": "vite build"}}')
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.scripts]\ngroom = \"groom.cli:main\"\n"
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "__main__.py").write_text("print('hi')\n")
+    output = tmp_path / "inventory.json"
+
+    result = run_script("inventory-source.py", str(tmp_path), str(output), "", str(tmp_path))
+
+    data = json.loads(output.read_text())
+    ops = {(u["kind"], u["name"]) for u in data["operational"]}
+    assert ("make-target", "serve") in ops
+    assert ("make-target", "test") in ops
+    assert ("make-target", "VERSION") not in ops     # a variable, not a target
+    assert not any(name == "%.o" for _, name in ops)  # pattern rules skipped
+    assert ("compose-service", "gateway") in ops
+    assert ("compose-service", "db") in ops
+    assert ("compose-service", "data") not in ops     # `volumes:`, not `services:`
+    assert ("package-script", "dev") in ops
+    assert ("console-script", "groom") in ops
+    assert ("entry-point", "app") in ops
+    assert result["operational_unit_count"] == len(data["operational"])
+
+
+def test_operational_surface_empty_for_a_bare_source_tree(tmp_path: Path) -> None:
+    (tmp_path / "lib.py").write_text("def f():\n    pass\n")
+    output = tmp_path / "inventory.json"
+    result = run_script("inventory-source.py", str(tmp_path), str(output), "", str(tmp_path))
+    assert json.loads(output.read_text())["operational"] == []
+    assert result["operational_unit_count"] == 0
+
+
 def test_record_can_requeue_a_completed_item(tmp_path: Path) -> None:
     worklist = tmp_path / "worklist.json"
     worklist.write_text(json.dumps({"items": [

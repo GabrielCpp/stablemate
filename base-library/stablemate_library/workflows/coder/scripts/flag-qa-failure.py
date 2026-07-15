@@ -14,8 +14,9 @@ Args: <epic> <story_slug> <attempts> [<story_path>] [<run_dir>].
                per-run skip set so select-next-story.py excludes it for the rest of
                this run (belt-and-suspenders over the status marking below).
 Prints JSON: {"qa_flagged": "yes"|"no"}.
-PR-comment auth uses the configured GitHub token (see gh-token.py / agents.yml).
-All git/gh chatter goes to stderr so stdout stays valid JSON.
+PR-comment auth uses the configured GitHub token (see
+workhorse.scriptutil.resolve_github_token / agents.yml).
+All git/GitHub chatter goes to stderr so stdout stays valid JSON.
 """
 from __future__ import annotations
 
@@ -23,15 +24,12 @@ import json
 import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_repo_root
-
-from lib import ghutil
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +37,16 @@ STATUS_LINE_RE = re.compile(r"^- \*\*Status\*\*:.*$", re.MULTILINE)
 
 
 def mark_via_ostler(root: Path, slug: str, new_status: str) -> bool:
-    if not slug or not shutil.which("ostler"):
+    if not slug:
         return False
-    result = subprocess.run(
-        ["ostler", "-C", str(root), "set-status", slug, new_status],
-        stdout=sys.stderr, stderr=sys.stderr, text=True, check=False,
-    )
+    try:
+        result = scriptutil.run_tool(["ostler", "-C", str(root), "set-status", slug, new_status])
+    except FileNotFoundError:
+        return False
+    if result.stdout:
+        sys.stderr.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
     if result.returncode != 0:
         logger.info("ostler set-status failed for %s — falling back to story.md edit", slug)
         return False
@@ -99,7 +101,6 @@ def main() -> None:
     run_dir_arg = sys.argv[5] if len(sys.argv) > 5 else ""
 
     root = find_repo_root()
-    scripts_dir = Path(__file__).resolve().parent
 
     marker = f"[QA FAILED after {attempts} attempts — needs manual review]"
     # Deliberately does NOT say "QA passed": this is a give-up, not a pass, and the
@@ -132,41 +133,27 @@ def main() -> None:
     # and an operator resets by clearing it.
     record_skip(run_dir_arg, slug)
 
-    subprocess.run(["git", "add", "-A"], cwd=str(root), stdout=sys.stderr, stderr=sys.stderr, text=True, check=False)
-    diff = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"], cwd=str(root), capture_output=True, text=True, check=False,
-    )
-    if diff.returncode == 0:
-        logger.info("no changes to commit for %s", slug)
-        committed = "no"
+    if scriptutil.commit_all(root, f"{epic}: {slug} {marker}"):
+        committed = "yes"
     else:
-        commit = subprocess.run(
-            ["git", "commit", "-m", f"{epic}: {slug} {marker}"],
-            cwd=str(root), stdout=sys.stderr, stderr=sys.stderr, text=True, check=False,
-        )
-        if commit.returncode == 0:
-            committed = "yes"
-        else:
-            logger.info("commit failed for %s", slug)
-            committed = "no"
+        logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
+        committed = "no"
 
     # Best-effort PR comment: only lands if the epic PR is already open (e.g. on
     # a resume after the PR exists). Otherwise the marker commit carries the flag.
     br = f"feat/{epic}"
-    token = ghutil.resolve_gh_token(scripts_dir)
-    if token and ghutil.gh_available():
-        env = {**os.environ, "GH_TOKEN": token}
-        if ghutil.run(["gh", "pr", "view", br, "--json", "number"], root, env=env).returncode == 0:
-            comment = ghutil.run(
-                [
-                    "gh", "pr", "comment", br, "--body",
+    token = scriptutil.resolve_github_token(root)
+    if token:
+        repo, _ = scriptutil.resolve_repo(root, token)
+        pr = scriptutil.find_open_pr(repo, br) if repo is not None else None
+        if pr is not None:
+            try:
+                pr.create_issue_comment(
                     f"⚠️ Story `{slug}` did not pass automated QA after {attempts} rework attempts. "
                     f"It was committed behind the marker `{marker}` for manual review.",
-                ],
-                root, env=env, timeout=60, echo=True,
-            )
-            if comment.returncode != 0:
-                logger.info("could not post PR comment for %s", slug)
+                )
+            except Exception as exc:
+                logger.info("could not post PR comment for %s: %s", slug, exc)
         else:
             logger.info("epic PR for %s not open yet — relying on the marker commit to flag %s", br, slug)
 

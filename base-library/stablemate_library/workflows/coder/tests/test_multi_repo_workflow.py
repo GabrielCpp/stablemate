@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from conftest import WORKFLOW, make_story, git_mock_no_remote, story_params
+from conftest import WORKFLOW, make_story, git_mock_no_remote, mock_ostler_qa, story_params
 from workhorse.testing import WorkflowRun
 
 
@@ -71,7 +71,7 @@ def _seed_valid_plan(sandbox: Path, spec_dir_rel: str, services: list[dict]) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_layer_loop_iterates_all_services(tmp_path):
+def test_layer_loop_iterates_all_services(tmp_path, monkeypatch):
     """A 2-service story → implement_layer is called twice with correct CWDs."""
     make_story(tmp_path, "epic-1", "s-1")
     spec_dir_rel = "docs/specs/s-1"
@@ -83,9 +83,9 @@ def test_layer_loop_iterates_all_services(tmp_path):
         {"repo": "api-service", "path": "cmd/alert", "type": "go", "plan_file": "plan-alert.md", "skills": []},
         {"repo": "web-app", "path": "packages/discover", "type": "svelte", "plan_file": "plan-discover.md", "skills": []},
     ])
+    git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": "Plan written."}})
     wf.mock_agent("rework_plan", {"plan_result": {"status": "done", "summary": "Reworked."}})
     wf.mock_agent("rework_plan_paths", {"plan_result": {"status": "done", "summary": "Paths fixed."}})
@@ -119,7 +119,7 @@ def test_layer_loop_iterates_all_services(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_validate_loop_is_bounded(tmp_path):
+def test_validate_loop_is_bounded(tmp_path, monkeypatch):
     """A plan-context that never validates must not spin forever: the
     rework_plan_paths<->validate_plan loop is capped at max_validate_reworks (3) by
     guard_validate, then escalates to the operator gate. Proven by incr_plan_rework's
@@ -136,8 +136,9 @@ def test_validate_loop_is_bounded(tmp_path):
     ])
     (tmp_path / spec_dir_rel / "plan.md").write_text("# Plan\n", encoding="utf-8")
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    mock_ostler_qa(monkeypatch)
     wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": "Plan written."}})
     # refine claims success but does NOT touch the bad path → stays invalid forever
     wf.mock_agent("rework_plan_paths", {"plan_result": {"status": "done", "summary": "Paths fixed."}})
@@ -147,6 +148,7 @@ def test_validate_loop_is_bounded(tmp_path):
         flow="dev",
         params={**story_params(tmp_path), "operator_mode": "human"},
         extra_env={"CODER_WORKSPACE": str(ws_file)},
+        timeout=20,
     )
 
     # The loop ran exactly max_validate_reworks times, then the guard escalated —
@@ -176,8 +178,8 @@ def test_single_service_no_workspace_file(tmp_path):
         {"repo": "myrepo", "path": "cmd/svc", "type": "go", "plan_file": "plan.md", "skills": []},
     ])
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": "Plan written."}})
     wf.mock_agent("rework_plan", {"plan_result": {"status": "done", "summary": "Reworked."}})
     wf.mock_agent("rework_plan_paths", {"plan_result": {"status": "done", "summary": "Paths fixed."}})

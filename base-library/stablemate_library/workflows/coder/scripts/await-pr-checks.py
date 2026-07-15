@@ -9,17 +9,18 @@ exit would halt the whole run, but a red CI is a normal, handled state here
 (it drives the fix loop).
 
 Auth: the GitHub token env var configured in agents.yml (workflow.githubTokenEnv),
-else GH_TOKEN, else GITHUB_TOKEN — resolved by gh-token.py. All git/gh chatter
-goes to stderr so stdout stays valid JSON.
+else GH_TOKEN, else GITHUB_TOKEN — resolved by workhorse.scriptutil.resolve_github_token,
+then handed to the PyGithub client (workhorse.scriptutil.github_client). All chatter goes to stderr
+so stdout stays valid JSON.
 
-CI state is read from the GitHub Actions runs API (gh api .../actions/runs),
-NOT `gh pr checks` — see the long comment by the poll loop for why (fine-grained
-PATs can't read the check-runs resource, but CAN read Actions runs).
+CI state is read from the GitHub Actions runs API (repo.get_workflow_runs),
+NOT the check-runs resource — see the long comment by the poll loop for why
+(fine-grained PATs can't read check-runs, but CAN read Actions runs).
 
 Outputs JSON: {"ci_status": "passed|failed|unavailable", "ci_summary": "<text>"}
   passed      — every Actions run on the PR head commit concluded successfully.
   failed      — at least one run did not succeed, or the watch timed out pending.
-  unavailable — CI could not be queried (no token / gh / origin / open PR / no
+  unavailable — CI could not be queried (no token / origin / open PR / no
                 Actions runs / auth or permission error). Treated as a pass-through
                 by the workflow so offline, CI-less, and read-blocked runs keep
                 working (best-effort) — loudly logged so it is never silent.
@@ -43,11 +44,15 @@ import sys
 import time
 from pathlib import Path
 
-from lib import ghutil
+from github import GithubException
+
+from workhorse.scriptutil import find_open_pr, origin_url, resolve_github_token, resolve_repo
 
 logger = logging.getLogger(__name__)
 
-FAIL_CONCLUSIONS = '"failure","timed_out","cancelled","startup_failure","action_required","stale"'
+FAIL_CONCLUSIONS = frozenset(
+    {"failure", "timed_out", "cancelled", "startup_failure", "action_required", "stale"}
+)
 AUTH_RE = re.compile(
     r"resource not accessible|bad credentials|HTTP 40[13]|requires authentication|gh auth login|must authenticate|SAML",
     re.IGNORECASE,
@@ -57,6 +62,31 @@ NO_RUNS_POLL_LIMIT = 6
 
 def emit(status: str, summary: str) -> None:
     print(json.dumps({"ci_status": status, "ci_summary": summary}))
+
+
+def resolve_pr(repo, pr_ref: str):
+    """Resolve the PR by explicit number (argv) or by open head branch. None if absent."""
+    if pr_ref.isdigit():
+        try:
+            return repo.get_pull(int(pr_ref))
+        except GithubException:
+            return None
+    return find_open_pr(repo, pr_ref)
+
+
+def poll_runs(repo, head_sha: str) -> tuple[int, int, int, str]:
+    """Count Actions runs on the PR head commit. Returns
+    (total, pending, failed, failing_names). May raise GithubException."""
+    total = pending = failed = 0
+    failing: list[str] = []
+    for wr in repo.get_workflow_runs(head_sha=head_sha):
+        total += 1
+        if wr.status != "completed":
+            pending += 1
+        if wr.conclusion in FAIL_CONCLUSIONS:
+            failed += 1
+            failing.append(f"{wr.name}#{wr.id}({wr.conclusion})")
+    return total, pending, failed, ", ".join(failing)
 
 
 def main() -> None:
@@ -75,71 +105,47 @@ def main() -> None:
         return
 
     root = Path.cwd()
-    scripts_dir = Path(__file__).resolve().parent
 
-    token = ghutil.resolve_gh_token(scripts_dir)
+    token = resolve_github_token(root)
     if not token:
         logger.info("no GitHub token (set workflow.githubTokenEnv in agents.yml) — cannot query CI for %s", br)
         emit("unavailable", "no GitHub token")
         return
-    if not ghutil.gh_available():
-        logger.info("gh CLI not found — cannot query CI for %s", br)
-        emit("unavailable", "gh CLI not found")
-        return
-    if not ghutil.origin_url(root):
+    if not origin_url(root):
         logger.info("no 'origin' remote — cannot query CI for %s", br)
         emit("unavailable", "no origin remote")
         return
 
-    env = {**os.environ, "GH_TOKEN": token}
+    # Gate on the GitHub Actions runs API rather than the check-runs resource.
+    # A fine-grained PAT CANNOT access check-runs ("Resource not accessible by
+    # personal access token", HTTP 403) even with Actions:Read granted — there is
+    # no fine-grained "Checks" permission for user tokens. The Actions
+    # runs/jobs/logs REST API, by contrast, IS readable with Actions:Read, so the
+    # gate (and the fix-ci agent) use it (repo.get_workflow_runs). This keeps a
+    # least-privilege fine-grained token working — no classic PAT and no GitHub
+    # App required.
+    repo, repo_path = resolve_repo(root, token)
+    if repo is None:
+        logger.info("origin '%s' is not a reachable github.com repo — cannot query CI for %s", repo_path, br)
+        emit("unavailable", "origin not a reachable github.com remote")
+        return
 
-    # Existence check via --json: the default `gh pr view` query pulls
-    # `projectCards`, which now errors out with a "Projects (classic) is being
-    # deprecated" GraphQL message and a non-zero exit even when the PR exists —
-    # which would make us bail as if there were no PR. Restricting to a single
-    # JSON field avoids that field.
-    if ghutil.run(["gh", "pr", "view", pr_ref, "--json", "number"], root, env=env).returncode != 0:
+    pr = resolve_pr(repo, pr_ref)
+    if pr is None:
         logger.info("no open PR for %s — cannot gate on CI", pr_ref)
         emit("unavailable", f"no open PR for {pr_ref}")
         return
 
-    # Gate on the GitHub Actions runs API rather than `gh pr checks` / `gh run
-    # view`. Those porcelain commands read the *check-runs* (and annotations)
-    # resources, which a fine-grained PAT CANNOT access ("Resource not
-    # accessible by personal access token", HTTP 403) even with Actions:Read
-    # granted — there is no fine-grained "Checks" permission for user tokens.
-    # The Actions runs/jobs/logs REST API, by contrast, IS readable with
-    # Actions:Read, so the gate (and the fix-ci agent) use it. This keeps a
-    # least-privilege fine-grained token working — no classic PAT (which would
-    # grant access to everything) and no GitHub App required.
-    origin_url = ghutil.origin_url(root) or ""
-    repo_path = ghutil.repo_path_from_url(origin_url)
-    if not repo_path:
-        logger.info("origin '%s' is not a github.com remote — cannot query CI for %s", origin_url, br)
-        emit("unavailable", "origin not a github.com remote")
-        return
-
     # Judge the PR head commit specifically, so stale runs on earlier commits of
-    # the branch don't pollute the verdict. (headRefOid avoids the projectCards
-    # field.)
-    head_sha = ghutil.run(
-        ["gh", "pr", "view", pr_ref, "--json", "headRefOid", "-q", ".headRefOid"], root, env=env, timeout=60,
-    ).stdout.strip()
+    # the branch don't pollute the verdict.
+    try:
+        head_sha = pr.head.sha
+    except GithubException:
+        head_sha = ""
     if not head_sha:
         logger.info("could not resolve head SHA for %s — cannot gate on CI", pr_ref)
         emit("unavailable", f"could not resolve head SHA for {pr_ref}")
         return
-
-    runs_api = f"repos/{repo_path}/actions/runs?head_sha={head_sha}&per_page=100"
-    counts_jq = (
-        '"\\(.workflow_runs|length) '
-        '\\([.workflow_runs[]|select(.status!="completed")]|length) '
-        f'\\([.workflow_runs[]|select(.conclusion|IN({FAIL_CONCLUSIONS}))]|length)"'
-    )
-    names_jq = (
-        f'[.workflow_runs[]|select(.conclusion|IN({FAIL_CONCLUSIONS}))'
-        '|"\\(.name)#\\(.id)(\\(.conclusion))"]|join(", ")'
-    )
 
     watch_timeout = int(os.environ.get("CI_WATCH_TIMEOUT", "1200"))
     poll_interval = int(os.environ.get("CI_POLL_INTERVAL", "30"))
@@ -147,15 +153,13 @@ def main() -> None:
     no_runs_polls = 0
 
     while True:
-        result = ghutil.run(["gh", "api", runs_api, "--jq", counts_jq], root, env=env, timeout=60)
-        counts = result.stdout.strip()
-
-        if result.returncode != 0 or not counts:
-            err = result.stderr or ""
-            match = AUTH_RE.search(err)
-            if match:
-                reason_line = next((line for line in err.splitlines() if AUTH_RE.search(line)), "")
-                reason = reason_line.replace('"', "").strip()[:200] or "GitHub auth/permission error"
+        try:
+            total, pending, failed, names = poll_runs(repo, head_sha)
+        except GithubException as exc:
+            err = str(getattr(exc, "data", "") or exc)
+            status = getattr(exc, "status", None)
+            if status in (401, 403) or AUTH_RE.search(err):
+                reason = err.replace('"', "").strip()[:200] or "GitHub auth/permission error"
                 logger.info(
                     "cannot read Actions runs for %s — auth/permission error; treating as unavailable "
                     "(pass-through). Grant the token Actions:Read.",
@@ -164,14 +168,8 @@ def main() -> None:
                 logger.info("%s", err)
                 emit("unavailable", f"CI unreadable: {reason}")
                 return
-            logger.info("transient error querying Actions runs for %s (gh exit %s) — retrying", br, result.returncode)
-            logger.info("%s", err)
+            logger.info("transient error querying Actions runs for %s (%s) — retrying", br, exc)
         else:
-            parts = counts.split()
-            total = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 0
-            pending = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-            failed = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
-
             if total == 0:
                 no_runs_polls += 1
                 if no_runs_polls >= NO_RUNS_POLL_LIMIT:
@@ -188,7 +186,6 @@ def main() -> None:
                 # All runs settled, at least one not green → red CI. Summarize the
                 # failing workflow(s) + run ids so the fix-ci agent can pull their
                 # job logs.
-                names = ghutil.run(["gh", "api", runs_api, "--jq", names_jq], root, env=env, timeout=60).stdout.strip()
                 if not names:
                     names = f"{failed} of {total} run(s) failed"
                 logger.info("CI not green for %s@%s: %s", br, head_sha, names)

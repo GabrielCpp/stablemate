@@ -241,9 +241,11 @@ nodes:
       - "{{ source_root }}"
       - "{{ worklist_path }}.source.json"
       - "{{ source_excludes }}"
+      - "{{ repo_root }}"
     outputs:
       - key: source_inventory_path
       - key: source_unit_count
+      - key: operational_unit_count
       - key: inventory_errors
     next: recheck
 

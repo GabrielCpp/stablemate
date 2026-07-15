@@ -34,9 +34,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+from workhorse.scriptutil import show_file
 
 _H2_RE = re.compile(r"^##\s+(.*\S)\s*$")
 _H3_RE = re.compile(r"^###\s+(.*\S)\s*$")
@@ -54,12 +55,7 @@ def emit(ok: str, errors: str = "", report: str = "") -> None:
 
 def git_show(root: Path, ref: str, relpath: str) -> str | None:
     """Return the file's content at `ref`, or None if it didn't exist there / git is unavailable."""
-    try:
-        proc = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{relpath}"],
-                              capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return proc.stdout if proc.returncode == 0 else None
+    return show_file(root, ref, relpath)
 
 
 def subsection_ids(text: str, heading: str) -> set[str]:

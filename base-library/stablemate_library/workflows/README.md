@@ -49,7 +49,7 @@ When `workhorse` executes the workflow:
 <workflow-name>/
   workflow.yaml         # REQUIRED — DAG definition (see below)
   prompts/              # REQUIRED — one .md file per agent node
-  scripts/              # Optional — shell or Python scripts for script nodes
+  scripts/              # Optional — Python scripts for script nodes
   rules/                # Optional — JSON rule files consumed by scripts
   programs/             # Optional — standalone programs called by scripts
   Dockerfile            # Optional — custom execution environment
@@ -72,7 +72,7 @@ The `workflow.yaml` defines the DAG. Top-level keys:
 | `type` | Purpose | Required keys |
 |---|---|---|
 | `agent` | Call an LLM with a prompt template | `prompt`, `outputs`, `next` |
-| `script` | Run a shell or Python script | `script`, `args`, `outputs`, `next` |
+| `script` | Run a Python script | `script`, `args`, `outputs`, `next` |
 | `branch` | Route to a different node based on a value | `path`, `cases`, `default` |
 | `terminal` | Normal end state | — |
 | `fail` | Abnormal end state (non-zero exit) | — |
@@ -87,7 +87,9 @@ One Markdown file per `agent` node. Use `{placeholder}` syntax for values inject
 
 ### `scripts/`
 
-Scripts must write **JSON to stdout** matching the shape declared in the node's `outputs`. The workflow runtime captures stdout and merges the returned keys into the variable scope.
+Script nodes are **Python only** (run with `sys.executable`). Scripts must write
+**JSON to stdout** matching the shape declared in the node's `outputs`. The workflow
+runtime captures stdout and merges the returned keys into the variable scope.
 
 Example output from a script node with `outputs: [{key: validation}]`:
 
@@ -107,7 +109,7 @@ The `hello-world` workflow is the canonical minimal example. Read it before writ
 hello-world/
   workflow.yaml     # 4-node DAG: agent → script → branch → terminal
   prompts/greet.md  # Agent prompt returning { greeting: { message, word_count } }
-  scripts/validate.sh  # Script returning { validation: { status, word_count } }
+  scripts/validate.py  # Python script returning { validation: { status, word_count } }
 ```
 
 Flow:

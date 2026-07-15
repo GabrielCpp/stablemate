@@ -2,8 +2,8 @@
 open-author-pr.py, and gh-token.py.
 
 Builds real git repos in hermetic tmp_path sandboxes (no mocked git — these scripts shell
-out to the `git`/`gh` CLI directly, mirroring the coder workflow's test_multi_repo_git.py
- convention). `open-author-pr.py` is exercised through its offline failure paths and
+out to the `git` CLI directly, mirroring the coder workflow's test_multi_repo_git.py
+convention). `open-author-pr.py` is exercised through its offline failure paths and
 local-origin resolution (no network or GitHub credentials in the test environment).
 """
 from __future__ import annotations
@@ -237,19 +237,19 @@ def test_open_author_pr_resolves_local_clone_source_origin(tmp_path):
     assert module.resolve_github_slug(clone) == "example/docs"
 
 
-def test_open_author_pr_marks_bind_mounted_source_safe(monkeypatch, tmp_path):
-    module = _load_open_author_pr()
-    repo = tmp_path / "host-owned-source"
-    calls = []
+def test_remote_urls_reads_origin_via_safe_directory(tmp_path):
+    """scriptutil.remote_urls (which open-author-pr now uses) reads a repo's origin
+    through git with a per-call safe.directory trust, so a host-owned bind-mount
+    source resolves rather than being refused for 'dubious ownership'."""
+    from workhorse import scriptutil
 
-    def fake_run(command, **_kwargs):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, stdout="git@github.com:example/docs.git\n")
+    repo = _init_git_repo(tmp_path / "source")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:example/docs.git"],
+        cwd=str(repo), check=True, capture_output=True, timeout=10,
+    )
 
-    monkeypatch.setattr(module.subprocess, "run", fake_run)
-
-    assert module.remote_urls(repo) == ["git@github.com:example/docs.git"]
-    assert all(f"safe.directory={repo}" in command for command in calls)
+    assert scriptutil.remote_urls(repo) == ["git@github.com:example/docs.git"]
 
 
 # ---------------------------------------------------------------------------

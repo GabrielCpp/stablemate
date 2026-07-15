@@ -12,29 +12,17 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import sys
 
-from workhorse.scriptutil import find_repo_root
+from workhorse.scriptutil import commit_all, find_repo_root
 
 logger = logging.getLogger(__name__)
 
 
 def commit_in_repo(repo_path, message: str) -> bool:
     """Stage all changes and commit. Returns True if a commit was made."""
-    subprocess.run(["git", "add", "-A"], cwd=str(repo_path), capture_output=True, check=False)
-    r = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(repo_path), capture_output=True, check=False)
-    if r.returncode == 0:
+    if not commit_all(repo_path, message):
         return False
-
-    r = subprocess.run(
-        ["git", "commit", "-m", message],
-        cwd=str(repo_path), capture_output=True, text=True, check=False,
-    )
-    if r.returncode != 0:
-        logger.warning("commit failed in %s: %s", repo_path, r.stderr.strip())
-        return False
-
     logger.info("committed in %s", repo_path)
     return True
 

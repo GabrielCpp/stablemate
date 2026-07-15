@@ -50,7 +50,7 @@ nodes:
   # launcher env/Make vars (setup.sh honors REPO_URL/REPO_BRANCH), not from cfg.
   - id: setup
     type: script
-    script: scripts/setup.sh
+    script: scripts/setup.py
     args: []
     outputs:
       - key: setup_result
@@ -462,7 +462,7 @@ nodes:
   # ── Publish (push results out of the container) ────────────────────────────
   - id: publish_loop
     type: script
-    script: scripts/publish.sh
+    script: scripts/publish.py
     args:
       - "{{ setup_result.repo_dir }}"
       - "{{ cfg.result_branch }}"
@@ -473,7 +473,7 @@ nodes:
 
   - id: publish_dead
     type: script
-    script: scripts/publish.sh
+    script: scripts/publish.py
     args:
       - "{{ setup_result.repo_dir }}"
       - "{{ cfg.result_branch }}"
@@ -485,7 +485,7 @@ nodes:
   # Clean terminal for a recorded goal verdict (reached or impossible): publish, end ok.
   - id: publish_done
     type: script
-    script: scripts/publish.sh
+    script: scripts/publish.py
     args:
       - "{{ setup_result.repo_dir }}"
       - "{{ cfg.result_branch }}"

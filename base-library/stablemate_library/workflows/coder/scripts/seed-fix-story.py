@@ -37,13 +37,13 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
-from workhorse.scriptutil import find_docs_root
+from workhorse import scriptutil
 
 
-def die(msg: str) -> None:
-    sys.stderr.write(f"seed-fix-story: {msg}\n")
-    sys.exit(2)
+def die(msg: str) -> NoReturn:
+    scriptutil.die(f"seed-fix-story: {msg}", code=2)
 
 
 def _ostler() -> str:
@@ -141,7 +141,7 @@ def main() -> None:
     if not bullet_text:
         die("no bullet_text supplied (expected select-next-fix-item.py's fix_bullet_text output)")
 
-    root = find_docs_root(docs_path_arg)
+    root = scriptutil.find_docs_root(docs_path_arg)
     epic_dir_rel = f"{epics_dir_rel}/{epic}"
 
     ensure_fixes_epic(root, epics_dir_rel, epic)

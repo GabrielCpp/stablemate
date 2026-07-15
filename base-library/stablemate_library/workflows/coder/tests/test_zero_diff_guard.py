@@ -12,6 +12,8 @@ The zero-diff condition is driven by the git mock: ``git diff --cached
 """
 from __future__ import annotations
 
+import subprocess
+
 from workhorse.testing import WorkflowRun, assert_step_output
 
 from conftest import (
@@ -23,10 +25,30 @@ from conftest import (
 )
 
 
-def _git_mock_zero_diff() -> dict:
-    """git_mock_no_remote, but nothing is ever staged: ``git diff --cached
-    --quiet`` exits 0 → commit-story.py reports committed="no"."""
-    return {**git_mock_no_remote(), "diff": (0, "")}
+def _seed_zero_diff_repo(tmp_path, _story_mds: list) -> None:
+    """Seed real git, then hide story status edits from the index.
+
+    The workflow's QA side effect edits ``story.md``. Marking those tracked files
+    assume-unchanged keeps the throwaway repo at zero diff without mocking ``git``.
+    """
+    git_mock_no_remote(tmp_path)
+    exclude = tmp_path / ".git" / "info" / "exclude"
+    with exclude.open("a", encoding="utf-8") as f:
+        f.write("\ndocs/**\n.workhorse-test/**\n")
+    tracked_docs = subprocess.run(
+        ["git", "ls-files", "docs"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    for rel in tracked_docs:
+        subprocess.run(
+            ["git", "update-index", "--assume-unchanged", rel],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
 
 
 def _epic_with_stories(tmp_path, count: int) -> list:
@@ -40,14 +62,14 @@ def _epic_with_stories(tmp_path, count: int) -> list:
     ]
 
 
-def test_three_consecutive_zero_diff_commits_halt_the_run(tmp_path):
+def test_three_consecutive_zero_diff_commits_halt_the_run(tmp_path, monkeypatch):
     """3 stories in a row commit nothing → guard_zero_diff trips at 3 →
     zero_diff_give_up (fail terminal, exit 1) — the 4th story is never touched."""
     story_mds = _epic_with_stories(tmp_path, 4)
+    _seed_zero_diff_repo(tmp_path, story_mds)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", _git_mock_zero_diff())
-    mock_all_agents_happy(wf, story_md_paths=story_mds)
+    mock_all_agents_happy(wf, monkeypatch, story_md_paths=story_mds)
 
     result = wf.run()
 
@@ -63,14 +85,14 @@ def test_three_consecutive_zero_diff_commits_halt_the_run(tmp_path):
     assert len(qa_calls) == 3, f"expected 3 stories processed, got {len(qa_calls)}"
 
 
-def test_below_threshold_zero_diffs_do_not_halt(tmp_path):
+def test_below_threshold_zero_diffs_do_not_halt(tmp_path, monkeypatch):
     """Only 2 no-op commits (queue then exhausted) → the guard never trips and
     the run completes normally."""
     story_mds = _epic_with_stories(tmp_path, 2)
+    _seed_zero_diff_repo(tmp_path, story_mds)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", _git_mock_zero_diff())
-    mock_all_agents_happy(wf, story_md_paths=story_mds)
+    mock_all_agents_happy(wf, monkeypatch, story_md_paths=story_mds)
 
     result = wf.run()
 
@@ -78,14 +100,14 @@ def test_below_threshold_zero_diffs_do_not_halt(tmp_path):
     assert_step_output(result, "incr_zero_diff", "zero_diff_count", {"value": 2})
 
 
-def test_real_commit_resets_the_streak(tmp_path):
+def test_real_commit_resets_the_streak(tmp_path, monkeypatch):
     """committed="yes" routes through reset_zero_diff, zeroing the counter —
     the guard only ever counts CONSECUTIVE no-ops."""
     story_mds = _epic_with_stories(tmp_path, 1)
+    git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())  # staged changes → committed=yes
-    mock_all_agents_happy(wf, story_md_paths=story_mds)
+    mock_all_agents_happy(wf, monkeypatch, story_md_paths=story_mds)
 
     result = wf.run()
 

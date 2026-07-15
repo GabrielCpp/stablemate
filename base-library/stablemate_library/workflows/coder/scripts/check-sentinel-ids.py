@@ -14,7 +14,8 @@ excluding test files (*_test.go, *.spec.ts, *.spec.tsx, *.test.ts, *_test.ts) an
 pure-comment lines. Outputs in the same `qa_result` format as verify_qa_evidence.py
 so it can slot into the same workflow gate infrastructure.
 
-Stdlib-only (runs under the system python3, like the other gate scripts).
+Git access goes through workhorse.scriptutil (GitPython), so this runs under the
+workhorse venv like the other script nodes.
 
 Usage: check-sentinel-ids.py [story_slug]
 Outputs JSON on stdout captured under the node's `qa_result` key:
@@ -25,9 +26,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+from workhorse.scriptutil import diff_text, merge_base
 
 # Patterns that flag an added line as a sentinel (applied to the content after the '+' prefix).
 # Each entry: (pattern, description)
@@ -92,14 +94,9 @@ def emit(status: str, notes: str) -> None:
 def find_base_ref(root: Path) -> str:
     """Return the git ref to diff against (the merge base with the default branch)."""
     for branch in ("origin/master", "origin/main", "master", "main"):
-        result = subprocess.run(
-            ["git", "merge-base", "HEAD", branch],
-            capture_output=True,
-            text=True,
-            cwd=root,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+        base = merge_base(root, "HEAD", branch)
+        if base:
+            return base
     # Fallback: diff against the previous commit.
     return "HEAD~1"
 
@@ -109,17 +106,11 @@ def get_added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
 
     Skips diff headers (--- / +++ / @@ lines) and binary-file markers.
     """
-    result = subprocess.run(
-        ["git", "diff", "--unified=0", base_ref, "HEAD", "--"],
-        capture_output=True,
-        text=True,
-        cwd=root,
-        errors="replace",
-    )
-    if result.returncode not in (0, 1):
+    diff = diff_text(root, "--unified=0", base_ref, "HEAD", "--")
+    if not diff:
         return []
 
-    lines = result.stdout.splitlines()
+    lines = diff.splitlines()
     current_file: str = ""
     current_lineno: int = 0
     added: list[tuple[str, int, str]] = []
