@@ -43,8 +43,8 @@ def test_empty_queue_returns_no_epic(tmp_path):
     """Empty epics-todo.json → has_epic=no, workflow exits 0 (no work)."""
     make_queue(tmp_path, [])
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -53,8 +53,8 @@ def test_empty_queue_returns_no_epic(tmp_path):
 
 def test_missing_todo_file_returns_no_epic(tmp_path):
     """Missing epics-todo.json → select_epic returns has_epic=no with a reason."""
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run()
 
     assert result.passed(), result.stderr

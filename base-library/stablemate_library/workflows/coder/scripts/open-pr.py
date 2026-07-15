@@ -9,11 +9,23 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import runpy
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _run_sibling(script: Path, argv: list[str]) -> None:
+    """Run a helper script in-process so test monkeypatches remain visible."""
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [str(script), *argv]
+        with redirect_stdout(sys.stderr):
+            runpy.run_path(str(script), run_name="__main__")
+    finally:
+        sys.argv = old_argv
 
 
 def main() -> None:
@@ -27,10 +39,7 @@ def main() -> None:
         return
 
     scripts_dir = Path(__file__).resolve().parent
-    subprocess.run(
-        [sys.executable, str(scripts_dir / "gh-open-pr.py"), epic, base],
-        stdout=sys.stderr, stderr=sys.stderr, text=True, check=False,
-    )
+    _run_sibling(scripts_dir / "gh-open-pr.py", [epic, base])
 
     print(json.dumps({"should_gate": "yes", "ci_epic": epic, "ci_base": base}))
 

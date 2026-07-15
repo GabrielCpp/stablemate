@@ -16,9 +16,13 @@ import os
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root, get_affected_repos, load_json, resolve_workspace
-
-from lib import ghutil
+from workhorse.scriptutil import (
+    commit_all,
+    find_repo_root,
+    get_affected_repos,
+    load_json,
+    resolve_workspace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +33,8 @@ def commit_repo(repo_path: Path, repo_name: str, message: str) -> bool:
         logger.warning("%s: not a git repo, skipping", repo_name)
         return False
 
-    ghutil.run(["git", "add", "-A"], repo_path)
-    if ghutil.run(["git", "diff", "--cached", "--quiet"], repo_path).returncode == 0:
-        logger.info("%s: no changes to commit", repo_name)
-        return False
-
-    r = ghutil.run(["git", "commit", "-m", message], repo_path)
-    if r.returncode != 0:
-        logger.warning("%s: commit failed: %s", repo_name, r.stderr.strip())
+    if not commit_all(repo_path, message):
+        logger.info("%s: no changes to commit (or the commit failed)", repo_name)
         return False
 
     logger.info("%s: committed '%s'", repo_name, message)

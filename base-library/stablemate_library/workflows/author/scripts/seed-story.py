@@ -40,15 +40,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from workhorse import scriptutil
 
 # Same backlog scope-item contract the coverage validator uses: `- [id] …`.
 BACKLOG_ID_RE = re.compile(r"^\s*-\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]\s*(.*)$")
 
 
-def die(msg: str) -> None:
+def die(msg: str) -> NoReturn:
     """Hard-fail story setup with an actionable message (wrong/missing invocation target)."""
-    sys.stderr.write(f"seed-story: {msg}\n")
-    sys.exit(2)
+    scriptutil.die(f"seed-story: {msg}", code=2)
 
 
 def find_repo_root() -> Path:

@@ -2,46 +2,51 @@
 
 The surveyor's correctness lives in its deterministic Python scripts (the enumeration
 expander, the loop driver, the record/partition validators, the coverage gate). Unlike
-author, none of them shells out to ostler — the survey layer is plain JSON/YAML/markdown
-on disk — so these are straight subprocess tests: build a fixture repo, run each script
-with ``AGENT_REPO_DIR`` pointed at it (the same way the local-worker runs them), and
-assert on the emitted JSON.
+author, none of them shells out to ostler or the ``gh`` CLI — the survey layer is plain
+JSON/YAML/markdown on disk (``verify-records`` reads a git baseline via real ``git``).
+
+The scripts are exercised through workhorse's **in-process** harness: :class:`workhorse
+.testing.InProcessScriptRunner` runs each script via ``runpy`` in the current process (no
+``python <script>`` subprocess, no PATH shims), with ``AGENT_REPO_DIR`` pointed at a
+fixture repo — the same way the local-worker's in-process script runner invokes them.
+Git operations run for real against a throwaway repo seeded with
+:func:`workhorse.testing.make_git_repo`; nothing about git is mocked.
 """
 from __future__ import annotations
 
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
+
+from workhorse.testing import InProcessScriptRunner, make_git_repo
 
 SCRIPTS = Path(__file__).parent.parent / "scripts"
 
+_RUNNER = InProcessScriptRunner()
+
 
 def run_script(name: str, *args: str, repo: Path) -> dict:
-    """Run scripts/<name> with AGENT_REPO_DIR=repo; return parsed JSON stdout.
+    """Run scripts/<name> IN-PROCESS with AGENT_REPO_DIR=repo; return parsed JSON stdout.
 
     Raises AssertionError (with stderr) if the script exits non-zero or its stdout
     is not JSON — both are real failures for the nodes that consume these scripts.
     """
     env = dict(os.environ, AGENT_REPO_DIR=str(repo))
-    proc = subprocess.run(
-        [sys.executable, str(SCRIPTS / name), *args],
-        capture_output=True, text=True, env=env,
-    )
-    assert proc.returncode == 0, f"{name} exited {proc.returncode}\nstderr:\n{proc.stderr}"
+    code, out, err = _RUNNER.run(SCRIPTS / name, list(args), str(repo), env)
+    assert code == 0, f"{name} exited {code}\nstderr:\n{err}"
     try:
-        return json.loads(proc.stdout)
+        return json.loads(out)
     except json.JSONDecodeError as e:  # pragma: no cover - failure path
-        raise AssertionError(f"{name} stdout not JSON: {e}\nstdout:\n{proc.stdout}")
+        raise AssertionError(f"{name} stdout not JSON: {e}\nstdout:\n{out}")
 
 
 def run_script_raw(name: str, *args: str, repo: Path) -> subprocess.CompletedProcess:
-    """Run scripts/<name> and return the raw CompletedProcess (for exit-code tests)."""
+    """Run scripts/<name> IN-PROCESS; return a CompletedProcess (for exit-code tests)."""
     env = dict(os.environ, AGENT_REPO_DIR=str(repo))
-    return subprocess.run(
-        [sys.executable, str(SCRIPTS / name), *args],
-        capture_output=True, text=True, env=env,
+    code, out, err = _RUNNER.run(SCRIPTS / name, list(args), str(repo), env)
+    return subprocess.CompletedProcess(
+        args=[str(SCRIPTS / name), *args], returncode=code, stdout=out, stderr=err
     )
 
 
@@ -56,15 +61,13 @@ def init_repo(repo: Path, *, rubric: bool = True) -> None:
 
 
 def git_repo(repo: Path) -> None:
-    """Turn the fixture into a git repo with everything committed (baseline tests)."""
-    def git(*args: str) -> None:
-        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
-                       env=dict(os.environ,
-                                GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
-    git("init", "-q")
-    git("add", "-A")
-    git("commit", "-q", "-m", "baseline", "--no-gpg-sign")
+    """Turn the fixture into a REAL git repo with everything committed (baseline tests).
+
+    Delegates to :func:`workhorse.testing.make_git_repo`, which inits a repo (no origin)
+    and commits every file present — the frozen baseline ``verify-records`` reads back
+    with ``git show HEAD:<path>``. Git is exercised for real, never mocked.
+    """
+    make_git_repo(repo, name="testrepo")
 
 
 # ── Fixture builders (the on-disk forms the scripts read/write) ────────────────────────

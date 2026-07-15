@@ -178,70 +178,77 @@ current_index = int(sys.argv[2]) if len(sys.argv) > 2 else -1
 
 Use `raise SystemExit(code)` — never `sys.exit()` in library code.
 
-## Git operations — GitPython, not subprocess
+## Git operations — `workhorse.scriptutil`, never `git` subprocess
+
+Don't shell out to `git`. Use the `workhorse.scriptutil` helpers — they wrap
+GitPython behind the same lazy-import seam as `open_repo`, so a script never
+touches the `git` CLI while git still runs for **real** under test (against a
+throwaway repo built with `make_git_repo`). Every helper is fail-soft: a bad repo
+or failed command returns `None`/`False`/`-1` rather than raising into a run.
 
 ```python
-from git import Repo, InvalidGitRepositoryError
-
-repo = Repo(str(repo_path))
-
-# Branch
-if f"story/{slug}" not in [h.name for h in repo.heads]:
-    repo.git.checkout("-b", f"story/{slug}")
-else:
-    repo.git.checkout(f"story/{slug}")
-
-# Commit
-if repo.is_dirty(untracked_files=True):
-    repo.git.add("-A")
-    repo.index.commit(f"{epic}: {slug}" if epic else slug)
-
-# Push
-repo.remote("origin").push()
-```
-
-For push operations, use the transient credential-helper pattern via `subprocess` (gitpython doesn't support it cleanly):
-
-{% raw %}
-```python
-push_url = f"https://github.com/{owner}/{repo_slug}.git"
-cred_helper = f'!f() {{ echo username=x-access-token; echo "password={token}"; }}; f'
-subprocess.run(
-    ["git", "-c", f"credential.helper={cred_helper}", "push", push_url, f"{branch}:{branch}"],
-    cwd=str(repo_path), timeout=120,
+from workhorse.scriptutil import (
+    branch_exists, local_branch_exists, current_branch, checkout,
+    commits_ahead, commit_all, commit_paths, push_branch, origin_url,
 )
+
+# Branch: create or check out story/<slug>, idempotently
+if local_branch_exists(repo_path, branch):
+    checkout(repo_path, branch)
+else:
+    checkout(repo_path, branch, create=True)
+
+# Commit everything (False when there was nothing to commit)
+commit_all(repo_path, f"{epic}: {slug}" if epic else slug)
+# ...or only specific paths
+commit_paths(repo_path, "prune completed epic from queue", "docs/epics/index.md")
 ```
-{% endraw %}
 
-## GitHub API — PyGithub
-
-For typed GitHub API access (PR creation, PR search, issue comments) use PyGithub.
-Resolve the token first via `gh-token.py`, then pass it to `Github()`:
+For an authenticated push, `push_branch` handles the transient credential helper
+(the token rides `GH_TOKEN`, never a URL / git config / log) **and** verifies the
+remote head advanced to the local head — an unverified push is what lets a fix
+loop spin against a stale ref:
 
 ```python
-from github import Github, GithubException
-
-gh = Github(token)
-gh_repo = gh.get_repo("your-org/your-repo")
-
-# Check for existing PR or create one
-owner = gh_repo.owner.login
-existing = list(gh_repo.get_pulls(head=f"{owner}:{branch}", state="open"))
-if existing:
-    pr = existing[0]
-else:
-    pr = gh_repo.create_pull(title=title, body=body, head=branch, base=base)
-
-# Cross-reference comment
-pr.create_issue_comment("**Related PRs:**\n- another-service: https://...")
+if not push_branch(repo_path, token, branch):   # verify=True by default
+    ...  # push attempted but did not land / did not verify
 ```
 
-Use `gh` CLI via subprocess for one-off token lookup. Use PyGithub when you need
-structured responses (PR URL, PR number, paginated list of PRs).
+Need the raw `Repo`? `scriptutil.open_repo(path)` is the seam (lazy `import git`,
+so a git-free script never pays the import-time `git version` probe).
+
+## GitHub API — `workhorse.scriptutil`, never `gh` subprocess
+
+Don't shell out to `gh`. Go through the `github_client` seam so an in-process test
+fakes GitHub by monkeypatching it — no CLI, no network:
+
+```python
+from workhorse.scriptutil import resolve_github_token, resolve_repo, find_open_pr
+
+# agents.yml workflow.githubTokenEnv → GH_TOKEN → GITHUB_TOKEN (replaces gh-token.py)
+token = resolve_github_token(root)
+# PyGithub repo for the origin at `root` (None if not github.com / unreachable)
+gh_repo, slug = resolve_repo(root, token)
+if gh_repo is not None:
+    pr = find_open_pr(gh_repo, branch) or gh_repo.create_pull(
+        title=title, body=body, head=branch, base=base,
+    )
+    pr.create_issue_comment("**Related PRs:**\n- another-service: https://...")
+```
+
+`resolve_repo` / `find_open_pr` / `github_client` (and `resolve_github_token`) are
+the seams the coder PR/CI scripts share. Reach for raw PyGithub objects past them —
+`gh_repo.get_workflow_runs(head_sha=…)`, `pr.merge(merge_method=…)`,
+`gh_repo.allow_squash_merge` — when you need structured responses.
 
 ## Testing workflow scripts
 
-**Unit test (direct subprocess)** — for scripts that run standalone:
+The whole-workflow harness runs the engine **in-process** — no `workhorse` CLI
+subprocess and no PATH shims. Agent nodes are mocked, Python script nodes run via
+`runpy`, **git runs for real** against a throwaway repo, and **GitHub is faked** by
+monkeypatching the `scriptutil.github_client` seam.
+
+**Unit test (call a script directly)** — for a standalone script:
 
 ```python
 import json, os, subprocess, sys
@@ -259,14 +266,19 @@ def test_my_script(tmp_path):
     assert json.loads(result.stdout)["status"] == "valid"
 ```
 
-**Integration test (WorkflowRun)** — for scripts wired into workflow nodes:
+**Integration test (WorkflowRun)** — for scripts wired into workflow nodes. Seed
+the sandbox as a real git repo with `make_git_repo`; for a GitHub-touching node,
+monkeypatch `scriptutil.github_client` to return a fake — there is no `git`/`gh`
+mock:
 
 ```python
-from workhorse.testing import WorkflowRun, assert_step_output
+from workhorse import scriptutil
+from workhorse.testing import WorkflowRun, make_git_repo, assert_step_output
 
-def test_validate_gate_rejects(story_sandbox):
-    wf = WorkflowRun(WORKFLOW, story_sandbox)
-    wf.mock_command("git", {"rev-parse": (0, "main")})
+def test_validate_gate_rejects(tmp_path, monkeypatch):
+    make_git_repo(tmp_path)                         # real git; add an `origin` for gh paths
+    monkeypatch.setattr(scriptutil, "github_client", lambda token=None: FakeGithub(...))
+    wf = WorkflowRun(WORKFLOW, tmp_path)
     result = wf.run(flow="dev", params={...})
     assert_step_output(result, "validate_plan", "validation_result", {"status": "invalid"})
 ```
@@ -277,9 +289,12 @@ Key `WorkflowRun` methods:
 |--------|---------|
 | `mock_agent(node_id, response)` | Return fixed JSON from an agent node |
 | `mock_agent_sequence(node_id, responses)` | Multiple responses for rework loops |
-| `mock_command(name, response)` | Install PATH shim (git, gh, etc.) |
-| `run(params, flow)` | Execute workflow as subprocess, return `RunResult` |
+| `run(params, flow)` | Execute the workflow **in-process**, return `RunResult` |
 | `result.step_outputs(node_id)` | Parsed `output.json` for a node |
 | `result.prompt(node_id)` | Rendered prompt sent to agent |
 | `result.context()` | Final workflow context dict |
-| `result.calls(command)` | Recorded shim invocations |
+| `result.calls(cli)` | Recorded agent-backend invocations |
+
+External tools are **not** mocked through `WorkflowRun`: `git` runs for real (seed
+with `make_git_repo`), `gh`/GitHub is faked by patching `scriptutil.github_client`,
+and other CLIs (e.g. `ostler`) by patching `scriptutil.run_tool`.

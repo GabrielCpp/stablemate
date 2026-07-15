@@ -12,17 +12,17 @@ Outputs JSON: {"story_path": "...", "spec_dir": "...", "qa_dir": "...",
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_docs_root
 
 
 def _ostler_path(docs_root: Path, subcmd: str, *args: str) -> str:
     """Call ostler path <subcmd> and return stdout, stripped."""
     cmd = ["ostler", "-C", str(docs_root), "path", subcmd, *args]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    result = scriptutil.run_tool(cmd)
     if result.returncode != 0:
         return ""
     return result.stdout.strip()

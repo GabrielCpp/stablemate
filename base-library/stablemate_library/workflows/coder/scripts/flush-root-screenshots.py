@@ -28,9 +28,10 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
+
+from workhorse.scriptutil import list_tracked_files
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -57,18 +58,7 @@ def emit(flushed: int, kept_tracked: int, notes: str) -> None:
 def tracked_names(root: Path) -> set[str]:
     """Top-level files git already tracks — left untouched. Empty set if git is unavailable
     (then nothing is treated as tracked, but the move itself is still best-effort)."""
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z"],
-            capture_output=True, text=True, check=False,
-        )
-    except OSError:
-        return set()
-    names: set[str] = set()
-    for path in out.stdout.split("\0"):
-        if path and "/" not in path:  # top-level only
-            names.add(path)
-    return names
+    return {path for path in list_tracked_files(root) if "/" not in path}  # top-level only
 
 
 def dest_dir(root: Path, spec_dir_arg: str) -> Path | None:

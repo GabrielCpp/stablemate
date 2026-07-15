@@ -6,7 +6,7 @@
 (Claude, Codex, or Copilot) through a workflow graph unattended for days.**
 
 A workflow is a graph of `agent`, `script`, and `branch` nodes. `workhorse` walks
-the graph, renders Jinja2 prompts, invokes the agent CLI or shell scripts,
+the graph, renders Jinja2 prompts, invokes the agent CLI or Python scripts,
 extracts JSON outputs, checkpoints after every node, and writes run artifacts.
 
 > The PyPI distribution is **`workhorse-agent`**; the import package and CLI
@@ -423,8 +423,8 @@ my-workflow/
 ├── workflow.yaml       # Graph definition
 ├── prompts/            # Jinja2 .md templates
 │   └── step.md
-└── scripts/            # Shell or Python scripts (must output JSON to stdout)
-    └── check.sh
+└── scripts/            # Python scripts (must output JSON to stdout)
+    └── check.py
 ```
 
 **`workflow.yaml` schema:**
@@ -487,11 +487,12 @@ Output JSON only:
 ```
 ```
 
-**Scripts** receive Jinja2-rendered args as positional arguments and must print JSON to stdout:
+**Scripts** are Python (run with `sys.executable`); they receive Jinja2-rendered
+args as positional arguments and must print JSON to stdout:
 
-```bash
-#!/bin/bash
-echo "{\"result\": {\"status\": \"ok\"}}"
+```python
+import json
+print(json.dumps({"result": {"status": "ok"}}))
 ```
 
 ### Unattended resilience (output `default`)
@@ -610,13 +611,23 @@ uv run python tests/test_agent_recovery.py
 
 If a `.venv` isn't present, create one with `uv sync` (or `make install`).
 
-**Where to put tests.** Add a `tests/test_<area>.py`, mirroring the existing
-style: a `if __name__ == "__main__"` runner that iterates `test_*` functions, and
-unit tests that patch the CLI boundary (`_run_claude_cli` / `_invoke_claude`) and
-sleeping so nothing hits the network or waits in real time. Group by concern:
+**Where to put tests.** There are two styles. Controller-internal tests add a
+`tests/test_<area>.py` that patches the CLI boundary (`_run_claude_cli` /
+`_invoke_claude`) and sleeping so nothing hits the network or waits in real time:
 `test_agent_cap.py` (cap/transient handling), `test_agent_recovery.py` (reframe →
 default ladder), `test_branch_guardrail.py`, `test_resume_auto.py`,
 `test_idempotency.py`, `test_templates_resilient.py`.
+
+**Whole-workflow tests** use the in-process harness in `workhorse.testing`
+(`WorkflowRun`). It runs the engine **in the current process** — no `workhorse`
+CLI subprocess and no PATH shims. Agent nodes are answered by `mock_agent` /
+`mock_agent_sequence`; Python script nodes run in-process via `runpy`, so a test
+`monkeypatch`es the `workhorse.scriptutil` seams a script calls — `github_client`
+(the PyGithub client, so GitHub is faked with no `gh` CLI) and `run_tool`
+(external CLIs like `ostler`). Local `git` runs for **real** against a throwaway
+repo built with `make_git_repo` — git is never mocked. Assert on the `RunResult`
+(`passed()`, `step_outputs(node)`, `prompt(node)`, `context()`, `calls(cli)`,
+`has_warning(text)`).
 
 ### Where docs go
 

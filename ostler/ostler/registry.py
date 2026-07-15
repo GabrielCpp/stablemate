@@ -132,8 +132,10 @@ class UINodeType:
 # Bullet keys whose value is a code reference (``path::symbol`` / a test id), grounded against the
 # repo at a *later* QA gate (profile §7.2), not at author time like doc links.
 CODE_GROUNDING_KEYS = frozenset({"code", "verify"})
-# Bullet keys naming an inter-node relation the linter resolves at author time.
-RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail")
+# Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
+# ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
+RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
+                 "environment", "cli", "surfaces")
 
 
 UI_TYPES: tuple[UINodeType, ...] = (
@@ -166,6 +168,27 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("steps", nested=True, link=True),
             BulletKey("end"),
             BulletKey("verify", link=True),
+        ),
+    ),
+    # ---- operational surface: how the system is run/observed (docs/okf-runbook.md) ----
+    UINodeType(
+        name="runbook", kind="file", context="ops",
+        required_sections=("Steps",),
+        bullet_keys=(
+            BulletKey("driver", required=True),   # web|mobile|http|cli|artifact|iac|none (§4.1)
+            BulletKey("environment", link=True),  # the `environment` node this boots (default local)
+            BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
+            BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
+            BulletKey("code", link=True),         # launch entry point `path::symbol`
+        ),
+    ),
+    UINodeType(
+        name="environment", kind="file", context="ops",
+        bullet_keys=(
+            BulletKey("selector"),                # how this environment is chosen
+            BulletKey("services", nested=True),   # one child per service: its env-scoped URL/host
+            BulletKey("backing", nested=True),    # backing projects/DBs/buckets/emulators
+            BulletKey("local-only"),              # `true` → tooling must refuse without an override
         ),
     ),
     # ---- section-level elements / behaviors (a `### id` under a typed `## Heading`) ----
@@ -256,6 +279,22 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("default"),
             BulletKey("required"),
             BulletKey("semantics"),
+        ),
+    ),
+    # One ordered boot step of a `runbook` — a `### id` under its `## Steps` (docs/okf-runbook.md §4.3).
+    UINodeType(
+        name="step", kind="section", heading="Steps",
+        bullet_keys=(
+            BulletKey("kind", required=True),   # prepare|service|seed|run|health|verify|drive
+            BulletKey("run"),                   # the exact bounded command
+            BulletKey("working-directory"),     # cwd, when not the repo root
+            BulletKey("env", nested=True),      # env-var wiring this step needs
+            BulletKey("health"),                # service/health steps: the real readiness signal
+            BulletKey("produces"),              # run steps: output artifact path(s)/glob(s)
+            BulletKey("verify", link=True),     # run/verify steps: golden/deterministic/test-id
+            BulletKey("optional"),              # `true` for best-effort steps
+            BulletKey("depends-on"),            # ordering hint (default: document order)
+            BulletKey("provenance"),            # derived (build pass) | verified (walkthrough)
         ),
     ),
     # A heading that names no type — promoted anyway so every section is a node (its links are

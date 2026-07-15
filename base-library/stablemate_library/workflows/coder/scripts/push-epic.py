@@ -22,7 +22,7 @@ gh-open-pr.py calls this best-effort and ignores the exit code (offline
 PR-open must not halt); the CI fix loop branches on it.
 
 Auth: the GitHub token env var configured in agents.yml (workflow.githubTokenEnv),
-else GH_TOKEN, else GITHUB_TOKEN — resolved by gh-token.py. The token is
+else GH_TOKEN, else GITHUB_TOKEN — resolved by workhorse.scriptutil.resolve_github_token. The token is
 supplied to `git push` via an inline credential helper that reads it from the
 environment — it is never written into a remote URL, git config, or the
 logs. Shared by gh-open-pr.py (initial PR push) and the CI fix loop
@@ -31,13 +31,16 @@ logs. Shared by gh-open-pr.py (initial PR push) and the CI fix loop
 from __future__ import annotations
 
 import logging
-import os
 import sys
-from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root
-
-from lib import ghutil
+from workhorse.scriptutil import (
+    branch_exists,
+    find_repo_root,
+    origin_url,
+    push_branch,
+    repo_full_name_from_url,
+    resolve_github_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,59 +61,40 @@ def main() -> int:
     # pinned by the Makefile/workhorse to the actual repo root and is
     # inherited by every script-node subprocess, so resolve through it first.
     root = find_repo_root()
-    scripts_dir = Path(__file__).resolve().parent
 
-    if not ghutil.branch_exists(br, root):
+    if not branch_exists(root, br):
         logger.info("no branch %s to push", br)
         return UNAVAILABLE
 
-    token = ghutil.resolve_gh_token(scripts_dir)
+    token = resolve_github_token(root)
     if not token:
         logger.info("no GitHub token (set workflow.githubTokenEnv in agents.yml) — leaving %s unpushed", br)
         return UNAVAILABLE
 
-    url = ghutil.origin_url(root)
+    url = origin_url(root)
     if not url:
         logger.info("no 'origin' remote — leaving %s unpushed", br)
         return UNAVAILABLE
 
-    repo_path = ghutil.repo_path_from_url(url)
-    if not repo_path:
+    if not repo_full_name_from_url(url):
         logger.info("origin '%s' is not a github.com remote — leaving %s unpushed", url, br)
         return UNAVAILABLE
-    push_url = f"https://github.com/{repo_path}.git"
 
-    env = {**os.environ, "GH_TOKEN": token}
-    push = ghutil.run(
-        ["git", "-c", f"credential.helper={ghutil.CRED_HELPER}", "push", push_url, f"{br}:{br}"],
-        root, env=env, timeout=120, echo=True,
-    )
-    if push.returncode != 0:
+    # push_branch pushes over HTTPS with the token in a transient credential helper,
+    # then VERIFIES the remote branch head advanced to the local head. A push can
+    # report success while leaving the remote unchanged (an "Everything up-to-date"
+    # pointing at a stale ref) — an unverified push is exactly what let the CI fix
+    # loop spin against an unmoved PR head until its attempts ran out. A False here
+    # therefore means the push was attempted but did not land (or did not verify).
+    if not push_branch(root, token, br):
         logger.info(
-            "push failed for %s (auth/permission/network/non-fast-forward) — NOT silently ignored; surfacing as a failure",
+            "push failed or unverified for %s (auth/permission/network/non-fast-forward, "
+            "or the remote head did not advance) — NOT silently ignored; surfacing as a failure",
             br,
         )
         return FAILED
 
-    # Verify the remote head actually advanced to the local head. A push can
-    # report success while leaving the remote unchanged (e.g. an
-    # "Everything up-to-date" that really points at a stale ref) — an
-    # unverified push is exactly what let the CI fix loop spin against an
-    # unmoved PR head until its attempts ran out.
-    local_head = ghutil.run(["git", "rev-parse", br], root).stdout.strip()
-    ls_remote = ghutil.run(
-        ["git", "-c", f"credential.helper={ghutil.CRED_HELPER}", "ls-remote", push_url, f"refs/heads/{br}"],
-        root, env=env, timeout=60,
-    )
-    remote_head = ls_remote.stdout.split()[0] if ls_remote.stdout.split() else ""
-    if not remote_head or remote_head != local_head:
-        logger.info(
-            "remote %s head (%s) does not match local (%s) after push — treating as failed",
-            br, remote_head, local_head,
-        )
-        return FAILED
-
-    logger.info("pushed %s (remote head verified at %s)", br, local_head)
+    logger.info("pushed %s (remote head verified)", br)
     return 0
 
 

@@ -18,6 +18,7 @@ Covers the graph edges per the plan's verification point 2:
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from workhorse.testing import WorkflowRun, assert_step_output, assert_json_file
@@ -44,14 +45,17 @@ def _filed_bullet(bullet_id: str, text: str) -> str:
     return f"# Backlog\n\n## Filed by coder\n\n- [{bullet_id}] {text}\n"
 
 
-def _commit_messages(result, node_id: str | None = None) -> list[str]:
-    """Every `-m <message>` argument passed to a mocked `git` call."""
-    messages = []
-    for call in result.calls("git"):
-        args = call.get("args", [])
-        if "-m" in args:
-            messages.append(args[args.index("-m") + 1])
-    return messages
+def _commit_messages(result, node_id: str | None = None) -> list[str]:  # noqa: ARG001
+    """Commit subjects recorded in the real throwaway git repo."""
+    repo = result.test_dir.parent
+    proc = subprocess.run(
+        ["git", "log", "--pretty=%s"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return proc.stdout.splitlines()
 
 
 def _mock_fix_agents_happy(wf: WorkflowRun) -> None:
@@ -75,13 +79,13 @@ _ENCLOSING_STORY_NODES = (
 # ---------------------------------------------------------------------------
 
 
-def test_empty_backlog_story_mode_skips_fix_loop(story_sandbox):
+def test_empty_backlog_story_mode_skips_fix_loop(story_sandbox, monkeypatch):
     """No docs/backlog.md at all: select_fix_item draws nothing, decide_post_drain
     falls straight through to commit_story_pr — the original story-mode commit path,
     unchanged from before the fix loop existed."""
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_all_agents_happy(wf)
+    mock_all_agents_happy(wf, monkeypatch)
     result = wf.run(params=story_params(story_sandbox))
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -96,15 +100,15 @@ def test_empty_backlog_story_mode_skips_fix_loop(story_sandbox):
     assert [c for c in result.calls("claude") if c["node_id"] == "plan_fix"] == []
 
 
-def test_empty_backlog_epic_mode_skips_fix_loop(tmp_path):
+def test_empty_backlog_epic_mode_skips_fix_loop(tmp_path, monkeypatch):
     """Same pass-through in epic mode: decide_post_drain routes to commit_story."""
     make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "In progress"}])
     make_queue(tmp_path, ["epic-1"])
     story_md = tmp_path / "docs" / "epics" / "epic-1" / "stories" / "s-1" / "story.md"
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_all_agents_happy(wf, story_md_paths=[story_md])
+    mock_all_agents_happy(wf, monkeypatch, story_md_paths=[story_md])
     result = wf.run()
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -119,15 +123,15 @@ def test_empty_backlog_epic_mode_skips_fix_loop(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_fix_loop_drains_passed_item_story_mode(story_sandbox):
+def test_fix_loop_drains_passed_item_story_mode(story_sandbox, monkeypatch):
     """One filed bullet, check_fix passes first try: prune_fix_item removes it,
     the loop returns to select_fix_item (now empty), and the run still commits
     under the ORIGINAL story's identity (story_slug s-1), not the fix's own."""
     _backlog(story_sandbox, _filed_bullet("bug-a", "Fix the flaky sentinel gate"))
 
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_all_agents_happy(wf, ostler_setup=mock_ostler_fix_passthrough)
+    mock_all_agents_happy(wf, monkeypatch, ostler_setup=mock_ostler_fix_passthrough)
     _mock_fix_agents_happy(wf)
     result = wf.run(params=story_params(story_sandbox))
 
@@ -152,7 +156,7 @@ def test_fix_loop_drains_passed_item_story_mode(story_sandbox):
     assert not any("fixes" in m for m in messages)
 
 
-def test_fix_loop_drains_passed_item_epic_mode(tmp_path):
+def test_fix_loop_drains_passed_item_epic_mode(tmp_path, monkeypatch):
     """Same passed-drain scenario in epic mode: commit_story keeps committing under
     the epic's own story identity ("epic-1: s-1"), not the fix's."""
     make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "In progress"}])
@@ -160,10 +164,10 @@ def test_fix_loop_drains_passed_item_epic_mode(tmp_path):
     story_md = tmp_path / "docs" / "epics" / "epic-1" / "stories" / "s-1" / "story.md"
     _backlog(tmp_path, _filed_bullet("bug-a", "Fix the flaky sentinel gate"))
 
+    git_mock_no_remote(tmp_path)
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     mock_all_agents_happy(
-        wf, story_md_paths=[story_md], ostler_setup=mock_ostler_fix_passthrough
+        wf, monkeypatch, story_md_paths=[story_md], ostler_setup=mock_ostler_fix_passthrough
     )
     _mock_fix_agents_happy(wf)
     result = wf.run()
@@ -184,15 +188,15 @@ def test_fix_loop_drains_passed_item_epic_mode(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_fix_loop_gives_up_after_one_retry_without_halting(story_sandbox):
+def test_fix_loop_gives_up_after_one_retry_without_halting(story_sandbox, monkeypatch):
     """check_fix fails, the one bounded retry (apply_fix_once → recheck_fix) still
     fails: fix_give_up annotates the bullet in place (not removed), the run does
     NOT halt, and the story's own commit still proceeds normally."""
     _backlog(story_sandbox, _filed_bullet("bug-a", "Fix the flaky sentinel gate"))
 
+    git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_all_agents_happy(wf, ostler_setup=mock_ostler_fix_passthrough)
+    mock_all_agents_happy(wf, monkeypatch, ostler_setup=mock_ostler_fix_passthrough)
     wf.mock_agent("plan_fix", {"plan_result": {"status": "done", "summary": "Fix planned."}})
     wf.mock_agent("implement_fix", {"impl_result": {"status": "done", "notes": ""}})
     wf.mock_agent("check_fix", {"qa_result": {"status": "failed", "notes": "still broken"}})
@@ -237,9 +241,9 @@ def test_standalone_fix_mode_empty_backlog_is_a_noop(tmp_path):
     `no` case goes straight to this flow's own `done` terminal — none of the
     epic/story machinery (no epic/story selected, no branch cut) ever runs."""
     (tmp_path / "docs" / "epics").mkdir(parents=True)
+    git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     result = wf.run(flow="fix", params=_fix_params(tmp_path))
 
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -255,9 +259,9 @@ def test_standalone_fix_mode_drains_passed_item_and_commits_it(tmp_path):
     the run stops — still without ever touching epic/story selection."""
     (tmp_path / "docs" / "epics").mkdir(parents=True)
     _backlog(tmp_path, _filed_bullet("bug-a", "Fix the flaky sentinel gate"))
+    git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     _mock_fix_agents_happy(wf)
     result = wf.run(flow="fix", params=_fix_params(tmp_path))
 
@@ -282,9 +286,9 @@ def test_standalone_fix_mode_commits_blocked_item_too(tmp_path):
     doesn't halt and doesn't lose the blocked-annotation edit."""
     (tmp_path / "docs" / "epics").mkdir(parents=True)
     _backlog(tmp_path, _filed_bullet("bug-a", "Fix the flaky sentinel gate"))
+    git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
     wf.mock_agent("plan_fix", {"plan_result": {"status": "done", "summary": "Fix planned."}})
     wf.mock_agent("implement_fix", {"impl_result": {"status": "done", "notes": ""}})
     wf.mock_agent("check_fix", {"qa_result": {"status": "failed", "notes": "still broken"}})

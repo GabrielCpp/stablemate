@@ -35,9 +35,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+from workhorse.scriptutil import show_file
 
 try:
     import yaml
@@ -126,12 +127,7 @@ def record_errors(record: dict, unit_id: str) -> list[str]:
 
 
 def git_show(root: Path, ref: str, relpath: str) -> str | None:
-    try:
-        proc = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{relpath}"],
-                              capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return proc.stdout if proc.returncode == 0 else None
+    return show_file(root, ref, relpath)
 
 
 def main() -> None:

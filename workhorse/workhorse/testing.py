@@ -1,25 +1,30 @@
 """Test utilities for workflow authors.
 
 Workflow authors write pytest files in a ``tests/`` subdirectory of their workflow
-directory and import from this module to set up sandboxes, install shims, and assert
-on results.  The real ``workhorse`` CLI is invoked as a subprocess — no mocking of
-workhorse internals.
+directory and import from this module to set up sandboxes, mock agents, and assert
+on results. The engine runs **in-process** — no ``workhorse`` CLI subprocess, no
+PATH shims:
+
+- Agent nodes are answered by a :class:`_MockBackend` injected through
+  ``RunConfig.backend_factory`` (``mock_agent`` / ``mock_agent_sequence``).
+- Script nodes run **in the current process** via :class:`InProcessScriptRunner`
+  (``runpy``), so a test can ``monkeypatch`` the ``workhorse.scriptutil`` helpers a
+  script calls — e.g. patch ``scriptutil.github_client`` to intercept GitHub, with no
+  ``gh`` CLI. Local ``git`` runs for real against a throwaway repo (:func:`make_git_repo`).
 
 Example::
 
     from pathlib import Path
-    from workhorse.testing import WorkflowRun, assert_step_output, assert_json_file
+    from workhorse.testing import WorkflowRun, assert_step_output
 
     WORKFLOW = Path(__file__).parent.parent / "workflow.yaml"
 
     def test_select_story(tmp_path):
-        epics = tmp_path / "docs" / "epics" / "epic-1"
-        epics.mkdir(parents=True)
+        (tmp_path / "docs" / "epics" / "epic-1").mkdir(parents=True)
         (tmp_path / "docs" / "epics" / "epics-todo.json").write_text('["epic-1"]')
-        ...
 
         wf = WorkflowRun(WORKFLOW, tmp_path)
-        wf.mock_command("git", (0, ""))
+        wf.mock_agent("plan", {"plan_result": {"status": "done"}})
         result = wf.run()
 
         assert result.passed()
@@ -28,16 +33,28 @@ Example::
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import runpy
+import signal
 import subprocess
+import sys
+import traceback
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .config_run import AgentResilience, RunConfig
+from .main import Workhorse
+from .runner.agent import BackendInvocationError
+
 __all__ = [
     "WorkflowRun",
     "RunResult",
+    "InProcessScriptRunner",
+    "make_git_repo",
     "assert_file",
     "assert_file_contains",
     "assert_json_file",
@@ -46,135 +63,154 @@ __all__ = [
     "assert_command_called",
 ]
 
-# ── Shim scripts ──────────────────────────────────────────────────────────────
 
-# The claude shim emits one stream-json result event per invocation.  Workhorse's
-# _stream_events() in runner/agent.py looks for {"type": "result", ...} and
-# extracts the "result" field as the agent response text.  The shim reads
-# WORKHORSE_NODE_ID (injected by workhorse when it starts the claude subprocess)
-# to look up the per-node mock and records every call so tests can inspect them.
-_CLAUDE_SHIM = r"""#!/usr/bin/env python3
-import json, os, sys
-from pathlib import Path
+# ── Real throwaway git repo ────────────────────────────────────────────────────
 
-shim_dir = Path(os.environ.get("WORKHORSE_SHIM_DIR", ""))
-node_id = os.environ.get("WORKHORSE_NODE_ID", "_unknown")
-stdin_text = sys.stdin.read()
+def make_git_repo(path: Path, *, name: str = "test") -> Path:
+    """Initialise a minimal real git repo at ``path`` with one commit.
 
-# Record call
-calls_dir = shim_dir / "calls" / "claude"
-calls_dir.mkdir(parents=True, exist_ok=True)
-seq = len(list(calls_dir.glob("*.json")))
-(calls_dir / f"{seq:06d}.json").write_text(
-    json.dumps({"seq": seq, "node_id": node_id, "args": sys.argv[1:],
-                "stdin": stdin_text, "cwd": os.getcwd()}, indent=2)
-)
-
-# Per-node call counter (drives sequence mocks)
-counter_dir = shim_dir / "call_counts"
-counter_dir.mkdir(parents=True, exist_ok=True)
-counter_file = counter_dir / f"{node_id}.txt"
-call_idx = int(counter_file.read_text().strip()) if counter_file.exists() else 0
-counter_file.write_text(str(call_idx + 1))
-
-# Look up mock
-mock_file = shim_dir / "agent_mocks" / f"{node_id}.json"
-if mock_file.exists():
-    cfg = json.loads(mock_file.read_text())
-    # Sequence support: cfg may be a list [{response, exit_code}, ...];
-    # the last entry repeats once the list is exhausted.
-    if isinstance(cfg, list):
-        entry = cfg[min(call_idx, len(cfg) - 1)]
-    else:
-        entry = cfg
-    response_text = entry.get("response", "{}")
-    exit_code = entry.get("exit_code", 0)
-    side_effects = entry.get("side_effects", [])
-else:
-    print(f"[test-shim] ⚠ no agent mock for node '{node_id}' — returning {{}}",
-          file=sys.stderr)
-    response_text = "{}"
-    exit_code = 0
-    side_effects = []
-
-# Execute side effects (file writes) BEFORE emitting — simulates agent file I/O
-for fx in side_effects:
-    try:
-        p = Path(fx["path"])
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(fx["content"], encoding="utf-8")
-    except Exception as exc:
-        print(f"[test-shim] ⚠ side_effect write failed: {exc}", file=sys.stderr)
-
-# Emit the stream-json result event workhorse expects
-print(json.dumps({
-    "type": "result",
-    "subtype": "success",
-    "result": response_text,
-    "is_error": False,
-    "session_id": "test-session",
-    "cost_usd": 0,
-    "duration_ms": 1,
-    "usage": {"input_tokens": 0, "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0, "output_tokens": 0},
-}))
-sys.exit(exit_code)
-"""
-
-# Generic command shim template.  {cmd_name} is replaced at write time.
-_COMMAND_SHIM_TEMPLATE = r"""#!/usr/bin/env python3
-import json, os, sys
-from pathlib import Path
-
-CMD_NAME = {cmd_name!r}
-
-shim_dir = Path(os.environ.get("WORKHORSE_SHIM_DIR", ""))
-node_id = os.environ.get("WORKHORSE_NODE_ID", "_unknown")
-try:
-    stdin_text = sys.stdin.read() if not sys.stdin.isatty() else ""
-except Exception:
-    stdin_text = ""
-
-# Record call
-calls_dir = shim_dir / "calls" / CMD_NAME
-calls_dir.mkdir(parents=True, exist_ok=True)
-seq = len(list(calls_dir.glob("*.json")))
-(calls_dir / f"{seq:06d}.json").write_text(
-    json.dumps({"seq": seq, "node_id": node_id, "args": sys.argv[1:],
-                "stdin": stdin_text, "cwd": os.getcwd()}, indent=2)
-)
-
-# Look up mock
-mock_file = shim_dir / "command_mocks" / f"{CMD_NAME}.json"
-if not mock_file.exists():
-    print(f"[test-shim] ⚠ no mock for command '{CMD_NAME}'", file=sys.stderr)
-    sys.exit(0)
-
-cfg = json.loads(mock_file.read_text())
-first_arg = sys.argv[1] if len(sys.argv) > 1 else ""
-
-# cfg is either a single {exit_code, stdout} dict or a per-first-arg dispatch dict
-if isinstance(cfg, dict) and ("exit_code" in cfg or "stdout" in cfg):
-    stdout = cfg.get("stdout", "")
-    if stdout:
-        sys.stdout.write(stdout)
-    sys.exit(cfg.get("exit_code", 0))
-elif isinstance(cfg, dict):
-    entry = cfg.get(first_arg) or cfg.get("*")
-    if entry:
-        stdout = entry.get("stdout", "")
-        if stdout:
-            sys.stdout.write(stdout)
-        sys.exit(entry.get("exit_code", 0))
-    sys.exit(0)
-else:
-    sys.exit(0)
-"""
+    Git operations are tested against a REAL (cheap) repo rather than a mocked
+    ``git`` — the ``test_multi_repo_git`` pattern, generalised. Returns ``path``."""
+    path.mkdir(parents=True, exist_ok=True)
+    for cmd in (
+        ["git", "init", "-q", "-b", "main"],
+        ["git", "config", "user.email", "t@t.com"],
+        ["git", "config", "user.name", "t"],
+    ):
+        subprocess.run(cmd, cwd=str(path), check=True, capture_output=True)
+    readme = path / "README.md"
+    if not readme.exists():
+        readme.write_text(f"# {name}\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=str(path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "init"], cwd=str(path), check=True, capture_output=True
+    )
+    return path
 
 
-def _write_shim(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
-    path.chmod(0o755)
+# ── In-process script runner ───────────────────────────────────────────────────
+
+
+class _HarnessTimeout(Exception):
+    """Internal signal used by WorkflowRun timeout compatibility."""
+
+class InProcessScriptRunner:
+    """Execute a Python script node IN THE CURRENT PROCESS via ``runpy``.
+
+    Mirrors ``python <script.py> <argv>`` — sets ``sys.argv``, the cwd, ``os.environ``
+    and ``sys.path[0]`` (so ``from lib import ...`` resolves), captures stdout/stderr,
+    and translates ``SystemExit`` into a return code — all restored afterwards. Because
+    the script's ``workhorse.scriptutil`` / ``lib.*`` calls happen in this process, a
+    test can monkeypatch them (e.g. ``scriptutil.github_client``) to intercept external
+    services without a PATH shim or CLI subprocess."""
+
+    def run(
+        self, script_path: Path, argv: list[str], cwd: str, env: dict[str, str]
+    ) -> tuple[int, str, str]:
+        old_argv = sys.argv[:]
+        old_cwd = os.getcwd()
+        old_env = os.environ.copy()
+        old_path = sys.path[:]
+        out, err = io.StringIO(), io.StringIO()
+        code = 0
+        try:
+            sys.argv = [str(script_path), *argv]
+            os.chdir(cwd)
+            os.environ.clear()
+            os.environ.update(env)
+            sys.path.insert(0, str(Path(script_path).parent))
+            with redirect_stdout(out), redirect_stderr(err):
+                try:
+                    runpy.run_path(str(script_path), run_name="__main__")
+                except SystemExit as exc:
+                    c = exc.code
+                    code = 0 if c is None else (c if isinstance(c, int) else 1)
+                except _HarnessTimeout:
+                    raise
+                except Exception as exc:  # noqa: BLE001 — surface a script crash as exit 1
+                    code = 1
+                    err.write(f"\n{type(exc).__name__}: {exc}\n")
+                    traceback.print_exc(file=err)
+        finally:
+            sys.argv = old_argv
+            os.chdir(old_cwd)
+            os.environ.clear()
+            os.environ.update(old_env)
+            sys.path[:] = old_path
+        return code, out.getvalue(), err.getvalue()
+
+
+# ── Mock agent backend ─────────────────────────────────────────────────────────
+
+class _MockBackend:
+    """Answers agent nodes from per-node mocks instead of running an agent CLI.
+
+    Injected via ``RunConfig.backend_factory``. Returns the mocked response text (so
+    the engine's real output-extraction / reframe / default-outputs ladder runs on
+    it), applies ``side_effects`` file writes, records each call to
+    ``<test_dir>/calls/<cli>/`` for :meth:`RunResult.calls`, and drives ``_sequence``
+    mocks off a per-node counter. A non-zero ``exit_code`` raises
+    ``BackendInvocationError`` (a non-recoverable backend failure), so a test can
+    exercise the failure path."""
+
+    supports_compaction = False
+
+    def __init__(self, cli: str, mocks: dict[str, Any], test_dir: Path) -> None:
+        self.name = cli
+        self.default_model = "mock-model"
+        self._mocks = mocks
+        self._test_dir = test_dir
+        self._counts: dict[str, int] = {}
+
+    def run_turn(
+        self,
+        prompt: str,
+        node_id: str,
+        session_id_path: Path | None = None,
+        model: str | None = None,
+        timeout: float = 0,
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
+        effort: str | None = None,
+    ) -> str:
+        idx = self._counts.get(node_id, 0)
+        self._counts[node_id] = idx + 1
+        self._record(node_id, prompt, cwd)
+
+        cfg = self._mocks.get(node_id)
+        if cfg is None:
+            # No mock for this node — mirror the old shim's "return {}" so a node the
+            # test didn't stub defaults its outputs rather than crashing the run.
+            print(f"[test-mock] ⚠ no agent mock for node '{node_id}' — returning {{}}",
+                  file=sys.stderr)
+            return "{}"
+        entry = cfg[min(idx, len(cfg) - 1)] if isinstance(cfg, list) else cfg
+        for fx in entry.get("side_effects", []):
+            p = Path(fx["path"])
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(fx["content"], encoding="utf-8")
+        exit_code = entry.get("exit_code", 0)
+        if exit_code != 0:
+            raise BackendInvocationError(
+                f"mock agent for node '{node_id}' exited {exit_code}", transient=False
+            )
+        return entry.get("response", "{}")
+
+    def compact(self, *args: Any, **kwargs: Any) -> bool:
+        return False
+
+    def _record(self, node_id: str, prompt: str, cwd: str | None) -> None:
+        calls_dir = self._test_dir / "calls" / self.name
+        calls_dir.mkdir(parents=True, exist_ok=True)
+        seq = len(list(calls_dir.glob("*.json")))
+        (calls_dir / f"{seq:06d}.json").write_text(
+            json.dumps(
+                {"seq": seq, "node_id": node_id, "args": [], "stdin": prompt,
+                 "cwd": cwd or os.getcwd()},
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
 
 # ── RunResult ─────────────────────────────────────────────────────────────────
@@ -188,7 +224,7 @@ class RunResult:
     stderr: str
     #: Directory holding workhorse run artifacts for this test
     runs_dir: Path
-    #: Base test directory (parent of runs_dir); shim calls are recorded here
+    #: Base test directory (parent of runs_dir); agent calls are recorded here
     test_dir: Path
 
     # ── Run dir resolution ────────────────────────────────────────────────────
@@ -264,7 +300,9 @@ class RunResult:
         return f.read_text(encoding="utf-8") if f is not None else ""
 
     def calls(self, command: str) -> list[dict[str, Any]]:
-        """All recorded shim invocations for ``command``, sorted by seq."""
+        """All recorded agent-backend invocations for ``command`` (the agent CLI
+        name, e.g. ``'claude'``), sorted by seq. External-tool calls (git/gh/ostler)
+        are asserted via the test's own monkeypatched fakes, not here."""
         calls_dir = self.test_dir / "calls" / command
         if not calls_dir.is_dir():
             return []
@@ -287,25 +325,26 @@ class RunResult:
 # ── WorkflowRun ───────────────────────────────────────────────────────────────
 
 class WorkflowRun:
-    """Invoke the real ``workhorse`` CLI against an isolated sandbox directory.
+    """Run a workflow IN-PROCESS against an isolated sandbox directory.
 
     Layout under ``sandbox/.workhorse-test/``::
 
-        bin/          shim executables (prepended to PATH)
-        agent_mocks/  per-node mock config (written by mock_agent)
-        command_mocks/  per-command mock config (written by mock_command)
-        calls/        recorded shim invocations
-        runs/         workhorse run artifacts (--runs-dir)
+        calls/   recorded agent-backend invocations (by CLI name)
+        runs/    workhorse run artifacts
+
+    Agent nodes are answered by :class:`_MockBackend` (``mock_agent`` /
+    ``mock_agent_sequence``); script nodes run via :class:`InProcessScriptRunner`.
+    Point script-node repo resolution at the sandbox by seeding it as a real git repo
+    (:func:`make_git_repo`) and passing ``docs_path`` / workspace params.
     """
 
-    def __init__(self, workflow: str | Path, sandbox: Path) -> None:
+    def __init__(self, workflow: str | Path, sandbox: Path, *, repo: Path | None = None) -> None:
         self._workflow = Path(workflow).resolve()
-        self._sandbox = sandbox
-        self._test_dir = sandbox / ".workhorse-test"
-        self._shim_bin = self._test_dir / "bin"
-        self._agent_mocks_dir = self._test_dir / "agent_mocks"
-        self._command_mocks_dir = self._test_dir / "command_mocks"
+        self._sandbox = Path(sandbox)
+        self._repo = Path(repo) if repo is not None else self._sandbox
+        self._test_dir = self._sandbox / ".workhorse-test"
         self._runs_dir = self._test_dir / "runs"
+        self._agent_mocks: dict[str, Any] = {}
 
     # ── Mocking ───────────────────────────────────────────────────────────────
 
@@ -318,26 +357,15 @@ class WorkflowRun:
     ) -> None:
         """Return a fixed response for agent node ``node_id``.
 
-        ``response`` is the text the agent returns.  If a dict, it is
-        JSON-serialised automatically.  The ``claude`` shim is written to the
-        shim bin when :meth:`run` is called.
-
-        ``side_effects`` is a list of ``{"path": str, "content": str}`` dicts
-        that the shim writes to disk after returning the response, simulating
-        file-system changes the real agent would make (e.g. writing "QA passed"
-        to story.md).
-        """
+        ``response`` is the text the agent returns (a dict is JSON-serialised).
+        ``side_effects`` is a list of ``{"path": str, "content": str}`` written to
+        disk after the response is chosen, simulating file-system changes the real
+        agent would make (e.g. writing "QA passed" to story.md)."""
         if isinstance(response, dict):
             response = json.dumps(response)
-        self._agent_mocks_dir.mkdir(parents=True, exist_ok=True)
-        (self._agent_mocks_dir / f"{node_id}.json").write_text(
-            json.dumps(
-                {"response": response, "exit_code": exit_code,
-                 "side_effects": side_effects or []},
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        self._agent_mocks[node_id] = {
+            "response": response, "exit_code": exit_code, "side_effects": side_effects or []
+        }
 
     def mock_agent_sequence(
         self,
@@ -348,18 +376,12 @@ class WorkflowRun:
         """Return successive responses for repeated calls to agent node ``node_id``.
 
         The last entry repeats once the list is exhausted, so a two-element list
-        tests one rework cycle: first call gets ``responses[0]``, all subsequent
-        calls get ``responses[1]``.
-
-        Each item in ``responses`` may be:
-        - a ``str`` or ``dict`` — the response text (exit_code from the keyword arg)
-        - a ``dict`` with ``"response"`` and optional ``"exit_code"`` / ``"side_effects"``
-          keys — a fully-specified entry (exit_code keyword arg is ignored for that entry)
-        """
+        tests one rework cycle. Each item may be a ``str``/``dict`` response, or a
+        fully-specified ``{"response": ..., "exit_code": ..., "side_effects": ...}``
+        dict (its ``exit_code`` overrides the keyword arg for that entry)."""
         cfg = []
         for resp in responses:
             if isinstance(resp, dict) and "response" in resp:
-                # Fully-specified entry: {"response": ..., "exit_code": ..., "side_effects": ...}
                 entry_resp = resp["response"]
                 if isinstance(entry_resp, dict):
                     entry_resp = json.dumps(entry_resp)
@@ -372,36 +394,7 @@ class WorkflowRun:
                 if isinstance(resp, dict):
                     resp = json.dumps(resp)
                 cfg.append({"response": resp, "exit_code": exit_code, "side_effects": []})
-        self._agent_mocks_dir.mkdir(parents=True, exist_ok=True)
-        (self._agent_mocks_dir / f"{node_id}.json").write_text(
-            json.dumps(cfg, indent=2),
-            encoding="utf-8",
-        )
-
-    def mock_command(
-        self,
-        name: str,
-        response: tuple[int, str] | dict[str, tuple[int, str]],
-    ) -> None:
-        """Install a PATH shim for ``name`` (e.g. ``'git'``, ``'gh'``).
-
-        Pass a single ``(exit_code, stdout)`` tuple to respond identically to
-        all invocations, or a dict mapping first-arg (or ``'*'``) to
-        ``(exit_code, stdout)``.
-        """
-        self._command_mocks_dir.mkdir(parents=True, exist_ok=True)
-        if isinstance(response, tuple):
-            exit_code, stdout = response
-            config: dict = {"exit_code": exit_code, "stdout": stdout}
-        else:
-            config = {
-                k: {"exit_code": v[0], "stdout": v[1]}
-                for k, v in response.items()
-            }
-        (self._command_mocks_dir / f"{name}.json").write_text(
-            json.dumps(config, indent=2),
-            encoding="utf-8",
-        )
+        self._agent_mocks[node_id] = cfg
 
     # ── Execution ─────────────────────────────────────────────────────────────
 
@@ -411,114 +404,106 @@ class WorkflowRun:
         params: dict[str, Any] | None = None,
         flow: str | None = None,
         cli: str = "claude",
-        timeout: float = 120,
+        config: RunConfig | None = None,
+        timeout: float | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
-        """Execute ``workhorse --workflow <path>`` as a subprocess.
+        """Execute the workflow in-process and return a :class:`RunResult`.
 
-        Pass ``flow`` to run a named ``flows:`` sub-graph standalone
-        (``workhorse --workflow <path> <flow>``) — the re-run-one-phase entrypoint.
-        The flow's vars are its parameter contract, so ``params`` must supply every
-        required one.
+        Pass ``flow`` to run a named ``flows:`` sub-graph standalone; ``params`` must
+        then supply every var the flow requires. ``config`` overrides the default
+        harness :class:`RunConfig` (e.g. to raise ``max_rephrase_attempts`` for a
+        test that specifically exercises the reframe ladder)."""
+        self._runs_dir.mkdir(parents=True, exist_ok=True)
+        backend = _MockBackend(cli, self._agent_mocks, self._test_dir)
 
-        Environment (in precedence order, highest last):
-        - Inherited from the calling process (``os.environ``)
-        - ``extra_env`` — additional variables injected by the test (e.g.
-          ``{"GH_TOKEN": "fake-token"}`` to enable CI-gate code paths)
-        - Fixed test harness variables (PATH shim, AGENT_CLI, WORKHORSE_*)
-        """
-        self._setup_shims(cli)
+        if config is None:
+            # Neutralize the recovery sleeps: with no reframe/output retries a
+            # parse-miss defaults instantly, and the cap/backoff waits are zeroed.
+            # A test exercising the retry/reframe path passes its own `config`.
+            resilience = AgentResilience.from_env().with_overrides(
+                max_output_retries=0,
+                max_rephrase_attempts=0,
+                max_compact_attempts=0,
+                invoke_backoff_base_s=0.0,
+                cap_default_wait_s=0.0,
+                result_timeout_s=30.0,
+                use_default_outputs=True,
+            )
+            config = RunConfig(
+                resilience=resilience,
+                backend_factory=lambda _cli: backend,
+                script_runner=InProcessScriptRunner(),
+            )
+        else:
+            # Honor a caller-supplied config but still inject the mock backend and the
+            # in-process runner unless the caller set them explicitly.
+            replacements: dict[str, Any] = {}
+            if config.backend_factory is None:
+                replacements["backend_factory"] = lambda _cli: backend
+            if config.script_runner is None:
+                replacements["script_runner"] = InProcessScriptRunner()
+            if replacements:
+                from dataclasses import replace as _replace
 
-        cmd = ["workhorse", "--workflow", str(self._workflow)]
-        if flow:
-            cmd.append(flow)  # positional: run just this flows: sub-graph
-        cmd += ["--runs-dir", str(self._runs_dir)]
-        if params:
-            cmd += ["--params", json.dumps(params)]
+                config = _replace(config, **replacements)
 
-        env = {
-            **os.environ,
-            **(extra_env or {}),
-            "PATH": str(self._shim_bin) + os.pathsep + os.environ.get("PATH", ""),
-            "AGENT_CLI": cli,
-            "WORKHORSE_SHIM_DIR": str(self._test_dir),
-            "WORKHORSE_DEFAULT_SCRIPT_CWD": str(self._sandbox),
-            # Size the engine's gas tank (infinite-loop guard) small under test, so a
-            # workflow whose exit condition never fires runs dry and fails with the
-            # loop diagnostic in seconds rather than running until the harness `timeout`
-            # wall. The tank refuels on real progress (a new story/epic), so no
-            # legitimate test — which makes progress every iteration — comes close to
-            # burning this between refuels. A test that genuinely needs a bigger tank
-            # passes WORKHORSE_GAS in extra_env (honored here).
-            "WORKHORSE_GAS": (extra_env or {}).get("WORKHORSE_GAS", "1500"),
-            # Kill the agent runner's recovery SLEEPS under test. On a mocked agent
-            # whose output the parser can't satisfy (an unmocked node returns {}, or a
-            # mock omits a declared output), the runner reframes up to
-            # AGENT_MAX_REPHRASE_ATTEMPTS times, sleeping 10·n seconds between tries
-            # (10+20+30 = 60s) BEFORE falling back to default outputs — and likewise
-            # backs off AGENT_INVOKE_BACKOFF_BASE_S seconds on a transient CLI error.
-            # Those waits are pure dead time in a test: zero them so a parse-miss
-            # resolves to defaults instantly. The logical outcome (default outputs) is
-            # unchanged; only the sleeping is removed. A test that specifically exercises
-            # the retry/reframe path can override either via extra_env.
-            "AGENT_MAX_REPHRASE_ATTEMPTS": (extra_env or {}).get("AGENT_MAX_REPHRASE_ATTEMPTS", "0"),
-            "AGENT_INVOKE_BACKOFF_BASE_S": (extra_env or {}).get("AGENT_INVOKE_BACKOFF_BASE_S", "0"),
-            # Pin the repo root to the sandbox so scripts that resolve it via
-            # AGENT_REPO_DIR (every git-touching script: branch-*, commit-*,
-            # *-pr.sh, merge-pr.sh, push-*.sh) operate ON THE SANDBOX, never on the
-            # workflow library's own checkout. Without this a script that runs real
-            # `git` (a test that doesn't mock it) would fall back to walking up from
-            # its own location and mutate the library repo (cut branches, commit). The
-            # sandbox is not a git repo unless the test makes one, so unmocked git
-            # fails harmlessly instead of corrupting the library.
-            "AGENT_REPO_DIR": str(self._sandbox),
-        }
+        # Script nodes resolve the repo root from AGENT_REPO_DIR and their cwd from
+        # WORKHORSE_DEFAULT_SCRIPT_CWD; point both at the sandbox for the duration of
+        # the run (scoped + restored, so the test author never sets env). The test
+        # supplies everything else (docs_path, workspace) via `params`.
+        out, err = io.StringIO(), io.StringIO()
+        prior_env = os.environ.copy()
+        os.environ["AGENT_REPO_DIR"] = str(self._repo)
+        os.environ["WORKHORSE_DEFAULT_SCRIPT_CWD"] = str(self._sandbox)
+        os.environ["AGENT_CLI"] = cli
+        if extra_env:
+            os.environ.update(extra_env)
+        code = 0
+        old_handler = None
+
+        def _timeout_handler(signum, frame):  # noqa: ARG001
+            raise _HarnessTimeout
 
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=str(self._sandbox),
-                env=env,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as e:
-            stdout = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-            stderr = (e.stderr or b"").decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
-            return RunResult(
-                exit_code=-1,
-                stdout=stdout,
-                stderr=f"[workhorse.testing] timed out after {timeout}s\n{stderr}",
-                runs_dir=self._runs_dir,
-                test_dir=self._test_dir,
-            )
+            if timeout is not None:
+                # Compatibility with the old subprocess harness. These timeouts are
+                # only used by tests that intentionally park at an operator gate. Cap
+                # them below the legacy subprocess value, but leave enough room for
+                # xdist workers under load to reach the gate before the signal fires.
+                old_handler = signal.getsignal(signal.SIGALRM)
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, min(float(timeout), 5.0))
+            with redirect_stdout(out), redirect_stderr(err):
+                try:
+                    code = Workhorse(config).run(
+                        self._workflow,
+                        self._runs_dir,
+                        params=params,
+                        flow=flow,
+                    )
+                except SystemExit as exc:
+                    # A script node's non-zero exit propagates as SystemExit (e.g.
+                    # await_operator exits 2); surface its code faithfully.
+                    c = exc.code
+                    code = 0 if c is None else (c if isinstance(c, int) else 1)
+                except _HarnessTimeout:
+                    code = -1
+        finally:
+            if timeout is not None:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                if old_handler is not None:
+                    signal.signal(signal.SIGALRM, old_handler)
+            os.environ.clear()
+            os.environ.update(prior_env)
 
         return RunResult(
-            exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            exit_code=code,
+            stdout=out.getvalue(),
+            stderr=err.getvalue(),
             runs_dir=self._runs_dir,
             test_dir=self._test_dir,
         )
-
-    # ── Internal ──────────────────────────────────────────────────────────────
-
-    def _setup_shims(self, cli: str) -> None:
-        """Write shim executables to shim_bin."""
-        self._shim_bin.mkdir(parents=True, exist_ok=True)
-
-        # Agent CLI shim: always install as 'claude'.  If a different CLI is chosen,
-        # also install under that name so the correct binary is found in PATH.
-        for name in sorted({"claude", cli}):
-            _write_shim(self._shim_bin / name, _CLAUDE_SHIM)
-
-        # Command shims for every entry in command_mocks/
-        if self._command_mocks_dir.is_dir():
-            for mock_file in self._command_mocks_dir.glob("*.json"):
-                name = mock_file.stem
-                shim_content = _COMMAND_SHIM_TEMPLATE.replace("{cmd_name!r}", repr(name))
-                _write_shim(self._shim_bin / name, shim_content)
 
 
 # ── Assertion helpers ─────────────────────────────────────────────────────────
@@ -598,7 +583,8 @@ def assert_prompt_contains(result: RunResult, node_id: str, text: str) -> None:
 def assert_command_called(
     result: RunResult, command: str, args_contain: str
 ) -> None:
-    """Assert that at least one invocation of ``command`` had ``args_contain`` in its args."""
+    """Assert that at least one recorded invocation of ``command`` had ``args_contain``
+    in its args. (For agent CLIs; external tools are asserted via test fakes.)"""
     calls = result.calls(command)
     assert calls, (
         f"Command {command!r} was never called\n"

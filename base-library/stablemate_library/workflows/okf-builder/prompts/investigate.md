@@ -103,6 +103,23 @@ missing rather than re-reading the whole tree.
   implementation as its own sibling node (find them by subclass/grep — do **not** just name the rest
   in prose). If it's a **module**, cover **every** public member. Author directly referenced
   concepts/formats in this turn where bounded; only emit a grouped follow-up when genuinely too large.
+- **runbook** / **environment** — document the **operational surface** to the spec-complete bar
+  (the OKF runbook profile). `ostler scaffold runbook <driver> --service <svc>`
+  (or `environment <name>`) writes it under `docs/features/<svc>/ops/`, then author:
+  - **`environment`** — its `selector:` (the env-var/env-file that picks it), one nested
+    `services:` child per service with its **env-scoped** URL/host (note any host-rewrite + reason),
+    `backing:` (DBs/buckets/emulators), and `local-only: true` when tooling must refuse it without an
+    override. Derive ports/hosts from the config loader + compose/scripts; never invent them.
+  - **`runbook`** — its `driver:` (web/mobile/http/cli/artifact/iac/none), `environment:` link,
+    `cli:`/`surfaces:` links to the nodes it exposes, `code:` launch entry point, and the ordered
+    `## Steps`. Each `### <id>` step gets a `kind:` (prepare/service/seed/run/health/verify/drive), a
+    real `run:` command, and — crucially — a **real readiness signal**: a `service`/`health` step's
+    `health:` must be a genuine probe (an API endpoint that exercises the backend, `port-bound`,
+    `log:<pattern>`, `ws:<frame>`), **never a UI shell served with the backend down**; a `run` step's
+    `produces:` names its output files and `verify:` how success is confirmed (golden/deterministic/
+    assertion/test-id). Mark **every step you author `provenance: derived`** — the live walkthrough
+    promotes them to `verified` later. Order the steps so a reader can stand the system up from the
+    doc alone. Emit any surface/concept the runbook references but that isn't documented yet.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
   precondition → ordered steps → outcome) and write the `flow` node with linked `steps:`. Emit
   nothing (or a missing element you noticed).

@@ -20,7 +20,13 @@ from pathlib import Path
 from workhorse.graph.loader import load_workflow
 from workhorse.testing import WorkflowRun, assert_step_output
 
-from conftest import WORKFLOW, make_story, git_mock_no_remote, mock_qa_control_plane
+from conftest import (
+    WORKFLOW,
+    make_story,
+    git_mock_no_remote,
+    mock_ostler_qa,
+    mock_qa_control_plane,
+)
 
 
 def _qa_params(sandbox: Path, epic: str = "epic-1", slug: str = "s-1") -> dict:
@@ -76,12 +82,12 @@ def test_dream_is_a_standalone_offline_reflection_flow():
 # ── Standalone `qa` — the re-QA entrypoint ──────────────────────────────────────
 
 
-def test_standalone_qa_passes(tmp_path):
+def test_standalone_qa_passes(tmp_path, monkeypatch):
     """`workhorse run coder qa` on a built story: plan_qa → qa → audit → green → passed."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_qa_control_plane(wf)
+    git_mock_no_remote(tmp_path)
+    mock_qa_control_plane(wf, monkeypatch)
     wf.mock_agent(
         "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
     )
@@ -95,14 +101,14 @@ def test_standalone_qa_passes(tmp_path):
     assert result.step_outputs("commit_story") == {}
 
 
-def test_standalone_qa_exhausted_returns_status_not_halt(tmp_path):
+def test_standalone_qa_exhausted_returns_status_not_halt(tmp_path, monkeypatch):
     """Standalone qa that never passes runs to its terminal with qa_status=exhausted
     (exit 0) — it returns the outcome for the operator to act on rather than halting;
     the per-mode fail routing is the PARENT's job (decide_qa_fail)."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
-    mock_qa_control_plane(wf, statuses=["failed"])
+    git_mock_no_remote(tmp_path)
+    mock_qa_control_plane(wf, monkeypatch, statuses=["failed"])
     wf.mock_agent(
         "apply_qa_fixes", {"qa_result": {"status": "failed", "notes": "Still failing."}}
     )
@@ -121,7 +127,7 @@ def test_standalone_qa_no_story_slug_prepare_story_returns_empty(tmp_path):
     which gets a blank story_path and should report it (not crash the runner)."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
     # Running with an empty story slug should not crash — prepare_story exits with empty outputs.
     result = wf.run(
         flow="qa", params={"docs_path": str(tmp_path), "story": "", "epic": "epic-1"}
@@ -136,7 +142,7 @@ def test_standalone_dev_plan_and_implement(tmp_path):
     """`workhorse run coder dev`: plan (done) → implement → ready terminal."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
     wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
     wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
 
@@ -152,7 +158,7 @@ def test_standalone_review_runs_to_approved(tmp_path):
     """`workhorse run coder review`: review_implementation (approved) → review_done."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
     wf.mock_agent(
         "review_implementation",
         {"review_impl_result": {"status": "approved", "notes": ""}},
@@ -229,14 +235,15 @@ def test_review_loop_structure_is_bounded():
     assert nodes["apply_review_resolved"].next == "reset_review"
 
 
-def test_review_loop_caps_at_max_reworks_then_escalates(tmp_path):
+def test_review_loop_caps_at_max_reworks_then_escalates(tmp_path, monkeypatch):
     """An apply_review whose findings never settle (status stays needs_changes — proof
     missing/wrong) re-applies at most max_review_reworks=3 times, then escalates to the
     operator gate (human mode → await_operator_review halts) instead of looping forever.
     review_implementation runs ONCE; the bounded loop is now apply→settle→re-apply."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
     wf.mock_agent(
         "review_implementation",
         {"review_impl_result": {"status": "needs_changes", "notes": "still wrong"}},
@@ -256,6 +263,7 @@ def test_review_loop_caps_at_max_reworks_then_escalates(tmp_path):
             "epic": "epic-1",
             "operator_mode": "human",
         },
+        timeout=20,
     )
 
     # await_operator_review writes context.md and HALTS (non-zero exit) — the intended
@@ -276,13 +284,14 @@ def test_review_loop_caps_at_max_reworks_then_escalates(tmp_path):
     )
 
 
-def test_review_apply_settles_then_approves_without_full_rereview(tmp_path):
+def test_review_apply_settles_then_approves_without_full_rereview(tmp_path, monkeypatch):
     """The 4.3 happy path: review finds changes, apply settles them (status `applied`),
     and the loop APPROVES and exits — it does NOT re-run review_implementation a second
     time to re-litigate the now-settled findings."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
     wf.mock_agent(
         "review_implementation",
         {"review_impl_result": {"status": "needs_changes", "notes": "fix the label"}},
@@ -299,6 +308,7 @@ def test_review_apply_settles_then_approves_without_full_rereview(tmp_path):
             "epic": "epic-1",
             "operator_mode": "human",
         },
+        timeout=20,
     )
 
     assert result.passed(), f"settled review should reach review_done\n{result.stderr}"
@@ -312,12 +322,13 @@ def test_review_apply_settles_then_approves_without_full_rereview(tmp_path):
     )
 
 
-def test_review_blocked_apply_escalates_immediately(tmp_path):
+def test_review_blocked_apply_escalates_immediately(tmp_path, monkeypatch):
     """An apply_review that reports `blocked` (a finding it cannot resolve) escalates to
     the operator at once rather than re-reviewing and spinning."""
     make_story(tmp_path, "epic-1", "s-1", "In progress")
     wf = WorkflowRun(WORKFLOW, tmp_path)
-    wf.mock_command("git", git_mock_no_remote())
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
     wf.mock_agent(
         "review_implementation",
         {
@@ -340,6 +351,7 @@ def test_review_blocked_apply_escalates_immediately(tmp_path):
             "epic": "epic-1",
             "operator_mode": "human",
         },
+        timeout=20,
     )
 
     assert not result.passed(), "a blocked remediation must escalate (halt), not loop"

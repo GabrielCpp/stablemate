@@ -52,12 +52,17 @@ def run_script(name: str, *args: str, repo: Path) -> dict:
         raise AssertionError(f"{name} stdout not JSON: {e}\nstdout:\n{proc.stdout}")
 
 
-def run_script_raw(name: str, *args: str, repo: Path) -> subprocess.CompletedProcess:
+def run_script_raw(
+    name: str,
+    *args: str,
+    repo: Path,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess:
     """Run scripts/<name> and return the raw CompletedProcess (for exit-code tests)."""
     env = dict(os.environ, AGENT_REPO_DIR=str(repo))
     return subprocess.run(
         [sys.executable, str(SCRIPTS / name), *args],
-        capture_output=True, text=True, env=env,
+        capture_output=True, text=True, env=env, timeout=timeout,
     )
 
 

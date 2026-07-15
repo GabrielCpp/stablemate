@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
+
+from workhorse import scriptutil
 
 
 def run_ostler(
@@ -13,13 +14,7 @@ def run_ostler(
 ) -> tuple[int, dict[str, Any], str]:
     """Run Ostler without raising and parse its JSON object when possible."""
     try:
-        result = subprocess.run(
-            ["ostler", *args],
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        result = scriptutil.run_tool(["ostler", *args], cwd=cwd)
     except OSError as exc:
         return 127, {}, str(exc)
 

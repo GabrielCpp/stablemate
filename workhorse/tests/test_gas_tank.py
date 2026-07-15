@@ -87,10 +87,12 @@ def test_out_of_gas_message_names_hottest_nodes():
 
 
 def test_configured_gas_env_override_and_bad_value():
+    from workhorse.config_run import _DEFAULT_GAS, RunConfig
+
     with patch.dict("os.environ", {"WORKHORSE_GAS": "42"}):
-        assert m._configured_gas() == 42
+        assert RunConfig.from_env().gas == 42
     with patch.dict("os.environ", {"WORKHORSE_GAS": "not-a-number"}):
-        assert m._configured_gas() == m._DEFAULT_GAS
+        assert RunConfig.from_env().gas == _DEFAULT_GAS
 
 
 # --------------------------------------------------------------------------- #
@@ -103,21 +105,17 @@ def _iso_now(offset_s: float = 0.0) -> str:
 
 
 def test_runtime_deadline_unset_means_unbounded():
-    with patch.dict("os.environ", {}, clear=False):
-        import os
-
-        os.environ.pop("WORKHORSE_MAX_RUNTIME_S", None)
-        assert m._runtime_deadline(_iso_now()) is None
+    # budget 0 (RunConfig.max_runtime_s default when WORKHORSE_MAX_RUNTIME_S unset)
+    assert m._runtime_deadline(_iso_now(), 0.0) is None
 
 
 def test_runtime_deadline_counts_from_original_start():
     """A resumed run keeps the ORIGINAL start time, so the deadline is start +
     budget — not resume-time + budget."""
-    with patch.dict("os.environ", {"WORKHORSE_MAX_RUNTIME_S": "100"}):
-        started = _iso_now(-40)  # run began 40s ago
-        deadline = m._runtime_deadline(started)
-        assert deadline is not None
-        assert abs(deadline - (time.time() + 60)) < 5
+    started = _iso_now(-40)  # run began 40s ago
+    deadline = m._runtime_deadline(started, 100.0)
+    assert deadline is not None
+    assert abs(deadline - (time.time() + 60)) < 5
 
 
 def test_step_loop_raises_run_budget_exceeded_past_deadline():
@@ -142,6 +140,7 @@ def test_step_loop_raises_run_budget_exceeded_past_deadline():
             workflow_dir=None,
             session_id_path=None,
             tank=m._GasTank(capacity=0),
+            config=m.RunConfig(),
             deadline=time.time() - 10,
         )
 
@@ -161,6 +160,7 @@ def test_step_loop_no_deadline_reaches_terminal():
         workflow_dir=None,
         session_id_path=None,
         tank=m._GasTank(capacity=5),
+        config=m.RunConfig(),
         deadline=None,
     )
     assert got == "terminal"

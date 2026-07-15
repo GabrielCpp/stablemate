@@ -25,8 +25,8 @@ _NODES = [
         "cases": {"epic": "init_base", "story": "reset_plan"},
         "default": "reset_plan",
     },
-    {"id": "init_base", "type": "script", "script": "init.sh", "next": "work"},
-    {"id": "reset_plan", "type": "script", "script": "reset.sh", "next": "work"},
+    {"id": "init_base", "type": "script", "script": "init.py", "next": "work"},
+    {"id": "reset_plan", "type": "script", "script": "reset.py", "next": "work"},
     {"id": "work", "type": "agent", "prompt": "work.md", "next": "guard"},
     {
         "id": "guard",
@@ -42,7 +42,7 @@ _NODES = [
         "cases": {"epic": "give_up", "story": "hard_fail"},
         "default": "hard_fail",
     },
-    {"id": "give_up", "type": "script", "script": "giveup.sh", "next": "done"},
+    {"id": "give_up", "type": "script", "script": "giveup.py", "next": "done"},
     {"id": "hard_fail", "type": "fail"},
     {"id": "done", "type": "terminal"},
     {"id": "orphan", "type": "agent", "prompt": "orphan.md", "next": "done"},
@@ -180,7 +180,7 @@ def test_deterministic_output():
 # A graph with a `qa` flow node calling a flows: sub-graph that has its own start,
 # an internal branch, and a terminal — plus a parent continuation after the phase.
 _FLOW_NODES = [
-    {"id": "start_n", "type": "script", "script": "s.sh", "next": "qa_phase"},
+    {"id": "start_n", "type": "script", "script": "s.py", "next": "qa_phase"},
     {
         "id": "qa_phase",
         "type": "flow",

@@ -30,11 +30,18 @@ from __future__ import annotations
 import json
 import logging
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root
+from workhorse.scriptutil import (
+    branch_exists,
+    checkout,
+    find_repo_root,
+    rename_branch,
+    restore_paths,
+    short_sha,
+    show_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,51 +49,29 @@ QUEUE_PATH = Path("docs/epics/index.md")
 QUEUE_BULLET_RE = re.compile(r"^\s*[-*]\s+\[", re.MULTILINE)
 
 
-def _git(args: list[str], root, *, echo: bool = False) -> subprocess.CompletedProcess:
-    kwargs = dict(cwd=str(root), text=True, check=False)
-    if echo:
-        kwargs.update(stdout=sys.stderr, stderr=sys.stderr)
-    else:
-        kwargs.update(capture_output=True)
-    return subprocess.run(["git", *args], **kwargs)
-
-
-def branch_exists(branch: str, root) -> bool:
-    return _git(["rev-parse", "--verify", "--quiet", branch], root).returncode == 0
-
-
-def short_sha(branch: str, root) -> str:
-    result = _git(["rev-parse", "--short", branch], root)
-    return result.stdout.strip() if result.returncode == 0 else "unknown"
-
-
 def archive_stale_branch(branch: str, root) -> None:
     """Rename an existing epic branch aside instead of resuming it. Renaming (not
     deleting) means the old work stays fully reachable under the archive name if
     anyone needs to dig it up later."""
-    archive = f"archive/{branch[len('feat/'):]}-{short_sha(branch, root)}"
-    if branch_exists(archive, root):
+    archive = f"archive/{branch[len('feat/'):]}-{short_sha(root, branch) or 'unknown'}"
+    if branch_exists(root, archive):
         # Same epic + same tip sha already archived (re-run at the exact same
         # commit) — don't clobber the existing archive; leave the stale branch
         # in place and let the checkout -b below fail loudly if feat/<epic> is
         # somehow still taken, rather than risk losing either ref.
         logger.warning("archive name %s already exists — leaving %s in place", archive, branch)
         return
-    result = _git(["branch", "-m", branch, archive], root, echo=True)
-    if result.returncode != 0:
-        logger.warning("could not archive stale branch %s — leaving it in place", branch)
-    else:
+    if rename_branch(root, branch, archive):
         logger.info("archived stale epic branch %s -> %s (renamed, not deleted)", branch, archive)
+    else:
+        logger.warning("could not archive stale branch %s — leaving it in place", branch)
 
 
 def reconcile_queue(root, base: str) -> None:
-    if not base or not branch_exists(base, root):
+    if not base or not branch_exists(root, base):
         return
-    if _git(["cat-file", "-e", f"{base}:{QUEUE_PATH}"], root).returncode != 0:
-        return
-    show = _git(["show", f"{base}:{QUEUE_PATH}"], root)
-    content = show.stdout
-    if show.returncode != 0 or not content.strip() or not QUEUE_BULLET_RE.search(content):
+    content = show_file(root, base, QUEUE_PATH.as_posix())
+    if content is None or not content.strip() or not QUEUE_BULLET_RE.search(content):
         return
     (root / QUEUE_PATH).write_text(content, encoding="utf-8")
     logger.info("reconciled index.md to %s", base)
@@ -99,18 +84,17 @@ def main() -> None:
 
     root = find_repo_root()
 
-    _git(["checkout", "--", str(QUEUE_PATH)], root)
+    restore_paths(root, QUEUE_PATH.as_posix())
 
     if epic:
         branch = f"feat/{epic}"
-        if branch_exists(branch, root):
+        if branch_exists(root, branch):
             archive_stale_branch(branch, root)
         # Always cut fresh from current HEAD — even if archiving above left the old
         # branch in place (e.g. archive name collision), so a stale/diverged branch
-        # is never silently reused. Exit code IS checked: an old, silent bug here
-        # let a failed checkout report success while HEAD stayed put.
-        result = _git(["checkout", "-b", branch], root, echo=True)
-        if result.returncode != 0:
+        # is never silently reused. A failed checkout must halt the node, not
+        # silently report success while HEAD stayed put (the bug this replaces).
+        if not checkout(root, branch, create=True):
             print(json.dumps({"error": f"failed to create epic branch {branch}"}))
             sys.exit(1)
 

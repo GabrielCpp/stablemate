@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_repo_root
 
 logger = logging.getLogger(__name__)
@@ -63,11 +63,7 @@ def get_base_branch(repo_path: Path, declared: str, fallback: str = "main") -> s
     if declared:
         return declared
     for candidate in ("develop", "main", "master"):
-        r = subprocess.run(
-            ["git", "rev-parse", "--verify", candidate],
-            cwd=str(repo_path), capture_output=True, check=False, timeout=10,
-        )
-        if r.returncode == 0:
+        if scriptutil.branch_exists(repo_path, candidate):
             return candidate
     return fallback
 
@@ -83,20 +79,6 @@ def github_slug(url: str) -> str:
     return ""
 
 
-def remote_urls(repo_path: Path) -> list[str]:
-    """Read origin's push and fetch URLs, preserving order without duplicates."""
-    urls: list[str] = []
-    for args in (["--push", "origin"], ["origin"]):
-        result = subprocess.run(
-            ["git", "-c", f"safe.directory={repo_path}", "remote", "get-url", *args],
-            cwd=str(repo_path), capture_output=True, text=True, check=False, timeout=10,
-        )
-        url = result.stdout.strip() if result.returncode == 0 else ""
-        if url and url not in urls:
-            urls.append(url)
-    return urls
-
-
 def resolve_github_slug(repo_path: Path) -> str:
     """Resolve GitHub even when this checkout was cloned from a local bind mount.
 
@@ -104,7 +86,7 @@ def resolve_github_slug(repo_path: Path) -> str:
     ``/mnt/repo-src``. In that case the clone's origin is local, but the mounted
     source repository still carries the real GitHub origin.
     """
-    origin_urls = remote_urls(repo_path)
+    origin_urls = scriptutil.remote_urls(repo_path)
     for url in origin_urls:
         slug = github_slug(url)
         if slug:
@@ -117,76 +99,60 @@ def resolve_github_slug(repo_path: Path) -> str:
             source_path = (repo_path / source_path).resolve()
         if not source_path.exists():
             continue
-        for source_origin in remote_urls(source_path):
+        for source_origin in scriptutil.remote_urls(source_path):
             slug = github_slug(source_origin)
             if slug:
                 return slug
     return ""
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
+    # Routed through the module logger (not scriptutil.die) so failures carry the
+    # same "[open-author-pr]" prefix as this script's other output; still NoReturn.
     logger.error(message)
     raise SystemExit(1)
 
 
-def open_pr_url(repo_path: Path, repo_slug: str, branch: str, token: str) -> str:
-    env = {**os.environ, "GH_TOKEN": token}
-    result = subprocess.run(
-        [
-            "gh", "pr", "list", "--repo", repo_slug, "--head", branch,
-            "--state", "open", "--json", "url", "--jq", ".[0].url",
-        ],
-        cwd=str(repo_path), capture_output=True, text=True, check=False, env=env,
-        timeout=60,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+def find_open_pr(repo, branch: str):
+    """Return the first OPEN pull request whose head is ``branch``, or ``None``."""
+    owner = repo.owner.login
+    for pr in repo.get_pulls(state="open", head=f"{owner}:{branch}"):
+        return pr
+    return None
 
 
 def push_and_pr(repo_path: Path, branch: str, base: str, title: str, body: str, token: str) -> tuple[str, str]:
     """Push branch and open PR. Returns (status, pr_url)."""
-    r = subprocess.run(
-        ["git", "rev-parse", "--verify", branch], cwd=str(repo_path),
-        capture_output=True, check=False, timeout=10,
-    )
-    if r.returncode != 0:
+    if not scriptutil.branch_exists(repo_path, branch):
         fail(f"no branch {branch} in {repo_path}")
 
     repo_slug = resolve_github_slug(repo_path)
     if not repo_slug:
-        origins = ", ".join(remote_urls(repo_path)) or "<missing>"
+        origins = ", ".join(scriptutil.remote_urls(repo_path)) or "<missing>"
         fail(f"origin does not resolve to a github.com repository: {origins}")
 
-    push_url = f"https://github.com/{repo_slug}.git"
-    cred_helper = f'!f() {{ echo username=x-access-token; echo "password={token}"; }}; f'
+    # push_branch targets the resolved slug explicitly (the origin may be a local
+    # bind-mount path in container runs, so we can't let it re-derive from origin).
+    if not scriptutil.push_branch(repo_path, token, branch, slug=repo_slug, verify=False):
+        fail(f"push failed for {branch}")
 
-    r = subprocess.run(
-        ["git", "-c", f"credential.helper={cred_helper}", "push", push_url, f"{branch}:{branch}"],
-        cwd=str(repo_path), capture_output=True, text=True, check=False, timeout=120,
-    )
-    if r.returncode != 0:
-        fail(f"push failed for {branch}: {r.stderr.strip()}")
+    try:
+        repo = scriptutil.github_client(token).get_repo(repo_slug)
+    except Exception as exc:
+        fail(f"cannot access github.com repository {repo_slug}: {exc}")
 
-    pr_url = open_pr_url(repo_path, repo_slug, branch, token)
-    if pr_url:
+    existing = find_open_pr(repo, branch)
+    if existing is not None:
         logger.info("PR already open for %s", branch)
-        return "exists", pr_url
+        return "exists", existing.html_url
 
-    env = {**os.environ, "GH_TOKEN": token}
-    r = subprocess.run(
-        [
-            "gh", "pr", "create", "--repo", repo_slug, "--base", base,
-            "--head", branch, "--title", title, "--body", body,
-        ],
-        cwd=str(repo_path), capture_output=True, text=True, check=False, env=env, timeout=60,
-    )
-    if r.returncode != 0:
-        fail(f"gh pr create failed: {r.stderr.strip()}")
+    try:
+        pr = repo.create_pull(base=base, head=branch, title=title, body=body)
+    except Exception as exc:
+        fail(f"PR create failed for {branch}: {exc}")
 
-    pr_url = r.stdout.strip() or open_pr_url(repo_path, repo_slug, branch, token)
-    if not pr_url:
-        fail(f"gh pr create succeeded for {branch}, but no PR URL was returned")
     logger.info("opened PR for %s -> %s", branch, base)
-    return "opened", pr_url
+    return "opened", pr.html_url
 
 
 def main() -> None:
@@ -209,9 +175,6 @@ def main() -> None:
     token = resolve_token(scripts_dir)
     if not token:
         fail("no GitHub token is configured; cannot push or open the author PR")
-
-    if shutil.which("gh") is None:
-        fail("gh CLI not found; cannot open the author PR")
 
     base = get_base_branch(repo_root, base_branch)
     title = build_title(mode, epic, bullet)

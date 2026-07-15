@@ -11,28 +11,20 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import sys
 
-from workhorse.scriptutil import find_repo_root
+from workhorse.scriptutil import active_branch, branch_exists, default_branch, find_repo_root
 
 logger = logging.getLogger(__name__)
 
 
-def _git(args: list[str], root) -> str:
-    result = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, check=False)
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
 def resolve_trunk(root) -> str:
-    default = _git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root)
-    if default.startswith("origin/"):
-        default = default[len("origin/"):]
-    if default:
-        return default
-    if _git(["rev-parse", "--verify", "--quiet", "main"], root):
+    trunk = default_branch(root)
+    if trunk:
+        return trunk
+    if branch_exists(root, "main"):
         return "main"
-    if _git(["rev-parse", "--verify", "--quiet", "master"], root):
+    if branch_exists(root, "master"):
         return "master"
     return "main"
 
@@ -41,10 +33,10 @@ def main() -> None:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
     root = find_repo_root()
 
-    base = _git(["rev-parse", "--abbrev-ref", "HEAD"], root) or "main"
-    if base in ("HEAD", ""):
-        base = resolve_trunk(root)
-    if base.startswith("feat/") or base.startswith("rewrite/"):
+    # Prefer the current branch as the PR/merge base; fall back to the repo's trunk
+    # when HEAD is detached/empty or still points at a leftover epic branch.
+    base = active_branch(root)
+    if not base or base.startswith("feat/") or base.startswith("rewrite/"):
         base = resolve_trunk(root)
 
     print(json.dumps({"base_branch": base}))

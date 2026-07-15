@@ -27,7 +27,7 @@ workflows **unattended for up to a week**.
 - **Controller `.py` is COPY'd into the image, not bind-mounted** — changes take
   effect only after an image rebuild (add `--build` to the `docker compose up`).
 - **Stay repository-agnostic.** Never add repo-specific bind mounts to
-  `compose.yaml`; workflows clone what they need via their own `setup.sh`.
+  `compose.yaml`; the container's checkout step clones the repos each run needs.
 - **Stay workflow-agnostic (separation of concerns).** Workhorse is a generic
   engine shared by every workflow. Never bake one workflow's vocabulary into it —
   no `plan-context`/`plan_result` field names (`services[].type`, `touched_layers`,

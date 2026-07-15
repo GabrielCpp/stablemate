@@ -63,6 +63,7 @@ def test_ui_types_registered():
         "screen", "component", "interaction", "cli", "command", "server", "endpoint",
         "invocation", "flow", "concept", "format",
         "method", "field",   # nested typed sections (Methods/Fields containers + inline `type:`)
+        "runbook", "environment", "step",   # operational profile (docs/okf-runbook.md)
         "untyped",           # any other heading, promoted so its links/hierarchy are captured
     }
 
@@ -72,6 +73,7 @@ def test_heading_to_type_map():
         "Components": "component", "Commands": "command", "Endpoints": "endpoint",
         "Interactions": "interaction", "Invocations": "invocation",
         "Methods": "method", "Fields": "field",
+        "Steps": "step",   # operational profile: a runbook's ordered boot steps
     }
 
 
@@ -212,3 +214,100 @@ def test_search_finds_section_node_by_body(repo: Path):
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     hits = query.search(load(repo), "clear siblings")
     assert any(h.get("anchor") == "click-file-opens-diff" for h in hits)
+
+
+# ---------------------------------------------------------------------------
+# operational profile — runbook / environment / step (docs/okf-runbook.md)
+# ---------------------------------------------------------------------------
+ENVIRONMENT = """\
+---
+type: environment
+slug: local
+title: Local
+---
+# Local
+
+- selector: `GROOM_BIND=127.0.0.1`
+- services:
+  - dashboard: `http://127.0.0.1:8787`
+- local-only: true
+"""
+
+RUNBOOK = """\
+---
+type: runbook
+slug: web
+title: Web runbook
+---
+# Web runbook
+
+- driver: web
+- environment: [local](local.md)
+- surfaces: [dashboard](../gui/screens/dashboard.md)
+- code: `groom/groom/cli.py::serve`
+
+## Steps
+
+### prepare-deps
+- kind: prepare
+- run: `uv sync`
+- provenance: derived
+
+### serve
+- kind: service
+- run: `groom serve`
+- health: port-bound
+- provenance: derived
+"""
+
+DASHBOARD = "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n"
+
+
+def _write_runbook_trio(repo: Path) -> None:
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/ops/web.md", RUNBOOK)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+
+
+def test_operational_types_registered():
+    rb, env, step = (registry.ui_type("runbook"), registry.ui_type("environment"),
+                     registry.ui_type("step"))
+    assert rb.kind == "file" and rb.required_sections == ("Steps",)
+    assert env.kind == "file"
+    assert step.kind == "section" and step.heading == "Steps"
+    # the defining bullets are required so `doctor` gates on them
+    assert rb.bullet_by_key["driver"].required
+    assert step.bullet_by_key["kind"].required
+
+
+def test_runbook_and_environment_load_as_file_nodes(repo: Path):
+    _write_runbook_trio(repo)
+    graph = load(repo)
+    runbooks = graph.ui_nodes_of_type("runbook")
+    assert len(runbooks) == 1
+    assert runbooks[0].kind == "file"
+    assert runbooks[0].meta.get("driver") == "web"
+    assert len(graph.ui_nodes_of_type("environment")) == 1
+
+
+def test_step_nodes_loaded_under_steps_heading(repo: Path):
+    _write_runbook_trio(repo)
+    steps = query.list_entities(load(repo), "step")
+    assert [s["anchor"] for s in steps] == ["prepare-deps", "serve"]
+    assert all(s["id"].endswith(f"web.md#{s['anchor']}") for s in steps)
+
+
+def test_referentially_complete_runbook_is_green(repo: Path):
+    _write_runbook_trio(repo)
+    report = doctor.run(load(repo))
+    assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
+
+
+def test_runbook_missing_steps_and_driver_is_flagged(repo: Path):
+    write(repo / "docs/features/groom/ops/bad.md",
+          "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
+    report = doctor.run(load(repo))
+    bad = {f.code for f in report.findings if f.severity == "error" and "bad.md" in (f.path or "")}
+    assert "missing-required-section" in bad   # no `## Steps`
+    assert "missing-required-bullet" in bad     # no `driver:`
+    assert "unresolved-relation" in bad         # `environment:` link is broken

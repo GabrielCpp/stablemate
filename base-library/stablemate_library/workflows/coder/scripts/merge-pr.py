@@ -10,13 +10,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
-from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root
-
-from lib import ghutil
+from workhorse.scriptutil import (
+    find_open_pr,
+    find_repo_root,
+    origin_url,
+    repo_full_name_from_url,
+    resolve_github_token,
+    resolve_repo,
+    sync_to_origin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,41 +29,38 @@ def emit(status: str, base: str) -> None:
     print(json.dumps({"merge_status": status, "base_branch": base}))
 
 
-def sync_base(root, repo_path: str, base: str, env: dict) -> None:
-    push_url = f"https://github.com/{repo_path}.git"
-    fetch = ghutil.run(
-        ["git", "-c", f"credential.helper={ghutil.CRED_HELPER}", "fetch", push_url, base],
-        root, env=env, timeout=120, echo=True,
-    )
-    if fetch.returncode != 0:
-        logger.warning("merged but could not fetch '%s' — leaving HEAD as-is; next epic will branch from its tip", base)
+def sync_base(root, base: str, token: str) -> None:
+    head = sync_to_origin(root, token, base)
+    if head is None:
+        logger.warning(
+            "merged but could not sync local '%s' to the merged tip — leaving HEAD "
+            "as-is; the next epic will branch from its current tip",
+            base,
+        )
         return
-    checkout = ghutil.run(["git", "checkout", "-B", base, "FETCH_HEAD"], root, echo=True)
-    if checkout.returncode != 0:
-        logger.warning("merged but could not check out '%s' — leaving HEAD as-is", base)
-        return
-    head = ghutil.run(["git", "rev-parse", "--short", "HEAD"], root).stdout.strip()
     logger.info("synced local '%s' to the merged tip (%s)", base, head)
 
 
-def pick_merge_method(repo_path: str, root, env: dict) -> str:
-    result = ghutil.run(
-        [
-            "gh", "repo", "view", repo_path,
-            "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
-            "--jq", '"\\(.mergeCommitAllowed) \\(.squashMergeAllowed) \\(.rebaseMergeAllowed)"',
-        ],
-        root, env=env, timeout=60,
-    )
-    parts = (result.stdout.split() + ["", "", ""])[:3]
-    allow_merge, allow_squash, allow_rebase = parts
-    if allow_merge == "true":
-        return "merge"
-    if allow_squash == "true":
-        return "squash"
-    if allow_rebase == "true":
-        return "rebase"
+def pick_merge_method(repo) -> str:
+    try:
+        if repo.allow_merge_commit:
+            return "merge"
+        if repo.allow_squash_merge:
+            return "squash"
+        if repo.allow_rebase_merge:
+            return "rebase"
+    except Exception:
+        pass
     return "merge"
+
+
+def find_merged_pr(repo, branch):
+    """Return the most recent MERGED PR for ``branch`` (resume-after-merge case), else None."""
+    owner = repo.owner.login
+    for pr in repo.get_pulls(state="closed", head=f"{owner}:{branch}"):
+        if pr.merged:
+            return pr
+    return None
 
 
 def main() -> None:
@@ -74,59 +75,59 @@ def main() -> None:
         return
 
     root = find_repo_root()
-    scripts_dir = Path(__file__).resolve().parent
 
-    token = ghutil.resolve_gh_token(scripts_dir)
+    token = resolve_github_token(root)
     if not token:
         logger.info("no GitHub token (set workflow.githubTokenEnv in agents.yml) — leaving %s unmerged", br)
         emit("unavailable", base)
         return
 
-    if not ghutil.gh_available():
-        logger.info("gh CLI not found — leaving %s unmerged", br)
-        emit("unavailable", base)
-        return
-
-    url = ghutil.origin_url(root)
+    url = origin_url(root)
     if not url:
         logger.info("no 'origin' remote — leaving %s unmerged", br)
         emit("unavailable", base)
         return
 
-    repo_path = ghutil.repo_path_from_url(url)
+    repo_path = repo_full_name_from_url(url)
     if not repo_path:
         logger.info("origin '%s' is not a github.com remote — leaving %s unmerged", url, br)
         emit("unavailable", base)
         return
 
-    env = {**os.environ, "GH_TOKEN": token}
+    repo, _ = resolve_repo(root, token)
+    if repo is None:
+        logger.info("cannot reach github.com repo %s — leaving %s unmerged", repo_path, br)
+        emit("unavailable", base)
+        return
 
-    state = ghutil.run(["gh", "pr", "view", br, "--json", "state", "-q", ".state"], root, env=env, timeout=60).stdout.strip()
-    if not state:
+    pr = find_open_pr(repo, br)
+    if pr is None:
+        # No open PR. If one was already merged (e.g. a resume after the merge
+        # landed), sync the base and report merged; otherwise nothing to do.
+        if find_merged_pr(repo, br) is not None:
+            logger.info("PR for %s already merged into %s", br, base)
+            sync_base(root, base, token)
+            emit("merged", base)
+            return
         logger.info("no open PR for %s — nothing to merge", br)
         emit("unavailable", base)
         return
 
-    if state == "MERGED":
-        logger.info("PR for %s already merged into %s", br, base)
-        sync_base(root, repo_path, base, env)
-        emit("merged", base)
-        return
-
-    method = pick_merge_method(repo_path, root, env)
+    method = pick_merge_method(repo)
     logger.info("merging %s into %s with --%s", br, base, method)
-    merged = ghutil.run(["gh", "pr", "merge", br, f"--{method}"], root, env=env, timeout=120, echo=True)
-    if merged.returncode != 0:
+    try:
+        pr.merge(merge_method=method)
+    except Exception as exc:
         logger.info(
-            "gh pr merge (--%s) failed for %s (merge conflict, branch protection, or not mergeable) — "
+            "merge (--%s) failed for %s (merge conflict, branch protection, or not mergeable): %s — "
             "leaving PR open; next epic will branch from its tip",
-            method, br,
+            method, br, exc,
         )
         emit("failed", base)
         return
 
     logger.info("merged %s into %s (--%s)", br, base, method)
-    sync_base(root, repo_path, base, env)
+    sync_base(root, base, token)
     emit("merged", base)
 
 

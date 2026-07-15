@@ -40,9 +40,9 @@ prepare-story.py). Outputs JSON: {"impl_result": {"status": "...", "notes": "...
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 
+from workhorse import scriptutil
 from workhorse.scriptutil import find_docs_root
 
 RESOLUTION_FILE = "review-resolution.json"
@@ -70,7 +70,7 @@ def main() -> None:
         return
 
     cmd = ["ostler", "-C", str(docs_root), "edit", "settle-review", slug, "--write"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = scriptutil.run_tool(cmd)
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
 

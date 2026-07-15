@@ -545,6 +545,10 @@ def run_agent(
     max_compact_attempts: int = DEFAULT_MAX_COMPACT_ATTEMPTS,
     resume_session: bool = False,
     run_dir: Path | None = None,
+    *,
+    backend: "AgentBackend | None" = None,
+    use_default_outputs: bool | None = None,
+    result_timeout: float | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Render the prompt, invoke Claude, and parse its declared outputs — resiliently.
@@ -579,11 +583,17 @@ def run_agent(
     """
     ctx = context.as_dict()
 
+    # The engine may inject its resilience config explicitly (in-process, no env);
+    # fall back to the module defaults for direct callers.
+    if use_default_outputs is None:
+        use_default_outputs = USE_DEFAULT_OUTPUTS
+    default_timeout = result_timeout if result_timeout is not None else DEFAULT_RESULT_TIMEOUT_S
+
     # The wall-clock budget for this node's turn: the node's own timeout when set,
     # else the engine default. Surfaced to the prompt (node_timeout_s/min) so the
     # agent can size its commands to finish — a turn killed at the budget restarts
     # the node from scratch with no memory, wasting the whole budget.
-    effective_timeout = node.timeout if node.timeout else DEFAULT_RESULT_TIMEOUT_S
+    effective_timeout = node.timeout if node.timeout else default_timeout
     # An unbounded budget (timeout: infinity) means "never kill this turn". The stream
     # loops compare `elapsed > timeout`, so float('inf') naturally never trips; only the
     # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
@@ -641,9 +651,12 @@ def run_agent(
 
     # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
     # claude). Imported lazily to avoid an import cycle (backends imports this
-    # module). Used here for the compaction step and the per-backend model default.
-    from .backends import get_backend
-    backend = get_backend()
+    # module). The engine/test harness may inject a backend explicitly; otherwise
+    # resolve the configured one. Used here for the compaction step and the
+    # per-backend model default.
+    if backend is None:
+        from .backends import get_backend
+        backend = get_backend()
 
     # The node's abstract power tier maps through user config to concrete
     # model/effort for the active backend. Missing config falls back to env/backend
@@ -683,7 +696,7 @@ def run_agent(
                 prompt, node, session_id_path, model, max_output_retries,
                 timeout=effective_timeout,
                 cwd=rendered_cwd, add_dirs=rendered_add_dirs,
-                effort=node_effort,
+                effort=node_effort, backend=backend,
             )
             return rendered_prompt, outputs
         except (BackendInvocationError, OutputParseError) as exc:
@@ -744,7 +757,7 @@ def run_agent(
                 continue
 
             # Layer 4: don't crash an unattended run on one unanswerable node.
-            if USE_DEFAULT_OUTPUTS:
+            if use_default_outputs:
                 print(
                     f"[{node.id}] ⏭ all {max_rephrase_attempts} reframings failed "
                     f"({exc}); using default outputs to advance to the next node",
@@ -765,6 +778,7 @@ def _invoke_and_parse(
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
+    backend: "AgentBackend | None" = None,
 ) -> dict[str, Any]:
     """Invoke Claude and parse the node's declared outputs.
 
@@ -775,7 +789,7 @@ def _invoke_and_parse(
     for attempt in range(max_output_retries + 1):
         result_text = _invoke_claude(
             prompt, node.id, session_id_path, model=model, timeout=timeout,
-            cwd=cwd, add_dirs=add_dirs, effort=effort,
+            cwd=cwd, add_dirs=add_dirs, effort=effort, backend=backend,
         )
         try:
             return _extract_outputs(result_text, node)

@@ -7,7 +7,8 @@ moving on to the next epic with a broken PR behind it.
 
 Args: <epic> <attempts> <last_summary>. Prints JSON: {"ci_flagged": "yes|no"}.
 PR-comment auth reuses the GitHub token env var configured in agents.yml
-(workflow.githubTokenEnv), then GH_TOKEN, then GITHUB_TOKEN — via gh-token.py.
+(workflow.githubTokenEnv), then GH_TOKEN, then GITHUB_TOKEN — resolved by
+workhorse.scriptutil.resolve_github_token.
 Exits 0 (the *halt* is the `fail` terminal the workflow routes to next, not a
 non-zero exit here — a non-zero exit would be reported as a script crash).
 """
@@ -15,13 +16,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
-from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root
-
-from lib import ghutil
+from workhorse.scriptutil import find_open_pr, find_repo_root, resolve_github_token, resolve_repo
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +31,6 @@ def main() -> None:
     br = f"feat/{epic}"
 
     root = find_repo_root()
-    scripts_dir = Path(__file__).resolve().parent
 
     print(
         "=" * 60 + "\n"
@@ -48,22 +44,19 @@ def main() -> None:
     )
 
     flagged = "no"
-    token = ghutil.resolve_gh_token(scripts_dir)
-    if epic and token and ghutil.gh_available():
-        env = {**os.environ, "GH_TOKEN": token}
-        if ghutil.run(["gh", "pr", "view", br, "--json", "number"], root, env=env).returncode == 0:
-            comment = ghutil.run(
-                [
-                    "gh", "pr", "comment", br, "--body",
+    token = resolve_github_token(root)
+    if epic and token:
+        repo, _ = resolve_repo(root, token)
+        pr = find_open_pr(repo, br) if repo is not None else None
+        if pr is not None:
+            try:
+                pr.create_issue_comment(
                     f"⛔ CI did not pass for this epic after {attempts} automated fix attempts. "
                     f"The coder run stopped here for manual review. Last summary: `{summary or 'none'}`.",
-                ],
-                root, env=env, timeout=60, echo=True,
-            )
-            if comment.returncode == 0:
+                )
                 flagged = "yes"
-            else:
-                logger.info("could not post PR comment for %s", br)
+            except Exception as exc:
+                logger.info("could not post PR comment for %s: %s", br, exc)
         else:
             logger.info("PR for %s not open — nothing to comment on", br)
 
