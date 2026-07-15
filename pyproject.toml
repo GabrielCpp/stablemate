@@ -7,9 +7,14 @@
 #                                       workhorse operator gates)
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
+#   - base-library/ -> stablemate-library (the base library layer: workflows,
+#                                       scaffolds and the stablemate/* skills,
+#                                       shipped as a wheel)
 #
-# The prompt-library *content* itself lives in a separate repository; farrier is
-# pointed at it via `farrier config set-library <path>`.
+# Library content resolves across two layers: the base (stablemate-library, above)
+# and an optional private overlay that shadows it, pointed at with
+# `farrier config set-library <path>`. The base depends on the tools; the tools
+# discover the base with an optional import and never depend back on it.
 #
 # This root is the workspace anchor and a member (per uv's "every workspace needs
 # a root, which is also a workspace member"). It declares [project] but NO
@@ -24,11 +29,15 @@ description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom 
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["workhorse", "farrier", "ostler", "groom", "saddlebag"]
+members = ["workhorse", "farrier", "ostler", "groom", "saddlebag", "base-library"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    # The coder workflow's suite drives the real workhorse CLI as a subprocess per
+    # node, so it is CPU-bound and shards across cores (`addopts = -n auto` in
+    # base-library/.../workflows/coder/pytest.ini). Came in with the workflows.
+    "pytest-xdist>=3.6",
     "ruff>=0.15.20",
     # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the
     # okf-builder walkthrough that runs against this workspace's .venv.

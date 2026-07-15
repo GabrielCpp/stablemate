@@ -226,7 +226,7 @@ Resolve the token first via `gh-token.py`, then pass it to `Github()`:
 from github import Github, GithubException
 
 gh = Github(token)
-gh_repo = gh.get_repo("example-org-Inc/acme")
+gh_repo = gh.get_repo("example-org/api-service")
 
 # Check for existing PR or create one
 owner = gh_repo.owner.login

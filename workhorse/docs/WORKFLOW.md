@@ -308,7 +308,8 @@ continues — no flags needed.
 Run artifacts (per run dir): `run.json` (start/end/terminal state),
 `checkpoint.json` (current node + context, for resume), `context.json` (final
 context), and per-node folders with the rendered `prompt.md`, captured
-`output.json`, and `context_after.json`.
+`output.json`, and `context_after.json`. Agent `prompt.md` files are written
+before invocation; the console logs only their paths, not the resolved variables.
 
 ---
 

@@ -9,7 +9,10 @@ assert the escalation order and the workflow-advancing fallback.
 """
 from __future__ import annotations
 
+import io
 import json
+import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +48,34 @@ def test_success_on_first_attempt_returns_outputs():
     with patch.object(agent, "_invoke_claude", lambda *a, **k: payload):
         _, outputs = _run(_node())
     assert outputs == {"decision": "approve", "review": "looks good"}
+
+
+def test_rendered_prompt_is_written_and_only_path_is_printed():
+    run_dir = Path(tempfile.mkdtemp())
+    prompt_path = run_dir / "review_implementation" / "prompt.md"
+    payload = json.dumps({"decision": "approve", "review": "looks good"})
+
+    def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        assert prompt == "Hello hunter2"
+        assert prompt_path.read_text(encoding="utf-8") == "Hello hunter2"
+        return payload
+
+    stdout = io.StringIO()
+    with redirect_stdout(stdout), \
+         patch.object(agent, "render", lambda tmpl, ctx, wdir: f"Hello {ctx['secret']}"), \
+         patch.object(agent, "_invoke_claude", fake_invoke):
+        _, outputs = agent.run_agent(
+            _node(),
+            WorkflowContext(initial={"secret": "hunter2"}),
+            Path("."),
+            None,
+            run_dir=run_dir,
+        )
+
+    assert outputs == {"decision": "approve", "review": "looks good"}
+    assert str(prompt_path) in stdout.getvalue()
+    assert "hunter2" not in stdout.getvalue()
+    assert "secret" not in stdout.getvalue()
 
 
 def test_empty_result_then_reframe_succeeds():

@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Merge give-up handler (coder). An epic's PR could not be merged by the
+automated conflict-resolution loop within the maximum number of attempts. We
+escalate to the operator: leave the PR open and unmerged, post a comment
+explaining the situation, and let the workflow route to the RESUMABLE
+await_merge_operator gate so the run pauses for review rather than finishing
+on an unmerged PR.
+
+Args: <epic> <base_branch> <attempts>. Prints JSON: {"merge_flagged": "yes|no"}.
+PR-comment auth reuses the GitHub token env var configured in agents.yml
+(workflow.githubTokenEnv), then GH_TOKEN, then GITHUB_TOKEN — via gh-token.py.
+Exits 0 (the *halt* is await_merge_operator, not a non-zero exit here — a
+non-zero exit would be reported as a script crash).
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
+from workhorse.scriptutil import find_repo_root
+
+from lib import ghutil
+
+logger = logging.getLogger(__name__)
+
+
+def main() -> None:
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    epic = sys.argv[1] if len(sys.argv) > 1 else ""
+    base = sys.argv[2] if len(sys.argv) > 2 else "main"
+    attempts = sys.argv[3] if len(sys.argv) > 3 else "?"
+    br = f"feat/{epic}"
+
+    root = find_repo_root()
+    scripts_dir = Path(__file__).resolve().parent
+
+    print(
+        "=" * 60 + "\n"
+        "⛔ MERGE FAILED — operator input required (expected, NOT a crash).\n"
+        f"The PR for epic '{epic}' (branch {br} → {base}) could not be merged after\n"
+        f"{attempts} automated conflict-resolution attempts. The run is stopping so\n"
+        "you can investigate (merge conflict, branch protection, required reviews, or\n"
+        "required CI checks that have not run).\n"
+        f"Resolve the merge on {br}, then re-run the workflow to resume.\n"
+        + "=" * 60,
+        file=sys.stderr,
+    )
+
+    flagged = "no"
+    token = ghutil.resolve_gh_token(scripts_dir)
+    if epic and token and ghutil.gh_available():
+        env = {**os.environ, "GH_TOKEN": token}
+        if ghutil.run(["gh", "pr", "view", br, "--json", "number"], root, env=env).returncode == 0:
+            comment = ghutil.run(
+                [
+                    "gh", "pr", "comment", br, "--body",
+                    f"⛔ This PR could not be merged after {attempts} automated conflict-resolution "
+                    f"attempts. The coder run paused here for manual review (merge conflict, branch "
+                    f"behind `{base}`, branch protection, or required checks that did not run).",
+                ],
+                root, env=env, timeout=60, echo=True,
+            )
+            if comment.returncode == 0:
+                flagged = "yes"
+            else:
+                logger.info("could not post PR comment for %s", br)
+        else:
+            logger.info("PR for %s not open — nothing to comment on", br)
+
+    print(json.dumps({"merge_flagged": flagged}))
+
+
+if __name__ == "__main__":
+    main()

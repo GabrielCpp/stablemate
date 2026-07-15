@@ -1,0 +1,3252 @@
+name: epic-coder
+# Epic-coder is a superset of story-coder. It walks the epic queue
+# (docs/epics/index.md, the ostler-managed OKF index) and runs every story to completion
+# in dependency order, reusing the same per-story stages (plan -> review -> implement ->
+# review -> apply -> QA -> apply-qa-fixes).
+#
+# The per-story pipeline is factored into three composable `flows:` sub-graphs —
+# `dev` (plan + implement), `review` (review + apply), and `qa` (the full QA gate
+# cluster incl. the adversarial auditor, regression + sentinel gates, and the QA
+# operator gate). Each runs on the SAME working tree (only context is isolated per
+# flow) and can be re-run STANDALONE against an already-built (even merged) story:
+#   workhorse run coder dev    --params '{...}'   # re-plan + re-implement
+#   workhorse run coder review --params '{...}'   # re-review
+#   workhorse run coder qa     --params '{...}'   # re-QA with a tweaked model/workflow
+# A flow's `vars` are its parameter contract (empty default ⇒ required). See the
+# `flows:` section at the bottom of this file.
+#
+# Git / PR model: ONE PR PER EPIC; every epic PR must go GREEN, then be MERGED into
+# the base (trunk) branch, before the run moves on — and the next epic is cut from
+# that merged base.
+#   - init-base captures the branch the run started from (the PR base / merge target;
+#     normally the repo's master/main, since REPO_BRANCH defaults to the trunk).
+#   - select-next-epic picks the current epic (front of docs/epics/index.md); branch-epic
+#     cuts/checks out `feat/<epic>` from the current HEAD (the merged base, or the
+#     previous tip offline). select-next-story then drives that epic's stories.
+#   - each completed story is committed (one commit per story) onto the epic branch.
+#   - When the epic's stories are exhausted (all QA passed, or the next is unauthored),
+#     open-pr opens its PR, the CI gate waits for GitHub checks (auto-fixing red CI,
+#     bounded by max_ci_reworks, then escalating to the operator), and once green
+#     merge-pr.sh MERGES the PR into base and moves the local checkout to the merged
+#     tip; prune-epic then pops the epic off the queue front and select-next-epic
+#     advances to the next epic (cut from that merged base) — regardless of whether
+#     the merged epic was fully complete (pop-front-on-merge).
+# Merging is best-effort, like the PR-open scripts: with no github origin / token /
+# open PR (offline, local bind-mount clone, CI-less) the merge is a pass-through and
+# HEAD is left on the epic branch, so the next epic still chains from the previous
+# tip and offline runs complete unchanged.
+# Epic vs story selection are SEPARATE concerns: select_epic picks the current epic
+# (front of docs/epics/index.md); select_story picks the next runnable story WITHIN it.
+# When a story loop exhausts (all QA passed, or the next story unauthored) the epic
+# is finished: open_pr -> CI gate -> merge -> prune_epic (pop it off the queue front)
+# -> select_epic advances to the next epic, regardless of the previous one's state.
+# The CI gate (reset_ci -> await_ci -> decide_ci -> [fix_ci -> push_ci ->
+# decide_push -> incr_ci] loop -> merge) feeds the merge gate. push_ci VERIFIES the
+# fix reached the remote: a push that does not land (e.g. the token lacks
+# Contents:Write) routes straight to the operator gate instead of silently spinning
+# the fix loop against an unmoved PR head. The merge gate likewise resolves a failed
+# merge (fix_merge -> push -> re-merge) or escalates to a resumable operator gate.
+#
+# Push + `gh pr create` + CI queries are best-effort: with no git remote, gh CLI,
+# or token the branch is left in place for a manual PR and the CI gate reports
+# `unavailable` (a pass-through), so offline / CI-less runs still complete. A
+# genuinely red CI that cannot be auto-fixed escalates to a RESUMABLE operator gate
+# (await_ci_operator): the run halts for review, and re-running it (after the
+# operator fixes CI / grants token write) resets the fix counter and re-attempts
+# the loop — it does not die in an unrecoverable terminal.
+#
+# The backlog-drain detour (select_fix_item onward — see the "Fix loop" block
+# below) runs nested inside every epic/story run, right after each story goes
+# green (decide_post_sentinel), draining `## Filed by coder` items before that
+# story's own commit. It's also invocable standalone, with no epic/story
+# selected and no branch cut, as its own `flows:` sub-graph:
+#   workhorse run coder fix --params '{"docs_path":"/path/to/vigilant-octo"}'
+# See the `flows: fix:` entry at the bottom of this file — a self-contained
+# copy of the same drain loop (its own commit per item, no push, no PR) so it
+# can run independently of the nested detour's enclosing story commit.
+#
+# Runs on the local-worker controller (Claude) — the same engine as story-coder.
+vars:
+  # ── Required ────────────────────────────────────────────────────────────────
+  # Select the run mode:
+  #   "epic"  (default) — full queue: walks docs/epics/index.md front-to-back,
+  #             one branch+PR per epic. Gate: CI must go green, then PR is merged.
+  #   "story" — single story on its own branch; commits + opens a PR (no merge).
+  #             Set `story` to the slug to run. Override per run:
+  #             --params '{"mode":"story","story":"CASE-1234"}'
+  # Standalone backlog draining does NOT use this var — run the `fix` flow
+  # instead: `workhorse run coder fix --params '{...}'` (see `flows: fix:`).
+  mode: "epic"
+  # Absolute path to the docs repo root (vigilant-octo checkout). Ostler, spec
+  # paths, and epics-queue reads all resolve from this root.
+  # Leave empty to use the directory where workhorse is launched (AGENT_REPO_DIR).
+  # Override: --params '{"docs_path":"/path/to/vigilant-octo"}'
+  docs_path: ""
+  # Story slug to run — required when mode=story, ignored in epic mode.
+  # Example: "CASE-1234". Ostler derives story.md and spec dir from this slug.
+  story: ""
+  # Override which epic to work on — skips the queue pick and jumps straight to
+  # this epic. Useful for re-running a specific epic without touching the queue.
+  # Leave empty to let select-next-epic pick the front of docs/epics/index.md.
+  epic: ""
+
+  # ── Tuning knobs (rarely need changing) ─────────────────────────────────────
+  # Max apply-qa-fixes attempts per story before giving up on it (see guard_qa).
+  # Enforced as a literal in guard_qa (branch values can't be Jinja) — keep in sync.
+  max_qa_reworks: "3"
+  # Max apply-review<->review_implementation passes per story before escalating to the
+  # operator (see guard_review in the `review` flow). Bounds the implementation-review
+  # remediation loop the same way max_qa_reworks bounds the QA loop — an unsatisfiable
+  # review finding becomes a bounded operator escalation, not an infinite spin.
+  # Enforced as a literal in guard_review (branch values can't be Jinja) — keep in sync.
+  max_review_reworks: "3"
+  # Max triager rescopes per story before forcing the in-AC fix path (see
+  # guard_triage). Each rescope amends the story's ACs to absorb adjacent defects /
+  # hardening and re-enters dev (plan+implement); this bounds the dev<->qa loop.
+  # Enforced as a literal in guard_triage (branch values can't be Jinja) — keep in sync.
+  max_triage_scopes: "2"
+  # Max setup_fix<->re-QA cycles per story when QA is blocked on an un-runnable dev
+  # environment, before escalating to the operator (see guard_setup) — keep in sync.
+  max_setup_reworks: "2"
+  # Max fix_regression<->run_regression cycles per story when the deterministic
+  # regression suite fails, before falling through to the existing QA-fix loop (see
+  # guard_regression_fix). Enforced as a literal in guard_regression_fix (branch
+  # values can't be Jinja) — keep in sync.
+  max_regression_fix_reworks: "3"
+  # Max rework_plan_paths<->validate_plan cycles per story before escalating to the
+  # operator (see guard_validate). Bounds the plan-context path-validation loop: when
+  # the planner keeps emitting service paths that don't validate (missing marker,
+  # nonexistent path, unwritten plan file, an unresolvable repo name) it becomes a
+  # bounded operator escalation, not an infinite spin. Reuses plan_rework_count.
+  # Enforced as a literal in guard_validate (branch values can't be Jinja) — keep in sync.
+  max_validate_reworks: "3"
+  # Max fix_ci<->await_ci cycles per epic PR before escalating to the operator
+  # (see guard_ci) — keep in sync.
+  max_ci_reworks: "3"
+  # Max CONSECUTIVE zero-diff story commits (commit_story reports committed="no")
+  # before the run halts (see guard_zero_diff). Stories that "complete" without
+  # changing anything anywhere in the workspace mean the loop is spinning — the
+  # engine's gas tank would eventually catch it, but only after burning a whole
+  # tank; this trips after a few no-op stories. A real commit resets the streak.
+  # Enforced as a literal in guard_zero_diff (branch values can't be Jinja) — keep in sync.
+  max_zero_diff_commits: "3"
+  # Max fix_merge<->merge cycles per epic PR before escalating to the operator
+  # (see guard_merge) — keep in sync.
+  max_merge_reworks: "2"
+  # How question-style operator blocks (plan review / QA `blocked`, or a non-converging
+  # plan loop) are handled.
+  #   "auto"  (default) — a high-effort resolve_* agent stands in for the human;
+  #             escalates to a real human only when the block needs a credential/deploy
+  #             or the same block has been answered without resolving it.
+  #   "human" — every block halts and waits for a person.
+  # The CI gate (await_ci_operator) is ALWAYS human: a red PR that can't be pushed
+  # is an infra/credential wall, not a question. Override: --params '{"operator_mode":"human"}'
+  operator_mode: "auto"
+  # QA target environment.
+  #   "local" (default) — QA the story on localhost against locally-running services.
+  #   "dev"              — QA against the shared DEV environment (someone else's story).
+  # Override: --params '{"target_env":"dev"}'
+  target_env: "local"
+
+
+start: decide_mode
+
+nodes:
+  # ── Mode dispatch: story (single) or epic (queue) ───────────────────────────
+  - id: decide_mode
+    type: branch
+    path: mode
+    cases:
+      story: branch_story
+      epic: init_base
+    default: init_base
+
+  # ── Story mode: cut a per-story branch, run the pipeline once, then open a PR ──
+  # Story mode is a single story on its OWN branch named after the story id
+  # (story/<slug>). It runs the same plan→implement→QA pipeline, commits, and opens a
+  # PR at the end — but does NOT merge it (no queue, no CI gate, no merge; the PR is
+  # left open for a human). branch_story records the branch the run started from as
+  # the PR base.
+  - id: branch_story
+    type: script
+    script: scripts/branch-story.py
+    args:
+      - "{{ story }}"
+      - "{{ docs_path }}"
+    outputs:
+      - key: base_branch
+      - key: story_branch
+    refuel: story
+    next: prepare_story
+
+  # Convergence node: resolve slug → canonical paths via ostler. Both story mode
+  # (from branch_story) and epic mode (from decide_story) flow through here so
+  # downstream nodes have a single canonical source for story_path/spec_dir.
+  - id: prepare_story
+    type: script
+    script: scripts/prepare-story.py
+    args:
+      - "{{ docs_path }}"
+      - "{{ get_node_output('select_story', 'story_slug') or story }}"
+      - "{{ get_node_output('select_story', 'epic') or epic }}"
+    outputs:
+      - key: story_path
+      - key: spec_dir
+      - key: qa_dir
+      - key: story_slug
+      - key: story_epic
+    next: resolve_workspace
+
+  # Resolve all workspace repo paths once per story so every agent node can
+  # access sibling repos for skill discovery and file reads (via add_dirs).
+  - id: resolve_workspace
+    type: script
+    script: scripts/resolve-workspace-dirs.py
+    args:
+      - "{{ docs_path }}"
+    outputs:
+      - key: workspace_dirs
+    next: init_triage_counter
+
+  # ── Per-story rescope budget ──────────────────────────────────────────────────
+  # Seed triage_scope_count to zero ONCE per story (every story passes through
+  # prepare_story). The triager (in the qa flow) bumps it each time it scopes
+  # adjacent defects/hardening into the story and re-enters dev; guard_triage stops
+  # the dev<->qa rescope loop at max_triage_scopes. Owned here (not in reset_qa) so
+  # the budget survives across QA entries — reset_qa runs every QA entry and would
+  # otherwise zero it on each rescope. The rescope re-entry (decide_qa_outcome
+  # rescope->dev) deliberately bypasses this node so the count persists.
+  - id: init_triage_counter
+    type: call
+    fn: seed
+    outputs:
+      - key: triage_scope_count
+    next: dev
+
+  # ── Capture the PR base branch ────────────────────────────────────────────────
+  - id: init_base
+    type: script
+    script: scripts/init-base.py
+    outputs:
+      - key: base_branch
+    next: select_epic
+
+  # ── Epic selection (WHICH epic) — separate concern from story selection ───────
+  # Returns the front epic of docs/epics/index.md. prune-epic.py pops it off
+  # the front once its PR is merged, so this advances to the next epic regardless of
+  # the previous epic's completeness (pop-front-on-merge). Empty queue → done.
+  - id: select_epic
+    type: script
+    script: scripts/select-next-epic.py
+    args:
+      - "{{ docs_path }}"
+    outputs:
+      - key: has_epic
+      - key: epic
+      - key: reason
+    # Refuel the gas tank on a new epic (epic changes) — forward progress at the queue
+    # level, covering the case where a new epic reuses a story slug from a prior one.
+    refuel: epic
+    next: decide_epic
+
+  - id: decide_epic
+    type: branch
+    path: has_epic
+    cases:
+      "yes": branch_epic
+      "no": done # queue exhausted: every epic has been merged + pruned
+    default: done
+
+  # Switch to (or cut) the epic branch, then start its story loop. The base branch is
+  # passed so branch-epic.sh can reconcile docs/epics/index.md to the base's
+  # authoritative queue after checkout — an EXISTING epic branch may carry a stale
+  # (less-pruned) queue snapshot that would otherwise resurrect already-merged epics.
+  - id: branch_epic
+    type: script
+    script: scripts/branch-epic.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ get_node_output('init_base', 'base_branch') }}"
+    outputs:
+      - key: working_epic
+      - key: epic_branch
+    next: select_story
+
+  # ── Story selection (WHICH story in the current epic) — separate concern ──────
+  # Returns the next runnable story IN the current epic. has_story=no means the epic
+  # is finished for now (all QA passed, or the next story is unauthored) → open its
+  # PR, gate CI, merge, prune the epic, and advance to the next one.
+  - id: select_story
+    type: script
+    script: scripts/select-next-story.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ docs_path }}"
+      # Run dir → the per-run skip set qa_give_up writes; excludes stories already given
+      # up THIS run so we don't re-select and re-grind them (a fresh run has none).
+      - "{{ workhorse_var('_run_dir') }}"
+    outputs:
+      - key: has_story
+      - key: story_path
+      - key: spec_dir
+      - key: story_slug
+      - key: epic
+      - key: reason
+    # Refuel the engine's infinite-loop gas tank whenever a NEW story is picked
+    # (story_slug changes) — real forward progress. If a story is re-selected forever
+    # (e.g. it never gets marked "QA passed"), story_slug stays put, the tank is never
+    # topped up, and the run halts loudly instead of spinning. See workhorse _GasTank.
+    refuel: story_slug
+    next: decide_story
+
+  - id: decide_story
+    type: branch
+    path: has_story
+    cases:
+      "yes": prepare_story
+      # Epic finished → prune THIS epic from the queue first, so the prune is committed
+      # onto the epic branch (by open-pr.sh) and rides into the base via this epic's own
+      # PR. Pruning before the PR (not after the merge) is what keeps the queue draining:
+      # the merged base then no longer lists this epic, so the next branch_epic cuts from
+      # a base that has already dropped it — no resurrection, no infinite loop.
+      "no": prune_epic
+    default: prune_epic
+
+  # ── Epic finished: open its PR, gate CI, merge, prune, advance to next epic ───
+  - id: open_pr
+    type: script
+    script: scripts/open-pr.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ get_node_output('init_base', 'base_branch') }}"
+    outputs:
+      - key: should_gate
+      - key: ci_epic
+      - key: ci_base
+    next: decide_gate
+
+  - id: decide_gate
+    type: branch
+    path: should_gate
+    cases:
+      "yes": reset_ci
+      # Nothing to PR (offline / no epic). The queue was already pruned (prune_epic) and
+      # committed onto the epic branch (open-pr.sh records it locally even offline), and
+      # HEAD is on that branch, so select_epic reads the pruned queue and advances.
+      "no": select_epic
+    default: select_epic
+
+  # ── CI gate (shared by the epic boundary and the finalize path) ───────────────
+  # reset_ci zeroes the per-epic fix counter, then await_ci waits for the PR's
+  # GitHub checks. Green (or unqueryable) CI goes to the merge node; red CI
+  # runs the bounded fix loop and, once exhausted, escalates to the operator.
+  - id: reset_ci
+    type: call
+    fn: seed
+    outputs:
+      - key: ci_rework_count
+        wrap: value
+      - key: merge_rework_count # seeds the merge-gate conflict-resolution loop (same per-PR gate)
+        wrap: value
+    next: await_ci
+
+  - id: await_ci
+    type: script
+    script: scripts/await-pr-checks.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ get_node_output('open_pr', 'ci_base') }}"
+    outputs:
+      - key: ci_status
+      - key: ci_summary
+    next: decide_ci
+
+  - id: decide_ci
+    type: branch
+    path: ci_status
+    cases:
+      passed: merge
+      unavailable: merge # CI not queryable (offline / no CI) → pass through
+      failed: guard_ci
+    default: guard_ci
+
+  # Cap the fix loop: once max_ci_reworks cycles are spent without CI going green,
+  # escalate to the operator instead of looping forever.
+  - id: guard_ci
+    type: branch
+    path: ci_rework_count.value
+    conditions:
+      - op: ">="
+        value: "3" # == vars.max_ci_reworks; literal so no Jinja in branch
+        next: flag_ci_fail
+    default: fix_ci
+
+  # Diagnoses failing checks and commits a fix on the epic branch, per repo.
+  # Runs as a standalone flow so it can iterate workspace repos independently —
+  # each with the correct CWD and any repo-specific flavor prompt. Does NOT push
+  # — push_ci does, so token credential handling stays in one script (push-epic.sh).
+  - id: fix_ci
+    type: flow
+    name: fix_ci
+    args:
+      branch: "{{ get_node_output('open_pr', 'ci_epic') }}"
+      ci_summary: "{{ get_node_output('await_ci', 'ci_summary') }}"
+      docs_path: "{{ docs_path }}"
+      repo: ""   # empty = iterate all workspace repos that have failing CI
+    outputs:
+      - key: fix_ci_result
+    next: push_ci
+
+  # Push the fix (token auth) and report whether it actually landed on the remote.
+  - id: push_ci
+    type: script
+    script: scripts/push-ci.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+    outputs:
+      - key: push_status
+    next: decide_push
+
+  # A fix that can't be pushed can never turn CI green — don't waste the fix loop on
+  # an unmoved PR head; escalate to the operator gate. pushed/unavailable continue
+  # the loop (unavailable lets await_ci report the pass-through and exit the gate).
+  - id: decide_push
+    type: branch
+    path: push_status
+    cases:
+      pushed: incr_ci
+      unavailable: incr_ci
+      failed: flag_ci_fail
+    default: flag_ci_fail
+
+  - id: incr_ci
+    type: call
+    fn: incr
+    args:
+      value: "{{ ci_rework_count.value }}"
+    outputs:
+      - key: ci_rework_count
+        wrap: value
+    next: await_ci
+
+  # Max attempts reached (or the fix could not be pushed): leave the PR open + red,
+  # comment on it, then escalate to the RESUMABLE operator gate (await_ci_operator).
+  # The run halts for review; re-running it resets the fix counter and re-attempts
+  # the loop — it does not die in an unrecoverable terminal.
+  - id: flag_ci_fail
+    type: script
+    script: scripts/flag-ci-failure.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ ci_rework_count.value }}"
+      - "{{ get_node_output('await_ci', 'ci_summary') }}"
+    outputs:
+      - key: ci_flagged
+    next: await_ci_operator
+
+  # Human-in-the-loop CI gate (mirrors the plan-stage await_operator). Surfaces the
+  # failure in a per-epic ci-operator-context.md and HALTS (non-zero exit). After
+  # the operator acts and marks the file ANSWERED, re-running the workflow re-enters
+  # this node, RESETS ci_rework_count, and proceeds back into await_ci to re-attempt
+  # the fix loop. See scripts/await-ci-operator.py for the state machine.
+  - id: await_ci_operator
+    type: script
+    script: scripts/await-ci-operator.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ get_node_output('await_ci', 'ci_summary') }}"
+    outputs:
+      - key: operator_input
+      - key: ci_rework_count
+    next: await_ci
+
+  # ── Merge the epic's PR, then prune it from the queue and advance ─────────────
+  # One merge node now (the prev/final split is gone): every finished epic gates CI,
+  # merges, prunes itself off the queue front, and select_epic picks the next.
+  # Best-effort (mirrors the PR-open scripts): with a github origin + token the PR
+  # is merged into ci_base and the local checkout is moved to the merged tip; with
+  # no token / gh / github origin / open PR (offline, local bind-mount clone) it is
+  # a pass-through and HEAD is left on the epic branch so the run still chains.
+  - id: merge
+    type: script
+    script: scripts/merge-pr.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ get_node_output('open_pr', 'ci_base') }}"
+    outputs:
+      - key: merge_status
+    next: decide_merge
+
+  # ── Merge gate (bounded conflict-resolution loop) ─────────────────────────────
+  # merge-pr.sh attempts `gh pr merge`. Previously the merge routed UNCONDITIONALLY
+  # to done/branch_epic, so a `failed` merge (merge conflict, branch behind base,
+  # branch protection / not mergeable) was logged to stderr and then silently
+  # swallowed — the run finished "successfully" with the PR left open and unmerged.
+  # This gate fixes that, mirroring the CI gate:
+  #   merged / unavailable → prune the epic off the queue and advance to the next.
+  #                          `unavailable` is the offline / no-token / no-PR
+  #                          pass-through, unchanged.
+  #   failed               → a bounded fix_merge -> push -> re-merge loop tries to
+  #                          resolve it (update from base, resolve conflicts, push),
+  #                          then re-runs the merge; once max_merge_reworks is spent
+  #                          it escalates to a RESUMABLE operator gate instead of
+  #                          finishing on an unmerged PR. merge_rework_count is seeded
+  #                          in reset_ci.
+  # merge-pr.sh has already MERGED the epic's PR (which carried the queue prune) and
+  # checked the local repo back out onto the base at the merged tip (sync_base = "return
+  # to base + pull"). So both merged and unavailable advance straight to select_epic,
+  # which reads the freshly-merged base queue (this epic already dropped) and picks the
+  # next epic. No separate prune step here — the prune rode in with the PR.
+  - id: decide_merge
+    type: branch
+    path: merge_status
+    cases:
+      merged: select_epic
+      unavailable: select_epic # offline / no token / no PR → pass-through, then advance
+      failed: guard_merge
+    default: guard_merge
+
+  # Pop the CURRENT epic off the queue BEFORE opening its PR, so open-pr.sh commits the
+  # pruned docs/epics/index.md onto the epic branch and the prune merges into the base with
+  # this epic's PR. (Previously this ran AFTER the merge and removed ci_epic, so the
+  # prune never made it into the merged base — the next checkout restored the stale
+  # queue and resurrected the epic, looping forever.) Edits the working tree only; the
+  # commit is owned by open-pr.sh on the epic branch — never committed directly to base.
+  - id: prune_epic
+    type: script
+    script: scripts/prune-epic.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+    outputs:
+      - key: pruned
+    next: open_pr
+
+  # Cap the conflict-resolution loop; once max_merge_reworks cycles are spent without
+  # a successful merge, escalate to the operator instead of looping (or, worse,
+  # silently finishing on an unmerged PR).
+  - id: guard_merge
+    type: branch
+    path: merge_rework_count.value
+    conditions:
+      - op: ">="
+        value: "2" # == vars.max_merge_reworks; literal so no Jinja in branch
+        next: flag_merge_fail
+    default: fix_merge
+
+  # Resolve the merge: update the epic branch from its base (the PR is typically
+  # behind base and/or conflicting), resolve conflicts, re-run the touched layers'
+  # checks, and COMMIT — but do NOT push (push_merge does, so the token credential
+  # handling stays in push-epic.py) and do NOT run `gh pr merge` (the merge node
+  # re-attempts that once the resolved branch is on the remote). Exception: the
+  # prompt's Step 0 diagnoses a stale/duplicate remote branch (already squash-merged
+  # into base under a different history) and, only once confirmed via patch-id +
+  # tree-diff checks, force-pushes local HEAD directly — there is nothing left to
+  # content-merge in that case, so push_merge's later plain push is just a no-op.
+  - id: fix_merge
+    type: agent
+    # opus: resolving merge conflicts on a divergent branch is high blast radius —
+    # a wrong resolution silently corrupts code. Strongest reasoning warranted.
+    power: high
+    prompt: prompts/fix-merge.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      ci_epic: "{{ get_node_output('open_pr', 'ci_epic') }}"
+      ci_base: "{{ get_node_output('open_pr', 'ci_base') }}"
+    outputs:
+      - key: fix_merge_result
+    next: push_merge
+
+  # Push the resolved branch (token auth + remote-head verification, shared with the
+  # CI loop via push-ci.sh → push-epic.sh) and report whether it landed.
+  - id: push_merge
+    type: script
+    script: scripts/push-ci.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+    outputs:
+      - key: push_status
+    next: decide_merge_push
+
+  # A resolution that can't be pushed can never let `gh pr merge` succeed — don't
+  # waste the loop re-merging an unmoved branch head; escalate to the operator.
+  # pushed/unavailable continue the loop (unavailable lets the re-merge report its
+  # own pass-through and exit the gate).
+  - id: decide_merge_push
+    type: branch
+    path: push_status
+    cases:
+      pushed: incr_merge
+      unavailable: incr_merge
+      failed: flag_merge_fail
+    default: flag_merge_fail
+
+  - id: incr_merge
+    type: call
+    fn: incr
+    args:
+      value: "{{ merge_rework_count.value }}"
+    outputs:
+      - key: merge_rework_count
+        wrap: value
+    next: merge # re-attempt the merge on the resolved branch
+
+  # Max attempts reached: leave the PR open + unmerged, comment on it, then escalate
+  # to the RESUMABLE operator gate (await_merge_operator). The run halts for review;
+  # re-running it resets the merge counter and re-attempts — it does not die in an
+  # unrecoverable terminal (mirrors flag_ci_fail / await_ci_operator).
+  - id: flag_merge_fail
+    type: script
+    script: scripts/flag-merge-failure.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ get_node_output('open_pr', 'ci_base') }}"
+      - "{{ merge_rework_count.value }}"
+    outputs:
+      - key: merge_flagged
+    next: await_merge_operator
+
+  # Human-in-the-loop merge gate (mirrors await_ci_operator). Surfaces the unmerged
+  # PR in a per-epic merge-operator-context.md and HALTS (non-zero exit). After the
+  # operator resolves it (updates the branch, clears branch protection, merges by
+  # hand, …) and marks the file ANSWERED, re-running the workflow re-enters this node,
+  # RESETS merge_rework_count, and re-attempts the merge.
+  - id: await_merge_operator
+    type: script
+    script: scripts/await-merge-operator.py
+    args:
+      - "{{ get_node_output('open_pr', 'ci_epic') }}"
+      - "{{ get_node_output('open_pr', 'ci_base') }}"
+    outputs:
+      - key: operator_input
+      - key: merge_rework_count
+    next: merge # resume → re-attempt the merge from a fresh attempt budget
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Per-story pipeline: three composable phases (dev → review → qa)
+  # ════════════════════════════════════════════════════════════════════════════
+  # The plan/implement, review, and QA stages each live in a `flows:` sub-graph (see
+  # the bottom of this file). The parent only sequences the phases and owns what is
+  # genuinely queue-level: the shared epic-replan escape and the per-mode commit/PR
+  # finalize. The phases share the working tree (only context is isolated), so dev
+  # writes the code, review refines it, and qa exercises it in turn.
+
+  # Dev phase: reset the plan counter, plan, operator-gate a blocked plan, then
+  # implement. Returns dev_status=ready normally, or dev_status=replan when the
+  # operator declared the whole epic premise wrong (SCOPE: epic) — only the queue
+  # level can act on that, so it escapes here to replan_epic with operator_input.
+  - id: dev
+    type: flow
+    name: dev
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      operator_mode: "{{ operator_mode }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: dev_status
+        default: ready
+      - key: operator_input
+    next: decide_dev
+
+  - id: decide_dev
+    type: branch
+    path: dev_status
+    cases:
+      ready: review
+      replan: replan_epic
+    default: review
+
+  # Review phase: review the implementation, loop apply_review until approved, then
+  # poll the post-implementation operator-feedback inbox once. Its internal loops
+  # never escape the per-story chain, so it always converges to QA.
+  - id: review
+    type: flow
+    name: review
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      operator_mode: "{{ operator_mode }}"
+    outputs: []
+    next: detect_okf
+
+  # QA phase: plan + execute QA, the deterministic evidence gate, the adversarial
+  # auditor, the bounded fix/setup loops, regression + sentinel gates, and the QA
+  # operator gate — everything from QA-context resolution up to (not including) the
+  # commit. Returns:
+  #   qa_status=passed    → story green; commit it (decide_post_sentinel).
+  #   qa_status=exhausted → max QA reworks spent; route by mode (decide_qa_fail).
+  #   qa_status=replan    → operator said the epic premise was wrong → replan_epic.
+  - id: qa_phase
+    type: flow
+    name: qa
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      operator_mode: "{{ operator_mode }}"
+      target_env: "{{ target_env }}"
+      # Parent-owned rescope budget, threaded into the isolated qa flow so the
+      # triager can read it and guard_triage can stop the dev<->qa loop. Bare ref
+      # (NOT get_node_output) so it picks up the ROLLING context value: init_triage_
+      # counter seeds it to 0, then each qa_phase crosses the incremented value back
+      # out (output below) and overwrites it, so a rescope re-entry passes N (not 0).
+      triage_scope_count: "{{ triage_scope_count }}"
+    outputs:
+      - key: qa_status
+        default: exhausted
+      - key: qa_result
+      - key: qa_rework_count
+      - key: triage_scope_count
+      - key: operator_input
+    next: decide_qa_outcome
+
+  # Self-reflection is NOT inline here — it lives in the standalone `dream` flow
+  # (offline consolidation over the whole run's events.jsonl + node transcripts), so it
+  # never slows or gates the per-story build. Run it with `workhorse run coder dream`.
+
+  - id: decide_qa_outcome
+    type: branch
+    path: qa_status
+    cases:
+      passed: decide_post_sentinel
+      exhausted: decide_qa_fail
+      replan: replan_epic
+      # The triager scoped adjacent defects/hardening into the story (ACs amended on
+      # disk) and asked to re-implement. Re-enter dev (plan+implement) -> review ->
+      # qa_phase. Route straight to dev (NOT init_triage_counter) so the rescope
+      # budget persists; the bumped triage_scope_count came back via qa_phase outputs.
+      rescope: dev
+    default: decide_post_sentinel
+
+  # ── Ground the reviewed implementation before QA context generation ───────────
+  # Refresh code:/verify: references after implementation review and before qa_phase
+  # computes diff-to-OKF impact. Gated by detect_okf and fail-soft for repositories
+  # without an OKF graph. A rescope re-enters dev/review and refreshes grounding again.
+  - id: detect_okf
+    type: script
+    script: scripts/detect-okf-docs.py
+    args:
+      - "{{ docs_path }}"
+    outputs:
+      - key: has_okf
+      - key: features_root
+    next: decide_okf
+
+  - id: decide_okf
+    type: branch
+    path: has_okf
+    cases:
+      "yes": document_story
+      "no": qa_phase
+    default: qa_phase
+
+  - id: document_story
+    type: agent
+    # medium: as-built doc authoring grounded in the just-shipped diff — mechanical
+    # relative to plan/implement, but needs to read code to ground code:/verify:.
+    power: medium
+    prompt: prompts/document-story.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_story', 'spec_dir') }}"
+      story_slug: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      features_root: "{{ get_node_output('detect_okf', 'features_root') }}"
+    outputs:
+      - key: doc_status
+        default: skipped
+    next: qa_phase
+
+  # ── Shared escape: operator declared the epic premise wrong (SCOPE: epic) ──────
+  # Reached from a plan block (dev) or a QA block (qa) when the operator's answer
+  # reveals the whole epic — not just this story — needs re-deriving. Rewrites the
+  # epic, its stories, and the queue, then re-enters the story loop. Kept at the
+  # queue level because it changes WHICH stories run, which a per-story flow cannot.
+  - id: replan_epic
+    type: agent
+    # opus: highest blast radius — rewrites the epic, its stories, and the queue
+    # from the operator's answer. Strongest reasoning warranted.
+    power: high
+    prompt: prompts/replan-epic.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      epic: "{{ get_node_output('select_epic', 'epic') or epic }}"
+      story_path: "{{ get_node_output('prepare_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_story', 'spec_dir') }}"
+      operator_context: "{{ operator_input.content }}"
+    outputs:
+      - key: replan_result
+    next: select_story
+
+  # ── QA passed → drain one filed-fix backlog item before commit ────────────────
+  # Route the green story through the fix-drain detour first (the sentinel gate
+  # already ran inside the qa flow). Both modes funnel through select_fix_item,
+  # which falls straight through to the ORIGINAL commit node (via decide_post_drain)
+  # when the backlog is empty — the common case, adding one cheap check per story.
+  - id: decide_post_sentinel
+    type: branch
+    path: mode
+    cases:
+      epic: select_fix_item
+      story: select_fix_item
+    default: done
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Fix loop: drain `## Filed by coder` backlog items inline, on this run's own
+  # branch, before this story's own commit. "1 fix = 1 AC." A speed-run of
+  # plan→implement→check reusing the load-bearing prompts directly (no dev:/
+  # review:/qa: flow reuse — those pull in operator escalation, plan-rework, and
+  # triage/audit/regression machinery that would let a fix recursively spawn more
+  # backlog work). Exactly one bounded retry; a fix that still fails is flagged
+  # `(blocked: ...)` in place and skipped on future draws — never re-filed, never
+  # escalated. No new branch, no new commit node: a drained fix's changes ride
+  # along in this run's own existing commit step below.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - id: select_fix_item
+    type: script
+    script: scripts/select-next-fix-item.py
+    args:
+      - "{{ docs_path }}"
+    outputs:
+      - key: has_fix
+      - key: fix_bullet_id
+      - key: fix_bullet_text
+      - key: reason
+    # Every iteration must either prune (shipped) or block (gave up) the item it
+    # drew before looping back here, so the id always changes on forward progress.
+    refuel: fix_bullet_id
+    next: decide_fix_item
+
+  - id: decide_fix_item
+    type: branch
+    path: has_fix
+    cases:
+      "no": decide_post_drain # backlog empty (or fully blocked) — proceed to commit
+      "yes": seed_fix_story
+    default: decide_post_drain
+
+  # Register the drained bullet as a single-AC story in the perpetual `fixes`
+  # epic bucket. Self-creates the bucket idempotently; never registered in the
+  # epics queue select_epic/prune_epic manage, so it never collides with epic-mode
+  # story selection.
+  - id: seed_fix_story
+    type: script
+    script: scripts/seed-fix-story.py
+    args:
+      - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+      - "{{ get_node_output('select_fix_item', 'fix_bullet_text') }}"
+      - "" # epics_dir — default docs/epics
+      - "" # epic — default "fixes"
+      - "{{ docs_path }}"
+    outputs:
+      - key: epic
+      - key: epic_dir
+      - key: story_slug
+      - key: story_dir
+      - key: story_path
+      - key: bullet_id
+      - key: reason
+    next: prepare_fix_story
+
+  # Convergence node: resolve the fix story's slug → canonical paths via ostler.
+  # Registered under a NEW node id (not `prepare_story`) — commit_story/
+  # commit_story_pr read `get_node_output('prepare_story', ...)` explicitly, so
+  # reusing that node id here would overwrite the ORIGINAL story's recorded
+  # output and commit the wrong identity once the drain loop finishes.
+  - id: prepare_fix_story
+    type: script
+    script: scripts/prepare-story.py
+    args:
+      - "{{ docs_path }}"
+      - "{{ get_node_output('seed_fix_story', 'story_slug') }}"
+      - "{{ get_node_output('seed_fix_story', 'epic') }}"
+    outputs:
+      - key: story_path
+      - key: spec_dir
+      - key: qa_dir
+      - key: story_slug
+      - key: story_epic
+    next: plan_fix
+
+  # Reuse plan-story.md directly — no separate plan-review, no path-validation
+  # rework loop, no operator gate. A `blocked` plan (dangerous/undecidable prod
+  # operation) skips straight to fix_give_up: the fix loop has no operator escape.
+  - id: plan_fix
+    type: agent
+    power: high
+    prompt: prompts/plan-story.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+    outputs:
+      - key: plan_result
+    next: decide_plan_fix
+
+  - id: decide_plan_fix
+    type: branch
+    path: plan_result.status
+    cases:
+      done: resolve_fix_impl_context
+      blocked: fix_give_up
+    default: resolve_fix_impl_context
+
+  # Decode the approved plan's plan-context.json against the workspace
+  # configuration. Deterministic + side-effect-free — same script the dev flow uses.
+  - id: resolve_fix_impl_context
+    type: script
+    script: scripts/resolve-impl-context.py
+    args:
+      - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      - "{{ target_env }}"
+      - "{{ docs_path }}"
+    outputs:
+      - key: impl_instruction_paths
+      - key: qa_run_plan
+      - key: qa_stack
+      - key: dispatch_list
+      - key: dispatch_count
+      - key: affected_repos
+      - key: affected_repo_paths
+    next: branch_fix_code_repos
+
+  # Branch every code repo named in the fix's plan. Idempotent: a repo already on
+  # this run's branch (the common case — same repo as the story being finished) is
+  # skipped, so this rides the SAME branch, never cutting a new one.
+  - id: branch_fix_code_repos
+    type: script
+    script: scripts/branch-code-repos.py
+    args:
+      - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+    outputs:
+      - key: branched
+      - key: already_on_branch
+    next: select_fix_layer
+
+  # Single-layer only — deliberately NOT looped like dev's select_impl_layer.
+  # A fix is scoped to one AC; a plan spanning multiple services would be a sign
+  # the finding wasn't adjacent/small enough for this loop in the first place.
+  - id: select_fix_layer
+    type: script
+    script: scripts/select-next-layer.py
+    args:
+      - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      - "-1"
+    outputs:
+      - key: has_next_layer
+      - key: current_layer_index
+      - key: current_layer
+    next: decide_fix_layer
+
+  - id: decide_fix_layer
+    type: branch
+    path: has_next_layer
+    cases:
+      "yes": implement_fix
+      "no": check_fix
+    default: check_fix
+
+  - id: implement_fix
+    type: agent
+    power: high
+    prompt: prompts/implement-plan.md
+    cwd: "{{ current_layer.cwd }}"
+    # See implement_layer's comment: cwd is one service repo, story/plan files live
+    # in the docs repo — grant it (and any other affected repo) explicitly.
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      plan_file: "{{ current_layer.plan_file }}"
+      service_path: "{{ current_layer.service_path }}"
+      service_type: "{{ current_layer.type }}"
+      verification: "{{ current_layer.verification }}"
+    outputs:
+      - key: impl_result
+    next: check_fix
+
+  # Reuse qa-story.md directly — no plan_qa step (it self-derives per-AC checks
+  # from the story when qa-plan.md is absent), no evidence gate, no adversarial
+  # auditor, no regression/sentinel gates, no triage. A fix either passes within
+  # one retry or is marked blocked.
+  - id: check_fix
+    type: agent
+    power: high
+    prompt: prompts/qa-story.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+      docs_path: "{{ docs_path }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: qa_result
+    next: decide_fix_check
+
+  - id: decide_fix_check
+    type: branch
+    path: qa_result.status
+    cases:
+      passed: prune_fix_item
+    default: apply_fix_once
+
+  # One bounded retry: reuse apply-qa-fixes.md (the same prompt/mechanism the real
+  # qa flow uses for its own QA-fix pass), fed check_fix's failure notes.
+  - id: apply_fix_once
+    type: agent
+    power: high
+    prompt: prompts/apply-qa-fixes.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+      qa_notes: "{{ get_node_output('check_fix', 'qa_result').notes }}"
+    outputs:
+      - key: qa_result
+    next: recheck_fix
+
+  - id: recheck_fix
+    type: agent
+    power: high
+    prompt: prompts/qa-story.md
+    add_dirs: "{{ workspace_dirs }}"
+    args:
+      story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+      spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+      qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+      docs_path: "{{ docs_path }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: qa_result
+    next: decide_recheck
+
+  - id: decide_recheck
+    type: branch
+    path: qa_result.status
+    cases:
+      passed: prune_fix_item
+    default: fix_give_up
+
+  - id: prune_fix_item
+    type: script
+    script: scripts/prune-fix-item.py
+    args:
+      - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+      - "{{ docs_path }}"
+    outputs:
+      - key: pruned
+      - key: bullet_id
+      - key: reason
+    next: select_fix_item
+
+  # Exhausted the one bounded retry (or the fix's own plan came back `blocked`):
+  # flag and continue, mirroring epic mode's qa_give_up "flag and continue"
+  # philosophy. No operator escalation, no re-filing — select_fix_item skips any
+  # `(blocked` line on future draws, so a stuck fix stays visible but never spins.
+  - id: fix_give_up
+    type: script
+    script: scripts/mark-fix-blocked.py
+    args:
+      - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+      - "blocked in fix loop (plan blocked, or QA still failing after one retry)"
+      - "{{ docs_path }}"
+    outputs:
+      - key: marked
+      - key: bullet_id
+      - key: reason
+    next: select_fix_item
+
+  # Backlog drained (or was empty to start) — proceed to the commit node the mode
+  # would have used directly before the fix-drain detour existed. A drained
+  # item's changes just ride along in that commit (no separate branch, no
+  # separate commit node) — see the standalone `flows: fix:` entry at the
+  # bottom of this file for the out-of-band entry point that commits per item.
+  - id: decide_post_drain
+    type: branch
+    path: mode
+    cases:
+      epic: commit_story # commit onto epic branch, then select next story
+      story: commit_story_pr # commit onto the story branch, open a PR (no merge), done
+    default: done
+
+  # Story mode finalize: commit the story's changes onto its branch, then open a PR
+  # (best-effort, no merge) and finish. No CI gate and no merge — the PR is left open.
+  - id: commit_story_pr
+    type: script
+    script: scripts/commit-story.py
+    args:
+      - ""
+      - "{{ get_node_output('prepare_story', 'story_slug') }}"
+      - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+    outputs:
+      - key: committed
+    next: open_story_pr
+
+  - id: open_story_pr
+    type: script
+    script: scripts/open-story-pr.py
+    args:
+      - "{{ get_node_output('prepare_story', 'story_slug') }}"
+      - "{{ get_node_output('branch_story', 'base_branch') }}"
+      - "{{ get_node_output('prepare_story', 'story_path') }}"
+      - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+    outputs:
+      - key: story_pr
+      - key: pr_urls
+    next: done
+
+  # ── QA exhausted (max reworks) → route by mode ────────────────────────────────
+  # epic: flag the story behind a [QA FAILED] marker and continue the queue.
+  # story: halt with a non-zero exit (the single story failed).
+  - id: decide_qa_fail
+    type: branch
+    path: mode
+    cases:
+      epic: qa_give_up # flag and continue to next story
+      story: qa_failed # halt with non-zero exit (single story failed)
+    default: qa_failed
+
+  # Max attempts reached: don't loop forever and don't halt the whole queue —
+  # commit the story behind a [QA FAILED] marker, flag it for the reviewer, and
+  # move on to the next story.
+  - id: qa_give_up
+    type: script
+    script: scripts/flag-qa-failure.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ get_node_output('prepare_story', 'story_slug') }}"
+      - "{{ qa_rework_count.value }}"
+      - "{{ get_node_output('prepare_story', 'story_path') }}"
+      # Run dir → record this story in the per-run skip set so select_story excludes it
+      # for the rest of this run even if the status marking above didn't take.
+      - "{{ workhorse_var('_run_dir') }}"
+    outputs:
+      - key: qa_flagged
+    next: select_story
+
+  # ── Commit the completed story, then select the next one ──────────────────────
+  - id: commit_story
+    type: script
+    script: scripts/commit-story.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ get_node_output('prepare_story', 'story_slug') }}"
+      - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+    outputs:
+      - key: committed
+    next: decide_committed # zero-diff churn guard, then loop within the epic
+
+  # ── Zero-diff churn guard ──────────────────────────────────────────────────────
+  # commit-story.py already reports committed="no" when a "completed" story staged
+  # no changes in any workspace repo. One no-op can be legitimate (a drained fix
+  # item already carried the change, say); several IN A ROW mean the loop is
+  # spinning — stories "pass" QA without any work landing. Count consecutive
+  # no-ops and halt loudly at max_zero_diff_commits; any real commit resets the
+  # streak (reset_zero_diff), so a healthy epic never trips this.
+  - id: decide_committed
+    type: branch
+    path: committed
+    cases:
+      "no": incr_zero_diff
+    default: reset_zero_diff
+
+  - id: incr_zero_diff
+    type: call
+    fn: incr
+    args:
+      value: "{{ zero_diff_count.value }}"
+    outputs:
+      - key: zero_diff_count
+        wrap: value
+    next: guard_zero_diff
+
+  - id: guard_zero_diff
+    type: branch
+    path: zero_diff_count.value
+    conditions:
+      - op: ">="
+        value: "3" # == vars.max_zero_diff_commits; literal so no Jinja in branch
+        next: zero_diff_give_up
+    default: select_story
+
+  - id: reset_zero_diff
+    type: call
+    fn: seed
+    outputs:
+      - key: zero_diff_count
+        wrap: value
+    next: select_story # loop within the epic; when its stories are exhausted select_story → open_pr
+
+  # Halt the run (non-zero exit) rather than grinding the rest of the queue
+  # through the same no-op machinery. Deliberately a hard stop, not a per-story
+  # flag: consecutive zero-diff commits are a RUN-level pathology (broken
+  # workspace resolution, an agent that stopped editing files), so continuing
+  # would just burn tokens story after story.
+  - id: zero_diff_give_up
+    type: fail
+
+  # Max QA-fix attempts reached for story mode — halt with non-zero exit
+  # (epic mode uses qa_give_up to flag and continue instead)
+  - id: qa_failed
+    type: fail
+
+  - id: done
+    type: terminal
+
+# ════════════════════════════════════════════════════════════════════════════
+# flows: composable per-story sub-graphs
+# ════════════════════════════════════════════════════════════════════════════
+# Each flow mirrors the top-level structure (its own vars + nodes + terminals) and
+# runs in an ISOLATED context — only its rendered `args` cross in from the caller,
+# and only its declared terminal-context keys cross back out. Because flows share
+# the working tree, a flow re-run operates on the already-built story on disk. Run
+# one standalone with `workhorse run coder <flow> --params '{...}'`; the flow's
+# vars (empty default ⇒ required) are the parameter contract.
+flows:
+  # ── dev: plan + implement ─────────────────────────────────────────────────────
+  dev:
+    name: dev
+    start: prepare_story
+    vars:
+      story: ""         # slug — ostler resolves story_path + spec_dir from this
+      docs_path: ""     # docs repo root; empty → AGENT_REPO_DIR / CWD
+      epic: ""          # epic slug; empty → ostler finds story under any epic
+      operator_mode: "auto"
+      current_layer_index: "-1"
+      max_lint_reworks: "2" # per-layer dev-time lint fix budget (see guard_lint)
+      target_env: "local" # "local" | "dev" — threaded from the pipeline; without this the flow-local
+                           # reference in resolve_impl_context is undefined (template warning)
+    nodes:
+      # Resolve slug → story_path / spec_dir / story_slug via ostler (single canonical source).
+      - id: prepare_story
+        type: script
+        script: scripts/prepare-story.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story }}"
+          - "{{ epic }}"
+        outputs:
+          - key: story_path
+          - key: spec_dir
+          - key: qa_dir
+          - key: story_slug
+        next: resolve_workspace
+
+      # Resolve all workspace repo paths early so agent nodes that run before
+      # resolve_impl_context (plan, rework_plan) can access sibling repos for
+      # skill discovery and file reads.
+      - id: resolve_workspace
+        type: script
+        script: scripts/resolve-workspace-dirs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: workspace_dirs
+        next: reset_plan
+
+      # plan → decide_plan: a `done` plan goes straight to implementation (no separate
+      # review agent — it caught nothing in practice). Only a genuine `blocked` (a
+      # dangerous/undecidable prod operation) escalates to the operator gate; after the
+      # operator answers, rework_plan re-plans and re-evaluates via decide_plan.
+      - id: reset_plan
+        type: call
+        fn: seed
+        outputs:
+          - key: plan_rework_count
+            wrap: value
+        next: plan
+
+      - id: plan
+        type: agent
+        # opus: authors the plan, including high-stakes prod operations (deploys,
+        # security-group / egress changes) — worth the stronger reasoning.
+        power: high
+        prompt: prompts/plan-story.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+        outputs:
+          - key: plan_result
+        next: decide_plan
+
+      # No separate plan-review agent: a dedicated reviewer added a full opus pass per
+      # story and caught nothing actionable in practice. The plan goes straight to
+      # implementation; the only thing it can stop the run for is a genuine `blocked` (a
+      # dangerous/undecidable prod operation the plan author could not resolve), which
+      # still routes to the operator gate. Depth and correctness are enforced downstream
+      # by implementation review and — decisively — by QA.
+      - id: decide_plan
+        type: branch
+        path: plan_result.status
+        cases:
+          done: validate_plan
+          blocked: gate_plan
+        default: validate_plan
+
+      - id: rework_plan
+        type: agent
+        # opus: re-plans high-stakes prod work and must correctly absorb operator
+        # answers about dangerous operations (and not re-raise a resolved block). Reached
+        # only after an operator answered a plan `blocked`; it re-evaluates via decide_plan
+        # (a still-blocked re-plan re-gates the operator; a resolved one proceeds).
+        power: high
+        prompt: prompts/refine-plan.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "{{ plan_result.summary }}"
+          operator_context: "{{ operator_input.content }}"
+        outputs:
+          - key: plan_result
+        next: decide_plan
+
+      # Operator-mode switch for the plan gate. In "auto" (default) a high-effort agent
+      # stands in for the human and answers the block into context.md; in "human" the
+      # original halt-and-wait await runs.
+      - id: gate_plan
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_operator
+          auto: resolve_plan
+        default: resolve_plan
+
+      # Auto-operator: investigate the block, decide/act, and write the answer into the
+      # story's context.md as STATUS: ANSWERED (or AWAITING_OPERATOR to escalate to a
+      # human). Either way control flows into await_operator, which consumes an ANSWERED
+      # file and proceeds, or halts on an AWAITING one — so the human path is the
+      # automatic fallback. High effort: the hardest, highest-stakes decision node.
+      - id: resolve_plan
+        type: agent
+        power: high
+        # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+        # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+        timeout: infinity
+        prompt: prompts/resolve-operator.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          block_kind: "plan"
+          block_notes: "{{ plan_result.summary }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: await_operator
+
+      # Human-in-the-loop gate. Surfaces the block in <story-folder>/context.md and HALTS
+      # (non-zero exit). After the operator answers inline and re-runs, auto-resume
+      # re-enters this node, reads the answers, and continues into decide_operator_scope.
+      # In auto mode resolve_plan has already written the answer here, so this consumes it
+      # and proceeds. See scripts/await_operator.py for the state machine.
+      - id: await_operator
+        type: script
+        script: scripts/await_operator.py
+        args:
+          - "{{ story_path }}"
+          - "{{ plan_result.summary }}"
+        outputs:
+          - key: operator_input
+          - key: plan_rework_count
+        next: decide_operator_scope
+
+      # The operator's answer may reveal the whole epic premise was wrong (e.g. a target
+      # environment that doesn't exist), not just this story's plan. They pick the fix
+      # scope via `SCOPE:` in context.md: `epic` escapes the flow (dev_status=replan) so
+      # the queue level replans the epic; `story` (default) reworks just this plan.
+      - id: decide_operator_scope
+        type: branch
+        path: operator_input.scope
+        cases:
+          epic: mark_dev_replan
+          story: rework_plan
+        default: rework_plan
+
+      # Stamp the escape status the parent branches on (operator_input crosses back too,
+      # carrying the answer to replan_epic).
+      - id: mark_dev_replan
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "dev_status=replan"
+        outputs:
+          - key: dev_status
+        next: dev_done
+
+      # ── Validate plan paths ─────────────────────────────────────────────────────
+      # Gate: confirm the planner's service paths point to real directories with
+      # the expected service markers. Invalid → rework the plan with error feedback.
+      - id: validate_plan
+        type: script
+        script: scripts/validate-plan-context.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: validation_result
+        next: decide_validation
+
+      - id: decide_validation
+        type: branch
+        path: validation_result.status
+        cases:
+          "valid": resolve_impl_context
+          "invalid": guard_validate
+        default: resolve_impl_context
+
+      # Cap the path-validation rework loop: once max_validate_reworks refine passes
+      # are spent without the plan-context validating, escalate to the operator gate
+      # instead of looping forever. Reuses plan_rework_count (seeded at reset_plan,
+      # reset by await_operator) — deterministic case-repair happens in
+      # validate-plan-context.py, so what survives to here is genuinely unfixable by a
+      # blind refine pass (missing marker, nonexistent path, unresolvable repo).
+      - id: guard_validate
+        type: branch
+        path: plan_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3" # == vars.max_validate_reworks; literal so no Jinja in branch
+            next: gate_plan
+        default: rework_plan_paths
+
+      - id: rework_plan_paths
+        type: agent
+        power: high
+        prompt: prompts/refine-plan.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "Service path validation failed: {{ validation_result.errors }}"
+          operator_context: ""
+        outputs:
+          - key: plan_result
+        next: incr_plan_rework
+
+      # Bump the plan-rework counter after each refine pass so guard_validate can bound
+      # the loop. Separate node (not folded into rework_plan_paths) because agent nodes
+      # can't also emit a computed counter.
+      - id: incr_plan_rework
+        type: call
+        fn: incr
+        args:
+          value: "{{ plan_rework_count.value }}"
+        outputs:
+          - key: plan_rework_count
+            wrap: value
+        next: validate_plan
+
+      # ── Resolve implementation context ──────────────────────────────────────────
+      # Decode the approved plan's plan-context.json (services array) against the
+      # workspace configuration into dispatch_list, impl_instruction_paths, qa_run_plan,
+      # qa_stack. Deterministic + side-effect-free.
+      - id: resolve_impl_context
+        type: script
+        script: scripts/resolve-impl-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ target_env }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: impl_instruction_paths
+          - key: qa_run_plan
+          - key: qa_stack
+          - key: dispatch_list
+          - key: dispatch_count
+          - key: affected_repos
+          - key: affected_repo_paths
+        next: branch_code_repos
+
+      # ── Branch code repos after planning ────────────────────────────────────────
+      # plan-context.json now exists and the affected_repos list is authoritative.
+      # branch-story.py only branched the docs repo (plan-context.json didn't exist
+      # yet); this step branches every code repo named in the plan. Idempotent: repos
+      # already on the story branch are skipped.
+      - id: branch_code_repos
+        type: script
+        script: scripts/branch-code-repos.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ get_node_output('branch_story', 'story_branch') or story }}"
+        outputs:
+          - key: branched
+          - key: already_on_branch
+        next: select_impl_layer
+
+      # ── Layer iteration loop ────────────────────────────────────────────────────
+      # Iterates over dispatch_list: for each service, run the implement agent with
+      # the correct CWD and plan file. Loops back until all services are implemented.
+      - id: select_impl_layer
+        type: script
+        script: scripts/select-next-layer.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ current_layer_index }}"
+        outputs:
+          - key: has_next_layer
+          - key: current_layer_index
+          - key: current_layer
+        next: decide_impl_layer
+
+      - id: decide_impl_layer
+        type: branch
+        path: has_next_layer
+        cases:
+          "yes": reset_lint
+          "no": dev_done
+        default: dev_done
+
+      # Zero the per-layer lint fix budget before implementing each service, so every
+      # service gets its own `max_lint_reworks` attempts (not a budget shared across layers).
+      - id: reset_lint
+        type: call
+        fn: seed
+        outputs:
+          - key: lint_rework_count
+            wrap: value
+        next: implement_layer
+
+      - id: implement_layer
+        type: agent
+        power: high
+        prompt: prompts/implement-plan.md
+        cwd: "{{ current_layer.cwd }}"
+        # cwd is one service repo; story_path/spec_dir/plan_file always live in the docs
+        # repo — grant it (plus every other affected repo) explicitly, since Copilot's
+        # own-repo sandbox only allows cwd + subdirs by default (see CopilotBackend).
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          plan_file: "{{ current_layer.plan_file }}"
+          service_path: "{{ current_layer.service_path }}"
+          service_type: "{{ current_layer.type }}"
+          verification: "{{ current_layer.verification }}"
+        outputs:
+          - key: impl_result
+        next: lint_layer
+
+      # ── Lint gate (dev-time) ────────────────────────────────────────────────────
+      # Deterministic backstop to the implement agent's own `make lint` done-criterion:
+      # run this service's lint (`make lint` by convention, or an agents.yml override) in
+      # its cwd. clean/skipped → next layer; dirty → a bounded fix loop (fix_lint). Once
+      # the budget is spent the loop proceeds anyway — QA re-runs lint (static + live) as
+      # the binding gate, so dev-time lint is self-healing best-effort, never a dead end.
+      - id: lint_layer
+        type: script
+        script: scripts/run-lint.py
+        args:
+          - "{{ current_layer.cwd }}"
+          - "{{ current_layer.service }}"
+        outputs:
+          - key: lint_status
+          - key: lint_command
+          - key: lint_output
+        next: decide_lint_layer
+
+      - id: decide_lint_layer
+        type: branch
+        path: lint_status
+        cases:
+          clean: select_impl_layer
+          skipped: select_impl_layer
+          dirty: guard_lint
+        default: select_impl_layer
+
+      - id: guard_lint
+        type: branch
+        path: lint_rework_count.value
+        conditions:
+          - op: ">="
+            value: "2" # == vars.max_lint_reworks; literal so no Jinja in branch
+            next: select_impl_layer
+        default: fix_lint
+
+      - id: fix_lint
+        type: agent
+        # medium: mechanical — satisfy the linter (style, unused imports, a11y fixes) in
+        # one service cwd, grounded in the exact findings. Not a design task.
+        power: medium
+        prompt: prompts/fix-lint.md
+        cwd: "{{ current_layer.cwd }}"
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          service: "{{ current_layer.service }}"
+          cwd: "{{ current_layer.cwd }}"
+          lint_command: "{{ get_node_output('lint_layer', 'lint_command') }}"
+          lint_output: "{{ get_node_output('lint_layer', 'lint_output') }}"
+        outputs:
+          - key: fix_lint_result
+        next: incr_lint
+
+      - id: incr_lint
+        type: call
+        fn: incr
+        args:
+          value: "{{ lint_rework_count.value }}"
+        outputs:
+          - key: lint_rework_count
+            wrap: value
+        next: lint_layer
+
+      # Single terminal for both exits: the ready path leaves dev_status unset (the
+      # parent's FlowNode default = ready); the replan path stamped it via mark_dev_replan.
+      - id: dev_done
+        type: terminal
+
+  # ── review: review the implementation + apply changes / operator feedback ─────
+  review:
+    name: review
+    # Standalone: workhorse run coder review --params '{"story":"CASE-1234","repo":"web-app","branch":"CASE-1234","pr_number":901}'
+    # Pipeline:   called from the review FlowNode with story/docs_path/epic already set.
+    start: prepare_story
+    vars:
+      story: ""         # slug — ostler resolves story_path + spec_dir from this
+      docs_path: ""     # docs repo root; empty → AGENT_REPO_DIR / CWD
+      epic: ""          # epic slug; empty → ostler finds story under any epic
+      operator_mode: "auto" # gate_review escalation mode (auto resolver vs human halt)
+      repo: ""          # explicit repo name for standalone PR review (e.g. "web-app"); empty = derive from plan-context
+      branch: ""        # branch name for standalone PR review; empty = current branch
+      pr_number: ""     # PR number for standalone PR review; empty = derive from branch
+    nodes:
+      # Resolve slug → story_path / spec_dir via ostler.
+      - id: prepare_story
+        type: script
+        script: scripts/prepare-story.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story }}"
+          - "{{ epic }}"
+        outputs:
+          - key: story_path
+          - key: spec_dir
+          - key: qa_dir
+          - key: story_slug
+        next: resolve_workspace
+
+      - id: resolve_workspace
+        type: script
+        script: scripts/resolve-workspace-dirs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: workspace_dirs
+        next: resolve_review_context
+
+      - id: resolve_review_context
+        type: script
+        script: scripts/resolve-review-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ repo }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: docs_repo_path
+          - key: affected_repo_paths
+        next: reset_review
+
+      # Seed the review-rework budget once on entry (and re-seed after an operator
+      # resolves a block, via apply_review_resolved → reset_review). guard_review reads
+      # it to bound the review_implementation<->apply_review loop at max_review_reworks.
+      - id: reset_review
+        type: call
+        fn: seed
+        outputs:
+          - key: review_rework_count
+            wrap: value
+        next: code_review
+
+      # Run the native /code-review skill on each affected repo's local changes
+      # (uncommitted working-tree edits and/or story-branch commits — a PR is not
+      # required; if one is open, findings are also posted as inline comments).
+      # The findings ride in code_review_result so review_implementation sees them
+      # without re-deriving. Runs once per review entry (not per rework loop).
+      - id: code_review
+        type: agent
+        power: medium
+        prompt: prompts/code-review.md
+        cwd: "{{ docs_repo_path }}"
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          affected_repo_paths: "{{ affected_repo_paths }}"
+          branch: "{{ branch }}"
+          pr_number: "{{ pr_number }}"
+        outputs:
+          - key: code_review_result
+            default:
+              status: skipped
+              findings: []
+              findings_summary: "Automated code review did not run."
+        next: review_implementation
+
+      - id: review_implementation
+        type: agent
+        power: high
+        prompt: prompts/review-implementation.md
+        cwd: "{{ docs_repo_path }}"
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          code_review_result: "{{ code_review_result }}"
+        outputs:
+          - key: review_impl_result
+        next: decide_impl
+
+      - id: decide_impl
+        type: branch
+        path: review_impl_result.status
+        cases:
+          approved: check_impl_feedback # review clean — poll for operator feedback before QA
+          needs_changes: guard_review
+        default: guard_review
+
+      # Cap the review<->apply loop: once max_review_reworks apply passes are spent
+      # without review reaching `approved`, escalate to the operator instead of looping
+      # forever (the findings are real — an unsatisfiable one may need a product
+      # decision). Literal "3" so no Jinja in the branch — keep in sync with
+      # vars.max_review_reworks. Mirrors guard_qa / guard_ci.
+      - id: guard_review
+        type: branch
+        path: review_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3" # == vars.max_review_reworks; literal so no Jinja in branch
+            next: gate_review # review budget spent → escalate to the operator
+        default: apply_review
+
+      - id: apply_review
+        type: agent
+        power: high
+        prompt: prompts/apply-review.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "{{ review_impl_result.notes }}"
+        outputs:
+          - key: impl_result
+        next: verify_review_resolution
+
+      # ── Deterministic, fail-closed resolution gate (anti-gaming) ────────────────
+      # apply_review can CLAIM a finding resolved without producing the proof the
+      # reviewer demanded. This script hands the agent's structured verdict
+      # (review-resolution.json) to `ostler edit settle-review`, which verifies every
+      # cited artifact/assertion against the filesystem and owns the story-status flip.
+      # It OVERWRITES impl_result with the authoritative status so decide_apply_review
+      # branches on verified fact, not self-attestation: a refused (fabricated)
+      # resolution is downgraded to needs_changes and re-reviewed (bounded by
+      # guard_review) instead of being trusted. No verdict file → pass-through.
+      - id: verify_review_resolution
+        type: script
+        script: scripts/verify-review-resolution.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story_slug }}"
+          - "{{ impl_result.status }}"
+          - "{{ impl_result.notes }}"
+        outputs:
+          - key: impl_result
+        next: decide_apply_review
+
+      # Branch on the PER-FINDING settlement (4.3 granularity), as gated by ostler:
+      #   applied  — every finding verified against its cited artifacts → approve and
+      #              EXIT the loop. No full re-review: re-running review_implementation
+      #              here is what let the reviewer re-litigate already-settled findings
+      #              and move goalposts. The deterministic settle IS the re-verify.
+      #   blocked  — a finding the verdict reports unresolvable (e.g. the Surface vs
+      #              "Foundation area" product decision) → escalate THAT finding to the
+      #              operator individually instead of spinning the whole review.
+      #   default  — one or more findings still open (proof missing/wrong) → bump the
+      #              counter and re-apply only those, targeted, via guard_review (which
+      #              keeps the loop bounded at max_review_reworks).
+      - id: decide_apply_review
+        type: branch
+        path: impl_result.status
+        cases:
+          applied: check_impl_feedback # all findings verified — approve, poll feedback, QA
+          blocked: gate_review
+        default: incr_review
+
+      - id: incr_review
+        type: call
+        fn: incr
+        args:
+          value: "{{ review_rework_count.value }}"
+        outputs:
+          - key: review_rework_count
+            wrap: value
+        # Targeted re-apply of the still-open findings — back through guard_review so the
+        # cap still bounds the loop — NOT a fresh review_implementation (4.3).
+        next: guard_review
+
+      # ── Review operator gate (mirrors dev's gate_plan / qa's gate_qa) ───────────
+      # Reached when the review loop exhausts its budget or apply_review reports
+      # `blocked`. In "auto" a high-effort resolver stands in for the human and writes
+      # an answer into context.md; in "human" the halt-and-wait await runs directly.
+      - id: gate_review
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_operator_review
+          auto: resolve_review
+        default: resolve_review
+
+      # Auto-operator for a review block: investigate the unresolved findings, make the
+      # call a human operator would (the product decision, or the targeted fix), and
+      # write the answer into the story's context.md. Flows into await_operator_review,
+      # which consumes an ANSWERED file and proceeds, or halts on an AWAITING one.
+      - id: resolve_review
+        type: agent
+        power: high
+        # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+        # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+        timeout: infinity
+        prompt: prompts/resolve-operator.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          block_kind: "review"
+          block_notes: "{{ review_impl_result.notes }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: await_operator_review
+
+      # Human-in-the-loop review gate. Surfaces the unresolved findings in the story's
+      # context.md and HALTS (non-zero exit); after the operator answers inline and
+      # re-runs, auto-resume re-enters here, consumes the answer, and proceeds to
+      # apply_review_resolved. In auto mode resolve_review has already written it.
+      - id: await_operator_review
+        type: script
+        script: scripts/await_operator.py
+        args:
+          - "{{ story_path }}"
+          - "{{ review_impl_result.notes }}"
+        outputs:
+          - key: operator_input
+          - key: plan_rework_count
+        next: apply_review_resolved
+
+      # Apply the operator's resolution as a targeted fix (mirrors apply_qa_resolved),
+      # carrying their answer as the work. Then reset_review re-seeds a fresh review
+      # budget and re-reviews — so a genuine operator answer gets a clean loop allowance
+      # rather than re-escalating immediately on the spent counter.
+      - id: apply_review_resolved
+        type: agent
+        power: high
+        prompt: prompts/apply-review.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "{{ review_impl_result.notes }}"
+          operator_feedback: "{{ operator_input.content }}"
+        outputs:
+          - key: impl_result
+        next: reset_review
+
+      # ── Non-blocking operator-feedback checkpoint (post-implementation) ─────────
+      # Poll <spec_dir>/feedback.md for human feedback dropped while the run was busy.
+      # NEVER halts: with feedback it routes ONE rework pass through apply-review (with
+      # the feedback as required changes) then re-reviews; with none it proceeds to QA.
+      # check_feedback.py marks the inbox CONSUMED on read, so each drop reworks once.
+      - id: check_impl_feedback
+        type: script
+        script: scripts/check_feedback.py
+        args:
+          - "{{ spec_dir }}/feedback.md"
+        outputs:
+          - key: feedback
+        next: decide_impl_feedback
+
+      - id: decide_impl_feedback
+        type: branch
+        path: feedback.present
+        cases:
+          "yes": apply_impl_feedback # operator left feedback — rework once, then re-review
+          "no": review_done # no feedback — hand off to the QA phase
+        default: review_done
+
+      - id: apply_impl_feedback
+        type: agent
+        power: high
+        prompt: prompts/apply-review.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "" # no review findings here — the operator feedback is the work
+          operator_feedback: "{{ feedback.content }}"
+        outputs:
+          - key: impl_result
+        next: review_implementation
+
+      - id: review_done
+        type: terminal
+
+  # ── qa: the full QA gate cluster (incl. the adversarial auditor) ──────────────
+  qa:
+    name: qa
+    # Standalone: workhorse run coder qa --params '{"story":"CASE-1234","target_env":"dev"}'
+    # Pipeline:   called from qa_phase FlowNode with story/docs_path/epic already set.
+    # Both paths use the same deterministic context → plan → runner control plane.
+    start: prepare_story
+    vars:
+      story: ""         # slug — ostler resolves story_path + spec_dir from this
+      docs_path: ""     # docs repo root; empty → AGENT_REPO_DIR / CWD
+      epic: ""          # epic slug; empty → ostler finds story under any epic
+      operator_mode: "auto"
+      target_env: "local"
+      qa_dir: ""        # absolute path to <spec_dir>/qa/ — set by prepare_story
+      triage_scope_count: 0 # parent-owned rescope budget (scalar), passed in by qa_phase
+      qa_rework_count: { value: 0 }
+      setup_rework_count: { value: 0 }
+      regression_fix_count: { value: 0 }
+      qa_bonus_used: "no"
+    nodes:
+      # Resolve slug → story_path / spec_dir / qa_dir / story_slug via ostler.
+      - id: prepare_story
+        type: script
+        script: scripts/prepare-story.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story }}"
+          - "{{ epic }}"
+        outputs:
+          - key: story_path
+          - key: spec_dir
+          - key: qa_dir
+          - key: story_slug
+        next: decide_qa_story
+
+      - id: decide_qa_story
+        type: branch
+        path: story_path
+        conditions:
+          - op: "=="
+            value: ""
+            next: mark_qa_exhausted
+        default: clear_qa_evidence
+
+      # Ensure spec_dir exists and wipe the qa/ dir so each QA run starts clean.
+      # Unconditional: both standalone and pipeline runs want a fresh evidence slate.
+      - id: clear_qa_evidence
+        type: script
+        script: scripts/clear-qa-evidence.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: qa_cleared
+        next: resolve_qa_context
+
+      # Regenerate the QA render context from the on-disk plan-context.json (qa_run_plan,
+      # qa_stack, impl_instruction_paths) so this flow is self-sufficient: a standalone
+      # re-QA of an already-built story rebuilds exactly what the QA prompts render,
+      # without depending on the dev phase's (isolated) context. Deterministic.
+      - id: resolve_qa_context
+        type: script
+        script: scripts/resolve-impl-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ target_env }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: impl_instruction_paths
+          - key: qa_run_plan
+          - key: qa_stack
+          - key: affected_repo_paths
+          - key: qa_source_roots_json
+        next: detect_qa_okf
+
+      - id: detect_qa_okf
+        type: script
+        script: scripts/detect-okf-docs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: has_okf
+          - key: features_root
+          - key: reason
+        next: build_qa_okf_context
+
+      # Diff the reviewed implementation against HEAD/WORKTREE and write the
+      # machine-readable + Markdown OKF impact packet. The adapter always exits 0;
+      # blocking unmapped health is represented as status=invalid.
+      - id: build_qa_okf_context
+        type: script
+        script: scripts/build-qa-okf-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ story_path }}"
+          - "{{ features_root }}"
+          - "{{ qa_source_roots_json }}"
+          - "HEAD"
+          - "WORKTREE"
+          - "{{ docs_path }}"
+        outputs:
+          - key: qa_context_build
+        next: validate_qa_okf_context
+
+      - id: validate_qa_okf_context
+        type: script
+        script: scripts/validate-qa-okf-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ qa_context_build.status }}"
+        outputs:
+          - key: qa_context_result
+        next: decide_qa_okf_context
+
+      - id: decide_qa_okf_context
+        type: branch
+        path: qa_context_result.status
+        cases:
+          passed: plan_qa
+          invalid: guard_qa_context
+        default: guard_qa_context
+
+      - id: guard_qa_context
+        type: branch
+        path: qa_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3"
+            next: mark_qa_exhausted
+        default: repair_qa_context
+
+      # Repair implementation grounding only. Normative author-owned behavior may
+      # not be weakened to make the implementation or context packet look healthy.
+      - id: repair_qa_context
+        type: agent
+        power: medium
+        prompt: prompts/repair-qa-context.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          docs_path: "{{ docs_path }}"
+          context_notes: "{{ qa_context_result.notes }}"
+        outputs:
+          - key: qa_context_repair
+          - key: qa_result
+        next: decide_qa_context_repair
+
+      - id: decide_qa_context_repair
+        type: branch
+        path: qa_context_repair.status
+        cases:
+          repaired: incr_qa_context
+          blocked: gate_qa
+        default: gate_qa
+
+      - id: incr_qa_context
+        type: call
+        fn: incr
+        args:
+          value: "{{ qa_rework_count.value }}"
+        outputs:
+          - key: qa_rework_count
+            wrap: value
+        next: build_qa_okf_context
+
+      # Author one mandatory YAML plan for every touched surface. The human-readable
+      # Markdown runbook explains its AC + OKF obligation coverage.
+      - id: plan_qa
+        type: agent
+        power: medium
+        prompt: prompts/plan-qa.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          docs_path: "{{ docs_path }}"
+          target_env: "{{ target_env }}"
+          context_status: "{{ qa_context_result.status }}"
+          context_notes: "{{ qa_context_result.notes }}"
+          plan_validation_notes: "{{ qa_plan_validation.notes }}"
+        outputs:
+          - key: qa_plan_result
+        next: validate_qa_plan
+
+      - id: validate_qa_plan
+        type: script
+        script: scripts/validate-qa-plan.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: qa_plan_validation
+        next: decide_qa_plan_validation
+
+      - id: decide_qa_plan_validation
+        type: branch
+        path: qa_plan_validation.status
+        cases:
+          passed: run_qa_plan
+          invalid: guard_qa_plan
+        default: guard_qa_plan
+
+      - id: guard_qa_plan
+        type: branch
+        path: qa_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3"
+            next: mark_qa_exhausted
+        default: incr_qa_plan
+
+      - id: incr_qa_plan
+        type: call
+        fn: incr
+        args:
+          value: "{{ qa_rework_count.value }}"
+        outputs:
+          - key: qa_rework_count
+            wrap: value
+        next: plan_qa
+
+      # Ostler owns all command/browser/device execution, lifecycle cleanup, the
+      # append-only run log, manifest, and evidence artifacts.
+      - id: run_qa_plan
+        type: script
+        script: scripts/run-qa-plan.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: qa_result
+        next: qa_interpret_and_explore
+
+      - id: qa_interpret_and_explore
+        type: agent
+        power: medium
+        prompt: prompts/qa-story.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          docs_path: "{{ docs_path }}"
+          target_env: "{{ target_env }}"
+          runner_status: "{{ qa_result.status }}"
+          runner_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_interpretation
+        next: decide_qa_interpretation
+
+      - id: decide_qa_interpretation
+        type: branch
+        path: qa_interpretation.action
+        cases:
+          rerun: validate_qa_plan
+          continue: decide_qa_run
+        default: decide_qa_run
+
+      # Four-state fail-closed routing. Invalid is a planning/context defect;
+      # blocked is setup/operator work; failed is product-defect triage; only a
+      # runner pass can reach deterministic evidence verification and audit.
+      - id: decide_qa_run
+        type: branch
+        path: qa_result.status
+        cases:
+          invalid: guard_qa_plan
+          blocked: file_backlog_items
+          failed: file_backlog_items
+          passed: verify_qa_evidence
+        default: guard_qa_plan
+
+      # ── QA evidence gate (deterministic, fail-closed) ───────────────────────────
+      # Confirm the runner-produced context, plan, ledger, manifest, and evidence are
+      # present and coherent. Malformed deterministic evidence is `invalid`, never a
+      # product failure and never a pass that an agent may upgrade.
+      - id: verify_qa_evidence
+        type: script
+        script: scripts/verify_qa_evidence.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ qa_result.status }}"
+          - "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_result
+        next: decide_qa_evidence
+
+      # Only a runner pass with valid deterministic evidence reaches the auditor.
+      - id: decide_qa_evidence
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: audit_qa
+          invalid: guard_qa_plan
+          failed: file_backlog_items
+          blocked: file_backlog_items
+        default: guard_qa_plan
+
+      # ── Independent adversarial QA auditor ──────────────────────────────────────
+      # On a gate-validated PASS: re-judge the captured evidence and try to REFUTE it. A
+      # refute flips qa_result to `failed` with the concrete divergences as a worklist —
+      # two independent agents must agree before a story commits.
+      - id: audit_qa
+        type: agent
+        # Adversarial re-judging of captured evidence — only worth running on a model that
+        # can actually refute a plausible-but-wrong pass. Pin opencode to GLM.
+        power: high
+        prompt: prompts/audit-qa.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_status: "{{ qa_result.status }}"
+          qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_result
+        next: file_backlog_items
+
+      # ── coder → backlog edge ────────────────────────────────────────────────────
+      # Drain any genuinely separate-scope work the coder recorded in
+      # <spec_dir>/backlog-items.json into the repo backlog. Best-effort: no items / no
+      # backlog ⇒ no-op; it never fails the run.
+      - id: file_backlog_items
+        type: script
+        script: scripts/append-backlog-item.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: backlog_items_appended
+          - key: backlog_items_skipped
+        next: decide_qa
+
+      - id: decide_qa
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: check_qa_feedback # QA passed — poll for operator feedback before commit/done
+          failed: triage_qa # classify findings: scope adjacent/hardening IN, or in-AC fix
+          invalid: guard_qa_plan # deterministic plan/evidence defect, bounded repair
+          blocked:
+            guard_setup # blocked = the dev ENVIRONMENT could not be brought up to run
+            # the ACs (not a code defect, not yet an operator wall). An agent first tries
+            # to make the stack QA-capable (setup_fix) and re-runs QA; only if that loop
+            # is exhausted (or the blocker is genuinely human-only) does guard_setup/
+            # decide_setup escalate to gate_qa. Do NOT treat as `failed`.
+        default: decide_qa_fixable
+
+      # ── Triager: fix-forward instead of deferring ───────────────────────────────
+      # Reached on a QA `failed` verdict (the primary verdict, a verify-gate downgrade,
+      # or an auditor refute — all funnel through decide_qa as `failed`). Rather than
+      # backlog every finding, the triager classifies each one and decides the route:
+      #   - in-AC failure (the story's own code is wrong vs a stated AC) → qa_fix: the
+      #     existing bounded apply_qa_fixes loop, no story edit.
+      #   - adjacent defect (a real failure on a surface this story touches, just
+      #     outside the AC wording) OR hardening (an NFR weakness this failure exposed)
+      #     → it AMENDS story.md's ACs to absorb the work + logs it, then rescope: back
+      #     to dev (plan+implement) so the new ACs are implemented AND re-validated by QA.
+      #   - orthogonal/large (a different surface, a multi-day refactor) → it files the
+      #     item into <spec_dir>/backlog-items.json (drained by file_backlog_items next
+      #     pass) and does NOT grow this story.
+      # It must NOT overwrite qa_result (the qa_fix path still needs qa_result.notes).
+      - id: triage_qa
+        type: agent
+        power: medium
+        prompt: prompts/triage-qa.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+          triage_scope_count: "{{ triage_scope_count }}" # scalar — renders cleanly across the arg boundary
+          max_triage_scopes: "2" # == vars.max_triage_scopes; informs the agent of the budget
+        outputs:
+          - key: triage_action
+            default: qa_fix # safe default: never rescope on a malformed/missing result
+          - key: qa_failure_class
+            default: code # safe default: a malformed/missing class never earns the bonus pass
+        next: guard_triage
+
+      # Cap the dev<->qa rescope loop. Once max_triage_scopes rescopes are spent, force
+      # the in-AC fix path regardless of what the triager proposed — any still-unscoped
+      # adjacent items were filed to backlog by the triager on this (budget-spent) pass,
+      # so they are not lost. Literal "2" so no Jinja in the branch — keep in sync with
+      # vars.max_triage_scopes.
+      - id: guard_triage
+        type: branch
+        path: triage_scope_count
+        conditions:
+          - op: ">="
+            value: "2"
+            next: decide_qa_fixable # budget spent → fix in-AC, defer the rest
+        default: decide_triage
+
+      - id: decide_triage
+        type: branch
+        path: triage_action
+        cases:
+          rescope: incr_triage # ACs amended → re-implement (bumps the budget, exits to dev)
+          qa_fix: decide_qa_fixable # pure in-AC → existing bounded fix loop
+        default: decide_qa_fixable
+
+      - id: incr_triage
+        type: call
+        fn: incr
+        args:
+          value: "{{ triage_scope_count }}"
+        outputs:
+          - key: triage_scope_count
+        next: mark_qa_rescope
+
+      # Stamp the escape status the parent branches on (decide_qa_outcome: rescope->dev).
+      # triage_scope_count crosses back via the qa_phase outputs so the bumped budget
+      # survives the dev->review->qa round-trip.
+      - id: mark_qa_rescope
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "qa_status=rescope"
+        outputs:
+          - key: qa_status
+        next: qa_done
+
+      # target_env=dev: we don't own the code being QA'd, so fixes are not our job.
+      # Write a Jira comment with the findings and terminate. target_env=local: proceed
+      # to the bounded apply_qa_fixes loop as normal.
+      - id: decide_qa_fixable
+        type: branch
+        path: target_env
+        cases:
+          dev: report_qa_dev
+        default: guard_qa
+
+      # Write a Jira-ready comment summarising the QA failures found, then terminate.
+      # Used only when target_env=dev — we observed a failure in code we do not own,
+      # so the right action is to report it, not attempt fixes.
+      - id: report_qa_dev
+        type: agent
+        power: medium
+        prompt: prompts/report-qa-dev.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_report_result
+        next: mark_qa_exhausted
+
+      # ── Non-blocking operator-feedback checkpoint (post-QA) ─────────────────────
+      # QA passed — before finalizing, poll <spec_dir>/feedback.md for human feedback.
+      # NEVER halts: with feedback it routes ONE pass through apply-qa-fixes then re-runs
+      # QA; with none it proceeds to the regression gate.
+      - id: check_qa_feedback
+        type: script
+        script: scripts/check_feedback.py
+        args:
+          - "{{ spec_dir }}/feedback.md"
+        outputs:
+          - key: feedback
+        next: decide_qa_feedback
+
+      - id: decide_qa_feedback
+        type: branch
+        path: feedback.present
+        cases:
+          "yes": apply_qa_feedback # operator left feedback — apply it, then re-QA
+          "no": detect_regression # no feedback — run the UI journey regression gate
+        default: detect_regression
+
+      - id: apply_qa_feedback
+        type: agent
+        power: medium
+        prompt: prompts/apply-qa-fixes.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "" # no QA failures here — the operator feedback is the work
+          operator_feedback: "{{ feedback.content }}"
+        outputs:
+          - key: qa_result
+        next: build_qa_okf_context # product feedback may change impact/obligations
+
+      # ── User-journey regression gate (deterministic run + fix + reverify) ───────
+      # The story's own QA passed, but per-AC QA can miss breakage OUTSIDE the story's
+      # scope. detect_regression (cheap script) maps touched_layers to a platform; pure
+      # non-UI stories get "none" and skip without spawning an agent. run_regression
+      # (script) mechanically runs the committed journey suite for UI-touching stories —
+      # no LLM self-reported verdict. A real failure routes to fix_regression (agent),
+      # which fixes every failure in-branch (no distinction between a regression this
+      # story caused, a stale/flaky spec, or a pre-existing bug — all get fixed the same
+      # way; there is no exclude-to-backlog escape hatch). The fix is never trusted on
+      # its own word: incr_regression_fix loops back to run_regression to re-verify
+      # mechanically. guard_regression_fix bounds the loop; on exhaustion it falls
+      # through to the existing QA-fix loop (guard_qa) as a normal QA failure. blocked
+      # (stack unreachable) routes to the existing setup-fix loop, same as before.
+      - id: detect_regression
+        type: script
+        script: scripts/detect-regression-platform.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: regression
+        next: gate_regression
+
+      - id: gate_regression
+        type: branch
+        path: regression.platform
+        cases:
+          web: run_regression
+          mobile: run_regression
+          both: run_regression
+          none: flush_root_screenshots # no UI layer touched (infra / API-only / docs)
+        default: flush_root_screenshots
+
+      - id: run_regression
+        type: script
+        script: scripts/run-regression-suite.py
+        # No node-level timeout field on script nodes; the script self-bounds each
+        # subprocess call (WEB_TIMEOUT/MOBILE_TIMEOUT in run-regression-suite.py).
+        args:
+          - "{{ spec_dir }}"
+          - "{{ qa_dir }}"
+          - "{{ regression.platform }}"
+        outputs:
+          - key: regression_run
+          - key: qa_result # mirrors regression_run.status/notes; only guard_setup's blocked path reads this
+        next: decide_regression_run
+
+      - id: decide_regression_run
+        type: branch
+        path: regression_run.status
+        cases:
+          passed: flush_root_screenshots # journeys green → finalize
+          blocked: guard_setup # real stack couldn't be brought up → existing setup-fix loop
+          failed: guard_regression_fix
+        default: guard_regression_fix
+
+      - id: guard_regression_fix
+        type: branch
+        path: regression_fix_count.value
+        conditions:
+          - op: ">="
+            value: "3" # == vars.max_regression_fix_reworks; literal so no Jinja in branch
+            next: mark_regression_unresolved # fix attempts spent → fall through to the QA-fix loop
+        default: fix_regression
+
+      - id: fix_regression
+        type: agent
+        power: high
+        # Reproducing + fixing real-stack journey failures is slow but bounded.
+        # 5400s: the e2e-journeys suite alone takes 25-30 min; 2400s forced three
+        # consecutive timeout/retry cycles on 2026-07-04 (suite run + diagnosis
+        # cannot fit in 40 min). Rule: node timeout >= longest mandatory
+        # verification command x1.5 + agent working time.
+        timeout: 5400
+        prompt: prompts/fix-regression.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          platform: "{{ regression.platform }}"
+          service_paths: "{{ regression.paths }}"
+          regression_run_status: "{{ regression_run.status }}"
+          regression_run_failing_tests: "{{ regression_run.failing_tests }}"
+          regression_run_notes: "{{ regression_run.notes }}"
+          regression_run_log_path: "{{ regression_run.log_path }}"
+          regression_fix_count: "{{ regression_fix_count.value }}"
+        outputs:
+          - key: regression_fix_result
+        next: incr_regression_fix
+
+      # Never trust fix_regression's own claim — always loop back to the deterministic
+      # runner to re-verify mechanically.
+      - id: incr_regression_fix
+        type: call
+        fn: incr
+        args:
+          value: "{{ regression_fix_count.value }}"
+        outputs:
+          - key: regression_fix_count
+            wrap: value
+        next: run_regression
+
+      # Budget exhausted: stamp a failed qa_result summarizing what's still failing,
+      # then fall into the existing bounded QA-fix loop / operator-gate machinery exactly
+      # as the old decide_regression's failed case already did — no new escalation path.
+      - id: mark_regression_unresolved
+        type: script
+        script: scripts/mark-regression-unresolved.py
+        args:
+          - "{{ regression_run.notes }}"
+          - "{{ regression_fix_count.value }}"
+        outputs:
+          - key: qa_result
+        next: guard_qa
+
+      # ── Flush stray screenshots before committing ───────────────────────────────
+      # Relocate UNTRACKED top-level image files into the story's qa/ dir so the next
+      # commit doesn't capture them as repo-root clutter. Best-effort; degrades to no-op.
+      - id: flush_root_screenshots
+        type: script
+        script: scripts/flush-root-screenshots.py
+        args:
+          - "{{ spec_dir }}"
+        outputs:
+          - key: screenshots_flushed
+          - key: screenshots_kept_tracked
+        next: check_sentinels
+
+      # ── Sentinel ID pre-commit gate ─────────────────────────────────────────────
+      # Grep lines added by this story for fabricated placeholder IDs and unreconciled
+      # "TODO/falls back/stub until" strings in shipped (non-test) source. Only downgrades
+      # a passing story — a sentinel hit routes to the bounded QA-fix loop.
+      - id: check_sentinels
+        type: script
+        script: scripts/check-sentinel-ids.py
+        args:
+          - "{{ story_slug }}"
+        outputs:
+          - key: qa_result
+        next: decide_sentinels
+
+      - id: decide_sentinels
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: mark_qa_passed
+          failed: guard_qa # sentinel failure → bounded QA-fix loop (same budget as QA reworks)
+        default: guard_qa
+
+      # Green all the way through QA + regression + sentinels → return passed to the
+      # parent, which commits the story.
+      - id: mark_qa_passed
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "qa_status=passed"
+        outputs:
+          - key: qa_status
+        next: decide_qa_pass_report
+
+      # target_env=dev: write a Jira comment summarising what passed before terminating.
+      # target_env=local: skip directly to qa_done (we own the code, no comment needed).
+      - id: decide_qa_pass_report
+        type: branch
+        path: target_env
+        cases:
+          dev: report_qa_dev_pass
+        default: qa_done
+
+      - id: report_qa_dev_pass
+        type: agent
+        power: medium
+        prompt: prompts/report-qa-dev-pass.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_report_result
+        next: qa_done
+
+      - id: guard_qa
+        type: branch
+        path: qa_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3" # == vars.max_qa_reworks; literal so no Jinja in branch
+            next: guard_qa_bonus # budget spent — one-shot verification-only bonus may apply
+        default: apply_qa_fixes
+
+      # ── One-shot verification-only bonus round ──────────────────────────────────
+      # All three give-ups in run epic-coder-default (2026-07-02/03) exhausted the QA
+      # budget one mechanical EVIDENCE step from done (evidence refresh, driver bug,
+      # sweep coverage) with the product code already green — each then needed a human
+      # to finish minutes of work. When triage classifies the terminal failure as
+      # evidence-only (qa_failure_class == "evidence": gates green, no code change
+      # requested), grant exactly ONE extra fix+re-QA+gate+audit cycle instead of
+      # giving up. qa_bonus_used starts at "no" in the flow vars and makes it one-shot;
+      # any other class — or a spent bonus — exhausts exactly as before.
+      - id: guard_qa_bonus
+        type: branch
+        path: qa_bonus_used
+        cases:
+          "yes": mark_qa_exhausted # bonus already spent — exhaust as before
+        default: decide_bonus_class
+
+      - id: decide_bonus_class
+        type: branch
+        path: qa_failure_class
+        cases:
+          "evidence": grant_qa_bonus
+        default: mark_qa_exhausted # code/environment/unknown — no bonus
+
+      - id: grant_qa_bonus
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "qa_bonus_used=yes"
+        outputs:
+          - key: qa_bonus_used
+        next: apply_qa_fixes
+
+      # Max QA reworks spent → return exhausted; the parent's decide_qa_fail routes by
+      # mode (epic: flag + continue; story: fail). qa_rework_count crosses back for the
+      # epic-mode flag.
+      - id: mark_qa_exhausted
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "qa_status=exhausted"
+        outputs:
+          - key: qa_status
+        next: qa_done
+
+      - id: apply_qa_fixes
+        type: agent
+        # The fix loop that must actually CONVERGE within max_qa_reworks. This is exactly
+        # where mimo rationalized instead of fixing and burned the whole budget; pin
+        # opencode to GLM.
+        power: high
+        prompt: prompts/apply-qa-fixes.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_result
+        next: incr_qa
+
+      # After a product fix, rebuild impact/context before re-planning and re-running.
+      - id: incr_qa
+        type: call
+        fn: incr
+        args:
+          value: "{{ qa_rework_count.value }}"
+        outputs:
+          - key: qa_rework_count
+            wrap: value
+        next: build_qa_okf_context
+
+      # ── Environment setup-fix gate (blocked → make the dev stack QA-capable) ────
+      # QA `blocked` means the dev ENVIRONMENT could not be brought up — NOT that the
+      # code is wrong. An agent does anything it can to make the stack runnable
+      # (setup_fix), then RE-RUNS QA. guard_setup bounds the loop; once max_setup_reworks
+      # attempts are spent — or setup_fix reports the wall is human-only — it escalates to
+      # the operator gate (gate_qa). setup_fix must NOT edit product source.
+      - id: guard_setup
+        type: branch
+        path: setup_rework_count.value
+        conditions:
+          - op: ">="
+            value: "2" # == vars.max_setup_reworks; literal so no Jinja in branch
+            next: gate_qa # setup attempts spent → escalate to the operator gate
+        default: setup_fix
+
+      - id: setup_fix
+        type: agent
+        # glm-5.2 under the opencode controller; the default backend model otherwise.
+        # Diagnosing and standing up a broken dev stack is non-trivial agentic work.
+        power: high
+        # Bringing up a devstack (compose, emulators, npm ci, playwright install) is slow
+        # but bounded — a generous wall-clock budget, not infinite.
+        timeout: 2400
+        prompt: prompts/setup-fix.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: setup_result
+            default: { status: unfixable } # if the fixer exhausts retries → escalate, don't loop
+        next: incr_setup
+
+      - id: incr_setup
+        type: call
+        fn: incr
+        args:
+          value: "{{ setup_rework_count.value }}"
+        outputs:
+          - key: setup_rework_count
+            wrap: value
+        next: decide_setup
+
+      - id: decide_setup
+        type: branch
+        path: setup_result.status
+        cases:
+          ready: run_qa_plan # same validated plan, now with a runnable environment
+          unfixable: gate_qa # genuinely human-only (secret/deploy/hardware) → operator
+        default: run_qa_plan
+
+      # Operator-mode switch for the QA gate (mirrors dev's gate_plan).
+      - id: gate_qa
+        type: branch
+        path: operator_mode
+        cases:
+          human: await_operator_qa
+          auto: resolve_qa
+        default: resolve_qa
+
+      # Auto-operator for a QA block. Writes the answer into the story's context.md, then
+      # flows into await_operator_qa (consume + proceed, or halt if it escalated).
+      - id: resolve_qa
+        type: agent
+        power: high
+        # Unbounded: the resolver does open-ended unblocking work and must not be cut off
+        # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
+        timeout: infinity
+        prompt: prompts/resolve-operator.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          block_kind: "qa"
+          block_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: resolve_status
+            default: { decision: "answered" }
+        next: await_operator_qa
+
+      # QA counterpart of dev's await_operator. Reached when QA returns `blocked` (a
+      # deploy or live integration only the operator can provide). Same human-in-the-loop
+      # state machine, surfacing the QA block notes. On resume it flows through
+      # decide_operator_scope_qa into apply_qa_resolved (targeted fix) unless the operator
+      # set SCOPE: epic. In auto mode resolve_qa has already written the answer here.
+      - id: await_operator_qa
+        type: script
+        script: scripts/await_operator.py
+        args:
+          - "{{ story_path }}"
+          - "{{ qa_result.notes }}"
+        outputs:
+          - key: operator_input
+          - key: plan_rework_count
+        next: decide_operator_scope_qa
+
+      # A resolved QA block is almost never a reason to re-derive the plan: the operator
+      # supplied a missing env/credential/deploy, so the right next step is a TARGETED code
+      # fix + re-QA, which stays inside the bounded QA loop. Only an explicit SCOPE: epic
+      # escapes the flow (qa_status=replan) so the queue level replans the epic.
+      - id: decide_operator_scope_qa
+        type: branch
+        path: operator_input.scope
+        cases:
+          epic: mark_qa_replan
+          story: apply_qa_resolved
+        default: apply_qa_resolved
+
+      # Stamp the escape status the parent branches on (operator_input crosses back too,
+      # carrying the answer to replan_epic).
+      - id: mark_qa_replan
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "qa_status=replan"
+        outputs:
+          - key: qa_status
+        next: qa_done
+
+      # Apply the operator's resolution as a targeted QA fix. Mirrors apply_qa_fixes but
+      # also carries the operator's answer so the fix has the unblocking context. Feeds
+      # incr_qa, keeping the bounded QA loop + guard_qa cap intact.
+      - id: apply_qa_resolved
+        type: agent
+        power: medium
+        prompt: prompts/apply-qa-fixes.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          qa_dir: "{{ qa_dir }}"
+          qa_notes: "{{ qa_result.notes }}"
+          operator_feedback: "{{ operator_input.content }}"
+        outputs:
+          - key: qa_result
+        next: incr_qa
+
+      # Single terminal for all three exits, distinguished by qa_status (passed /
+      # exhausted / replan), which a mark_* node stamped on each path.
+      - id: qa_done
+        type: terminal
+
+  # ── fix: standalone backlog drain ──────────────────────────────────────────────
+  # Self-contained copy of the nested fix-drain detour (see select_fix_item through
+  # decide_post_drain above), runnable with no epic/story selected and no branch
+  # cut: workhorse run coder fix --params '{"docs_path":"/path/to/vigilant-octo"}'
+  # Isolated node namespace (flows never share nodes with the main graph or each
+  # other) — every id below is local to this flow. Only real difference from the
+  # nested version: there is no enclosing story commit to ride along in, so each
+  # drained item (shipped OR blocked) is committed right here, one commit per item,
+  # before looping back — no push, no PR, same "current branch, no new branch"
+  # spirit as the nested case.
+  fix:
+    name: fix
+    start: resolve_workspace
+    vars:
+      docs_path: ""      # docs repo root; empty → AGENT_REPO_DIR / CWD
+      target_env: "local"
+    nodes:
+      - id: resolve_workspace
+        type: script
+        script: scripts/resolve-workspace-dirs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: workspace_dirs
+        next: select_fix_item
+
+      - id: select_fix_item
+        type: script
+        script: scripts/select-next-fix-item.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: has_fix
+          - key: fix_bullet_id
+          - key: fix_bullet_text
+          - key: reason
+        refuel: fix_bullet_id
+        next: decide_fix_item
+
+      - id: decide_fix_item
+        type: branch
+        path: has_fix
+        cases:
+          "no": done
+          "yes": seed_fix_story
+        default: done
+
+      - id: seed_fix_story
+        type: script
+        script: scripts/seed-fix-story.py
+        args:
+          - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+          - "{{ get_node_output('select_fix_item', 'fix_bullet_text') }}"
+          - ""
+          - ""
+          - "{{ docs_path }}"
+        outputs:
+          - key: epic
+          - key: epic_dir
+          - key: story_slug
+          - key: story_dir
+          - key: story_path
+          - key: bullet_id
+          - key: reason
+        next: prepare_fix_story
+
+      - id: prepare_fix_story
+        type: script
+        script: scripts/prepare-story.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ get_node_output('seed_fix_story', 'story_slug') }}"
+          - "{{ get_node_output('seed_fix_story', 'epic') }}"
+        outputs:
+          - key: story_path
+          - key: spec_dir
+          - key: qa_dir
+          - key: story_slug
+        next: plan_fix
+
+      - id: plan_fix
+        type: agent
+        power: high
+        prompt: prompts/plan-story.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+          spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+        outputs:
+          - key: plan_result
+        next: decide_plan_fix
+
+      - id: decide_plan_fix
+        type: branch
+        path: plan_result.status
+        cases:
+          done: resolve_fix_impl_context
+          blocked: fix_give_up
+        default: resolve_fix_impl_context
+
+      - id: resolve_fix_impl_context
+        type: script
+        script: scripts/resolve-impl-context.py
+        args:
+          - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          - "{{ target_env }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: impl_instruction_paths
+          - key: qa_run_plan
+          - key: qa_stack
+          - key: dispatch_list
+          - key: dispatch_count
+          - key: affected_repos
+          - key: affected_repo_paths
+        next: branch_fix_code_repos
+
+      - id: branch_fix_code_repos
+        type: script
+        script: scripts/branch-code-repos.py
+        args:
+          - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+        outputs:
+          - key: branched
+          - key: already_on_branch
+        next: select_fix_layer
+
+      - id: select_fix_layer
+        type: script
+        script: scripts/select-next-layer.py
+        args:
+          - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          - "-1"
+        outputs:
+          - key: has_next_layer
+          - key: current_layer_index
+          - key: current_layer
+        next: decide_fix_layer
+
+      - id: decide_fix_layer
+        type: branch
+        path: has_next_layer
+        cases:
+          "yes": implement_fix
+          "no": check_fix
+        default: check_fix
+
+      - id: implement_fix
+        type: agent
+        power: high
+        prompt: prompts/implement-plan.md
+        cwd: "{{ current_layer.cwd }}"
+        # See implement_layer's comment: cwd is one service repo, story/plan files live
+        # in the docs repo — grant it (and any other affected repo) explicitly.
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+          spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          plan_file: "{{ current_layer.plan_file }}"
+          service_path: "{{ current_layer.service_path }}"
+          service_type: "{{ current_layer.type }}"
+          verification: "{{ current_layer.verification }}"
+        outputs:
+          - key: impl_result
+        next: check_fix
+
+      - id: check_fix
+        type: agent
+        power: high
+        prompt: prompts/qa-story.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+          spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+          docs_path: "{{ docs_path }}"
+          target_env: "{{ target_env }}"
+        outputs:
+          - key: qa_result
+        next: decide_fix_check
+
+      - id: decide_fix_check
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: prune_fix_item
+        default: apply_fix_once
+
+      - id: apply_fix_once
+        type: agent
+        power: high
+        prompt: prompts/apply-qa-fixes.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+          spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+          qa_notes: "{{ get_node_output('check_fix', 'qa_result').notes }}"
+        outputs:
+          - key: qa_result
+        next: recheck_fix
+
+      - id: recheck_fix
+        type: agent
+        power: high
+        prompt: prompts/qa-story.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ get_node_output('prepare_fix_story', 'story_path') }}"
+          spec_dir: "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+          qa_dir: "{{ get_node_output('prepare_fix_story', 'qa_dir') }}"
+          docs_path: "{{ docs_path }}"
+          target_env: "{{ target_env }}"
+        outputs:
+          - key: qa_result
+        next: decide_recheck
+
+      - id: decide_recheck
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: prune_fix_item
+        default: fix_give_up
+
+      - id: prune_fix_item
+        type: script
+        script: scripts/prune-fix-item.py
+        args:
+          - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: pruned
+          - key: bullet_id
+          - key: reason
+        next: commit_fix_item
+
+      - id: fix_give_up
+        type: script
+        script: scripts/mark-fix-blocked.py
+        args:
+          - "{{ get_node_output('select_fix_item', 'fix_bullet_id') }}"
+          - "blocked in fix loop (plan blocked, or QA still failing after one retry)"
+          - "{{ docs_path }}"
+        outputs:
+          - key: marked
+          - key: bullet_id
+          - key: reason
+        next: commit_fix_item
+
+      # Standalone-only: commit this one drained item onto the CURRENT branch.
+      # Reuses commit-story.py unchanged — it resolves affected repos from THIS
+      # fix's own plan-context.json (via prepare_fix_story's spec_dir), so each fix
+      # commits exactly the repos its own plan touched. No push, no PR.
+      - id: commit_fix_item
+        type: script
+        script: scripts/commit-story.py
+        args:
+          - "{{ get_node_output('seed_fix_story', 'epic') }}"
+          - "{{ get_node_output('prepare_fix_story', 'story_slug') }}"
+          - "{{ get_node_output('prepare_fix_story', 'spec_dir') }}"
+        outputs:
+          - key: committed
+        next: select_fix_item
+
+      - id: done
+        type: terminal
+
+  # ── fix_ci: per-repo CI diagnosis + fix ──────────────────────────────────────
+  # Iterates workspace repos (or a single named repo) and runs the fix-ci agent
+  # in each repo's CWD, picking up that repo's flavor prompt if one exists at
+  # <repo_root>/.agents/flavors/coder/fix-ci.md.
+  # Standalone: workhorse run coder fix_ci --params '{"repo":"web-app","branch":"feat/EPIC-X","ci_summary":"..."}'
+  fix_ci:
+    name: fix_ci
+    # Standalone: workhorse run coder fix_ci --params '{"repo":"mobile-app","branch":"CASE-4374"}'
+    # From the epic gate: branch = ci_epic, ci_summary pre-populated by await_ci.
+    start: resolve_workspace
+    vars:
+      repo: ""           # explicit repo name; empty = all workspace repos
+      branch: ""         # full branch name (e.g. feat/EPIC-X or CASE-1234)
+      pr_number: ""      # PR number (e.g. "450"); empty = resolve by branch name
+      ci_summary: ""     # CI failure summary; empty = poll GitHub on first entry
+      docs_path: ""      # docs repo root
+      processed_repos: "[]"
+      ci_attempts: "0"   # fix→push→await cycles; capped at 3
+    nodes:
+      - id: resolve_workspace
+        type: script
+        script: scripts/resolve-workspace-dirs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: workspace_dirs
+        next: select_ci_repo
+
+      # Pick the next unprocessed repo from the workspace. When `repo` is set, yields
+      # it once then returns has_repo=no. When empty, iterates all workspace repos in
+      # order, skipping already-processed ones.
+      - id: select_ci_repo
+        type: script
+        script: scripts/select-ci-fix-repo.py
+        args:
+          - "{{ repo }}"
+          - "{{ ci_summary }}"
+          - "{{ docs_path }}"
+          - "{{ processed_repos }}"
+        outputs:
+          - key: has_repo
+          - key: current_repo
+          - key: current_repo_cwd
+          - key: processed_repos
+        next: decide_ci_repo
+
+      - id: decide_ci_repo
+        type: branch
+        path: has_repo
+        cases:
+          "yes": poll_ci
+          "no": fix_ci_done
+        default: fix_ci_done
+
+      # Poll GitHub Actions for the current CI state of the branch.
+      # pr_number pins to a specific PR so re-opened or multiple PRs on the same
+      # branch don't cause the wrong run to be evaluated.
+      - id: poll_ci
+        type: script
+        script: scripts/await-pr-checks.py
+        cwd: "{{ current_repo_cwd }}"
+        args:
+          - "{{ branch }}"
+          - ""   # base_branch — not used by the script, passed for interface parity
+          - "{{ pr_number }}"
+        outputs:
+          - key: ci_status
+          - key: ci_summary
+        next: decide_ci
+
+      - id: decide_ci
+        type: branch
+        path: ci_status
+        cases:
+          passed: select_ci_repo     # this repo is green; move to the next
+          unavailable: select_ci_repo
+          failed: guard_ci_attempts
+        default: guard_ci_attempts
+
+      # Cap the fix→push→await loop at 3 attempts per repo before giving up.
+      - id: guard_ci_attempts
+        type: branch
+        path: ci_attempts
+        conditions:
+          - op: ">="
+            value: "3"
+            next: fix_ci_done
+        default: fix_ci_agent
+
+      # Diagnoses the failing checks and commits a fix on the branch.
+      # cwd is set to the per-repo root so workhorse resolves any flavor override
+      # from <repo_root>/.agents/flavors/coder/fix-ci.md automatically.
+      - id: fix_ci_agent
+        type: agent
+        power: medium
+        prompt: prompts/fix-ci.md
+        cwd: "{{ current_repo_cwd }}"
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          ci_epic: "{{ branch }}"
+          ci_summary: "{{ ci_summary }}"
+        outputs:
+          - key: fix_ci_result
+        next: push_ci_fix
+
+      # Push the fix commit to the remote so GitHub triggers a new CI run.
+      - id: push_ci_fix
+        type: script
+        script: scripts/push-ci.py
+        cwd: "{{ current_repo_cwd }}"
+        args:
+          - "{{ branch }}"
+        outputs:
+          - key: push_status
+        next: decide_push_fix
+
+      - id: decide_push_fix
+        type: branch
+        path: push_status
+        cases:
+          pushed: incr_ci_attempts
+          unavailable: incr_ci_attempts
+          failed: fix_ci_done   # can't land the fix — stop for this repo
+        default: fix_ci_done
+
+      - id: incr_ci_attempts
+        type: call
+        fn: incr
+        args:
+          value: "{{ ci_attempts }}"
+        outputs:
+          - key: ci_attempts
+        next: poll_ci   # re-poll; await new run triggered by the push
+
+      - id: fix_ci_done
+        type: terminal
+
+  # ── Dream: offline self-reflection / consolidation (standalone flow) ───────────
+  # Runs AFTER the build work, like sleep — never inline in the per-story pipeline, so
+  # it can't slow or gate a story. It consolidates a whole run's PROCESS record (loops,
+  # stalls, retries from events.jsonl + per-node transcripts) into concrete, layered
+  # workflow-improvement proposals, drained into a durable, deduplicated ledger a human
+  # reviews. Standalone:
+  #   workhorse run coder dream --params '{"run_dir":"","docs_path":"."}'
+  # (empty run_dir → newest non-dream run under .agents/runs). Trigger it on idle, after
+  # an epic, or on a schedule — the dream never mutates the workflow itself.
+  dream:
+    name: dream
+    start: gather_run_evidence
+    vars:
+      run_dir: ""    # coder run to reflect on; empty → newest non-dream run
+      docs_path: ""  # repo root; empty → AGENT_REPO_DIR / CWD
+      epic: ""       # optional focus
+    nodes:
+      # Deterministic digest of events.jsonl (+ nested _flow) → loops, slow steps, path,
+      # session pointers. Grounds the reflection in the real process, not a guess.
+      - id: gather_run_evidence
+        type: script
+        script: scripts/gather-run-evidence.py
+        args:
+          - "{{ run_dir }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: run_digest
+          - key: run_dir   # resolved run dir (overwrites the input var for later nodes)
+        next: dream_reflect
+
+      # Consolidate the digest + per-node transcripts into layered improvement proposals,
+      # written to the drainable inbox docs/.dream-improvements.inbox.json.
+      - id: dream_reflect
+        type: agent
+        power: low
+        prompt: prompts/dream-reflect.md
+        args:
+          run_dir: "{{ run_dir }}"
+          epic: "{{ epic }}"
+          run_digest: "{{ run_digest }}"
+        outputs:
+          - key: reflection_result
+        next: record_improvements
+
+      # Drain the inbox into the durable, deduplicated ledger (docs/workflow-improvements.*),
+      # bumping observed-counts for recurring friction. This is what makes it real.
+      - id: record_improvements
+        type: script
+        script: scripts/record-improvements.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ run_dir }}"
+        outputs:
+          - key: improvements_recorded
+        next: dream_done
+
+      - id: dream_done
+        type: terminal

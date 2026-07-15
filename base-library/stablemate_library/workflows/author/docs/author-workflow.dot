@@ -1,0 +1,77 @@
+// Author workflow DAG. Regenerate SVG: dot -Tsvg author-workflow.dot -o author-workflow.svg
+digraph author {
+  rankdir=TB;
+  node [shape=box, style=rounded, fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=10];
+
+  load_config [label="load_config\n(validate backlog → cfg)"];
+
+  // Epic split
+  decompose_epics [label="decompose_epics (opus)\nbacklog → coding-ordered epics"];
+  review_epics [label="review_epics (opus)"];
+  rework_epics [label="rework_epics (opus)"];
+  await_epics [label="await_epics\n(record Q&A)", shape=box, style="rounded,dashed"];
+
+  // Per-epic
+  select_epic [label="select_epic", shape=hexagon];
+  write_epic [label="write_epic (opus)\nepic.md + seed.json"];
+  await_write_epic [label="await_write_epic", shape=box, style="rounded,dashed"];
+  split_stories [label="split_stories (opus)\ndependencies.json skeleton"];
+  await_split [label="await_split", shape=box, style="rounded,dashed"];
+
+  // Per-story
+  select_story [label="select_story", shape=hexagon];
+  write_story [label="write_story (opus)\nresearch + (fidelity) old-*.png"];
+  await_write_story [label="await_write_story", shape=box, style="rounded,dashed"];
+  validate_story [label="validate_story\n(HARD: rubric+evidence)", shape=box, style="rounded,filled", fillcolor="#ffe8cc"];
+  rework_story [label="rework_story (opus)"];
+
+  // Coverage
+  validate_coverage [label="validate_coverage\n(HARD: seed coverage+graph)", shape=box, style="rounded,filled", fillcolor="#ffe8cc"];
+  review_coverage [label="review_coverage (opus)\nadequacy: too few/coarse?"];
+  prune_backlog [label="prune_backlog\n(remove authored bullets)"];
+  await_coverage [label="await_coverage", shape=box, style="rounded,dashed"];
+
+  validate_artifacts [label="validate_artifacts\n(final coder-consumability)", shape=box, style="rounded,filled", fillcolor="#ffe8cc"];
+  done [label="done", shape=doublecircle];
+  author_failed [label="author_failed", shape=doublecircle, color=red];
+
+  load_config -> decompose_epics;
+  decompose_epics -> review_epics;
+  review_epics -> select_epic [label="approved"];
+  review_epics -> rework_epics [label="needs_rework (<3)"];
+  review_epics -> await_epics [label="blocked / ≥3"];
+  rework_epics -> review_epics;
+  await_epics -> decompose_epics [label="resume"];
+
+  select_epic -> write_epic [label="yes"];
+  select_epic -> validate_artifacts [label="no"];
+  write_epic -> split_stories [label="complete"];
+  write_epic -> await_write_epic [label="blocked"];
+  await_write_epic -> write_epic [label="resume"];
+  split_stories -> select_story [label="complete"];
+  split_stories -> await_split [label="blocked"];
+  await_split -> split_stories [label="resume"];
+
+  select_story -> write_story [label="yes"];
+  select_story -> validate_coverage [label="no"];
+  write_story -> validate_story [label="written"];
+  write_story -> await_write_story [label="blocked"];
+  await_write_story -> write_story [label="resume"];
+  validate_story -> select_story [label="ok"];
+  validate_story -> rework_story [label="fail (<3)"];
+  validate_story -> await_write_story [label="fail (≥3)"];
+  rework_story -> validate_story;
+
+  validate_coverage -> review_coverage [label="ok"];
+  validate_coverage -> split_stories [label="fail (<3)"];
+  validate_coverage -> await_coverage [label="fail (≥3)"];
+  review_coverage -> prune_backlog [label="ok"];
+  prune_backlog -> select_epic [label="next epic"];
+  review_coverage -> split_stories [label="gaps (<3)"];
+  review_coverage -> await_coverage [label="blocked / ≥3"];
+  await_coverage -> split_stories [label="resume"];
+
+  validate_artifacts -> done [label="ok"];
+  validate_artifacts -> author_failed [label="fail"];
+}

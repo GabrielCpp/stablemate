@@ -11,10 +11,20 @@ help: ## Show this help
 sync: ## Sync the workspace venv (all members) from the root uv.lock
 	uv sync --all-packages
 
+.PHONY: hooks
+hooks: ## Install the git hooks (blocks private overlay names from this public repo)
+	git config core.hooksPath .githooks
+	@echo "hooks installed. Names come from \$$STABLEMATE_PRIVATE_NAMES or"
+	@echo "\$$GIT_DIR/private-names (both untracked); with neither, the hook is a no-op."
+
 .PHONY: test
-test: ## Run both packages' test suites
+test: ## Run the packages' test suites
 	$(MAKE) -C workhorse test
 	$(MAKE) -C farrier test
+	# Guards the public/private split: the base library must resolve with no
+	# private overlay configured. Without this, coupling creeps back invisibly —
+	# it keeps working on a machine where the overlay shadows everything.
+	$(MAKE) -C base-library test
 
 .PHONY: build
 build: ## Build sdists + wheels for both packages (into each package's dist/)

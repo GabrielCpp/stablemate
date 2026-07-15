@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
-    gosu \
     git \
     openssh-client \
     python3 \
@@ -102,11 +101,16 @@ COPY ostler/ ostler/
 RUN uv sync --frozen --package workhorse-agent --package ostler \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
     && chown -R nobody:nogroup /app \
+    && mkdir -p /workspace /runs /claude-state \
+    && chown -R nobody:nogroup /workspace /runs /claude-state \
     && mkdir -p /opt/uv-python \
     && chmod -R a+rX /opt/uv-python
 
 COPY workhorse/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER nobody
+ENV HOME=/claude-state
 
 # Mounts expected at runtime (see compose.yaml):
 #   ~/.claude/.credentials.json → /mnt/claude-credentials.json:ro  Subscription auth (seeded once)

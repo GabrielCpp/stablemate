@@ -6,7 +6,7 @@ scan on a timer.
 
 Workflow containers are identified generically — a bind mount at
 ``/workflow`` plus volume mounts at ``/runs`` and ``/workspace`` — matching
-workhorse's own compose convention, not anything Globex-specific.
+workhorse's own compose convention, not anything Acme-specific.
 """
 
 from __future__ import annotations

@@ -196,7 +196,7 @@ def test_source_banner_errors_when_library_lacks_a_source(tmp_path):
     gen = _banner_generated(tmp_path, ["library/skills/does/not/exist/SKILL.md"])
     with pytest.raises(SystemExit) as exc:
         main(["source", str(gen), "--library", str(root)])
-    assert "does not exist under the library" in str(exc.value)
+    assert "does not exist in any library layer" in str(exc.value)
 
 
 def test_source_errors_when_library_lacks_the_source(tmp_path):
@@ -204,4 +204,4 @@ def test_source_errors_when_library_lacks_the_source(tmp_path):
     gen = _generated(tmp_path, "library/skills/does/not/exist/SKILL.md")
     with pytest.raises(SystemExit) as exc:
         main(["source", str(gen), "--library", str(root)])
-    assert "does not exist under the library" in str(exc.value)
+    assert "does not exist in any library layer" in str(exc.value)

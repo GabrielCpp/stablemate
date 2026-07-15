@@ -9,13 +9,15 @@ while `agent-run`/`agent-native`/… only make sense with a workflow to run.
 """
 from __future__ import annotations
 
-from farrier.install import render_agents_mk
+from farrier.install import render_agents_mk, render_local_compose, resolve_workflow_meta
 
 META = {
     "repo_url": "REPLACE_ME-git-remote-url",
     "branch": "main",
     "agents_dir": "$(abspath $(CURDIR)/../vigilant-octo/agents)",
     "repo_name": "demo",
+    "remote_checkout": False,
+    "agents": {"claude": False, "codex": True, "copilot": False},
 }
 
 
@@ -45,5 +47,54 @@ def test_workflow_targets_present_with_workflows():
     assert "agent-native:" in mk
     assert "agent-artifacts:" in mk
     assert "COMPOSE :=" in mk
+    assert "COMPOSE := docker compose -p $(PROJECT)" in mk
+    assert 'PROJECT="$(PROJECT)"' in mk
     assert "WF           ?= author" in mk
+    assert 'REPO_URL="$(REPO_URL)"' in mk
+    assert 'REPO_CONFIG="$(REPO_CONFIG)"' in mk
+    assert "bash -o pipefail -c" in mk
+    assert "--exit-code-from $(WF)" in mk
     assert "agent-run" in mk[mk.index(".PHONY"):mk.index("\n", mk.index(".PHONY"))]
+
+
+def test_local_compose_defaults_to_read_only_host_checkout():
+    compose = render_local_compose(["author"], META)
+
+    assert "REPO_URL: /mnt/demo-src" in compose
+    assert "source: ${REPO_SRC:-.}" in compose
+    assert "REPO_TOKEN_ENV" not in compose
+    assert "${HOME}/.claude/.credentials.json" not in compose
+
+
+def test_local_compose_mounts_claude_credentials_when_claude_enabled():
+    meta = dict(META)
+    meta["agents"] = {"claude": True, "codex": False, "copilot": False}
+
+    compose = render_local_compose(["author"], meta)
+
+    assert "CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}" in compose
+    assert "source: ${HOME}/.claude/.credentials.json" in compose
+    assert "target: /mnt/claude-credentials.json" in compose
+
+
+def test_explicit_repo_url_uses_authenticated_remote_checkout(tmp_path):
+    meta = resolve_workflow_meta(
+        {
+            "workflow": {
+                "repoUrl": "https://github.com/example/private.git",
+                "branch": "master",
+                "githubTokenEnv": "EXAMPLE_GITHUB_TOKEN",
+                "envPassthrough": ["EXAMPLE_GITHUB_TOKEN"],
+            }
+        },
+        tmp_path,
+        "demo",
+    )
+
+    compose = render_local_compose(["author"], meta)
+
+    assert "REPO_URL: ${REPO_URL:-https://github.com/example/private.git}" in compose
+    assert "AGENT_CONFIG_FILE: /repo-config/agents.yml" in compose
+    assert "target: /repo-config/agents.yml" in compose
+    assert "EXAMPLE_GITHUB_TOKEN: ${EXAMPLE_GITHUB_TOKEN:-}" in compose
+    assert "source: ${REPO_SRC" not in compose

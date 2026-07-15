@@ -1,0 +1,46 @@
+go-service:
+  description: Seed a Go service folder with a curated .gitignore.
+  params:
+    dir: api
+  tree:
+    $dir/.gitignore: |
+      # Environment files
+      .env
+      .env.local
+      .env.*.local
+
+      # Binary / build output
+      bin/
+      dist/
+
+      # Go build & test artifacts
+      *.exe
+      *.exe~
+      *.dll
+      *.so
+      *.dylib
+      *.test
+      *.out
+      go.work
+      go.work.sum
+      __debug_bin*
+
+      # Credentials
+      *.pem
+      *.key
+      *-service-account.json
+
+      # Coverage
+      coverage.out
+      coverage.html
+
+      # OS / IDE
+      .DS_Store
+      Thumbs.db
+      .idea/
+      .vscode/
+      *.swp
+      *.swo
+
+      # Scratch
+      tmp/

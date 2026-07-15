@@ -6,9 +6,9 @@
 > week-long unattended run that survives reboots without touching your host
 > environment. For the plain `workhorse` CLI, see the [README](../README.md).
 
-The bundled image runs `workhorse` with credential seeding, persistent volumes,
-and isolation: the agent works against its own clone (never a host working tree)
-and all state lives in named volumes.
+The bundled image runs `workhorse` as the container-local `nobody` user with
+credential seeding, persistent volumes, and isolation: the agent works against
+its own clone (never a host working tree) and all state lives in named volumes.
 
 ## Prerequisites
 
@@ -116,6 +116,23 @@ pointing `WORKFLOW_DIR` at it.
 | `workspace` volume | `/workspace` | named volume | **Agent working tree** — repo clones, branches, and commits; persists across reboots |
 | `claude-state` volume | `/claude-state` | named volume | Claude sessions + seeded credentials + onboarding stub; persists across reboots |
 | `runs` volume | `/runs` | named volume | Run artifacts; persists across reboots |
+
+The workflow container starts as `nobody`; it does not start as root and then
+drop privileges. Fresh named volumes inherit the image's pre-created mountpoint
+ownership. Existing volumes that were created by older images or manually edited
+as root must be repaired before startup, for example:
+
+```bash
+docker run --rm \
+  -v local-worker_workspace:/workspace \
+  -v local-worker_runs:/runs \
+  -v local-worker_claude-state:/claude-state \
+  ubuntu:24.04 sh -c 'chown -R nobody:"$(id -gn nobody)" /workspace /runs /claude-state'
+```
+
+Substitute the compose project prefix for your run (`workhorse_`,
+`local-worker_`, etc.). Use the image's `nobody`/primary group names rather than
+hardcoded host UIDs.
 
 ### Persistence across reboots
 

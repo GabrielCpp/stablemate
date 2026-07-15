@@ -1,0 +1,562 @@
+name: okf-builder
+# Exhaustively build a service's OKF book from its code. Entry-point-first: seed the
+# surfaces, then drain a typed worklist where each item's investigation spawns the deeper
+# items it reveals (surface -> elements -> handler layer -> callee layers -> concepts/
+# formats), descending the code layer by layer and classifying every finding. When the
+# drain is dry, a deterministic checkpoint (ostler fmt + doctor) and an agent coverage
+# re-scan (orphans / stubs / missing-from-code / journeys) queue anything missed and loop,
+# until the book is complete. Resumable + fail-soft via workhorse's checkpoint + gas tank.
+#
+#   workhorse run okf-builder --params '{"service":"workhorse","source_path":"workhorse"}'
+vars:
+  service: "" # which docs/features/<service> to build; "" = the whole docs/features tree
+  # Source subtree to inventory. Defaults to `service`, which keeps the common one-repo/one-book
+  # case terse while allowing monorepos to run once per codebase into sibling books.
+  source_path: ""
+  # Comma-separated paths relative to source_path that are not part of this service book
+  # (tests, generated output, repo tooling, historical capture utilities, and similar).
+  source_excludes: ""
+  # Resume/repair an already-populated book at checkpoint + coverage without rediscovering roots.
+  recheck_only: "no"
+  docs_path: "" # repo/docs root; "" -> AGENT_REPO_DIR
+  round: "0" # checkpoint round counter (bounds the coverage re-scan)
+  # OPTIONAL safety valve, NOT the stop condition. 0 = run to convergence (the intended mode:
+  # the build ends when the code inventory is fully covered + doctor is green). Set >0 only to
+  # bound a small practice/quota-limited run. Runaway is guarded by the gas tank + round cap,
+  # not by this.
+  max_items: "0"
+
+start: prepare
+
+nodes:
+  - id: prepare
+    type: script
+    script: scripts/prepare.py
+    args:
+      - "{{ docs_path }}"
+      - "{{ service }}"
+      - "{{ source_path }}"
+      - "{{ source_excludes }}"
+    outputs:
+      - key: worklist_path
+      - key: features_root
+      - key: repo_root
+      - key: source_root
+      - key: source_excludes
+      - key: service
+      - key: ostler_ok
+      - key: done_count
+    next: check_ostler
+
+  - id: check_ostler
+    type: branch
+    path: ostler_ok
+    cases:
+      "yes": decide_start
+      "no": done # no ostler on PATH -> nothing to build; fail soft
+    default: done
+
+  - id: decide_start
+    type: branch
+    path: recheck_only
+    cases:
+      "yes": checkpoint
+    default: enumerate_surfaces
+
+  # Seed: identify every entry-point surface from the code (their internals are discovered
+  # later by the drain loop).
+  - id: enumerate_surfaces
+    type: agent
+    power: medium
+    prompt: prompts/enumerate-surfaces.md
+    cwd: "{{ repo_root }}"
+    add_dirs: "{{ repo_root }}"
+    args:
+      service: "{{ service }}"
+      features_root: "{{ features_root }}"
+      repo_root: "{{ repo_root }}"
+      source_root: "{{ source_root }}"
+      source_excludes: "{{ source_excludes }}"
+    outputs:
+      - key: discovered
+        default: []
+    next: seed_surfaces
+
+  - id: seed_surfaces
+    type: script
+    script: scripts/record.py
+    args:
+      - "{{ worklist_path }}"
+      - "" # no current item to close
+      - "{{ get_node_output('enumerate_surfaces', 'discovered') | tojson }}"
+    outputs:
+      - key: done_count
+      - key: pending_count
+      - key: added
+    next: select_item
+
+  # ── Drain loop ────────────────────────────────────────────────────────────────────
+  - id: select_item
+    type: script
+    script: scripts/select-item.py
+    args:
+      - "{{ worklist_path }}"
+      - "{{ max_items }}"
+    outputs:
+      - key: has_item
+      - key: over_budget
+      - key: current_item
+      - key: item_kind
+      - key: item_target
+      - key: item_context
+      - key: pending_count
+      - key: done_count
+    # Refuel the gas tank on real progress (an item completed since the last visit); a
+    # loop that stops completing items runs the tank dry and halts instead of spinning.
+    refuel: done_count
+    next: guard_budget
+
+  # Hard quota ceiling for an unattended run: over budget -> canonicalize the partial book
+  # and stop, rather than keep spending agent turns. Pending items survive for a resume.
+  - id: guard_budget
+    type: branch
+    path: over_budget
+    cases:
+      "yes": finalize
+      "no": decide_item
+    default: decide_item
+
+  - id: decide_item
+    type: branch
+    path: has_item
+    cases:
+      "yes": investigate
+      "no": checkpoint # drain dry -> converge
+    default: checkpoint
+
+  - id: finalize
+    type: script
+    script: scripts/checkpoint.py
+    args:
+      - "{{ repo_root }}"
+      - "{{ features_root }}"
+      - "{{ round }}"
+    outputs:
+      - key: checkpoint_clean
+      - key: doctor_output
+      - key: round
+      - key: fixup_items
+    next: done
+
+  # The heart: document ONE item to the spec-complete bar and return the deeper items it
+  # reveals (elements, code layers, concepts, formats, journeys, fixups).
+  - id: investigate
+    type: agent
+    power: medium
+    prompt: prompts/investigate.md
+    cwd: "{{ repo_root }}"
+    add_dirs: "{{ repo_root }}"
+    args:
+      item_kind: "{{ item_kind }}"
+      item_target: "{{ item_target }}"
+      item_context: "{{ item_context }}"
+      service: "{{ service }}"
+      features_root: "{{ features_root }}"
+      repo_root: "{{ repo_root }}"
+      source_root: "{{ source_root }}"
+      source_excludes: "{{ source_excludes }}"
+    outputs:
+      - key: discovered
+        default: []
+      - key: doc_status
+        default: skipped
+    next: record
+
+  - id: record
+    type: script
+    script: scripts/record.py
+    args:
+      - "{{ worklist_path }}"
+      - "{{ get_node_output('select_item', 'current_item') }}"
+      - "{{ get_node_output('investigate', 'discovered') | tojson }}"
+    outputs:
+      - key: done_count
+      - key: pending_count
+      - key: added
+    next: select_item
+
+  # ── Convergence: mechanical gate, then the exhaustiveness re-scan ───────────────────
+  - id: checkpoint
+    type: script
+    script: scripts/checkpoint.py
+    args:
+      - "{{ repo_root }}"
+      - "{{ features_root }}"
+      - "{{ round }}"
+    outputs:
+      - key: checkpoint_clean
+      - key: doctor_output
+      - key: round
+      - key: fixup_items
+    next: decide_checkpoint
+
+  - id: decide_checkpoint
+    type: branch
+    path: checkpoint_clean
+    cases:
+      "yes": guard_rounds
+      "no": seed_fixup # doctor dirty -> queue a fixup item and drain it
+    default: guard_rounds
+
+  - id: seed_fixup
+    type: script
+    script: scripts/record.py
+    args:
+      - "{{ worklist_path }}"
+      - ""
+      - "{{ get_node_output('checkpoint', 'fixup_items') }}"
+    outputs:
+      - key: done_count
+      - key: pending_count
+      - key: added
+    next: select_item
+
+  # Bound the re-scan so an unconverging coverage check can't loop forever (fail-soft).
+  - id: guard_rounds
+    type: branch
+    path: round
+    conditions:
+      - op: ">="
+        value: "6" # == a sane max of dry-drain re-scans
+        next: done
+    default: inventory_source
+
+  # Materialize the source side of the coverage diff mechanically. The recheck agent judges
+  # whether a symbol is folded into a larger documented contract, but it never invents or samples
+  # the list it is comparing against.
+  - id: inventory_source
+    type: script
+    script: scripts/inventory-source.py
+    args:
+      - "{{ source_root }}"
+      - "{{ worklist_path }}.source.json"
+      - "{{ source_excludes }}"
+    outputs:
+      - key: source_inventory_path
+      - key: source_unit_count
+      - key: inventory_errors
+    next: recheck
+
+  - id: recheck
+    type: agent
+    power: medium
+    prompt: prompts/recheck-coverage.md
+    cwd: "{{ repo_root }}"
+    add_dirs: "{{ repo_root }}"
+    args:
+      service: "{{ service }}"
+      features_root: "{{ features_root }}"
+      repo_root: "{{ repo_root }}"
+      source_root: "{{ source_root }}"
+      source_excludes: "{{ source_excludes }}"
+      source_inventory_path: "{{ source_inventory_path }}"
+      inventory_errors: "{{ inventory_errors }}"
+    outputs:
+      - key: discovered
+        default: []
+      # Default "no" is the SAFE failure mode: if the recheck agent errors out, the run
+      # must not falsely declare the book complete — it loops (bounded by guard_rounds).
+      - key: coverage_complete
+        default: "no"
+      - key: needs_journeys
+        default: "no"
+    next: decide_coverage
+
+  - id: decide_coverage
+    type: branch
+    path: coverage_complete
+    cases:
+      "yes": run_walkthrough_web # book complete -> walk it live (a no-op for non-web services)
+      "no": seed_recheck
+    default: run_walkthrough_web
+
+  - id: seed_recheck
+    type: script
+    script: scripts/record.py
+    args:
+      - "{{ worklist_path }}"
+      - ""
+      - "{{ get_node_output('recheck', 'discovered') | tojson }}"
+    outputs:
+      - key: done_count
+      - key: pending_count
+      - key: added
+    next: select_item
+
+  # ── Walkthrough phase (live-app rediscovery) ────────────────────────────────────────
+  # Once the code-derived book is complete, walk the running app to prove & heal it. The
+  # walk lives in the `walkthrough-web` flow (below) so it is ALSO runnable standalone against
+  # an already-built book:  workhorse run okf-builder walkthrough-web --params '{"service":"x"}'
+  # (a future `walkthrough-mobile` flow will cover native/mobile surfaces the same way.)
+  - id: run_walkthrough_web
+    type: flow
+    name: walkthrough-web
+    args:
+      service: "{{ service }}"
+      docs_path: "{{ docs_path }}"
+      source_path: "{{ source_path }}"
+      max_items: "{{ max_items }}"
+    next: done
+
+  - id: done
+    type: terminal
+
+# ── Flows ───────────────────────────────────────────────────────────────────────────────
+flows:
+  # Walk a WEB-app service the way a real user would — entering at the documented front door
+  # and moving by clicking, never by URL — to prove the code-derived book against the running
+  # app and heal it from what it sees. Web-app-ness and the launch recipe (entry URL, port,
+  # health path, launch command) are all DETECTED FROM THE DOCS by detect-webapp, so the flow
+  # is self-contained and standalone-invokable:
+  #   workhorse run okf-builder walkthrough-web --params '{"service":"groom"}'
+  # (native/mobile surfaces will get a sibling `walkthrough-mobile` flow.)
+  walkthrough-web:
+    name: walkthrough-web
+    start: detect_webapp
+    vars:
+      service: null      # required — which docs/features/<service> to walk
+      docs_path: ""      # docs repo root; "" -> AGENT_REPO_DIR
+      source_path: ""    # source subtree; defaults to service
+      max_items: "0"     # per-walk investigation ceiling (0 = converge)
+    nodes:
+      - id: detect_webapp
+        type: script
+        script: scripts/detect-webapp.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ service }}"
+          - "{{ source_path }}"
+        outputs:
+          - key: is_webapp
+          - key: repo_root
+          - key: source_root
+          - key: features_root
+          - key: entry_url
+          - key: launch_cmd
+          - key: health_path
+          - key: app_cwd
+          - key: app_identity
+          - key: wt_worklist_path
+          - key: screenshots_dir
+          - key: cdp_url # the shared browser's CDP endpoint (MCP + ostler vet)
+          - key: round # reset to 0 so the walk's round-cap is its own
+        next: gate_webapp
+
+      - id: gate_webapp
+        type: branch
+        path: is_webapp
+        cases:
+          "yes": boot_app
+          "no": wt_done # CLI/library service -> nothing to walk, clean skip
+        default: wt_done
+
+      - id: boot_app
+        type: script
+        script: scripts/boot-app.py
+        args:
+          - "{{ launch_cmd }}"
+          - "{{ entry_url }}"
+          - "{{ health_path }}"
+          - "{{ app_cwd }}"
+          - "{{ repo_root }}"
+          - "{{ app_identity }}"
+        outputs:
+          - key: boot_ok
+          - key: entry_url # resolved/echoed
+          - key: app_pid
+          - key: app_pgid
+        next: decide_boot
+
+      - id: decide_boot
+        type: branch
+        path: boot_ok
+        cases:
+          "yes": boot_browser
+          "no": wt_done # app wouldn't come up -> fail soft; boot reaped what it spawned
+        default: wt_done
+
+      # The shared CDP browser: the agent's playwright MCP (--cdp-endpoint) and
+      # `ostler vet --cdp-url` both attach to this one Chromium, so vet scans the very
+      # page the agent drove. Booted here (not by the MCP) so it outlives agent turns.
+      - id: boot_browser
+        type: script
+        script: scripts/boot-browser.py
+        args:
+          - "{{ cdp_url }}"
+          - "{{ repo_root }}"
+        outputs:
+          - key: browser_ok
+          - key: cdp_url # resolved/echoed
+          - key: browser_pid
+          - key: browser_pgid
+        next: decide_browser
+
+      - id: decide_browser
+        type: branch
+        path: browser_ok
+        cases:
+          "yes": seed_walkthrough
+          "no": teardown_app # no browser -> nothing to walk, but still reap the app
+        default: teardown_app
+
+      - id: seed_walkthrough
+        type: script
+        script: scripts/seed-walkthrough.py
+        args:
+          - "{{ wt_worklist_path }}"
+          - "{{ service }}"
+          - "{{ repo_root }}"
+        outputs:
+          - key: done_count
+          - key: pending_count
+          - key: added
+        next: select_wt
+
+      # ── Walk drain loop (journeys are the unit) ─────────────────────────────────────
+      - id: select_wt
+        type: script
+        script: scripts/select-item.py
+        args:
+          - "{{ wt_worklist_path }}"
+          - "{{ max_items }}"
+        outputs:
+          - key: has_item
+          - key: over_budget
+          - key: current_item
+          - key: item_kind
+          - key: item_target
+          - key: item_context
+          - key: pending_count
+          - key: done_count
+        refuel: done_count
+        next: guard_wt_budget
+
+      - id: guard_wt_budget
+        type: branch
+        path: over_budget
+        cases:
+          "yes": teardown_app # ceiling hit -> stop walking, but always reap the app
+          "no": decide_wt_item
+        default: decide_wt_item
+
+      - id: decide_wt_item
+        type: branch
+        path: has_item
+        cases:
+          "yes": walkthrough_turn
+          "no": wt_checkpoint # drain dry -> converge
+        default: wt_checkpoint
+
+      - id: walkthrough_turn
+        type: agent
+        power: high
+        prompt: prompts/walkthrough-web.md
+        cwd: "{{ repo_root }}"
+        add_dirs: "{{ repo_root }}"
+        args:
+          item_kind: "{{ item_kind }}"
+          item_target: "{{ item_target }}"
+          item_context: "{{ item_context }}"
+          service: "{{ service }}"
+          features_root: "{{ features_root }}"
+          repo_root: "{{ repo_root }}"
+          entry_url: "{{ entry_url }}"
+          screenshots_dir: "{{ screenshots_dir }}"
+          cdp_url: "{{ cdp_url }}"
+        outputs:
+          - key: discovered
+            default: []
+          - key: walk_status
+            default: skipped
+        next: record_wt
+
+      - id: record_wt
+        type: script
+        script: scripts/record.py
+        args:
+          - "{{ wt_worklist_path }}"
+          - "{{ current_item }}"
+          - "{{ discovered | tojson }}"
+        outputs:
+          - key: done_count
+          - key: pending_count
+          - key: added
+        next: select_wt
+
+      # ── Convergence (mechanical gate) + mandatory teardown ──────────────────────────
+      - id: wt_checkpoint
+        type: script
+        script: scripts/checkpoint.py
+        args:
+          - "{{ repo_root }}"
+          - "{{ features_root }}"
+          - "{{ round }}"
+        outputs:
+          - key: checkpoint_clean
+          - key: doctor_output
+          - key: round
+          - key: fixup_items
+        next: decide_wt_checkpoint
+
+      - id: decide_wt_checkpoint
+        type: branch
+        path: checkpoint_clean
+        cases:
+          "yes": teardown_app # clean + drained -> phase done
+          "no": guard_wt_rounds
+        default: teardown_app
+
+      - id: guard_wt_rounds
+        type: branch
+        path: round
+        conditions:
+          - op: ">="
+            value: "3" # bound the walk fixup re-drain; give up fast but still reap the app
+            next: teardown_app
+        default: seed_wt_fixup
+
+      - id: seed_wt_fixup
+        type: script
+        script: scripts/record.py
+        args:
+          - "{{ wt_worklist_path }}"
+          - ""
+          - "{{ get_node_output('wt_checkpoint', 'fixup_items') }}"
+        outputs:
+          - key: done_count
+          - key: pending_count
+          - key: added
+        next: select_wt
+
+      - id: teardown_app
+        type: script
+        script: scripts/boot-app.py
+        args:
+          - "--teardown"
+          - "{{ app_pgid }}"
+        outputs:
+          - key: torn_down
+        next: teardown_browser
+
+      - id: teardown_browser
+        type: script
+        script: scripts/boot-browser.py
+        args:
+          - "--teardown"
+          - "{{ browser_pgid }}"
+        outputs:
+          - key: torn_down
+        next: wt_done
+
+      - id: wt_done
+        type: terminal
