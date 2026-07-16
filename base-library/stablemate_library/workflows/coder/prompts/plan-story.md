@@ -63,6 +63,14 @@ Do not put plan artifacts beside the story unless the caller explicitly override
 
 **ALWAYS create `plan.md` as the root reference.** Implementation reads from `plan.md` — do not create subplans without a root.
 
+**Create each markdown artifact through `ostler`, don't hand-write its frontmatter** (when
+`ostler` is on PATH): run `timeout 30 ostler create spec <story-name> <file>` — e.g.
+`ostler create spec persist-mvp-profile-fields plan.md` — *before* writing the body. It stamps the
+`type:` that makes the doc an OKF Concept (`spec.<stem>`: `plan.md` → `spec.plan`, `executive.md` →
+`spec.executive`), creates the file if it is absent, and leaves an already-typed doc untouched. Then
+write your content **below the `---` frontmatter block, leaving that block in place** — a doc with
+no `type:` is an `okf-missing-type` error against the graph.
+
 #### `plan-context.json` (REQUIRED machine-readable resolution)
 
 Also write `docs/specs/<story-name>/plan-context.json` next to `plan.md`. A deterministic workflow step reads it to bootstrap the implementer and QA with the services, instructions, and run/QA tooling this story needs.

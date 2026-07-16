@@ -1275,6 +1275,19 @@ flows:
           spec_dir: "{{ spec_dir }}"
         outputs:
           - key: plan_result
+        next: stamp_specs_plan
+
+      # The plan agent writes plan.md / plan-<svc>.md / executive.md as free-form markdown, so
+      # the `type:` frontmatter that makes them OKF Concepts is only as reliable as the model's
+      # memory. Stamp it mechanically instead of trusting the prompt. Idempotent and cheap.
+      - id: stamp_specs_plan
+        type: script
+        script: scripts/stamp-specs.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story_slug }}"
+        outputs:
+          - key: specs_typed
         next: decide_plan
 
       # No separate plan-review agent: a dedicated reviewer added a full opus pass per
@@ -1816,6 +1829,16 @@ flows:
           code_reuse_result: "{{ code_reuse_result }}"
         outputs:
           - key: review_impl_result
+        next: stamp_specs_review
+
+      - id: stamp_specs_review
+        type: script
+        script: scripts/stamp-specs.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story_slug }}"
+        outputs:
+          - key: specs_typed
         next: decide_impl
 
       - id: decide_impl
@@ -2194,6 +2217,16 @@ flows:
           plan_validation_notes: "{{ qa_plan_validation.notes }}"
         outputs:
           - key: qa_plan_result
+        next: stamp_specs_qa_plan
+
+      - id: stamp_specs_qa_plan
+        type: script
+        script: scripts/stamp-specs.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story_slug }}"
+        outputs:
+          - key: specs_typed
         next: validate_qa_plan
 
       - id: validate_qa_plan
@@ -2258,6 +2291,16 @@ flows:
           runner_notes: "{{ qa_result.notes }}"
         outputs:
           - key: qa_interpretation
+        next: stamp_specs_qa
+
+      - id: stamp_specs_qa
+        type: script
+        script: scripts/stamp-specs.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story_slug }}"
+        outputs:
+          - key: specs_typed
         next: decide_qa_interpretation
 
       - id: decide_qa_interpretation

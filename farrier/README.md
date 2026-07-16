@@ -15,17 +15,27 @@ fits the shared prompt library onto each repository.
 pipx install farrier        # or: uv tool install farrier
 ```
 
-farrier ships **no library content of its own** — the prompt library lives in a
-separate repository. Point farrier at it once:
+The farrier package ships **no library content of its own.** Content resolves across
+two layers: the **base library** (the `stablemate-library` wheel — the skills,
+workflows and scaffolds), and an optional private **overlay** that shadows it. Point
+farrier at an overlay once:
 
 ```bash
-farrier config set-library /path/to/vigilant-octo/agents
+farrier config set-library /path/to/the/overlay
 farrier config show
 ```
 
 `config` writes a small TOML file in your OS config directory
 (`~/.config/farrier/config.toml` on Linux, `~/Library/Application Support/farrier/`
 on macOS, `%APPDATA%\farrier\` on Windows).
+
+**Finding the base library.** farrier discovers the base via, in order,
+`$STABLEMATE_BASE_DIR` → the `base_dir` config key (`farrier config set-base <path>`) →
+an import of the `stablemate-library` wheel from farrier's own environment → a
+`stablemate_dir` checkout. The env-var / `set-base` routes matter under `pipx`, which
+isolates each tool in its own venv so a separately-installed wheel can't be imported.
+See the [monorepo README](https://github.com/GabrielCpp/stablemate#installing) for the
+two supported install setups.
 
 ## Use
 

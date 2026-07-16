@@ -1,6 +1,6 @@
-"""Tests for validate-knowledge.py — focus: the Gap-2 enrichments are additive (non-breaking).
+"""Tests for validate-knowledge.py — focus: the record enrichments are additive (non-breaking).
 
-The enriched record adds `journeys[]` and per-gap/component `chromeContext` + `feedbackKind`.
+The enriched record adds `journeys[]` and per-component `chromeContext` + `feedbackKind`.
 These must validate cleanly (the schema allows them; the validator must not reject them), so the
 feature-doc/journey grounding can be recorded without failing the knowledge gate.
 """
@@ -35,9 +35,8 @@ def test_md_frontmatter_record_passes(tmp_path):
         "route": "/surf",
         "old": [{"name": "Save button", "dataSource": {"kind": "api", "endpoint": "POST /save"},
                  "feedbackKind": "transient"}],
-        "gaps": [{"id": "g1", "kind": "missing"}],
         "journeys": [{"id": "edit-save", "name": "Edit and save", "steps": ["open", "save"]}],
-    }, body="# Surface knowledge: area/surf\n\n## Gaps\n\n### g1 — Save (missing)\n")
+    }, body="# Surface knowledge: area/surf\n\n## Components\n\n### Save button\n")
     out = run_script("validate-knowledge.py", rel, repo=tmp_path)
     assert out["knowledge_ok"] == "yes", out["knowledge_errors"]
 
@@ -45,7 +44,7 @@ def test_md_frontmatter_record_passes(tmp_path):
 def test_md_unclosed_frontmatter_fails(tmp_path):
     p = tmp_path / "docs/knowledge/area/surf.md"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("---\nsurface: area/surf\ngaps: []\n", encoding="utf-8")  # no closing ---
+    p.write_text("---\nsurface: area/surf\n", encoding="utf-8")  # no closing ---
     out = run_script("validate-knowledge.py", "docs/knowledge/area/surf.md", repo=tmp_path)
     assert out["knowledge_ok"] == "no"
     assert "front-matter" in out["knowledge_errors"]
@@ -54,7 +53,7 @@ def test_md_unclosed_frontmatter_fails(tmp_path):
 def test_baseline_record_passes(tmp_path):
     rel = _write_record(tmp_path, {
         "surface": "area/surf",
-        "gaps": [{"id": "g1", "kind": "missing"}],
+        "new": [{"name": "Save button", "dataSource": {"kind": "api", "endpoint": "POST /save"}}],
     })
     out = run_script("validate-knowledge.py", rel, repo=tmp_path)
     assert out["knowledge_ok"] == "yes", out["knowledge_errors"]
@@ -68,11 +67,6 @@ def test_enriched_record_with_journeys_chrome_transient_passes(tmp_path):
             {"name": "Save button", "dataSource": {"kind": "api", "endpoint": "POST /save"},
              "feedbackKind": "transient",
              "chromeContext": {"presentOn": ["editor"], "absentOn": ["list"]}},
-        ],
-        "gaps": [
-            {"id": "save-flash", "kind": "missing", "feedbackKind": "transient"},
-            {"id": "project-picker", "kind": "divergent",
-             "chromeContext": {"presentOn": ["projects-list"], "absentOn": ["inside-project"]}},
         ],
         "journeys": [
             {"id": "edit-save", "name": "Edit and save a value", "surface": "area/surf",

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import backlog as backlog_mod
+from . import coverage as coverage_mod
 from . import crud, doctor
 from . import path as path_mod
 from . import query as query_mod
@@ -84,10 +85,9 @@ class Ostler:
         """Concepts of ``etype`` (``ostler list --type``), optionally filtered."""
         return query_mod.list_entities(self.graph, etype, epic, status)
 
-    def search(self, q: str, *, etype: str | None = None,
-               owner: str | None = None, tag: str | None = None) -> list[dict]:
+    def search(self, q: str, *, etype: str | None = None) -> list[dict]:
         """Full-text search over Concepts (``ostler search``)."""
-        return query_mod.search(self.graph, q, etype, owner, tag)
+        return query_mod.search(self.graph, q, etype)
 
     def query(self, name: str, arg: str) -> list[dict]:
         """A named reverse-index query (``ostler query``)."""
@@ -113,6 +113,16 @@ class Ostler:
         """The referential-integrity report as a dict (``ostler doctor --json``)."""
         return doctor.run(self.graph, epic_filter=epic,
                           check_schema=check_schema).as_dict()
+
+    def coverage(self, *, inventory: str | Path, surface: str | None = None,
+                 waivers: str | Path | None = None) -> dict:
+        """The coverage join as ``{covered, total, waived, missing, errors}``.
+
+        Raises on an unreadable inventory rather than reporting zero units — an empty unit
+        list reads downstream as "everything is covered" (``ostler coverage``).
+        """
+        return coverage_mod.run(self.graph, surface=surface, inventory=inventory,
+                                waivers=waivers)
 
     # -- path resolution ----------------------------------------------------
     def spec_path(self, slug: str) -> str:
@@ -140,6 +150,10 @@ class Ostler:
         return self._apply(crud.create_story(
             self._fresh(), epic, slug, title,
             covers or [], depends or [], prefix))
+
+    def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
+        """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent."""
+        return self._apply(crud.create_spec(self._fresh(), slug, doc, title))
 
     def add_seed(self, epic: str, seed_id: str, *, status: str, summary: str = "",
                  meta: dict | None = None) -> Result:

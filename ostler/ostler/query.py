@@ -2,7 +2,7 @@
 
 Returns plain dicts/lists (JSON-friendly). ``list`` enumerates Concepts of a type with filters,
 ``search`` does full-text over titles/bodies, ``query`` answers the reverse-index questions the
-workflows ask (gaps-in-story, stories-covering-seed, surfaces-referenced-by-story).
+workflows ask (stories-covering-seed, surfaces-referenced-by-story).
 """
 
 from __future__ import annotations
@@ -63,18 +63,12 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         for r in graph.knowledge:
             rows.append({"type": "knowledge", "surface": r.surface,
                          "route": str(r.data.get("route", "")),
-                         "path": r.path.relative_to(graph.root).as_posix(),
-                         "gaps": [g.id for g in r.gaps]})
+                         "path": r.path.relative_to(graph.root).as_posix()})
     elif etype == "feature":
         for f in graph.features:
             rows.append({"type": "feature", "slug": f.slug, "area": f.area, "title": f.title,
                          "route": f.data.get("route", ""),
                          "path": f.path.relative_to(graph.root).as_posix()})
-    elif etype == "gap":
-        for r in graph.knowledge:
-            for g in r.gaps:
-                rows.append({"type": "gap", "id": g.id, "surface": r.surface,
-                             "owner": g.owner, "disposition": g.disposition})
     elif etype in registry.UI_TYPES_BY_NAME:
         rows = [_ui_row(graph, n) for n in graph.ui_nodes_of_type(etype)]
     else:
@@ -94,12 +88,11 @@ def _body_text(path) -> str:
         return ""
 
 
-def search(graph: Graph, q: str, etype: str | None = None,
-           owner: str | None = None, tag: str | None = None) -> list[dict]:
+def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
     ql = q.lower()
     hits: list[dict] = []
     types = [etype] if etype else (
-        ["epic", "story", "seed", "knowledge", "feature", "gap", *registry.UI_TYPES_BY_NAME])
+        ["epic", "story", "seed", "knowledge", "feature", *registry.UI_TYPES_BY_NAME])
     for t in types:
         for row in list_entities(graph, t):
             hay = " ".join(str(v) for v in row.values()).lower()
@@ -117,31 +110,12 @@ def search(graph: Graph, q: str, etype: str | None = None,
                     path = node.path if node else None
                 if path:
                     hay += " " + _body_text(path).lower()
-            if owner and row.get("owner") != owner:
-                continue
-            if tag and t == "gap" and row.get("id") != tag:
-                continue
             if ql in hay:
                 hits.append(row)
     return hits
 
 
 def query(graph: Graph, name: str, arg: str) -> list[dict]:
-    if name == "gaps-in-story":
-        owned = [{"id": g.id, "surface": r.surface, "via": "owner"}
-                 for r in graph.knowledge for g in r.gaps if g.owner == arg]
-        found = graph.find_story(arg)
-        tagged = []
-        if found:
-            tags = set(found[1].gap_tags)
-            tagged = [{"id": g.id, "surface": r.surface, "via": "tag"}
-                      for r in graph.knowledge for g in r.gaps if g.id in tags]
-        seen, out = set(), []
-        for row in owned + tagged:
-            if row["id"] not in seen:
-                seen.add(row["id"])
-                out.append(row)
-        return out
     if name == "stories-covering-seed":
         return [_story_row(graph, e, s) for e in graph.epics for s in e.stories
                 if arg in s.seed_items]
@@ -153,4 +127,4 @@ def query(graph: Graph, name: str, arg: str) -> list[dict]:
     return []
 
 
-QUERIES = ("gaps-in-story", "stories-covering-seed", "surfaces-referenced-by-story")
+QUERIES = ("stories-covering-seed", "surfaces-referenced-by-story")

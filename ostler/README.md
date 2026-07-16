@@ -77,10 +77,12 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 | `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
+| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 
 `spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
-internal schema. **Not Concepts** (managed markdown, left in place): `docs/backlog.md` (an intake list)
+internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
+`ostler create spec <slug> <doc>`, which is idempotent and also retro-stamps free-form docs.
+**Not Concepts** (managed markdown, left in place): `docs/backlog.md` (an intake list)
 and `docs/epics/index.md` (the epics queue).
 
 ### `epic.md` — single source of truth for an epic
@@ -142,15 +144,15 @@ ostler -C, --chdir DIR <command> …            # operate as if run from DIR
 
 ```bash
 ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
-ostler trace  <id|slug|gap|surface|path>             # walk the graph from any node
+ostler trace  <id|slug|surface|path>                 # walk the graph from any node
 ```
 
 **Retrieve**
 
 ```bash
-ostler list  --type epic|story|knowledge|feature|spec|seed|gap [--epic E] [--status S] [--json]
+ostler list  --type epic|story|knowledge|feature|spec|seed [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--owner O] [--tag G] [--json]
-ostler query  gaps-in-story|stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
+ostler query  stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
 ```
@@ -177,7 +179,6 @@ ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorde
 **Repair / approve**
 
 ```bash
-ostler edit set-owner <gap> <story> [--write]   # dry-run by default; --write applies
 ostler edit relink    <old-path> <new-path> [--write]
 ostler edit rename    <old-slug> <new-slug> [--write]
 ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as immutable ground truth
@@ -244,7 +245,7 @@ functional core directly.
 ## The coverage model
 
 ```
-knowledge gaps[].owner  ->  story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
+story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
 ```
 
 `ostler doctor` checks OKF conformance (every Concept has a non-empty `type`) plus the typed
@@ -252,8 +253,7 @@ referential-integrity contract:
 
 - **cross-epic references** — an id/slug used inside epic E that only resolves in another epic;
 - **orphan seeds** — an active seed no story covers;
-- **dangling references** — a `[gap:…]` tag, knowledge path, or sibling slug that resolves to nothing;
-- **stale owners** — a non-resolved gap whose `owner` is empty or points at a missing story;
+- **dangling references** — a knowledge path or sibling slug that resolves to nothing;
 - **frozen drift** — an approved (frozen) story/seed that changed or vanished.
 
 It exits non-zero when any error-level finding is present, so it drops straight into CI or a pre-commit

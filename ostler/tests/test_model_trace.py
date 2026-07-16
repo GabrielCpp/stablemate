@@ -7,7 +7,7 @@ from ostler.model import load
 
 
 def test_markdown_roundtrip_identity():
-    text = "---\nsurface: a/b\ngaps:\n- id: g1\n---\n# Title\n\nbody\n"
+    text = "---\nsurface: a/b\nroute: /a/b\n---\n# Title\n\nbody\n"
     doc = markdown.split(text)
     assert doc.has_frontmatter
     assert doc.frontmatter["surface"] == "a/b"
@@ -39,17 +39,16 @@ def test_org_name_override_from_config(tmp_path: Path):
     assert graph.org_name == "custom-org"
 
 
-def test_trace_story_seed_and_gap(repo: Path):
+def test_trace_story_and_seed(repo: Path):
     graph = load(repo)
     lines, found = trace.run(graph, "01-foo")
     assert found and any("seed-a1" in ln for ln in lines)
-    assert any("owns gap" in ln and "gap-x" in ln for ln in lines)
 
     lines, found = trace.run(graph, "seed-a1")
     assert found and any("covered by story" in ln and "01-foo" in ln for ln in lines)
 
-    lines, found = trace.run(graph, "gap-y")
-    assert found and any("01-bar" in ln for ln in lines)
+    lines, found = trace.run(graph, "area/rec")
+    assert found and any("surface" in ln for ln in lines)
 
     lines, found = trace.run(graph, "does-not-exist")
     assert not found

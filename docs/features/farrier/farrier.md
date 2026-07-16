@@ -80,7 +80,7 @@ already current.
   - run (no `--check`): write the computed files into `--repo`, then seed `.agents/.gitignore`
     rules and a root `Makefile` `include` line when a workflow launcher was generated; print the
     count of installed files and return `0`
-- code: `farrier/farrier/install.py::_run_install`
+- code: `farrier/farrier/cli.py::_run_install`
 
 ### config
 - usage: `farrier config <set-library|set-stablemate|show> [args]`
@@ -102,7 +102,7 @@ already current.
   - run (`show`): read the [home config file](home-config.md) via `read_config`; with a `key`,
     print its bare value (`SystemExit` if unset); without one, print every stored key as
     `key=value`
-- code: `farrier/farrier/install.py::_run_config`
+- code: `farrier/farrier/cli.py::_run_config`
 
 Mirrors workhorse's `config` interface (`show`/`get`/`set-library`/`set-stablemate`) so
 `agents.mk` and other scripts can call either tool interchangeably for shared settings.
@@ -126,7 +126,7 @@ Mirrors workhorse's `config` interface (`show`/`get`/`set-library`/`set-stablema
     resolve to an absolute path
   - run: `SystemExit` if the resolved source is not a file (the library moved or renamed it since
     the file was generated); otherwise print the resolved absolute path
-- code: `farrier/farrier/install.py::_run_source`
+- code: `farrier/farrier/cli.py::_run_source`
 - verify: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
 
 Lets an agent go from a generated adapter under `.claude/`/`.agents/`/`.github/` back to its
@@ -165,7 +165,7 @@ editable source of truth in the library, using only the generated file's front m
   - run: write each file that does not already exist (`created: <rel>`) and keep any that does
     (`exists (kept): <rel>`) — every scaffolded file is a seed the repo owns after first write;
     re-running is always a no-op for existing files; print a summary count and return `0`
-- code: `farrier/farrier/install.py::_run_scaffold`
+- code: `farrier/farrier/cli.py::_run_scaffold`
 - verify: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
 Lets an agent stand up a new repo or service folder from the library's parameterized scaffold

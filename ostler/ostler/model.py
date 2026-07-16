@@ -42,7 +42,6 @@ class Story:
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
     status: str = ""
-    gap_tags: list[str] = field(default_factory=list)
     knowledge_refs: list[str] = field(default_factory=list)
 
 
@@ -63,20 +62,11 @@ class Epic:
 
 
 @dataclass
-class Gap:
-    id: str
-    owner: str
-    disposition: str
-    raw: dict = field(default_factory=dict)
-
-
-@dataclass
 class KnowledgeRecord:
     surface: str
     path: Path
     fmt: str  # always "md" in this format; retained for callers
     data: dict
-    gaps: list[Gap] = field(default_factory=list)
 
 
 @dataclass
@@ -155,21 +145,11 @@ class Graph:
     def all_story_slugs(self) -> set[str]:
         return {s.slug for e in self.epics for s in e.stories}
 
-    def all_gap_ids(self) -> set[str]:
-        return {g.id for r in self.knowledge for g in r.gaps}
-
     def find_story(self, slug: str) -> tuple[Epic, Story] | None:
         for e in self.epics:
             for s in e.stories:
                 if s.slug == slug:
                     return e, s
-        return None
-
-    def find_gap(self, gap_id: str) -> tuple[KnowledgeRecord, Gap] | None:
-        for r in self.knowledge:
-            for g in r.gaps:
-                if g.id == gap_id:
-                    return r, g
         return None
 
 
@@ -356,18 +336,9 @@ def _load_knowledge(graph: Graph) -> None:
         except OSError:
             continue
         data = doc.frontmatter or {}
-        gaps = []
-        for g in (data.get("gaps") or []):
-            if isinstance(g, dict) and g.get("id"):
-                gaps.append(Gap(
-                    id=str(g["id"]),
-                    owner=str(g.get("owner") or ""),
-                    disposition=str(g.get("disposition") or ""),
-                    raw=g,
-                ))
         surface = str(data.get("surface") or path.relative_to(kroot).with_suffix("").as_posix())
         graph.knowledge.append(KnowledgeRecord(surface=surface, path=path, fmt="md",
-                                               data=data, gaps=gaps))
+                                               data=data))
 
 
 def _load_features(graph: Graph) -> None:
@@ -542,7 +513,6 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.story_md = c
             doc = markdown.split(c.read_text(encoding="utf-8"))
             refs = doc.refs
-            story.gap_tags = refs.gap_tags
             story.knowledge_refs = refs.knowledge_paths
             fm = doc.frontmatter or {}
             status = fm.get("status")

@@ -224,6 +224,37 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
     return Result(True, f"created feature '{slug}' ({fid})", [path], entity_id=fid)
 
 
+def create_spec(graph: Graph, slug: str, doc: str, title: str = "") -> Result:
+    """Create — or retro-stamp — a coder process artifact at ``docs/specs/<slug>/<doc>``.
+
+    Idempotent on purpose: the coder writes these docs as free-form markdown, so this has to be
+    callable *after* the write as well as before it. An existing file keeps its body and gains only
+    the ``type`` it was missing; an already-typed file is left completely alone. No id is allocated
+    — a spec is a process artifact, not a graph node (``registry`` requires only ``type``).
+    """
+    name = doc if doc.endswith(".md") else f"{doc}.md"
+    if "/" in slug or "/" in doc:
+        return Result(False, f"spec slug/doc must be single path segments, got '{slug}/{doc}'")
+    if name in registry.RESERVED_FILES:
+        return Result(False, f"'{name}' is a reserved file, not a spec Concept")
+    path = graph.doc_roots["specs"] / slug / name
+    type_value = registry.spec_type_for(name)
+    if path.exists():
+        mdoc = markdown.split(path.read_text(encoding="utf-8"))
+        fm = (mdoc.frontmatter or {}) if mdoc.has_frontmatter else {}
+        declared = registry.type_of(fm)
+        if declared:
+            return Result(True, f"spec '{slug}/{name}' already typed ({declared})", [path])
+        fm.pop("type", None)   # a present-but-blank `type:` must not shadow the stamp
+        path.write_text(f"---\n{dump_frontmatter({'type': type_value, **fm})}---\n{mdoc.body}",
+                        encoding="utf-8")
+        return Result(True, f"stamped spec '{slug}/{name}' ({type_value})", [path])
+    body = f"# {title}\n\n" if title else ""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\n{dump_frontmatter({'type': type_value})}---\n{body}", encoding="utf-8")
+    return Result(True, f"created spec '{slug}/{name}' ({type_value})", [path])
+
+
 def delete_feature(graph: Graph, slug: str) -> Result:
     for feat in graph.features:
         if feat.slug == slug:

@@ -962,18 +962,69 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _base_library_dir() -> Path | None:
-    """The base library root, or None when the `stablemate-library` wheel is absent.
+# Env var pointing at the base library content on disk. Twin of $WORKHORSE_LIBRARY_DIR
+# (the overlay) for the base layer. It exists because the optional import below only
+# resolves when the `stablemate-library` wheel shares workhorse's environment — which
+# `pip install workhorse-agent` into one venv gives you, but `pipx install
+# workhorse-agent` (an isolated per-app venv) does not. A path handed in out-of-band
+# is then the only way the isolated CLI finds a separately-installed base.
+BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
 
-    Discovered with an *optional* import on purpose: the base package depends on
-    workhorse (its workflows are run by this CLI), so a hard dependency the other way
-    would close a cycle. Absent the wheel, workhorse behaves exactly as before —
-    a workflow name resolves only against a configured library."""
+
+def _is_base_library_dir(path: Path) -> bool:
+    """A usable base library root holds content: ``library/`` or ``workflows/``.
+
+    The same shape farrier's ``is_library_dir`` checks — kept as a tiny local copy so
+    workhorse need not import farrier just to validate a path."""
+    return (path / "library").is_dir() or (path / "workflows").is_dir()
+
+
+def _base_library_dir() -> Path | None:
+    """The base library root, or None when it cannot be located.
+
+    Resolution order, highest precedence first:
+
+    1. ``$STABLEMATE_BASE_DIR`` — an explicit on-disk path, the way an isolated
+       ``pipx install workhorse-agent`` reaches a separately-installed base it cannot
+       import.
+    2. The ``base_dir`` key in workhorse's config (``workhorse config set-base <path>``)
+       — the persisted form of that override.
+    3. An *optional* import of the ``stablemate-library`` wheel — the co-located path
+       (``pip install stablemate-library`` puts it in workhorse's own environment).
+    4. Derived from a configured ``stablemate_dir`` checkout
+       (``<checkout>/base-library/stablemate_library``), for running against a source tree.
+
+    Discovery, never a declared dependency: the base package depends on workhorse (its
+    workflows are run by this CLI), so a hard dependency the other way would close a
+    cycle. With none of the above resolving, workhorse behaves exactly as before — a
+    workflow name resolves only against a configured library. A configured-but-invalid
+    override is skipped rather than raised on, keeping an overlay-only setup working."""
+    env = os.environ.get(BASE_DIR_ENV)
+    if env:
+        candidate = Path(env).expanduser()
+        if _is_base_library_dir(candidate):
+            return candidate.resolve()
+
+    configured = get_config_value("base_dir")
+    if isinstance(configured, str) and configured:
+        candidate = Path(configured).expanduser()
+        if _is_base_library_dir(candidate):
+            return candidate.resolve()
+
     try:
         from stablemate_library import base_dir
     except ImportError:
-        return None
-    return base_dir()
+        pass
+    else:
+        return base_dir()
+
+    checkout = get_config_value("stablemate_dir")
+    if isinstance(checkout, str) and checkout:
+        candidate = Path(checkout).expanduser() / "base-library" / "stablemate_library"
+        if _is_base_library_dir(candidate):
+            return candidate.resolve()
+
+    return None
 
 
 def _library_layers() -> list[Path]:
@@ -1317,6 +1368,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "set-stablemate", help="Record the stablemate checkout path in the home config"
     )
     set_sm_p.add_argument("path", type=Path, help="Path to the stablemate checkout")
+    set_base_p = config_sub.add_parser(
+        "set-base",
+        help="Record the base library content path (for isolated/pipx installs where "
+        "the stablemate-library wheel isn't importable)",
+    )
+    set_base_p.add_argument(
+        "path", type=Path, help="Path to the base library (the stablemate_library payload dir)"
+    )
     # list / get — workhorse-specific power/model config (workhorse's own config.toml)
     config_sub.add_parser(
         "list", help="Print the loaded workhorse config (power mappings etc.)"
@@ -1375,6 +1434,17 @@ def _run_config(args: argparse.Namespace) -> None:
         path = Path(args.path).expanduser().resolve()
         write_config_key("stablemate_dir", str(path))
         print(f"stablemate_dir={path}")
+        return
+
+    if args.config_command == "set-base":
+        path = Path(args.path).expanduser().resolve()
+        if not _is_base_library_dir(path):
+            raise SystemExit(
+                f"error: {path} is not a usable base library directory — it must contain "
+                "library/ or workflows/ (the stablemate_library payload)."
+            )
+        write_config_key("base_dir", str(path))
+        print(f"base_dir={path}")
         return
 
     cfg = load_config()

@@ -12,23 +12,6 @@
     "sourceRefs": { "type": "object", "additionalProperties": true },
     "old": { "type": "array" },
     "new": { "type": "array" },
-    "gaps": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id"],
-        "additionalProperties": true,
-        "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "component": { "type": "string" },
-          "oldState": { "type": "string" },
-          "newState": { "type": "string" },
-          "kind": { "type": "string" },
-          "disposition": { "type": "string" },
-          "owner": { "type": "string" }
-        }
-      }
-    },
     "openGaps": { "type": "array" },
     "journeys": { "type": "array" },
     "provenance": { "type": "object", "additionalProperties": true }

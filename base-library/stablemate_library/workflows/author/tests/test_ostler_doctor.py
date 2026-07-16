@@ -35,22 +35,21 @@ def test_clean_graph_passes(tmp_path):
 
 @requires_ostler
 def test_errors_block_with_pointers(tmp_path):
-    # A knowledge gap owned by a story that doesn't exist → dangling-owner (error).
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_knowledge(tmp_path, "form", gaps=[{"id": "gap-x", "owner": "gone"}])
+    # A story covering a seed that no epic declares → dangling-seed (error).
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}],
+               stories=[{"slug": "s1", "covers": ["i1", "ghost-seed"]}])
     out = run_script("ostler-doctor.py", repo=tmp_path)
     assert out["integrity_ok"] == "no"
-    assert "dangling-owner" in out["integrity_errors"]
-    assert "gone" in out["integrity_errors"]
+    assert "ghost-seed" in out["integrity_errors"]
     # the constraint that the resolver must not erase the ref is part of the pointer
     assert "never" in out["integrity_errors"].lower()
 
 
 @requires_ostler
 def test_warnings_do_not_block(tmp_path):
-    # A gap with a disposition but no owner → stale-owner (warn), never a block.
+    # A knowledge surface with no matching feature doc → ungrounded-surface (warn), never a block.
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_knowledge(tmp_path, "form", gaps=[{"id": "g", "disposition": "scoped"}])
+    write_knowledge(tmp_path, "form")
     out = run_script("ostler-doctor.py", repo=tmp_path)
     assert out["integrity_ok"] == "yes", out["integrity_report"]
     assert out["integrity_errors"] == ""

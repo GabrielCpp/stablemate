@@ -41,7 +41,11 @@ similar.
 Write both files directly under the spec directory:
 
 1. `qa-plan.yml`, mandatory for every surface and every run.
-2. `qa-plan.md`, the reviewable rationale and AC/obligation-to-scenario map.
+2. `qa-plan.md`, the reviewable rationale and AC/obligation-to-scenario map. Create it through
+   `ostler` first — `timeout 30 ostler create spec <story-name> qa-plan.md`, where `<story-name>`
+   is the folder name of the spec directory — which stamps its `type: spec.qa-plan` frontmatter.
+   Write the structure below **underneath that `---` block, leaving it in place** — a doc with no
+   `type:` is an `okf-missing-type` error against the graph.
 
 There is no UI/mobile escape from YAML. Playwright and Maestro are drivers selected by
 the YAML plan, not agent-operated alternatives. Command/API verification uses the same

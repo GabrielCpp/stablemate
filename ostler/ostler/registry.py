@@ -9,6 +9,7 @@ place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Seed lifecycle
@@ -87,7 +88,7 @@ REGISTRY: tuple[EntityType, ...] = (
     EntityType(
         name="spec", doc_root="specs", location="*/*.md",
         required=("type",), schema=None,
-        note="Coder process artifact (spec.plan / spec.review / spec.qa). Conformance only.",
+        note="Coder process artifact (spec.<stem>: spec.plan, spec.qa, …). Conformance only.",
     ),
 )
 
@@ -333,6 +334,21 @@ def base_type(type_value: str | None) -> str | None:
     if not type_value:
         return None
     return type_value.split(".", 1)[0]
+
+
+def spec_type_for(filename: str) -> str:
+    """The `type` for a spec doc — ``spec.<stem>``: 'plan.md' → 'spec.plan', 'executive.md' →
+    'spec.executive', 'plan-go.md' → 'spec.plan-go', 'vet.md' → 'spec.vet'.
+
+    The subtype is descriptive, not dispatched on: nothing reads past ``base_type()``, and the
+    spec EntityType requires only a non-empty ``type`` (no schema). So the stem is carried through
+    verbatim rather than collapsed into a fixed vocabulary — that keeps a doc's kind queryable and
+    matches the types already on disk (``spec.vet`` is what ``ostler vet`` writes).
+
+    A doc with no stem to speak of falls back to the bare ``spec`` base type, which still conforms.
+    """
+    stem = Path(filename).stem.strip().lower()
+    return f"spec.{stem}" if stem else "spec"
 
 
 @dataclass

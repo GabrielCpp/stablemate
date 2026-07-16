@@ -210,31 +210,16 @@ def write_queue(repo: Path, epics: list[str], *, title_by: dict | None = None,
 
 
 def write_knowledge(repo: Path, surface_slug: str, *, area: str = "area",
-                    route: str | None = None, gaps: list[dict] | None = None,
+                    route: str | None = None,
                     journeys: list | None = None, sources: list | None = None,
                     knowledge_dir: str = "docs/knowledge") -> Path:
-    """Write a knowledge Concept (markdown + YAML front-matter). Returns repo-relative path.
-
-    ``gaps`` entries are passed through verbatim into the front-matter list (each is a mapping
-    like ``{"id": "g1", "kind": "missing", "disposition": "deferred", "owner": "s2"}``).
-    """
+    """Write a knowledge Concept (markdown + YAML front-matter). Returns repo-relative path."""
     rec_path = repo / knowledge_dir / area / f"{surface_slug}.md"
     rec_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = ["---", "type: knowledge", f"surface: {area}/{surface_slug}"]
     if route:
         lines.append(f"route: {route}")
-    if not gaps:
-        lines.append("gaps: []")
-    else:
-        lines.append("gaps:")
-        for g in gaps:
-            lines.append(f"  - id: {g.get('id', 'g')}")
-            lines.append(f"    kind: {g.get('kind', 'missing')}")
-            if "disposition" in g:
-                lines.append(f"    disposition: {g['disposition']}")
-            if "owner" in g:
-                lines.append(f"    owner: {g['owner']}")
     if journeys is not None:
         if not journeys:
             lines.append("journeys: []")

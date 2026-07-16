@@ -42,7 +42,8 @@ evidence is missing/malformed, the deterministic gate should have returned `inva
 not manufacture a pass. Record that contract defect without treating it as product proof.
 
 Append `## Independent Audit` to `<spec_dir>/qa.md`, naming the obligations and evidence
-sampled plus any concrete refutation.
+sampled plus any concrete refutation. Append below the existing content and leave the `---`
+frontmatter block intact — it carries the `type:` that makes the doc an OKF Concept.
 
 Return JSON only:
 

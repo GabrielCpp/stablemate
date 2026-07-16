@@ -3,9 +3,8 @@
 
 The surface-coverage gate relates authored work to the *feature set*; the per-epic coverage
 validator proves seeds map to stories *within* an epic. Neither catches the **cross-run drift**
-this gate does: a knowledge gap owned by a story that no longer exists, a story referencing a
-seed that belongs to another epic, a dangling `[gap:…]` tag — the "AI forgot what it created
-itself" class. `ostler.doctor()` computes (never asserts) the graph facts and reports these as
+this gate does: a story referencing a seed that belongs to another epic, a knowledge path that
+resolves to nothing — the "AI forgot what it created itself" class. `ostler.doctor()` computes (never asserts) the graph facts and reports these as
 typed findings; this node turns its error-level findings into a blocking gate so they route to
 the operator/resolver instead of shipping.
 

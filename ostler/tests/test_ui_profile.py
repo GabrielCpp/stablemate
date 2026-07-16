@@ -22,6 +22,17 @@ def codes(report, severity="error"):
     return {f.code for f in report.findings if f.severity == severity}
 
 
+def write_cited_code(repo: Path) -> None:
+    """The source `SCREEN`'s `code:` bullets point at.
+
+    `doctor` grounds `code:` targets against the repo (§4.4), so a fixture that cites a symbol
+    must declare it — the same bar the `extends:` target already had to meet.
+    """
+    write(repo / "groom/groom/render.py", "def _changes_worker(diff):\n    return diff\n")
+    write(repo / "groom/groom/templates/dashboard.html",
+          "<script>function wireChanges() {}</script>\n")
+
+
 SCREEN = """\
 ---
 type: screen
@@ -113,6 +124,7 @@ def test_screen_doc_under_features_keeps_doctor_green(repo: Path):
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     # the `extends:` target must exist for the referentially-complete doc to be green
     write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
+    write_cited_code(repo)
     report = doctor.run(load(repo))
     # No `schema` finding: a type:screen doc is validated as a screen (no schema),
     # NOT double-checked against feature.schema.json.
@@ -141,6 +153,112 @@ def test_located_finding_carries_path(repo: Path):
     finding = next(f for f in report.findings if f.code == "okf-missing-type")
     assert finding.path == "docs/features/y.md"
     assert finding.line == 1
+
+
+# ---------------------------------------------------------------------------
+# §4.4 — `code:` grounding (the join keys coverage counts on)
+# ---------------------------------------------------------------------------
+CONCEPT = """\
+---
+type: concept
+slug: diff
+title: Diff
+---
+# Diff
+
+- code: `{ref}`
+
+A unified diff.
+"""
+
+
+def _concept_report(repo: Path, ref: str):
+    write(repo / "docs/features/groom/concepts/diff.md", CONCEPT.format(ref=ref))
+    return doctor.run(load(repo))
+
+
+def test_code_ref_to_a_missing_file_is_an_error(repo: Path):
+    # What §4.4 exists for: a citation that outlives the file it names. Nothing checked this,
+    # so a book could drift from its source silently while `doctor` stayed green.
+    report = _concept_report(repo, "groom/groom/gone.py::Diff")
+    assert "dangling-code-ref" in codes(report)
+
+
+def test_code_ref_to_a_missing_symbol_is_an_error(repo: Path):
+    write(repo / "groom/groom/diff.py", "class Other:\n    pass\n")
+    report = _concept_report(repo, "groom/groom/diff.py::Diff")
+    assert "missing-code-symbol" in codes(report)
+
+
+def test_a_grounded_code_ref_is_green(repo: Path):
+    write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
+    report = _concept_report(repo, "groom/groom/diff.py::Diff")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+
+
+def test_a_receiver_qualified_symbol_grounds_against_go(repo: Path):
+    # The book's grammar, not the tool's: every part of a qualified symbol must be declared.
+    write(repo / "api/claims.go",
+          "package p\ntype FirebaseClaimsWriter struct{}\n"
+          "func (w *FirebaseClaimsWriter) SetRoleClaims() {}\n")
+    ok = _concept_report(repo, "api/claims.go::(*FirebaseClaimsWriter).SetRoleClaims")
+    assert not (codes(ok) & {"dangling-code-ref", "missing-code-symbol"})
+    # The receiver is real but the method is not — a bare-name check would have missed this.
+    bad = _concept_report(repo, "api/claims.go::(*FirebaseClaimsWriter).Removed")
+    assert "missing-code-symbol" in codes(bad)
+
+
+def test_a_service_relative_ref_is_caught_as_dangling(repo: Path):
+    # §4.4's other job: stop two path conventions coexisting silently. The grammar is
+    # repo-root-relative, so a service-relative citation names no file and says so.
+    write(repo / "api/internal/claims.go", "package p\nfunc Write() {}\n")
+    report = _concept_report(repo, "internal/claims.go::Write")
+    assert "dangling-code-ref" in codes(report)
+    finding = next(f for f in report.findings if f.code == "dangling-code-ref")
+    assert "repo root" in finding.suggestion
+
+
+def test_a_whole_file_code_ref_needs_only_the_file(repo: Path):
+    # A Twig template renders a screen, so the file is the unit — there is no symbol to ground.
+    write(repo / "legacy/templates/Home.html.twig", "<p>hi</p>\n")
+    report = _concept_report(repo, "legacy/templates/Home.html.twig")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+
+
+def test_a_file_region_is_not_held_to_a_symbols_bar(repo: Path):
+    # The profile admits `code:` as `path::symbol` **or a `file` region** (§3), and a region is
+    # prose, not a name: `dashboard.html::notification permission bootstrap` is real, shipped
+    # usage. Flagging it would be the tool overruling the book's own granted convention — so
+    # the file is grounded and the region is left alone.
+    write(repo / "groom/groom/templates/dashboard.html", "<script>//...</script>\n")
+    report = _concept_report(
+        repo, "groom/groom/templates/dashboard.html::notification permission bootstrap")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+
+
+def test_a_file_region_still_grounds_its_file(repo: Path):
+    # A region is exempt from the symbol check, not from existing.
+    report = _concept_report(repo, "groom/groom/templates/gone.html::some region")
+    assert "dangling-code-ref" in codes(report)
+
+
+def test_a_code_finding_is_located_at_its_node(repo: Path):
+    report = _concept_report(repo, "groom/groom/gone.py::Diff")
+    finding = next(f for f in report.findings if f.code == "dangling-code-ref")
+    assert finding.path == "docs/features/groom/concepts/diff.md"
+    assert finding.line > 0
+    assert finding.ref == "groom/groom/gone.py::Diff"
+
+
+def test_verify_targets_stay_deferred(repo: Path):
+    # `verify:` is a test id as often as a `path::symbol`, so it has no single shape to hold it
+    # to and stays with the QA gate. Only `code:` is grounded here.
+    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
+    write_cited_code(repo)
+    report = doctor.run(load(repo))
+    # SCREEN's `verify:` names a test file that does not exist; that is not a finding.
+    assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +385,7 @@ def _write_runbook_trio(repo: Path) -> None:
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/ops/web.md", RUNBOOK)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "groom/groom/cli.py", "def serve():\n    pass\n")  # RUNBOOK's `code:` target
 
 
 def test_operational_types_registered():

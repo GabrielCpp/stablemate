@@ -21,7 +21,7 @@ def test_reads_match_the_underlying_core(repo: Path):
 
 def test_query_and_search(repo: Path):
     okf = Ostler(repo)
-    assert {x["id"] for x in okf.query("gaps-in-story", "01-foo")} == {"gap-x"}
+    assert {x["slug"] for x in okf.query("stories-covering-seed", "seed-a1")} == {"01-foo"}
     assert any(h["slug"] == "01-foo" for h in okf.search("thing works", etype="story"))
 
 

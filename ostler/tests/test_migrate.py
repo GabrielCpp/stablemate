@@ -28,9 +28,9 @@ def _old_repo(root: Path) -> None:
     write(root / "docs/epics/epic-a/epic.md", "# Epic A\n\n## Goal\n\nbuild it\n")
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
           "# Story: Foo\n\n## Implementation Status\n\n- **Status**: Not started\n\n"
-          "## Acceptance Criteria\n\n- works [gap: gap-x]\n\nSee `docs/knowledge/area/rec.json`.\n")
+          "## Acceptance Criteria\n\n- works\n\nSee `docs/knowledge/area/rec.json`.\n")
     write(root / "docs/knowledge/area/rec.json", json.dumps({
-        "surface": "area/rec", "gaps": [{"id": "gap-x", "owner": "01-foo", "disposition": "scoped"}],
+        "surface": "area/rec", "route": "/rec",
     }))
     write(root / "docs/features/inventory.json", json.dumps({
         "surfaces": [{"area": "area", "slug": "rec", "title": "Rec", "route": "/rec"}],

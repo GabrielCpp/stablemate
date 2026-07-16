@@ -38,29 +38,20 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
 
 
 def story_md(slug: str, title: str, status: str,
-             gap: str | None = None, knowledge_ref: str | None = None) -> str:
+             knowledge_ref: str | None = None) -> str:
     body = ["---", "type: story", f"slug: {slug}", f"status: {status}", "---",
             f"# Story: {title}", "", "## Implementation Status", "",
             f"- **Status**: {status}", "", "## Acceptance Criteria", ""]
-    line = "- The thing works."
-    if gap:
-        line += f" [gap: {gap}]"
-    body.append(line)
+    body.append("- The thing works.")
     if knowledge_ref:
         body += ["", f"Knowledge record: `{knowledge_ref}`."]
     return "\n".join(body) + "\n"
 
 
-def knowledge_md(surface: str, gaps: list[tuple[str, str]] | None = None, route: str = "") -> str:
-    """gaps: (id, owner) tuples (disposition scoped)."""
+def knowledge_md(surface: str, route: str = "") -> str:
     out = ["---", "type: knowledge", f"surface: {surface}"]
     if route:
         out.append(f"route: {route}")
-    out.append("gaps:")
-    for gid, owner in (gaps or []):
-        out += [f"- id: {gid}", f"  owner: {owner}", "  disposition: scoped"]
-    if not gaps:
-        out[-1] = "gaps: []"
     out += ["---", f"# {surface}", "", "body text", ""]
     return "\n".join(out) + "\n"
 
@@ -87,7 +78,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-foo", "Foo", ["seed-a1"], [])],
     ))
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", "gap-x", "docs/knowledge/area/rec.md"))
+          story_md("01-foo", "Foo", "Not started", "docs/knowledge/area/rec.md"))
 
     # epic-b: story 01-bar covers seed-b1.
     write(root / "docs/epics/epic-b/epic.md", epic_md(
@@ -98,8 +89,8 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/epics/epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started"))
 
-    # knowledge: rec (gap-x owned by 01-foo) + rec2 (gap-y owned by 01-bar)
-    write(root / "docs/knowledge/area/rec.md", knowledge_md("area/rec", [("gap-x", "01-foo")]))
-    write(root / "docs/knowledge/area/rec2.md", knowledge_md("area/rec2", [("gap-y", "01-bar")]))
+    # knowledge: two surface records, referenced from story prose by path
+    write(root / "docs/knowledge/area/rec.md", knowledge_md("area/rec"))
+    write(root / "docs/knowledge/area/rec2.md", knowledge_md("area/rec2"))
 
     return root

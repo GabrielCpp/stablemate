@@ -9,7 +9,7 @@ ostler.
 """
 from __future__ import annotations
 
-from conftest import requires_ostler, run_script, write_backlog, write_epic, write_knowledge
+from conftest import requires_ostler, run_script, write_epic
 
 pytestmark = requires_ostler
 
@@ -55,54 +55,3 @@ def test_dangling_dependency_fails(tmp_path):
 
 
 # ── deferral ownership ────────────────────────────────────────────────────────
-
-def test_deferred_gap_owned_by_sibling_story_passes(tmp_path):
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}, {"id": "i2"}], stories=[
-        {"slug": "s1", "covers": ["i1"]},
-        {"slug": "s2", "deps": ["s1"], "covers": ["i2"]},
-    ])
-    write_knowledge(tmp_path, "form", gaps=[
-        {"id": "section-tree", "disposition": "deferred", "owner": "s2"},
-    ])
-    out = cov(tmp_path)
-    assert out["coverage_ok"] == "yes", out["coverage_errors"]
-
-
-def test_deferred_gap_owned_by_open_backlog_item_passes(tmp_path):
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_backlog(tmp_path, ["section-tree-rebuild"])
-    write_knowledge(tmp_path, "form", gaps=[
-        {"id": "section-tree", "disposition": "deferred", "owner": "section-tree-rebuild"},
-    ])
-    out = cov(tmp_path)
-    assert out["coverage_ok"] == "yes", out["coverage_errors"]
-
-
-def test_deferred_gap_with_no_owner_fails(tmp_path):
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_knowledge(tmp_path, "form", gaps=[
-        {"id": "section-tree", "disposition": "deferred"},  # no owner
-    ])
-    out = cov(tmp_path)
-    assert out["coverage_ok"] == "no"
-    assert "section-tree" in out["coverage_errors"] and "owner" in out["coverage_errors"]
-
-
-def test_deferred_gap_with_unresolvable_owner_fails(tmp_path):
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_knowledge(tmp_path, "form", gaps=[
-        {"id": "section-tree", "disposition": "deferred", "owner": "nobody-owns-this"},
-    ])
-    out = cov(tmp_path)
-    assert out["coverage_ok"] == "no"
-    assert "nobody-owns-this" in out["coverage_errors"]
-
-
-def test_scoped_and_undispositioned_gaps_are_noop(tmp_path):
-    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
-    write_knowledge(tmp_path, "form", gaps=[
-        {"id": "a", "disposition": "scoped"},
-        {"id": "b"},  # no disposition ⇒ not deferred, backward-compatible
-    ])
-    out = cov(tmp_path)
-    assert out["coverage_ok"] == "yes", out["coverage_errors"]

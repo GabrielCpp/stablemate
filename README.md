@@ -7,13 +7,82 @@ packages that work alongside an agent prompt library:
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives the Claude CLI through a YAML workflow graph, unattended for days. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
+| [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
+| [`base-library/`](base-library/) | [`stablemate-library`](https://pypi.org/project/stablemate-library/) | The **base library**: the skills, workflows and scaffolds that farrier renders and workhorse runs, shipped as a wheel. |
 
-The prompt-library **content** (skills, prompts, scaffolds, workflows) lives in a
-separate repository. `farrier` ships no content; it is pointed at the library via:
+Library content resolves across two layers: the **base** (`stablemate-library`, above)
+and an optional private **overlay** that shadows it name-for-name. Point a repo at an
+overlay with:
 
 ```bash
-farrier config set-library /path/to/the/library
+farrier config set-library /path/to/the/overlay
 ```
+
+The base is always present once the tools can find it — see
+[Installing](#installing) for how that discovery works, which matters because
+`pipx` installs each tool in its own isolated environment.
+
+## Installing
+
+The engines and the base library are separate PyPI packages, and **how you install
+them decides whether they can find each other at runtime.** The base library
+(`stablemate-library`) is pure content — no logic the tools import beyond the path to
+that content. farrier and workhorse locate it in this order (highest precedence first):
+
+1. `$STABLEMATE_BASE_DIR` — an explicit path to the content on disk.
+2. `<tool> config set-base <path>` — the persisted form of that path.
+3. an import of the `stablemate-library` wheel **from the tool's own environment**.
+4. a configured `stablemate_dir` checkout (`<checkout>/base-library/stablemate_library`).
+
+Two setups are supported as equals — pick by whether you want one environment or
+independently upgradable tools.
+
+### One environment (simplest)
+
+Install the base library and let it pull the engines into the *same* place, so the
+import in step 3 resolves with nothing to configure:
+
+```bash
+pipx install stablemate-library --include-deps   # base + farrier/workhorse/ostler, one venv
+# …or into a plain virtualenv:
+pip install stablemate-library
+```
+
+`--include-deps` also exposes the `farrier`, `workhorse` and `ostler` commands on your
+PATH. If you already installed those standalone with pipx, remove them first so the
+commands don't collide:
+
+```bash
+pipx uninstall farrier workhorse-agent ostler
+```
+
+### Isolated tools (independent upgrades)
+
+Keep each engine in its own `pipx` venv and point them at one shared copy of the base
+content. This is the setup where step 3 **cannot** work — pipx isolates every app in
+its own environment, so `pipx install farrier` can never import a separately-installed
+wheel — and steps 1–2 carry it:
+
+```bash
+pipx install farrier
+pipx install workhorse-agent
+pipx install ostler
+
+# place the content once (‑‑no-deps: just the payload, not the engines)
+pip install --no-deps --target ~/.local/share/stablemate/base stablemate-library
+BASE=~/.local/share/stablemate/base/stablemate_library
+
+export STABLEMATE_BASE_DIR="$BASE"        # one env var both tools read…
+# …or persist it per tool instead of exporting:
+farrier   config set-base "$BASE"
+workhorse config set-base "$BASE"
+```
+
+`groom` and `saddlebag` are optional add-ons (`pipx install groom` /
+`pipx install saddlebag`); no base workflow requires them.
+
+Either way, an overlay library still shadows the base name-for-name via
+`farrier config set-library` (or `$FARRIER_LIBRARY_DIR` / `$WORKHORSE_LIBRARY_DIR`).
 
 ## Development
 

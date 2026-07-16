@@ -95,6 +95,10 @@ brought services up, leave them running for the QA pass.
 Write a short setup report to `{{ workhorse_var('spec_dir') }}/setup-fix.md` describing what was wrong,
 what you changed/started, and the readiness proof.
 
+Create it through `ostler` first — `timeout 30 ostler create spec <story-name> setup-fix.md`, where
+`<story-name>` is the folder name of `{{ workhorse_var('spec_dir') }}` — which stamps its `type:`
+frontmatter. Write the report **below the `---` block, leaving it in place**.
+
 Then return this exact JSON object in your **final response** (after the markdown report):
 
 ```json
