@@ -9,15 +9,17 @@ agent: agent
 - Story path: `{{ workhorse_var('story_path') }}`
 - Plan artifact path: `{{ workhorse_var('spec_dir') }}`
 - Automated code review result: `{{ workhorse_var('code_review_result') }}`
+- Code-reuse review result: `{{ workhorse_var('code_reuse_result') }}`
 
 ## Your Role
 
-You are a **thorough implementation reviewer**. You perform two complementary reviews:
+You are a **thorough implementation reviewer**. You combine findings from three sources:
 
-1. **Automated code-review findings** — collected from the `code_review_result` input (produced by the `/code-review` skill in the previous stage).
-2. **Self-review** — your own manual review of the implementation against the story, plan, and project coding standards.
+1. **Automated code-review findings** — collected from the `code_review_result` input (produced by the `/code-review` skill in an earlier stage).
+2. **Code-reuse findings** — collected from the `code_reuse_result` input (produced by the dedicated code-reuse stage that hunts duplicated code and missed utility/helper reuse). Do **not** re-derive these yourself — that concern was extracted into its own stage; just fold the findings in.
+3. **Self-review** — your own manual review of the implementation against the story, plan, and project coding standards (the dimensions in Step 3, which no longer include duplication/missed-utility — those come from source 2).
 
-Both sets of findings are combined into the final verdict.
+All three sets of findings are combined into the final verdict.
 
 ## Steps
 
@@ -37,7 +39,9 @@ For each affected repository:
 
 ### 3. Perform Self-Review
 
-Review the implementation against these five dimensions:
+Review the implementation against these three dimensions. **Duplication and missed
+utility/helper reuse are NOT reviewed here** — they are handled by the code-reuse stage
+and collected in Step 4b; do not re-derive them.
 
 #### 3a. Instruction Compliance
 
@@ -59,24 +63,7 @@ Review the implementation against these five dimensions:
   - Repeated logic that could be extracted
 - Suggest more concise alternatives while maintaining readability
 
-#### 3c. Code Duplication
-
-- Scan for duplicated code blocks across:
-  - The same file
-  - Different files in the diff
-  - Existing codebase (if similar patterns clearly exist nearby)
-- Identify similarities in logic, even if implementation differs slightly
-- Recommend creating shared utilities or abstractions where warranted
-
-#### 3d. Missed Utility/Helper Opportunities
-
-- Check if existing utility functions or helpers could be used instead of custom implementations
-- Look for common patterns that already have solutions in:
-  - The project's utility packages (e.g., `pkg/util`, `pkg/timez`, `pkg/errors`, `pkg/validate`)
-  - Core packages or standard library functions
-- Suggest specific existing functions that should be used, with file/line references
-
-#### 3e. Framework Best Practices
+#### 3c. Framework Best Practices
 
 For the specific framework of the affected repo:
 
@@ -84,7 +71,7 @@ For the specific framework of the affected repo:
 - **Dart/Flutter (mobile-app):** Widget composition, state management, performance (const constructors, unnecessary rebuilds), null safety, async patterns
 - **TypeScript/Svelte (web-app):** Type safety, reactive patterns, component decomposition, store usage
 
-### 4. Collect Automated Code-Review Findings
+### 4a. Collect Automated Code-Review Findings
 
 Process the `code_review_result` input:
 
@@ -98,9 +85,20 @@ Process the `code_review_result` input:
 - If `code_review_result.status` is `skipped`:
   - The automated review did not run (no local changes or tool unavailable). No automated findings.
 
+### 4b. Collect Code-Reuse Findings
+
+Process the `code_reuse_result` input (produced by the dedicated code-reuse stage). Do
+NOT re-scan for duplication or missed utilities yourself — just consume this:
+
+- If `code_reuse_result.status` is `findings`:
+  - Use the `findings` array (each entry has repo, file, line, `category` — `Code Duplication` or `Missed Utility` — `severity`, issue, and required fix). Carry each finding's `severity` through to the verdict below.
+
+- If `code_reuse_result.status` is `clean` or `skipped`:
+  - No code-reuse findings.
+
 ### 5. Determine Verdict
 
-Combine findings from both sources (self-review + automated code-review). Apply the verdict:
+Combine findings from all three sources (self-review + automated code-review + code-reuse). Apply the verdict:
 
 - **approved** — no findings require a fix (either no findings at all, or all are informational/minor suggestions).
 - **needs_changes** — one or more findings are severity Critical or Major and require a fix before QA.
@@ -132,7 +130,7 @@ Approved | Needs changes
 
 ## Summary
 
-<2-3 sentences summarizing the review outcome across both automated and self-review passes.>
+<2-3 sentences summarizing the review outcome across the automated, code-reuse, and self-review passes.>
 
 ## Automated Code-Review Findings
 
@@ -145,13 +143,25 @@ Approved | Needs changes
 - **Issue**: as reported
 - **Required fix**: as reported
 
-## Self-Review Findings
+## Code-Reuse Findings
 
-<Findings from your own review (Steps 3a-3e). If none, write "None.">
+<Findings from `code_reuse_result` (duplication + missed utilities). If none, write "None.">
 
 ### Finding N: <Title>
 
-- **Category**: Instruction Compliance | Code Conciseness | Code Duplication | Missed Utility | Framework Best Practices
+- **Category**: Code Duplication | Missed Utility
+- **Severity**: as reported
+- **Reference**: repo, file path, and line
+- **Issue**: as reported
+- **Required fix**: as reported
+
+## Self-Review Findings
+
+<Findings from your own review (Steps 3a-3c). If none, write "None.">
+
+### Finding N: <Title>
+
+- **Category**: Instruction Compliance | Code Conciseness | Framework Best Practices
 - **Severity**: Critical | Major | Minor
 - **Reference**: repo, file path, and line number(s)
 - **Issue**: clear description of the problem
@@ -160,7 +170,7 @@ Approved | Needs changes
 
 ## Required Fixes Before QA
 
-<Consolidated list of all Critical and Major findings from BOTH sources that must be addressed. If none, write "None.">
+<Consolidated list of all Critical and Major findings from ALL THREE sources that must be addressed. If none, write "None.">
 
 ## Notes
 
@@ -175,7 +185,7 @@ Return this JSON as your final response:
 {
   "review_impl_result": {
     "status": "approved" | "needs_changes",
-    "notes": "<brief summary of findings from both review passes, or 'No issues found.'>"
+    "notes": "<brief summary of findings from all three review passes, or 'No issues found.'>"
   }
 }
 ```

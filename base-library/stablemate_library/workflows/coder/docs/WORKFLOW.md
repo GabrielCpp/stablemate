@@ -17,10 +17,11 @@ Single-story workflow with no queue, CI gating, or PR management. Useful for:
 ### Flow Breakdown
 
 1. **Plan** → `plan` → `decide_plan` (no separate plan-review agent — it caught nothing in practice; depth is enforced by implementation review and, decisively, by QA)
-   - Done: → `implement`
+   - Done: → `check_code_reuse` (anti-reimplementation gate) → `implement`
    - Blocked: → `gate_plan` → `await_operator` (human halt) → operator answers inline → `rework_plan` → `decide_plan`
+   - Reuse rework: `check_code_reuse` finds an existing implementation the plan would rebuild → `rework_plan_reuse` re-plans to reuse it → re-check (bounded by `max_reuse_reworks`, fail-open to `implement`)
 
-2. **Implement** → `implement` → `review_implementation` → `decide_impl`
+2. **Implement** → `implement` → `code_review` → `code_reuse` → `review_implementation` → `decide_impl`
    - Approved: → refresh implementation grounding → QA context generation
    - Needs changes: → `apply_review` → `review_implementation` (loop)
 
@@ -96,25 +97,32 @@ Both modes use the same core stages. Differences:
 
 ```
 plan (opus) → decide_plan
-├─ done → implement
+├─ done → seed_reuse → check_code_reuse (opus) → decide_reuse
+│           ├─ ok → validate_plan → implement
+│           └─ needs_rework → guard_reuse (≤ max_reuse_reworks)
+│                 → rework_plan_reuse (opus, refine-plan) → check_code_reuse (loop)
 └─ blocked → gate_plan → await_operator (human) / resolve_plan (auto)
               → operator answers → rework_plan (opus) → decide_plan
 ```
 
 - There is **no separate plan-review agent**: a dedicated reviewer added a full opus pass per story and caught nothing actionable. Correctness is enforced by implementation review and, decisively, by QA — so the plan goes straight to `implement`.
+- **Code-reuse gate** (`check_code_reuse`): before implementation, checks the approved plan against the existing codebase for a feature/endpoint/component/utility it would **re-implement**. A `needs_rework` verdict reworks the plan to reuse what exists (via `refine-plan.md`) and re-checks. It is **advisory and fail-open**: bounded by `max_reuse_reworks` (default 2) and a defaulted/exhausted check proceeds to `implement` — review and QA re-check reuse on the real diff.
 - **Operators** (`plan`, `rework_plan`): use `opus` for high-stakes prod operations
 - **Block gate**: only a genuine `blocked` (a dangerous/undecidable prod operation) stops the run; the operator answers inline in `<story-folder>/context.md`, then `rework_plan` re-plans and re-evaluates via `decide_plan`
 
 ### Implementation Loop
 
 ```
-implement → review_implementation → decide_impl
+implement → code_review → code_reuse → review_implementation → decide_impl
 ├─ approved → check_impl_feedback → decide_impl_feedback
 │  ├─ feedback present → apply_impl_feedback → review_implementation (loop)
 │  └─ no feedback → implementation grounding update → QA flow
 └─ needs_changes → apply_review → review_implementation (loop)
 ```
 
+- **Two automated review inputs feed the reviewer** (run once per review entry, not per rework pass):
+  - `code_review` — the native `/code-review` skill over each affected repo's local changes.
+  - `code_reuse` — a dedicated pass hunting **duplicated code** and **missed utility/helper reuse** (the tech-debt class). Extracted out of `review_implementation` (its former "Code Duplication" / "Missed Utility" self-review dimensions) so the concern is enforced by one focused opus pass. Both results ride into `review_implementation`, which folds them into its verdict — so a Major/Critical reuse finding drives the existing `needs_changes → apply_review` rework loop rather than being filed and forgotten.
 - No agent loop cap; assumes convergence through review
 - `check_impl_feedback` is a **non-blocking** poll of `<spec_dir>/feedback.md` (see [Non-blocking operator feedback](#non-blocking-operator-feedback)); with no feedback it falls straight through to QA
 
@@ -156,6 +164,7 @@ Top-level workflow `vars` (supply via `--params`):
 | `epic` | `""` | Optional epic override; skips queue pick. |
 | `operator_mode` | `"auto"` | `"auto"` = resolve_* agent stands in; `"human"` = always halt. |
 | `target_env` | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment. |
+| `max_reuse_reworks` | `"2"` | Max plan-level code-reuse rework cycles (dev flow, `guard_reuse`). |
 | `max_qa_reworks` | `"3"` | Max QA-fix cycles per story. |
 | `max_setup_reworks` | `"2"` | Max setup-fix cycles when QA env is broken. |
 | `max_ci_reworks` | `"3"` | Max fix_ci cycles per epic PR. |
@@ -173,6 +182,7 @@ Internal state (produced by script nodes at runtime, accessed via `get_node_outp
 | `working_epic` | `branch_epic` | Currently checked-out epic |
 | `ci_epic`, `ci_base` | `open_pr` | Which epic to gate, where to return after CI |
 | `plan_rework_count` | `reset_plan` | Tracks plan rework cycles |
+| `reuse_rework_count` | `seed_reuse` | Tracks plan code-reuse rework cycles |
 | `qa_rework_count` | QA flow var / `incr_qa` | Tracks QA rework cycles |
 | `ci_rework_count` | `reset_ci` | Tracks CI fix cycles |
 

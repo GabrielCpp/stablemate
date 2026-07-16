@@ -207,6 +207,40 @@ record continuously by default. See
 [`docs/QA-RUN.md`](docs/QA-RUN.md) and
 [`../docs/ostler-qa-verification.md`](../docs/ostler-qa-verification.md).
 
+## Python API
+
+Everything the CLI does is available in-process through the `Ostler` facade — the
+library face of the tool (the analog of GitPython's `Repo` or PyGithub's `Github`).
+Prefer it over spawning the CLI and parsing its JSON when you're calling ostler from
+Python: you load the graph once and get back plain objects (`dict`/`list`/`str`, a
+`Result`, an `EditPlan`, a `QaOutcome`) instead of a subprocess and a stdout scrape.
+
+```python
+from ostler import Ostler
+
+okf = Ostler("path/to/repo")          # graph root discovered upward, like `-C DIR`; None ⇒ cwd
+
+okf.todo()                            # ["checkout-flow", …]        (ostler todo list)
+okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler list --type story)
+okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
+okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
+okf.doctor()                          # {...} referential-integrity report (ostler doctor --json)
+
+res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
+res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
+okf.set_status("01-cart", "QA passed")
+```
+
+The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
+(`create_*`/`add_seed`/`set_status`/`backlog_*`/`todo_*`/`settle_review`) applies
+against a fresh load and invalidates the cache, so the next read reflects it
+(`reload()` forces a refresh). A read never returns `None` — an unloadable graph
+*raises*. The QA/artifact/edit surface is on the same object
+(`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `artifact_vet`,
+`settle_review`), lazy-imported so a read-only caller never loads the QA/vet
+machinery. `from ostler import load` returns the bare `Graph` if you want the
+functional core directly.
+
 ## The coverage model
 
 ```

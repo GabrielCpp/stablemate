@@ -6,18 +6,18 @@ Twin of `author/scripts/seed-story.py`, adapted for the coder fix loop:
 - Story mode's `seed-story.py` hard-fails if its target epic doesn't already exist (an operator
   must have created it). The fix loop has no such operator step — it self-creates a small,
   perpetual `fixes` epic bucket the first time it's needed (idempotent: an "already exists"
-  result from `ostler create epic` is treated as success, not an error). This bucket is never
-  registered in the epics queue (`ostler todo add`) that `select_epic`/`prune_epic` manage, so it
+  result from `okf.create_epic` is treated as success, not an error). This bucket is never
+  registered in the epics queue (`okf.todo_add`) that `select_epic`/`prune_epic` manage, so it
   never collides with or gets picked up by epic-mode story selection.
 - The bullet id/text are handed in directly by `select-next-fix-item.py`'s output (it already did
   the backlog scan), so there's no `resolve_bullet()` re-parse step here.
-- `ostler create story` scaffolds an empty `## Acceptance Criteria` section; this script fills it
+- `okf.create_story` scaffolds an empty `## Acceptance Criteria` section; this script fills it
   with the bullet text as the SINGLE AC line — the literal enactment of "1 fix = 1 AC."
 
 Idempotent / resumable: if a story already covers the bullet id, that story is reused rather than
 created again (and its AC section is left alone if already populated).
 
-Stdlib-only except for shelling out to the globally-installed `ostler` CLI.
+Mutates the doc graph through the in-process `ostler` Python API (`from ostler import Ostler`).
 
 Args:
     argv[1]  bullet_id    : the backlog item id (required, from select-next-fix-item.py)
@@ -33,44 +33,17 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
+
+from ostler import Ostler
 
 from workhorse import scriptutil
 
 
 def die(msg: str) -> NoReturn:
     scriptutil.die(f"seed-fix-story: {msg}", code=2)
-
-
-def _ostler() -> str:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        die("ostler CLI not found on PATH — seed-fix-story needs it to mutate the fixes epic")
-    return ostler
-
-
-def ostler_run(root: Path, args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run([_ostler(), *args], cwd=str(root), capture_output=True,
-                          text=True, timeout=120)
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    try:
-        proc = ostler_run(root, args)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def kebab(text: str, *, max_len: int = 60) -> str:
@@ -90,18 +63,17 @@ def emit(**kwargs: str) -> None:
     sys.exit(0)
 
 
-def ensure_fixes_epic(root: Path, epics_dir_rel: str, epic: str) -> None:
-    epic_dir = root / epics_dir_rel / epic
+def ensure_fixes_epic(okf: Ostler, epics_dir_rel: str, epic: str) -> None:
+    epic_dir = okf.root / epics_dir_rel / epic
     if (epic_dir / "epic.md").is_file():
         return
-    res = ostler_json(root, ["create", "epic", epic, "--title", "Coder-filed fixes", "--json"], "{")
-    if res and res.get("ok"):
+    res = okf.create_epic(epic, "Coder-filed fixes")
+    if res.ok:
         return
     # Idempotent: a concurrent/prior run may have created it between our check and this call.
     if (epic_dir / "epic.md").is_file():
         return
-    msg = (res or {}).get("message", "unknown error")
-    die(f"could not self-create the '{epic}' epic bucket: {msg}")
+    die(f"could not self-create the '{epic}' epic bucket: {res.message}")
 
 
 def inject_ac_line(story_path: Path, bullet_text: str) -> None:
@@ -142,12 +114,13 @@ def main() -> None:
         die("no bullet_text supplied (expected select-next-fix-item.py's fix_bullet_text output)")
 
     root = scriptutil.find_docs_root(docs_path_arg)
+    okf = Ostler(root)
     epic_dir_rel = f"{epics_dir_rel}/{epic}"
 
-    ensure_fixes_epic(root, epics_dir_rel, epic)
+    ensure_fixes_epic(okf, epics_dir_rel, epic)
 
     # Idempotent: if a story already covers this id, reuse it (resumable rerun).
-    stories = ostler_json(root, ["list", "--type", "story", "--epic", epic, "--json"], "[") or []
+    stories = okf.list("story", epic=epic)
     for s in stories:
         if bullet_id in (s.get("covers") or []):
             slug = str(s.get("slug", ""))
@@ -158,15 +131,13 @@ def main() -> None:
                  story_dir=str(Path(path).parent), story_path=path, bullet_id=bullet_id,
                  reason=f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)")
 
-    ostler_run(root, ["seed", "add", epic, bullet_id, "--status", "researched",
-                      "--summary", bullet_text, "--source-bullet", bullet_text])
+    okf.add_seed(epic, bullet_id, status="researched", summary=bullet_text,
+                 meta={"sourceBullet": bullet_text})
 
     slug = kebab(bullet_text)
-    res = ostler_json(root, ["create", "story", epic, slug, "--title", bullet_text,
-                             "--covers", bullet_id, "--json"], "{")
-    if not res or not res.get("ok"):
-        msg = (res or {}).get("message", "unknown error")
-        die(f"`ostler create story {epic} {slug}` failed: {msg}")
+    res = okf.create_story(epic, slug, bullet_text, covers=[bullet_id])
+    if not res.ok:
+        die(f"could not create fix story '{slug}' in '{epic}': {res.message}")
 
     story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
     story_path_rel = f"{story_dir_rel}/story.md"
@@ -174,7 +145,7 @@ def main() -> None:
 
     emit(epic=epic, epic_dir=epic_dir_rel, story_slug=slug, story_dir=story_dir_rel,
          story_path=story_path_rel, bullet_id=bullet_id,
-         reason=f"registered fix story '{slug}' ({res.get('id', '?')}) covering '{bullet_id}' "
+         reason=f"registered fix story '{slug}' ({res.entity_id or '?'}) covering '{bullet_id}' "
                 f"in '{epic}' with a single injected AC line")
 
 

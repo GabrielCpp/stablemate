@@ -19,7 +19,7 @@ import logging
 import sys
 from pathlib import Path
 
-from workhorse import scriptutil
+from ostler import Ostler
 from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
 
 logger = logging.getLogger(__name__)
@@ -73,14 +73,9 @@ def main() -> None:
     # stays below (ostler has no workspace context). Union its problems in;
     # ostler being absent never blocks validation itself.
     try:
-        ostler_out = scriptutil.run_tool(
-            ["ostler", "artifact", "vet", "plan-context", "--spec", spec_dir_rel, "--json"],
-            cwd=root,
-        )
-        if ostler_out.stdout.strip():
-            parsed = json.loads(ostler_out.stdout)
-            errors.extend(f"[ostler] {p}" for p in parsed.get("problems", []))
-    except Exception:  # noqa: BLE001
+        vetted = Ostler(root).artifact_vet("plan-context", spec_dir_rel)
+        errors.extend(f"[ostler] {p}" for p in vetted.get("problems", []))
+    except (OSError, ValueError, RuntimeError):
         pass
 
     # Case-insensitive lookup of the real workspace repo keys. The planner tends to

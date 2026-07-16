@@ -3,8 +3,8 @@
 
 The ``author`` workflow's story mode authors a single story against an epic the operator chose,
 instead of decomposing a whole backlog. This script is the setup node: it adds one seed to the
-epic's ``epic.md`` (``ostler seed add``) and one story to its ``## Stories`` (``ostler create
-story``, which scaffolds the ``story.md`` and allocates the id) — so the existing per-story
+epic's ``epic.md`` (``Ostler.add_seed``) and one story to its ``## Stories`` (``Ostler.create_story``,
+which scaffolds the ``story.md`` and allocates the id) — so the existing per-story
 pipeline (gather → write → validate) runs unchanged. It does NOT re-run story-split, so sibling
 stories are untouched. There is no ``seed.json`` / ``dependencies.json`` — seeds and the story DAG
 fold into ``epic.md`` and ostler owns the mutation + id allocation.
@@ -19,7 +19,7 @@ than created again.
 Story mode appends to an EXISTING epic; it never creates one. A missing epic (no ``epic.md``) is a
 hard, non-zero exit with an actionable message.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Reads and mutates the OKF graph in-process through the ``ostler`` Python API (``Ostler``).
 
 Args:
     argv[1]  epic          : target epic slug (required)
@@ -36,12 +36,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
 
+from ostler import Ostler
 from workhorse import scriptutil
 
 # Same backlog scope-item contract the coverage validator uses: `- [id] …`.
@@ -62,33 +61,6 @@ def find_repo_root() -> Path:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
             return candidate
     return here
-
-
-def _ostler() -> str:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        die("ostler CLI not found on PATH — story mode needs it to mutate the epic")
-    return ostler
-
-
-def ostler_run(root: Path, args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run([_ostler(), *args], cwd=str(root), capture_output=True,
-                          text=True, timeout=120)
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    try:
-        proc = ostler_run(root, args)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def kebab(text: str, *, max_len: int = 60) -> str:
@@ -155,8 +127,10 @@ def main() -> None:
     bullet_id, source_bullet, from_backlog = resolve_bullet(root, bullet)
     fb = "yes" if from_backlog else "no"
 
+    okf = Ostler(root)
+
     # Idempotent: if a story already covers this id, reuse it (resumable rerun).
-    stories = ostler_json(root, ["list", "--type", "story", "--epic", epic, "--json"], "[") or []
+    stories = okf.list("story", epic=epic)
     for s in stories:
         if bullet_id in (s.get("covers") or []):
             slug = str(s.get("slug", ""))
@@ -167,22 +141,20 @@ def main() -> None:
                  reason=f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)")
 
     # Add the seed to epic.md (best-effort: an already-present id is a no-op for our purpose).
-    ostler_run(root, ["seed", "add", epic, bullet_id, "--status", "researched",
-                      "--summary", source_bullet, "--source-bullet", source_bullet])
+    okf.add_seed(epic, bullet_id, status="researched", summary=source_bullet,
+                 meta={"sourceBullet": source_bullet})
 
     # Create the story (scaffolds story.md + allocates the id via ostler).
     slug = kebab(source_bullet)
-    res = ostler_json(root, ["create", "story", epic, slug, "--title", source_bullet,
-                             "--covers", bullet_id, "--json"], "{")
-    if not res or not res.get("ok"):
-        msg = (res or {}).get("message", "unknown error")
-        die(f"`ostler create story {epic} {slug}` failed: {msg}")
+    res = okf.create_story(epic, slug, source_bullet, covers=[bullet_id])
+    if not res.ok:
+        die(f"`create story {epic} {slug}` failed: {res.message}")
 
     story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
     story_path = f"{story_dir_rel}/story.md"
     emit(epic_dir=epic_dir_rel, story_slug=slug, story_dir=story_dir_rel, story_path=story_path,
          bullet_id=bullet_id, from_backlog=fb,
-         reason=f"registered story '{slug}' ({res.get('id', '?')}) covering seed item "
+         reason=f"registered story '{slug}' ({res.entity_id or '?'}) covering seed item "
                 f"'{bullet_id}' in epic '{epic}'")
 
 

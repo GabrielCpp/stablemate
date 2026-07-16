@@ -2,17 +2,18 @@
 """Prune a fully-authored epic's consumed bullets from the backlog — ostler-backed.
 
 Called once an epic passes coverage validation (it is fully authored into stories). Reads the
-epic's seeds from its ``epic.md`` (``ostler list --type seed --epic <epic>``) — each seed records
-the verbatim ``sourceBullet`` it came from — and removes the matching lines from the backlog
-markdown, so the backlog stays a live worklist that shrinks as work is authored (mirrors how coder
-prunes finished epics from the epics index).
+epic's seeds from its ``epic.md`` (``okf.list("seed", epic=<epic>)``) — each seed records the
+verbatim ``sourceBullet`` it came from — and removes the matching lines from the backlog markdown,
+so the backlog stays a live worklist that shrinks as work is authored (mirrors how coder prunes
+finished epics from the epics index).
 
 Best-effort and idempotent: matching is tolerant (a backlog line is dropped when its bullet text
 equals, contains, or is contained by a ``sourceBullet``, min length 8); unmatched bullets are left
 in place; a failure to write is swallowed so the run never dies just because the backlog couldn't
 be tidied. The backlog is ostler-managed markdown but plain-text, so it is rewritten in place.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Commands the OKF graph through the in-process ``ostler`` Python API (the library
+face of the CLI) instead of shelling out.
 
 Args:
     argv[1]  backlog  : repo-relative path to the backlog markdown
@@ -26,11 +27,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
+
+from ostler import Ostler
 
 _BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
@@ -46,26 +47,6 @@ def find_repo_root() -> Path:
         ).is_dir():
             return candidate
     return here
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run(
-            [ostler, *args], cwd=str(root), capture_output=True, text=True, timeout=60
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def normalize(line: str) -> str:
@@ -107,10 +88,8 @@ def main() -> None:
     if not backlog_path.is_file() or not epic:
         emit(0, 0)
 
-    seeds = (
-        ostler_json(root, ["list", "--type", "seed", "--epic", epic, "--json"], "[")
-        or []
-    )
+    okf = Ostler(root)
+    seeds = okf.list("seed", epic=epic)
     seed_norms = [normalize(str(s.get("sourceBullet", ""))) for s in seeds]
     seed_norms = [s for s in seed_norms if s]
     if not seed_norms:

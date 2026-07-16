@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convergence node: resolve a story slug + epic to canonical filesystem paths via ostler.
+"""Convergence node: resolve a story slug + epic to canonical filesystem paths via the ostler API.
 
 Both story mode and epic mode flow through this node before entering the dev phase.
 It ensures a single canonical source for pipeline vars (story_path, spec_dir, qa_dir,
@@ -13,19 +13,9 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
-from workhorse import scriptutil
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
-
-
-def _ostler_path(docs_root: Path, subcmd: str, *args: str) -> str:
-    """Call ostler path <subcmd> and return stdout, stripped."""
-    cmd = ["ostler", "-C", str(docs_root), "path", subcmd, *args]
-    result = scriptutil.run_tool(cmd)
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
 
 
 def main() -> None:
@@ -47,12 +37,22 @@ def main() -> None:
         if matches:
             epic = matches[0].parent.parent.parent.name  # epics/<epic>/stories/<slug>/story.md
 
-    spec_dir_rel = _ostler_path(docs_root, "spec", slug) or f"docs/specs/{slug}"
+    okf = Ostler(docs_root)
+
+    try:
+        spec_dir_rel = okf.spec_path(slug)
+    except (OSError, ValueError, RuntimeError):
+        spec_dir_rel = ""
+    spec_dir_rel = spec_dir_rel or f"docs/specs/{slug}"
     spec_dir = str((docs_root / spec_dir_rel).resolve())
 
     story_path = ""
     if epic:
-        story_path_rel = _ostler_path(docs_root, "story", epic, slug) or f"docs/epics/{epic}/stories/{slug}/story.md"
+        try:
+            story_path_rel = okf.story_path(epic, slug)
+        except (OSError, ValueError, RuntimeError):
+            story_path_rel = ""
+        story_path_rel = story_path_rel or f"docs/epics/{epic}/stories/{slug}/story.md"
         story_path = str((docs_root / story_path_rel).resolve())
 
     print(json.dumps({

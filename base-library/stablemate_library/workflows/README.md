@@ -97,6 +97,16 @@ Example output from a script node with `outputs: [{key: validation}]`:
 {"validation": {"status": "ok", "word_count": 42}}
 ```
 
+**External tools are libraries, not subprocesses.** A script talks to git/GitHub
+through the `workhorse.scriptutil` seams (`open_repo`, `github_client`, …) and to the
+OKF doc graph through the in-process `ostler` API (`from ostler import Ostler`) —
+never by shelling out to `git`/`gh`/`ostler` and scraping stdout. `Ostler` returns
+plain Python objects (`okf.todo()`, `okf.list("story", epic=…)`, `okf.create_story(…)`,
+`okf.qa_run(…)`, …); a read raises on an unloadable graph rather than returning
+`None`, which is the seam an in-process test fakes. See the
+`stablemate-workhorse-scripting` skill (git/GitHub/ostler seams + testing) and
+`stablemate-ostler` (the full verb→method table).
+
 ### `rules/`
 
 Static configuration consumed by scripts. Typically JSON files describing patterns to detect, globs to scan, or thresholds to enforce. Scripts receive the path as an `args` entry.

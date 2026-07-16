@@ -3,7 +3,7 @@
 
 The story dependency-DAG now lives in the epic's ``epic.md`` (``## Stories``), not a
 ``dependencies.json`` — ostler reads it back. This selector asks ostler for the epic's
-stories (``ostler list --type story --epic <epic>``), topologically sorts them by their
+stories (``Ostler(root).list("story", epic=<epic>)``), topologically sorts them by their
 ``dependsOn`` edges (the same order coder executes them in), and returns the first story
 whose ``story.md`` is missing OR has no ``- **Status**:`` line yet (a placeholder/empty
 file from a partial run). When every story has a real ``story.md``, ``has_story`` is
@@ -13,7 +13,7 @@ Full rubric validation is the ``validate_story`` node's job; this selector only 
 the loop, so a freshly written story is validated (and reworked if needed) before the loop
 comes back here and skips it.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Stdlib-only except for the in-process ``ostler`` Python API (``from ostler import Ostler``).
 
 Args:
     argv[1]  epic_dir : repo-relative epic folder (e.g. docs/epics/<epic>)
@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -40,25 +41,6 @@ def find_repo_root() -> Path:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
             return candidate
     return here
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def topo(stories: list[dict]) -> list[dict]:
@@ -93,7 +75,7 @@ def has_status_line(story_md: Path) -> bool:
     return False
 
 
-def emit(**kwargs: str) -> None:
+def emit(**kwargs: str) -> NoReturn:
     payload = {"has_story": "no", "story_path": "", "story_slug": "", "story_dir": "", "reason": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
@@ -106,10 +88,12 @@ def main() -> None:
         emit(reason="no epic_dir supplied")
     epic = Path(epic_dir_rel).name
     root = find_repo_root()
+    okf = Ostler(root)
 
-    stories = ostler_json(root, ["list", "--type", "story", "--epic", epic, "--json"], "[")
-    if stories is None:
-        emit(reason=f"could not read stories for epic '{epic}' via `ostler list --type story`")
+    try:
+        stories = okf.list("story", epic=epic)
+    except (OSError, ValueError, RuntimeError):
+        emit(reason=f"could not read stories for epic '{epic}' via ostler's in-process API")
     if not stories:
         emit(reason="epic lists no stories yet — story-split must populate `## Stories`")
 

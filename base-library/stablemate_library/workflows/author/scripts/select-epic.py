@@ -7,7 +7,8 @@ least one story (in ``## Stories``) AND every listed story has a ``story.md`` on
 ``seed.json`` / ``dependencies.json`` / ``epics-todo.json`` — seeds and the story DAG live in
 ``epic.md`` and ostler reads them back.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Commands the OKF graph through the in-process ``ostler`` Python API (the library
+face of the CLI) instead of shelling out.
 
 Args:
     argv[1]  epics_dir : epics root (default docs/epics)
@@ -18,10 +19,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -35,44 +37,28 @@ def find_repo_root() -> Path:
     return here
 
 
-def emit(**kwargs: str) -> None:
+def emit(**kwargs: str) -> NoReturn:
     payload = {"has_epic": "no", "epic": "", "epic_dir": "", "reason": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
 
 
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
-
-
 def main() -> None:
     epics_dir_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/epics"
-    root = find_repo_root()
+    okf = Ostler(find_repo_root())
 
-    queue = ostler_json(root, ["todo", "list", "--json"], "[")
-    if queue is None:
+    try:
+        queue = okf.todo()
+        stories = okf.list("story")
+    except (OSError, ValueError, RuntimeError):
         emit(reason="could not read the epics queue via `ostler todo list`")
+    root = okf.root
+
     if not queue:
         # no index yet → the epic-split stage must create epics (and queue them)
         emit(reason="epics queue is empty — the epic-split stage must create + queue epics")
 
-    stories = ostler_json(root, ["list", "--type", "story", "--json"], "[") or []
     by_epic: dict[str, list[dict]] = {}
     for s in stories:
         by_epic.setdefault(s.get("epic", ""), []).append(s)

@@ -17,7 +17,7 @@ This gate does, in one of **two modes** — because the backlog is not always a 
   feature Concept).
 
 Source of truth: **two producers, one contract**. The feature set is the set of typed
-``feature`` Concepts ostler reads from ``docs/features`` (``ostler list --type feature``) —
+``feature`` Concepts ostler reads from ``docs/features`` (``Ostler.list("feature")``) —
 there is no derived feature ``inventory.json`` anymore. Additionally (opt-in by presence),
 a **survey-produced unit manifest** (``cfg.surface_manifest``, emitted by the surveyor
 workflow) supplies unit-level surfaces: each entry carries the generated-backlog bullet ids
@@ -26,18 +26,18 @@ code-derived inventory — the use the ``coverage_mode: "full"`` design always a
 A unit with no ``bullets`` (a ``clean`` or accepted-``blocked`` unit) carries no work and
 demands no coverage.
 
-The claims/coverage haystack is read from ostler: seeds and the story DAG fold into each
-``epic.md`` (``ostler list --type seed|story``), knowledge records are markdown Concepts
-(``ostler list --type knowledge``), and the backlog is ostler-managed markdown (``ostler
-backlog list``); the raw backlog file is folded in as well so a generated survey section
-covers even when ostler is absent.
+The claims/coverage haystack is read from ostler through the in-process API: seeds and the
+story DAG fold into each ``epic.md`` (``okf.list("seed")`` / ``okf.list("story")``), knowledge
+records are markdown Concepts (``okf.list("knowledge")``), and the backlog is ostler-managed
+markdown (``okf.backlog()``); the raw backlog file is folded in as well so a generated survey
+section still covers even if the graph does not parse it as a bullet.
 
 Opt-in by presence: with no feature Concepts AND no unit manifest on disk the gate is a
 clean **skip** (a greenfield repo that has not authored its feature set yet is unaffected).
 Coverage is intentionally **generous** (substring match against a normalized haystack): a
 false "covered" only misses one surface, whereas a false "uncovered" would block authoring.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Reads the OKF graph in-process via ``ostler``'s Python API (``from ostler import Ostler``).
 
 Args:
     argv[1]  manifest       : survey-produced unit manifest (opt-in by presence)
@@ -53,10 +53,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -70,7 +71,7 @@ def find_repo_root() -> Path:
     return here
 
 
-def emit(ok: str, errors: list[str] | str = "") -> None:
+def emit(ok: str, errors: list[str] | str = "") -> NoReturn:
     msg = errors if isinstance(errors, str) else "\n".join(errors)
     print(json.dumps({"surface_coverage_ok": ok, "surface_coverage_errors": msg}))
     sys.exit(0)
@@ -85,25 +86,6 @@ def norm(s: object) -> str:
 
 def _arg(idx: int, default: str) -> str:
     return (sys.argv[idx].strip() if len(sys.argv) > idx and sys.argv[idx] else "") or default
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def surface_id(f: dict) -> str:
@@ -158,35 +140,36 @@ def unit_needles(u: dict) -> list[str]:
     return sorted({n for n in needles if len(n) >= 3})
 
 
-def build_haystack(root: Path, backlog_rel: str = "") -> str:
+def build_haystack(okf: Ostler, root: Path, backlog_rel: str = "") -> str:
     """Concatenate a normalized blob of every place a surface could be 'covered'."""
     parts: list[str] = []
-    # The raw backlog file, line by line — same content `ostler backlog list` reads, kept
-    # as a direct fold-in so a generated survey section covers even without ostler.
+    # The raw backlog file, line by line — same content `okf.backlog()` reads, kept as a
+    # direct fold-in so a generated survey section covers even if the graph does not parse
+    # it as a bullet.
     if backlog_rel and (root / backlog_rel).is_file():
         try:
             for line in (root / backlog_rel).read_text(encoding="utf-8").splitlines():
                 parts.append(norm(line))
         except OSError:
             pass
-    for s in ostler_json(root, ["list", "--type", "seed", "--json"], "[") or []:
+    for s in okf.list("seed"):
         for fld in ("id", "summary", "sourceBullet", "currentState", "legacySurface"):
             parts.append(norm(s.get(fld)))
-    for st in ostler_json(root, ["list", "--type", "story", "--json"], "[") or []:
+    for st in okf.list("story"):
         parts.append(norm(st.get("slug")))
         parts.append(norm(st.get("title")))
         for sid in st.get("covers") or []:
             parts.append(norm(sid))
-    for rec in ostler_json(root, ["list", "--type", "knowledge", "--json"], "[") or []:
+    for rec in okf.list("knowledge"):
         parts.append(norm(rec.get("surface")))
         parts.append(norm(rec.get("route")))
-    for item in ostler_json(root, ["backlog", "list", "--json"], "[") or []:
+    for item in okf.backlog():
         parts.append(norm(item.get("id")))
         parts.append(norm(item.get("text")))
     return " | ".join(p for p in parts if p)
 
 
-def collect_claims(root: Path) -> list[tuple[str, str]]:
+def collect_claims(okf: Ostler) -> list[tuple[str, str]]:
     """Surfaces the authored work *claims to touch*: (normalized token, human label).
 
     A claim is a seed item's ``legacySurface`` or a knowledge record's ``surface``/``route`` —
@@ -194,11 +177,11 @@ def collect_claims(root: Path) -> list[tuple[str, str]]:
     a slug is a story name, not a surface assertion.)
     """
     claims: list[tuple[str, str]] = []
-    for s in ostler_json(root, ["list", "--type", "seed", "--json"], "[") or []:
+    for s in okf.list("seed"):
         ls = str(s.get("legacySurface", "")).strip()
         if ls:
             claims.append((norm(ls), f"seed '{s.get('id', '?')}' legacySurface '{ls}'"))
-    for rec in ostler_json(root, ["list", "--type", "knowledge", "--json"], "[") or []:
+    for rec in okf.list("knowledge"):
         for field in ("surface", "route"):
             val = str(rec.get(field, "")).strip()
             if val:
@@ -211,11 +194,15 @@ def main() -> None:
     backlog_rel = _arg(3, "")
     mode = _arg(5, "grounding").lower()
     root = find_repo_root()
+    okf = Ostler(root)
 
-    features = ostler_json(root, ["list", "--type", "feature", "--json"], "[")
+    try:
+        features: list[dict] | None = okf.list("feature")
+    except (OSError, ValueError, RuntimeError):
+        features = None
     units = load_unit_manifest(root, manifest_rel)
     if features is None and units is None:
-        emit("skip", "ostler not available and no unit manifest — surface-coverage gate skipped")
+        emit("skip", "OKF graph unreadable and no unit manifest — surface-coverage gate skipped")
     features = features or []
     units = units or []
     if not features and not units:
@@ -224,7 +211,7 @@ def main() -> None:
     if mode == "full":
         # Migration / greenfield-buildout: every feature-set surface AND every surveyed
         # unit that carries work must be covered.
-        haystack = build_haystack(root, backlog_rel)
+        haystack = build_haystack(okf, root, backlog_rel)
         uncovered: list[str] = []
         for f in features:
             needles = surface_needles(f)
@@ -260,7 +247,7 @@ def main() -> None:
                 inv_needles.add(token)
 
     ungrounded: list[str] = []
-    for token, label in collect_claims(root):
+    for token, label in collect_claims(okf):
         if len(token) < 3:
             continue  # too short to match meaningfully — don't block on it
         if not any(token in n or n in token for n in inv_needles):
