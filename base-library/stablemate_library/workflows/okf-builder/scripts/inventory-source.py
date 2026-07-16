@@ -3,7 +3,14 @@
 
 Two inventories, one pass:
 * **code units** — modules + public declarations under the source root (the exhaustiveness
-  floor the code crawl is diffed against).
+  floor the code crawl is diffed against). Languages: Go, Python, TypeScript, PHP, Twig
+  (``SOURCE_SUFFIXES``). A tree the front end cannot read at all is an **error**, never an
+  empty inventory — an empty unit list reads downstream as "everything is covered", so an
+  unsupported language would otherwise declare a book complete having documented nothing.
+
+  What counts as a unit is language-shaped. For Go/TS a file is a container and its *symbols*
+  are the units; for Twig a template renders a screen, so the **file** is the unit and its
+  `{% block %}`s are secondary. Both are emitted; the consumer decides.
 * **operational units** — the *run surface* (make/just targets, compose services, package
   scripts, console-scripts, `__main__` entry points) from generic evidence at the repo root
   and inside the source tree. This is the forcing function for the runbook profile
@@ -19,6 +26,7 @@ import json
 import re
 import sys
 import tomllib
+from collections import Counter
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -28,13 +36,25 @@ SKIP_DIRS = {
     "dist", "generated", "mocks", "node_modules", "vendor",
 }
 TEST_SUFFIXES = (
-    "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py",
+    "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
 )
 GENERATED_SUFFIXES = (".gen.go", ".generated.go", ".d.ts")
+# The languages the symbol front end can read. A source tree that contains NONE of these is
+# reported as an error rather than as an empty inventory — see `main`. An unsupported language
+# must never be indistinguishable from a fully documented one.
+SOURCE_SUFFIXES = {".go", ".py", ".ts", ".tsx", ".php", ".twig"}
 PY_DECL = re.compile(r"^(?:async\s+)?(?:class|def)\s+([A-Za-z][A-Za-z0-9_]*)", re.MULTILINE)
+# Go: three alternatives, in order — a method (with its receiver captured), a plain func, a
+# type. The receiver is captured because a method's unit is qualified by its owner
+# (`(*FirebaseClaimsWriter).SetRoleClaims`): that is the form books cite, and it is strictly
+# more precise than a bare name, which cannot disambiguate two types declaring the same method
+# in one file. Both pointer and value receivers appear in real books. `[(\[]` after the name
+# admits generic declarations (`func Map[T any](…)`).
 GO_DECL = re.compile(
-    r"^(?:func\s+(?:\([^\n)]*\)\s*)?([A-Za-z][A-Za-z0-9_]*)\s*\(|"
-    r"type\s+([A-Za-z][A-Za-z0-9_]*)\s+(?:struct|interface)\b)",
+    r"^func\s+\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?(\*?)\s*([A-Za-z_][A-Za-z0-9_]*)"
+    r"(?:\[[^\]]*\])?\s*\)\s*([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
+    r"|^func\s+([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
+    r"|^type\s+([A-Za-z][A-Za-z0-9_]*)(?:\[[^\]]*\])?\s+(?:struct|interface)\b",
     re.MULTILINE,
 )
 TS_DECL = re.compile(
@@ -42,6 +62,16 @@ TS_DECL = re.compile(
     r"(?:function|class|interface|type|const|let|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
     re.MULTILINE,
 )
+# PHP: one pass over class + function declarations *in source order*, so a method can be
+# qualified by the class it sits in (`AddProjectAction.getRenderPath`). Grouped in one regex
+# rather than two passes because the qualification depends on the interleaving.
+PHP_DECL = re.compile(
+    r"^\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)"
+    r"|^\s*(?:(public|protected|private)\s+)?(?:static\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.MULTILINE,
+)
+# Twig: a template's named regions. `{% block content %}` / `{%- block content -%}`.
+TWIG_DECL = re.compile(r"\{%-?\s*block\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def skipped(path: Path, root: Path, excludes: list[str]) -> bool:
@@ -57,14 +87,71 @@ def skipped(path: Path, root: Path, excludes: list[str]) -> bool:
             or path.name.endswith(TEST_SUFFIXES + GENERATED_SUFFIXES))
 
 
+def _unit_path(path: Path, source: Path, repo_root: Path) -> str:
+    """A unit's path, relative to the **repo root** — the grammar books cite.
+
+    Excludes stay source-relative (they are configured per service), but the emitted unit is
+    repo-rooted so that one book's `code:` target means the same thing as another's in a
+    monorepo. Falls back to source-relative for a source tree outside the repo root.
+    """
+    try:
+        return path.resolve().relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.relative_to(source).as_posix()
+
+
+def _php_symbols(text: str) -> list[str]:
+    """Class names, plus each public method qualified by its class (`Class.method`).
+
+    Private/protected methods are not part of the documented surface, and magic methods
+    (`__construct`, `__toString`, …) are DI/framework boilerplate rather than behavior — both
+    are skipped, mirroring the `_`-prefix filter the Python front end already applies.
+    """
+    out: list[str] = []
+    current = ""
+    for m in PHP_DECL.finditer(text):
+        if cls := m.group(1):
+            current = cls
+            out.append(cls)
+            continue
+        visibility, name = m.group(2), m.group(3)
+        if visibility in ("private", "protected") or name.startswith("__"):
+            continue
+        out.append(f"{current}.{name}" if current else name)
+    return out
+
+
+def _go_symbols(text: str) -> list[str]:
+    """Exported types/funcs, plus each exported method qualified by its receiver.
+
+    `func (w *FirebaseClaimsWriter) SetRoleClaims(…)` → `(*FirebaseClaimsWriter).SetRoleClaims`;
+    a value receiver drops the star. Export is judged on the *method* name, not the receiver's:
+    an exported method on an unexported type is still part of the surface.
+    """
+    out: list[str] = []
+    for star, receiver, method, func, typename in GO_DECL.findall(text):
+        if method:
+            if method[:1].isupper():
+                owner = f"(*{receiver})" if star else receiver
+                out.append(f"{owner}.{method}")
+            continue
+        name = func or typename
+        if name[:1].isupper():
+            out.append(name)
+    return out
+
+
 def symbols(path: Path, text: str) -> list[str]:
     if path.suffix == ".py":
         return [m.group(1) for m in PY_DECL.finditer(text) if not m.group(1).startswith("_")]
     if path.suffix == ".go":
-        return [name for m in GO_DECL.finditer(text)
-                if (name := m.group(1) or m.group(2))[:1].isupper()]
+        return _go_symbols(text)
     if path.suffix in {".ts", ".tsx"}:
         return [m.group(1) for m in TS_DECL.finditer(text)]
+    if path.suffix == ".php":
+        return _php_symbols(text)
+    if path.suffix == ".twig":
+        return TWIG_DECL.findall(text)
     return []
 
 
@@ -170,12 +257,27 @@ def main() -> None:
     if not source.is_dir():
         errors.append(f"source root is not a directory: {source}")
     else:
+        seen_suffixes: Counter[str] = Counter()
         for path in sorted(source.rglob("*")):
-            if not path.is_file() or path.suffix not in {".go", ".py", ".ts", ".tsx"}:
+            if not path.is_file() or skipped(path, source, excludes):
+                continue
+            seen_suffixes[path.suffix] += 1
+        if not (seen_suffixes.keys() & SOURCE_SUFFIXES):
+            # A tree with source-shaped files but none the front end can read would otherwise
+            # yield an empty inventory + no errors — which reads downstream as "fully covered".
+            # Blindness must be loud: an unsupported language is a failure, not a clean bill.
+            top = ", ".join(f"{s or '(none)'}×{n}" for s, n in seen_suffixes.most_common(5))
+            errors.append(
+                f"no readable source under {source}: the symbol front end supports "
+                f"{sorted(SOURCE_SUFFIXES)} but the tree holds {top or 'no files'} — "
+                f"an unsupported language must not be reported as a covered book"
+            )
+        for path in sorted(source.rglob("*")):
+            if not path.is_file() or path.suffix not in SOURCE_SUFFIXES:
                 continue
             if skipped(path, source, excludes):
                 continue
-            rel = path.relative_to(source).as_posix()
+            rel = _unit_path(path, source, repo_root)
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:

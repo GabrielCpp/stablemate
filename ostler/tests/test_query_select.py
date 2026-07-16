@@ -14,7 +14,6 @@ def test_list_by_type(repo: Path):
     assert {r["slug"] for r in query.list_entities(g, "story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in query.list_entities(g, "seed")} == {"seed-a1", "seed-a2", "seed-b1"}
     assert {r["surface"] for r in query.list_entities(g, "knowledge")} == {"area/rec", "area/rec2"}
-    assert {r["id"] for r in query.list_entities(g, "gap")} == {"gap-x", "gap-y"}
 
 
 def test_list_filters(repo: Path):
@@ -33,8 +32,6 @@ def test_search_hits_body(repo: Path):
 
 def test_query_reverse_indexes(repo: Path):
     g = load(repo)
-    gaps = query.query(g, "gaps-in-story", "01-foo")
-    assert {x["id"] for x in gaps} == {"gap-x"}
     covers = query.query(g, "stories-covering-seed", "seed-a1")
     assert {x["slug"] for x in covers} == {"01-foo"}
     refs = query.query(g, "surfaces-referenced-by-story", "01-foo")

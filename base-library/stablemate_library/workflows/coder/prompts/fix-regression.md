@@ -72,7 +72,8 @@ reason to skip fixing something. Every failure the runner reported gets fixed be
 4. Re-run the affected spec(s) directly (not the full suite — the workflow's deterministic runner
    will do that next) to confirm the fix holds before moving to the next failure.
 5. Append a **Regression Fix** section to `{{ workhorse_var('spec_dir') }}/qa.md` summarizing what
-   you changed and why, per failure.
+   you changed and why, per failure. Append below the existing content and leave the `---`
+   frontmatter block intact — it carries the `type:` that makes the doc an OKF Concept.
 
 ## Structured Output Requirement
 

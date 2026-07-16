@@ -62,7 +62,8 @@ Resolve the findings in `review.md` without adding new story scope.
 2. Apply fixes one finding at a time.
 3. Run targeted tests or checks after each fix.
 4. Run final verification for touched layers.
-5. Update `review.md` with resolution notes.
+5. Update `review.md` with resolution notes, leaving its `---` frontmatter block intact — it
+   carries the `type:` that makes the doc an OKF Concept.
 6. Update the story implementation status.
 
 {% block repo_apply_rules %}{% endblock %}

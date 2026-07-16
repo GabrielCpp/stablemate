@@ -729,8 +729,8 @@ nodes:
 
   # ── Gather surface knowledge (the durable, accumulating source of derived truth) ──
   # Before writing the story, observe the surface by interaction + code (NOT screenshots)
-  # and write/enrich its two-sided old↔new record under cfg.knowledge_dir, classifying the
-  # gaps that become the story's scope. Idempotent + resumable. Advisory in the graph: it
+  # and write/enrich its two-sided old↔new record under cfg.knowledge_dir, describing the
+  # surface the story works on. Idempotent + resumable. Advisory in the graph: it
   # always flows on to write_story (a genuinely unreachable surface is recorded via openGaps
   # and escalated by write_story's own `blocked` path, not here).
   - id: gather_knowledge
@@ -1395,8 +1395,8 @@ nodes:
     next: reset_integrity_resolve
 
   # ── 4. REFERENTIAL-INTEGRITY GATE (ostler doctor) ─────────────────────────────────
-  # Mechanical cross-run drift check over the whole planning-doc graph: dangling gap
-  # owners, cross-epic seed/dependency refs, orphan seeds, dangling tags/paths — the
+  # Mechanical cross-run drift check over the whole planning-doc graph: cross-epic
+  # seed/dependency refs, orphan seeds, dangling knowledge paths — the
   # "AI forgot what it created itself" class the coverage gates don't catch. Error-level
   # findings block and route to the operator/resolver, which reconciles via `ostler edit`
   # (set-owner / relink / rename) and is forbidden from deleting refs to go green;
@@ -1561,7 +1561,7 @@ nodes:
 flows:
   # ── parity-surveyor: baseline inventory vs current OKF book ───────────────────────
   # Reuses surveyor's frozen inventory and one-unit-at-a-time assessment mechanics, but emits
-  # one backlog bullet per uncovered baseline surface instead of creating knowledge/gap nodes or
+  # one backlog bullet per uncovered baseline surface instead of creating knowledge nodes or
   # clustering several surfaces into one synthetic finding.
   parity-surveyor:
     name: parity-surveyor

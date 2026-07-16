@@ -111,6 +111,11 @@ Severity guidelines:
 ### 6. Write Artifacts
 
 1. **Write `review.md`** to `{{ workhorse_var('spec_dir') }}/review.md` using the structure below.
+   Create it through `ostler` first — `timeout 30 ostler create spec <story-name> review.md`,
+   where `<story-name>` is the folder name of `{{ workhorse_var('spec_dir') }}`. That stamps the
+   `type: spec.review` frontmatter which makes it an OKF Concept. Write the structure below
+   **underneath that `---` block, leaving it in place** — a doc with no `type:` is an
+   `okf-missing-type` error against the graph.
 
 2. **Write `review.json`** to `{{ workhorse_var('spec_dir') }}/review.json`:
    ```json

@@ -5,11 +5,13 @@ Run directly (no pytest required):
 """
 
 import os
+import sys
 import tempfile
+import types
 from contextlib import contextmanager
 from pathlib import Path
 
-from farrier import install
+from farrier import config, install, layers
 
 
 def make_library(root: Path) -> Path:
@@ -20,14 +22,14 @@ def make_library(root: Path) -> Path:
 
 
 def with_temp_config(fn):
-    """Run fn with install.CONFIG_PATH pointed at a throwaway file."""
-    original = install.CONFIG_PATH
+    """Run fn with config.CONFIG_PATH pointed at a throwaway file."""
+    original = config.CONFIG_PATH
     with tempfile.TemporaryDirectory() as tmp:
-        install.CONFIG_PATH = Path(tmp) / "config.toml"
+        config.CONFIG_PATH = Path(tmp) / "config.toml"
         try:
             fn(Path(tmp))
         finally:
-            install.CONFIG_PATH = original
+            config.CONFIG_PATH = original
 
 
 @contextmanager
@@ -37,16 +39,39 @@ def base_library(path: Path | None):
     The tools discover the base with an optional import, so the two cases that matter
     — wheel present, wheel absent — are both reachable only by stubbing the lookup.
     """
-    original = install.base_library_dir
-    install.base_library_dir = lambda: path
+    original = layers.base_library_dir
+    layers.base_library_dir = lambda: path
     try:
         yield
     finally:
-        install.base_library_dir = original
+        layers.base_library_dir = original
+
+
+@contextmanager
+def wheel_installed_at(path: Path | None):
+    """Pin the optional `from stablemate_library import base_dir` branch of the real
+    ``base_library_dir()`` (the other tests stub the whole function; this one exercises
+    its internals). A path makes the import resolve to a fake module returning it; None
+    makes it raise ImportError (a None entry in ``sys.modules`` signals a failed import)."""
+    saved = sys.modules.get("stablemate_library")
+    if path is None:
+        sys.modules["stablemate_library"] = None  # type: ignore[assignment]
+    else:
+        module = types.ModuleType("stablemate_library")
+        module.base_dir = lambda: path  # type: ignore[attr-defined]
+        sys.modules["stablemate_library"] = module
+    try:
+        yield
+    finally:
+        if saved is None:
+            sys.modules.pop("stablemate_library", None)
+        else:
+            sys.modules["stablemate_library"] = saved
 
 
 def clear_env():
     os.environ.pop("FARRIER_LIBRARY_DIR", None)
+    os.environ.pop("STABLEMATE_BASE_DIR", None)
 
 
 def test_is_library_dir():
@@ -67,7 +92,7 @@ def test_write_then_read_config():
     def body(tmp: Path):
         lib = make_library(tmp / "agents")
         install.write_library_dir(lib)
-        assert install.CONFIG_PATH.exists()
+        assert config.CONFIG_PATH.exists()
         assert install.read_config()["library_dir"] == str(lib)
 
     with_temp_config(body)
@@ -146,6 +171,57 @@ def test_bad_library_path_errors():
     print("ok: bad library path errors")
 
 
+def test_base_library_dir_resolution_order():
+    """`$STABLEMATE_BASE_DIR` > config `base_dir` > wheel import > `stablemate_dir` checkout.
+
+    This is the discovery path that makes the base reachable from an isolated
+    ``pipx install farrier``, which cannot import a separately-installed wheel."""
+
+    def body(tmp: Path):
+        clear_env()
+        env_base = make_library(tmp / "env")
+        cfg_base = make_library(tmp / "cfg")
+        wheel_base = make_library(tmp / "wheel")
+        checkout = tmp / "checkout"
+        derived = checkout / "base-library" / "stablemate_library"
+        (derived / "workflows").mkdir(parents=True)
+
+        # 4. the checkout derivation is the lowest-precedence real source
+        install.write_stablemate_dir(checkout)
+        with wheel_installed_at(None):
+            assert layers.base_library_dir() == derived.resolve()
+
+        # 3. an importable wheel outranks the checkout
+        with wheel_installed_at(wheel_base):
+            assert layers.base_library_dir() == wheel_base
+
+        # 2. a configured base_dir outranks the wheel
+        install.write_base_dir(cfg_base)
+        with wheel_installed_at(wheel_base):
+            assert layers.base_library_dir() == cfg_base.resolve()
+
+        # 1. the env var outranks everything
+        os.environ["STABLEMATE_BASE_DIR"] = str(env_base)
+        with wheel_installed_at(wheel_base):
+            assert layers.base_library_dir() == env_base.resolve()
+        clear_env()
+
+        # an invalid override is skipped, not raised on — it falls through to the next
+        # source. With the config cleared, that next source is the wheel.
+        config.CONFIG_PATH.unlink(missing_ok=True)
+        os.environ["STABLEMATE_BASE_DIR"] = str(tmp / "does-not-exist")
+        with wheel_installed_at(wheel_base):
+            assert layers.base_library_dir() == wheel_base
+        clear_env()
+
+        # nothing configured and no wheel -> None (overlay-only, exactly as before)
+        with wheel_installed_at(None):
+            assert layers.base_library_dir() is None
+
+    with_temp_config(body)
+    print("ok: base_library_dir resolution order (env > config > wheel > checkout)")
+
+
 def test_overlay_shadows_base():
     """A higher layer wins name-for-name — the whole point of layering."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -201,6 +277,7 @@ if __name__ == "__main__":
     test_no_overlay_is_fine_when_base_is_installed()
     test_unresolved_errors_with_hint()
     test_bad_library_path_errors()
+    test_base_library_dir_resolution_order()
     test_overlay_shadows_base()
     test_unknown_pack_names_the_layers()
     print("\nall config-resolution tests passed")

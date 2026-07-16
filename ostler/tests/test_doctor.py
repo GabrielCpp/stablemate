@@ -5,7 +5,7 @@ from pathlib import Path
 from ostler import doctor
 from ostler.model import load
 
-from conftest import epic_md, knowledge_md, write
+from conftest import epic_md, write
 
 
 def codes(report):
@@ -34,13 +34,6 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
     assert report.errors  # non-zero exit
 
 
-def test_dangling_owner_is_flagged(repo: Path):
-    write(repo / "docs/knowledge/area/rec.md", knowledge_md("area/rec", [("gap-x", "99-ghost")]))
-
-    report = doctor.run(load(repo))
-    assert "dangling-owner" in codes(report)
-
-
 def test_resolved_seed_not_required_to_be_covered(repo: Path):
     # seed-a2 is resolved and covered by nobody -> must NOT be an orphan error.
     report = doctor.run(load(repo))
@@ -51,16 +44,16 @@ def test_markdown_records_parsed(repo: Path):
     graph = load(repo)
     surfaces = {r.surface for r in graph.knowledge}
     assert {"area/rec", "area/rec2"} <= surfaces
-    # gap-y owner came from YAML frontmatter
+    # the surface came from YAML frontmatter
     md = next(r for r in graph.knowledge if r.surface == "area/rec2")
     assert md.fmt == "md"
-    assert md.gaps[0].id == "gap-y" and md.gaps[0].owner == "01-bar"
+    assert md.data["surface"] == "area/rec2"
 
 
 def test_missing_type_is_flagged(repo: Path):
     # a knowledge Concept without `type` violates OKF conformance
     write(repo / "docs/knowledge/area/rec.md",
-          "---\nsurface: area/rec\ngaps: []\n---\n# rec\n\nbody\n")
+          "---\nsurface: area/rec\n---\n# rec\n\nbody\n")
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
@@ -75,7 +68,6 @@ def test_seedless_epic_no_covers_warning(repo: Path):
 
 
 def test_epic_filter_scopes_findings(repo: Path):
-    write(repo / "docs/knowledge/area/rec.md", knowledge_md("area/rec", [("gap-x", "99-ghost")]))
     report = doctor.run(load(repo), epic_filter="epic-b")
     assert all(f.epic in ("epic-b",) for f in report.findings)
 

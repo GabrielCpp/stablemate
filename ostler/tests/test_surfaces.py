@@ -14,7 +14,7 @@ def _codes(repo: Path) -> set[str]:
 
 
 def _knowledge(repo: Path, surface: str, route: str = "") -> None:
-    write(repo / "docs/knowledge/area/rec.md", knowledge_md(surface, [], route=route))
+    write(repo / "docs/knowledge/area/rec.md", knowledge_md(surface, route=route))
 
 
 def test_no_features_skips(tmp_path):

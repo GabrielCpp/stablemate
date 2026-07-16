@@ -31,6 +31,12 @@ Write or update `<spec_dir>/qa.md` as a concise interpretation with runner statu
 scenario/assertion references, affected AC/obligation ids, and artifact paths already
 registered by the runner.
 
+Create it through `ostler` first — `timeout 30 ostler create spec <story-name> qa.md`, where
+`<story-name>` is the folder name of `<spec_dir>` — which stamps the `type: spec.qa` frontmatter
+that makes it an OKF Concept, and leaves an existing typed doc untouched. Write your content
+**below the `---` frontmatter block and leave that block in place**, whether creating or updating
+— a doc with no `type:` is an `okf-missing-type` error against the graph.
+
 ## Boundaries
 
 Do not:

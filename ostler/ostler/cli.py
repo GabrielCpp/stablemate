@@ -12,6 +12,7 @@ import yaml
 
 from . import (
     backlog as backlog_mod,
+    coverage,
     crud,
     crud_generic,
     doctor,
@@ -35,7 +36,7 @@ from .model import load
 
 _TYPES = (
     tuple(t.name for t in registry.REGISTRY)
-    + ("seed", "gap")
+    + ("seed",)
     + tuple(t.name for t in registry.UI_TYPES)
 )
 
@@ -60,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     t = sub.add_parser("trace", help="walk the graph from a node")
-    t.add_argument("token", help="seed id, story slug, gap id, surface or doc path")
+    t.add_argument("token", help="seed id, story slug, surface or doc path")
 
     # ---- retrieval --------------------------------------------------------
     ls = sub.add_parser("list", help="list Concepts of a type")
@@ -81,8 +82,6 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="etype",
         help=f"one of {', '.join(_TYPES)}, or a template-declared kind",
     )
-    se.add_argument("--owner")
-    se.add_argument("--tag")
     se.add_argument("--json", action="store_true")
 
     qy = sub.add_parser("query", help="reverse-index queries")
@@ -128,6 +127,20 @@ def _build_parser() -> argparse.ArgumentParser:
     out.add_argument("--ids", action="store_true", help="bare node ids, one per line")
     out.add_argument("--json", action="store_true", help="filtered {nodes, edges}")
 
+    cv = sub.add_parser(
+        "coverage", help="join a book's `code:` citations against a source inventory"
+    )
+    cv.add_argument("--surface", help="scope to one book (docs/features/<surface>)")
+    cv.add_argument(
+        "--inventory", required=True, metavar="PATH",
+        help="the source inventory to diff against (inventory-source.py's artifact)",
+    )
+    cv.add_argument(
+        "--waivers", metavar="PATH",
+        help="adjudicated non-units, keyed by `code:` target; a waived unit counts as covered",
+    )
+    cv.add_argument("--json", action="store_true", help="{covered, total, waived, missing}")
+
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
     ns = sub.add_parser("next-story", help="the next runnable story in an epic")
@@ -157,6 +170,11 @@ def _build_parser() -> argparse.ArgumentParser:
     crf.add_argument("--route", default="")
     crf.add_argument("--prefix")
     crf.add_argument("--json", action="store_true")
+    crp = crs.add_parser("spec", help="create/stamp a spec doc (idempotent; safe after the write)")
+    crp.add_argument("slug", help="story slug — the docs/specs/<slug>/ directory")
+    crp.add_argument("doc", help="file name, e.g. plan.md, qa.md, review.md, executive.md")
+    crp.add_argument("--title", default="", help="H1 for a newly created doc")
+    crp.add_argument("--json", action="store_true")
 
     dl = sub.add_parser("delete", help="delete an epic/story/feature")
     dls = dl.add_subparsers(dest="what", required=True)
@@ -262,9 +280,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "edit", parents=[write_parent], help="structured edits (dry-run unless --write)"
     )
     esub = e.add_subparsers(dest="op", required=True)
-    so = esub.add_parser("set-owner", parents=[write_parent])
-    so.add_argument("gap")
-    so.add_argument("story")
     rl = esub.add_parser("relink", parents=[write_parent])
     rl.add_argument("old_path")
     rl.add_argument("new_path")
@@ -575,9 +590,7 @@ def _cmd_fmt(graph, args) -> int:
 
 
 def _cmd_edit(graph, args) -> int:
-    if args.op == "set-owner":
-        plan = edit.set_owner(graph, args.gap, args.story)
-    elif args.op == "relink":
+    if args.op == "relink":
         plan = edit.relink(graph, args.old_path, args.new_path)
     elif args.op == "settle-review":
         plan = edit.settle_review(graph, args.slug)
@@ -887,6 +900,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         else:
             print(graph_mod.render_tree(sel))
         return 0
+    if c == "coverage":
+        try:
+            res = coverage.run(graph, surface=args.surface, inventory=args.inventory,
+                               waivers=args.waivers)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            # An unreadable inventory is a failure, never an empty one: zero units reads
+            # downstream as "everything is covered".
+            print(f"ostler coverage: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(res, indent=2) if args.json else coverage.render(res))
+        # Exit non-zero on an incomplete book so a `make` target / CI check can gate on it.
+        return 0 if coverage.is_complete(res) else 1
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
@@ -902,7 +927,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         )
     if c == "search":
         return _emit(
-            query_mod.search(graph, args.q, args.etype, args.owner, args.tag), args.json
+            query_mod.search(graph, args.q, args.etype), args.json
         )
     if c == "query":
         return _emit(query_mod.query(graph, args.name, args.arg), args.json)
@@ -923,6 +948,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 _split(args.depends),
                 args.prefix,
             )
+        elif args.what == "spec":
+            res = crud.create_spec(graph, args.slug, args.doc, args.title)
         else:
             res = crud.create_feature(
                 graph, args.slug, args.title, args.area, args.route, args.prefix

@@ -18,13 +18,12 @@ def test_write_flag_accepted_before_subcommand():
 
 
 def test_dry_run_is_default():
-    args = parse(["edit", "set-owner", "g", "s"])
+    args = parse(["edit", "relink", "old", "new"])
     assert getattr(args, "write", False) is False
 
 
 def test_each_edit_op_takes_write():
-    for argv in (["edit", "set-owner", "g", "s", "--write"],
-                 ["edit", "relink", "old", "new", "--write"],
+    for argv in (["edit", "relink", "old", "new", "--write"],
                  ["edit", "rename", "old", "new", "--write"]):
         assert getattr(parse(argv), "write", False) is True
 

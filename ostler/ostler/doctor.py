@@ -1,7 +1,7 @@
 """`ostler doctor` — deterministic referential-integrity checks over the organization graph.
 
 Computes (never asserts) per-epic seed/story counts and flags cross-epic references, orphan seeds,
-missing story files, dangling dependencies / gap-tags / knowledge paths, and stale gap owners.
+missing story files, and dangling dependencies / knowledge paths.
 """
 
 from __future__ import annotations
@@ -56,7 +56,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
-    _check_knowledge(graph, f)
     _check_surfaces(graph, f)
     _check_ui(graph, f)
     if check_schema:
@@ -67,13 +66,12 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
         return report
 
     all_story_slugs = graph.all_story_slugs()
-    all_gap_ids = graph.all_gap_ids()
 
     for epic in graph.epics:
         if epic_filter and epic.name != epic_filter and epic.directory.name != epic_filter:
             continue
         report.epics.append(_epic_facts(epic))
-        _check_epic(graph, epic, all_story_slugs, all_gap_ids, f)
+        _check_epic(graph, epic, all_story_slugs, f)
 
     if epic_filter:
         keep = {e.name for e in graph.epics
@@ -126,8 +124,7 @@ def _epic_facts(epic: Epic) -> dict:
     }
 
 
-def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], all_gaps: set[str],
-                f: list[Finding]) -> None:
+def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding]) -> None:
     seed_ids = epic.seed_ids
     covered: set[str] = set()
 
@@ -168,12 +165,6 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], all_gaps: set[str
                              f"story '{story.slug}' has no story.md (path: {story.path or '?'})",
                              epic.name, story.slug))
         else:
-            # gap tags referenced in prose resolve to a real gap
-            for tag in story.gap_tags:
-                if all_gaps and tag not in all_gaps:
-                    f.append(Finding("warn", "dangling-gap-tag",
-                                     f"story '{story.slug}' tags [gap:{tag}] but no knowledge "
-                                     f"record defines it", epic.name, tag))
             # knowledge paths referenced in prose exist on disk
             for ref in story.knowledge_refs:
                 if not (graph.root / ref).exists():
@@ -243,9 +234,19 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
 # ---------------------------------------------------------------------------
 # Every finding below is an *error* the agent is expected to fix, each with a deterministic remedy
 # (`ostler fmt` or `ostler scaffold`) so a strict `doctor` converges instead of nagging (§7.1).
-# Code-grounding (`code:` / `verify:` targets exist in the repo) is deliberately *not* here — it
-# couples doc authoring to code existing, so it belongs to a later QA gate (§7.2).
+#
+# `code:` grounding IS checked here (`_check_code_grounding`), reversing an earlier decision that
+# deferred it to a later QA gate on the grounds that it "couples doc authoring to code existing".
+# It does — and that coupling is the point: `code` is declared `BulletKey("code", link=True)` but
+# nothing validated it, so two path conventions could silently coexist in one tree and a citation
+# could outlive the symbol it names. Coverage is a join over these targets; an unvalidated target
+# is a join key nobody checked. `verify:` stays deferred — its value is a test id as often as a
+# `path::symbol`, so it has no single shape to hold it to.
 _UI_HEADING_BY_LOWER = {h.lower(): h for h in registry.UI_HEADING_TO_TYPE}
+# A symbol's parts, as a book writes them: `(*FirebaseClaimsWriter).SetRoleClaims` → the receiver
+# and the method; `Alpha.handle` → the class and the method; `Diff` → itself.
+_SYMBOL_PART = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_SPACE = re.compile(r"\s")
 
 
 def _known_types(graph: Graph) -> set[str]:
@@ -290,12 +291,85 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
                                  suggestion=f"## {heading}", fixable=True))
 
 
+def _declares(text: str, symbol: str) -> bool:
+    """Whether *text* plausibly declares *symbol*, in any of the profile's languages.
+
+    Every part of a qualified symbol must appear as a whole word: `(*Writer).SetRoleClaims`
+    needs both `Writer` and `SetRoleClaims`. This is a *presence* check, not a resolution — it
+    catches the cases §4.4 exists for (a citation whose file no longer declares it, a typo, a
+    convention drift) without the tree-sitter/LSP dependency the coverage diff does not need.
+    It will not catch a name that survives only in a comment; a regex front end is adequate
+    here for the same reason it is in the inventory.
+    """
+    words = set(_SYMBOL_PART.findall(text))
+    return all(part in words for part in _SYMBOL_PART.findall(symbol))
+
+
+def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
+    """`code:` targets name a file that exists, and a symbol that file declares.
+
+    This is what stops two path conventions from silently coexisting, what keeps the book
+    honest as the source moves under it, and what surfaces a documented unit that has since
+    been deleted. The grammar is the book's own (OKF UI profile §5):
+    `<path-relative-to-repo-root>::<symbol>`, the symbol qualified by its owner when it has one.
+
+    Note this cannot route through the link scan: `links.is_doc_link` rejects any href
+    containing `::`, and a backticked `` `x.go::S` `` is inline code, not a markdown link — so
+    `markdown.iter_links` never yields it. The bullets are read directly, as the
+    required-bullet loop does.
+    """
+    for node in graph.ui_nodes:
+        uitype = registry.ui_type(node.type)
+        if uitype is None or "code" not in uitype.bullet_by_key:
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        for raw in _code_values(node.meta.get("code")):
+            ref = raw.strip().strip("`, ").strip()
+            if not ref:
+                continue
+            target_path, separator, symbol = ref.partition("::")
+            target = graph.root / target_path
+            if not target.is_file():
+                f.append(Finding(
+                    "error", "dangling-code-ref",
+                    f"{node.id}: `code:` target '{ref}' — no such file '{target_path}'",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion="a path relative to the repo root, as `path::symbol`"))
+                continue
+            if not (separator and symbol):
+                continue  # a whole-file unit (a template renders a screen): existence is enough
+            if _SPACE.search(symbol):
+                # The profile admits `path::symbol` **or a `file` region** — and a region is
+                # prose ("notification permission bootstrap"), not a name. There is nothing to
+                # ground but the file, and holding prose to a symbol's bar would flag the
+                # convention the profile itself grants. When the book and the tool disagree
+                # about grammar, the book wins.
+                continue
+            try:
+                text = target.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if not _declares(text, symbol):
+                f.append(Finding(
+                    "error", "missing-code-symbol",
+                    f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
+                    f"'{symbol}'", path=rel, line=node.line, ref=ref))
+
+
+def _code_values(value) -> list[str]:
+    """A bullet's values — a repeated key parses to a list, a single one to a string."""
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)] if value else []
+
+
 def _check_ui(graph: Graph, f: list[Finding]) -> None:
     froot = graph.doc_roots.get("features")
     if froot is not None and froot.is_dir():
         for path in sorted(froot.rglob("*.md")):
             if path.is_file() and path.name not in registry.RESERVED_FILES:
                 _check_ui_file(graph, path, f)
+    _check_code_grounding(graph, f)
 
     resolver = links_mod.LinkResolver(graph)
 
@@ -354,22 +428,6 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                                      f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
                                      f"heading not found", path=rel, line=line, ref=href,
                                      fixable=True))
-
-
-def _check_knowledge(graph: Graph, f: list[Finding]) -> None:
-    all_slugs = graph.all_story_slugs()
-    for record in graph.knowledge:
-        for gap in record.gaps:
-            if not gap.owner:
-                if gap.disposition and gap.disposition not in ("dropped", "deferred"):
-                    f.append(Finding("warn", "stale-owner",
-                                     f"gap '{gap.id}' in {record.surface} is "
-                                     f"'{gap.disposition}' but has no owner", ref=gap.id))
-                continue
-            if graph.profile == "full" and gap.owner not in all_slugs:
-                f.append(Finding("error", "dangling-owner",
-                                 f"gap '{gap.id}' in {record.surface} is owned by unknown story "
-                                 f"'{gap.owner}'", ref=gap.id))
 
 
 def _norm(s: object) -> str:

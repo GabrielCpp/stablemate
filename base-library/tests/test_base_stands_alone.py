@@ -20,7 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from farrier import install
+from farrier import config, install
 from stablemate_library import base_dir
 
 # Every text format the base ships: prose (md), graphs/configs (yml), and the
@@ -47,7 +47,9 @@ def _private_names_module():
 def _isolate_from_the_overlay() -> None:
     """Resolve as a public user would: base only, no overlay in env or home config."""
     os.environ.pop("FARRIER_LIBRARY_DIR", None)
-    install.CONFIG_PATH = Path(tempfile.mkdtemp()) / "config.toml"
+    # Redirect the real config module (set_layers/base_library_dir read
+    # config.CONFIG_PATH, not this facade attribute) at an empty temp file.
+    config.CONFIG_PATH = Path(tempfile.mkdtemp()) / "config.toml"
     install.set_layers(None)
     assert [layer.name for layer in install.LAYERS] == [install.BASE_LAYER_NAME], (
         "the base library must be the only layer for this test to mean anything"

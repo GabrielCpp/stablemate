@@ -21,7 +21,6 @@ from markdown_it.tree import SyntaxTreeNode
 
 _FENCE = "---"
 
-GAP_TAG_RE = re.compile(r"\[gap:\s*([A-Za-z0-9][\w-]*)\s*\]")
 KNOWLEDGE_PATH_RE = re.compile(r"docs/knowledge/[^\s)\]'\"`]+\.(?:json|md)")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)  # fenced code blocks
@@ -47,14 +46,12 @@ def iter_links(text: str):
 
 @dataclass
 class References:
-    gap_tags: list[str] = field(default_factory=list)
     knowledge_paths: list[str] = field(default_factory=list)
     links: list[tuple[str, str]] = field(default_factory=list)  # (text, href)
 
 
 def extract_refs(text: str) -> References:
     return References(
-        gap_tags=sorted(set(GAP_TAG_RE.findall(text))),
         knowledge_paths=sorted(set(KNOWLEDGE_PATH_RE.findall(text))),
         links=LINK_RE.findall(_mask_code(text)),  # links inside code are not links
     )

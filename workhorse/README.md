@@ -86,12 +86,22 @@ workhorse run <name> <flow> --params '{"k":"v"}' # with param overrides
 Configure the library path once:
 
 ```bash
-workhorse config set-library ~/path/to/prompt-library
-workhorse config set-stablemate ~/path/to/stablemate   # optional: sets CODER_WORKSPACE
+workhorse config set-library ~/path/to/overlay-library      # optional private overlay
+workhorse config set-stablemate ~/path/to/stablemate        # optional: sets CODER_WORKSPACE
 ```
 
 `--workflow` and the `run` positional form are equivalent — use whichever fits the
-context. The prompt library path can also be set via `WORKHORSE_LIBRARY_DIR`.
+context. The overlay library path can also be set via `WORKHORSE_LIBRARY_DIR`.
+
+A named workflow resolves across two layers: the configured overlay (above) and the
+**base library** (the `stablemate-library` wheel) beneath it. workhorse finds the base
+via, in order, `$STABLEMATE_BASE_DIR` → the `base_dir` config key
+(`workhorse config set-base <path>`) → an import of the `stablemate-library` wheel from
+workhorse's own environment → a `stablemate_dir` checkout. The env-var / `set-base`
+routes are what make the base reachable under `pipx`, which isolates each tool in its
+own venv so a separately-installed wheel can't be imported. The monorepo README's
+[Installing](https://github.com/GabrielCpp/stablemate#installing) section covers the
+two supported setups (one shared environment vs. isolated tools + a shared base).
 
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
@@ -222,8 +232,9 @@ Inspect or set config:
 ```bash
 workhorse config show                        # print all config keys
 workhorse config show power.high.claude      # print one value
-workhorse config set-library ~/path/to/lib   # set the prompt library path
-workhorse config set-stablemate ~/path/to/sm # set the stablemate path
+workhorse config set-library ~/path/to/lib   # set the overlay library path
+workhorse config set-stablemate ~/path/to/sm # set the stablemate checkout path
+workhorse config set-base ~/path/to/base     # set the base library content path
 workhorse config list                        # list all config keys (power table friendly)
 workhorse config get power.high.claude       # get one key
 ```

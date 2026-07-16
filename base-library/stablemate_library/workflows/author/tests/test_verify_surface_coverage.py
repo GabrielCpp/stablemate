@@ -61,7 +61,7 @@ def test_surface_covered_by_story_slug_passes(tmp_path):
 
 def test_surface_covered_by_knowledge_record_passes(tmp_path):
     init_repo(tmp_path)
-    write_knowledge(tmp_path, "project-stages-editor", gaps=[{"id": "g1"}])
+    write_knowledge(tmp_path, "project-stages-editor")
     write_feature(tmp_path, "project-stages-editor", area="area")
     assert gate(tmp_path)["surface_coverage_ok"] == "yes"
 
@@ -113,7 +113,7 @@ def test_grounding_phantom_seed_surface_fails(tmp_path):
 def test_grounding_phantom_knowledge_surface_fails(tmp_path):
     # A knowledge record describes a surface not in the feature set → "no".
     init_repo(tmp_path)
-    write_knowledge(tmp_path, "ghost-surface", gaps=[{"id": "g1"}])  # surface "area/ghost-surface"
+    write_knowledge(tmp_path, "ghost-surface")  # surface "area/ghost-surface"
     write_feature(tmp_path, "documented-screen", area="real")
     out = ground(tmp_path)
     assert out["surface_coverage_ok"] == "no"
@@ -122,7 +122,7 @@ def test_grounding_phantom_knowledge_surface_fails(tmp_path):
 
 def test_grounding_knowledge_surface_in_feature_set_passes(tmp_path):
     init_repo(tmp_path)
-    write_knowledge(tmp_path, "documented-screen", gaps=[{"id": "g1"}])  # "area/documented-screen"
+    write_knowledge(tmp_path, "documented-screen")  # "area/documented-screen"
     write_feature(tmp_path, "documented-screen", area="area")
     assert ground(tmp_path)["surface_coverage_ok"] == "yes"
 
@@ -211,7 +211,7 @@ def test_grounding_claim_grounded_in_unit_manifest_passes(tmp_path):
     # On a survey-driven repo (no feature Concepts) a knowledge record about a surveyed
     # unit is grounded scope, not phantom scope.
     init_repo(tmp_path)
-    write_knowledge(tmp_path, "editor", area="src", gaps=[{"id": "g1"}])  # surface "src/editor"
+    write_knowledge(tmp_path, "editor", area="src")  # surface "src/editor"
     write_unit_manifest(tmp_path, [
         {"id": "src/editor", "path": "src/editor", "kind": "folder",
          "status": "assessed", "bullets": ["survey-fix-frob"]},
@@ -221,7 +221,7 @@ def test_grounding_claim_grounded_in_unit_manifest_passes(tmp_path):
 
 def test_grounding_phantom_claim_still_fails_with_manifest(tmp_path):
     init_repo(tmp_path)
-    write_knowledge(tmp_path, "ghost-surface", gaps=[{"id": "g1"}])  # "area/ghost-surface"
+    write_knowledge(tmp_path, "ghost-surface")  # "area/ghost-surface"
     write_unit_manifest(tmp_path, [
         {"id": "src/editor", "path": "src/editor", "kind": "folder",
          "status": "assessed", "bullets": ["survey-fix-frob"]},

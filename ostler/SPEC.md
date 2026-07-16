@@ -39,10 +39,16 @@ Every Concept declares `type`. Ostler knows these types (the machine registry is
 | `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
+| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 
 `spec.*` Concepts are coder **process artifacts**. They are typed and conformance-checked
 (`type` present) but ostler does not own their internal schema or relocate them.
+
+The subtype is the file's stem — `plan.md` → `spec.plan`, `executive.md` → `spec.executive`,
+`plan-go.md` → `spec.plan-go` — so a doc's kind stays queryable without a fixed vocabulary to
+maintain. Nothing dispatches on it: only the `spec` base type is checked. Mint these with
+`ostler create spec <slug> <doc>` rather than hand-writing frontmatter; it is idempotent, so it
+also retro-stamps a doc that was written free-form.
 
 **Not Concepts** (managed markdown, not part of the typed graph): `docs/backlog.md` (an
 ostler-managed intake list), `docs/roadmaps/*`, and operational files written by the workflows
@@ -125,21 +131,20 @@ surface: account-billing/apercu-billing-body   # optional
 # Story: …
 ## Context
 ## Acceptance Criteria
-- … [gap: some-gap-id]          # prose gap tags still resolve against knowledge gaps
 ## Implementation Status
 - **Status**: Not started        # legacy status line still honored if frontmatter absent
 ```
 
 Edges (`covers`/`depends on`) live in the epic's `## Stories` section, **not** here. Prose may carry
-`[gap:<id>]` tags and `docs/knowledge/…` references; ostler resolves both.
+`docs/knowledge/…` references; ostler resolves them.
 
 ## 5. The knowledge Concept
 
 Markdown + frontmatter (already the globex shape; Acme `.json` records convert to this). Required:
-`type: knowledge`, `surface`. Typed fields (`route`, `sourceRefs`, `old[]`, `new[]`, `gaps[]`,
+`type: knowledge`, `surface`. Typed fields (`route`, `sourceRefs`, `old[]`, `new[]`,
 `openGaps[]`, `journeys[]`, `provenance`) live in frontmatter; the body is free prose
-(`## Components`, `## Gaps`, …). A `gap` has `id` (required) and optional `owner` (a story slug),
-`disposition` (`scoped|deferred|dropped`), `kind`, `component`.
+(`## Components`, …). A record **describes** a surface; it does not carry a worklist. What a story
+should build comes from its epic's seeds, not from the knowledge record.
 
 ## 6. The feature Concept and the epics index
 
@@ -162,8 +167,8 @@ non-empty `type` (`okf-missing-type` otherwise). On top of conformance, ostler e
 referential-integrity contract over the graph parsed from the markdown:
 
 `cross-epic-seed`, `dangling-seed`, `cross-epic-dependency`, `dangling-dependency`,
-`missing-story-file`, `dangling-gap-tag` (warn), `dangling-knowledge-path`, `story-covers-no-seed`
-(warn), `orphan-seed`, `dangling-owner`, `stale-owner` (warn), `ungrounded-surface` (warn),
+`missing-story-file`, `dangling-knowledge-path`, `story-covers-no-seed`
+(warn), `orphan-seed`, `ungrounded-surface` (warn),
 `frozen-removed`, `frozen-mutated`, plus `schema` (warn) for per-type frontmatter schema violations.
 
 ## 9. Versioning

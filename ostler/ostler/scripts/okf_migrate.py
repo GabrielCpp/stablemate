@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from .. import markdown
+from .. import markdown, registry
 
 
 def _dump_fm(fm: dict) -> str:
@@ -230,28 +230,17 @@ def _migrate_features(froot: Path) -> int:
 # ---------------------------------------------------------------------------
 # specs: stamp a spec.* type on each process artifact (conformance only)
 # ---------------------------------------------------------------------------
-def _spec_type(name: str) -> str:
-    stem = name.lower()
-    if stem.startswith("plan"):
-        return "spec.plan"
-    if stem.startswith("review"):
-        return "spec.review"
-    if stem.startswith("qa"):
-        return "spec.qa"
-    return "spec"
-
-
 def _migrate_specs(sroot: Path) -> int:
     n = 0
     for path in sorted(sroot.glob("*/*.md")):
-        if path.name in ("index.md", "log.md"):
+        if path.name in registry.RESERVED_FILES:
             continue
         doc = markdown.split(path.read_text(encoding="utf-8"))
         fm = (doc.frontmatter or {}) if doc.has_frontmatter else {}
         if str(fm.get("type", "")).startswith("spec"):
             continue
-        fm = {"type": _spec_type(path.name), **fm}
-        fm["type"] = _spec_type(path.name)
+        fm.pop("type", None)   # a present-but-blank `type:` must not shadow the stamp
+        fm = {"type": registry.spec_type_for(path.name), **fm}
         path.write_text(f"---\n{_dump_fm(fm)}---\n{doc.body}", encoding="utf-8")
         n += 1
     return n

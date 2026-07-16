@@ -424,6 +424,36 @@ Two *optional, unenforced* conventions layer a light relationship name onto a li
 Everything else — "presents", "is about", "part of the review loop" — stays prose
 with a plain inline link. Don't invent bullet keys for it.
 
+### The `code:` target grammar
+
+`code:` is not a doc link — it is a **code reference**, and `ostler coverage` joins the
+inventory against these targets, so their shape is load-bearing rather than stylistic:
+
+```
+code: `<path-relative-to-repo-root>::<symbol>`
+```
+
+- **The path is relative to the repo root**, not to the service. `api/internal/x.go::S`, never
+  `internal/x.go::S`. In a monorepo one book's citation must mean the same thing as another's;
+  a service-relative path is ambiguous across books, and two conventions in one tree make
+  coverage a number that depends on which reconciliation the reader invents. `doctor` gates
+  this (`dangling-code-ref`).
+- **The symbol is qualified by its owner when it has one** — the idiom of the language, which
+  is what a reader would write:
+  `api/internal/claims.go::(*FirebaseClaimsWriter).SetRoleClaims` (Go pointer receiver),
+  `Reader.SetRoleClaims` (Go value receiver), `AddProjectAction.getRenderPath` (PHP method).
+  A bare name is not merely less tidy — it **cannot disambiguate** two types declaring the same
+  method in one file.
+- **Omit `::<symbol>` when the file is the unit.** A Twig template renders a screen, so
+  `legacy/templates/Home.html.twig` is a whole, citable unit; a Go file is a container and its
+  symbols are the units. A unit's shape is language-shaped.
+- **A `file` region** — `dashboard.html::notification permission bootstrap` — stays permitted
+  for an unnamed region of a non-code file. `doctor` grounds the file but not the region: prose
+  is not a name, and there is nothing to resolve it against.
+
+This is not a new convention. It is what books already write, and it is strictly more precise
+than the alternative — the inventory was taught to emit it, not the other way round.
+
 ## 6. How ostler treats a profile document
 
 > **Shipped behavior (updates the draft).** The draft below proposed "warns, never
@@ -444,9 +474,16 @@ with a plain inline link. Don't invent bullet keys for it.
 - **Gates (all `error`, each with a mechanical fix):** `unknown-type`,
   `bad-heading-type` (→ `fmt`), `missing-required-section` / `missing-required-bullet`
   (→ `scaffold`; the bullet rule checks *key* presence, not value, so stubs clear it),
-  `unresolved-relation` / `dangling-link` / `missing-anchor` (→ fix the link). **`code:`
-  and `verify:` are code refs grounded at a later QA gate — deliberately *not*
-  link-checked by `doctor`.**
+  `unresolved-relation` / `dangling-link` / `missing-anchor` (→ fix the link),
+  `dangling-code-ref` / `missing-code-symbol` (→ fix or drop the `code:` target).
+- **`code:` targets are grounded by `doctor`** (§5's grammar) — **updating the draft**, which
+  deferred this to a later QA gate on the grounds that it couples doc authoring to code
+  existing. It does, and that is the point: `code:` anchors the *current* implementation, so a
+  target that resolves to nothing is either a typo, a convention drift, or a unit that has been
+  deleted out from under the book. `code:` is never a required bullet — a doc written ahead of
+  its code simply omits it until there is something to anchor.
+- **`verify:` stays deferred** to the QA gate: its value is a test id as often as a
+  `path::symbol`, so there is no single shape to hold it to.
 
 ---
 
