@@ -34,15 +34,15 @@ Args:
     argv[3]  claimed_status   apply-review's self-reported impl_result.status
     argv[4]  claimed_notes    apply-review's self-reported impl_result.notes
 
-Stdlib-only: runs under the system python3. Shells out to the `ostler` CLI (same as
-prepare-story.py). Outputs JSON: {"impl_result": {"status": "...", "notes": "..."}}
+Drives the settlement through the in-process ``ostler`` Python API (``Ostler``).
+Outputs JSON: {"impl_result": {"status": "...", "notes": "..."}}
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from workhorse import scriptutil
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 RESOLUTION_FILE = "review-resolution.json"
@@ -69,16 +69,13 @@ def main() -> None:
         _emit(claimed_status, claimed_notes)
         return
 
-    cmd = ["ostler", "-C", str(docs_root), "edit", "settle-review", slug, "--write"]
-    proc = scriptutil.run_tool(cmd)
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
+    plan = Ostler(docs_root).settle_review(slug, write=True)
 
-    if proc.returncode != 0:
+    if plan.error:
         # ostler hard-errored: a malformed verdict (no findings / unknown disposition) or
         # a missing story. Don't trust it — route back to re-apply (bounded by guard_review),
         # surfacing the reason rather than spinning on fabricated progress.
-        reason = out or err or "ostler settle-review failed"
+        reason = plan.error or "ostler settle-review failed"
         _emit("needs_changes", f"review settlement FAILED: {reason}")
         return
 

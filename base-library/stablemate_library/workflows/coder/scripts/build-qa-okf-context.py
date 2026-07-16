@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from qa_cli import emit, notes_for, run_ostler
+from qa_cli import emit, notes_for, qa_context
 
 
 def main() -> None:
@@ -26,17 +26,11 @@ def main() -> None:
     except json.JSONDecodeError:
         source_roots = []
 
-    args = ["qa", "context", "--base", base, "--head", head, "--spec", spec_dir]
-    if features_root:
-        args.extend(["--features-root", features_root])
-    if story_file:
-        args.extend(["--story-file", story_file])
-    for source_root in source_roots if isinstance(source_roots, list) else []:
-        if isinstance(source_root, str) and "=" in source_root:
-            args.extend(["--source-root", source_root])
-    args.append("--json")
-
-    returncode, payload, stderr = run_ostler(args, cwd=docs_root)
+    returncode, payload, stderr = qa_context(
+        spec_dir, base=base, head=head, features_root=features_root, story_file=story_file,
+        source_roots=source_roots if isinstance(source_roots, list) else [],
+        docs_root=docs_root,
+    )
     status = (
         "passed"
         if returncode == 0 and payload.get("status") != "invalid"

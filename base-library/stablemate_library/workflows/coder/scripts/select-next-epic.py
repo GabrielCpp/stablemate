@@ -7,10 +7,11 @@ epic of the queue as the current epic. Story selection within that epic is a SEP
 concern (see select-next-story.py).
 
 The queue and the whole knowledge graph are now markdown owned by ``ostler`` (there is
-no ``epics-todo.json``); this script shells out to ``ostler todo list`` for the order.
+no ``epics-todo.json``); this script reads the order via the in-process ostler API
+(``Ostler.todo()``).
 
 Pop-front-on-merge: once an epic's PR is merged the workflow calls prune-epic.py
-(``ostler todo prune``) to remove it from the front, so the next call here returns the
+(``todo prune``) to remove it from the front, so the next call here returns the
 following epic.
 
 Args: [<docs_path>]
@@ -20,39 +21,26 @@ Outputs JSON: {"has_epic": "yes"|"no", "epic": "<name>", "reason": "..."}
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 
-def emit(**kwargs: str) -> None:
+def emit(**kwargs: str) -> NoReturn:
     payload = {"has_epic": "no", "epic": "", "reason": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
 
 
-def _queue_from_ostler(root: Path) -> list[str] | None:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
+def _queue_from_ostler(okf: Ostler) -> list[str] | None:
     try:
-        proc = subprocess.run([ostler, "-C", str(root), "todo", "list", "--json"],
-                              capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
+        return [str(x) for x in okf.todo()]
+    except (OSError, ValueError, RuntimeError):
         return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find("[")
-    if start == -1:
-        return []
-    try:
-        data = json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
-    return [str(x) for x in data] if isinstance(data, list) else None
 
 
 def _queue_from_json(root: Path) -> list[str] | None:
@@ -70,8 +58,9 @@ def _queue_from_json(root: Path) -> list[str] | None:
 def main() -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     root = find_docs_root(docs_path_arg)
+    okf = Ostler(root)
 
-    epics = _queue_from_ostler(root)
+    epics = _queue_from_ostler(okf)
     if epics is None or (not epics and _queue_from_json(root) is not None):
         # ostler unavailable or returned empty but a legacy epics-todo.json exists —
         # fall back to the JSON file so test sandboxes and legacy repos still work.

@@ -4,8 +4,8 @@
 Confirms the whole ``docs/epics`` tree the author just produced is something the coder engine can
 actually walk: a valid epics queue, every queued epic has its bookkeeping, and a first runnable
 story is selectable. This is the last gate before the workflow reports success. Under the OKF
-model the queue is the ostler-managed epics index (``ostler todo list``) and the story DAG folds
-into each ``epic.md`` (``ostler list --type story --epic``) — there is no ``epics-todo.json`` /
+model the queue is the ostler-managed epics index (``okf.todo()``) and the story DAG folds
+into each ``epic.md`` (``okf.list("story")``) — there is no ``epics-todo.json`` /
 ``dependencies.json``.
 
   - the epics index lists ≥1 epic;
@@ -14,7 +14,7 @@ into each ``epic.md`` (``ostler list --type story --epic``) — there is no ``ep
   - at least one story is selectable (status not already a done-state) — i.e. coder would have
     work to do.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Stdlib-only except for the in-process ``ostler`` Python API (``from ostler import Ostler``).
 
 Args:
     argv[1]  epics_dir : epics root (default docs/epics)
@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 _DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
 
@@ -42,25 +43,6 @@ def find_repo_root() -> Path:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
             return candidate
     return here
-
-
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def status_of(story_md: Path) -> str | None:
@@ -78,7 +60,7 @@ def is_done(status: str) -> bool:
     return any(tok in s for tok in _DONE_TOKENS)
 
 
-def done(errors: list[str]) -> None:
+def done(errors: list[str]) -> NoReturn:
     print(json.dumps({"artifacts_ok": "no" if errors else "yes",
                       "artifacts_errors": "\n".join(errors)}))
     sys.exit(0)
@@ -88,16 +70,18 @@ def main() -> None:
     epics_dir_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/epics"
     root = find_repo_root()
     epics_dir = root / epics_dir_rel
+    okf = Ostler(root)
 
-    queue = ostler_json(root, ["todo", "list", "--json"], "[")
-    if queue is None:
-        done(["could not read the epics index via `ostler todo list` (is ostler installed?)"])
+    try:
+        queue = okf.todo()
+    except (OSError, ValueError, RuntimeError):
+        done(["could not read the epics index via ostler's in-process API"])
     if not queue:
         done(["the epics index lists no epics"])
 
     errors: list[str] = []
     selectable = 0
-    all_stories = ostler_json(root, ["list", "--type", "story", "--json"], "[") or []
+    all_stories = okf.list("story")
     by_epic: dict[str, list[dict]] = {}
     for s in all_stories:
         by_epic.setdefault(str(s.get("epic", "")), []).append(s)

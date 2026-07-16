@@ -28,6 +28,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ostler import Ostler
+
 from workhorse import scriptutil
 from workhorse.scriptutil import find_repo_root
 
@@ -40,14 +42,12 @@ def mark_via_ostler(root: Path, slug: str, new_status: str) -> bool:
     if not slug:
         return False
     try:
-        result = scriptutil.run_tool(["ostler", "-C", str(root), "set-status", slug, new_status])
-    except FileNotFoundError:
+        res = Ostler(root).set_status(slug, new_status)
+    except (OSError, ValueError, RuntimeError):
         return False
-    if result.stdout:
-        sys.stderr.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    if result.returncode != 0:
+    if not res.ok:
+        if res.message:
+            sys.stderr.write(f"{res.message}\n")
         logger.info("ostler set-status failed for %s — falling back to story.md edit", slug)
         return False
     return True
@@ -117,9 +117,9 @@ def main() -> None:
     # run (or an operator clearing the skip set) will legitimately retry it.
     new_status = f"QA give-up after {attempts} attempts — needs manual review"
 
-    # `ostler set-status` updates BOTH the frontmatter and the body; fall back to
-    # a body edit only when ostler is unavailable or can't resolve the slug (e.g.
-    # non-standard test layouts).
+    # ostler's set_status updates BOTH the frontmatter and the body; fall back to
+    # a body edit only when the doc graph can't load or ostler can't resolve the
+    # slug (e.g. non-standard test layouts).
     marked = mark_via_ostler(root, slug, new_status)
 
     story_md = resolve_story_path(root, epic, slug, story_path_arg)

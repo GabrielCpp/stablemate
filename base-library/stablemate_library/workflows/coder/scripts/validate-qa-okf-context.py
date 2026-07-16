@@ -5,15 +5,13 @@ from __future__ import annotations
 
 import sys
 
-from qa_cli import emit, notes_for, run_ostler
+from qa_cli import emit, notes_for, qa_context_validate
 
 
 def main() -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     build_status = sys.argv[2] if len(sys.argv) > 2 else "invalid"
-    returncode, payload, stderr = run_ostler(
-        ["qa", "context-validate", "--spec", spec_dir, "--json"]
-    )
+    returncode, payload, stderr = qa_context_validate(spec_dir)
     cli_status = str(payload.get("status", "invalid")).lower()
     status = (
         "passed"

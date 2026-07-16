@@ -18,6 +18,7 @@ import json
 import hashlib
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 # This repo's interpreter has a libedit-backed ``readline``. At import it runs the
@@ -274,99 +275,91 @@ def git_mock_with_remote(sandbox: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Ostler CLI mocks (via the scriptutil.run_tool seam)
+# Ostler mocks (via the in-process ``ostler`` Python API)
 # ---------------------------------------------------------------------------
 #
-# Scripts reach ``ostler`` only through ``scriptutil.run_tool(["ostler", ...],
-# cwd=...)``. Each helper monkeypatches that seam with a ``fake_run_tool`` that
-# dispatches on the ostler subcommand and returns a ``subprocess.CompletedProcess``
-# with the same (returncode, stdout) the old PATH shim produced. Because
-# ``monkeypatch`` is function-scoped, these helpers take it as an argument.
+# Scripts reach ``ostler`` through the in-process ``Ostler`` facade — read/mutate
+# methods on the class, and the ``qa_cli`` helper functions the QA adapters import
+# (``qa_run``/``qa_context``/``qa_validate``/``qa_context_validate``). Each mock
+# patches that surface. A test sandbox has NO initialized ostler graph, so the
+# queue/story/path methods genuinely cannot serve real data; the mocks make them
+# RAISE — exactly as the old CLI shim exited non-zero — so the migrated scripts
+# catch that and fall back to the deterministic JSON sidecars (``epics-todo.json`` /
+# ``dependencies.json``) that ``make_queue``/``make_epic`` seed. QA/artifact return
+# canned outcomes (a real QA run needs a live stack). ``monkeypatch`` is
+# function-scoped, so these helpers take it as an argument.
+
+_SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+
+# Graph read/mutate facade methods a bare sandbox cannot serve → made to RAISE so
+# the scripts take their JSON-sidecar fallback (the old "exit 1" behavior).
+_QUEUE_PATH_METHODS = (
+    "todo", "todo_prune", "next_epic", "next_story", "spec_path", "story_path", "branch",
+)
+_ALL_GRAPH_METHODS = _QUEUE_PATH_METHODS + (
+    "list", "backlog", "backlog_add", "backlog_prune", "create_epic", "create_story",
+    "add_seed", "set_status", "doctor", "query", "search",
+)
 
 
-def _completed(argv: list[str], returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
-    return subprocess.CompletedProcess(list(argv), returncode, stdout, stderr)
+def _qa_cli_module():
+    """The coder scripts' ``qa_cli`` helper (the QA adapters import from it)."""
+    if str(_SCRIPTS_DIR) not in sys.path:
+        sys.path.insert(0, str(_SCRIPTS_DIR))
+    import qa_cli
+
+    return qa_cli
 
 
-def _subcommand_skip_c(argv: list[str]) -> str:
-    """The ostler subcommand, skipping a leading ``-C <dir>`` global flag.
+def _raise_no_index(*_args, **_kwargs):
+    raise RuntimeError("ostler graph not initialized in this sandbox")
 
-    ``argv`` is the full ``["ostler", ...]`` invocation.
-    """
-    rest = argv[1:]
-    i = 0
-    while i < len(rest):
-        if rest[i] == "-C":
-            i += 2
-            continue
-        return rest[i]
-    return ""
+
+def _install_qa(monkeypatch, *, run_result) -> None:
+    """Canned QA-adapter outcomes (the ``qa_cli`` seam) + artifact vet with no problems."""
+    from ostler import Ostler
+
+    qa_cli = _qa_cli_module()
+    monkeypatch.setattr(qa_cli, "qa_run", run_result)
+    monkeypatch.setattr(qa_cli, "qa_context", lambda *a, **k: (0, {"healthFindings": []}, ""))
+    monkeypatch.setattr(qa_cli, "qa_validate", lambda *a, **k: (0, {"status": "passed"}, ""))
+    monkeypatch.setattr(
+        qa_cli, "qa_context_validate",
+        lambda *a, **k: (0, {"status": "passed", "problems": []}, ""))
+    monkeypatch.setattr(Ostler, "artifact_vet", lambda self, kind, spec: {"problems": []})
 
 
 def mock_ostler_qa(monkeypatch, status: str = "passed") -> None:
-    """Mock the QA subcommands; every other ``ostler`` subcommand *fails* (exit 1).
+    """QA/artifact canned; every graph read/mutate RAISES so scripts use their JSON sidecars.
 
-    A test sandbox has no initialized ostler index, so the queue/story/path
-    subcommands (``todo prune``, ``todo list``, ``next-story``, ``path``) genuinely
-    cannot succeed — the fake models that by failing them, so the scripts fall back
-    to the deterministic JSON queue (``epics-todo.json``) and ``dependencies.json``
-    fixtures that ``make_queue``/``make_epic`` seed. The catch-all is load-bearing:
-    without it those subcommands returned exit 0 with empty output, which made
-    ``prune-epic.py`` believe ostler had pruned the queue while ``select-next-epic.py``
-    fell back to the still-populated JSON sidecar — an epic re-selected forever.
-
-    Dispatch is keyed on the first argument after ``ostler`` (a leading ``-C <dir>`` is NOT skipped, so it
-    falls to the catch-all, exactly as before).
+    The raise is load-bearing: were these methods to return *empty* instead, a
+    migrated read like ``select-next-epic``'s ``okf.todo()`` would look like an empty
+    queue rather than an unreadable one, and never consult the ``epics-todo.json``
+    sidecar the fixtures seed.
     """
-    def fake_run_tool(argv, cwd=None, *, check=False, logger=None):
-        argv = list(argv)
-        sub = argv[1] if len(argv) > 1 else ""
-        if sub == "artifact":
-            return _completed(argv, 0, json.dumps({"problems": []}))
-        if sub == "qa":
-            code = 0 if status == "passed" else 1
-            return _completed(argv, code, json.dumps({"status": status}))
-        # Unimplemented in the sandbox → fail, so scripts take their JSON fallback.
-        return _completed(argv, 1, "")
+    from ostler import Ostler
 
-    monkeypatch.setattr(scriptutil, "run_tool", fake_run_tool)
+    code = 0 if status == "passed" else 1
+    _install_qa(monkeypatch, run_result=lambda *a, **k: (
+        code, {"status": status, "notes": f"runner {status}"}, ""))
+    for name in _ALL_GRAPH_METHODS:
+        monkeypatch.setattr(Ostler, name, _raise_no_index)
 
 
 def mock_ostler_fix_passthrough(monkeypatch) -> None:
-    """ostler fake for the fix loop: qa/artifact mocked, real ostler for the rest.
-
-    seed-fix-story.py and prune-fix-item.py have *no* JSON fallback — they hard-require
-    ostler to scaffold and mutate the ``fixes`` epic (``create epic``/``create story``/
-    ``seed add``/``backlog``/``list``), which real ostler does correctly against a bare
-    sandbox. So those subcommands are delegated to the REAL binary via
-    ``subprocess.run(["ostler", ...])``. ``qa``/``artifact`` stay mocked (a real QA run
-    needs a live stack), and the queue subcommands (``todo``/``next-story``/``path``)
-    still fail so the epic/story queue keeps using its deterministic JSON fallback —
-    delegating ``todo prune`` to a real ostler that no-ops on an index it never
-    initialized would resurrect the just-pruned epic.
-
-    The subcommand is resolved past an optional leading ``-C <dir>`` global flag, as
-    the old shim did.
+    """Fix loop: QA/artifact canned; queue/path RAISE (JSON fallback); the graph-mutating
+    methods (``create_epic``/``create_story``/``add_seed``/``backlog_*``/``list``/
+    ``set_status``) run for REAL against the bare sandbox — seed-fix-story/prune-fix-item
+    have no JSON fallback and need ostler to actually scaffold and mutate the ``fixes``
+    epic. Only the queue/path methods raise, so the epic/story queue keeps using its
+    deterministic JSON sidecar (a real ``todo_prune`` on an uninitialized index would
+    resurrect the just-pruned epic).
     """
-    def fake_run_tool(argv, cwd=None, *, check=False, logger=None):
-        argv = list(argv)
-        sub = _subcommand_skip_c(argv)
-        if sub == "artifact":
-            return _completed(argv, 0, json.dumps({"problems": []}))
-        if sub == "qa":
-            return _completed(argv, 0, json.dumps({"status": "passed"}))
-        if sub in ("todo", "next-story", "path"):
-            return _completed(argv, 1, "")  # force the deterministic JSON fallback
-        # create/story/seed/backlog/list/set-status → the real ostler.
-        return subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=str(cwd) if cwd is not None else None,
-        )
+    from ostler import Ostler
 
-    monkeypatch.setattr(scriptutil, "run_tool", fake_run_tool)
+    _install_qa(monkeypatch, run_result=lambda *a, **k: (0, {"status": "passed"}, ""))
+    for name in _QUEUE_PATH_METHODS:
+        monkeypatch.setattr(Ostler, name, _raise_no_index)
 
 
 def mock_qa_control_plane(
@@ -375,39 +368,29 @@ def mock_qa_control_plane(
     statuses: list[str] | None = None,
     slugs: list[str] | None = None,
 ) -> None:
-    """Mock context/validation plus a sequence of four-state runner outcomes.
+    """Context/validation canned plus a SEQUENCE of four-state ``qa run`` outcomes.
 
-    ``qa run`` walks ``statuses`` on successive calls (a per-call SEQUENCE counter,
-    formerly a file under the shim dir, now a closure variable); the last entry
-    repeats once exhausted. All other ``qa`` subcommands report ``passed`` and
-    ``artifact`` reports no problems. Dispatch matches the old shim (keyed on the
-    first arg after ``ostler`` with no ``-C`` skipping).
+    ``qa run`` walks ``statuses`` on successive calls (a closure counter, mirrored to
+    ``qa-run-count.txt`` for assertions); the last entry repeats once exhausted. Other
+    graph reads/mutates RAISE (JSON-sidecar fallback), matching ``mock_ostler_qa``.
     """
     statuses = statuses or ["passed"]
     slugs = slugs or ["s-1"]
     counter = {"index": 0}
 
-    def fake_run_tool(argv, cwd=None, *, check=False, logger=None):
-        argv = list(argv)
-        rest = argv[1:]
-        if rest and rest[0] == "artifact":
-            return _completed(argv, 0, json.dumps({"problems": []}))
-        if not rest or rest[0] != "qa":
-            return _completed(argv, 1, "")
-        subcommand = rest[1] if len(rest) > 1 else ""
-        if subcommand == "run":
-            index = counter["index"]
-            counter["index"] = index + 1
-            (wf._test_dir / "qa-run-count.txt").write_text(
-                str(counter["index"]), encoding="utf-8"
-            )
-            status = statuses[min(index, len(statuses) - 1)]
-        else:
-            status = "passed"
+    def run_result(*_a, **_k):
+        index = counter["index"]
+        counter["index"] = index + 1
+        (wf._test_dir / "qa-run-count.txt").write_text(str(counter["index"]), encoding="utf-8")
+        status = statuses[min(index, len(statuses) - 1)]
         code = 0 if status == "passed" else 1
-        return _completed(argv, code, json.dumps({"status": status, "notes": f"runner {status}"}))
+        return code, {"status": status, "notes": f"runner {status}"}, ""
 
-    monkeypatch.setattr(scriptutil, "run_tool", fake_run_tool)
+    from ostler import Ostler
+
+    _install_qa(monkeypatch, run_result=run_result)
+    for name in _ALL_GRAPH_METHODS:
+        monkeypatch.setattr(Ostler, name, _raise_no_index)
 
     plan_entries = [
         {
@@ -563,10 +546,18 @@ def mock_all_agents_happy(
     wf.mock_agent(
         "replan_epic", {"replan_result": {"status": "done", "summary": "Replanned."}}
     )
+    wf.mock_agent(
+        "check_code_reuse",
+        {"reuse_result": {"status": "ok", "findings": [], "summary": ""}},
+    )
     wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
     wf.mock_agent(
         "code_review",
         {"code_review_result": {"status": "approved", "findings": [], "findings_summary": ""}},
+    )
+    wf.mock_agent(
+        "code_reuse",
+        {"code_reuse_result": {"status": "clean", "findings": [], "findings_summary": ""}},
     )
     wf.mock_agent(
         "review_implementation",

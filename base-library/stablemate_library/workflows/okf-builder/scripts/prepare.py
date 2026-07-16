@@ -13,14 +13,15 @@ Outputs JSON: {"worklist_path","features_root","repo_root","source_root","servic
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
+from typing import NoReturn
 
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 
-def emit(**kw: object) -> None:
+def emit(**kw: object) -> NoReturn:
     payload: dict[str, object] = {
         "worklist_path": "", "features_root": "", "repo_root": "", "source_root": "",
         "service": "", "source_excludes": "", "ostler_ok": "no", "done_count": 0,
@@ -50,7 +51,13 @@ def main() -> None:
     wl = build_dir / f"{service or 'all'}.worklist.json"
     if not wl.exists():
         wl.write_text(json.dumps({"items": []}, indent=2))
-    ostler_ok = "yes" if shutil.which("ostler") else "no"
+    # "yes" iff ostler can load an OKF graph at this root (the in-process analog of
+    # the old "is the CLI on PATH" probe — ostler is now an import, always present).
+    try:
+        _ = Ostler(root).graph
+        ostler_ok = "yes"
+    except (OSError, ValueError, RuntimeError):
+        ostler_ok = "no"
     emit(worklist_path=str(wl), features_root=str(features), repo_root=str(root),
          source_root=str(source),
          service=service, source_excludes=source_excludes, ostler_ok=ostler_ok, done_count=0)

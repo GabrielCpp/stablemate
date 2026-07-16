@@ -359,3 +359,163 @@ def test_review_blocked_apply_escalates_immediately(tmp_path, monkeypatch):
     assert len(apply_calls) == 1, (
         f"blocked short-circuits after one apply pass, got {len(apply_calls)}"
     )
+
+
+# ── Code-reuse gates (anti-reimplementation) ────────────────────────────────────
+# Two new stages added to mitigate the workflow rebuilding features/utilities that
+# already exist: a DEV-stage plan-level check (check_code_reuse) that reworks the plan
+# before any code is written, and a REVIEW-stage pass (code_reuse) whose findings feed
+# the implementation reviewer's verdict so duplication drives the existing rework loop.
+
+
+def test_dev_code_reuse_gate_structure_is_bounded():
+    """Pure-graph check: the dev flow routes an approved plan through the reuse gate,
+    which reworks the plan on `needs_rework` and is bounded by max_reuse_reworks."""
+    g = load_workflow(WORKFLOW)
+    nodes = g.flows["dev"].nodes
+
+    # An approved plan flows into the reuse gate (not straight to validate_plan).
+    assert nodes["decide_plan"].cases["done"] == "seed_reuse"
+    assert nodes["decide_plan"].default == "seed_reuse"
+    # blocked still escalates to the operator gate — the reuse gate never sees it.
+    assert nodes["decide_plan"].cases["blocked"] == "gate_plan"
+
+    # seed → check → decide, with the init/incr/guard counter triple of a bounded loop.
+    assert nodes["seed_reuse"].fn == "seed"
+    assert nodes["seed_reuse"].next == "check_code_reuse"
+    assert nodes["check_code_reuse"].prompt == "prompts/check-code-reuse.md"
+    assert nodes["check_code_reuse"].next == "decide_reuse"
+
+    dec = nodes["decide_reuse"]
+    assert dec.path == "reuse_result.status"
+    assert dec.cases["ok"] == "validate_plan"   # clean → implementation
+    assert dec.cases["needs_rework"] == "guard_reuse"
+    assert dec.default == "validate_plan"        # fail-open
+
+    # guard caps the loop at max_reuse_reworks (literal "2") → proceed to validate_plan.
+    guard = nodes["guard_reuse"]
+    assert guard.path == "reuse_rework_count.value"
+    assert guard.default == "rework_plan_reuse"
+    exhaust = [c for c in guard.conditions if c.op == ">=" and c.value == "2"]
+    assert exhaust and exhaust[0].next == "validate_plan"
+
+    # rework reuses the refine-plan prompt, then bumps the counter and re-checks.
+    assert nodes["rework_plan_reuse"].prompt == "prompts/refine-plan.md"
+    assert nodes["rework_plan_reuse"].next == "incr_reuse"
+    assert nodes["incr_reuse"].fn == "incr"
+    assert nodes["incr_reuse"].next == "check_code_reuse"
+
+
+def test_dev_code_reuse_reworks_plan_then_proceeds(tmp_path):
+    """check_code_reuse finds a re-implementation once → the plan is reworked → the
+    re-check comes back clean → implementation proceeds."""
+    make_story(tmp_path, "epic-1", "s-1", "In progress")
+    wf = WorkflowRun(WORKFLOW, tmp_path)
+    git_mock_no_remote(tmp_path)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent_sequence(
+        "check_code_reuse",
+        [
+            {"reuse_result": {"status": "needs_rework",
+                              "findings": [{"intended": "email validator",
+                                            "existing": "pkg/validate/email.go",
+                                            "recommendation": "call it"}],
+                              "summary": "reuse the existing validator"}},
+            {"reuse_result": {"status": "ok", "findings": [], "summary": ""}},
+        ],
+    )
+    wf.mock_agent(
+        "rework_plan_reuse", {"plan_result": {"status": "done", "summary": "reuse"}}
+    )
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+
+    result = wf.run(flow="dev", params=_qa_params(tmp_path))
+
+    assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    rework = [c for c in result.calls("claude") if c["node_id"] == "rework_plan_reuse"]
+    check = [c for c in result.calls("claude") if c["node_id"] == "check_code_reuse"]
+    assert len(rework) == 1, f"one rework pass, got {len(rework)}"
+    assert len(check) == 2, f"check runs, reworks, re-checks, got {len(check)}"
+    assert_step_output(
+        result, "implement_layer", "impl_result", {"status": "done", "notes": ""}
+    )
+
+
+def test_dev_code_reuse_loop_is_bounded_then_proceeds(tmp_path):
+    """A check that NEVER comes back clean reworks the plan at most max_reuse_reworks=2
+    times, then proceeds to implementation anyway (fail-open advisory gate — it must not
+    spin or halt the run; review/QA re-check reuse on the real diff)."""
+    make_story(tmp_path, "epic-1", "s-1", "In progress")
+    wf = WorkflowRun(WORKFLOW, tmp_path)
+    git_mock_no_remote(tmp_path)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent(
+        "check_code_reuse",
+        {"reuse_result": {"status": "needs_rework", "findings": [], "summary": "again"}},
+    )
+    wf.mock_agent(
+        "rework_plan_reuse", {"plan_result": {"status": "done", "summary": "reuse"}}
+    )
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+
+    result = wf.run(flow="dev", params=_qa_params(tmp_path), timeout=20)
+
+    assert result.passed(), "advisory reuse gate must proceed, not halt"
+    rework = [c for c in result.calls("claude") if c["node_id"] == "rework_plan_reuse"]
+    assert len(rework) == 2, f"bounded to max_reuse_reworks=2, got {len(rework)}"
+    assert_step_output(
+        result, "implement_layer", "impl_result", {"status": "done", "notes": ""}
+    )
+
+
+def test_review_code_reuse_stage_wired_and_feeds_reviewer():
+    """The review flow runs the dedicated code-reuse stage between the automated code
+    review and the implementation reviewer, and passes its result into the reviewer."""
+    g = load_workflow(WORKFLOW)
+    nodes = g.flows["review"].nodes
+    assert nodes["code_review"].next == "code_reuse"
+    assert nodes["code_reuse"].prompt == "prompts/code-reuse.md"
+    assert nodes["code_reuse"].next == "review_implementation"
+    # Fail-open default so a defaulted stage never blocks the reviewer.
+    reuse_out = {o.key: o for o in nodes["code_reuse"].outputs}
+    assert reuse_out["code_reuse_result"].default["status"] == "skipped"
+    # The reviewer consumes both automated sources.
+    assert "code_reuse_result" in nodes["review_implementation"].args
+
+
+def test_review_code_reuse_findings_drive_rework(tmp_path, monkeypatch):
+    """A code-reuse finding the reviewer folds into a needs_changes verdict drives the
+    existing apply_review rework loop; the code-reuse stage runs once per review entry."""
+    make_story(tmp_path, "epic-1", "s-1", "In progress")
+    wf = WorkflowRun(WORKFLOW, tmp_path)
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
+    wf.mock_agent(
+        "code_reuse",
+        {"code_reuse_result": {"status": "findings",
+                               "findings": [{"repo": "api-service", "file": "x.go",
+                                             "line": 1, "category": "Missed Utility",
+                                             "severity": "Major", "issue": "reinvents util.Ptr",
+                                             "required_fix": "use util.Ptr"}],
+                               "findings_summary": "1 missed utility"}},
+    )
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "needs_changes", "notes": "use util.Ptr"}},
+    )
+    wf.mock_agent(
+        "apply_review", {"impl_result": {"status": "applied", "notes": "fixed"}}
+    )
+
+    result = wf.run(
+        flow="review",
+        params={"story": "s-1", "docs_path": str(tmp_path), "epic": "epic-1",
+                "operator_mode": "human"},
+        timeout=20,
+    )
+
+    assert result.passed(), f"settled reuse rework should approve\n{result.stderr}"
+    reuse = [c for c in result.calls("claude") if c["node_id"] == "code_reuse"]
+    apply_calls = [c for c in result.calls("claude") if c["node_id"] == "apply_review"]
+    assert len(reuse) == 1, f"code_reuse runs once per review entry, got {len(reuse)}"
+    assert len(apply_calls) == 1, f"the finding drove one apply pass, got {len(apply_calls)}"

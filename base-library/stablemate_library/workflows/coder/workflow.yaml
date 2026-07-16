@@ -1220,6 +1220,7 @@ flows:
       operator_mode: "auto"
       current_layer_index: "-1"
       max_lint_reworks: "2" # per-layer dev-time lint fix budget (see guard_lint)
+      max_reuse_reworks: "2" # plan-level code-reuse rework budget (see guard_reuse)
       target_env: "local" # "local" | "dev" — threaded from the pipeline; without this the flow-local
                            # reference in resolve_impl_context is undefined (template warning)
     nodes:
@@ -1286,9 +1287,9 @@ flows:
         type: branch
         path: plan_result.status
         cases:
-          done: validate_plan
+          done: seed_reuse
           blocked: gate_plan
-        default: validate_plan
+        default: seed_reuse
 
       - id: rework_plan
         type: agent
@@ -1380,6 +1381,91 @@ flows:
         outputs:
           - key: dev_status
         next: dev_done
+
+      # ── Code-reuse gate (plan-level, anti-reimplementation) ─────────────────────
+      # Before implementation, check the APPROVED plan against the EXISTING codebase:
+      # does it propose to build a feature / endpoint / component / utility that is
+      # already implemented? This is the mitigation for the workflow re-implementing
+      # something that already exists because the planner never looked. A `needs_rework`
+      # verdict reworks the plan to reuse what is there (refine-plan.md, with the reuse
+      # findings as review notes) and re-checks — bounded by max_reuse_reworks so it can
+      # never spin. Seeded once per plan-approval; the rework loop re-enters
+      # check_code_reuse, not this seed. Fail-open: a defaulted check proceeds to
+      # implementation (it is an advisory gate, and review/QA still run downstream).
+      - id: seed_reuse
+        type: call
+        fn: seed
+        outputs:
+          - key: reuse_rework_count
+            wrap: value
+        next: check_code_reuse
+
+      - id: check_code_reuse
+        type: agent
+        # opus: a semantic "does this already exist?" search across the codebase is a
+        # genuine reasoning + discovery task, and catching a re-implementation HERE
+        # (before any code is written) is the whole point — worth the stronger model,
+        # like plan / rework_plan.
+        power: high
+        prompt: prompts/check-code-reuse.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+        outputs:
+          - key: reuse_result
+            default:
+              status: ok
+              findings: []
+              summary: "Code-reuse check did not run."
+        next: decide_reuse
+
+      - id: decide_reuse
+        type: branch
+        path: reuse_result.status
+        cases:
+          ok: validate_plan
+          needs_rework: guard_reuse
+        default: validate_plan
+
+      # Bound the reuse<->rework loop: once max_reuse_reworks refine passes are spent
+      # without the plan coming back clean, proceed to implementation anyway (the
+      # findings are advisory — implementation review re-checks reuse on the real diff).
+      # Literal "2" so no Jinja in the branch — keep in sync with vars.max_reuse_reworks.
+      - id: guard_reuse
+        type: branch
+        path: reuse_rework_count.value
+        conditions:
+          - op: ">="
+            value: "2" # == vars.max_reuse_reworks; literal so no Jinja in branch
+            next: validate_plan
+        default: rework_plan_reuse
+
+      - id: rework_plan_reuse
+        type: agent
+        # opus: re-plans to reuse the existing code the check found — same tier as the
+        # other plan-authoring nodes.
+        power: high
+        prompt: prompts/refine-plan.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          review_notes: "The plan re-implements functionality that already exists in the codebase. Rework it to REUSE the existing code instead of rebuilding it, or justify per-finding why reuse is not possible. Reuse findings: {{ reuse_result.findings }}"
+          operator_context: ""
+        outputs:
+          - key: plan_result
+        next: incr_reuse
+
+      - id: incr_reuse
+        type: call
+        fn: incr
+        args:
+          value: "{{ reuse_rework_count.value }}"
+        outputs:
+          - key: reuse_rework_count
+            wrap: value
+        next: check_code_reuse
 
       # ── Validate plan paths ─────────────────────────────────────────────────────
       # Gate: confirm the planner's service paths point to real directories with
@@ -1685,6 +1771,36 @@ flows:
               status: skipped
               findings: []
               findings_summary: "Automated code review did not run."
+        next: code_reuse
+
+      # ── Code-reuse review (missed utilities + duplication → tech debt) ───────────
+      # A dedicated pass hunting the reuse problems the diff introduced: logic
+      # duplicated within the diff or against existing code, and hand-rolled
+      # implementations of helpers/utilities that already exist. Extracted out of
+      # review_implementation (its former "Code Duplication" / "Missed Utility"
+      # self-review sections) so the concern is enforced by one focused agent instead of
+      # being one of five things a single reviewer juggles. Findings ride in
+      # code_reuse_result; review_implementation folds them into its verdict, so a
+      # Major/Critical reuse finding drives the existing needs_changes → apply_review
+      # rework loop (the operator asked for rework, not silent backlog-filing).
+      - id: code_reuse
+        type: agent
+        # opus: semantic "is this already implemented elsewhere?" matching across the
+        # codebase — the same discovery task as the dev-stage check_code_reuse.
+        power: high
+        prompt: prompts/code-reuse.md
+        cwd: "{{ docs_repo_path }}"
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          affected_repo_paths: "{{ affected_repo_paths }}"
+        outputs:
+          - key: code_reuse_result
+            default:
+              status: skipped
+              findings: []
+              findings_summary: "Code-reuse review did not run."
         next: review_implementation
 
       - id: review_implementation
@@ -1697,6 +1813,7 @@ flows:
           story_path: "{{ story_path }}"
           spec_dir: "{{ spec_dir }}"
           code_review_result: "{{ code_review_result }}"
+          code_reuse_result: "{{ code_reuse_result }}"
         outputs:
           - key: review_impl_result
         next: decide_impl

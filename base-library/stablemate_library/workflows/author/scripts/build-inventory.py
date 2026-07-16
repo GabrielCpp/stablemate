@@ -3,7 +3,7 @@
 
 Under the OKF model every feature doc under ``features_dir`` is itself a typed Concept
 (``type: feature`` in its front-matter), and ostler reads the feature set directly from
-those Concepts (``ostler list --type feature``). There is no derived feature
+those Concepts (``Ostler.list("feature")``). There is no derived feature
 ``inventory.json`` to (re)build anymore — the source IS the manifest for feature docs.
 
 The manifest path (argv[2], ``cfg.surface_manifest``) now names the OTHER producer: a
@@ -15,7 +15,7 @@ gate on; this node still never writes anything.
 Always flows on: with no feature Concepts and no unit manifest the count is 0 and the
 coverage gate downstream is inert, exactly as before.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Reads the feature set through the in-process ``ostler`` Python API (``Ostler.list``).
 
 Args:
     argv[1]  features_dir  : repo-relative feature-docs root (default docs/features; informational)
@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -45,24 +45,9 @@ def find_repo_root() -> Path:
     return here
 
 
-def feature_count(root: Path) -> int:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return 0
-    try:
-        proc = subprocess.run([ostler, "list", "--type", "feature", "--json"],
-                              cwd=str(root), capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return 0
-    raw = (proc.stdout or "").strip()
-    start = raw.find("[")
-    if start == -1:
-        return 0
-    try:
-        rows = json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return 0
-    return len(rows) if isinstance(rows, list) else 0
+def feature_count(okf: Ostler) -> int:
+    """Count of typed feature Concepts ostler reads directly (0 when there are none)."""
+    return len(okf.list("feature"))
 
 
 def unit_count(root: Path, manifest_rel: str) -> int:
@@ -83,11 +68,12 @@ def main() -> None:
     features_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/features"
     manifest_rel = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     root = find_repo_root()
-    n = feature_count(root)
+    okf = Ostler(root)
+    n = feature_count(okf)
     m = unit_count(root, manifest_rel)
     note = (
         f"feature set is read directly from {n} typed feature Concept(s) under {features_rel} "
-        "(ostler list --type feature) — no inventory.json is built under the OKF model"
+        "(ostler feature Concepts) — no inventory.json is built under the OKF model"
     )
     if m:
         note += f"; plus {m} survey-produced unit(s) from {manifest_rel} (surveyor manifest)"

@@ -6,7 +6,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from qa_cli import emit, notes_for, run_ostler
+from qa_cli import emit, notes_for, qa_run
 
 STATUSES = {"passed", "failed", "blocked", "invalid"}
 
@@ -14,9 +14,7 @@ STATUSES = {"passed", "failed", "blocked", "invalid"}
 def main() -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     plan = str(Path(spec_dir) / "qa-plan.yml")
-    _returncode, payload, stderr = run_ostler(
-        ["qa", "run", plan, "--spec", spec_dir, "--json"]
-    )
+    _returncode, payload, stderr = qa_run(plan, spec_dir)
     status = str(payload.get("status", "invalid")).lower()
     if status not in STATUSES:
         status = "invalid"

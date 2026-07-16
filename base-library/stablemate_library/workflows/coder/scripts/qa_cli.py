@@ -1,4 +1,11 @@
-"""Shared JSON normalization for the coder workflow's thin Ostler QA adapters."""
+"""Shared adapters between the coder workflow's QA nodes and the in-process
+``ostler`` QA API.
+
+Each ``qa_*`` helper drives one ``ostler qa …`` operation through the ``Ostler``
+Python API and normalizes it back to the ``(returncode, payload, stderr)`` shape the
+routing scripts already branch on — so a node keeps its exact pass/invalid/blocked
+logic while no longer shelling out. ``notes_for`` / ``emit`` render the workflow JSON.
+"""
 
 from __future__ import annotations
 
@@ -6,28 +13,73 @@ import json
 from pathlib import Path
 from typing import Any
 
-from workhorse import scriptutil
+from ostler import Ostler
 
 
-def run_ostler(
-    args: list[str], *, cwd: Path | None = None
+def _okf(docs_root: Path | None = None) -> Ostler:
+    return Ostler(docs_root) if docs_root is not None else Ostler()
+
+
+def _parse_source_roots(source_roots: list[str]) -> dict[str, list[str]]:
+    """``["SURFACE=PATH", …]`` → ``{surface: [path, …]}`` (the CLI's ``--source-root``)."""
+    parsed: dict[str, list[str]] = {}
+    for raw in source_roots:
+        if isinstance(raw, str) and "=" in raw:
+            surface, path = raw.split("=", 1)
+            parsed.setdefault(surface.strip(), []).append(path.strip())
+    return parsed
+
+
+def qa_context(
+    spec_dir: str,
+    *,
+    base: str,
+    head: str,
+    features_root: str,
+    story_file: str,
+    source_roots: list[str],
+    docs_root: Path | None = None,
 ) -> tuple[int, dict[str, Any], str]:
-    """Run Ostler without raising and parse its JSON object when possible."""
+    """``ostler qa context`` → the obligation packet; rc=1 on an error-level finding."""
     try:
-        result = scriptutil.run_tool(["ostler", *args], cwd=cwd)
-    except OSError as exc:
-        return 127, {}, str(exc)
+        packet = _okf(docs_root).qa_context(
+            base=base, head=head, spec=spec_dir,
+            source_roots=_parse_source_roots(source_roots),
+            features_root=features_root or "docs/features",
+            story_file=story_file or None,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        return 1, {}, str(exc)
+    has_error = any(f.get("severity") == "error" for f in packet.get("healthFindings", []))
+    return (1 if has_error else 0), packet, ""
 
-    payload: dict[str, Any] = {}
-    stdout = result.stdout.strip()
-    if stdout:
-        try:
-            parsed = json.loads(stdout)
-            if isinstance(parsed, dict):
-                payload = parsed
-        except json.JSONDecodeError:
-            pass
-    return result.returncode, payload, result.stderr.strip()
+
+def qa_context_validate(spec_dir: str, *, docs_root: Path | None = None) -> tuple[int, dict[str, Any], str]:
+    """``ostler qa context-validate`` → ``{status, problems}``; rc=1 when problems exist."""
+    try:
+        problems = _okf(docs_root).qa_context_validate(spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid", "problems": [str(exc)]}, str(exc)
+    payload = {"status": "passed" if not problems else "invalid", "problems": problems}
+    return (0 if not problems else 1), payload, ""
+
+
+def qa_validate(plan: str, spec_dir: str, *, docs_root: Path | None = None) -> tuple[int, dict[str, Any], str]:
+    """``ostler qa validate`` → the outcome data; rc=0 iff the plan is valid."""
+    try:
+        outcome = _okf(docs_root).qa_validate(plan, spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid"}, str(exc)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
+
+
+def qa_run(plan: str, spec_dir: str, *, docs_root: Path | None = None) -> tuple[int, dict[str, Any], str]:
+    """``ostler qa run`` → the four-state outcome data; rc=0 iff the run passed."""
+    try:
+        outcome = _okf(docs_root).qa_run(plan, spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid"}, str(exc)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
 def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:

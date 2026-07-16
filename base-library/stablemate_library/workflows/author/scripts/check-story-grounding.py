@@ -10,15 +10,16 @@ structurally cannot be grounded. It is the author analog of the coder's ``verify
 Strictly presence/structure — **no semantic judgment** (that is the auditor's job):
 
   - every seed item this story ``covers`` exists in the epic's seeds (no phantom scope) — read
-    from ``epic.md`` via ``ostler list --type seed|story``;
+    from ``epic.md`` via the in-process ostler API (``Ostler.list``);
   - a surface **knowledge record** (a ``knowledge`` Concept) exists that this story grounds in
     (matched generously by slug / seed-item / legacy-surface tokens — proves gather_knowledge ran);
   - **iff** ``features_dir`` is configured: that matched record actually read the feature
     doc / journey — its ``journeys[]`` is non-empty OR ``provenance.sourcesRead`` references a
     path under ``features_dir`` (proves the journey grounding ran, not just that a record exists).
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI (and PyYAML, which
-ships with the system interpreter, to read the matched record's front-matter for the journey check).
+Stdlib-only except for the in-process ``ostler`` API (``from ostler import Ostler``) and PyYAML,
+which ships with the system interpreter, to read the matched record's front-matter for the journey
+check.
 
 Args:
     argv[1]  story_dir      : repo-relative story folder (…/stories/<slug>)
@@ -33,10 +34,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 try:
     import yaml
@@ -74,26 +76,7 @@ def find_repo_root() -> Path:
     return here
 
 
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
-
-
-def emit(ok: bool, errors: list[str]) -> None:
+def emit(ok: bool, errors: list[str]) -> NoReturn:
     print(json.dumps({
         "story_grounding_ok": "yes" if ok else "no",
         "story_grounding_errors": "\n".join(errors),
@@ -120,17 +103,19 @@ def main() -> None:
         emit(False, ["story_dir and epic_dir are required"])
 
     root = find_repo_root()
+    okf = Ostler(root)
     slug = Path(story_dir_rel).name
     epic = Path(epic_dir_rel).name
 
     # ── this epic's seed ids + this story's covered seed items (read from epic.md) ──
-    seeds = ostler_json(root, ["list", "--type", "seed", "--epic", epic, "--json"], "[")
-    if seeds is None:
-        emit(False, ["could not read the epic's seeds via `ostler list --type seed`"])
+    try:
+        seeds = okf.list("seed", epic=epic)
+    except (OSError, ValueError, RuntimeError):
+        emit(False, ["could not read the epic's seeds via the ostler API"])
     seed_by_id = {str(s.get("id", "")).strip(): s for s in seeds if s.get("id")}
     seed_ids = set(seed_by_id)
 
-    stories = ostler_json(root, ["list", "--type", "story", "--epic", epic, "--json"], "[") or []
+    stories = okf.list("story", epic=epic)
     story_row = next((s for s in stories if str(s.get("slug", "")).strip() == slug), None)
     story_seed_items = [str(x).strip() for x in ((story_row or {}).get("covers") or [])]
 
@@ -151,7 +136,7 @@ def main() -> None:
     for ls in legacy_surfaces:
         needles |= tokens(ls)
 
-    records = ostler_json(root, ["list", "--type", "knowledge", "--json"], "[") or []
+    records = okf.list("knowledge")
     matched_path: str | None = None
     if needles:
         for rec in records:

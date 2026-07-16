@@ -3,9 +3,10 @@
 
 Epic selection is a separate concern (select-next-epic.py); this script is told which
 epic to work on (argv[1]) and only answers "which story next?". The story DAG now lives
-in the epic's ``epic.md`` (``## Stories``) and is owned by ``ostler``; this shells out to
-``ostler next-story <epic>`` which returns the first story in dependency order whose
-status is not done (deps satisfied), or null when none remain.
+in the epic's ``epic.md`` (``## Stories``) and is owned by ``ostler``; this drives the
+in-process ``ostler`` Python API (``Ostler.next_story(epic)``) which returns the first
+story in dependency order whose status is not done (deps satisfied), or ``None`` when
+none remain.
 
 When the epic has no more runnable story, it returns ``has_story="no"`` — the workflow
 treats that as "this epic is finished for now": open its PR, merge, advance to the next
@@ -26,18 +27,18 @@ Outputs JSON: {"has_story": "yes"|"no", "story_path": "...", "spec_dir": "...",
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 
 _EPIC = ""
 
 
-def emit(**kwargs: str) -> None:
+def emit(**kwargs: str) -> NoReturn:
     payload = {
         "has_story": "no", "story_path": "", "spec_dir": "", "story_slug": "",
         "epic": _EPIC, "reason": "",
@@ -47,37 +48,11 @@ def emit(**kwargs: str) -> None:
     sys.exit(0)
 
 
-def _ostler_path(root: Path, subcmd: str, *args: str) -> str:
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return ""
-    try:
-        proc = subprocess.run([ostler, "-C", str(root), "path", subcmd, *args],
-                              capture_output=True, text=True, timeout=30)
-        return proc.stdout.strip() if proc.returncode == 0 else ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-def _next_story(root: Path, epic: str) -> dict | None | str:
+def _next_story(okf: Ostler, epic: str) -> dict | None | str:
     """Return the next-story dict, None when none remain, or "" on a tooling failure."""
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return ""
     try:
-        proc = subprocess.run([ostler, "-C", str(root), "next-story", epic, "--json"],
-                              capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    raw = (proc.stdout or "").strip()
-    if raw in ("null", "(none)", ""):
-        return None
-    start = raw.find("{")
-    if start == -1:
-        return None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
+        return okf.next_story(epic)
+    except (OSError, ValueError, RuntimeError):
         return ""
 
 
@@ -174,9 +149,10 @@ def main() -> None:
         emit(reason="no epic supplied to select-next-story (epic selection is select-next-epic.py)")
 
     root = find_docs_root(docs_path_arg)
+    okf = Ostler(root)
     skip = _load_skip_set(root, run_dir_arg)
 
-    nxt = _next_story(root, _EPIC)
+    nxt = _next_story(okf, _EPIC)
     # If ostler handed back a story we already gave up THIS run (its status marking
     # didn't take), don't re-select it — force the skip-aware json selection to look
     # for the next eligible story instead of re-grinding this one.
@@ -215,7 +191,10 @@ def main() -> None:
     if slug in skip:
         emit(reason=f"story '{slug}' was given up this run — stopping to avoid re-grinding; "
                     "start a new run or clear the skip set to retry")
-    spec_dir = _ostler_path(root, "spec", slug) or f"docs/specs/{slug}"
+    try:
+        spec_dir = okf.spec_path(slug) or f"docs/specs/{slug}"
+    except (OSError, ValueError, RuntimeError):
+        spec_dir = f"docs/specs/{slug}"
     story_path = str(nxt.get("path") or "")
 
     emit(

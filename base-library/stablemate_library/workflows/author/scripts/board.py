@@ -5,16 +5,15 @@ The author/coder workflows keep all durable state in git-tracked OKF markdown: t
 (``docs/epics/index.md``), each epic's story dependency-DAG folded into its ``epic.md``
 (``## Stories``), each story's ``story.md`` ``- **Status**:`` line, and the open backlog. This is
 a pure projection of those files into a human board — the "Jira for agents" view, file-native: it
-starts no daemon, exposes no API, and writes nothing. It reads the graph through ``ostler``
-(``todo list`` / ``list --type story`` / ``backlog list``).
+starts no daemon, exposes no API, and writes nothing. It reads the graph through the in-process
+``ostler`` API (``Ostler.todo`` / ``Ostler.list`` / ``Ostler.backlog``).
 
 Status columns are derived from each story's status (what the coder updates): ``QA passed`` ⇒
 done; anything else non-empty ⇒ in progress; missing/``Not started`` ⇒ not started. An epic listed
 in the queue with no stories yet is shown as *not authored*.
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI. Honours
-``AGENT_REPO_DIR`` like the workflow scripts, so it can be invoked from anywhere (e.g. a
-``make agent-status`` target).
+Stdlib-only except for the in-process ``ostler`` API. Honours ``AGENT_REPO_DIR`` like the workflow
+scripts, so it can be invoked from anywhere (e.g. a ``make agent-status`` target).
 
 Usage:
     board.py [--epics-dir docs/epics] [--backlog docs/backlog.md] [--json]
@@ -24,9 +23,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
-import subprocess
 from pathlib import Path
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -40,25 +39,6 @@ def find_repo_root() -> Path:
     return here
 
 
-def ostler_json(root: Path, args: list[str], opener: str):
-    ostler = shutil.which("ostler")
-    if not ostler:
-        return None
-    try:
-        proc = subprocess.run([ostler, *args], cwd=str(root), capture_output=True,
-                              text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    raw = (proc.stdout or "").strip()
-    start = raw.find(opener)
-    if start == -1:
-        return [] if opener == "[" else None
-    try:
-        return json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        return None
-
-
 def classify(status: str) -> str:
     s = (status or "").lower()
     if not s or s.startswith("not started"):
@@ -69,11 +49,11 @@ def classify(status: str) -> str:
 
 
 def collect(root: Path, epics_dir_rel: str, backlog_rel: str) -> dict:
-    queue = ostler_json(root, ["todo", "list", "--json"], "[") or []
-    queue = [str(x) for x in queue]
+    okf = Ostler(root)
+    queue = [str(x) for x in okf.todo()]
 
     by_epic: dict[str, list[dict]] = {}
-    for st in ostler_json(root, ["list", "--type", "story", "--json"], "[") or []:
+    for st in okf.list("story"):
         by_epic.setdefault(str(st.get("epic", "")), []).append(st)
 
     epics = []
@@ -93,8 +73,7 @@ def collect(root: Path, epics_dir_rel: str, backlog_rel: str) -> dict:
     counts = {k: sum(1 for s in all_stories if s["state"] == k)
               for k in ("done", "in_progress", "not_started")}
 
-    backlog = ostler_json(root, ["backlog", "list", "--json"], "[")
-    backlog_open = len(backlog) if isinstance(backlog, list) else 0
+    backlog_open = len(okf.backlog())
 
     return {
         "repo": str(root),

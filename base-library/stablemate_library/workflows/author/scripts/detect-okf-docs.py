@@ -4,9 +4,9 @@ documentation step only fires where it can actually do something.
 
 The coder workflow runs against many repos; most do not use ostler. This is the cheap
 pre-gate that keeps `document_story` (an agent turn) from running where there is nothing
-to document: it answers "yes" only when the `ostler` CLI is on PATH *and* the docs root
-has a `docs/features/` tree (the home of OKF UI-profile nodes). Everything semantic —
-which surfaces the story touched, whether it touched any — is left to the agent.
+to document: it answers "yes" only when ostler can load an OKF graph at the docs root
+*and* that root has a `docs/features/` tree (the home of OKF UI-profile nodes). Everything
+semantic — which surfaces the story touched, whether it touched any — is left to the agent.
 
 Args: [base_path] [features_subdir]
   base_path       docs/repo root; "" → AGENT_REPO_DIR (via find_docs_root).
@@ -17,14 +17,16 @@ Outputs JSON: {"has_okf": "yes"|"no", "features_root": "<abs path or ''>", "reas
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 from workhorse.scriptutil import find_docs_root
 
 
-def emit(**kwargs: str) -> None:
+def emit(**kwargs: str) -> NoReturn:
     payload = {"has_okf": "no", "features_root": "", "reason": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
@@ -38,12 +40,15 @@ def main() -> None:
     sub = Path(features_subdir)
     features = sub if sub.is_absolute() else base / sub
 
-    if shutil.which("ostler") is None:
-        emit(has_okf="no", reason="ostler CLI not on PATH")
+    okf = Ostler(base)
+    try:
+        okf.graph
+    except (OSError, ValueError, RuntimeError):
+        emit(has_okf="no", reason="ostler could not load an OKF graph")
     if not features.is_dir():
         emit(has_okf="no", reason=f"no features dir at {features}")
     emit(has_okf="yes", features_root=str(features),
-         reason=f"ostler present and {features} exists")
+         reason=f"ostler graph loaded and {features} exists")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 
 Called after an epic's PR has been gated + merged (or passed through offline). The epics queue is
 now the ostler-managed OKF index ``docs/epics/index.md`` (there is no ``epics-todo.json``), so this
-removes the named epic via ``ostler todo prune <epic>`` and ``select-next-epic.py`` returns the
+removes the named epic via the in-process ostler ``todo_prune`` API and ``select-next-epic.py`` returns the
 following epic on the next iteration. Idempotent and best-effort: a missing index, an absent epic,
 or a write failure is not fatal — a stale entry only costs one extra no-op PR/merge cycle.
 
@@ -14,7 +14,7 @@ Args:
     argv[1]  epic : the epic to remove (the just-merged one)
     argv[2]  todo : optional explicit queue path (JSON sidecar); empty → ostler index.md
 
-Stdlib-only except for shelling out to the globally-installed ``ostler`` CLI.
+Stdlib-only except for the in-process ``ostler`` Python API.
 
 Outputs JSON: {"pruned": "yes"|"no"}
 """
@@ -25,8 +25,9 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
 
-from workhorse import scriptutil
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -40,7 +41,7 @@ def find_repo_root() -> Path:
     return here
 
 
-def emit(pruned: str) -> None:
+def emit(pruned: str) -> NoReturn:
     print(json.dumps({"pruned": pruned}))
     sys.exit(0)
 
@@ -63,12 +64,12 @@ def _prune_json_sidecar(todo_path: Path, epic: str) -> str:
     return "yes"
 
 
-def _prune_ostler(root: Path, epic: str) -> str:
+def _prune_ostler(okf: Ostler, epic: str) -> str:
     try:
-        proc = scriptutil.run_tool(["ostler", "todo", "prune", epic], cwd=root)
-    except OSError:
+        res = okf.todo_prune(epic)
+    except (OSError, ValueError, RuntimeError):
         return "no"
-    return "yes" if proc.returncode == 0 else "no"
+    return "yes" if res.ok else "no"
 
 
 def main() -> None:
@@ -87,7 +88,12 @@ def main() -> None:
 
     # Try ostler first; fall back to the legacy epics-todo.json if ostler is unavailable
     # or the epic isn't in the ostler-managed queue (mirrors select-next-epic.py's fallback).
-    if _prune_ostler(root, epic) == "yes":
+    try:
+        okf = Ostler(root)
+        pruned = _prune_ostler(okf, epic)
+    except (OSError, ValueError, RuntimeError):
+        pruned = "no"
+    if pruned == "yes":
         emit("yes")
     default_json = root / "docs" / "epics" / "epics-todo.json"
     emit(_prune_json_sidecar(default_json, epic))

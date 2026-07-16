@@ -241,6 +241,47 @@ the seams the coder PR/CI scripts share. Reach for raw PyGithub objects past the
 `gh_repo.get_workflow_runs(head_sha=…)`, `pr.merge(merge_method=…)`,
 `gh_repo.allow_squash_merge` — when you need structured responses.
 
+## OKF graph (ostler) — the in-process `ostler` API, never subprocess
+
+Don't shell out to the `ostler` CLI — no `subprocess.run(["ostler", …])`, no
+`scriptutil.run_tool(["ostler", …])`, no local `ostler_json`/`ostler_run` helper
+scraping `--json` out of stdout with `raw_decode`. `ostler` is a dependency of the
+library (base-library → tools), so command the doc graph **as a library** through the
+`Ostler` facade — it returns plain Python objects (`dict`/`list`/`str` and `Result`),
+and an in-process test fakes it by patching the class:
+
+```python
+from ostler import Ostler
+
+okf = Ostler(root)                         # root discovered upward, like `ostler -C DIR`
+queue   = okf.todo()                       # ["epic-a", …]            (ostler todo list)
+stories = okf.list("story", epic="epic-a") # [{"slug","status",…}]    (ostler list --type story)
+spec    = okf.spec_path("01-foo")          # "docs/specs/01-foo"      (ostler path spec)
+report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
+
+res = okf.create_story("epic-a", "02-baz", "Baz", covers=["seed-1"])  # Result(.ok, .entity_id, .message)
+okf.add_seed("epic-a", "seed-2", status="researched", meta={"sourceBullet": "…"})
+okf.set_status("01-foo", "QA passed")
+```
+
+The graph is a **snapshot** read at load time: reads reuse one cached snapshot (the
+win over a subprocess-per-call); mutations (`create_*` / `add_seed` / `set_status` /
+`backlog_*` / `todo_*` / `settle_review`) apply against a fresh load and invalidate
+the cache, so the next read sees them (`reload()` forces a refresh). A read never
+returns `None` — on a genuinely unloadable graph the call raises `(OSError,
+ValueError, RuntimeError)`; catch that to take a fallback (e.g. a JSON sidecar)
+exactly where the old code branched on a non-zero CLI exit. Don't paper over an
+empty result as "unavailable": `[]` means an empty queue, a raise means unreadable.
+
+QA / artifact / edit subsystems live on the same facade, **lazy-imported** so the
+read path never loads the QA/vet machinery: `okf.qa_context(...)`,
+`okf.qa_validate(plan, spec=…)`, `okf.qa_run(plan, spec=…)`,
+`okf.qa_context_validate(spec=…)`, `okf.artifact_vet(kind, spec)`,
+`okf.settle_review(slug, write=True)`. The coder QA nodes route through the thin
+`qa_cli` helpers (`qa_run`/`qa_context`/`qa_validate`/`qa_context_validate`) that wrap
+these and normalize to `(returncode, payload, stderr)`. Full verb→method reference:
+the `stablemate-ostler` skill.
+
 ## Testing workflow scripts
 
 The whole-workflow harness runs the engine **in-process** — no `workhorse` CLI
@@ -297,4 +338,7 @@ Key `WorkflowRun` methods:
 
 External tools are **not** mocked through `WorkflowRun`: `git` runs for real (seed
 with `make_git_repo`), `gh`/GitHub is faked by patching `scriptutil.github_client`,
-and other CLIs (e.g. `ostler`) by patching `scriptutil.run_tool`.
+and `ostler` runs **in-process as a library** — fake it by patching `Ostler`'s
+methods (queue/path methods *raising* so a script takes its JSON-sidecar fallback;
+QA nodes via the `qa_cli` seam), not `scriptutil.run_tool`. `scriptutil.run_tool`
+remains the seam for any *other* genuine external CLI.

@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""Mechanical referential-integrity gate over the planning-doc graph (via `ostler doctor`).
+"""Mechanical referential-integrity gate over the planning-doc graph (via the ostler API).
 
 The surface-coverage gate relates authored work to the *feature set*; the per-epic coverage
 validator proves seeds map to stories *within* an epic. Neither catches the **cross-run drift**
 this gate does: a knowledge gap owned by a story that no longer exists, a story referencing a
 seed that belongs to another epic, a dangling `[gap:…]` tag — the "AI forgot what it created
-itself" class. `ostler doctor` computes (never asserts) the graph facts and reports these as
+itself" class. `ostler.doctor()` computes (never asserts) the graph facts and reports these as
 typed findings; this node turns its error-level findings into a blocking gate so they route to
 the operator/resolver instead of shipping.
 
 Design (matches the other deterministic gates here):
-- **Opt-in by presence / fail-open on infra.** If `ostler` is not installed, or the repo has no
-  planning-doc graph, or doctor's output can't be parsed, the gate is a clean **skip** — it never
-  blocks a run on tooling problems (mirrors build-inventory / verify-surface-coverage).
+- **Opt-in by presence / fail-open on infra.** If the repo has no planning-doc graph, or the
+  graph can't be loaded, the gate is a clean **skip** — it never blocks a run on tooling
+  problems (mirrors build-inventory / verify-surface-coverage).
 - **Errors block, warnings don't.** Only `severity == "error"` findings flip the gate to "no";
   `warn`-level (stale owners, schema nits) are surfaced in the report but never block.
 - **Always exits 0.** Status is carried in the JSON output (`integrity_ok`), not the exit code —
-  the script runner treats a non-zero exit as a hard ScriptExitError. `ostler`'s own non-zero
-  exit on findings is captured and ignored.
+  the script runner treats a non-zero exit as a hard ScriptExitError.
 
 Output JSON:
     integrity_ok      : "yes" (clean) | "no" (error-level findings) | "skip" (not applicable)
@@ -31,10 +30,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from ostler import Ostler
 
 
 def find_repo_root() -> Path:
@@ -44,7 +44,7 @@ def find_repo_root() -> Path:
     return Path.cwd().resolve()
 
 
-def emit(ok: str, errors: str = "", report: str = "") -> None:
+def emit(ok: str, errors: str = "", report: str = "") -> NoReturn:
     print(json.dumps({
         "integrity_ok": ok,
         "integrity_errors": errors,
@@ -56,28 +56,12 @@ def emit(ok: str, errors: str = "", report: str = "") -> None:
 def main() -> None:
     epic_filter = sys.argv[1].strip() if len(sys.argv) > 1 else ""
     root = find_repo_root()
+    okf = Ostler(root)
 
-    ostler = shutil.which("ostler")
-    if not ostler:
-        emit("skip", report="ostler not installed — integrity gate skipped")
-
-    cmd = [ostler, "doctor", "--json"]
-    if epic_filter:
-        cmd += ["--epic", epic_filter]
     try:
-        proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as exc:
+        report = okf.doctor(epic=epic_filter or None)
+    except (OSError, ValueError, RuntimeError) as exc:
         emit("skip", report=f"ostler doctor could not run ({exc}) — skipped")
-
-    # ostler exits non-zero when it finds breaks; that's expected — parse stdout regardless.
-    raw = proc.stdout or ""
-    start = raw.find("{")
-    if start == -1:
-        emit("skip", report="ostler doctor produced no JSON — skipped")
-    try:
-        report = json.JSONDecoder().raw_decode(raw[start:])[0]
-    except (json.JSONDecodeError, ValueError):
-        emit("skip", report="ostler doctor output was not parseable JSON — skipped")
 
     org = report.get("org", "?")
     profile = report.get("profile", "?")
