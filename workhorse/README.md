@@ -341,8 +341,8 @@ only `xiaomi` serves the implicit prompt cache (~98% off input on every turn). P
 in the **harness's own config** — there is no workhorse proxy to do it for you:
 
 - **opencode** caches automatically (verified: `cache.read` fires); pin the provider
-  in `opencode.json` provider options (`provider.openrouter` → routing → `order:
-  [xiaomi]`, fallbacks off).
+  in its own config (`~/.config/opencode/opencode.jsonc`) under provider options
+  (`provider.openrouter` → routing → `order: [xiaomi]`, fallbacks off).
 - **aider** is litellm-based: set
   `extra_params.extra_body.provider.order: [xiaomi]` (plus `--cache-prompts`) in a
   `--model-settings-file`.
