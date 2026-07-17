@@ -125,6 +125,7 @@ def test_noop_by_default_all_calls_inert():
     otel.turn_result({"duration_ms": 5, "usage": {"input_tokens": 1}})
     otel.turn_event("retry", attempt=1)
     otel.heartbeat("a", 120.0)
+    otel.turn_heartbeat("a", 3.0, 90.0)
     otel.turn_end()
     otel.end_run("terminal")
     assert otel._active is None
@@ -229,6 +230,22 @@ def test_turn_span_attrs_result_usage_and_fallback_events():
     assert ("cap_wait", {"delay_s": "60"}) in tracer.by_name("impl").events
 
 
+def test_turn_session_tags_open_turn_span():
+    t, tracer, _, _ = _telemetry()
+    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    t.turn_start("impl", "opus", "high", 3600.0)
+    t.turn_session("ses_abc123")
+    assert tracer.by_name("agent_turn").attrs["session.id"] == "ses_abc123"
+
+
+def test_turn_session_is_inert_with_no_open_turn():
+    t, tracer, _, _ = _telemetry()
+    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    # No turn_start: nothing to tag, and it must not touch the node span or raise.
+    t.turn_session("ses_abc123")
+    assert "session.id" not in tracer.by_name("impl").attrs
+
+
 def test_unbounded_timeout_encodes_as_minus_one():
     t, tracer, _, _ = _telemetry()
     t.turn_start("impl", None, None, float("inf"))
@@ -267,6 +284,90 @@ def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
             assert json.loads(lines[0])["phase"] == "enter"
     finally:
         otel._active = None
+
+
+# --------------------------------------------------------------------------- #
+# Live-run visibility: the signals that must escape while a node is OPEN
+# --------------------------------------------------------------------------- #
+def test_node_active_gauge_marks_the_open_node_and_clears_on_done():
+    """The node-active gauge is the only thing that can answer 'where is the run
+    right now': the node's span will not export until it ends, which is exactly
+    what a hung node never does."""
+    t, _, meter, _ = _telemetry()
+    t.record_event({"node": "select_item", "seq": 1, "phase": "enter"})
+    gauge = meter.instruments["workhorse.node.active"]
+    assert gauge.records == [("set", 1, {"node": "select_item"})]
+    t.record_event({"node": "select_item", "seq": 1, "phase": "done", "next": "guard"})
+    assert gauge.records[-1] == ("set", 0, {"node": "select_item"})
+
+
+def test_turn_heartbeat_reports_idleness_not_just_liveness():
+    """idle_s is what separates a healthy long turn (streaming, so idle stays
+    small) from a wedged one (silent, so idle climbs) — both of which look
+    identical to a span that has not ended."""
+    t, _, meter, _ = _telemetry()
+    t.turn_heartbeat("investigate", 42.0, 300.0)
+    assert meter.instruments["workhorse.turn.heartbeat"].records == [
+        ("add", 1, {"node": "investigate"})
+    ]
+    assert meter.instruments["workhorse.turn.idle_s"].records == [
+        ("set", 42.0, {"node": "investigate"})
+    ]
+    assert meter.instruments["workhorse.turn.elapsed_s"].records == [
+        ("set", 300.0, {"node": "investigate"})
+    ]
+
+
+def test_run_heartbeat_tick_reports_the_open_node_and_its_age():
+    """One tick of the background loop. This is the ONLY liveness signal a script
+    node produces: it runs as a buffered subprocess, so there is no stream to hook
+    a per-line heartbeat onto."""
+    t, _, meter, _ = _telemetry()
+    t.record_event({"node": "compute_coverage", "seq": 1, "phase": "enter"})
+    t._beat_once()
+    assert meter.instruments["workhorse.run.heartbeat"].records == [
+        ("add", 1, {"node": "compute_coverage"})
+    ]
+    kind, value, attrs = meter.instruments["workhorse.node.elapsed_s"].records[-1]
+    assert (kind, attrs) == ("set", {"node": "compute_coverage"})
+    assert value >= 0.0
+
+
+def test_run_heartbeat_beats_between_nodes_with_an_empty_stack():
+    """Liveness is a property of the process, not of any node — a run must stay
+    provably alive in the gap between two node visits."""
+    t, _, meter, _ = _telemetry()
+    t._beat_once()
+    assert meter.instruments["workhorse.run.heartbeat"].records == [("add", 1, {"node": ""})]
+    # No node is open, so there is no node age to report.
+    assert meter.instruments["workhorse.node.elapsed_s"].records == []
+
+
+def test_beat_survives_an_instrument_that_raises():
+    """A telemetry bug must degrade to 'no heartbeat', never kill the thread and
+    with it every later liveness signal."""
+    t, _, _, _ = _telemetry()
+
+    class Boom:
+        def add(self, *_a, **_k):
+            raise RuntimeError("instrument exploded")
+
+    t._run_beats = Boom()
+    t._beat_once()  # must return, not raise
+
+
+def test_beat_loop_exits_promptly_when_stopped():
+    t, _, _, _ = _telemetry()
+    t._stop.set()
+    t._beat_loop()  # returns immediately rather than sleeping the interval
+
+
+def test_end_run_stops_the_heartbeat_before_flushing():
+    """The last export must not race a tick claiming the run is still alive."""
+    t, _, _, shutdown = _telemetry()
+    t.end_run("terminal", None)
+    assert t._stop.is_set()
+    assert shutdown["called"] is True
 
 
 if __name__ == "__main__":

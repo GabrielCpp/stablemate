@@ -30,6 +30,7 @@ Stdlib-only. Prints JSON captured under the node's ``feedback`` output key:
   {"feedback": {"present": "yes"|"no", "scope": "story"|"epic", "content": "<file text>"}}
 """
 import json
+import logging
 import os
 import re
 import sys
@@ -80,27 +81,40 @@ def present(content: str) -> None:
     sys.exit(0)
 
 
-feedback_path = sys.argv[1] if len(sys.argv) > 1 else ""
-if not feedback_path:
-    absent()
+def main(logger: logging.Logger) -> None:
+    feedback_path = sys.argv[1] if len(sys.argv) > 1 else ""
+    if not feedback_path:
+        logger.info("no feedback_path supplied")
+        absent()
 
-root = _find_repo_root()
-inbox = root / feedback_path  # `root / abs` == abs (pathlib), so abs paths work too
+    root = _find_repo_root()
+    inbox = root / feedback_path  # `root / abs` == abs (pathlib), so abs paths work too
 
-if not inbox.exists():
-    absent()
+    if not inbox.exists():
+        logger.info("no feedback inbox at %s", inbox)
+        absent()
 
-current = inbox.read_text()
-state = status_of(current)
+    current = inbox.read_text()
+    state = status_of(current)
 
-if state == NEW:
-    inbox.write_text(set_status(current, CONSUMED))
-    present(current)
-
-if state == "":
-    if current.strip():
-        inbox.write_text(f"STATUS: {CONSUMED}\n\n" + current)
+    if state == NEW:
+        inbox.write_text(set_status(current, CONSUMED))
+        logger.info("feedback present (scope=%s)", scope_of(current))
         present(current)
+
+    if state == "":
+        if current.strip():
+            inbox.write_text(f"STATUS: {CONSUMED}\n\n" + current)
+            logger.info("untagged feedback content treated as NEW (scope=%s)", scope_of(current))
+            present(current)
+        logger.info("no unconsumed feedback")
+        absent()
+
+    logger.info("no unconsumed feedback (state=%s)", state)
     absent()
 
-absent()
+
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("check_feedback"))

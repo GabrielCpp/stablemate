@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+    ExportLogsServiceRequest,
+)
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
 )
@@ -25,6 +28,13 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 _STATUS_NAMES = {0: "UNSET", 1: "OK", 2: "ERROR"}
 _NANOS = 1e9
+
+# OTLP severity_number → name, bucketed to the stdlib logging levels workhorse
+# actually emits. The wire carries 1-24 (four sub-levels per tier); collapsing to
+# the tier is what lets `groom logs --level WARNING` mean the obvious thing.
+_SEVERITY_TIERS = (
+    (21, "FATAL"), (17, "ERROR"), (13, "WARNING"), (9, "INFO"), (5, "DEBUG"), (1, "TRACE"),
+)
 
 
 def _any_value(value: Any) -> Any:
@@ -76,11 +86,73 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         "workflow": str(resource.get("workflow", "")),
                         "repo": str(resource.get("repo", "")),
                         "branch": str(resource.get("branch", "")),
+                        # The run's artifact dir: what makes a span → prompt.md /
+                        # output.json lookup one hop instead of a hunt through runs/.
+                        "run_dir": str(resource.get("run_dir", "")),
                         "node": str(attrs.get("workhorse.node", "") or span.name),
                         "name": span.name,
                         "start_ts": span.start_time_unix_nano / _NANOS,
                         "end_ts": span.end_time_unix_nano / _NANOS,
                         "status": _STATUS_NAMES.get(span.status.code, "UNSET"),
+                        "attrs": attrs,
+                    }
+                )
+    return records
+
+
+def _severity(number: int, text: str) -> str:
+    """The record's level name, normalized to a stdlib logging level.
+
+    Derived from ``severity_number`` in preference to ``severity_text``, even
+    though the text is what the producer wrote — because the two disagree: the
+    OTel SDK stamps Python's WARNING as the text "WARN". Storing that verbatim
+    made ``groom logs --level WARNING`` match nothing at all, silently, since the
+    filter compares against the stdlib names. The number is the canonical field
+    and maps cleanly, so it wins; the text is only a fallback for a producer that
+    left the number unset.
+    """
+    for floor, name in _SEVERITY_TIERS:
+        if number >= floor:
+            return name
+    return text.upper() if text else "UNSET"
+
+
+def parse_logs(body: bytes) -> list[dict[str, Any]]:
+    """Decode an ``ExportLogsServiceRequest`` into one dict per log record.
+
+    Logs are the third leg, and the one that closes the loop for script nodes:
+    they used to run as child processes whose stdout was swallowed whole into a
+    JSON parse, so their diagnostics were unrecoverable after the fact. Now that
+    workhorse runs them in-process, their records arrive here on the engine's own
+    resource — same ``run_id`` and ``run_dir`` as the spans — so a log line joins
+    to the node span and the on-disk artifacts without a correlation step.
+
+    ``node`` is read from the record's attributes rather than the trace context:
+    workhorse never makes its node spans *current*, so ``trace_id`` is zeroes and
+    only the explicit attribute correlates (see workhorse's ``otel.current_node``).
+    """
+    request = ExportLogsServiceRequest.FromString(body)
+    records: list[dict[str, Any]] = []
+    for resource_logs in request.resource_logs:
+        resource = _attrs(resource_logs.resource.attributes)
+        for scope_logs in resource_logs.scope_logs:
+            for record in scope_logs.log_records:
+                attrs = _attrs(record.attributes)
+                # observed_time is when the SDK saw it; time_unix_nano can be 0 if
+                # the producer never set it. Falling back keeps a record from
+                # landing at the epoch and sorting before every other row.
+                ts = record.time_unix_nano or record.observed_time_unix_nano
+                records.append(
+                    {
+                        "run_id": str(resource.get("run_id", "")),
+                        "workflow": str(resource.get("workflow", "")),
+                        "run_dir": str(resource.get("run_dir", "")),
+                        "node": str(attrs.get("node", "")),
+                        "logger": str(attrs.get("logger.name", "") or scope_logs.scope.name),
+                        "severity": _severity(record.severity_number, record.severity_text),
+                        "body": str(_any_value(record.body) or ""),
+                        "ts": ts / _NANOS,
+                        "trace_id": record.trace_id.hex(),
                         "attrs": attrs,
                     }
                 )

@@ -19,6 +19,7 @@ Outputs JSON: {"boot_ok","entry_url","app_pid","app_pgid","torn_down"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import signal
@@ -56,11 +57,14 @@ def _health_ok(url: str, identity: str = "") -> bool:
         return False
 
 
-def _teardown(pgid_arg: str) -> None:
+def _teardown(pgid_arg: str, logger: logging.Logger) -> None:
     try:
         pgid = int(pgid_arg)
     except (TypeError, ValueError):
+        # No pgid: boot adopted a process it didn't start, so there is nothing to reap.
+        logger.info("teardown skipped — no app_pgid to kill (nothing this run started)")
         emit(torn_down="skipped")  # nothing we own
+    logger.info("tearing down app process group %d", pgid)
     try:
         os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError, OSError):
@@ -79,9 +83,9 @@ def _teardown(pgid_arg: str) -> None:
     emit(torn_down="yes")
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--teardown":
-        _teardown(sys.argv[2] if len(sys.argv) > 2 else "")
+        _teardown(sys.argv[2] if len(sys.argv) > 2 else "", logger)
 
     launch_cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     entry_url = sys.argv[2] if len(sys.argv) > 2 else ""
@@ -92,6 +96,9 @@ def main() -> None:
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/")
 
     if not launch_cmd:
+        # The book documented no `launch:` recipe, so there is no app to boot. Reads as a
+        # silent no-op downstream: the walk simply finds nothing serving.
+        logger.warning("no launch command supplied — cannot boot the app under test")
         emit(boot_ok="no", entry_url=entry_url)
 
     # Idempotent reuse: something already serving here → adopt it, own nothing.
@@ -99,7 +106,12 @@ def main() -> None:
     # documented command and prove that owned process became healthy instead of adopting an
     # arbitrary listener on the same port.
     if app_identity and _health_ok(health_url, app_identity):
+        logger.info("adopting the app already serving %s (identity %r matched); "
+                    "teardown will not reap it", health_url, app_identity)
         emit(boot_ok="yes", entry_url=entry_url, app_pid="", app_pgid="")
+
+    logger.info("booting app: %s (cwd %s), waiting up to %.0fs for %s",
+                launch_cmd, app_cwd, BOOT_TIMEOUT_S, health_url)
 
     log_dir = Path(repo_root) / ".agents" / "okf-build" / "walkthrough"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -110,20 +122,26 @@ def main() -> None:
             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.warning("launch command %r could not be spawned: %s", launch_cmd, exc)
         emit(boot_ok="no", entry_url=entry_url)
 
     pgid = os.getpgid(proc.pid)
     deadline = time.monotonic() + BOOT_TIMEOUT_S
     while time.monotonic() < deadline:
         if proc.poll() is not None:  # died on startup
+            logger.warning("app exited with code %s during startup — see %s",
+                           proc.returncode, log_dir / "app.log")
             emit(boot_ok="no", entry_url=entry_url)
         if _health_ok(health_url, app_identity):
+            logger.info("app is healthy at %s (pid %d, pgid %d)", health_url, proc.pid, pgid)
             emit(boot_ok="yes", entry_url=entry_url,
                  app_pid=str(proc.pid), app_pgid=str(pgid))
         time.sleep(POLL_INTERVAL_S)
 
     # Timed out: reap what we started so nothing is orphaned, then fail soft.
+    logger.warning("app did not answer %s within %.0fs — killing pgid %d and failing soft",
+                   health_url, BOOT_TIMEOUT_S, pgid)
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):
@@ -132,4 +150,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("boot-app"))

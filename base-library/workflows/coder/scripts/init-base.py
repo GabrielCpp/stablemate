@@ -15,8 +15,6 @@ import sys
 
 from workhorse.scriptutil import active_branch, branch_exists, default_branch, find_repo_root
 
-logger = logging.getLogger(__name__)
-
 
 def resolve_trunk(root) -> str:
     trunk = default_branch(root)
@@ -29,8 +27,7 @@ def resolve_trunk(root) -> str:
     return "main"
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     root = find_repo_root()
 
     # Prefer the current branch as the PR/merge base; fall back to the repo's trunk
@@ -43,4 +40,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("init-base"))

@@ -18,7 +18,18 @@ Args:
 Outputs JSON: {"<key>": {"value": 0}}
 """
 import json
+import logging
 import sys
 
-key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "rework_count"
-print(json.dumps({key: {"value": 0}}))
+
+def main(logger: logging.Logger) -> None:
+    key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "rework_count"
+    logger.info("initializing counter '%s' to 0", key)
+    print(json.dumps({key: {"value": 0}}))
+
+
+if __name__ == "__main__":
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("init_counter"))

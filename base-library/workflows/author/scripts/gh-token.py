@@ -23,6 +23,7 @@ Stdlib + PyYAML (available in the local-worker runtime, as in select-next-story.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -65,7 +66,7 @@ def configured_token_env(root: Path) -> str | None:
     return None
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     root = find_repo_root()
     names: list[str] = []
     configured = configured_token_env(root)
@@ -78,10 +79,14 @@ def main() -> None:
     for name in names:
         value = os.environ.get(name)
         if value:
+            logger.info("resolved GitHub token from %s", name)
             sys.stdout.write(value)
             return
     # Nothing set — emit nothing; the required PR step reports the configuration error.
+    logger.warning("no GitHub token found among %s", names)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("gh-token"))

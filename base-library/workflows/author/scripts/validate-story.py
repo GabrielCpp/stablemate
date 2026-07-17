@@ -24,6 +24,7 @@ Outputs JSON: {"story_ok": "yes"|"no", "story_errors": "<newline-joined>"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -115,12 +116,13 @@ def section_present(sections: list[tuple[str, str]], keywords: list[str]) -> boo
     return False
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     story_dir_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
 
     errors: list[str] = []
 
     if not story_dir_rel:
+        logger.warning("no story_dir supplied")
         print(json.dumps({"story_ok": "no", "story_errors": "no story_dir supplied"}))
         return
 
@@ -129,6 +131,7 @@ def main() -> None:
     story_md = story_dir / "story.md"
 
     if not story_md.is_file():
+        logger.warning("story.md missing at %s", story_md)
         print(json.dumps({"story_ok": "no", "story_errors": f"story.md missing at {story_md}"}))
         return
 
@@ -148,8 +151,11 @@ def main() -> None:
     errors.extend(find_open_questions(text))
 
     ok = "no" if errors else "yes"
+    logger.info("story %s: %d error(s)", story_dir_rel, len(errors))
     print(json.dumps({"story_ok": ok, "story_errors": "\n".join(errors)}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-story"))

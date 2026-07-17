@@ -24,6 +24,7 @@ Outputs JSON: {"prior_attempts": "<full ledger markdown>", "ledger": "<repo-rela
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -45,12 +46,13 @@ def emit(prior: str, ledger_rel: str) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     ledger_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     label = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "?"
     note = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "(no detail recorded)"
 
     if not ledger_rel:
+        logger.info("no ledger_path supplied — nothing to record")
         emit("", "")
 
     root = find_repo_root()
@@ -64,6 +66,7 @@ def main() -> None:
 
     # Idempotent: a resumed node re-running the same attempt must not duplicate the entry.
     if heading in existing:
+        logger.info("attempt %s already recorded in %s — idempotent no-op", label, ledger_rel)
         emit(existing.strip(), ledger_rel)
 
     if not existing.strip():
@@ -77,10 +80,14 @@ def main() -> None:
         path.write_text(updated, encoding="utf-8")
     except OSError:
         # Never fail the run on a ledger write problem — degrade to whatever we could read.
+        logger.warning("could not write ledger %s — degrading to the read-only ledger", path)
         emit(existing.strip(), ledger_rel)
 
+    logger.info("recorded attempt %s in %s", label, ledger_rel)
     emit(updated.strip(), ledger_rel)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("ledger"))

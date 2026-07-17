@@ -17,6 +17,7 @@ Outputs JSON: {"has_okf": "yes"|"no", "features_root": "<abs path or ''>", "reas
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -33,7 +34,7 @@ def emit(**kwargs: str) -> NoReturn:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     base_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     features_subdir = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else "docs/features"
     base = Path(find_docs_root(base_arg))
@@ -44,12 +45,17 @@ def main() -> None:
     try:
         okf.graph
     except (OSError, ValueError, RuntimeError):
+        logger.info("ostler could not load an OKF graph at %s", base)
         emit(has_okf="no", reason="ostler could not load an OKF graph")
     if not features.is_dir():
+        logger.info("no features dir at %s", features)
         emit(has_okf="no", reason=f"no features dir at {features}")
+    logger.info("ostler graph loaded and %s exists", features)
     emit(has_okf="yes", features_root=str(features),
          reason=f"ostler graph loaded and {features} exists")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("detect-okf-docs"))

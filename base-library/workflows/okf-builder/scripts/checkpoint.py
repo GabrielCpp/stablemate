@@ -13,6 +13,7 @@ Outputs JSON: {"checkpoint_clean","doctor_output","round","fixup_items"}
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 import subprocess
 import sys
@@ -63,7 +64,7 @@ def _doctor_for_features(repo_root: str, features: str) -> tuple[list[dict], str
     return findings, json.dumps(findings, indent=2)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     repo_root = sys.argv[1] if len(sys.argv) > 1 else "."
     features = sys.argv[2] if len(sys.argv) > 2 else ""
     try:
@@ -74,11 +75,21 @@ def main() -> None:
 
     if features:
         _run(["ostler", "fmt", features], repo_root)
+    else:
+        # No book to canonicalize: doctor still runs, but its findings can't be scoped to
+        # a service, so every unrelated error in the repo lands on this round.
+        logger.warning("no features root given — skipping ostler fmt; "
+                       "doctor findings are unscoped")
     findings, out = _doctor_for_features(repo_root, features)
     clean = not findings
 
     fixups: list[dict[str, str]] = []
-    if not clean:
+    if clean:
+        logger.info("round %d: doctor is clean for %s — the gate converges",
+                    rnd, features or repo_root)
+    else:
+        logger.info("round %d: doctor reports %d error(s) in %s — queuing one fixup item",
+                    rnd, len(findings), features or repo_root)
         fixups = [{"kind": "fixup", "target": f"doctor-r{rnd}",
                    "context": out[-4000:]}]
     emit(checkpoint_clean="yes" if clean else "no", doctor_output=out[-4000:],
@@ -86,4 +97,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("checkpoint"))

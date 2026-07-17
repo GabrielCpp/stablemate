@@ -35,9 +35,7 @@ def commit_in_repo(repo_path: Path, message: str) -> bool:
     return True
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[commit-story] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     slug = sys.argv[2] if len(sys.argv) > 2 else "story"
     spec_dir_rel = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -81,4 +79,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[commit-story] %(message)s")
+    main(logging.getLogger("commit-story"))

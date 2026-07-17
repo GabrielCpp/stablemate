@@ -24,15 +24,16 @@ Deterministic and side-effect-free.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 
 
-def main() -> int:
+def main(logger: logging.Logger) -> int:
     out: dict[str, str] = {}
     for arg in sys.argv[1:]:
         key, sep, value = arg.partition("=")
         if not sep or not key:
-            print(f"emit-kv: argument must be key=value (got {arg!r})", file=sys.stderr)
+            logger.warning("argument must be key=value (got %r)", arg)
             return 1
         out[key] = value
     print(json.dumps(out))
@@ -40,4 +41,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    sys.exit(main(logging.getLogger("emit-kv")))

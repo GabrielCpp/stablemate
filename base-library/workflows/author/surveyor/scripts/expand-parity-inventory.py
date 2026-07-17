@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ def emit(ok: str, errors: str = "", count: int = 0, note: str = "") -> None:
                       "inventory_note": note}))
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     root = Path(os.environ.get("AGENT_REPO_DIR", Path.cwd())).resolve()
     baseline_rel = sys.argv[1]
     inventory_rel = sys.argv[2]
@@ -22,8 +23,10 @@ def main() -> None:
         try:
             units = json.loads(output.read_text(encoding="utf-8"))["units"]
         except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("frozen inventory %s is invalid: %s", inventory_rel, exc)
             emit("no", f"frozen inventory is invalid: {exc}")
             return
+        logger.info("inventory already frozen at %s: %d unit(s) — consumed as-is", inventory_rel, len(units))
         emit("yes", count=len(units), note=f"inventory frozen at {inventory_rel}")
         return
     try:
@@ -32,6 +35,7 @@ def main() -> None:
         if not isinstance(entries, list):
             raise TypeError("entries is not a list")
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        logger.warning("baseline inventory %s is invalid: %s", baseline_rel, exc)
         emit("no", f"baseline inventory is invalid: {exc}")
         return
 
@@ -43,10 +47,12 @@ def main() -> None:
             continue
         area, slug = str(entry.get("area", "")).strip(), str(entry.get("slug", "")).strip()
         if not area or not slug:
+            logger.warning("baseline entry missing area/slug")
             emit("no", "every baseline entry must have non-empty area and slug")
             return
         unit_id = f"legacy/{area}/{slug}"
         if unit_id in seen:
+            logger.warning("duplicate baseline surface: %s", unit_id)
             emit("no", f"duplicate baseline surface: {unit_id}")
             return
         seen.add(unit_id)
@@ -61,6 +67,7 @@ def main() -> None:
             "route": str(entry.get("route", "")),
         })
     if not units:
+        logger.warning("baseline inventory %s contains no non-rewrite surfaces", baseline_rel)
         emit("no", "baseline inventory contains no non-rewrite surfaces")
         return
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -69,8 +76,12 @@ def main() -> None:
         "baseline": baseline_rel,
         "units": units,
     }, indent=2) + "\n", encoding="utf-8")
+    logger.info("froze %d baseline surfaces into %s", len(units), inventory_rel)
     emit("yes", count=len(units), note=f"froze {len(units)} baseline surfaces")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("expand-parity-inventory"))

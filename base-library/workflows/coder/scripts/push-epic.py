@@ -42,14 +42,11 @@ from workhorse.scriptutil import (
     resolve_github_token,
 )
 
-logger = logging.getLogger(__name__)
-
 UNAVAILABLE = 10
 FAILED = 20
 
 
-def main() -> int:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> int:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     if not epic:
         logger.info("no branch given — nothing to push")
@@ -99,4 +96,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    sys.exit(main(logging.getLogger("push-epic")))

@@ -38,6 +38,7 @@ Outputs JSON: {"partition_ok": "yes"|"no", "partition_errors": "<lines>"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -69,25 +70,29 @@ def emit(ok: bool, errors: list[str]) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     part_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/partition.yaml"
     inv_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/inventory.json"
 
     root = find_repo_root()
     if yaml is None:
+        logger.warning("PyYAML is unavailable — cannot parse the partition file")
         emit(False, ["PyYAML is required to parse the partition file but is unavailable"])
 
     part_path = root / part_rel
     if not part_path.is_file():
+        logger.warning("no partition file at %s — the partitioner must write it", part_rel)
         emit(False, [f"no partition file at {part_rel} — the partitioner must write it"])
     try:
         part = yaml.safe_load(part_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
+        logger.warning("partition file %s is not valid YAML: %s", part_rel, exc)
         emit(False, [f"partition file is not valid YAML: {exc}"])
 
     try:
         units = json.loads((root / inv_rel).read_text(encoding="utf-8")).get("units") or []
     except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s could not be read", inv_rel)
         emit(False, [f"inventory at {inv_rel} could not be read"])
 
     unit_status = {str(u.get("id")): u.get("status") for u in units if isinstance(u, dict)}
@@ -142,8 +147,15 @@ def main() -> None:
         errors.append(f"assessed unit '{uid}' appears in NO cluster — its findings would "
                       f"silently drop out of the generated backlog; add it to a cluster")
 
+    if errors:
+        logger.warning("partition validation failed with %d error(s)", len(errors))
+    else:
+        logger.info("partition valid: %d cluster(s) cover every assessed unit", len(clusters))
     emit(not errors, errors)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-partition"))

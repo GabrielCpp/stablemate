@@ -36,9 +36,7 @@ def build_message(mode: str, epic: str, bullet: str) -> str:
     return "author: epic backlog authoring"
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[commit-author] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "epic"
     epic = sys.argv[2] if len(sys.argv) > 2 else ""
     bullet = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -55,4 +53,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("commit-author"))

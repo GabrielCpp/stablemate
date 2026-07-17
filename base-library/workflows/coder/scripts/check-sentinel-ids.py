@@ -24,6 +24,7 @@ Outputs JSON on stdout captured under the node's `qa_result` key:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -154,21 +155,24 @@ def is_comment_line(content: str, filename: str) -> bool:
     return False
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     story_slug = sys.argv[1] if len(sys.argv) > 1 else "(unknown)"
     root = find_repo_root()
 
     try:
         base_ref = find_base_ref(root)
     except Exception:
+        logger.warning("could not determine base ref — skipping sentinel gate")
         emit("passed", "Sentinel gate: could not determine base ref — skipped (no git history).")
 
     try:
         added_lines = get_added_lines(root, base_ref)
     except Exception as exc:
+        logger.warning("git diff failed (%s) — skipping sentinel gate", exc)
         emit("passed", f"Sentinel gate: git diff failed ({exc}) — skipped.")
 
     if not added_lines:
+        logger.info("no added lines in diff (%s..HEAD) — nothing to check", base_ref)
         emit("passed", f"Sentinel gate: no added lines in diff ({base_ref}..HEAD) — nothing to check.")
 
     hits: list[str] = []
@@ -185,6 +189,7 @@ def main() -> None:
                 break  # one hit per line is enough
 
     if hits:
+        logger.warning("sentinel gate found %d unreconciled placeholder(s) in story %s", len(hits), story_slug)
         emit(
             "failed",
             "Sentinel gate: shipped source contains unreconciled placeholder(s). Remove before "
@@ -193,6 +198,7 @@ def main() -> None:
         )
 
     n = len(added_lines)
+    logger.info("sentinel gate passed: %d added lines scanned in story %s", n, story_slug)
     emit(
         "passed",
         f"Sentinel gate: {n} added lines scanned in story {story_slug!r} — no fabricated "
@@ -201,4 +207,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("check-sentinel-ids"))

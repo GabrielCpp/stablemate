@@ -25,13 +25,10 @@ from workhorse.scriptutil import (
     resolve_repo,
 )
 
-logger = logging.getLogger(__name__)
-
 QUEUE_PATH = "docs/epics/index.md"
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
     if not epic:
@@ -87,4 +84,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("gh-open-pr"))

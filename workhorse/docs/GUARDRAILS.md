@@ -127,8 +127,64 @@ The following environment variables control the guardrail behavior:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `WORKHORSE_SCRIPT_INPROCESS` | 1 | Run `script:` nodes **in the engine's own process** (import the module, call `main(logger)`). Set `0` to spawn them as child processes as before — see the trade-off below. |
+| `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and its in-process script nodes. |
 | `WORKHORSE_GAS` | 5000 | Progress-metered loop guard: units burned per node step, refilled on real forward progress (a refuel node's value changing). 0 disables. A cycle that never progresses burns one tank and fails loudly (`OutOfGasError`). |
 | `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between nodes; trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the gas tank: gas catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |
+
+### Script nodes run in-process (and what that costs)
+
+A `script:` node is imported and its `main(logger)` called inside the engine's own
+process, rather than spawned as `python <script.py> <args>`. The reason is
+observability: a child process has no `otel._active`, so its spans were inert, and
+its stdout was consumed whole as the node's JSON — meaning a script's diagnostics
+were, by construction, unrecoverable after the fact. In-process, a script's log
+records ride the engine's own root logger: same handlers, same `run_id`, same
+collector, no per-script SDK init.
+
+A script cannot tell the difference — `sys.argv`, the cwd, `os.environ` and
+`sys.path[0]` are all set the way CPython sets them for `python script.py`, and
+restored afterwards, and `SystemExit` still becomes the node's return code (so
+`await_operator`'s exit 2 still means "operator input required").
+
+**The trade-off is real and one-directional: a script now shares the engine's
+fate.** A child process could only ever return a bad exit code; an imported one
+that calls `os._exit`, segfaults a C extension, or exhausts memory takes the run
+down with it — losing the checkpoint write and the telemetry flush that a raised
+`ScriptExitError` would have gone through. Note the blast radius is bounded by
+what was already true: a failing script node has always ended the run (the
+retry → reframe → default ladder covers *agent* nodes only). What is new is
+losing the *clean* ending. `WORKHORSE_SCRIPT_INPROCESS=0` restores isolation at
+the cost of the logs and telemetry this exists to provide.
+
+Script nodes still have **no timeout and no watchdog** — a wedged script hangs
+forever. This is unchanged, not introduced here; the run heartbeat below makes it
+*visible* (groom's STUCK rule) but nothing kills it.
+
+### Logs (opt-in OpenTelemetry)
+
+With `WORKHORSE_OTEL=1`, the root logger also ships to the collector's `/v1/logs`,
+carrying the same `run_id`/`workflow`/`run_dir` resource as the spans. Console
+output is unaffected — the console handler binds the real stderr at setup, so log
+records reach the terminal even while a script node's stdout/stderr are redirected
+for JSON capture.
+
+Two details worth knowing when reading them:
+
+- **Correlation is by a `node` attribute, not `trace_id`.** The engine opens node
+  spans with `start_span`, never `start_as_current_span`, so nothing is in the
+  ambient OTel context and every log record's `trace_id` is zeroes. The node is
+  stamped explicitly instead; `groom logs --node <id>` reads that.
+- **The SDK's own diagnostics are excluded from the OTel handler** (they still
+  print). Otherwise a down collector is self-amplifying: the exporter fails, logs
+  the failure, that log is queued, its export fails, and so on.
+- The logs SDK still lives under private module paths (`opentelemetry.sdk._logs`);
+  if an upgrade moves them, logs degrade to console-only and traces/metrics are
+  unaffected.
+
+Note that workhorse's own engine output is still mostly `print()`, so it reaches
+the console but not the collector. The records that flow to `/v1/logs` today are
+overwhelmingly the **script nodes'** — which is the gap this closed.
 
 ### Observability (opt-in OpenTelemetry)
 
@@ -145,11 +201,45 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # the default
 Unset (the default), telemetry is a complete no-op with zero added
 dependencies. When enabled, workhorse emits a root span per run, a span per
 node visit, a span per agent-CLI turn (with duration + token usage),
-retry/reframe/compact/watchdog span events, the gas gauge, and — the crux for
-AFK monitoring — a **cap-wait heartbeat** metric each pause tick, so a
-collector can prove a multi-day spending-cap sleep is alive rather than hung.
+retry/reframe/compact/watchdog span events, and the gas gauge.
 Exports are best-effort: a down collector never slows or crashes a run
 (`events.jsonl` on disk remains the durable record).
+
+#### Watching a run that has not finished
+
+Spans export **when they end**, so the node a run is currently sitting in — the
+one that matters when it hangs — is precisely the one no trace can show. The
+live signals are therefore metrics, which ship on a periodic timer regardless of
+span state:
+
+| Metric | Answers |
+|---|---|
+| `workhorse.node.active` {node} | 1 while a node visit is open, 0 when it completes — **where** the run is |
+| `workhorse.node.elapsed_s` {node} | how long it has been there |
+| `workhorse.run.heartbeat` {node} | the process is alive, whatever node type it is in |
+| `workhorse.turn.heartbeat` {node} | the agent CLI turn is alive |
+| `workhorse.turn.idle_s` {node} | seconds since the agent last wrote a line — **small = streaming, climbing = wedged** |
+| `workhorse.cap_wait.heartbeat` {node} | a spending-cap sleep is alive, not hung |
+
+Together they separate the three states a long-running node can be in, which are
+indistinguishable from the trace alone: *streaming* (heartbeat + low idle),
+*wedged* (heartbeat + climbing idle), and *dead* (no heartbeat at all). The run
+heartbeat comes from a daemon thread, so it keeps proving liveness even while the
+main thread is blocked in a buffered script node or a multi-hour cap sleep — the
+cases with no stream to observe.
+
+Each run's root/node spans also carry a `run_dir` resource attribute, so a span
+leads straight back to that run's `prompt.md` / `output.json` on disk. Each
+agent-turn span additionally carries `session.id` — the backend CLI's session id —
+so a node span leads on to that session's full transcript (`opencode export <id>`
+and equivalents), the reasoning/tool trace that `prompt.md`/`output.json` omit. The
+same map is written durably to `sessions.jsonl` in the run dir (see the README's Run
+artifacts section), so it survives even with telemetry off.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKHORSE_OTEL_HEARTBEAT_S` | 10 | Seconds between liveness ticks (run + agent turn) |
+| `OTEL_METRIC_EXPORT_INTERVAL` | 60000 | SDK knob: ms between metric exports. This — not the heartbeat interval — bounds how fresh a collector's view is; lower it (e.g. `15000`) when actively debugging a stall |
 
 ## Usage Examples
 

@@ -32,6 +32,7 @@ fresh loop allowance):
    "merge_rework_count": {"value": 0}}
 """
 import json
+import logging
 import os
 import re
 import sys
@@ -127,36 +128,48 @@ def halt(exit_code: int = 2) -> None:
     sys.exit(exit_code)
 
 
-if not ctx.exists():
-    ctx.parent.mkdir(parents=True, exist_ok=True)
-    ctx.write_text(fresh_body())
-    print(f"[await-merge-operator] wrote {ctx}", file=sys.stderr)
+def main(logger: logging.Logger) -> None:
+    # `epic`, `base`, `root`, `br`, `epic_docs`, and `ctx` are computed at module
+    # scope (above) because banner()/fresh_body()/halt() close over them as globals;
+    # moving that setup in here would leave those helpers with no `ctx`/`epic`/etc.
+    # to reference. Only the state-machine logic itself is wrapped.
+    if not ctx.exists():
+        ctx.parent.mkdir(parents=True, exist_ok=True)
+        ctx.write_text(fresh_body())
+        logger.info("wrote %s", ctx)
+        halt()
+
+    current = ctx.read_text()
+    state = status_of(current)
+
+    if state == ANSWERED:
+        ctx.write_text(set_status(current, CONSUMED))
+        logger.info("operator answered for epic %s — resetting merge rework budget", epic)
+        print(json.dumps({
+            "operator_input": {"answered": True, "content": current},
+            "merge_rework_count": {"value": 0},
+        }))
+        sys.exit(0)
+
+    if state == AWAITING:
+        logger.info("%s still %s — not answered yet", ctx, AWAITING)
+        halt()
+
+    if state == CONSUMED:
+        rearmed = set_status(current, AWAITING) + (
+            "\n\n## Still unmerged after your last action\n\n"
+            "## Notes (follow-up)\n\n<!-- write here -->\n"
+        )
+        ctx.write_text(rearmed)
+        logger.warning("re-blocked after a consumed answer — re-armed %s", ctx)
+        halt()
+
+    logger.warning("%s has no STATUS line — adding one and waiting", ctx)
+    ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
     halt()
 
-current = ctx.read_text()
-state = status_of(current)
 
-if state == ANSWERED:
-    ctx.write_text(set_status(current, CONSUMED))
-    print(json.dumps({
-        "operator_input": {"answered": True, "content": current},
-        "merge_rework_count": {"value": 0},
-    }))
-    sys.exit(0)
-
-if state == AWAITING:
-    print(f"[await-merge-operator] {ctx} still {AWAITING} — not answered yet", file=sys.stderr)
-    halt()
-
-if state == CONSUMED:
-    rearmed = set_status(current, AWAITING) + (
-        "\n\n## Still unmerged after your last action\n\n"
-        "## Notes (follow-up)\n\n<!-- write here -->\n"
-    )
-    ctx.write_text(rearmed)
-    print(f"[await-merge-operator] re-blocked after a consumed answer — re-armed {ctx}", file=sys.stderr)
-    halt()
-
-print(f"[await-merge-operator] {ctx} has no STATUS line — adding one and waiting", file=sys.stderr)
-ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
-halt()
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("await-merge-operator"))

@@ -22,6 +22,70 @@ sidecar coexist until the gate-over-OTel path is proven. Operator docs: `workhor
 (producer env) and `groom/README.md` (collector + alert rules). The design brief below is preserved as
 written.
 
+**Amended 2026-07-17 — live-run visibility.** The design above is trace-first, and traces have a
+structural blind spot it did not account for: OTel exports a span when it **ends**, so the node a run
+is currently sitting in has no span anywhere, and the node that *hangs* never gets one at all. The
+original telemetry could therefore say where a run had been, never where it was — the stalled node was
+inferable only from the last completed span's `workhorse.next` plus silence. Worse, that silence was
+indistinguishable from a healthy long agent turn, so groom's STALL rule false-fired on any turn longer
+than `GROOM_STALL_MIN`.
+
+The brief's own crux — *"a heartbeating run is provably alive; silence is provably a hang"* — was the
+answer; it had just been scoped to cap-wait sleeps. Generalising it (metrics ride a periodic reader, so
+they escape a process whose spans are all still open):
+
+- `workhorse.node.active` / `workhorse.node.elapsed_s` — **where** the run is and for how long, direct
+  rather than inferred;
+- `workhorse.run.heartbeat` — a daemon-thread tick proving the *process* lives, for any node type. At the
+  time this was the only liveness a `script:` node could emit: `SubprocessScriptRunner` captured a
+  buffered child, so there was no stream to observe (and, for the same reason, in-script `run_tool` spans
+  would have been inert — the child had no active telemetry). Superseded in part by amendment (b) below,
+  which moves scripts in-process; the run heartbeat remains the liveness signal for a node that blocks
+  the main thread, script or not;
+- `workhorse.turn.heartbeat` / `workhorse.turn.idle_s` — emitted from the top of the `select` loop in
+  `stream_subprocess` (the one path every backend shares, so opencode/codex/aider get it too), which
+  separates *streaming* (idle low) from *wedged* (idle climbing);
+- `run_dir` as a resource attribute — a span now leads back to its own `prompt.md` / `output.json`.
+
+groom splits the old rule accordingly: **STALL** = emitting nothing at all (the process is gone),
+**STUCK** = heartbeating but parked in one node. `groom status` reports the live picture the trace
+cannot, over the same SQLite any agent can query.
+
+**Amended 2026-07-17 (b) — script nodes in-process, and the third leg.** The amendment above named a
+consequence it then lived with: a `script:` node ran as a buffered child, so it had no active telemetry
+and its stdout was consumed whole as the node's JSON — the run heartbeat was "the only liveness a script
+node can emit", and a script's own account of what it decided was unrecoverable after the fact. In a
+script-heavy workflow (okf-builder is almost entirely script and branch nodes) that is most of the run
+being observable only as "still alive".
+
+Scripts are now **imported and their `main(logger)` called in the engine's process** (`runner/script.py`,
+`InProcessScriptRunner`), so their log records ride the engine's own root logger — same handlers, same
+`run_id`/`run_dir` resource, no per-script SDK init — and reach a new `POST /v1/logs` receiver in groom
+(`groom logs --run --node --level`). Logs are the third OTLP leg the original design left out.
+
+Design points worth keeping:
+
+- **Compatibility is by signature, not decree.** Every script in the library (and in any private overlay
+  this repo cannot see) declares `def main()`. `_wants_logger` inspects the signature, so both shapes
+  coexist and migration is per-script rather than a flag day. A script with no `main()` still runs under
+  `__main__`; one *with* main is executed under a sentinel module name so its own guard cannot call
+  `main()` argument-less first.
+- **stdout stays the data channel; logs bypass the capture.** The console handler binds the real stderr
+  at setup, *before* the runner redirects streams to capture JSON — which is what keeps a script's logs
+  on the terminal instead of swallowing them into the outputs parse.
+- **Correlation is an explicit `node` attribute, not `trace_id`.** The engine opens node spans with
+  `start_span`, never `start_as_current_span`, so nothing is in the ambient context and every record's
+  trace_id is zeroes. Worth knowing before trying to join logs to spans by trace.
+- **The SDK's own logs are excluded from the OTel handler**, or a down collector self-amplifies:
+  export fails → logs → queued → export fails.
+- **The cost is crash isolation, one-directionally.** A child could only return a bad exit code; an
+  imported script that `os._exit`s or segfaults takes the run with it. Bounded by what was already true
+  (a failing script node has always ended the run — the recovery ladder is agent-only), but the *clean*
+  ending is lost. `WORKHORSE_SCRIPT_INPROCESS=0` restores the child-process path.
+
+Not addressed: script nodes still have no timeout and no watchdog, and workhorse's engine output is
+still `print()` rather than `logging`, so what flows to `/v1/logs` today is overwhelmingly the scripts'.
+
 Proposed 2026-07-08. Instrument the `workhorse` engine with OpenTelemetry (opt-in,
 no-op by default) and extend `groom` into a local OTLP collector + searchable store + alerter, so an
 away-from-keyboard operator is paged when the `coder` workflow churns or hangs — instead of finding a

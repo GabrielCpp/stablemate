@@ -173,9 +173,7 @@ def commit_story_in_repo(repo_path: Path, branch: str, title: str) -> None:
     commit_all(repo_path, title)
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[open-story-pr] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     slug = sys.argv[1] if len(sys.argv) > 1 else ""
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
     story_path = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -260,4 +258,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[open-story-pr] %(message)s")
+    main(logging.getLogger("open-story-pr"))

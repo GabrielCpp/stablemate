@@ -14,8 +14,6 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 UNAVAILABLE = 10
 
 
@@ -34,8 +32,7 @@ def _run_push_epic(script: Path, epic: str) -> int:
         sys.argv = old_argv
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     scripts_dir = Path(__file__).resolve().parent
 
@@ -47,9 +44,13 @@ def main() -> None:
         status = "unavailable"
     else:
         status = "failed"
+    logger.info("push-epic for '%s' returned rc=%s — status=%s", epic, rc, status)
 
     print(json.dumps({"push_status": status}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("push-ci"))

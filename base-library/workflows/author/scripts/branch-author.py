@@ -26,8 +26,6 @@ from pathlib import Path
 
 from workhorse.scriptutil import active_branch, checkout, find_repo_root, local_branch_exists
 
-logger = logging.getLogger(__name__)
-
 
 def resolve_base_branch(author_branch: str, cwd: Path) -> str:
     current = active_branch(cwd)
@@ -50,9 +48,7 @@ def derive_run_slug(run_dir: str) -> str:
     return "run-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[branch-author] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     run_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     mode = sys.argv[2] if len(sys.argv) > 2 else "epic"
 
@@ -79,4 +75,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("branch-author"))

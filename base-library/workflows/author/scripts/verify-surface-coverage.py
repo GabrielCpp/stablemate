@@ -51,6 +51,7 @@ Outputs JSON: {"surface_coverage_ok": "yes"|"no"|"skip", "surface_coverage_error
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -189,7 +190,7 @@ def collect_claims(okf: Ostler) -> list[tuple[str, str]]:
     return claims
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     manifest_rel = _arg(1, "")
     backlog_rel = _arg(3, "")
     mode = _arg(5, "grounding").lower()
@@ -202,12 +203,15 @@ def main() -> None:
         features = None
     units = load_unit_manifest(root, manifest_rel)
     if features is None and units is None:
+        logger.info("OKF graph unreadable and no unit manifest — surface-coverage gate skipped")
         emit("skip", "OKF graph unreadable and no unit manifest — surface-coverage gate skipped")
     features = features or []
     units = units or []
     if not features and not units:
+        logger.info("no feature Concepts and no unit manifest — surface-coverage gate skipped")
         emit("skip", "no feature Concepts and no unit manifest — surface-coverage gate skipped")
 
+    logger.info("surface-coverage mode=%s (%d feature(s), %d unit(s))", mode, len(features), len(units))
     if mode == "full":
         # Migration / greenfield-buildout: every feature-set surface AND every surveyed
         # unit that carries work must be covered.
@@ -225,6 +229,7 @@ def main() -> None:
             if not any(n in haystack for n in unit_needles(u)):
                 uncovered.append(f"unit {u.get('id')}")
         if uncovered:
+            logger.warning("[full] %d uncovered surface(s)", len(uncovered))
             emit(
                 "no",
                 [
@@ -234,6 +239,7 @@ def main() -> None:
                     *(f"  - {sid}" for sid in sorted(uncovered)),
                 ],
             )
+        logger.info("[full] all feature-set surfaces and surveyed units are covered")
         emit("yes", "[full] all feature-set surfaces and surveyed units are covered")
 
     # grounding (default): every claimed surface must resolve to a feature-set surface
@@ -254,6 +260,7 @@ def main() -> None:
             ungrounded.append(label)
 
     if ungrounded:
+        logger.warning("[grounding] %d ungrounded claim(s)", len(ungrounded))
         emit(
             "no",
             [
@@ -263,8 +270,11 @@ def main() -> None:
             ],
         )
 
+    logger.info("[grounding] all claimed surfaces are grounded in the feature set")
     emit("yes", "[grounding] all claimed surfaces are grounded in the feature set")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("verify-surface-coverage"))

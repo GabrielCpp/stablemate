@@ -18,6 +18,7 @@ Outputs JSON: {"pruned": "yes"|"no", "bullet_id": "...", "reason": "..."}
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -52,28 +53,35 @@ def prune_via_regex(backlog_path: Path, bullet_id: str) -> bool:
     return removed
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     bullet_id = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     docs_path_arg = sys.argv[2] if len(sys.argv) > 2 else ""
     backlog_rel = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "docs/backlog.md"
 
     if not bullet_id:
+        logger.info("no bullet_id supplied — nothing to prune")
         emit(reason="no bullet_id supplied — nothing to prune")
 
     root = find_docs_root(docs_path_arg)
     okf = Ostler(root)
 
     if okf.backlog_prune(bullet_id).ok:
+        logger.info("pruned '%s' via ostler", bullet_id)
         emit(pruned="yes", bullet_id=bullet_id, reason=f"pruned '{bullet_id}' via ostler")
 
     # ostler reported no such item — still try the regex path in case the file layout
     # (e.g. a custom backlog_rel) is one ostler doesn't know to look at.
     removed = prune_via_regex(root / backlog_rel, bullet_id)
     if removed:
+        logger.info("pruned '%s' via direct edit", bullet_id)
         emit(pruned="yes", bullet_id=bullet_id, reason=f"pruned '{bullet_id}' via direct edit")
 
+    logger.warning("no backlog bullet '%s' found to prune", bullet_id)
     emit(bullet_id=bullet_id, reason=f"no backlog bullet '{bullet_id}' found to prune")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("prune-fix-item"))

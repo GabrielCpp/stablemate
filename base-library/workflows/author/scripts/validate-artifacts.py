@@ -24,6 +24,7 @@ Outputs JSON: {"artifacts_ok": "yes"|"no", "artifacts_errors": "<newline-joined>
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -66,7 +67,7 @@ def done(errors: list[str]) -> NoReturn:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epics_dir_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/epics"
     root = find_repo_root()
     epics_dir = root / epics_dir_rel
@@ -75,8 +76,10 @@ def main() -> None:
     try:
         queue = okf.todo()
     except (OSError, ValueError, RuntimeError):
+        logger.warning("could not read the epics index via ostler's in-process API")
         done(["could not read the epics index via ostler's in-process API"])
     if not queue:
+        logger.info("the epics index lists no epics")
         done(["the epics index lists no epics"])
 
     errors: list[str] = []
@@ -109,8 +112,11 @@ def main() -> None:
     if selectable == 0 and not errors:
         errors.append("no selectable story (coder would have nothing to run)")
 
+    logger.info("artifacts validation: %d error(s), %d selectable stor(y/ies)", len(errors), selectable)
     done(errors)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-artifacts"))

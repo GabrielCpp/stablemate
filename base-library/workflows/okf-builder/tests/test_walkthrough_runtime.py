@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -103,7 +104,7 @@ def test_seed_walkthrough_reopens_journeys_completed_by_an_earlier_run(
     ])
 
     with pytest.raises(SystemExit, match="0"):
-        seed.main()
+        seed.main(logging.getLogger("test"))
 
     result = json.loads(capsys.readouterr().out)
     items = json.loads(worklist.read_text())["items"]

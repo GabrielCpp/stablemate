@@ -33,6 +33,7 @@ a fresh loop allowance):
    "ci_rework_count": {"value": 0}}
 """
 import json
+import logging
 import os
 import re
 import sys
@@ -133,43 +134,55 @@ def halt(exit_code: int = 2) -> None:
     sys.exit(exit_code)
 
 
-if not ctx.exists():
-    ctx.parent.mkdir(parents=True, exist_ok=True)
-    ctx.write_text(fresh_body())
-    print(f"[await-ci-operator] wrote {ctx}", file=sys.stderr)
+def main(logger: logging.Logger) -> None:
+    # `epic`, `summary`, `root`, `br`, `epic_docs`, and `ctx` are computed at module
+    # scope (above) because banner()/fresh_body()/halt() close over them as globals;
+    # moving that setup in here would leave those helpers with no `ctx`/`epic`/etc.
+    # to reference. Only the state-machine logic itself is wrapped.
+    if not ctx.exists():
+        ctx.parent.mkdir(parents=True, exist_ok=True)
+        ctx.write_text(fresh_body())
+        logger.info("wrote %s", ctx)
+        halt()
+
+    current = ctx.read_text()
+    state = status_of(current)
+
+    if state == ANSWERED:
+        # Consume the answer: flip to CONSUMED so a later re-block re-arms instead of
+        # looping forever on the same stale answer. Reset the CI fix budget so the
+        # re-attempt gets a fresh loop allowance.
+        ctx.write_text(set_status(current, CONSUMED))
+        logger.info("operator answered for epic %s — resetting CI fix budget", epic)
+        print(json.dumps({
+            "operator_input": {"answered": True, "content": current},
+            "ci_rework_count": {"value": 0},
+        }))
+        sys.exit(0)
+
+    if state == AWAITING:
+        logger.info("%s still %s — not answered yet", ctx, AWAITING)
+        halt()
+
+    if state == CONSUMED:
+        # We already consumed an answer but CI is red AGAIN — it didn't resolve it.
+        # Re-arm and append the new summary so the operator sees the renewed ask.
+        rearmed = set_status(current, AWAITING) + (
+            "\n\n## Still red after your last action\n\n"
+            f"{summary}\n\n## Notes (follow-up)\n\n<!-- write here -->\n"
+        )
+        ctx.write_text(rearmed)
+        logger.warning("re-blocked after a consumed answer — re-armed %s", ctx)
+        halt()
+
+    # No recognizable STATUS line — ensure one exists so the operator has a marker to
+    # flip, then halt without clobbering whatever they may have written.
+    logger.warning("%s has no STATUS line — adding one and waiting", ctx)
+    ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
     halt()
 
-current = ctx.read_text()
-state = status_of(current)
 
-if state == ANSWERED:
-    # Consume the answer: flip to CONSUMED so a later re-block re-arms instead of
-    # looping forever on the same stale answer. Reset the CI fix budget so the
-    # re-attempt gets a fresh loop allowance.
-    ctx.write_text(set_status(current, CONSUMED))
-    print(json.dumps({
-        "operator_input": {"answered": True, "content": current},
-        "ci_rework_count": {"value": 0},
-    }))
-    sys.exit(0)
-
-if state == AWAITING:
-    print(f"[await-ci-operator] {ctx} still {AWAITING} — not answered yet", file=sys.stderr)
-    halt()
-
-if state == CONSUMED:
-    # We already consumed an answer but CI is red AGAIN — it didn't resolve it.
-    # Re-arm and append the new summary so the operator sees the renewed ask.
-    rearmed = set_status(current, AWAITING) + (
-        "\n\n## Still red after your last action\n\n"
-        f"{summary}\n\n## Notes (follow-up)\n\n<!-- write here -->\n"
-    )
-    ctx.write_text(rearmed)
-    print(f"[await-ci-operator] re-blocked after a consumed answer — re-armed {ctx}", file=sys.stderr)
-    halt()
-
-# No recognizable STATUS line — ensure one exists so the operator has a marker to
-# flip, then halt without clobbering whatever they may have written.
-print(f"[await-ci-operator] {ctx} has no STATUS line — adding one and waiting", file=sys.stderr)
-ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
-halt()
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("await-ci-operator"))

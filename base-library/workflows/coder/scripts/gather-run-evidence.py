@@ -27,6 +27,7 @@ Stdlib-only (system python3). Emits: {"run_digest": {...}, "run_dir": "<path>"}.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -82,13 +83,14 @@ def _load_events(run_dir: Path) -> list[dict]:
     return events
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     run_dir_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     docs_path = sys.argv[2] if len(sys.argv) > 2 else ""
 
     docs_root = find_docs_root(docs_path)
     run_dir = _resolve_run_dir(run_dir_arg, docs_root)
     if run_dir is None or not (run_dir / "events.jsonl").is_file():
+        logger.warning("no run with events.jsonl found under %s", docs_root)
         print(json.dumps({
             "run_digest": {"error": "no run with events.jsonl found", "run_dir": str(run_dir or "")},
             "run_dir": str(run_dir or ""),
@@ -149,8 +151,14 @@ def main() -> None:
         "hint": ("Read events.jsonl and the per-node prompt.md/output.json under run_dir "
                  "for detail; .session_id points at the full opencode transcript in its store."),
     }
+    logger.info(
+        "digested run %s: %d node visits, %d loop(s), wall=%ds",
+        run_dir.name, len(order), len(loops), wall,
+    )
     print(json.dumps({"run_digest": digest, "run_dir": str(run_dir)}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("gather-run-evidence"))

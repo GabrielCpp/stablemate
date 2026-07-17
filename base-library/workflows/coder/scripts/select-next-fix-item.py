@@ -18,6 +18,7 @@ Outputs JSON: {"has_fix": "yes"|"no", "fix_bullet_id": "...", "fix_bullet_text":
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 
@@ -46,22 +47,25 @@ def find_filed_section(lines: list[str]) -> list[str]:
     return []
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     backlog_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/backlog.md"
 
     root = find_docs_root(docs_path_arg)
     backlog_path = root / backlog_rel
     if not backlog_path.is_file():
+        logger.info("no backlog file at %s — nothing to drain", backlog_rel)
         emit(reason=f"no backlog file at {backlog_rel} — nothing to drain")
 
     try:
         lines = backlog_path.read_text(encoding="utf-8").splitlines()
     except OSError as e:
+        logger.warning("could not read %s: %s", backlog_rel, e)
         emit(reason=f"could not read {backlog_rel}: {e}")
 
     section = find_filed_section(lines)
     if not section:
+        logger.info("no '%s' section — nothing to drain", _FILED_HEADING)
         emit(reason="no '## Filed by coder' section — nothing to drain")
 
     for line in section:
@@ -73,11 +77,16 @@ def main() -> None:
         bid, text = m.group(1).strip(), m.group(2).strip()
         if not bid or not text:
             continue
+        logger.info("drew '%s' from '%s'", bid, _FILED_HEADING)
         emit(has_fix="yes", fix_bullet_id=bid, fix_bullet_text=text,
              reason=f"drew '{bid}' from '{_FILED_HEADING}'")
 
+    logger.info("'%s' has no drainable bullet (empty or all blocked)", _FILED_HEADING)
     emit(reason="'## Filed by coder' has no drainable bullet (empty or all blocked)")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-next-fix-item"))

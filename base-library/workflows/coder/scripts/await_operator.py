@@ -40,6 +40,7 @@ fresh loop allowance):
 
 import ctypes
 import json
+import logging
 import os
 import re
 import select
@@ -249,65 +250,74 @@ def halt() -> None:
     _block_for_change()
 
 
-while True:
-    if not ctx.exists():
-        ctx.parent.mkdir(parents=True, exist_ok=True)
-        ctx.write_text(fresh_body())
-        print(f"[await-operator] wrote {ctx}", file=sys.stderr)
-        halt()
-        continue
+def main(logger: logging.Logger) -> None:
+    # `story_path`, `questions`, `root`, and `ctx` are computed at module scope
+    # (above) because banner()/fresh_body()/_push_blocked_backstop()/
+    # _block_for_change()/halt() all close over them as globals; moving that setup
+    # in here would leave those helpers with no `ctx`/`questions` to reference.
+    # Likewise `_banner_shown` stays a module global since halt() mutates it via
+    # `global _banner_shown`. Only the state-machine loop itself is wrapped.
+    global _banner_shown
+    while True:
+        if not ctx.exists():
+            ctx.parent.mkdir(parents=True, exist_ok=True)
+            ctx.write_text(fresh_body())
+            logger.info("wrote %s", ctx)
+            halt()
+            continue
 
-    current = ctx.read_text()
-    state = status_of(current)
+        current = ctx.read_text()
+        state = status_of(current)
 
-    if state == ANSWERED:
-        # Consume the answer: flip to CONSUMED so a later re-block re-arms instead of
-        # looping forever on the same stale answer.
-        ctx.write_text(set_status(current, CONSUMED))
-        print(
-            json.dumps(
-                {
-                    "operator_input": {
-                        "answered": True,
-                        "scope": scope_of(current),
-                        "content": current,
-                    },
-                    "plan_rework_count": {"value": 0},
-                }
+        if state == ANSWERED:
+            # Consume the answer: flip to CONSUMED so a later re-block re-arms instead of
+            # looping forever on the same stale answer.
+            ctx.write_text(set_status(current, CONSUMED))
+            logger.info("operator answered — resetting plan rework budget")
+            print(
+                json.dumps(
+                    {
+                        "operator_input": {
+                            "answered": True,
+                            "scope": scope_of(current),
+                            "content": current,
+                        },
+                        "plan_rework_count": {"value": 0},
+                    }
+                )
             )
-        )
-        sys.exit(0)
+            sys.exit(0)
 
-    if state == AWAITING:
-        print(
-            f"[await-operator] {ctx} still {AWAITING} — waiting for the operator (blocking, no restart needed)",
-            file=sys.stderr,
-        )
+        if state == AWAITING:
+            logger.info(
+                "%s still %s — waiting for the operator (blocking, no restart needed)",
+                ctx, AWAITING,
+            )
+            halt()
+            continue
+
+        if state == CONSUMED:
+            # We already used an answer but we're blocked AGAIN — it didn't resolve the
+            # block. Re-arm and append the new questions so the operator sees the renewed ask.
+            rearmed = set_status(current, AWAITING) + (
+                "\n\n## Follow-up questions (still blocked after your last answer)\n\n"
+                f"{questions}\n\n## Your answers (follow-up)\n\n<!-- write here -->\n"
+            )
+            ctx.write_text(rearmed)
+            logger.warning("re-blocked after a consumed answer — re-armed %s", ctx)
+            _banner_shown = False  # new follow-up questions — notify again
+            halt()
+            continue
+
+        # No recognizable STATUS line — ensure one exists so the operator has a marker to
+        # flip, then wait without clobbering whatever they may have written.
+        logger.warning("%s has no STATUS line — adding one and waiting", ctx)
+        ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
         halt()
         continue
 
-    if state == CONSUMED:
-        # We already used an answer but we're blocked AGAIN — it didn't resolve the
-        # block. Re-arm and append the new questions so the operator sees the renewed ask.
-        rearmed = set_status(current, AWAITING) + (
-            "\n\n## Follow-up questions (still blocked after your last answer)\n\n"
-            f"{questions}\n\n## Your answers (follow-up)\n\n<!-- write here -->\n"
-        )
-        ctx.write_text(rearmed)
-        print(
-            f"[await-operator] re-blocked after a consumed answer — re-armed {ctx}",
-            file=sys.stderr,
-        )
-        _banner_shown = False  # new follow-up questions — notify again
-        halt()
-        continue
 
-    # No recognizable STATUS line — ensure one exists so the operator has a marker to
-    # flip, then wait without clobbering whatever they may have written.
-    print(
-        f"[await-operator] {ctx} has no STATUS line — adding one and waiting",
-        file=sys.stderr,
-    )
-    ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
-    halt()
-    continue
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("await-operator"))

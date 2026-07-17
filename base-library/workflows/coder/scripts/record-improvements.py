@@ -20,6 +20,7 @@ Stdlib-only. Emits: {"improvements_recorded": {"added": N, "bumped": M, "ledger"
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -58,7 +59,7 @@ def _render_md(ledger: list[dict]) -> str:
     return "\n".join(out)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path = sys.argv[1] if len(sys.argv) > 1 else ""
     run_dir_arg = sys.argv[2] if len(sys.argv) > 2 else ""
     run_id = Path(run_dir_arg).name if run_dir_arg else "unknown-run"
@@ -66,12 +67,14 @@ def main() -> None:
 
     inbox_path = root / INBOX
     if not inbox_path.is_file():
+        logger.info("no inbox at %s — nothing to record", inbox_path)
         print(json.dumps({"improvements_recorded": {"added": 0, "bumped": 0, "ledger": LEDGER_MD,
                                                      "note": "no inbox — nothing to record"}}))
         return
     try:
         proposals = json.loads(inbox_path.read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
+        logger.warning("unreadable inbox %s: %s", inbox_path, exc)
         print(json.dumps({"improvements_recorded": {"added": 0, "bumped": 0, "ledger": LEDGER_MD,
                                                      "error": f"unreadable inbox ({exc})"}}))
         return
@@ -136,9 +139,13 @@ def main() -> None:
     except OSError:
         pass
 
+    logger.info("recorded %d added, %d bumped (ledger total %d)", added, bumped, len(ledger))
     print(json.dumps({"improvements_recorded": {"added": added, "bumped": bumped,
                                                 "ledger": LEDGER_MD, "total": len(ledger)}}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("record-improvements"))

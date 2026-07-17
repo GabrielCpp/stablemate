@@ -28,6 +28,7 @@ Outputs JSON: {"marked": "yes"|"no", "unit_status": "<status>", "mark_note": "..
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -86,7 +87,7 @@ def write_stub(path: Path, unit_id: str, reason: str) -> None:
     )
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     inv_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     unit_id = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     record_rel = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
@@ -96,6 +97,7 @@ def main() -> None:
         print(json.dumps({"marked": marked, "unit_status": status, "mark_note": note}))
 
     if not inv_rel or not unit_id or not record_rel:
+        logger.warning("inventory, unit_id, and record_path are all required")
         emit("no", note="inventory, unit_id, and record_path are all required")
         return
 
@@ -110,13 +112,16 @@ def main() -> None:
         if not record_path.is_file():
             write_stub(record_path, unit_id, reason)
             note = "no record on disk — wrote a blocked stub carrying the reason"
+            logger.warning("unit '%s': no record on disk — wrote a blocked stub (%s)", unit_id, reason)
         else:
             note = "record exists but is invalid — unit marked blocked; verify_records will re-surface it"
+            logger.warning("unit '%s': record exists but is invalid — marked blocked", unit_id)
 
     inv_path = root / inv_rel
     try:
         data = json.loads(inv_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s could not be read", inv_rel)
         emit("no", status, f"inventory at {inv_rel} could not be read")
         return
 
@@ -124,11 +129,16 @@ def main() -> None:
         if isinstance(u, dict) and u.get("id") == unit_id:
             u["status"] = status
             inv_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            logger.info("unit '%s' marked '%s'", unit_id, status)
             emit("yes", status, note)
             return
 
+    logger.warning("unit '%s' not found in %s", unit_id, inv_rel)
     emit("no", status, f"unit '{unit_id}' not found in {inv_rel}")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("mark-unit"))

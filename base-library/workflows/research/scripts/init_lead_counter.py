@@ -9,5 +9,15 @@ loop forever. Set once at startup, incremented after each lead intervention.
 Outputs JSON: {"lead_review_count": {"value": 0}}
 """
 import json
+import logging
 
-print(json.dumps({"lead_review_count": {"value": 0}}))
+
+def main(logger: logging.Logger) -> None:
+    logger.info("initializing lead_review_count to 0")
+    print(json.dumps({"lead_review_count": {"value": 0}}))
+
+
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("init_lead_counter"))

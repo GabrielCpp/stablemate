@@ -14,9 +14,6 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-
 def _run_sibling(script: Path, argv: list[str]) -> None:
     """Run a helper script in-process so test monkeypatches remain visible."""
     old_argv = sys.argv[:]
@@ -28,8 +25,7 @@ def _run_sibling(script: Path, argv: list[str]) -> None:
         sys.argv = old_argv
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
 
@@ -45,4 +41,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("open-pr"))

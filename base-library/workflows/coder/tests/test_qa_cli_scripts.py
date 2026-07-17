@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def _run_main(mod, argv: list[str], capsys) -> dict:
     old_argv = sys.argv
     sys.argv = argv
     try:
-        mod.main()
+        mod.main(logging.getLogger("test"))
     finally:
         sys.argv = old_argv
     return json.loads(capsys.readouterr().out)

@@ -32,6 +32,7 @@ Outputs JSON: {"epic": "...", "epic_dir": "...", "story_slug": "...", "story_dir
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -101,7 +102,7 @@ def inject_ac_line(story_path: Path, bullet_text: str) -> None:
     story_path.write_text(text[:after] + new_rest, encoding="utf-8")
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     bullet_id = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     bullet_text = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     epics_dir_rel = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "docs/epics"
@@ -109,8 +110,10 @@ def main() -> None:
     docs_path_arg = sys.argv[5] if len(sys.argv) > 5 else ""
 
     if not bullet_id:
+        logger.warning("no bullet_id supplied — cannot seed a fix story")
         die("no bullet_id supplied (expected select-next-fix-item.py's fix_bullet_id output)")
     if not bullet_text:
+        logger.warning("no bullet_text supplied — cannot seed a fix story")
         die("no bullet_text supplied (expected select-next-fix-item.py's fix_bullet_text output)")
 
     root = scriptutil.find_docs_root(docs_path_arg)
@@ -127,6 +130,7 @@ def main() -> None:
             path = str(s.get("path", "")) or f"{epic_dir_rel}/stories/{slug}/story.md"
             story_path = root / path
             inject_ac_line(story_path, bullet_text)
+            logger.info("story '%s' already covers '%s' — reusing", slug, bullet_id)
             emit(epic=epic, epic_dir=epic_dir_rel, story_slug=slug,
                  story_dir=str(Path(path).parent), story_path=path, bullet_id=bullet_id,
                  reason=f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)")
@@ -143,6 +147,7 @@ def main() -> None:
     story_path_rel = f"{story_dir_rel}/story.md"
     inject_ac_line(root / story_path_rel, bullet_text)
 
+    logger.info("registered fix story '%s' covering '%s' in '%s'", slug, bullet_id, epic)
     emit(epic=epic, epic_dir=epic_dir_rel, story_slug=slug, story_dir=story_dir_rel,
          story_path=story_path_rel, bullet_id=bullet_id,
          reason=f"registered fix story '{slug}' ({res.entity_id or '?'}) covering '{bullet_id}' "
@@ -150,4 +155,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("seed-fix-story"))

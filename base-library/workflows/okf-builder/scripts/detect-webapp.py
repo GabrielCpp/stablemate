@@ -29,6 +29,7 @@ Outputs JSON: {"is_webapp","repo_root","source_root","features_root","entry_url"
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -107,7 +108,7 @@ def parse_launch_contract(text: str, repo_root: str, source_root: str) -> dict[s
     }
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     service = sys.argv[2] if len(sys.argv) > 2 else ""
     source_path = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -117,6 +118,7 @@ def main() -> None:
 
     # A whole-tree build ("" service) has no single app to boot — skip cleanly.
     if not service:
+        logger.info("no service given (whole-tree build) — no single app to walk, skipping")
         emit(is_webapp="no", repo_root=root, source_root=source_root)
 
     scope = f"docs/features/{service}/"
@@ -124,7 +126,13 @@ def main() -> None:
     # 1) Web-app iff the book documents at least one `screen` surface for this service.
     screens = [s for s in _search(root, "screen") if scope in s.get("path", "")]
     if not screens:
+        # The whole walkthrough flow is skipped from here. Undocumented screens and a
+        # service that genuinely has no GUI look identical at this gate.
+        logger.info("%s documents no screen surfaces — not a web app, skipping the walk",
+                    service)
         emit(is_webapp="no", repo_root=root, source_root=source_root, features_root=features_root)
+
+    logger.info("%s documents %d screen surface(s) — this is a web app", service, len(screens))
 
     # 2) Prefer the explicit runtime contract on the server node. It is both documentation
     #    and the executable launch interface consumed by this walkthrough.
@@ -140,12 +148,18 @@ def main() -> None:
     # command. New/updated books should always use the explicit server contract above.
     port, cmd_name = FALLBACK_PORT, service
     if contract:
+        logger.info("using the documented server contract: launch=%r entry-url=%s",
+                    contract["launch_cmd"], contract["entry_url"])
         launch_cmd = contract["launch_cmd"]
         entry_url = contract["entry_url"]
         health_path = contract["health_path"]
         app_cwd = contract["app_cwd"]
         app_identity = contract["app_identity"]
     else:
+        # No server contract: the guessed recipe carries no identity marker, so boot-app
+        # cannot adopt a running app and will not reuse whatever holds the port.
+        logger.warning("no server node with `launch:`/`entry-url:` bullets for %s — "
+                       "falling back to a guessed serve command", service)
         for c in _search(root, "command", "serve"):
             if scope not in c.get("path", ""):
                 continue
@@ -189,4 +203,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("detect-webapp"))

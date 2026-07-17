@@ -34,6 +34,7 @@ Outputs JSON: {"epic_dir": "...", "story_slug": "...", "story_dir": "...",
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -104,7 +105,7 @@ def emit(**kwargs: str) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     epics_dir_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/epics"
     bullet = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
@@ -136,6 +137,7 @@ def main() -> None:
             slug = str(s.get("slug", ""))
             path = str(s.get("path", "")) or f"{epic_dir_rel}/stories/{slug}/story.md"
             (root / path).parent.mkdir(parents=True, exist_ok=True)
+            logger.info("story '%s' already covers '%s' — reusing (idempotent)", slug, bullet_id)
             emit(epic_dir=epic_dir_rel, story_slug=slug, story_dir=str(Path(path).parent),
                  story_path=path, bullet_id=bullet_id, from_backlog=fb,
                  reason=f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)")
@@ -152,6 +154,8 @@ def main() -> None:
 
     story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
     story_path = f"{story_dir_rel}/story.md"
+    logger.info("registered story '%s' (%s) covering seed item '%s' in epic '%s'",
+                slug, res.entity_id or "?", bullet_id, epic)
     emit(epic_dir=epic_dir_rel, story_slug=slug, story_dir=story_dir_rel, story_path=story_path,
          bullet_id=bullet_id, from_backlog=fb,
          reason=f"registered story '{slug}' ({res.entity_id or '?'}) covering seed item "
@@ -159,4 +163,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("seed-story"))

@@ -23,6 +23,7 @@ Outputs JSON: {"lint_status": "clean"|"dirty"|"skipped", "lint_command": "...",
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -76,12 +77,14 @@ def _has_make_lint(cwd: Path) -> bool:
     return probe.returncode == 0
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     if len(sys.argv) < 2 or not sys.argv[1]:
+        logger.info("no cwd given — skipping lint")
         emit(lint_status="skipped", reason="no cwd given")
     cwd = Path(sys.argv[1]).expanduser()
     service = sys.argv[2] if len(sys.argv) > 2 else ""
     if not cwd.is_dir():
+        logger.warning("cwd does not exist: %s", cwd)
         emit(lint_status="skipped", reason=f"cwd does not exist: {cwd}")
 
     command = _agents_yml_override(service, cwd)
@@ -89,6 +92,7 @@ def main() -> None:
         if _has_make_lint(cwd):
             command = "make lint"
         else:
+            logger.info("no lint override and no `make lint` target in %s — skipping", cwd)
             emit(lint_status="skipped",
                  reason=f"no lint override and no `make lint` target in {cwd}")
 
@@ -97,9 +101,11 @@ def main() -> None:
             command, cwd=cwd, shell=True, capture_output=True, text=True, timeout=LINT_TIMEOUT
         )
     except subprocess.TimeoutExpired:
+        logger.warning("lint command '%s' timed out after %ss", command, LINT_TIMEOUT)
         emit(lint_status="dirty", lint_command=command,
              lint_output=f"lint timed out after {LINT_TIMEOUT}s", reason="timeout")
     except OSError as exc:
+        logger.warning("lint command '%s' could not be launched: %s", command, exc)
         emit(lint_status="skipped", lint_command=command,
              lint_output=str(exc), reason="lint command could not be launched")
 
@@ -107,10 +113,15 @@ def main() -> None:
     if len(output) > MAX_OUTPUT:
         output = "…(truncated)…\n" + output[-MAX_OUTPUT:]
     if result.returncode == 0:
+        logger.info("lint clean for %s", cwd)
         emit(lint_status="clean", lint_command=command, reason="lint passed")
+    logger.warning("lint dirty for %s (exit %s)", cwd, result.returncode)
     emit(lint_status="dirty", lint_command=command, lint_output=output,
          reason=f"lint exited {result.returncode}")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("run-lint"))

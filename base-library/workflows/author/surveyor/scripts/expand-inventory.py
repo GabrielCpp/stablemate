@@ -43,6 +43,7 @@ Outputs JSON: {"expand_ok": "yes"|"no", "expand_errors": "<lines>",
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -181,7 +182,7 @@ def expand(root: Path, rules: list[dict], excludes: list[str]) -> tuple[list[dic
     return units, errors
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     rules_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/units.yml"
     inv_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/inventory.json"
 
@@ -195,38 +196,47 @@ def main() -> None:
             inv_units = data.get("units")
             assert isinstance(inv_units, list)
         except (json.JSONDecodeError, ValueError, AssertionError):
+            logger.warning("existing inventory %s is not parseable JSON with a `units` list", inv_rel)
             emit("no", [f"existing inventory {inv_rel} is not parseable JSON with a `units` "
                         f"list — fix or remove it (it is the frozen coverage baseline)"])
             return
         pending = sum(1 for u in inv_units if isinstance(u, dict) and u.get("status") == "pending")
+        logger.info("inventory already frozen at %s: %d unit(s), %d still pending — consumed as-is",
+                    inv_rel, len(inv_units), pending)
         emit("yes", count=len(inv_units),
              note=f"inventory frozen at {inv_rel}: {len(inv_units)} unit(s), "
                   f"{pending} still pending — consumed as-is, never re-planned")
         return
 
     if yaml is None:
+        logger.warning("PyYAML is unavailable — cannot parse the rules file")
         emit("no", ["PyYAML is required to parse the rules file but is unavailable"])
         return
     rules_path = root / rules_rel
     if not rules_path.is_file():
+        logger.warning("no rules file at %s — the planner must write it first", rules_rel)
         emit("no", [f"no rules file at {rules_rel} — the planner must write it first"])
         return
     try:
         data = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
+        logger.warning("rules file %s is not valid YAML: %s", rules_rel, exc)
         emit("no", [f"rules file is not valid YAML: {exc}"])
         return
 
     rules, excludes, errors = validate_rules(data)
     if errors:
+        logger.warning("rules file %s failed structural validation: %d error(s)", rules_rel, len(errors))
         emit("no", errors)
         return
 
     units, errors = expand(root, rules, excludes)
     if errors:
+        logger.warning("rules expansion produced %d error(s)", len(errors))
         emit("no", errors)
         return
     if not units:
+        logger.warning("rules expanded to zero units")
         emit("no", ["rules expanded to zero units — the enumeration cannot be empty"])
         return
 
@@ -236,10 +246,15 @@ def main() -> None:
         "rules": rules_rel,
         "units": units,
     }, indent=2) + "\n", encoding="utf-8")
+    logger.info("materialized %d unit(s) into %s from %s — the list is now frozen",
+                len(units), inv_rel, rules_rel)
     emit("yes", count=len(units),
          note=f"materialized {len(units)} unit(s) into {inv_rel} from {rules_rel} — "
               f"the list is now frozen")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("expand-inventory"))

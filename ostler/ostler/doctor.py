@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from ostler import dynamic_registry, freeze, links as links_mod, markdown, registry, schemas
+from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
+                    registry, schemas)
 from ostler.model import Graph, Epic
 
 
@@ -291,18 +293,17 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
                                  suggestion=f"## {heading}", fixable=True))
 
 
-def _declares(text: str, symbol: str) -> bool:
-    """Whether *text* plausibly declares *symbol*, in any of the profile's languages.
+def _declares(path: Path, text: str, symbol: str) -> bool:
+    """Whether *text* declares *symbol* — `ostler.inventory`'s grammar, not a second one.
 
-    Every part of a qualified symbol must appear as a whole word: `(*Writer).SetRoleClaims`
-    needs both `Writer` and `SetRoleClaims`. This is a *presence* check, not a resolution — it
-    catches the cases §4.4 exists for (a citation whose file no longer declares it, a typo, a
-    convention drift) without the tree-sitter/LSP dependency the coverage diff does not need.
-    It will not catch a name that survives only in a comment; a regex front end is adequate
-    here for the same reason it is in the inventory.
+    This delegates on purpose. It used to ask whether every part of the symbol appeared as a
+    *word* in the file, which is not the same question and answered it wrong in the one
+    direction that matters: a facade module re-exporting a name (``from .renderer import
+    Renderer``) still contains the word, so a citation whose definition had moved away stayed
+    green — the drift this check exists to catch. The inventory already knew how to read a
+    declaration; grounding just wasn't asking it.
     """
-    words = set(_SYMBOL_PART.findall(text))
-    return all(part in words for part in _SYMBOL_PART.findall(symbol))
+    return inventory.declares(path, text, symbol)
 
 
 def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
@@ -349,7 +350,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                 text = target.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            if not _declares(text, symbol):
+            if not _declares(target, text, symbol):
                 f.append(Finding(
                     "error", "missing-code-symbol",
                     f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "

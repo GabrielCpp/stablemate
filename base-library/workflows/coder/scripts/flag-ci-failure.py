@@ -20,11 +20,8 @@ import sys
 
 from workhorse.scriptutil import find_open_pr, find_repo_root, resolve_github_token, resolve_repo
 
-logger = logging.getLogger(__name__)
 
-
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     attempts = sys.argv[2] if len(sys.argv) > 2 else "?"
     summary = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -64,4 +61,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("flag-ci-failure"))

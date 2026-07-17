@@ -32,6 +32,7 @@ Outputs JSON: {"story_grounding_ok": "yes"|"no", "story_grounding_errors": "<new
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -93,13 +94,14 @@ def tokens(s: object) -> set[str]:
     return {t for t in norm(s).split("-") if len(t) >= 3}
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     story_dir_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     epic_dir_rel = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     features_dir = sys.argv[4].strip() if len(sys.argv) > 4 and sys.argv[4] else ""
 
     errors: list[str] = []
     if not story_dir_rel or not epic_dir_rel:
+        logger.warning("story_dir and epic_dir are required — nothing to check")
         emit(False, ["story_dir and epic_dir are required"])
 
     root = find_repo_root()
@@ -111,6 +113,7 @@ def main() -> None:
     try:
         seeds = okf.list("seed", epic=epic)
     except (OSError, ValueError, RuntimeError):
+        logger.warning("could not read the epic's seeds via the ostler API for %s", epic)
         emit(False, ["could not read the epic's seeds via the ostler API"])
     seed_by_id = {str(s.get("id", "")).strip(): s for s in seeds if s.get("id")}
     seed_ids = set(seed_by_id)
@@ -147,6 +150,7 @@ def main() -> None:
                 break
 
     if matched_path is None:
+        logger.info("no surface knowledge record grounds story '%s'", slug)
         errors.append(
             "no surface knowledge record grounds this story — gather_knowledge must research the "
             "surface (a knowledge Concept whose surface/route matches this story) before it can be "
@@ -165,14 +169,18 @@ def main() -> None:
         read_feature_doc = any(feat_norm and feat_norm in norm(s) for s in sources)
         has_journeys = isinstance(journeys, list) and len(journeys) > 0
         if not (has_journeys or read_feature_doc):
+            logger.info("journey grounding did not run for story '%s'", slug)
             errors.append(
                 "feature docs are configured but this surface's knowledge record records no "
                 "user journey (empty `journeys[]` and no `provenance.sourcesRead` under "
                 f"'{features_dir}') — the journey grounding did not run"
             )
 
+    logger.info("story '%s' grounding: %s", slug, "ok" if not errors else f"{len(errors)} error(s)")
     emit(not errors, errors)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("check-story-grounding"))

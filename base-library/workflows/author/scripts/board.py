@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -107,16 +108,26 @@ def render_text(board: dict) -> str:
     return "\n".join(out)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     ap = argparse.ArgumentParser(description="Read-only status board over the author/coder file model.")
     ap.add_argument("--epics-dir", default="docs/epics")
     ap.add_argument("--backlog", default="docs/backlog.md")
     ap.add_argument("--json", action="store_true", help="emit JSON instead of the text board")
     args = ap.parse_args()
 
-    board = collect(find_repo_root(), args.epics_dir, args.backlog)
+    root = find_repo_root()
+    logger.info("collecting board from %s (epics_dir=%s, backlog=%s)", root, args.epics_dir, args.backlog)
+    board = collect(root, args.epics_dir, args.backlog)
+    logger.info(
+        "board: %d stories (%d done, %d in progress, %d not started), backlog %d open",
+        board["totals"]["stories"], board["totals"]["done"],
+        board["totals"]["in_progress"], board["totals"]["not_started"],
+        board["totals"]["backlog_open"],
+    )
     print(json.dumps(board, indent=2) if args.json else render_text(board))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("board"))

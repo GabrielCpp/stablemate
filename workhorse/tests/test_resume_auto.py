@@ -112,6 +112,41 @@ def test_auto_resolve_run_id_precedence():
         assert m._auto_resolve(runs, "research", run_id="given")[0] == "given"
 
 
+def test_derive_run_id_explicit_wins_and_no_params_is_default():
+    # Explicit --run-id is always used verbatim, params or not.
+    assert m._derive_run_id("given", {"service": "api"}) == "given"
+    # No params → None → caller's "default".
+    assert m._derive_run_id(None, None) is None
+    assert m._derive_run_id(None, {}) is None
+
+
+def test_derive_run_id_digests_params_stably_and_distinctly():
+    report = m._derive_run_id(None, {"service": "report", "source_path": "report"})
+    api = m._derive_run_id(None, {"service": "api", "source_path": "api"})
+    # Distinct params → distinct ids (no collision on one 'default').
+    assert report != api
+    assert report.startswith("p") and api.startswith("p")
+    # Same params (key order irrelevant) → SAME id, so auto-resume still lands on
+    # the existing checkpoint on a plain re-run / reboot.
+    again = m._derive_run_id(None, {"source_path": "report", "service": "report"})
+    assert again == report
+
+
+def test_derive_run_id_routes_distinct_targets_to_distinct_dirs():
+    """The end-to-end footgun: two targets under no explicit run-id must resolve to
+    different stable dirs, and each resumes its own checkpoint."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        rid_report = m._derive_run_id(None, {"service": "report"})
+        rid_api = m._derive_run_id(None, {"service": "api"})
+        assert rid_report != rid_api
+        # report has an unfinished checkpoint; api has none → api starts fresh
+        # instead of resuming report's run.
+        _make_run(runs, f"okf-builder-{rid_report}", terminal=None)
+        assert m._auto_resolve(runs, "okf-builder", rid_report)[1] is not None
+        assert m._auto_resolve(runs, "okf-builder", rid_api)[1] is None
+
+
 def test_main_is_auto_by_default_no_flag():
     """No flag needed: main() runs in auto mode by default (single stable folder,
     resolved inside run())."""

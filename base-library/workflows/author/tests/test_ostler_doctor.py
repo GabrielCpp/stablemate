@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import sys
 
 import pytest
@@ -72,7 +73,7 @@ def test_skip_when_graph_cannot_load(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", [str(SCRIPT)])
     monkeypatch.setenv("AGENT_REPO_DIR", str(tmp_path))
     with pytest.raises(SystemExit) as exc:
-        mod.main()
+        mod.main(logging.getLogger("test"))
     assert exc.value.code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["integrity_ok"] == "skip"

@@ -27,6 +27,7 @@ Outputs JSON: {"inventory_built": "skip"|"manifest", "inventory_path": "<source>
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -64,13 +65,15 @@ def unit_count(root: Path, manifest_rel: str) -> int:
     return len(units) if isinstance(units, list) else 0
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     features_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/features"
     manifest_rel = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     root = find_repo_root()
     okf = Ostler(root)
     n = feature_count(okf)
     m = unit_count(root, manifest_rel)
+    logger.info("%d feature Concept(s) under %s; %d survey unit(s) from %s",
+                n, features_rel, m, manifest_rel or "<none>")
     note = (
         f"feature set is read directly from {n} typed feature Concept(s) under {features_rel} "
         "(ostler feature Concepts) — no inventory.json is built under the OKF model"
@@ -86,4 +89,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("build-inventory"))

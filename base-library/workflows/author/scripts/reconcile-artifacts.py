@@ -32,6 +32,7 @@ Args:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -74,7 +75,7 @@ def subsection_ids(text: str, heading: str) -> set[str]:
     return ids
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epics_rel = (sys.argv[1].strip() if len(sys.argv) > 1 else "") or "docs/epics"
     ref = (sys.argv[2].strip() if len(sys.argv) > 2 else "") or "HEAD"
     root = find_repo_root()
@@ -82,8 +83,10 @@ def main() -> None:
 
     # Fail-open: no git, or detached/empty repo with no resolvable baseline → skip.
     if git_show(root, ref, epics_rel) is None and not (root / ".git").exists():
+        logger.info("not a git repo at %s — reconciliation gate skipped", root)
         emit("skip", report="not a git repo — reconciliation gate skipped")
     if not epics_dir.is_dir():
+        logger.info("no epics dir at %s — skipped", epics_dir)
         emit("skip", report=f"no epics dir at {epics_rel} — skipped")
 
     drops: list[str] = []
@@ -109,8 +112,10 @@ def main() -> None:
                          f"absent now — confirm intentional, or restore it")
 
     if checked == 0:
+        logger.info("no epics with a committed baseline at %s — skipped", ref)
         emit("skip", report=f"no epics with a committed baseline at {ref} — skipped")
     summary = f"reconcile vs {ref}: {checked} epic(s) checked, {len(drops)} silent drop(s)"
+    logger.info(summary)
     if not drops:
         emit("yes", report=summary)
     lines = [
@@ -125,4 +130,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("reconcile-artifacts"))

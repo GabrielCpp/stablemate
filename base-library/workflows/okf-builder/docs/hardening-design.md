@@ -1,9 +1,9 @@
 # Design: Make the okf-builder's completeness claim a computed fact
 
-**Status:** §6 (multi-language front end + blindness guard) and **§4 (the instrument — Stage 1)**
-are **implemented**. §5, §7–§11 are proposed. **§14 is the order of work**, and **Stage 0 has been
-run** — its findings are recorded in the consuming repo (`docs/okf-stage0-findings.md`) and are
-folded into §14 below.
+**Status:** §6 (multi-language front end + blindness guard), **§4 (the instrument — Stage 1)** and
+**§5 (the gate — Stage 2)** are **implemented**. §7–§11 are proposed. **§14 is the order of work**,
+and **Stage 0 has been run** — its findings are recorded in the consuming repo
+(`docs/okf-stage0-findings.md`) and are folded into §14 below.
 **Scope:** make coverage *computable*, then let the machine — not an agent's self-report — decide
 when a book is done; give the walk a session, a restorable fixture, and a verdict it can reopen;
 define the per-service pipeline; document only what is missing or moved; support more than one book
@@ -261,6 +261,30 @@ deleted. `verify:` stays deferred to the QA gate: its value is a test id as ofte
 > book had not followed. So this is not a book that rotted quietly over years — it is `doctor`
 > catching the book lagging the working tree **within the same edit**, which is precisely the
 > window §4.4 exists to close. `doctor` was green over all of it before. Fixed in the book.
+>
+> **It was also weaker than this section claimed, and Stage 2 caught it.** `_declares` asked
+> whether each part of the symbol appeared as a *word* in the file. A facade module that
+> re-exports a name (`from .renderer import Renderer`, `__all__ = [...]`) still contains the
+> word — so a citation whose definition had **moved away** stayed green. It caught the drift
+> in the note above only because those symbols were `_`-prefixed and therefore not
+> re-exported: the check was working by accident, and blind to precisely the refactor shape
+> §4.4 exists for. Measured on stablemate's own books: **0 findings before, 6 after**, all
+> real — `farrier/farrier/install.py` had become a pure re-export facade declaring nothing
+> but `__all__`, while the book still cited six symbols to it.
+>
+> The root cause was that *"what declares a symbol"* was defined **twice** — real declaration
+> regexes in the builder's `inventory-source.py`, word-presence in `doctor`. Two grammars
+> drift, and this one drifted silently in the direction that reports a pass. The front end now
+> lives in **`ostler/inventory.py`** and both callers import it, so the join and the grounding
+> check cannot disagree again.
+>
+> One correction from doing it, and it is §3.2 once more: a first cut grounded against the
+> *inventory's* symbol set and produced false findings against real citations — module
+> constants (`state.py::LOG`), private symbols (`main.py::_run_run`) and methods
+> (`Hub.send_reload`). The inventory filters those out **by design** (Stage 1's "leave it"
+> decision), but grounding is a different question. `symbols()` reports the documented
+> surface; `declared_names()` reports everything declared. **A book may cite outside the
+> denominator, and grounding must not punish it for the inventory's narrower scope.**
 >
 > Note what this costs: `code:` grounding **couples doc authoring to code existing**, which is
 > exactly why an earlier decision deferred it to a later QA gate. That reversal is deliberate —
@@ -796,12 +820,27 @@ transitive module rule; `doctor` validating `code:` targets. Unit-tested over fi
 - **Exit:** `ostler coverage --surface docs/features/<book>` prints a number that a second person
   can reproduce.
 
-### Stage 2 — §5, the gate, and `make okf-verify`  ← NEXT
+### Stage 2 — §5, the gate, and `make okf-verify`  ✅ DONE
 
-`compute-coverage.py`; pessimistic branch defaults; round exhaustion → `fail`; `coverage.json`.
-Fold the whole bar into one target.
+Delivered: `compute-coverage.py` (the verdict is computed, and every way of failing to compute one
+emits `"no"`); three `fail` exits (`cannot_build`, `rounds_exhausted`, `budget_exhausted`) where
+there were none; pessimistic branch defaults; `coverage.json`; `prepare.py`'s import off module
+scope; the worklist keyed to its book; `max_items` measured from a per-run baseline; `recheck`
+narrowed to adjudication + waivers. `make okf-verify` added. 12 new workflow tests, 13 in ostler.
 
-**Stage 0 adds three items to this stage that §5 did not have:**
+**Exit met.** `make okf-verify` exits 1 on stablemate's own books and names them:
+`farrier: 0/159`, `groom: 93/297`, `workhorse: 44/434`. Two findings from doing it:
+
+- **`farrier: 0/159` was the instrument telling the truth, and it took a check to know that.**
+  0% is the signature of a broken join (§1.1's 35% reading was exactly this), so the number was
+  worth distrusting. It held up: the book cites 23 symbols in `install.py`, a refactor moved
+  every one of them, and the book had not followed. The join was right and the book was stale.
+- **`doctor` was green over all 23 of them** — §4.4's own check, blind to the drift it exists
+  for. See the note in §4.4; the fix unified the symbol grammar into `ostler/inventory.py`.
+  **This is the first defect the gate found rather than the gate's author finding it**, which
+  is the whole argument for building the instrument before the books.
+
+**Stage 0 added three items to this stage that §5 did not have — all three are done:**
 
 - **Give the workflow a failure exit at all.** Not one edge — `check_ostler: "no"`,
   `guard_budget: "yes"`, `guard_rounds: >=6` and `decide_coverage` every one of them ends at
@@ -823,11 +862,20 @@ it as an equal for base-library workflows, or that setup grows a way to make ost
   can exit non-zero, any goal condition is prose judged by self-assessment — the very thing this
   document exists to remove, relocated to the outermost loop.
 - **Exit:** `make okf-verify` exits non-zero on an incomplete book and zero on a complete one, and
-  you can state which book is which without opening either.
+  you can state which book is which without opening either. ✅
 
-### Stage 3 — Build the two non-walkable books
+**One judgement made here that §5 did not specify.** §5.4 named only round exhaustion, but Stage 0
+listed `guard_budget` among the paths ending at `done`, so an over-budget run now **also** exits
+non-zero (after canonicalizing what it built). `max_items` is documented as a safety valve and
+explicitly *not* the stop condition: a run that stopped because it ran out of allowance did not
+converge, and the partial book it leaves must not read as a finished one. The resume path is what
+makes this affordable — `done_baseline` gives the next run its own allowance rather than making
+the cap a lifetime total.
 
-`api-service` and `report`. No walk, no session, no fixture, no browser.
+### Stage 3 — Build the two non-walkable books  ← NEXT
+
+`api-service` and `report`. No walk, no session, no fixture, no browser. Build `report` first: it
+is the smaller book, so a workflow bug is found cheaply rather than at `api-service`'s scale.
 
 - **Why here:** it exercises the entire static pipeline — enumerate → document → heal → verify — on a
   clean tree with a working instrument, and it does so with none of §7/§8's machinery in the way. If

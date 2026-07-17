@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import logging
 import os
 import re
 import select
@@ -71,9 +72,15 @@ _WATCH_MASK = _IN_MODIFY | _IN_CLOSE_WRITE | _IN_CREATE | _IN_MOVED_TO
 _HEARTBEAT_SECONDS = 300.0
 _libc = ctypes.CDLL("libc.so.6", use_errno=True)
 
-context_rel = sys.argv[1] if len(sys.argv) > 1 else ""
-questions = (sys.argv[2].strip() if len(sys.argv) > 2 else "") or "No specific questions were recorded."
-counter_key = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
+# `questions`, `counter_key`, `ctx`, `_banner_shown` are set inside main() (via
+# `global`) from argv/cwd; the helper functions below resolve them as module
+# globals at CALL time (Python's normal free-variable lookup), so this stays
+# correct despite the assignments living inside main() rather than at import
+# time. Placeholder values here only satisfy references before main() runs.
+questions: str = "No specific questions were recorded."
+counter_key: str = ""
+ctx: Path | None = None
+_banner_shown = False
 
 
 def find_repo_root() -> Path:
@@ -87,10 +94,6 @@ def find_repo_root() -> Path:
         if (candidate / "agents.yml").exists() or (candidate / ".git").exists():
             return candidate
     return cwd
-
-
-root = find_repo_root()
-ctx = (root / context_rel) if context_rel else (root / "_author-context.md")
 
 
 def status_of(text: str) -> str:
@@ -204,9 +207,6 @@ def _block_for_change() -> None:
         os.close(fd)
 
 
-_banner_shown = False
-
-
 def halt() -> None:
     """Block in place (no exit) until ctx's STATUS line changes. The banner
     and backstop push only fire once per distinct block so re-checks after a
@@ -220,39 +220,61 @@ def halt() -> None:
     _block_for_change()
 
 
-while True:
-    if not ctx.exists():
-        ctx.parent.mkdir(parents=True, exist_ok=True)
-        ctx.write_text(fresh_body())
-        print(f"[await-operator] wrote {ctx}", file=sys.stderr)
+def main(logger: logging.Logger) -> None:
+    global ctx, questions, counter_key, _banner_shown
+
+    context_rel = sys.argv[1] if len(sys.argv) > 1 else ""
+    questions = (sys.argv[2].strip() if len(sys.argv) > 2 else "") or "No specific questions were recorded."
+    counter_key = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
+
+    root = find_repo_root()
+    ctx = (root / context_rel) if context_rel else (root / "_author-context.md")
+    _banner_shown = False
+
+    logger.info("await-operator watching %s", ctx)
+
+    while True:
+        if not ctx.exists():
+            ctx.parent.mkdir(parents=True, exist_ok=True)
+            ctx.write_text(fresh_body())
+            print(f"[await-operator] wrote {ctx}", file=sys.stderr)
+            logger.info("wrote fresh context file %s", ctx)
+            halt()
+            continue
+
+        current = ctx.read_text()
+        state = status_of(current)
+
+        if state == ANSWERED:
+            ctx.write_text(set_status(current, CONSUMED))
+            logger.info("operator answered — proceeding")
+            proceed(current)
+
+        if state == AWAITING:
+            print(f"[await-operator] {ctx} still {AWAITING} — waiting for the operator (blocking, no restart needed)", file=sys.stderr)
+            halt()
+            continue
+
+        if state == CONSUMED:
+            rearmed = set_status(current, AWAITING) + (
+                "\n\n## Follow-up questions (still blocked after your last answer)\n\n"
+                f"{questions}\n\n## Your answers (follow-up)\n\n<!-- write here -->\n"
+            )
+            ctx.write_text(rearmed)
+            print(f"[await-operator] re-blocked after a consumed answer — re-armed {ctx}", file=sys.stderr)
+            logger.info("re-blocked after a consumed answer — re-armed %s", ctx)
+            _banner_shown = False  # new follow-up questions — notify again
+            halt()
+            continue
+
+        # No recognizable STATUS line — add one without clobbering operator prose, then wait.
+        print(f"[await-operator] {ctx} has no STATUS line — adding one and waiting", file=sys.stderr)
+        ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
         halt()
         continue
 
-    current = ctx.read_text()
-    state = status_of(current)
 
-    if state == ANSWERED:
-        ctx.write_text(set_status(current, CONSUMED))
-        proceed(current)
-
-    if state == AWAITING:
-        print(f"[await-operator] {ctx} still {AWAITING} — waiting for the operator (blocking, no restart needed)", file=sys.stderr)
-        halt()
-        continue
-
-    if state == CONSUMED:
-        rearmed = set_status(current, AWAITING) + (
-            "\n\n## Follow-up questions (still blocked after your last answer)\n\n"
-            f"{questions}\n\n## Your answers (follow-up)\n\n<!-- write here -->\n"
-        )
-        ctx.write_text(rearmed)
-        print(f"[await-operator] re-blocked after a consumed answer — re-armed {ctx}", file=sys.stderr)
-        _banner_shown = False  # new follow-up questions — notify again
-        halt()
-        continue
-
-    # No recognizable STATUS line — add one without clobbering operator prose, then wait.
-    print(f"[await-operator] {ctx} has no STATUS line — adding one and waiting", file=sys.stderr)
-    ctx.write_text(f"STATUS: {AWAITING}\n\n" + current)
-    halt()
-    continue
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("await-operator"))

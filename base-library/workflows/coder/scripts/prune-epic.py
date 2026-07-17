@@ -22,6 +22,7 @@ Outputs JSON: {"pruned": "yes"|"no"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -72,9 +73,10 @@ def _prune_ostler(okf: Ostler, epic: str) -> str:
     return "yes" if res.ok else "no"
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     if not epic:
+        logger.info("no epic given — nothing to prune")
         emit("no")
 
     root = find_repo_root()
@@ -84,6 +86,7 @@ def main() -> None:
         p = Path(sys.argv[2])
         if not p.is_absolute():
             p = root / p
+        logger.info("explicit sidecar %s given — pruning '%s' from it", p, epic)
         emit(_prune_json_sidecar(p, epic))
 
     # Try ostler first; fall back to the legacy epics-todo.json if ostler is unavailable
@@ -94,10 +97,15 @@ def main() -> None:
     except (OSError, ValueError, RuntimeError):
         pruned = "no"
     if pruned == "yes":
+        logger.info("pruned '%s' via the ostler-managed epics queue", epic)
         emit("yes")
+    logger.info("'%s' not found via ostler — falling back to epics-todo.json", epic)
     default_json = root / "docs" / "epics" / "epics-todo.json"
     emit(_prune_json_sidecar(default_json, epic))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("prune-epic"))

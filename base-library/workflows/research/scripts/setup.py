@@ -11,6 +11,7 @@ Outputs JSON: {"setup_result": {"repo_dir": "...", "status": "ok"}}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -23,7 +24,7 @@ def _emit(repo_dir: str, status: str = "ok") -> None:
     print(json.dumps({"setup_result": {"repo_dir": repo_dir, "status": status}}))
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     # Native in-place mode: when AGENT_REPO_DIR is set, operate directly on that
     # existing checkout instead of cloning into /workspace. Used by the generated
     # launcher's `*-native` target, which runs the controller on the host so the
@@ -32,8 +33,7 @@ def main() -> None:
     repo_dir_env = os.environ.get("AGENT_REPO_DIR") or os.environ.get("HRNET_REPO_DIR")
     if repo_dir_env:
         allow_all_directories()
-        print(f"[setup] in-place mode: using existing repo at {repo_dir_env} (no clone)",
-              file=sys.stderr)
+        logger.info("in-place mode: using existing repo at %s (no clone)", repo_dir_env)
         _emit(repo_dir_env)
         return
 
@@ -41,7 +41,7 @@ def main() -> None:
     # a read-only bind mount of a local repo) without editing the committed workflow.
     repo_url = os.environ.get("REPO_URL") or (sys.argv[1] if len(sys.argv) > 1 else "")
     if not repo_url:
-        print("[setup] repo url required", file=sys.stderr)
+        logger.error("repo url required")
         sys.exit(1)
     repo_branch = os.environ.get("REPO_BRANCH") or (sys.argv[2] if len(sys.argv) > 2 else "main")
 
@@ -59,11 +59,10 @@ def main() -> None:
     workspace.mkdir(parents=True, exist_ok=True)
 
     if (repo_dir / ".git").is_dir():
-        print(f"[{repo_dir}] already cloned — fetching and checking out {repo_branch}",
-              file=sys.stderr)
+        logger.info("%s already cloned — fetching and checking out %s", repo_dir, repo_branch)
         fetch_reset(repo_dir, repo_branch)
     else:
-        print(f"[{repo_dir}] cloning {repo_url} @ {repo_branch}", file=sys.stderr)
+        logger.info("cloning %s @ %s into %s", repo_url, repo_branch, repo_dir)
         clone(repo_url, repo_dir, branch=repo_branch, single_branch=True)
 
     # Install Python deps so the agent can run pytest/ruff inside the clone.
@@ -72,11 +71,12 @@ def main() -> None:
         stdout=sys.stderr, stderr=sys.stderr, text=True, check=False,
     )
     if synced.returncode != 0:
-        print("[setup] warning: 'uv sync --no-sources' failed; agent must resolve deps",
-              file=sys.stderr)
+        logger.warning("'uv sync --no-sources' failed; agent must resolve deps")
 
     _emit(str(repo_dir))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("setup"))

@@ -33,6 +33,7 @@ Outputs JSON: {"verify_ok": "yes"|"no"|"skip", "verify_errors": "<lines>",
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -130,7 +131,7 @@ def git_show(root: Path, ref: str, relpath: str) -> str | None:
     return show_file(root, ref, relpath)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     inv_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/inventory.json"
     findings_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/findings"
     ref = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "HEAD"
@@ -138,12 +139,14 @@ def main() -> None:
     root = find_repo_root()
     inv_path = root / inv_rel
     if not inv_path.is_file():
+        logger.info("no inventory at %s — nothing was surveyed", inv_rel)
         emit("skip", report=f"no inventory at {inv_rel} — nothing was surveyed")
     try:
         data = json.loads(inv_path.read_text(encoding="utf-8"))
         units = data.get("units")
         assert isinstance(units, list)
     except (json.JSONDecodeError, ValueError, AssertionError):
+        logger.warning("inventory at %s is not parseable JSON with a `units` list", inv_rel)
         emit("no", [f"inventory at {inv_rel} is not parseable JSON with a `units` list"],
              report="inventory unreadable")
 
@@ -219,9 +222,14 @@ def main() -> None:
               f"{counts['clean']} clean, {counts['blocked']} blocked, "
               f"{counts['pending']} pending; {len(errors)} problem(s)")
     if errors:
+        logger.warning(report)
         emit("no", ["the survey's coverage claim does not hold yet:", *errors], report)
+    logger.info(report)
     emit("yes", report=report)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("verify-records"))

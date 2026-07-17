@@ -155,9 +155,7 @@ def push_and_pr(repo_path: Path, branch: str, base: str, title: str, body: str, 
     return "opened", pr.html_url
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[open-author-pr] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     base_branch = sys.argv[1] if len(sys.argv) > 1 else "main"
     branch = sys.argv[2] if len(sys.argv) > 2 else ""
     mode = sys.argv[3] if len(sys.argv) > 3 else "epic"
@@ -185,4 +183,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("open-author-pr"))

@@ -53,16 +53,21 @@ nodes:
       - key: source_excludes
       - key: service
       - key: ostler_ok
-      - key: done_count
+      - key: done_baseline
+      - key: worklist_reset
+      - key: prepare_error
     next: check_ostler
 
+  # No ostler, no graph, or an unusable source root -> the run cannot measure anything it
+  # would go on to claim. That is a failure, not a quiet exit: a build that documents nothing
+  # because its instrument is missing must not be indistinguishable from a build that is done.
   - id: check_ostler
     type: branch
     path: ostler_ok
     cases:
       "yes": decide_start
-      "no": done # no ostler on PATH -> nothing to build; fail soft
-    default: done
+      "no": cannot_build
+    default: cannot_build
 
   - id: decide_start
     type: branch
@@ -110,6 +115,7 @@ nodes:
     args:
       - "{{ worklist_path }}"
       - "{{ max_items }}"
+      - "{{ done_baseline }}" # `max_items` bounds THIS run, not the worklist's lifetime
     outputs:
       - key: has_item
       - key: over_budget
@@ -119,6 +125,7 @@ nodes:
       - key: item_context
       - key: pending_count
       - key: done_count
+      - key: done_this_run
     # Refuel the gas tank on real progress (an item completed since the last visit); a
     # loop that stops completing items runs the tank dry and halts instead of spinning.
     refuel: done_count
@@ -142,6 +149,10 @@ nodes:
       "no": checkpoint # drain dry -> converge
     default: checkpoint
 
+  # Over budget: canonicalize what was built, then exit NON-ZERO. `max_items` is a safety
+  # valve, not the stop condition — a run that stopped because it ran out of allowance did not
+  # converge, and the partial book it leaves behind must not read as a finished one. Pending
+  # items survive for a resume, which now gets its own allowance (see `done_baseline`).
   - id: finalize
     type: script
     script: scripts/checkpoint.py
@@ -154,7 +165,7 @@ nodes:
       - key: doctor_output
       - key: round
       - key: fixup_items
-    next: done
+    next: budget_exhausted
 
   # The heart: document ONE item to the spec-complete bar and return the deeper items it
   # reveals (elements, code layers, concepts, formats, journeys, fixups).
@@ -214,7 +225,9 @@ nodes:
     cases:
       "yes": guard_rounds
       "no": seed_fixup # doctor dirty -> queue a fixup item and drain it
-    default: guard_rounds
+    # Pessimistic: an unreadable verdict means "not clean". The `yes` case is the only way
+    # past the gate, because a value nobody can parse is not evidence the book is healthy.
+    default: seed_fixup
 
   - id: seed_fixup
     type: script
@@ -229,14 +242,17 @@ nodes:
       - key: added
     next: select_item
 
-  # Bound the re-scan so an unconverging coverage check can't loop forever (fail-soft).
+  # Bound the re-scan so an unconverging coverage check can't loop forever. Exhausting the
+  # cap is NOT convergence: the run gave up with the book still short, and it says so with a
+  # non-zero exit. Reporting that identically to a finished book is what made "complete" a
+  # word the run could not be held to.
   - id: guard_rounds
     type: branch
     path: round
     conditions:
       - op: ">="
         value: "6" # == a sane max of dry-drain re-scans
-        next: done
+        next: rounds_exhausted
     default: inventory_source
 
   # Materialize the source side of the coverage diff mechanically. The recheck agent judges
@@ -255,8 +271,44 @@ nodes:
       - key: source_unit_count
       - key: operational_unit_count
       - key: inventory_errors
-    next: recheck
+    next: compute_coverage
 
+  # The verdict, computed. `ostler coverage` joins the book's `code:` citations against the
+  # inventory and this node emits the result — replacing the value the `recheck` agent used to
+  # emit about its own work. Also writes the book's coverage.json (the delta build's anchor).
+  - id: compute_coverage
+    type: script
+    script: scripts/compute-coverage.py
+    args:
+      - "{{ repo_root }}"
+      - "{{ features_root }}"
+      - "{{ service }}"
+      - "{{ source_inventory_path }}"
+      - "{{ features_root }}/coverage-waivers.json"
+    outputs:
+      - key: coverage_complete
+      - key: missing_count
+      - key: missing_path
+      - key: coverage_path
+      - key: coverage_summary
+      - key: coverage_error
+    next: decide_coverage
+
+  - id: decide_coverage
+    type: branch
+    path: coverage_complete
+    cases:
+      "yes": run_walkthrough_web # book complete -> walk it live (a no-op for non-web services)
+      "no": recheck
+    # Pessimistic: anything but a computed "yes" is "not done". The old default sent an
+    # unrecognized value ("Yes", "true", "partial") straight to the walk and then to `done` —
+    # the branch surrendering on exactly the malformed verdict the output default protected.
+    default: recheck
+
+  # The agent's role, narrowed: it no longer votes on completeness. It receives the COMPUTED
+  # missing list and adjudicates only the ambiguous rows — a helper folded into a documented
+  # contract, a deliberate non-unit — recording each verdict with a reason in the committed
+  # waivers file, and queueing the rest as real work.
   - id: recheck
     type: agent
     power: medium
@@ -271,24 +323,17 @@ nodes:
       source_excludes: "{{ source_excludes }}"
       source_inventory_path: "{{ source_inventory_path }}"
       inventory_errors: "{{ inventory_errors }}"
+      missing_path: "{{ missing_path }}"
+      missing_count: "{{ missing_count }}"
+      coverage_summary: "{{ coverage_summary }}"
+      coverage_error: "{{ coverage_error }}"
+      waivers_path: "{{ features_root }}/coverage-waivers.json"
     outputs:
       - key: discovered
         default: []
-      # Default "no" is the SAFE failure mode: if the recheck agent errors out, the run
-      # must not falsely declare the book complete — it loops (bounded by guard_rounds).
-      - key: coverage_complete
-        default: "no"
       - key: needs_journeys
         default: "no"
-    next: decide_coverage
-
-  - id: decide_coverage
-    type: branch
-    path: coverage_complete
-    cases:
-      "yes": run_walkthrough_web # book complete -> walk it live (a no-op for non-web services)
-      "no": seed_recheck
-    default: run_walkthrough_web
+    next: seed_recheck
 
   - id: seed_recheck
     type: script
@@ -320,6 +365,20 @@ nodes:
 
   - id: done
     type: terminal
+
+  # ── Failure exits ───────────────────────────────────────────────────────────────────
+  # Until these existed, EVERY path out of this workflow was `done`: no ostler, over budget,
+  # rounds exhausted and an unparseable coverage verdict all exited 0, so "the build finished"
+  # and "the build gave up" were the same observation. A gate may only report a pass it can
+  # show its work for; these are where it reports the alternative.
+  - id: cannot_build
+    type: fail
+
+  - id: rounds_exhausted
+    type: fail
+
+  - id: budget_exhausted
+    type: fail
 
 # ── Flows ───────────────────────────────────────────────────────────────────────────────
 flows:

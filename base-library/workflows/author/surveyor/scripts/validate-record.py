@@ -44,6 +44,7 @@ Outputs JSON: {"record_ok": "yes"|"no", "record_errors": "<newline-joined>"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -150,7 +151,7 @@ def check_record(record: dict, unit_id: str) -> list[str]:
     return errors
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     record_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     unit_id = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
 
@@ -159,24 +160,34 @@ def main() -> None:
                           "record_errors": "\n".join(errors)}))
 
     if not record_rel or not unit_id:
+        logger.warning("record_path and unit_id are both required")
         emit(False, ["record_path and unit_id are both required"])
         return
 
     root = find_repo_root()
     record_path = (root / record_rel).resolve()
     if not record_path.is_file():
+        logger.warning("finding record missing at %s — the assessor must write it", record_rel)
         emit(False, [f"finding record missing at {record_rel} — the assessor must write it"])
         return
 
     try:
         record = load_record(record_path.read_text(encoding="utf-8"))
     except ValueError as exc:
+        logger.warning("record %s could not be parsed: %s", record_rel, exc)
         emit(False, [f"record could not be parsed: {exc}"])
         return
 
     errors = check_record(record, unit_id)
+    if errors:
+        logger.warning("record %s failed validation with %d error(s)", record_rel, len(errors))
+    else:
+        logger.info("record %s for unit '%s' is valid", record_rel, unit_id)
     emit(not errors, errors)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-record"))

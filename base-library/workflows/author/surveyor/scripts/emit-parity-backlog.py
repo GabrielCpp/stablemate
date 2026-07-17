@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -29,12 +30,13 @@ def replace_section(text: str, section: str) -> str:
     return f"{prefix}{HEADING}\n\n{section}\n"
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     root = Path(os.environ.get("AGENT_REPO_DIR", Path.cwd())).resolve()
     inventory_rel, findings_rel, backlog_rel, manifest_rel = sys.argv[1:5]
     try:
         inventory = json.loads((root / inventory_rel).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("inventory at %s could not be read: %s", inventory_rel, exc)
         print(json.dumps({"emit_ok": "no", "emit_errors": str(exc), "bullet_count": 0,
                           "emit_note": ""}))
         return
@@ -78,6 +80,8 @@ def main() -> None:
         "baseline": inventory.get("baseline", ""),
         "units": manifest_units,
     }, indent=2) + "\n", encoding="utf-8")
+    logger.info("wrote %d missing-surface bullet(s); suppressed %d already-owned surface(s)",
+                len(bullets), suppressed)
     print(json.dumps({
         "emit_ok": "yes",
         "emit_errors": "",
@@ -87,4 +91,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("emit-parity-backlog"))

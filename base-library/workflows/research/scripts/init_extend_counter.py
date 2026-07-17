@@ -10,5 +10,15 @@ safety backstop, not the intended stop (the lead's reached/impossible verdict is
 Outputs JSON: {"extend_count": {"value": 0}}
 """
 import json
+import logging
 
-print(json.dumps({"extend_count": {"value": 0}}))
+
+def main(logger: logging.Logger) -> None:
+    logger.info("initializing extend_count to 0")
+    print(json.dumps({"extend_count": {"value": 0}}))
+
+
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("init_extend_counter"))
