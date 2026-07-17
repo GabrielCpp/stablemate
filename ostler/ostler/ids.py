@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-from .model import Graph
+from ostler.model import Graph
 
 
 def path_for(graph: Graph) -> Path:

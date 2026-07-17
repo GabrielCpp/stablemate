@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from collections import deque
 
-from .nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, Node, ScriptNode, TerminalNode
+from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, Node, ScriptNode, TerminalNode
 
 _HEADER = (
     "  rankdir=TB;\n"
@@ -142,9 +142,9 @@ def _out_edges(
 
 def _resolve_pinned(node: BranchNode, pins: dict[str, str]) -> str | None:
     """Single target a pinned branch routes to, or None if it can't be resolved."""
-    from ..runner.branch import evaluate
+    from workhorse.runner.branch import evaluate
 
-    from .context import WorkflowContext
+    from workhorse.graph.context import WorkflowContext
 
     try:
         target, _ = evaluate(node, WorkflowContext(initial=dict(pins)))

@@ -3,8 +3,8 @@ surface or doc path) and print the chain of references and their statuses."""
 
 from __future__ import annotations
 
-from . import links as links_mod
-from .model import Graph, UINode
+from ostler import links as links_mod
+from ostler.model import Graph, UINode
 
 
 def _find_ui(graph: Graph, token: str) -> UINode | None:

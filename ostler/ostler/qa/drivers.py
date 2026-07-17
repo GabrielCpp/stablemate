@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 
 import yaml
 
-from .session import QaSession, _expand
+from ostler.qa.session import QaSession, _expand
 
 
 @dataclass

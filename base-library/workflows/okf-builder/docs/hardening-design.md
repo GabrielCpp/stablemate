@@ -254,10 +254,13 @@ as the source moves under it, and — per §10 — what detects a documented uni
 deleted. `verify:` stays deferred to the QA gate: its value is a test id as often as a
 `path::symbol`, so it has no single shape to hold it to.
 
-> **It found a real one on its first run.** Against stablemate's own books, four citations read
-> `farrier/farrier/install.py::_run_install` (and `_run_config`/`_run_source`/`_run_scaffold`) —
-> every one of those handlers lives in `cli.py`. The code moved and the book did not follow, and
-> nothing had ever checked. `doctor` was green over all of it. Fixed in the book, not waived.
+> **It found a real one on its first run — and the shape of it is the interesting part.** Against
+> stablemate's own books, four citations read `farrier/farrier/install.py::_run_install` (and
+> `_run_config`/`_run_source`/`_run_scaffold`). Those citations were **correct at `HEAD`**; an
+> in-flight refactor splitting `install.py` into `cli.py` had moved every one of them, and the
+> book had not followed. So this is not a book that rotted quietly over years — it is `doctor`
+> catching the book lagging the working tree **within the same edit**, which is precisely the
+> window §4.4 exists to close. `doctor` was green over all of it before. Fixed in the book.
 >
 > Note what this costs: `code:` grounding **couples doc authoring to code existing**, which is
 > exactly why an earlier decision deferred it to a later QA gate. That reversal is deliberate —

@@ -5,7 +5,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .nodes import Graph
+from workhorse.graph.nodes import Graph
 
 
 def _shape_graph(raw: dict[str, Any], default_name: str) -> dict[str, Any]:
@@ -20,10 +20,15 @@ def _shape_graph(raw: dict[str, Any], default_name: str) -> dict[str, Any]:
     nodes: dict[str, Any] = {n["id"]: n for n in nodes_list}
     flows_raw: dict[str, Any] = raw.get("flows") or {}
     flows = {fname: _shape_graph(fraw, fname) for fname, fraw in flows_raw.items()}
+    # Every key Graph accepts must be shaped here explicitly -- this dict is the whole
+    # input to model_validate, so a key omitted below is silently dropped rather than
+    # rejected. (`env` was, until requires: landed and needed the same wiring.)
     return {
         "name": raw.get("name") or default_name,
         "start": raw["start"],
         "vars": raw.get("vars") or {},
+        "env": raw.get("env") or {},
+        "requires": raw.get("requires") or [],
         "nodes": nodes,
         "flows": flows,
     }

@@ -1,5 +1,11 @@
 name: research
 
+# setup.py runs `uv sync` with check=False, which tolerates a failing sync but NOT a
+# missing binary — absent, it raises FileNotFoundError and takes the node down. A
+# preflight turns that mid-run crash into a message before anything starts.
+requires:
+  - cmd: uv
+
 # Single, program-agnostic autonomous-research workflow.
 #
 # One gate-loop engine drives ANY research program: pick the next gate from the

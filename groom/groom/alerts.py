@@ -22,8 +22,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from . import state
-from .models import RunTelemetry
+from groom import state
+from groom.models import RunTelemetry
 
 
 @dataclass

@@ -12,10 +12,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import markdown
-from .manifest import DomElement
-from .register import MatchedPair, MatchResult
-from .regions import RegionBox
+from ostler import markdown
+from ostler.vet.manifest import DomElement
+from ostler.vet.register import MatchedPair, MatchResult
+from ostler.vet.regions import RegionBox
 
 
 class VetSummary(BaseModel):

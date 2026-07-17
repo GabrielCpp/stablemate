@@ -59,8 +59,9 @@ workhorse run coder dev --params '{"story":"CASE-1234"}'
 ```
 
 `docs_path` and `epic` are optional (empty string = derive from CWD / ostler defaults).
-Standalone QA runs `clear_qa_evidence` to wipe prior evidence and ensure `spec_dir`
-exists before the QA agents start. `plan-context.json` is not required.
+Standalone QA runs `clear_qa_evidence` to remove both the disposable `qa/` tree and
+the stale root `qa-evidence.json`, then regenerates context. `plan-context.json` is
+not required; source-root resolution degrades to the standalone repository.
 
 ---
 
@@ -147,6 +148,30 @@ In epic mode: `select_story` → `decide_story` → `prepare_story` (resolves fr
   next: dev
 ```
 
+### QA control-plane topology
+
+The primary QA path is fixed:
+
+```text
+prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
+-> build_qa_okf_context -> validate_qa_okf_context -> plan_qa
+-> validate_qa_plan -> run_qa_plan -> qa_interpret_and_explore
+-> verify_qa_evidence -> audit_qa -> regression/completion gates
+```
+
+`qa-plan.yml` is mandatory for command, browser, and mobile surfaces. Workflow script
+nodes call `ostler qa context`, `context-validate`, `validate`, and `run`; the QA agent
+does not drive Playwright/Maestro/commands and does not author the run log, manifest, or
+evidence. It may append a replayable exploratory scenario and request a workflow rerun.
+
+Routing is fail-closed: `invalid` returns to context/planning repair, `blocked` enters
+setup/operator handling, `failed` enters defect triage, and only `passed` reaches the
+evidence gate and auditor. Never declare a default output of `passed`.
+
+The reviewed implementation's `code:`/`verify:` grounding is refreshed before entering
+the QA flow so impact generation sees current references. Product fixes loop back through
+context generation; setup-only fixes may rerun the already validated plan.
+
 ---
 
 ## Ostler Path Integration
@@ -165,12 +190,14 @@ All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs
 
 ### In Scripts (Python)
 ```python
-import subprocess, shutil
 from pathlib import Path
 
+from workhorse.scriptutil import run_tool
+
 def _ostler_path(docs_root: Path, subcmd: str, *args: str) -> str:
-    cmd = ["ostler", "-C", str(docs_root), "path", subcmd, *args]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    # run_tool is the monkeypatchable seam for external CLIs (ostler, etc.) —
+    # an in-process test fakes it with no PATH shim.
+    result = run_tool(["ostler", "-C", str(docs_root), "path", subcmd, *args])
     return result.stdout.strip() if result.returncode == 0 else ""
 
 # Always provide a fallback in case ostler is unavailable
@@ -199,7 +226,10 @@ Scripts that accept `docs_path` as argv[1]: `prepare-story.py`, `select-next-epi
 ## Script Conventions
 
 ### Output Protocol
-Every script prints one JSON object to stdout and exits 0. Non-zero exit means a hard failure (e.g. `await_operator.py` exits 2 for "blocked").
+Every script prints one JSON object to stdout and exits 0. Non-zero exit means a hard failure
+(e.g. `await_operator.py` exits 2 for "blocked"). Ostler QA adapters are intentionally thin:
+they preserve `passed|failed|blocked|invalid` in JSON and exit 0 for all expected states even
+when the underlying CLI uses a nonzero process status.
 
 ```python
 def emit(**kwargs) -> None:

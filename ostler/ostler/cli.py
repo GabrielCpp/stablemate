@@ -10,29 +10,11 @@ from pathlib import Path
 
 import yaml
 
-from . import (
-    backlog as backlog_mod,
-    coverage,
-    crud,
-    crud_generic,
-    doctor,
-    edit,
-    fmt as fmt_mod,
-    freeze as freeze_mod,
-    graph as graph_mod,
-    path as path_mod,
-    query as query_mod,
-    registry,
-    scaffold as scaffold_mod,
-    select,
-    templates as templates_mod,
-    todo as todo_mod,
-    trace,
-)
-from . import vet as vet_mod
-from . import artifact as artifact_mod
-from . import qa as qa_mod
-from .model import load
+from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, path as path_mod, query as query_mod, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import vet as vet_mod
+from ostler import artifact as artifact_mod
+from ostler import qa as qa_mod
+from ostler.model import load
 
 _TYPES = (
     tuple(t.name for t in registry.REGISTRY)

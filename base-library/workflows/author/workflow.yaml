@@ -1,4 +1,11 @@
 name: author
+
+# Script nodes import ostler in-process; importability by the interpreter that runs
+# them is the thing to prove, not presence on PATH.
+requires:
+  - dist: ostler
+    version: ">=0.1.0"
+
 # The `author` workflow turns a high-level feature backlog into coder-ready epics and
 # stories. It is the producer counterpart to the `coder` workflow (the consumer): it emits
 # exactly the artifact contract coder's select-next-story.py + the story-docs skill require —

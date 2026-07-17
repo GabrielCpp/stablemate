@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .conftest import init_repo, run_script, write_record
+from tests.conftest import init_repo, run_script, write_record
 
 
 def test_expand_parity_inventory_excludes_rewrite_entries(tmp_path):

@@ -8,4 +8,4 @@ from __future__ import annotations
 
 __all__ = ["Credential", "Lease"]
 
-from .models import Credential, Lease
+from saddlebag.models import Credential, Lease

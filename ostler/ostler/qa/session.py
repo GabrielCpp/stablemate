@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .manifest import RunManifest
+from ostler.qa.manifest import RunManifest
 
 SESSION_FILE = "qa-session.json"
 RUN_LOG = "qa-run.ndjson"

@@ -31,8 +31,8 @@ import json
 from datetime import datetime
 from typing import Any
 
-from . import state
-from .models import RunTelemetry, WorkflowContainer, WorkflowState
+from groom import state
+from groom.models import RunTelemetry, WorkflowContainer, WorkflowState
 
 # Blocked first, then active, then quiet — used for both tree and inbox order.
 STATE_ORDER = {

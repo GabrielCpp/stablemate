@@ -11,13 +11,9 @@ Run directly (no pytest required):
 
 import importlib
 import os
-import sys
 import tempfile
-import types
 from contextlib import contextmanager
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # `workhorse/__init__.py` re-exports the main() *function*, so `from workhorse import
 # main` would bind the function, not the module. Import the module explicitly (the
@@ -91,89 +87,9 @@ def test_explicit_path_bypasses_layers():
     print("ok: an explicit path bypasses the layers")
 
 
-@contextmanager
-def wheel_installed_at(path: Path | None):
-    """Pin the optional `from stablemate_library import base_dir` branch.
-
-    With a path, the import resolves to a fake module whose ``base_dir()`` returns it;
-    with None, the import raises ImportError — a None entry in ``sys.modules`` is how
-    Python signals a failed import. This makes the wheel-present / wheel-absent cases
-    deterministic regardless of what is actually installed in the test venv."""
-    saved = sys.modules.get("stablemate_library")
-    if path is None:
-        sys.modules["stablemate_library"] = None  # type: ignore[assignment]
-    else:
-        module = types.ModuleType("stablemate_library")
-        module.base_dir = lambda: path  # type: ignore[attr-defined]
-        sys.modules["stablemate_library"] = module
-    try:
-        yield
-    finally:
-        if saved is None:
-            sys.modules.pop("stablemate_library", None)
-        else:
-            sys.modules["stablemate_library"] = saved
-
-
-@contextmanager
-def config_values(values: dict[str, str]):
-    """Back ``get_config_value`` with a dict and clear the base-dir env override."""
-    original = main.get_config_value
-    main.get_config_value = lambda key: values.get(key)
-    os.environ.pop("STABLEMATE_BASE_DIR", None)
-    try:
-        yield
-    finally:
-        main.get_config_value = original
-        os.environ.pop("STABLEMATE_BASE_DIR", None)
-
-
-def _make_base(root: Path) -> Path:
-    (root / "workflows").mkdir(parents=True)
-    return root
-
-
-def test_base_library_dir_resolution_order():
-    """`$STABLEMATE_BASE_DIR` > config `base_dir` > wheel import > `stablemate_dir` checkout.
-
-    This is the path that makes the base reachable from an isolated `pipx install
-    workhorse-agent`, which cannot import a separately-installed wheel."""
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        env_base = _make_base(root / "env")
-        cfg_base = _make_base(root / "cfg")
-        wheel_base = _make_base(root / "wheel")
-        checkout = root / "checkout"
-        derived = checkout / "base-library" / "stablemate_library"
-        (derived / "workflows").mkdir(parents=True)
-
-        # 4. the checkout derivation is the lowest-precedence real source
-        with config_values({"stablemate_dir": str(checkout)}), wheel_installed_at(None):
-            assert main._base_library_dir() == derived.resolve()
-
-        # 3. an importable wheel outranks the checkout
-        with config_values({"stablemate_dir": str(checkout)}), wheel_installed_at(wheel_base):
-            assert main._base_library_dir() == wheel_base
-
-        # 2. a configured base_dir outranks the wheel
-        with config_values({"base_dir": str(cfg_base)}), wheel_installed_at(wheel_base):
-            assert main._base_library_dir() == cfg_base.resolve()
-
-        # 1. the env var outranks everything
-        with config_values({"base_dir": str(cfg_base)}), wheel_installed_at(wheel_base):
-            os.environ["STABLEMATE_BASE_DIR"] = str(env_base)
-            assert main._base_library_dir() == env_base.resolve()
-
-        # an invalid override is skipped, not raised on — it falls through to the wheel
-        with config_values({}), wheel_installed_at(wheel_base):
-            os.environ["STABLEMATE_BASE_DIR"] = str(root / "does-not-exist")
-            assert main._base_library_dir() == wheel_base
-
-        # nothing configured and no wheel -> None (overlay-only, exactly as before)
-        with config_values({}), wheel_installed_at(None):
-            assert main._base_library_dir() is None
-    print("ok: _base_library_dir resolution order (env > config > wheel > checkout)")
-
+# Base-library resolution order moved to stablemate_core; its test lives in
+# core/tests/test_discovery.py. What remains here is workhorse's own concern:
+# how the overlay and base LAYERS stack for a bare workflow name.
 
 def _expect_exit(spec: str) -> int:
     try:
@@ -203,7 +119,6 @@ if __name__ == "__main__":
     test_overlay_shadows_base()
     test_base_fills_gaps_under_an_overlay()
     test_explicit_path_bypasses_layers()
-    test_base_library_dir_resolution_order()
     test_no_layers_at_all_exits()
     test_name_missing_from_every_layer_exits()
     print("\nall library-layer tests passed")

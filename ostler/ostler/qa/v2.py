@@ -8,9 +8,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
-from .plan import PlanDocument, check_runtime_requirements
-from .session import QaSession
+from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
+from ostler.qa.plan import PlanDocument, check_runtime_requirements
+from ostler.qa.session import QaSession
 
 
 def run_plan(

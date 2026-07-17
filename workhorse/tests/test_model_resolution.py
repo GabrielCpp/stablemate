@@ -13,7 +13,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from unittest.mock import patch
 
-from workhorse.config import resolve_backend_default, resolve_power
+from stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.runner.agent import _resolve_power_settings
 
 

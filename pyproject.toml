@@ -7,14 +7,18 @@
 #                                       workhorse operator gates)
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
-#   - base-library/ -> stablemate-library (the base library layer: workflows,
-#                                       scaffolds and the stablemate/* skills,
-#                                       shipped as a wheel)
+#   - core/       -> stablemate-core    (shared plumbing: the home config, base-library
+#                                       discovery, the base-library cache)
 #
-# Library content resolves across two layers: the base (stablemate-library, above)
-# and an optional private overlay that shadows it, pointed at with
-# `farrier config set-library <path>`. The base depends on the tools; the tools
-# discover the base with an optional import and never depend back on it.
+# base-library/ is NOT a package and NOT a workspace member: it is the base library
+# itself — plain data (library/, scaffolds/, workflows/) that the tools locate on disk
+# or fetch from git into ~/.cache/stablemate. Nothing imports it.
+#
+# Library content resolves across two layers: the base (base-library/, above) and an
+# optional private overlay that shadows it, pointed at with
+# `farrier config set-library <path>`. The base is data with nothing to import, so no
+# dependency runs in either direction — which is what lets content version on its own
+# clock. Each workflow.yaml declares the tools it needs in a `requires:` block instead.
 #
 # This root is the workspace anchor and a member (per uv's "every workspace needs
 # a root, which is also a workspace member"). It declares [project] but NO
@@ -29,7 +33,7 @@ description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom 
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["workhorse", "farrier", "ostler", "groom", "saddlebag", "base-library"]
+members = ["core", "workhorse", "farrier", "ostler", "groom", "saddlebag"]
 
 [dependency-groups]
 dev = [
@@ -49,3 +53,19 @@ dev = [
     "opentelemetry-sdk>=1.25",
     "opentelemetry-exporter-otlp-proto-http>=1.25",
 ]
+
+# One ruleset for every subproject — ruff is run from this root (`ruff check .`),
+# so member packages deliberately carry no [tool.ruff] of their own.
+[tool.ruff.lint]
+# `extend-select` so ruff's defaults (E4/E7/E9/F) stay on.
+extend-select = [
+    "TID252",   # relative-imports
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Every import names its package from the root: `from ostler.model import Graph`,
+# never `from .model import Graph`. "all" also bans the single-dot sibling form,
+# which the default ("parents") permits. A relative import only resolves when the
+# module is imported as part of its package, and it hides which package a name
+# comes from — see the python-cli skill.
+ban-relative-imports = "all"

@@ -18,6 +18,9 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  # The shared config file, base-library discovery and cache. Depends on nothing
+  # here and must not: tools -> core, never back.
+  "stablemate-core>=0.1.0",
   "jinja2>=3.1",
   "pyyaml>=6.0",
   "pydantic>=2.0",
@@ -25,6 +28,10 @@ dependencies = [
   "gitpython>=3.1",
   "PyGithub>=2.0",
   "platformdirs>=4.0",
+  # Version comparison for a workflow's `requires:` preflight (requirements.py).
+  # Ambient in most environments via pip/pytest, which is exactly why it needs
+  # declaring — an undeclared import works until it meets a clean venv.
+  "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +54,9 @@ Issues = "https://github.com/GabrielCpp/stablemate/issues"
 
 [project.scripts]
 workhorse = "workhorse:main"
+
+[tool.uv.sources]
+stablemate-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

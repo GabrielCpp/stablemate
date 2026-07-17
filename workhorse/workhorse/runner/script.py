@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..graph.nodes import ScriptNode
-from ..graph.context import WorkflowContext
-from ..templates import render_string
+from workhorse.graph.nodes import ScriptNode
+from workhorse.graph.context import WorkflowContext
+from workhorse.templates import render_string
 
 
 class ScriptExitError(Exception):

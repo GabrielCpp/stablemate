@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .conftest import init_repo, run_script, write_inventory, write_record, write_rules
+from tests.conftest import init_repo, run_script, write_inventory, write_record, write_rules
 
 INV = "docs/survey/inventory.json"
 FINDINGS = "docs/survey/findings"

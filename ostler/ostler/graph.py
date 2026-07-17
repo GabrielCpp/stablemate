@@ -11,8 +11,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .links import LinkResolver
-from .model import Graph, UINode
+from ostler.links import LinkResolver
+from ostler.model import Graph, UINode
 
 
 def _rel(path: Path, root: Path) -> str:

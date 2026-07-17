@@ -1,4 +1,17 @@
 name: epic-coder
+
+# Only what this workflow uses DIRECTLY. Notably absent: `git` (reached through
+# workhorse's own scriptutil helpers, so it's the engine's dependency, not ours) and
+# `go`/language toolchains (the target repo's business — coder is repo-agnostic).
+requires:
+  - dist: ostler
+    version: ">=0.1.0"
+  # run-lint.py probes `make -n lint`, catching OSError -> lint is silently SKIPPED
+  # when make is absent. Optional so it warns rather than blocks: a vanished lint
+  # gate is something you want told about before an unattended run, not after.
+  - cmd: make
+    optional: true
+
 # Epic-coder is a superset of story-coder. It walks the epic queue
 # (docs/epics/index.md, the ostler-managed OKF index) and runs every story to completion
 # in dependency order, reusing the same per-story stages (plan -> review -> implement ->

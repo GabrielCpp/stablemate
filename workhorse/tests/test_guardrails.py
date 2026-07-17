@@ -3,12 +3,8 @@
 Test script for verifying guardrail improvements in the agent worker.
 """
 
-import sys
 import os
-from pathlib import Path
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+import sys
 
 from workhorse.runner.agent import (
     BackendInvocationError,

@@ -20,8 +20,8 @@ from pathlib import Path
 
 import yaml
 
-from . import markdown, registry
-from .model import Graph, _file_main_section, anchor_of
+from ostler import markdown, registry
+from ostler.model import Graph, _file_main_section, anchor_of
 
 # Frontmatter keys emitted first, in this order; the rest follow in their original order.
 FRONTMATTER_ORDER = ("type", "slug", "surface", "title", "status", "id", "area", "route")

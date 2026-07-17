@@ -10,9 +10,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from . import crud, ids, markdown, registry
-from .dynamic_registry import TemplateKind
-from .model import Graph
+from ostler import crud, ids, markdown, registry
+from ostler.dynamic_registry import TemplateKind
+from ostler.model import Graph
 
 
 def _kind_by_name(graph: Graph, kind_name: str) -> TemplateKind | None:

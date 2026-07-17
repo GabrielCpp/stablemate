@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .geometry import BBox
+from ostler.vet.geometry import BBox
 
 # Computed roles (explicit `role="..."` or the implicit HTML→ARIA mapping — landmarks plus
 # the common element roles an accessibility tree would compute) `_WALK_JS` resolves per

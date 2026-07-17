@@ -38,7 +38,7 @@ from inotify_simple import INotify, flags
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
-from .gates import AWAITING, extract_question, status_of
+from groom.gates import AWAITING, extract_question, status_of
 
 WORKSPACE_DIR = Path(os.environ.get("GROOM_WORKSPACE_DIR", "/workspace"))
 RUNS_DIR = Path(os.environ.get("GROOM_RUNS_DIR", "/runs"))

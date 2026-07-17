@@ -21,8 +21,8 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .runner.backends import AgentBackend
-    from .runner.script import ScriptRunner
+    from workhorse.runner.backends import AgentBackend
+    from workhorse.runner.script import ScriptRunner
 
 
 def _int(environ: Mapping[str, str], key: str, default: int) -> int:
@@ -146,14 +146,14 @@ class RunConfig:
         """Resolve the backend for this run via ``backend_factory`` or the default."""
         if self.backend_factory is not None:
             return self.backend_factory(cli)
-        from .runner.backends import get_backend
+        from workhorse.runner.backends import get_backend
 
         return get_backend()
 
     def get_script_runner(self) -> ScriptRunner:
         if self.script_runner is not None:
             return self.script_runner
-        from .runner.script import SubprocessScriptRunner
+        from workhorse.runner.script import SubprocessScriptRunner
 
         return SubprocessScriptRunner()
 

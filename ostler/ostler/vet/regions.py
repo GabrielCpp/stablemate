@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, TypeAdapter
 
-from .cdp import ScannedElement
-from .geometry import BBox
+from ostler.vet.cdp import ScannedElement
+from ostler.vet.geometry import BBox
 
 
 class RegionBox(BaseModel):

@@ -6,7 +6,7 @@ carry their contract as data — scaffolded at write time, vetted at the produce
 never discovered broken stages later.
 """
 
-from .kinds import KINDS, ArtifactKind, get_kind
-from .run import list_kinds, scaffold, vet
+from ostler.artifact.kinds import KINDS, ArtifactKind, get_kind
+from ostler.artifact.run import list_kinds, scaffold, vet
 
 __all__ = ["KINDS", "ArtifactKind", "get_kind", "list_kinds", "scaffold", "vet"]

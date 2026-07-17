@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import otel
+from workhorse import otel
 
 
 class ArtifactWriter:

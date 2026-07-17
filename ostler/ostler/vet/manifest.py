@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from .geometry import BBox
+from ostler.vet.geometry import BBox
 
 
 class DomElement(BaseModel):

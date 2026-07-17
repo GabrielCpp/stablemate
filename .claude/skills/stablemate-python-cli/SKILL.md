@@ -20,6 +20,68 @@ metadata:
 - Full type hints on all public functions and class fields.
 - No `*` imports — explicit imports only.
 
+## Imports — absolute from the package root, always
+
+Every import names its package from the root. Relative imports are not accepted,
+including the single-dot sibling form.
+
+```python
+# Yes — the reader sees which package the name lives in, and grep finds it.
+from workhorse.requirements import Requirement
+from workhorse.graph import nodes
+
+# No — both are relative.
+from ..requirements import Requirement
+from .model import Graph
+```
+
+A relative import only resolves when the module is imported as part of its package,
+so it breaks the moment the file is run directly. It also hides provenance: `.model`
+tells the reader nothing about where the code lives, and a rename can't be found by
+searching for the package name.
+
+## `sys.path` manipulation is prohibited
+
+Never write this, in source or in tests:
+
+```python
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # prohibited
+sys.path.append(...)                                            # prohibited
+```
+
+An unresolved import is a **packaging** problem and gets a packaging fix — add the
+package as a workspace member, or install it into the venv — never path surgery at
+import time. `sys.path` edits are order-dependent global state: they work in the one
+file that does them and leave every other entry point broken.
+
+## uv is the package manager
+
+Dependencies and the package itself resolve through **uv**, not ad hoc paths.
+
+```bash
+uv sync                    # install the workspace + dev group into .venv
+uv add httpx               # add a dependency (edits pyproject.toml + uv.lock)
+uv run pytest              # run inside the synced environment
+```
+
+- Declare dependencies in `pyproject.toml`; let `uv.lock` pin them. Never
+  `pip install` into a uv-managed venv — the next `uv sync` reverts it.
+- Local packages that import each other are **workspace members**
+  (`[tool.uv.workspace] members = [...]`), which makes them importable by their real
+  package name everywhere.
+- Tests import the package exactly like any consumer does — `from workhorse.requirements
+  import Requirement`. `uv sync` installs the workspace, so a test file needs no
+  path setup at all.
+
+### The one exception: scripts that run outside a uv project
+
+A script the workflow runner executes standalone (e.g. a workhorse workflow script)
+has no package to import from. It gets **no** `sys.path` insert — it must be a single
+**monolithic file**: stdlib imports only, no local imports, everything it needs inlined.
+
+If such a script has grown past what one file can hold, that is the signal to make it a
+real package with a console entry point, not to reach for `sys.path`.
+
 ## Entry point pattern
 
 ```python

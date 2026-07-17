@@ -6,7 +6,7 @@ are respected. All returned paths are relative to the repo root.
 
 from __future__ import annotations
 
-from .model import Graph
+from ostler.model import Graph
 
 
 def resolve_spec(graph: Graph, slug: str) -> str:

@@ -44,7 +44,7 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopb
 
     import uvicorn
 
-    from .app import create_app
+    from groom.app import create_app
 
     # uvicorn traps SIGINT/SIGTERM itself, but with the dashboard's persistent
     # /ws websocket held open its graceful shutdown otherwise blocks waiting for
@@ -102,7 +102,7 @@ def sidecar_main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    from . import sidecar
+    from groom import sidecar
 
     if args.query:
         import json
