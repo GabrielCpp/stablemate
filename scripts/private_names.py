@@ -13,8 +13,9 @@ never part of a commit. A maintainer with the overlay drops the names in one of
 them and gets the guard; a public contributor has neither and the guard is inert
 (it cannot enforce a list nobody gave it).
 
-Consumers: ``.githooks/pre-commit`` (blocks a leak at commit time) and
-``base-library/tests/test_base_stands_alone.py`` (blocks one in the shipped base).
+Consumers: ``.githooks/pre-commit`` (blocks a leak at commit time, in staged changes
+only) and ``scripts/check_public.py`` (the whole-tree sweep the hook cannot be — it
+catches anything committed before the hook existed, or with ``--no-verify``).
 """
 
 from __future__ import annotations

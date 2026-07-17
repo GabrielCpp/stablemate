@@ -18,51 +18,79 @@ hooks: ## Install the git hooks (blocks private overlay names from this public r
 	@echo "\$$GIT_DIR/private-names (both untracked); with neither, the hook is a no-op."
 
 .PHONY: test
-test: ## Run the packages' test suites
+test: ## Run the packages' test suites, the workflow suites, and the public/private guard
+	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
 	$(MAKE) -C farrier test
-	# Guards the public/private split: the base library must resolve with no
-	# private overlay configured. Without this, coupling creeps back invisibly —
-	# it keeps working on a machine where the overlay shadows everything.
-	$(MAKE) -C base-library test
+	$(MAKE) test-workflows
+	$(MAKE) check-public
+
+.PHONY: test-workflows
+test-workflows: ## Run each workflow's own test suite (the base library is data; its workflows are tested)
+	# One pytest per workflow, from inside the workflow dir, because each owns its
+	# pytest.ini (coder's sets `-n auto`) and a config only applies from its own
+	# directory. Collecting them together would also collide: author/ and coder/ ship
+	# same-named test modules, which pytest cannot import side by side.
+	@for d in base-library/workflows/*/; do \
+		[ -d "$$d/tests" ] || continue; \
+		echo ">> $$d"; \
+		( cd "$$d" && uv run pytest tests -q ) || exit 1; \
+	done
+
+.PHONY: check-public
+check-public: ## Guard the public/private split (no private names; the base stands alone)
+	# Two silent failure modes, both invisible on a machine where the private overlay
+	# is configured and shadows everything: a private name reaching this public repo,
+	# and a base skill/workflow quietly depending on the overlay.
+	uv run python scripts/check_public.py
 
 .PHONY: build
-build: ## Build sdists + wheels for both packages (into each package's dist/)
+build: ## Build sdists + wheels (into each package's dist/)
+	$(MAKE) -C core build
 	$(MAKE) -C workhorse build
 	$(MAKE) -C farrier build
 
 .PHONY: publish-test
 publish-test: ## Publish both packages to TestPyPI
+	$(MAKE) -C core publish-test
 	$(MAKE) -C workhorse publish-test
 	$(MAKE) -C farrier publish-test
 
 .PHONY: publish
-publish: ## Publish both packages to PyPI
+publish: ## Publish to PyPI. core goes FIRST — workhorse and farrier depend on it
+	$(MAKE) -C core publish
 	$(MAKE) -C workhorse publish
 	$(MAKE) -C farrier publish
 
 .PHONY: version
 version: ## Print both package versions
+	@$(MAKE) -s -C core version
 	@$(MAKE) -s -C workhorse version
 	@$(MAKE) -s -C farrier version
 
 .PHONY: next-version
 next-version: ## Print the next inferred version for both packages (no changes)
+	@$(MAKE) -s -C core next-version
 	@$(MAKE) -s -C workhorse next-version
 	@$(MAKE) -s -C farrier next-version
 
 .PHONY: bump
 bump: ## Stamp inferred next versions into both pyprojects (no commit)
+	@$(MAKE) -s -C core bump
 	@$(MAKE) -s -C workhorse bump
 	@$(MAKE) -s -C farrier bump
 
 .PHONY: release
-release: ## Release BOTH packages: bump from history, build, publish, commit, tag, push (DRY_RUN=1, …)
+release: ## Release: bump from history, build, publish, commit, tag, push (DRY_RUN=1, …)
+	# core leads: workhorse and farrier declare stablemate-core, so releasing them
+	# against an unpublished core produces installs that cannot resolve.
+	$(MAKE) -C core release
 	$(MAKE) -C workhorse release
 	$(MAKE) -C farrier release
 
 .PHONY: release-test
 release-test: ## Release both packages to TestPyPI
+	$(MAKE) -C core release-test
 	$(MAKE) -C workhorse release-test
 	$(MAKE) -C farrier release-test
 

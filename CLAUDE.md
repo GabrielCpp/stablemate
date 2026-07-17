@@ -26,8 +26,18 @@ make hooks    # once per clone: installs .githooks/pre-commit
 ```
 
 The hook blocks any commit whose staged paths or added lines carry a configured name.
-With no list configured (a public contributor) it is a no-op. The same resolver backs
-`base-library/tests/test_base_stands_alone.py`, which keeps the shipped base clean.
+With no list configured (a public contributor) it is a no-op.
+
+The same resolver backs `scripts/check_public.py` — the whole-tree sweep the hook cannot
+be, since the hook only ever sees staged changes. It scans every **tracked** file (path
+and content) and also asserts the base library stands alone, i.e. that no base skill or
+workflow depends on the private overlay. Both failure modes are invisible on a machine
+where the overlay is configured and shadows everything, which is why they need a check
+rather than attention.
+
+```bash
+make check-public    # also runs as part of `make test`
+```
 
 ## Python linting (load-bearing)
 
