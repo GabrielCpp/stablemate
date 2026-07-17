@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .kinds import KINDS, get_kind
+from ostler.artifact.kinds import KINDS, get_kind
 
 
 @dataclass

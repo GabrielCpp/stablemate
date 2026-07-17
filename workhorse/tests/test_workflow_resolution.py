@@ -27,12 +27,12 @@ def test_library_dir_from_env_override():
 
 def test_library_dir_from_workhorse_config():
     # library_dir falls back to workhorse's own config.toml (resolved via config_path();
-    # WORKHORSE_CONFIG points it at a temp file here) when the env override is unset.
+    # STABLEMATE_CONFIG points it at a temp file here) when the env override is unset.
     with tempfile.TemporaryDirectory() as d:
         cfg = Path(d) / "config.toml"
         cfg.write_text('library_dir = "/srv/agents"\n')
         env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        env["WORKHORSE_CONFIG"] = str(cfg)
+        env["STABLEMATE_CONFIG"] = str(cfg)
         with patch.dict(os.environ, env, clear=True):
             assert m._resolve_library_dir() == Path("/srv/agents")
 
@@ -43,7 +43,7 @@ def test_library_dir_none_when_unconfigured_and_no_base():
     # Layered resolution itself is covered in test_library_layers.py.
     with tempfile.TemporaryDirectory() as home:  # no config.toml inside
         env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        env["WORKHORSE_CONFIG"] = str(Path(home) / "config.toml")
+        env["STABLEMATE_CONFIG"] = str(Path(home) / "config.toml")
         with patch.dict(os.environ, env, clear=True), patch.object(
             m, "_base_library_dir", lambda: None
         ):

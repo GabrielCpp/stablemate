@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 
-from .models import RunTelemetry, WorkflowContainer
+from groom.models import RunTelemetry, WorkflowContainer
 
 WORKFLOWS: dict[str, WorkflowContainer] = {}
 LOG: deque[dict] = deque(maxlen=200)

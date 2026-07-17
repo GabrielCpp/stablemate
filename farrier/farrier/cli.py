@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from farrier import layers as _layers
-from farrier.config import (
-    CONFIG_PATH,
+from stablemate_core.config import (
+    config_path,
     read_config,
     write_base_dir,
     write_library_dir,
@@ -114,7 +114,7 @@ def _run_config(args: argparse.Namespace) -> int:
         if not is_library_dir(root):
             raise SystemExit(
                 f"error: {root} is not a usable base library directory — it must contain "
-                "library/ or workflows/ (the stablemate_library payload)."
+                "library/ or workflows/."
             )
         write_base_dir(root)
         print(f"base_dir={root}")
@@ -125,7 +125,7 @@ def _run_config(args: argparse.Namespace) -> int:
     if args.key:
         value = cfg.get(args.key)
         if value is None:
-            raise SystemExit(f"error: '{args.key}' is not set in {CONFIG_PATH}")
+            raise SystemExit(f"error: '{args.key}' is not set in {config_path()}")
         print(value)
     else:
         for key, value in cfg.items():
@@ -360,7 +360,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "the stablemate-library wheel isn't importable)",
     )
     set_base.add_argument(
-        "path", type=Path, help="Path to the base library (the stablemate_library payload dir)"
+        "path", type=Path, help="Path to the base library content directory"
     )
     show_p = config_sub.add_parser(
         "show", help="Print all config keys as key=value lines, or a single bare value"

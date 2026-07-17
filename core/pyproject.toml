@@ -1,0 +1,46 @@
+[project]
+name = "stablemate-core"
+version = "0.1.0"
+description = "Shared plumbing for the stablemate tools: the home config, base-library discovery, and the base-library cache."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gabriel Côté" }]
+keywords = ["agent", "workflows", "stablemate"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+]
+
+# Deliberately tiny. This package exists because workhorse and farrier must AGREE about
+# things they share at runtime — one config file, one cache directory, one base-library
+# resolution order — and they cannot import each other (they are independent tools). It
+# was duplicated code until the duplication caused a real bug: two hand-rolled TOML
+# writers, one of which stringified nested tables and destroyed the other tool's
+# [power.*] settings.
+#
+# It depends on NOTHING in this workspace and must stay that way: workhorse -> core and
+# farrier -> core, never back. It knows no workflow's vocabulary, no node types, and no
+# library content — only where files live and how they are read.
+dependencies = [
+  "platformdirs>=4.0",
+  # Writing the shared config.toml (tomllib, stdlib, only reads).
+  "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/GabrielCpp/stablemate"
+Repository = "https://github.com/GabrielCpp/stablemate"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["stablemate_core"]

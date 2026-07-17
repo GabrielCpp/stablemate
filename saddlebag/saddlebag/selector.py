@@ -17,7 +17,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from .models import Credential, Requirement
+from saddlebag.models import Credential, Requirement
 
 logger = logging.getLogger(__name__)
 

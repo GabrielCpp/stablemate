@@ -13,18 +13,8 @@ Commands:
   ostler qa validate <plan-file>
 """
 
-from .run import (
-    QaOutcome,
-    cmd_assert,
-    cmd_report,
-    cmd_replay,
-    cmd_run,
-    cmd_start,
-    cmd_step,
-    cmd_stop,
-    cmd_validate,
-)
-from .context import build_context, render_context, validate_context, write_context
+from ostler.qa.run import QaOutcome, cmd_assert, cmd_report, cmd_replay, cmd_run, cmd_start, cmd_step, cmd_stop, cmd_validate
+from ostler.qa.context import build_context, render_context, validate_context, write_context
 
 __all__ = [
     "QaOutcome",

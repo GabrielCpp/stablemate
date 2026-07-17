@@ -1,7 +1,7 @@
 """validate-record.py — the hard per-record validator."""
 from __future__ import annotations
 
-from .conftest import init_repo, run_script, write_record
+from tests.conftest import init_repo, run_script, write_record
 
 FINDINGS = "docs/survey/findings"
 

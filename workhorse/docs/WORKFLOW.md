@@ -18,6 +18,11 @@ start: first             # REQUIRED — id of the entry node
 vars:                    # optional — initial context (CLI --params overrides on fresh start)
   subject: "the topic"
   max_retries: 3
+requires:                # optional — tools this workflow uses directly (preflighted)
+  - dist: ostler
+    version: ">=0.1.0"
+env:                     # optional — env vars injected into every script node
+  CODER_WORKSPACE: "{{ workspace_file }}"
 nodes:                   # REQUIRED — the list of nodes (each needs a unique id + type)
   - id: first
     type: agent
@@ -29,13 +34,58 @@ nodes:                   # REQUIRED — the list of nodes (each needs a unique i
 | `name` | string | no | Run/log name; used in the run directory `<name>-<run-id>`. Defaults to the file stem. |
 | `start` | string | **yes** | Id of the first node. Must exist in `nodes`. |
 | `vars` | mapping | no | Initial context variables. Merged before the first node; `--params` overrides them on a fresh start (not on resume). |
+| `requires` | list | no | Tools the workflow uses directly. Checked before the first node runs — see [1.1](#11-requires--declaring-the-tools-a-workflow-uses). |
+| `env` | mapping | no | Env vars injected into every script node's subprocess (Jinja-rendered; per-node `env` merges on top). |
 | `nodes` | list | **yes** | Node definitions. Every node has a unique `id` and a `type`. |
+| `flows` | mapping | no | Named sub-graphs callable via a `flow` node — see [2.6](#26-flow--invoke-a-named-sub-graph). |
 
 **Validation at load:** `start` must reference a real node, and every `next` /
 branch target must resolve to an existing node, or the workflow is rejected.
 
 Every workflow must contain at least one `terminal` or `fail` node (the only
 node types allowed to have no `next`).
+
+### 1.1 `requires` — declaring the tools a workflow uses
+
+A workflow that shells out to a CLI, or whose scripts import a package, can declare
+it. Workhorse verifies every entry **before the first node runs** and refuses to
+start if a required one is unusable — so a missing tool costs you a message at second
+zero instead of a crash six nodes into an unattended run. This check sits deliberately
+outside the retry → reframe → default ladder: a missing tool is deterministic, so
+retrying cannot help and defaulting past it only moves the failure later.
+
+```yaml
+requires:
+  - dist: ostler          # a Python distribution, importable by the script interpreter
+    version: ">=0.1.0"
+  - cmd: uv               # an executable on PATH
+    version: ">=0.5"
+  - cmd: make
+    optional: true        # warn, never block
+```
+
+| Field | Meaning |
+|-------|---------|
+| `dist` | Python **distribution** name. Verified with `importlib.metadata` in the interpreter that runs script nodes. Mutually exclusive with `cmd`. |
+| `cmd` | Executable name. Verified with `PATH` lookup + a `--version` probe. Mutually exclusive with `dist`. |
+| `version` | Optional [PEP 440](https://peps.python.org/pep-0440/) specifier (`>=1.2`, `>=1.0,<2.0`). Omit to check only for presence. |
+| `optional` | If true, an unmet entry logs a warning instead of blocking the run. Default false. |
+
+**`dist:` and `cmd:` are not interchangeable.** Script nodes run under `sys.executable`
+and import their tools in-process, so presence on `PATH` proves nothing about
+importability: a pipx-isolated install gives a perfectly working `ostler` command whose
+package `import ostler` cannot see. Use `dist:` for anything a script imports. Note the
+distribution name may differ from the import name (`workhorse-agent` vs `workhorse`).
+
+**Declare only what the workflow uses *directly*.** Not a transitive closure, and not
+the target repo's toolchain — workhorse is repo-agnostic, so whether a run needs `go`
+or `npm` depends on the repo it's pointed at, which a workflow cannot know. Tools
+reached through `workhorse.scriptutil` helpers (`git`, for instance) are the engine's
+dependency, not the workflow's.
+
+**Version probing is best-effort.** A tool that is present but whose version can't be
+read or parsed is reported as unverifiable, not missing — blocking there would strand a
+workflow on a tool that is in fact installed.
 
 ---
 

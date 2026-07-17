@@ -20,7 +20,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from .models import AcquiredCredential
+from saddlebag.models import AcquiredCredential
 
 #: Where workhorse scaffolding expects run-scoped artefacts.
 WORKHORSE_DIR = ".workhorse"

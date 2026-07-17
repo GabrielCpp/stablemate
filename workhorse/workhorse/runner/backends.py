@@ -43,7 +43,7 @@ from pathlib import Path
 # Import the module (not its names) so test monkeypatches of e.g.
 # ``agent._run_claude_cli`` are resolved at call time. agent.py imports this
 # module only lazily (inside run_agent/_invoke_claude), so there is no import cycle.
-from . import agent as _agent
+from workhorse.runner import agent as _agent
 
 
 class AgentBackend(ABC):

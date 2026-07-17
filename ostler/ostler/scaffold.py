@@ -20,9 +20,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import crud, markdown, registry
-from .crud import Result
-from .model import Graph
+from ostler import crud, markdown, registry
+from ostler.crud import Result
+from ostler.model import Graph
 
 
 def _bullet_stubs(uitype: registry.UINodeType) -> list[str]:

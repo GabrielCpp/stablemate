@@ -33,17 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import envfile
-from .db import DEFAULT_TTL, Pool, PoolError
-from .models import (
-    KIND_CONFIG,
-    KIND_CREDENTIAL_REF,
-    KIND_PENDING,
-    KIND_SECRET,
-    Environment,
-    parse_cred_ref,
-)
-from .store import SecretStore
+from saddlebag import envfile
+from saddlebag.db import DEFAULT_TTL, Pool, PoolError
+from saddlebag.models import KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Environment, parse_cred_ref
+from saddlebag.store import SecretStore
 
 #: A zero-argument opener, so the store is touched only when an entry needs it.
 StoreOpener = Callable[[], SecretStore]

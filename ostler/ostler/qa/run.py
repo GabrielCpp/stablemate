@@ -16,9 +16,9 @@ from typing import Any
 
 import yaml
 
-from .session import QaSession, RUN_LOG, _expand
-from .plan import load_plan, resolve_spec_dir, validate_v2
-from .v2 import run_plan as run_v2_plan
+from ostler.qa.session import QaSession, RUN_LOG, _expand
+from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
+from ostler.qa.v2 import run_plan as run_v2_plan
 
 
 def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:

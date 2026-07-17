@@ -1,9 +1,11 @@
 """Library discovery and the layer resolution stack.
 
-Where content comes from: locating the base library (env / config / wheel /
-checkout), resolving the overlay, and stacking them highest-precedence first so an
-overlay shadows the base name-for-name. ``LAYERS`` is mutated in place by
-``set_layers`` so every importer of the name sees the current stack.
+Where content comes from: resolving the overlay and stacking it above the base,
+highest-precedence first, so an overlay shadows the base name-for-name. ``LAYERS`` is
+mutated in place by ``set_layers`` so every importer of the name sees the current stack.
+
+Locating the *base* is not farrier's business — it is shared with workhorse and lives in
+``stablemate_core.discovery``. This module only stacks what that returns.
 """
 from __future__ import annotations
 
@@ -11,7 +13,25 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from farrier.config import CONFIG_PATH, read_config, resolve_stablemate_dir
+from stablemate_core.config import config_path, read_config
+from stablemate_core.discovery import BASE_DIR_ENV, base_library_dir, is_library_dir
+
+# Re-exported: these moved to stablemate_core, but `farrier.layers` is where the rest of
+# farrier (and its tests) has always imported them from. Named in __all__ so ruff does
+# not prune them as unused.
+__all__ = [
+    "BASE_DIR_ENV",
+    "BASE_LAYER_NAME",
+    "LAYERS",
+    "Layer",
+    "base_library_dir",
+    "find_in_layers",
+    "is_library_dir",
+    "layer_dirs",
+    "resolve_library_dir",
+    "searched_layers",
+    "set_layers",
+]
 
 
 @dataclass(frozen=True)
@@ -29,75 +49,13 @@ class Layer:
 
 # Library content resolves across an ordered stack of layers, highest precedence
 # first: the overlay (--library / $FARRIER_LIBRARY_DIR / home config), then the base
-# library shipped as the `stablemate-library` wheel. A higher layer shadows a lower
+# library (plain data on disk, or fetched). A higher layer shadows a lower
 # one name-for-name, which is how a private overlay overrides a base skill, pack or
 # workflow without forking it. Populated by ``set_layers()`` in ``main()``; a module
 # global because the rendering helpers below reference it directly.
 LAYERS: list[Layer] = []
 
-BASE_LAYER_NAME = "stablemate-library (base)"
-
-
-# Env var pointing at the base library content on disk. It is the base-layer twin of
-# $FARRIER_LIBRARY_DIR (which points at the overlay), and it exists because the
-# optional import below only resolves when the `stablemate-library` wheel shares
-# farrier's environment. Under pipx — which isolates every app in its own venv —
-# `pipx install farrier` cannot import a separately-installed base, so a path handed
-# in out-of-band is the only way the two find each other. See docs/LAYOUT.md.
-BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
-
-
-def base_library_dir() -> Path | None:
-    """The base library root, or None when it cannot be located.
-
-    Resolution order, highest precedence first:
-
-    1. ``$STABLEMATE_BASE_DIR`` — an explicit on-disk path. This is what makes the
-       base reachable when farrier lives in its own isolated environment
-       (``pipx install farrier``) and so cannot import the wheel.
-    2. The ``base_dir`` key in the home config (``farrier config set-base <path>``) —
-       the persisted form of that same override.
-    3. An *optional* import of the ``stablemate-library`` wheel — the co-located
-       path. ``pip install stablemate-library`` (or
-       ``pipx install stablemate-library --include-deps``) puts the wheel in farrier's
-       own environment, so ``base_dir()`` just resolves with zero configuration.
-    4. Derived from a configured ``stablemate_dir`` checkout
-       (``<checkout>/base-library/stablemate_library``) — a convenience for running
-       farrier against a source tree.
-
-    Discovery, never a declared dependency: the base package depends on farrier (its
-    workflows drive this CLI), so a hard dependency the other way would close a cycle
-    and drag every content edit into a farrier release. With none of the above
-    resolving, farrier behaves exactly as it did before a base existed: overlay-only.
-    A configured-but-invalid override is skipped rather than raised on — the base is
-    additive, and failing soft here keeps an overlay-only setup working.
-    """
-    env = os.environ.get(BASE_DIR_ENV)
-    if env:
-        candidate = Path(env).expanduser()
-        if is_library_dir(candidate):
-            return candidate.resolve()
-
-    configured = read_config().get("base_dir")
-    if configured:
-        candidate = Path(configured).expanduser()
-        if is_library_dir(candidate):
-            return candidate.resolve()
-
-    try:
-        from stablemate_library import base_dir
-    except ImportError:
-        pass
-    else:
-        return base_dir()
-
-    checkout = resolve_stablemate_dir()
-    if checkout is not None:
-        candidate = checkout / "base-library" / "stablemate_library"
-        if is_library_dir(candidate):
-            return candidate.resolve()
-
-    return None
+BASE_LAYER_NAME = "base-library (base)"
 
 
 def set_layers(overlay: Path | None) -> None:
@@ -142,15 +100,6 @@ def searched_layers() -> str:
     return "\n".join(f"  - {layer.name}" for layer in LAYERS)
 
 
-def is_library_dir(path: Path) -> bool:
-    """A usable library root holds content: ``library/`` (skills, prompts) or ``workflows/``.
-
-    ``packs/`` is deliberately *not* required. The base library ships workflows,
-    scaffolds and the stablemate skills with no packs at all — a repo selects from it
-    directly in ``agents.yml`` (``skills: [stablemate/*]``), and packs remain a
-    convenience an overlay may add.
-    """
-    return (path / "library").is_dir() or (path / "workflows").is_dir()
 
 
 def resolve_library_dir(cli_library: Path | None) -> Path | None:
@@ -173,7 +122,7 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
     else:
         configured = read_config().get("library_dir")
         if configured:
-            candidate, source = Path(configured), f"{CONFIG_PATH}"
+            candidate, source = Path(configured), f"{config_path()}"
 
     if candidate is None:
         if base_library_dir() is not None:

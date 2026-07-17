@@ -12,9 +12,9 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from .. import otel
-from ..config import resolve_backend_default, resolve_power
-from ..graph.nodes import AgentNode
+from workhorse import otel
+from stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse.graph.nodes import AgentNode
 
 try:
     from json_repair import repair_json as _repair_json
@@ -22,9 +22,9 @@ except ImportError:  # tolerant parsing degrades to strict-only if the dep is ab
     _repair_json = None
 
 if TYPE_CHECKING:
-    from .backends import AgentBackend
-from ..graph.context import WorkflowContext
-from ..templates import render, render_string
+    from workhorse.runner.backends import AgentBackend
+from workhorse.graph.context import WorkflowContext
+from workhorse.templates import render, render_string
 
 
 # Active subprocess registry — lets the top-level interrupt handler terminate
@@ -655,7 +655,7 @@ def run_agent(
     # resolve the configured one. Used here for the compaction step and the
     # per-backend model default.
     if backend is None:
-        from .backends import get_backend
+        from workhorse.runner.backends import get_backend
         backend = get_backend()
 
     # The node's abstract power tier maps through user config to concrete
@@ -836,7 +836,7 @@ def _invoke_claude(
     resumes the same conversation.
     """
     if backend is None:
-        from .backends import get_backend
+        from workhorse.runner.backends import get_backend
         backend = get_backend()
 
     short_attempt = 0

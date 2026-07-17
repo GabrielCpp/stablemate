@@ -35,8 +35,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import graph as graph_mod
-from .model import Graph
+from ostler import graph as graph_mod
+from ostler.model import Graph
 
 
 def _values(value: Any) -> list[str]:

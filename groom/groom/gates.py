@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import re
 
-from . import docker_io, state
-from .models import AnswerResult
+from groom import docker_io, state
+from groom.models import AnswerResult
 
 AWAITING = "AWAITING_OPERATOR"
 ANSWERED = "ANSWERED"

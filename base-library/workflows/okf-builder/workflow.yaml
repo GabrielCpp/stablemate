@@ -8,6 +8,14 @@ name: okf-builder
 # until the book is complete. Resumable + fail-soft via workhorse's checkpoint + gas tank.
 #
 #   workhorse run okf-builder --params '{"service":"workhorse","source_path":"workhorse"}'
+
+# Script nodes import ostler in-process, so what matters is that it is importable by
+# the interpreter running them — a PATH shim doesn't prove that (a pipx-isolated
+# install gives a working `ostler` command whose package `import ostler` can't see).
+requires:
+  - dist: ostler
+    version: ">=0.1.0"
+
 vars:
   service: "" # which docs/features/<service> to build; "" = the whole docs/features tree
   # Source subtree to inventory. Defaults to `service`, which keeps the common one-repo/one-book

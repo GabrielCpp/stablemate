@@ -7,8 +7,8 @@ workflows ask (stories-covering-seed, surfaces-referenced-by-story).
 
 from __future__ import annotations
 
-from . import crud_generic, registry
-from .model import Graph, UINode
+from ostler import crud_generic, registry
+from ostler.model import Graph, UINode
 
 
 def _story_row(graph: Graph, epic, story) -> dict:

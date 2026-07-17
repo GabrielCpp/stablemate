@@ -29,8 +29,8 @@ from farrier.cli import (
     main,
     mapped_instruction_sources,
 )
-from farrier.config import (
-    CONFIG_PATH,
+from stablemate_core.config import (
+    config_path,
     read_config,
     resolve_stablemate_dir,
     write_base_dir,
@@ -134,7 +134,7 @@ __all__ = [
     "AGENTS_GITIGNORE_BLOCK",
     "BASE_DIR_ENV",
     "BASE_LAYER_NAME",
-    "CONFIG_PATH",
+    "config_path",
     "DEFAULT_AGENTS_DIR",
     "DEFAULT_STABLEMATE_DIR",
     "LAUNCHER_AGENTS_MK",

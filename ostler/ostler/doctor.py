@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import dynamic_registry, freeze, links as links_mod, markdown, registry, schemas
-from .model import Graph, Epic
+from ostler import dynamic_registry, freeze, links as links_mod, markdown, registry, schemas
+from ostler.model import Graph, Epic
 
 
 @dataclass

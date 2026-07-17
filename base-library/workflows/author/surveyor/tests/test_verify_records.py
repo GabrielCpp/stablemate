@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 
-from .conftest import git_repo, init_repo, run_script, write_inventory, write_record
+from tests.conftest import git_repo, init_repo, run_script, write_inventory, write_record
 
 INV = "docs/survey/inventory.json"
 FINDINGS = "docs/survey/findings"

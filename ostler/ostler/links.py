@@ -15,8 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import markdown
-from .model import Graph, anchor_of
+from ostler import markdown
+from ostler.model import Graph, anchor_of
 
 _SKIP_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
 

@@ -20,8 +20,8 @@ from pathlib import Path
 
 import yaml
 
-from . import markdown
-from .model import Graph
+from ostler import markdown
+from ostler.model import Graph
 
 # Story status the gate stamps for a fully-addressed, artifact-verified resolution
 # vs a verdict that reports an unresolved (blocked) finding.

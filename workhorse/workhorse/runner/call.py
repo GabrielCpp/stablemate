@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..builtins import REGISTRY
-from ..graph.context import WorkflowContext
-from ..graph.nodes import CallNode
-from ..templates import render_string
+from workhorse.builtins import REGISTRY
+from workhorse.graph.context import WorkflowContext
+from workhorse.graph.nodes import CallNode
+from workhorse.templates import render_string
 
 
 def run_call(

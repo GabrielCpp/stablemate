@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from .. import markdown, registry
+from ostler import markdown, registry
 
 
 def _dump_fm(fm: dict) -> str:

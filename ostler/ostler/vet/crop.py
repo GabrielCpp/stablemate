@@ -14,7 +14,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from .regions import RegionBox
+from ostler.vet.regions import RegionBox
 
 
 def maybe_crop(screenshot: Path, regions: list[RegionBox]) -> dict[int, bytes]:

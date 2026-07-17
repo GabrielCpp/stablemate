@@ -13,9 +13,9 @@ from pathlib import Path
 
 import yaml
 
-from . import dynamic_registry
-from .crud import Result
-from .dynamic_registry import TemplateKind
+from ostler import dynamic_registry
+from ostler.crud import Result
+from ostler.dynamic_registry import TemplateKind
 
 
 def _find_kind_dict(tmpl: dict, kind_name: str) -> dict | None:

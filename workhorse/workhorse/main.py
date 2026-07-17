@@ -11,28 +11,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import otel
-from .artifacts import ArtifactWriter
-from .config import config_path, get_config_value, load_config, write_config_key
-from .config_run import RunConfig
-from .graph.context import WorkflowContext
-from .graph.loader import load_workflow
-from .graph.nodes import (
-    AgentNode,
-    BranchNode,
-    CallNode,
-    FlowNode,
-    Graph,
-    ScriptNode,
-    TerminalNode,
-)
-from .runner import agent as agent_runner
-from .runner import branch as branch_runner
-from .runner import call as call_runner
-from .runner import script as script_runner
-from .runner.agent import BackendInvocationError
-from .runner.script import ScriptExitError
-from .templates import render_string
+from workhorse import otel
+from workhorse.artifacts import ArtifactWriter
+from stablemate_core import base_cache
+from stablemate_core.base_cache import BASE_REPO_URL, ensure_cached_base
+from stablemate_core.discovery import base_library_dir as _base_library_dir
+from stablemate_core.discovery import is_library_dir as _is_base_library_dir
+from stablemate_core.config import config_path, get_config_value, load_config, write_config_key
+from workhorse.config_run import RunConfig
+from workhorse.graph.context import WorkflowContext
+from workhorse.graph.loader import load_workflow
+from workhorse.requirements import UnmetRequirementsError, check_requirements
+from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
+from workhorse.runner import agent as agent_runner
+from workhorse.runner import branch as branch_runner
+from workhorse.runner import call as call_runner
+from workhorse.runner import script as script_runner
+from workhorse.runner.agent import BackendInvocationError
+from workhorse.runner.script import ScriptExitError
+from workhorse.templates import render_string
 
 # Canonical skill directory per backend — must match farrier's install layout.
 _BACKEND_SKILL_DIR: dict[str, str] = {
@@ -97,6 +94,17 @@ def run(
 ) -> int:
     cfg = config or RunConfig.from_env()
     graph = load_workflow(workflow_path)
+
+    # Preflight the tools the workflow declares, before any node runs. Deliberately
+    # outside the retry/reframe/default ladder: a missing tool is deterministic, so
+    # retrying can't help and defaulting past it would just move the crash later.
+    problems = check_requirements(graph.requires, graph.name)
+    if problems:
+        detail = "\n".join(f"  - {p}" for p in problems)
+        raise UnmetRequirementsError(
+            f"workflow '{graph.name}' cannot run; unmet requirements:\n{detail}"
+        )
+
     workflow_dir = workflow_path.parent
 
     # `workhorse run <workflow> <flow>`: run a named sub-graph standalone (the re-QA
@@ -961,72 +969,6 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         "from scratch. Mutually exclusive with --resume-run and --resume-latest.",
     )
 
-
-# Env var pointing at the base library content on disk. Twin of $WORKHORSE_LIBRARY_DIR
-# (the overlay) for the base layer. It exists because the optional import below only
-# resolves when the `stablemate-library` wheel shares workhorse's environment — which
-# `pip install workhorse-agent` into one venv gives you, but `pipx install
-# workhorse-agent` (an isolated per-app venv) does not. A path handed in out-of-band
-# is then the only way the isolated CLI finds a separately-installed base.
-BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
-
-
-def _is_base_library_dir(path: Path) -> bool:
-    """A usable base library root holds content: ``library/`` or ``workflows/``.
-
-    The same shape farrier's ``is_library_dir`` checks — kept as a tiny local copy so
-    workhorse need not import farrier just to validate a path."""
-    return (path / "library").is_dir() or (path / "workflows").is_dir()
-
-
-def _base_library_dir() -> Path | None:
-    """The base library root, or None when it cannot be located.
-
-    Resolution order, highest precedence first:
-
-    1. ``$STABLEMATE_BASE_DIR`` — an explicit on-disk path, the way an isolated
-       ``pipx install workhorse-agent`` reaches a separately-installed base it cannot
-       import.
-    2. The ``base_dir`` key in workhorse's config (``workhorse config set-base <path>``)
-       — the persisted form of that override.
-    3. An *optional* import of the ``stablemate-library`` wheel — the co-located path
-       (``pip install stablemate-library`` puts it in workhorse's own environment).
-    4. Derived from a configured ``stablemate_dir`` checkout
-       (``<checkout>/base-library/stablemate_library``), for running against a source tree.
-
-    Discovery, never a declared dependency: the base package depends on workhorse (its
-    workflows are run by this CLI), so a hard dependency the other way would close a
-    cycle. With none of the above resolving, workhorse behaves exactly as before — a
-    workflow name resolves only against a configured library. A configured-but-invalid
-    override is skipped rather than raised on, keeping an overlay-only setup working."""
-    env = os.environ.get(BASE_DIR_ENV)
-    if env:
-        candidate = Path(env).expanduser()
-        if _is_base_library_dir(candidate):
-            return candidate.resolve()
-
-    configured = get_config_value("base_dir")
-    if isinstance(configured, str) and configured:
-        candidate = Path(configured).expanduser()
-        if _is_base_library_dir(candidate):
-            return candidate.resolve()
-
-    try:
-        from stablemate_library import base_dir
-    except ImportError:
-        pass
-    else:
-        return base_dir()
-
-    checkout = get_config_value("stablemate_dir")
-    if isinstance(checkout, str) and checkout:
-        candidate = Path(checkout).expanduser() / "base-library" / "stablemate_library"
-        if _is_base_library_dir(candidate):
-            return candidate.resolve()
-
-    return None
-
-
 def _library_layers() -> list[Path]:
     """The library search path for a bare workflow NAME, highest precedence first.
 
@@ -1080,10 +1022,19 @@ def _resolve_workflow_path(spec: str) -> Path:
 
     layers = _library_layers()
     if not layers:
+        # Nothing configured and nothing cached: this is the one moment the library is
+        # genuinely needed, so it is the one place allowed to fetch it. Populating the
+        # cache makes the retry below resolve; offline, it returns None and we fall
+        # through to the error, exactly as before this layer existed.
+        if ensure_cached_base() is not None:
+            layers = _library_layers()
+    if not layers:
         print(
             f"error: '{spec}' is not a path and no prompt library is available.\n"
-            "Install the base library:\n"
-            "    pip install stablemate-library\n"
+            f"The base library could not be fetched from {BASE_REPO_URL} either — if "
+            "this host is offline or the fetch is disabled "
+            f"(${base_cache.FETCH_ENV}), point workhorse at a base directly:\n"
+            "    workhorse config set-base <path>   (or export STABLEMATE_BASE_DIR)\n"
             "or configure an overlay (`workhorse config set-library <path>` / export "
             "WORKHORSE_LIBRARY_DIR), or pass --workflow as a path to a workflow.yaml.",
             file=sys.stderr,
@@ -1154,7 +1105,7 @@ def _run_run(args: argparse.Namespace) -> None:
 
     # Validate the active backend now so an unknown name fails fast with a clear
     # message instead of mid-run.
-    from .runner.backends import get_backend
+    from workhorse.runner.backends import get_backend
 
     try:
         get_backend()
@@ -1190,8 +1141,8 @@ def _run_run(args: argparse.Namespace) -> None:
     # if absent. The explicit --resume-run/--resume-latest flags above are manual
     # overrides that target a specific dir instead. auto stays on either way — when
     # resume_run_dir is set, run() uses it directly and skips auto resolution.
-    sys.exit(
-        run(
+    try:
+        code = run(
             workflow_path,
             runs_dir,
             resume_run_dir,
@@ -1202,7 +1153,12 @@ def _run_run(args: argparse.Namespace) -> None:
             flow=flow,
             no_cache=getattr(args, "no_cache", False),
         )
-    )
+    except UnmetRequirementsError as e:
+        # Raised before the run dir exists, so there is nothing to finalize — just
+        # report what's missing and how to fix it, rather than a traceback.
+        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(code)
 
 
 def _add_test_args(parser: argparse.ArgumentParser) -> None:
@@ -1296,7 +1252,7 @@ def _parse_pins(raw: list[str] | None) -> dict[str, str]:
 
 
 def _run_dot(args: argparse.Namespace) -> None:
-    from .graph.dot import to_dot
+    from workhorse.graph.dot import to_dot
 
     workflow_path = Path(args.workflow).resolve()
     if not workflow_path.exists():
@@ -1374,7 +1330,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "the stablemate-library wheel isn't importable)",
     )
     set_base_p.add_argument(
-        "path", type=Path, help="Path to the base library (the stablemate_library payload dir)"
+        "path", type=Path, help="Path to the base library content directory"
     )
     # list / get — workhorse-specific power/model config (workhorse's own config.toml)
     config_sub.add_parser(
@@ -1441,7 +1397,7 @@ def _run_config(args: argparse.Namespace) -> None:
         if not _is_base_library_dir(path):
             raise SystemExit(
                 f"error: {path} is not a usable base library directory — it must contain "
-                "library/ or workflows/ (the stablemate_library payload)."
+                "library/ or workflows/."
             )
         write_config_key("base_dir", str(path))
         print(f"base_dir={path}")

@@ -9,26 +9,13 @@ import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from . import envfile, manifest, render
-from .context import infer_project
-from .db import DEFAULT_TTL, Pool, PoolError, default_db_path
-from .models import (
-    FORMATS,
-    KIND_CONFIG,
-    KIND_CREDENTIAL_REF,
-    KIND_PENDING,
-    KIND_SECRET,
-    AcquiredCredential,
-    Credential,
-    Environment,
-    EnvironmentEntry,
-    Requirement,
-    parse_cred_ref,
-    utcnow,
-)
-from .selector import SelectionError, select
-from .store import SecretStore, StoreUnavailableError, open_store
-from .workhorse import write_credential, write_private
+from saddlebag import envfile, manifest, render
+from saddlebag.context import infer_project
+from saddlebag.db import DEFAULT_TTL, Pool, PoolError, default_db_path
+from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, AcquiredCredential, Credential, Environment, EnvironmentEntry, Requirement, parse_cred_ref, utcnow
+from saddlebag.selector import SelectionError, select
+from saddlebag.store import SecretStore, StoreUnavailableError, open_store
+from saddlebag.workhorse import write_credential, write_private
 
 logger = logging.getLogger(__name__)
 

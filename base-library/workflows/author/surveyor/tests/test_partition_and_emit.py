@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .conftest import init_repo, run_script, write_inventory, write_partition
+from tests.conftest import init_repo, run_script, write_inventory, write_partition
 
 INV = "docs/survey/inventory.json"
 PART = "docs/survey/partition.yaml"

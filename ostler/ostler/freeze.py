@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .model import Graph
+from ostler.model import Graph
 
 
 def resolve_content(graph: Graph, ident: str) -> tuple[str, str] | None:

@@ -1,8 +1,8 @@
 """The base library must be usable with NO private overlay configured.
 
-This is the guard that keeps the public/private split honest. The base ships in a
-wheel that anyone can `pip install`; the overlay is a private repo only the maintainer
-has. Nothing in the base may therefore depend on the overlay — not a pack it does not
+This is the guard that keeps the public/private split honest. The base is public data
+anyone can fetch; the overlay is a private repo only the maintainer has. Nothing in the
+base may therefore depend on the overlay — not a pack it does not
 define, not a skill it cannot resolve, and not a client's name in its prose.
 
 Without this test the coupling comes back silently: a base workflow starts referencing
@@ -20,14 +20,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from farrier import config, install
-from stablemate_library import base_dir
+from farrier import install
+from stablemate_core import base_cache, config, discovery
 
 # Every text format the base ships: prose (md), graphs/configs (yml), and the
 # workflow scripts (py/sh). A leak hides just as well in a script comment.
 TEXT_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".sh", ".json", ".toml", ".txt")
 
-BASE = base_dir()
+# The base library is this directory: plain data (library/, scaffolds/, workflows/),
+# with no package to import a path out of.
+BASE = Path(__file__).resolve().parents[1]
 
 # The overlay's project names are deliberately absent from this file. stablemate is
 # public, and a denylist publishes the words it bans just as surely as a leak does.
@@ -48,8 +50,15 @@ def _isolate_from_the_overlay() -> None:
     """Resolve as a public user would: base only, no overlay in env or home config."""
     os.environ.pop("FARRIER_LIBRARY_DIR", None)
     # Redirect the real config module (set_layers/base_library_dir read
-    # config.CONFIG_PATH, not this facade attribute) at an empty temp file.
-    config.CONFIG_PATH = Path(tempfile.mkdtemp()) / "config.toml"
+    # the real config file) at an empty temp file. $STABLEMATE_CONFIG being *set*
+    # also suppresses the legacy per-tool fallback, so this cannot read the
+    # maintainer's actual overlay config.
+    os.environ[config.CONFIG_PATH_ENV] = str(Path(tempfile.mkdtemp()) / "config.toml")
+    # Name THIS base explicitly. With the config blanked there is no other route to one,
+    # and resolution would otherwise fall through to the cache and fetch 16M from GitHub
+    # mid-test — which would also test the wrong library (main's, not this tree's).
+    os.environ[discovery.BASE_DIR_ENV] = str(BASE)
+    os.environ[base_cache.FETCH_ENV] = "0"
     install.set_layers(None)
     assert [layer.name for layer in install.LAYERS] == [install.BASE_LAYER_NAME], (
         "the base library must be the only layer for this test to mean anything"

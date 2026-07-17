@@ -24,15 +24,7 @@ from pathlib import Path
 
 import platformdirs
 
-from .models import (
-    FORMATS,
-    Credential,
-    Environment,
-    EnvironmentEntry,
-    Lease,
-    Requirement,
-    utcnow,
-)
+from saddlebag.models import FORMATS, Credential, Environment, EnvironmentEntry, Lease, Requirement, utcnow
 
 #: Default lease lifetime, in seconds (2 hours).
 DEFAULT_TTL = 7200

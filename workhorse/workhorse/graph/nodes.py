@@ -4,6 +4,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from workhorse.requirements import Requirement
+
 
 class OutputSpec(BaseModel):
     key: str
@@ -177,6 +179,16 @@ class Graph(BaseModel):
     #   env:
     #     CODER_WORKSPACE: "{{ workspace_file }}"
     env: dict[str, str] = Field(default_factory=dict)
+    # Tools this workflow uses DIRECTLY, checked before the first node runs. Not a
+    # transitive closure and not the target repo's toolchain: `make`/`go` belong to
+    # whatever repo a workflow is pointed at, so they can't be declared here.
+    #   requires:
+    #     - dist: ostler          # importable by the script interpreter
+    #       version: ">=0.1.0"
+    #     - cmd: git              # on PATH
+    #     - cmd: groom
+    #       optional: true        # warn, never block
+    requires: list[Requirement] = Field(default_factory=list)
     nodes: dict[str, Node]
     # Named sub-graphs callable via a FlowNode, or runnable standalone
     # (`workhorse run <workflow> <flow>`). Each value is itself a Graph, so flows

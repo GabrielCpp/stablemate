@@ -7,8 +7,8 @@ story (dependencies satisfied, not yet done) in dependency order.
 
 from __future__ import annotations
 
-from . import todo
-from .model import Epic, Graph, Story
+from ostler import todo
+from ostler.model import Epic, Graph, Story
 
 _DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
 

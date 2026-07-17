@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .geometry import iou
-from .manifest import DomElement
-from .regions import RegionBox
+from ostler.vet.geometry import iou
+from ostler.vet.manifest import DomElement
+from ostler.vet.regions import RegionBox
 
 
 class MatchedPair(BaseModel):

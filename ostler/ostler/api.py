@@ -30,18 +30,18 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import backlog as backlog_mod
-from . import coverage as coverage_mod
-from . import crud, doctor
-from . import path as path_mod
-from . import query as query_mod
-from . import select, todo as todo_mod
-from .crud import Result
-from .model import Graph, load
+from ostler import backlog as backlog_mod
+from ostler import coverage as coverage_mod
+from ostler import crud, doctor
+from ostler import path as path_mod
+from ostler import query as query_mod
+from ostler import select, todo as todo_mod
+from ostler.crud import Result
+from ostler.model import Graph, load
 
 if TYPE_CHECKING:
-    from .edit import EditPlan
-    from .qa import QaOutcome
+    from ostler.edit import EditPlan
+    from ostler.qa import QaOutcome
 
 
 class Ostler:
@@ -205,7 +205,7 @@ class Ostler:
                    story_file: str | Path | None = None) -> dict:
         """Build the base/head changed-code→OKF obligation packet and write it into
         ``spec`` (``ostler qa context``); returns the packet."""
-        from .qa import build_context, write_context
+        from ostler.qa import build_context, write_context
 
         packet = build_context(
             self.root, base=base, head=head, source_roots=source_roots or {},
@@ -217,7 +217,7 @@ class Ostler:
     def qa_context_validate(self, *, spec: str | Path) -> list[str]:
         """Validate ``qa-okf-context.json`` in ``spec``; returns problem strings, empty
         if valid (``ostler qa context-validate``)."""
-        from .qa import validate_context
+        from ostler.qa import validate_context
 
         context_file = self._resolve(spec) / "qa-okf-context.json"
         packet = json.loads(context_file.read_text(encoding="utf-8"))
@@ -225,7 +225,7 @@ class Ostler:
 
     def qa_validate(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
         """Validate a ``qa-plan.yml`` without executing it (``ostler qa validate``)."""
-        from .qa import cmd_validate
+        from ostler.qa import cmd_validate
 
         return cmd_validate(Path(plan_file),
                             self._resolve(spec) if spec else None, root=self.root)
@@ -233,7 +233,7 @@ class Ostler:
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
                stop_on_fail: bool = False) -> QaOutcome:
         """Execute a ``qa-plan.yml`` in batch mode (``ostler qa run``)."""
-        from .qa import cmd_run
+        from ostler.qa import cmd_run
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
                        stop_on_fail=stop_on_fail, root=self.root)
@@ -242,7 +242,7 @@ class Ostler:
     def artifact_vet(self, kind: str, spec: str | Path) -> dict:
         """Validate a workflow artifact against its contract; returns the outcome dict
         (``{"kind","path","status",["problems"],["error"]}`` — ``ostler artifact vet``)."""
-        from .artifact import vet
+        from ostler.artifact import vet
 
         return vet(kind, self._resolve(spec), self.root).to_dict()
 
@@ -252,7 +252,7 @@ class Ostler:
         artifacts/assertions the verdict cites (``ostler edit settle-review``). Applies
         the transition when ``write=True``; the returned plan carries ``.error`` and the
         per-finding ledger the caller inspects."""
-        from . import edit as edit_mod
+        from ostler import edit as edit_mod
 
         plan = edit_mod.settle_review(self._fresh(), slug)
         if write and not plan.error:

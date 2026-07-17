@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .crud import Result
-from .model import Graph
+from ostler.crud import Result
+from ostler.model import Graph
 
 _LINE = re.compile(r"^\s*[-*]\s+(?:\[)?([A-Za-z0-9][\w-]*)")
 
@@ -35,7 +35,7 @@ def list_epics(graph: Graph) -> list[str]:
 def _title_of(graph: Graph, name: str) -> str:
     edir = graph.doc_roots["epics"] / name / "epic.md"
     if edir.exists():
-        from . import markdown
+        from ostler import markdown
         fm = markdown.split(edir.read_text(encoding="utf-8")).frontmatter or {}
         return str(fm.get("title") or name)
     return name

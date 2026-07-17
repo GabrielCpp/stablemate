@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import registry
+from ostler import registry
 
 TEMPLATES_FILENAME = "templates.yml"
 

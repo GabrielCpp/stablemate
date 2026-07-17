@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import dynamic_registry, markdown, registry
+from ostler import dynamic_registry, markdown, registry
 
 # Seed statuses that no longer require story coverage.
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS

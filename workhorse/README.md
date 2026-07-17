@@ -94,14 +94,19 @@ workhorse config set-stablemate ~/path/to/stablemate        # optional: sets COD
 context. The overlay library path can also be set via `WORKHORSE_LIBRARY_DIR`.
 
 A named workflow resolves across two layers: the configured overlay (above) and the
-**base library** (the `stablemate-library` wheel) beneath it. workhorse finds the base
-via, in order, `$STABLEMATE_BASE_DIR` → the `base_dir` config key
-(`workhorse config set-base <path>`) → an import of the `stablemate-library` wheel from
-workhorse's own environment → a `stablemate_dir` checkout. The env-var / `set-base`
-routes are what make the base reachable under `pipx`, which isolates each tool in its
-own venv so a separately-installed wheel can't be imported. The monorepo README's
-[Installing](https://github.com/GabrielCpp/stablemate#installing) section covers the
-two supported setups (one shared environment vs. isolated tools + a shared base).
+**base library** beneath it. You do not install the base — it is content, and workhorse
+fetches it into `~/.cache/stablemate` the first time it needs one, then leaves it frozen
+(delete the cache to upgrade). It finds a base via, in order: `$STABLEMATE_BASE_DIR` →
+the `base_dir` config key (`workhorse config set-base <path>`) → an import of the
+`stablemate-library` wheel from workhorse's own environment → a `stablemate_dir`
+checkout → the shared cache. The fetched copy is last, so it never shadows a base you
+chose. See the monorepo README's
+[Installing](https://github.com/GabrielCpp/stablemate#installing) section.
+
+A workflow declares the tools it uses in a `requires:` block, checked before the first
+node runs — see [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md#11-requires--declaring-the-tools-a-workflow-uses).
+Script nodes run under workhorse's own interpreter, so a tool they import must live in
+*that* environment (`pipx inject workhorse-agent ostler`), not merely on `PATH`.
 
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
@@ -241,16 +246,24 @@ workhorse config get power.high.claude       # get one key
 
 #### Config file location
 
-Workhorse stores its own config at a platform-appropriate path (via
+Config lives in **one file shared with farrier**, at a platform-appropriate path (via
 [platformdirs](https://github.com/tox-dev/platformdirs)):
 
 | Platform | Default path |
 |---|---|
-| macOS | `~/Library/Application Support/workhorse/config.toml` |
-| Windows | `%APPDATA%\workhorse\config.toml` |
-| Linux | `~/.config/workhorse/config.toml` |
+| macOS | `~/Library/Application Support/stablemate/config.toml` |
+| Windows | `%APPDATA%\stablemate\config.toml` |
+| Linux | `~/.config/stablemate/config.toml` |
 
-Override the path with `WORKHORSE_CONFIG=/path/to/config.toml`.
+Override the path with `STABLEMATE_CONFIG=/path/to/config.toml` (the older
+`WORKHORSE_CONFIG` is still honored).
+
+It is one file because `library_dir`, `stablemate_dir` and `base_dir` only mean anything
+if every tool agrees on them — with a file per tool, `workhorse config set-base` and
+`farrier config set-base` wrote to different places and could silently disagree. The
+pre-unification per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still
+read when the shared one is absent, and the first write folds them into it, so an
+existing setup keeps working with no migration step.
 
 #### Initial setup
 

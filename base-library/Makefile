@@ -1,4 +1,5 @@
-# stablemate-library — the base library layer (content, not logic).
+# The base library — data, not a package. Nothing here is built or published: the tools
+# read this directory from disk, or clone it from git into ~/.cache/stablemate.
 
 .DEFAULT_GOAL := help
 
@@ -11,6 +12,6 @@ help: ## Show this help
 test: ## Run the standalone test suite (the base must stand alone, with no overlay)
 	@for t in tests/test_*.py; do echo ">> $$t"; uv run python $$t || exit 1; done
 
-.PHONY: build
-build: ## Build the sdist + wheel into dist/
-	uv build --package stablemate-library --out-dir dist
+.PHONY: test-workflows
+test-workflows: ## Run every workflow's own test suite
+	uv run pytest workflows -q

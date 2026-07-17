@@ -20,9 +20,9 @@ from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.static_files import create_static_files_router
 
-from . import alerts, discovery, docker_io, notify, otlp, render, sidecar_hub, state, store
-from .gates import answer_gate
-from .models import GateInfo, WorkflowContainer, WorkflowState
+from groom import alerts, discovery, docker_io, notify, otlp, render, sidecar_hub, state, store
+from groom.gates import answer_gate
+from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 _DASHBOARD_HTML = (Path(__file__).parent / "templates" / "dashboard.html").read_bytes()

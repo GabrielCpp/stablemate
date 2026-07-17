@@ -31,15 +31,7 @@ from typing import Any
 
 import yaml
 
-from .models import (
-    FORMATS,
-    KIND_CONFIG,
-    KIND_CREDENTIAL_REF,
-    KIND_PENDING,
-    Environment,
-    EnvironmentEntry,
-    parse_cred_ref,
-)
+from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, Environment, EnvironmentEntry, parse_cred_ref
 
 
 class ManifestError(ValueError):

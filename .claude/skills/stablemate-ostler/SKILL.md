@@ -1,6 +1,6 @@
 ---
 name: stablemate-ostler
-description: "ostler CLI reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): command interface, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
+description: "ostler reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
 metadata:
   generated_by: farrier
   source: library/skills/stablemate/stablemate-ostler/SKILL.md
@@ -15,11 +15,14 @@ docs (`docs/epics`, `docs/knowledge`, `docs/features`, `docs/specs`) — or when
 `workhorse` workflow that should integrate with the doc graph instead of hand-rolling its own
 JSON state files.
 
-`ostler` is a standalone, repo-agnostic CLI (`pipx install ostler` / `pip install ostler`) that
+`ostler` is a standalone, repo-agnostic tool (`pipx install ostler` / `pip install ostler`) that
 operates relative to the current working directory (`-C/--chdir DIR` to point elsewhere). It is
 **the one tool that reads and writes the graph** — never hand-edit `epic.md`'s `## Seeds`/
 `## Stories` sections or allocate ids yourself; call ostler instead so structure stays consistent
-while agents/humans author the prose around it.
+while agents/humans author the prose around it. Use it two ways: the **CLI** (below) for humans
+and shell, and the **`from ostler import Ostler` Python API** ([Python API](#python-api--from-ostler-import-ostler))
+for `workhorse` workflow scripts — a script commands the graph in-process as a library, never by
+shelling out to the CLI and scraping its JSON.
 
 ## Core model
 
@@ -160,12 +163,63 @@ ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/h
 ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --slug S [--state s] [--iou-threshold 0.5] [--json]
 ```
 
+**QA context and execution control plane**
+```bash
+ostler qa context --base REV [--head REV|WORKTREE] --spec DIR \
+  --source-root SURFACE=PATH [--source-root SURFACE=PATH ...] \
+  [--story-file PATH] --json
+ostler qa context-validate --spec DIR --json
+ostler qa validate DIR/qa-plan.yml --spec DIR --json
+ostler qa run DIR/qa-plan.yml --spec DIR --json
+```
+
+`qa context` writes `qa-okf-context.json` and its Markdown rendering beside the plan.
+Blocking unmapped production changes use a nonzero process exit but still produce JSON;
+workflow adapters must route that as `invalid`, not crash. Plan validation reports
+`passed|invalid`. Execution reports `passed|failed|blocked|invalid` and owns deletion and
+recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`, `run-manifest.json`, and
+evidence. `qa-plan.yml` and static `qa-inputs/` remain outside disposable `qa/`.
+
 **Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `docs/specs/<slug>/`)
 ```bash
 ostler artifact scaffold <kind> --spec DIR [--force]   # write the kind's skeleton into the spec dir
 ostler artifact vet      <kind> --spec DIR [--json]    # validate the artifact against its contract
 ostler artifact list     [--json]                      # show registered artifact kinds
 ```
+
+## Python API — `from ostler import Ostler`
+
+`ostler` ships a library face of the CLI — the analog of GitPython's `Repo` or
+PyGithub's `Github`. **Inside a `workhorse` workflow script, command the graph through
+this, not by shelling out** to the CLI and scraping its JSON (see the
+`stablemate-workhorse-scripting` skill). It is the same functional core the CLI
+dispatches to; methods return plain Python objects (`dict`/`list`/`str`, a `Result`
+with `.ok`/`.entity_id`/`.message`, an `EditPlan`, a `QaOutcome`), never JSON text.
+
+```python
+from ostler import Ostler
+okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None ⇒ cwd
+```
+
+| CLI | facade method |
+| --- | --- |
+| `list --type T [--epic E] [--status S] [--json]` | `okf.list("T", epic=…, status=…) -> list[dict]` |
+| `search Q …` / `query NAME ARG` | `okf.search("Q", …)` / `okf.query("NAME", "ARG")` |
+| `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
+| `todo list` / `backlog list` | `okf.todo() -> list[str]` / `okf.backlog() -> list[dict]` |
+| `doctor [--epic E] --json` | `okf.doctor(epic=…) -> dict` (the report `.as_dict()`) |
+| `path spec S` / `path story E S` / `path branch S` | `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
+| `create epic/story` · `seed add` · `set-status` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(slug, status)` → `Result` |
+| `backlog add/prune` · `todo add/prune/reorder` | `okf.backlog_add/backlog_prune` · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
+| `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
+| `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> dict` |
+| `edit settle-review SLUG --write` | `okf.settle_review(slug, write=True) -> EditPlan` (`.error`, per-finding ledger) |
+
+The loaded graph is a **snapshot**: reads reuse one cached load; a mutation applies
+against a fresh load and invalidates the cache, so the next read sees it (`reload()`
+forces a refresh). A read never returns `None` — an unloadable graph *raises*
+`(OSError, ValueError, RuntimeError)`. QA/artifact/edit methods are lazy-imported, so a
+read-only script never pays for the QA/vet machinery.
 
 ## The coverage model
 

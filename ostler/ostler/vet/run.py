@@ -9,12 +9,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from ..model import Graph
-from . import cdp, crop as crop_mod
-from . import manifest as manifest_mod
-from . import report as report_mod
-from .regions import RegionList, merge
-from .register import match
+from ostler.model import Graph
+from ostler.vet import cdp, crop as crop_mod
+from ostler.vet import manifest as manifest_mod
+from ostler.vet import report as report_mod
+from ostler.vet.regions import RegionList, merge
+from ostler.vet.register import match
 
 
 class VetOutcome(BaseModel):

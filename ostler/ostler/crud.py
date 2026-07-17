@@ -13,8 +13,8 @@ from pathlib import Path
 
 import yaml
 
-from . import ids, markdown, registry
-from .model import Graph
+from ostler import ids, markdown, registry
+from ostler.model import Graph
 
 
 @dataclass
@@ -87,7 +87,7 @@ def delete_epic(graph: Graph, name: str) -> Result:
     todo = graph.doc_roots["epics"] / "index.md"
     removed = ""
     if todo.exists():
-        from . import todo as todo_mod
+        from ostler import todo as todo_mod
         if todo_mod.prune(graph, name).ok:
             removed = " (removed from epics index)"
     return Result(True, f"deleted epic '{name}'{removed}", [edir])

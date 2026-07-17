@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .crud import Result
-from .model import Graph
+from ostler.crud import Result
+from ostler.model import Graph
 
 _ITEM = re.compile(r"^\s*[-*]\s+\[(?P<id>[^\]]+)\]\s*(?P<text>.*)$")
 

@@ -46,9 +46,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config_run import AgentResilience, RunConfig
-from .main import Workhorse
-from .runner.agent import BackendInvocationError
+from workhorse.config_run import AgentResilience, RunConfig
+from workhorse.main import Workhorse
+from workhorse.runner.agent import BackendInvocationError
 
 __all__ = [
     "WorkflowRun",

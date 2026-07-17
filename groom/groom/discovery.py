@@ -16,9 +16,9 @@ import posixpath
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from . import docker_io
-from .gates import AWAITING, extract_question, status_of
-from .models import GateInfo, WorkflowContainer, WorkflowState
+from groom import docker_io
+from groom.gates import AWAITING, extract_question, status_of
+from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
 # Cap on concurrent per-container docker calls during a scan. The work is
 # I/O-bound subprocess (docker inspect + exec), so a small pool collapses total
