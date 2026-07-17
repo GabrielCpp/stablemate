@@ -18,7 +18,11 @@ def test_primary_qa_topology_and_grounding_order() -> None:
     assert nodes["detect_qa_okf"].next == "build_qa_okf_context"
     assert nodes["build_qa_okf_context"].next == "validate_qa_okf_context"
     assert nodes["decide_qa_okf_context"].cases["passed"] == "plan_qa"
-    assert nodes["plan_qa"].next == "validate_qa_plan"
+    # The plan is stamped with its typed specs before it is validated: validate_qa_plan
+    # checks a plan that already carries them, so the stamp cannot come after.
+    assert nodes["plan_qa"].next == "stamp_specs_qa_plan"
+    assert nodes["stamp_specs_qa_plan"].next == "validate_qa_plan"
+    assert nodes["validate_qa_plan"].next == "decide_qa_plan_validation"
     assert nodes["decide_qa_plan_validation"].cases["passed"] == "run_qa_plan"
     assert nodes["decide_qa_plan_validation"].cases["invalid"] == "guard_qa_plan"
     assert nodes["run_qa_plan"].next == "qa_interpret_and_explore"
