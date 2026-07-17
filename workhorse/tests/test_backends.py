@@ -440,6 +440,68 @@ def test_finalize_turn_classifies_failures():
     assert backends._finalize_turn("codex", "n", dict(base), "", False, 0, None) == "x"
 
 
+def test_classify_turn_records_node_to_session_manifest():
+    """A finished turn maps its node to the harness session id in a durable,
+    append-only manifest beside .session_id — so a past node can be traced to its
+    CLI session transcript even after .session_id (one-slot) is overwritten."""
+    import json
+
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    manifest = sidp.parent / "sessions.jsonl"
+
+    # Two successful turns for the SAME node, different sessions (a reframe).
+    assert (
+        agent.classify_turn(
+            "opencode",
+            "investigate",
+            result_text="ok",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            session_id="ses_first",
+            session_id_path=sidp,
+        )
+        == "ok"
+    )
+    assert sidp.read_text() == "ses_first"  # live file still tracks the latest
+    agent.classify_turn(
+        "opencode",
+        "investigate",
+        result_text="ok",
+        diagnostics="",
+        timed_out=False,
+        returncode=0,
+        session_id="ses_second",
+        session_id_path=sidp,
+    )
+    assert sidp.read_text() == "ses_second"
+
+    rows = [json.loads(line) for line in manifest.read_text().splitlines()]
+    assert rows == [
+        {"node": "investigate", "session_id": "ses_first"},
+        {"node": "investigate", "session_id": "ses_second"},
+    ]
+
+
+def test_classify_turn_without_session_writes_no_manifest():
+    """No session id (e.g. aider, which has none) → nothing to map, no file."""
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    assert (
+        agent.classify_turn(
+            "aider",
+            "impl",
+            result_text="done",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            session_id=None,
+            session_id_path=sidp,
+        )
+        == "done"
+    )
+    assert not (sidp.parent / "sessions.jsonl").exists()
+
+
 def test_finalize_turn_non_recoverable_names_each_backend():
     """A non-zero exit whose output is NOT a retryable marker is non-recoverable
     (transient=False, not overflow), and the message names the ACTUAL backend — the

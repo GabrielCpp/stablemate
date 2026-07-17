@@ -41,6 +41,7 @@ Prints JSON captured under the node's ``feedback`` output key:
   {"feedback": {"present": "yes"|"no", "scope": "story"|"epic", "content": "<file text>"}}
 """
 import json
+import logging
 import os
 import re
 import sys
@@ -96,32 +97,45 @@ def present(content: str) -> None:
     sys.exit(0)
 
 
-feedback_path = sys.argv[1] if len(sys.argv) > 1 else ""
-if not feedback_path:
-    # Nothing to poll — proceed (lets the node be wired defensively).
-    absent()
+def main(logger: logging.Logger) -> None:
+    feedback_path = sys.argv[1] if len(sys.argv) > 1 else ""
+    if not feedback_path:
+        # Nothing to poll — proceed (lets the node be wired defensively).
+        logger.info("no feedback_path given — nothing to poll")
+        absent()
 
-root = _find_repo_root()
-# `root / path` yields `path` when it is absolute (pathlib), so both repo-relative
-# and absolute inbox paths work — the test harness passes absolute sandbox paths.
-inbox = root / feedback_path
+    root = _find_repo_root()
+    # `root / path` yields `path` when it is absolute (pathlib), so both repo-relative
+    # and absolute inbox paths work — the test harness passes absolute sandbox paths.
+    inbox = root / feedback_path
 
-if not inbox.exists():
-    absent()
+    if not inbox.exists():
+        logger.info("no inbox file at %s — nothing to poll", inbox)
+        absent()
 
-current = inbox.read_text()
-state = status_of(current)
+    current = inbox.read_text()
+    state = status_of(current)
 
-if state == NEW:
-    inbox.write_text(set_status(current, CONSUMED))
-    present(current)
-
-if state == "":
-    # No STATUS line. Treat real content as NEW (forgiving); ignore whitespace-only.
-    if current.strip():
-        inbox.write_text(f"STATUS: {CONSUMED}\n\n" + current)
+    if state == NEW:
+        inbox.write_text(set_status(current, CONSUMED))
+        logger.info("consumed NEW feedback from %s", inbox)
         present(current)
+
+    if state == "":
+        # No STATUS line. Treat real content as NEW (forgiving); ignore whitespace-only.
+        if current.strip():
+            inbox.write_text(f"STATUS: {CONSUMED}\n\n" + current)
+            logger.info("no STATUS line but %s has content — treating as NEW", inbox)
+            present(current)
+        logger.info("no STATUS line and %s is empty — nothing to do", inbox)
+        absent()
+
+    # CONSUMED (or any other recognized-but-not-NEW state): already handled / nothing new.
+    logger.info("%s is %s — nothing new", inbox, state or "unrecognized")
     absent()
 
-# CONSUMED (or any other recognized-but-not-NEW state): already handled / nothing new.
-absent()
+
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("check_feedback"))

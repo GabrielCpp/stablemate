@@ -34,6 +34,7 @@ Outputs JSON: {"knowledge_ok": "yes"|"no", "knowledge_errors": "<newline-joined>
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -112,21 +113,24 @@ def check_component(where: str, idx: int, comp: object, errors: list[str]) -> No
         )
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     record_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     if not record_rel:
+        logger.warning("no record_path supplied")
         emit(False, ["no record_path supplied"])
         return
 
     root = find_repo_root()
     record_path = (root / record_rel).resolve()
     if not record_path.is_file():
+        logger.warning("knowledge record missing at %s", record_path)
         emit(False, [f"knowledge record missing at {record_path}"])
         return
 
     try:
         record = load_record(record_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("record could not be parsed: %s", exc)
         emit(False, [f"record could not be parsed: {exc}"])
         return
 
@@ -158,8 +162,11 @@ def main() -> None:
             "described and no blocked prerequisite is suspicious; confirm the surface was read"
         )
 
+    logger.info("knowledge record %s: %d error(s)", record_rel, len(errors))
     emit(not errors, errors)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-knowledge"))

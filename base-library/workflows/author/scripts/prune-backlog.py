@@ -25,6 +25,7 @@ Outputs JSON: {"backlog_pruned": {"removed": <n>, "remaining": <n>}}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -76,7 +77,7 @@ def emit(removed: int, remaining: int) -> NoReturn:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     backlog_rel = (
         sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "docs/backlog.md"
     )
@@ -86,6 +87,7 @@ def main() -> None:
     epic = Path(epic_dir_rel).name if epic_dir_rel else ""
 
     if not backlog_path.is_file() or not epic:
+        logger.info("no backlog at %s or no epic given — nothing to prune", backlog_path)
         emit(0, 0)
 
     okf = Ostler(root)
@@ -93,11 +95,13 @@ def main() -> None:
     seed_norms = [normalize(str(s.get("sourceBullet", ""))) for s in seeds]
     seed_norms = [s for s in seed_norms if s]
     if not seed_norms:
+        logger.info("epic '%s' has no seeds with a sourceBullet — nothing to prune", epic)
         emit(0, 0)
 
     try:
         lines = backlog_path.read_text(encoding="utf-8").splitlines(keepends=True)
     except OSError:
+        logger.warning("could not read backlog %s — nothing to prune", backlog_path)
         emit(0, 0)
 
     kept: list[str] = []
@@ -116,10 +120,14 @@ def main() -> None:
         try:
             backlog_path.write_text("".join(kept), encoding="utf-8")
         except OSError:
-            pass  # best-effort: never fail the run over a tidy-up write
+            logger.warning("could not write pruned backlog %s — best-effort, continuing", backlog_path)
 
+    logger.info("pruned %d bullet(s) from %s for epic '%s' (%d remaining)",
+                removed, backlog_rel, epic, remaining_bullets)
     emit(removed, remaining_bullets)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("prune-backlog"))

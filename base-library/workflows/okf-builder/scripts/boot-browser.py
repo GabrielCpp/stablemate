@@ -19,6 +19,7 @@ Outputs JSON: {"browser_ok","cdp_url","browser_pid","browser_pgid","torn_down"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import signal
@@ -53,11 +54,14 @@ def _cdp_ok(cdp_url: str) -> bool:
         return False
 
 
-def _teardown(pgid_arg: str) -> None:
+def _teardown(pgid_arg: str, logger: logging.Logger) -> None:
     try:
         pgid = int(pgid_arg)
     except (TypeError, ValueError):
+        # No pgid: boot adopted a browser it didn't start, so there is nothing to reap.
+        logger.info("teardown skipped — no browser_pgid to kill (nothing this run started)")
         emit(torn_down="skipped")  # nothing we own
+    logger.info("tearing down browser process group %d", pgid)
     try:
         os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError, OSError):
@@ -76,22 +80,29 @@ def _teardown(pgid_arg: str) -> None:
     emit(torn_down="yes")
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--teardown":
-        _teardown(sys.argv[2] if len(sys.argv) > 2 else "")
+        _teardown(sys.argv[2] if len(sys.argv) > 2 else "", logger)
 
     cdp_url = sys.argv[1] if len(sys.argv) > 1 else ""
     repo_root = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else "."
     if not cdp_url:
+        logger.warning("no CDP url supplied — cannot boot the shared browser")
         emit(browser_ok="no")
     port = urllib.parse.urlparse(cdp_url).port or 9222
 
     # Idempotent reuse: something already answering CDP here → adopt it, own nothing.
     if _cdp_ok(cdp_url):
+        logger.info("adopting the browser already answering CDP at %s; "
+                    "teardown will not reap it", cdp_url)
         emit(browser_ok="yes", cdp_url=cdp_url, browser_pid="", browser_pgid="")
 
     binary = next((b for b in BROWSER_CANDIDATES if shutil.which(b)), "")
     if not binary:
+        # Without a browser there is no visual registration at all, and the walk's
+        # screenshots and `ostler vet` both go quietly missing.
+        logger.warning("no chromium binary on PATH (tried %s) — cannot boot the browser",
+                       ", ".join(BROWSER_CANDIDATES))
         emit(browser_ok="no", cdp_url=cdp_url)
 
     scratch = Path(repo_root) / ".agents" / "okf-build" / "walkthrough"
@@ -108,20 +119,27 @@ def main() -> None:
             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.warning("browser %s could not be spawned: %s", binary, exc)
         emit(browser_ok="no", cdp_url=cdp_url)
 
     pgid = os.getpgid(proc.pid)
     deadline = time.monotonic() + BOOT_TIMEOUT_S
     while time.monotonic() < deadline:
         if proc.poll() is not None:  # died on startup
+            logger.warning("browser exited with code %s during startup — see %s",
+                           proc.returncode, scratch / "browser.log")
             emit(browser_ok="no", cdp_url=cdp_url)
         if _cdp_ok(cdp_url):
+            logger.info("browser is answering CDP at %s (pid %d, pgid %d)",
+                        cdp_url, proc.pid, pgid)
             emit(browser_ok="yes", cdp_url=cdp_url,
                  browser_pid=str(proc.pid), browser_pgid=str(pgid))
         time.sleep(POLL_INTERVAL_S)
 
     # Timed out: reap what we started so nothing is orphaned, then fail soft.
+    logger.warning("browser did not answer CDP at %s within %.0fs — killing pgid %d "
+                   "and failing soft", cdp_url, BOOT_TIMEOUT_S, pgid)
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):
@@ -130,4 +148,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("boot-browser"))

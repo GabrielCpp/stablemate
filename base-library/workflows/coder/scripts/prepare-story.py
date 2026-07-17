@@ -12,18 +12,20 @@ Outputs JSON: {"story_path": "...", "spec_dir": "...", "qa_dir": "...",
 from __future__ import annotations
 
 import json
+import logging
 import sys
 
 from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     slug = sys.argv[2] if len(sys.argv) > 2 else ""
     epic = sys.argv[3] if len(sys.argv) > 3 else ""
 
     if not slug:
+        logger.info("no story slug — nothing to resolve")
         print(json.dumps({
             "story_path": "", "spec_dir": "", "qa_dir": "", "story_slug": "", "story_epic": "",
         }))
@@ -36,6 +38,8 @@ def main() -> None:
         matches = list(docs_root.glob(f"docs/epics/*/stories/{slug}/story.md"))
         if matches:
             epic = matches[0].parent.parent.parent.name  # epics/<epic>/stories/<slug>/story.md
+        else:
+            logger.warning("no epic given and no matching story folder found for '%s'", slug)
 
     okf = Ostler(docs_root)
 
@@ -65,4 +69,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("prepare-story"))

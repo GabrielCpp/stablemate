@@ -24,6 +24,7 @@ Outputs JSON: {"has_story": "yes"|"no", "story_path": "...", "story_slug": "..."
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -82,9 +83,10 @@ def emit(**kwargs: str) -> NoReturn:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epic_dir_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     if not epic_dir_rel:
+        logger.warning("no epic_dir supplied")
         emit(reason="no epic_dir supplied")
     epic = Path(epic_dir_rel).name
     root = find_repo_root()
@@ -93,8 +95,10 @@ def main() -> None:
     try:
         stories = okf.list("story", epic=epic)
     except (OSError, ValueError, RuntimeError):
+        logger.warning("could not read stories for epic '%s' via ostler's in-process API", epic)
         emit(reason=f"could not read stories for epic '{epic}' via ostler's in-process API")
     if not stories:
+        logger.info("epic '%s' lists no stories yet — story-split must populate `## Stories`", epic)
         emit(reason="epic lists no stories yet — story-split must populate `## Stories`")
 
     for story in topo(stories):
@@ -104,6 +108,7 @@ def main() -> None:
             continue
         story_md = root / path
         if not has_status_line(story_md):
+            logger.info("selected story '%s' — story.md missing or has no Status line yet", slug)
             emit(
                 has_story="yes",
                 story_path=path,
@@ -112,8 +117,11 @@ def main() -> None:
                 reason="story.md missing or has no `- **Status**:` line yet",
             )
 
+    logger.info("every story in epic '%s' has a written story.md", epic)
     emit(reason="every story in the epic has a written story.md")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-story"))

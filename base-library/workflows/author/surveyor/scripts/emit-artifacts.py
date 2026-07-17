@@ -36,6 +36,7 @@ Outputs JSON: {"emit_ok": "yes"|"no", "emit_errors": "<lines>",
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -93,7 +94,7 @@ def replace_section(text: str, section: str) -> str:
     return prefix + SECTION_HEADING + "\n\n" + section + "\n"
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     part_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/partition.yaml"
     inv_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/inventory.json"
     backlog_rel = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "docs/backlog.md"
@@ -101,16 +102,19 @@ def main() -> None:
 
     root = find_repo_root()
     if yaml is None:
+        logger.warning("PyYAML is unavailable — cannot parse the partition file")
         emit("no", ["PyYAML is required to parse the partition file but is unavailable"])
     try:
         part = yaml.safe_load((root / part_rel).read_text(encoding="utf-8"))
         clusters = part.get("clusters") or []
         assert isinstance(clusters, list) and clusters
     except (OSError, yaml.YAMLError, AttributeError, AssertionError):
+        logger.warning("partition at %s could not be read — run the partition gate first", part_rel)
         emit("no", [f"partition at {part_rel} could not be read — run the partition gate first"])
     try:
         units = json.loads((root / inv_rel).read_text(encoding="utf-8")).get("units") or []
     except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s could not be read", inv_rel)
         emit("no", [f"inventory at {inv_rel} could not be read"])
 
     # ── Backlog bullets: one per cluster, in the marker-fenced generated section ───────
@@ -156,10 +160,15 @@ def main() -> None:
         "units": manifest_units,
     }, indent=2) + "\n", encoding="utf-8")
 
+    logger.info("wrote %d bullet(s) into %s and %d unit(s) into %s",
+                len(ordered), backlog_rel, len(manifest_units), manifest_rel)
     emit("yes", count=len(ordered),
          note=f"wrote {len(ordered)} bullet(s) into {backlog_rel} and "
               f"{len(manifest_units)} unit(s) into {manifest_rel}")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("emit-artifacts"))

@@ -27,6 +27,7 @@ Outputs JSON: {"screenshots_flushed": <n>, "screenshots_kept_tracked": <n>, "not
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -87,7 +88,7 @@ def unique_target(dest: Path, name: str) -> Path:
     return dest / f"{stem}-{n}{suffix}"
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     spec_dir_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     root = find_repo_root()
 
@@ -96,6 +97,7 @@ def main() -> None:
         if p.is_file() and p.suffix.lower() in IMAGE_EXTS
     )
     if not strays:
+        logger.info("no stray images at repo root")
         emit(0, 0, "no stray images at repo root")
         return
 
@@ -103,11 +105,13 @@ def main() -> None:
     untracked = [p for p in strays if p.name not in tracked]
     kept_tracked = len(strays) - len(untracked)
     if not untracked:
+        logger.info("%d root image(s) are tracked assets — left in place", kept_tracked)
         emit(0, kept_tracked, f"{kept_tracked} root image(s) are tracked assets — left in place")
         return
 
     dest = dest_dir(root, spec_dir_arg)
     if dest is None:
+        logger.warning("could not resolve qa dir from spec_dir — leaving %d stray image(s) in place", len(untracked))
         emit(0, kept_tracked,
              f"could not resolve qa dir from spec_dir — left {len(untracked)} stray image(s) in place")
         return
@@ -116,7 +120,7 @@ def main() -> None:
     try:
         dest.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        print(f"[flush-root-screenshots] could not create {dest}: {e}", file=sys.stderr)
+        logger.warning("could not create %s: %s", dest, e)
         emit(0, kept_tracked, f"could not create qa dir — left {len(untracked)} stray image(s) in place")
         return
 
@@ -125,14 +129,17 @@ def main() -> None:
             src.rename(unique_target(dest, src.name))
             flushed += 1
         except OSError as e:
-            print(f"[flush-root-screenshots] could not move {src.name}: {e}", file=sys.stderr)
+            logger.warning("could not move %s: %s", src.name, e)
 
     rel = dest.relative_to(root)
     note = f"moved {flushed} stray image(s) to {rel}"
     if kept_tracked:
         note += f"; left {kept_tracked} tracked root image(s) in place"
+    logger.info(note)
     emit(flushed, kept_tracked, note)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("flush-root-screenshots"))

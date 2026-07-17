@@ -15,8 +15,19 @@ Stdlib-only: scripts run under the system `python3`, not the uv venv.
 Outputs JSON: {"<key>": {"value": <current + 1>}}
 """
 import json
+import logging
 import sys
 
-key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "rework_count"
-current = int(float(sys.argv[2])) if len(sys.argv) > 2 and sys.argv[2] else 0
-print(json.dumps({key: {"value": current + 1}}))
+
+def main(logger: logging.Logger) -> None:
+    key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "rework_count"
+    current = int(float(sys.argv[2])) if len(sys.argv) > 2 and sys.argv[2] else 0
+    logger.info("incrementing counter '%s' from %d to %d", key, current, current + 1)
+    print(json.dumps({key: {"value": current + 1}}))
+
+
+if __name__ == "__main__":
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("incr_counter"))

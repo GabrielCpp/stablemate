@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -11,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from workhorse import otel
+from workhorse import logsetup, otel
 from workhorse.artifacts import ArtifactWriter
 from stablemate_core import base_cache
 from stablemate_core.base_cache import BASE_REPO_URL, ensure_cached_base
@@ -159,15 +160,26 @@ def run(
     # graph with the same state rather than re-deriving it. Delete the dir to start
     # over. If it has no checkpoint yet, start fresh IN that same stable dir. An
     # explicit resume_run_dir (manual --resume-*) overrides this.
-    fresh_run_id = run_id
+    # No explicit --run-id but --params given → key the stable run dir on a digest
+    # of the params, so distinct targets don't collide on one 'default' (and the
+    # same params still resume in place). See _derive_run_id.
+    effective_run_id = _derive_run_id(run_id, params)
+    if run_id is None and effective_run_id is not None:
+        print(
+            f"[workhorse] run id '{effective_run_id}' derived from --params "
+            f"(re-run these same params to resume; pass --run-id to override)"
+        )
+    fresh_run_id = effective_run_id
     if no_cache and resume_run_dir is None:
-        rid = run_id or "default"
+        rid = effective_run_id or "default"
         stable = runs_dir / f"{graph.name}-{rid}"
         if stable.is_dir():
             shutil.rmtree(stable)
             print(f"[workhorse] --no-cache: cleared run dir {stable.name}")
     if resume_run_dir is None and auto:
-        fresh_run_id, resume_run_dir = _auto_resolve(runs_dir, graph.name, run_id)
+        fresh_run_id, resume_run_dir = _auto_resolve(
+            runs_dir, graph.name, effective_run_id
+        )
 
     # Set only when we re-enter a node that was interrupted mid-run, so that one
     # node resumes its Claude session; every other node starts from a clean context.
@@ -233,9 +245,13 @@ def run(
 
     tank = _GasTank(cfg.gas)
 
+    # Console logging first, so a script node's main(logger) has somewhere to
+    # write even when telemetry is off; start_run then also hangs the OTel log
+    # handler off the same root logger when it is on.
+    logsetup.setup()
     # Opt-in telemetry (WORKHORSE_OTEL): the run's root span opens here and every
     # node/turn span nests under it; end_run flushes on every exit path below.
-    otel.start_run(graph.name, writer.run_id)
+    otel.start_run(graph.name, writer.run_id, str(writer.run_dir))
 
     try:
         terminal_type = _step_loop(
@@ -726,15 +742,42 @@ def _should_fast_forward(done: dict | None, checkpoint: dict) -> bool:
     )
 
 
+def _derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None:
+    """Resolve the effective run id when ``--run-id`` was not given explicitly.
+
+    An explicit ``--run-id`` always wins. Otherwise, when the run carries
+    ``--params``, the id is a short deterministic digest of those params, so:
+
+    - distinct param sets (``service=report`` vs ``service=api``) get distinct run
+      dirs and never collide on a single ``default`` — the footgun where a second
+      target silently resumes the first and its ``--params`` are ignored;
+    - the SAME params re-resolve to the SAME id, so auto-resume-in-place is intact:
+      a crash, reboot, or plain re-run of the same command still lands on the
+      existing checkpoint (this is why it is a digest, not a random UUID — a UUID
+      would orphan every unfinished run on the next launch).
+
+    With no params it stays ``None`` → the caller's ``"default"`` (so a params-less
+    workflow keeps its one stable dir, and the Docker harness — which pins no
+    ``--run-id`` — still resumes across reboots exactly as before).
+    """
+    if run_id is not None:
+        return run_id
+    if not params:
+        return None
+    canon = json.dumps(params, sort_keys=True, separators=(",", ":"))
+    return "p" + hashlib.sha1(canon.encode()).hexdigest()[:8]
+
+
 def _auto_resolve(
     runs_dir: Path, workflow_name: str, run_id: str | None = None
 ) -> tuple[str, Path | None]:
     """Resolve --auto's single stable run dir for this run id.
 
-    The run id defaults to "default", giving one fixed dir per id (e.g.
-    ``research-default``); pass ``--run-id`` to keep separate runs side by side.
-    Returns ``(run_id, resume_dir)`` where ``resume_dir`` is that dir when it
-    already holds a checkpoint to continue, else None (caller starts fresh).
+    The run id here is already resolved by ``_derive_run_id`` (explicit ``--run-id``,
+    else a params digest, else None); a None id falls back to "default", giving one
+    fixed dir (e.g. ``research-default``). Returns ``(run_id, resume_dir)`` where
+    ``resume_dir`` is that dir when it already holds a checkpoint to continue, else
+    None (caller starts fresh).
 
     A run that already reached a terminal node is NOT resumed — re-running means a
     new run, not a no-op replay of the finished one (mirrors ``_find_latest_resumable``,
@@ -929,8 +972,10 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--run-id",
         default=None,
-        help="Name the stable run dir (<workflow>-<run-id>); default 'default'. "
-        "Use distinct ids to keep separate runs of the same workflow side by side.",
+        help="Name the stable run dir (<workflow>-<run-id>). Default: a digest of "
+        "--params (so distinct params get distinct dirs and never collide on one "
+        "run), or 'default' when no params are given. Use distinct ids to keep "
+        "separate runs of the same workflow side by side.",
     )
     parser.add_argument(
         "--params",

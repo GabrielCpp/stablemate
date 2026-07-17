@@ -26,6 +26,7 @@ Outputs JSON: {"needs_plan": "yes"|"no", "check_note": "<why>"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -42,20 +43,26 @@ def find_repo_root() -> Path:
     return here
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     inventory_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/inventory.json"
     rules_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/units.yml"
 
     root = find_repo_root()
     if (root / inventory_rel).is_file():
         note = f"inventory {inventory_rel} already exists — frozen; the planner never re-runs"
+        logger.info(note)
     elif (root / rules_rel).is_file():
         note = f"rules {rules_rel} already exist (operator-pinned or prior run) — planner skipped"
+        logger.info(note)
     else:
+        logger.info("no inventory or rules yet — the planner decides the enumeration rules")
         print(json.dumps({"needs_plan": "yes", "check_note": "no inventory or rules yet — the planner decides the enumeration rules"}))
         return
     print(json.dumps({"needs_plan": "no", "check_note": note}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("check-inventory"))

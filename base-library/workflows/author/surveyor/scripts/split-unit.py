@@ -24,6 +24,7 @@ Outputs JSON: {"split_ok": "yes"|"no", "children_count": <int>, "split_errors": 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from fnmatch import fnmatch
@@ -67,10 +68,11 @@ def load_excludes(root: Path, rules_rel: str) -> list[str]:
     return [str(x) for x in excludes] if isinstance(excludes, list) else []
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     inv_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     unit_id = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     if not inv_rel or not unit_id:
+        logger.warning("inventory and unit_id are both required")
         emit("no", errors=["inventory and unit_id are both required"])
 
     root = find_repo_root()
@@ -78,21 +80,25 @@ def main() -> None:
     try:
         data = json.loads(inv_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s could not be read", inv_rel)
         emit("no", errors=[f"inventory at {inv_rel} could not be read"])
 
     units = data.get("units") or []
     idx = next((i for i, u in enumerate(units)
                 if isinstance(u, dict) and u.get("id") == unit_id), None)
     if idx is None:
+        logger.warning("unit '%s' not found in %s", unit_id, inv_rel)
         emit("no", errors=[f"unit '{unit_id}' not found in {inv_rel}"])
 
     unit = units[idx]
     if unit.get("kind") != "folder":
+        logger.warning("unit '%s' is kind '%s' — only folder units can split", unit_id, unit.get("kind"))
         emit("no", errors=[f"unit '{unit_id}' is kind '{unit.get('kind')}' — only folder "
                            f"units can split; assess it or mark it blocked"])
 
     folder = root / str(unit.get("path") or unit_id)
     if not folder.is_dir():
+        logger.warning("unit path '%s' is not a directory on disk", unit.get("path"))
         emit("no", errors=[f"unit path '{unit.get('path')}' is not a directory on disk"])
 
     excludes = load_excludes(root, str(data.get("rules") or ""))
@@ -111,13 +117,18 @@ def main() -> None:
                          "status": "pending"})
 
     if not children:
+        logger.warning("'%s' has no splittable children", unit_id)
         emit("no", errors=[f"'{unit_id}' has no splittable children — assess it as one "
                            f"unit or mark it blocked"])
 
     units[idx:idx + 1] = children
     inv_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    logger.info("split unit '%s' into %d children", unit_id, len(children))
     emit("yes", count=len(children))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("split-unit"))

@@ -25,6 +25,7 @@ Outputs JSON: {"cfg": {repo_root, backlog_path, epics_dir, knowledge_dir,
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -58,7 +59,7 @@ def load_template(root: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     # Default to docs/backlog.md; override with --params '{"backlog":"..."}'.
     backlog = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/backlog.md"
     epics_dir = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/epics"
@@ -66,6 +67,7 @@ def main() -> None:
     root = find_repo_root()
     backlog_path = (root / backlog).resolve()
     if not backlog_path.is_file():
+        logger.warning("backlog file not found: %s", backlog_path)
         sys.exit(
             f"[load-config] backlog file not found: {backlog_path}\n"
             f"Create {backlog} (a markdown bullet list of features) before running the author "
@@ -121,8 +123,12 @@ def main() -> None:
         "mockup_dir": str(mockup_dir),
         "layers": layers,
     }
+    logger.info("loaded config for %s (knowledge_dir=%s, features_dir=%s, %d layer(s))",
+                root, knowledge_dir, features_dir, len(layers))
     print(json.dumps({"cfg": cfg}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("load-config"))

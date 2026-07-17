@@ -324,13 +324,7 @@ def _merge(web: dict, mobile: dict) -> dict:
     return _merge_results([web, mobile])
 
 
-def main() -> None:
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(name)s %(levelname)s: %(message)s",
-    )
-
+def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     qa_dir = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else ""
     platform = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else "none"
@@ -370,4 +364,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(name)s %(levelname)s: %(message)s",
+    )
+    main(logging.getLogger("run-regression-suite"))

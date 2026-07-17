@@ -18,6 +18,7 @@ Outputs JSON: {"has_epic": "yes"|"no", "epic": "...", "epic_dir": "...", "reason
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -44,7 +45,7 @@ def emit(**kwargs: str) -> NoReturn:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epics_dir_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/epics"
     okf = Ostler(find_repo_root())
 
@@ -52,11 +53,13 @@ def main() -> None:
         queue = okf.todo()
         stories = okf.list("story")
     except (OSError, ValueError, RuntimeError):
+        logger.warning("could not read the epics queue via `ostler todo list`")
         emit(reason="could not read the epics queue via `ostler todo list`")
     root = okf.root
 
     if not queue:
         # no index yet → the epic-split stage must create epics (and queue them)
+        logger.info("epics queue is empty — the epic-split stage must create + queue epics")
         emit(reason="epics queue is empty — the epic-split stage must create + queue epics")
 
     by_epic: dict[str, list[dict]] = {}
@@ -71,6 +74,7 @@ def main() -> None:
             st.get("path") and (root / st["path"]).is_file() for st in epic_stories
         )
         if not complete:
+            logger.info("selected epic '%s' — missing epic.md, has no stories, or a story.md is absent", epic)
             emit(
                 has_epic="yes",
                 epic=epic,
@@ -78,8 +82,11 @@ def main() -> None:
                 reason="epic missing epic.md, has no stories, or a story.md is absent",
             )
 
+    logger.info("every epic in the queue is fully authored")
     emit(reason="every epic in the queue is fully authored")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-epic"))

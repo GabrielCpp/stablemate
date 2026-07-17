@@ -21,6 +21,7 @@ Outputs JSON: {"has_unit": "yes"|"no", "unit_id": "...", "unit_path": "...",
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -50,17 +51,19 @@ def emit(**kwargs: str) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     inv_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/inventory.json"
     findings_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey/findings"
 
     root = find_repo_root()
     inv_path = root / inv_rel
     if not inv_path.is_file():
+        logger.warning("no inventory at %s — expand_inventory must materialize it first", inv_rel)
         emit(reason=f"no inventory at {inv_rel} — expand_inventory must materialize it first")
     try:
         units = json.loads(inv_path.read_text(encoding="utf-8")).get("units") or []
     except (json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s is not parseable", inv_rel)
         emit(reason=f"inventory at {inv_rel} is not parseable — verify_records will flag it")
 
     for u in units:
@@ -69,6 +72,7 @@ def main() -> None:
         unit_id = str(u.get("id", ""))
         if not unit_id:
             continue
+        logger.info("selected pending unit '%s'", unit_id)
         emit(
             has_unit="yes",
             unit_id=unit_id,
@@ -78,8 +82,12 @@ def main() -> None:
             reason="first inventory unit still pending",
         )
 
+    logger.info("no pending units left — every unit has a finding record (or is blocked)")
     emit(reason="no pending units left — every unit has a finding record (or is blocked)")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-next-unit"))

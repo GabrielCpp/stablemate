@@ -22,6 +22,7 @@ Outputs JSON: {"marked": "yes"|"no", "bullet_id": "...", "reason": "..."}
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 
@@ -37,18 +38,20 @@ def emit(**kwargs: str) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     bullet_id = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     note = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "qa failed after retry"
     docs_path_arg = sys.argv[3] if len(sys.argv) > 3 else ""
     backlog_rel = (sys.argv[4].strip() if len(sys.argv) > 4 and sys.argv[4] else "") or "docs/backlog.md"
 
     if not bullet_id:
+        logger.warning("no bullet_id supplied — nothing to mark")
         emit(reason="no bullet_id supplied — nothing to mark")
 
     root = find_docs_root(docs_path_arg)
     backlog_path = root / backlog_rel
     if not backlog_path.is_file():
+        logger.warning("no backlog file at %s", backlog_rel)
         emit(bullet_id=bullet_id, reason=f"no backlog file at {backlog_rel}")
 
     lines = backlog_path.read_text(encoding="utf-8").splitlines()
@@ -66,14 +69,19 @@ def main() -> None:
         break
 
     if not found:
+        logger.warning("no backlog bullet '%s' found to mark", bullet_id)
         emit(bullet_id=bullet_id, reason=f"no backlog bullet '{bullet_id}' found to mark")
 
     if changed:
         backlog_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        logger.info("marked '%s' blocked: %s", bullet_id, note)
         emit(marked="yes", bullet_id=bullet_id, reason=f"marked '{bullet_id}' blocked: {note}")
 
+    logger.info("'%s' already marked blocked (no-op)", bullet_id)
     emit(marked="yes", bullet_id=bullet_id, reason=f"'{bullet_id}' already marked blocked (no-op)")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("mark-fix-blocked"))

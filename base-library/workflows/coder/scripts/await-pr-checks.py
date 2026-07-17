@@ -48,8 +48,6 @@ from github import GithubException
 
 from workhorse.scriptutil import find_open_pr, origin_url, resolve_github_token, resolve_repo
 
-logger = logging.getLogger(__name__)
-
 FAIL_CONCLUSIONS = frozenset(
     {"failure", "timed_out", "cancelled", "startup_failure", "action_required", "stale"}
 )
@@ -89,8 +87,7 @@ def poll_runs(repo, head_sha: str) -> tuple[int, int, int, str]:
     return total, pending, failed, ", ".join(failing)
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     # base (argv[2]) accepted for symmetry with the other PR scripts; not used here.
     pr_number = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -205,4 +202,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("await-pr-checks"))

@@ -42,6 +42,66 @@ def test_clean_stream_completes_without_timeout():
     assert [ln.strip() for ln in lines] == ["a", "b"]
 
 
+def test_silent_stream_still_emits_liveness_heartbeats():
+    """The wedged case: a turn producing NO output must still report that it is
+    alive and how long it has been quiet. Its span cannot say so — an unfinished
+    span never exports — so the heartbeat is the only signal, and it has to come
+    from the top of the select loop rather than from a per-line hook.
+
+    Note the 3s budget: select blocks in ~1s slices, so the beat check only runs
+    as each slice returns. Heartbeat granularity is therefore ~1s at best, which
+    is irrelevant at the 10s production default but bounds this test.
+    """
+    beats: list[tuple[str, float, float]] = []
+    orig_every, orig_beat = agent._HEARTBEAT_EVERY_S, agent.otel.turn_heartbeat
+    agent._HEARTBEAT_EVERY_S = 0.1
+    agent.otel.turn_heartbeat = lambda node, idle, elapsed: beats.append((node, idle, elapsed))
+    try:
+        # Writes one line, then goes silent until the turn's deadline.
+        agent.stream_subprocess(
+            [sys.executable, "-u", "-c",
+             "import sys, time; print('hello'); sys.stdout.flush(); time.sleep(3600)"],
+            "select_item",
+            3.0,
+            lambda _line: None,
+        )
+    finally:
+        agent._HEARTBEAT_EVERY_S = orig_every
+        agent.otel.turn_heartbeat = orig_beat
+
+    assert beats, "a silent turn emitted no heartbeat — a stall would be invisible"
+    assert all(node == "select_item" for node, _, _ in beats)
+    # idle_s must GROW while the stream is quiet: that is what distinguishes a
+    # wedged turn from a healthy streaming one.
+    idles = [idle for _, idle, _ in beats]
+    assert idles[-1] > idles[0], f"idle_s did not climb during silence: {idles}"
+
+
+def test_heartbeat_idle_resets_when_the_stream_speaks():
+    """A chatty turn must keep idle_s near zero however long it runs — otherwise a
+    healthy long turn would look identical to a hang."""
+    beats: list[float] = []
+    orig_every, orig_beat = agent._HEARTBEAT_EVERY_S, agent.otel.turn_heartbeat
+    agent._HEARTBEAT_EVERY_S = 0.1
+    agent.otel.turn_heartbeat = lambda _n, idle, _e: beats.append(idle)
+    try:
+        agent.stream_subprocess(
+            [sys.executable, "-u", "-c",
+             "import sys, time\n"
+             "for _ in range(20):\n"
+             "    print('tok'); sys.stdout.flush(); time.sleep(0.05)\n"],
+            "investigate",
+            30.0,
+            lambda _line: None,
+        )
+    finally:
+        agent._HEARTBEAT_EVERY_S = orig_every
+        agent.otel.turn_heartbeat = orig_beat
+
+    assert beats, "a streaming turn emitted no heartbeat"
+    assert max(beats) < 0.5, f"idle_s climbed on a streaming turn: {beats}"
+
+
 def test_wedged_midline_is_killed_by_watchdog():
     """A process that writes a partial line (no newline) then sleeps forever must be
     force-killed within timeout+grace — before this fix, readline() blocked and the

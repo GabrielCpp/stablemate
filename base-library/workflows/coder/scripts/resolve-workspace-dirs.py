@@ -11,13 +11,14 @@ Outputs JSON: {"workspace_dirs": ["/abs/path/repo1", ...]}
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 from workhorse.scriptutil import find_docs_root, resolve_workspace
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     docs_root = find_docs_root(docs_path_arg)
 
@@ -29,8 +30,12 @@ def main() -> None:
     if docs_root_str not in dirs:
         dirs = [docs_root_str, *dirs]
 
+    logger.info("resolved %d workspace dir(s)", len(dirs))
     print(json.dumps({"workspace_dirs": dirs}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("resolve-workspace-dirs"))

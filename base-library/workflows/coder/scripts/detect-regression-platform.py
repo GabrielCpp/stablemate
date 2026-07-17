@@ -25,6 +25,7 @@ non-UI story).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -54,13 +55,14 @@ def _load_json(path: Path) -> dict:
         return {}
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     root = find_repo_root()
     plan_ctx = _load_json(root / spec_dir / "plan-context.json") if spec_dir else {}
 
     services = plan_ctx.get("services") or []
     if services:
+        logger.info("deriving regression platform from %d service(s) in plan-context", len(services))
         # Per-service source of truth: derive platform from each service's type,
         # and surface the repo::path of every UI service so the gate can scope.
         ui_layers = [svc.get("type") for svc in services if svc.get("type") in UI_TYPE_PLATFORM]
@@ -71,6 +73,7 @@ def main() -> None:
         ]
         platforms = sorted({UI_TYPE_PLATFORM[layer] for layer in ui_layers})
     else:
+        logger.info("no services in plan-context — falling back to legacy touched_layers")
         # Legacy fallback: flat touched_layers, no per-service scoping available.
         touched = plan_ctx.get("touched_layers") or []
         ui_layers = [layer for layer in touched if layer in UI_LAYER_PLATFORM]
@@ -84,8 +87,11 @@ def main() -> None:
     else:
         platform = "both"
 
+    logger.info("resolved regression platform=%s", platform)
     print(json.dumps({"regression": {"platform": platform, "layers": ui_layers, "paths": ui_paths}}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("detect-regression-platform"))

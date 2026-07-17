@@ -14,6 +14,7 @@ Outputs JSON: {"done_count","pending_count","added"}
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -38,7 +39,7 @@ def _search_flows(repo_root: str) -> list[dict]:
         return []
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     wl_path = Path(sys.argv[1])
     service = sys.argv[2] if len(sys.argv) > 2 else ""
     repo_root = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else "."
@@ -76,8 +77,18 @@ def main() -> None:
     wl_path.write_text(json.dumps(data, indent=2))
     done = sum(1 for i in items if i.get("status") == "done")
     pend = sum(1 for i in items if i.get("status") == "pending")
+    if not pend:
+        # Nothing to walk: the book documents no flow under this service's scope, so the
+        # walk turns will find an empty drain and the run captures no evidence at all.
+        logger.warning("no journeys seeded — no flow docs found under %s; "
+                       "the walk has nothing to do", scope)
+    logger.info("seeded walk worklist %s: %d journey(s) added, %d done / %d pending",
+                wl_path, added, done, pend)
     emit(done_count=done, pending_count=pend, added=added)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("seed-walkthrough"))

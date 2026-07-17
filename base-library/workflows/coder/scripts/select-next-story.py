@@ -27,6 +27,7 @@ Outputs JSON: {"has_story": "yes"|"no", "story_path": "...", "spec_dir": "...",
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -139,13 +140,14 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
     return None  # all done (or all blocked on unmet deps)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     global _EPIC
     _EPIC = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     docs_path_arg = sys.argv[2] if len(sys.argv) > 2 else ""
     run_dir_arg = sys.argv[3] if len(sys.argv) > 3 else ""
 
     if not _EPIC:
+        logger.warning("no epic supplied to select-next-story")
         emit(reason="no epic supplied to select-next-story (epic selection is select-next-epic.py)")
 
     root = find_docs_root(docs_path_arg)
@@ -189,6 +191,7 @@ def main() -> None:
     # Final guard: never hand back a story in this run's skip set (the fallback already
     # excludes them, so this only fires if a selection path regressed).
     if slug in skip:
+        logger.warning("story '%s' was given up this run — stopping to avoid re-grinding", slug)
         emit(reason=f"story '{slug}' was given up this run — stopping to avoid re-grinding; "
                     "start a new run or clear the skip set to retry")
     try:
@@ -197,6 +200,7 @@ def main() -> None:
         spec_dir = f"docs/specs/{slug}"
     story_path = str(nxt.get("path") or "")
 
+    logger.info("selected story '%s' in epic '%s'", slug, _EPIC)
     emit(
         has_story="yes",
         story_path=story_path,
@@ -207,4 +211,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-next-story"))

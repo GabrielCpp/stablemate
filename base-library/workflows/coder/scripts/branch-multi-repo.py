@@ -44,9 +44,7 @@ def branch_repo(repo_path: Path, repo_name: str, branch: str) -> bool:
     return True
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-
+def main(logger: logging.Logger) -> None:
     slug = sys.argv[1] if len(sys.argv) > 1 else "story"
     branch = f"story/{slug}"
 
@@ -74,4 +72,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("branch-multi-repo"))

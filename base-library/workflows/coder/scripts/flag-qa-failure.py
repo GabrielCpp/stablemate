@@ -92,8 +92,7 @@ def record_skip(run_dir_arg: str, slug: str) -> None:
             f.write(f"{slug}\n")
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+def main(logger: logging.Logger) -> None:
     epic = sys.argv[1] if len(sys.argv) > 1 else ""
     slug = sys.argv[2] if len(sys.argv) > 2 else "story"
     attempts = sys.argv[3] if len(sys.argv) > 3 else "?"
@@ -161,4 +160,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("flag-qa-failure"))

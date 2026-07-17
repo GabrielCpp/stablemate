@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 from qa_cli import emit, notes_for, qa_context
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     story_file = sys.argv[2] if len(sys.argv) > 2 else ""
     features_root = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -24,6 +25,7 @@ def main() -> None:
     try:
         source_roots = json.loads(source_roots_json)
     except json.JSONDecodeError:
+        logger.warning("source_roots argument was not valid JSON — treating as empty")
         source_roots = []
 
     returncode, payload, stderr = qa_context(
@@ -36,6 +38,7 @@ def main() -> None:
         if returncode == 0 and payload.get("status") != "invalid"
         else "invalid"
     )
+    logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
     notes = notes_for(
         payload,
         stderr,
@@ -47,4 +50,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("build-qa-okf-context"))

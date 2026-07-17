@@ -23,6 +23,7 @@ Outputs JSON: {"source_inventory_path","source_unit_count","operational_unit_cou
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 import tomllib
@@ -39,39 +40,13 @@ TEST_SUFFIXES = (
     "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
 )
 GENERATED_SUFFIXES = (".gen.go", ".generated.go", ".d.ts")
-# The languages the symbol front end can read. A source tree that contains NONE of these is
-# reported as an error rather than as an empty inventory — see `main`. An unsupported language
-# must never be indistinguishable from a fully documented one.
-SOURCE_SUFFIXES = {".go", ".py", ".ts", ".tsx", ".php", ".twig"}
-PY_DECL = re.compile(r"^(?:async\s+)?(?:class|def)\s+([A-Za-z][A-Za-z0-9_]*)", re.MULTILINE)
-# Go: three alternatives, in order — a method (with its receiver captured), a plain func, a
-# type. The receiver is captured because a method's unit is qualified by its owner
-# (`(*FirebaseClaimsWriter).SetRoleClaims`): that is the form books cite, and it is strictly
-# more precise than a bare name, which cannot disambiguate two types declaring the same method
-# in one file. Both pointer and value receivers appear in real books. `[(\[]` after the name
-# admits generic declarations (`func Map[T any](…)`).
-GO_DECL = re.compile(
-    r"^func\s+\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?(\*?)\s*([A-Za-z_][A-Za-z0-9_]*)"
-    r"(?:\[[^\]]*\])?\s*\)\s*([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
-    r"|^func\s+([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
-    r"|^type\s+([A-Za-z][A-Za-z0-9_]*)(?:\[[^\]]*\])?\s+(?:struct|interface)\b",
-    re.MULTILINE,
-)
-TS_DECL = re.compile(
-    r"^export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
-    r"(?:function|class|interface|type|const|let|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
-    re.MULTILINE,
-)
-# PHP: one pass over class + function declarations *in source order*, so a method can be
-# qualified by the class it sits in (`AddProjectAction.getRenderPath`). Grouped in one regex
-# rather than two passes because the qualification depends on the interleaving.
-PHP_DECL = re.compile(
-    r"^\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)"
-    r"|^\s*(?:(public|protected|private)\s+)?(?:static\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)",
-    re.MULTILINE,
-)
-# Twig: a template's named regions. `{% block content %}` / `{%- block content -%}`.
-TWIG_DECL = re.compile(r"\{%-?\s*block\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+# The symbol grammar lives in `ostler.inventory`, not here. Two callers need to know what a
+# file declares — this inventory (the join's source side) and `doctor`'s `code:` grounding —
+# and a grammar defined in two places is a grammar that drifts. It did: grounding used a
+# word-presence test, so a facade module re-exporting a name kept a moved symbol's citation
+# green. Importing it means the join and the grounding check cannot disagree again.
+from ostler.inventory import SOURCE_SUFFIXES, symbols  # noqa: E402
 
 
 def skipped(path: Path, root: Path, excludes: list[str]) -> bool:
@@ -98,61 +73,6 @@ def _unit_path(path: Path, source: Path, repo_root: Path) -> str:
         return path.resolve().relative_to(repo_root).as_posix()
     except ValueError:
         return path.relative_to(source).as_posix()
-
-
-def _php_symbols(text: str) -> list[str]:
-    """Class names, plus each public method qualified by its class (`Class.method`).
-
-    Private/protected methods are not part of the documented surface, and magic methods
-    (`__construct`, `__toString`, …) are DI/framework boilerplate rather than behavior — both
-    are skipped, mirroring the `_`-prefix filter the Python front end already applies.
-    """
-    out: list[str] = []
-    current = ""
-    for m in PHP_DECL.finditer(text):
-        if cls := m.group(1):
-            current = cls
-            out.append(cls)
-            continue
-        visibility, name = m.group(2), m.group(3)
-        if visibility in ("private", "protected") or name.startswith("__"):
-            continue
-        out.append(f"{current}.{name}" if current else name)
-    return out
-
-
-def _go_symbols(text: str) -> list[str]:
-    """Exported types/funcs, plus each exported method qualified by its receiver.
-
-    `func (w *FirebaseClaimsWriter) SetRoleClaims(…)` → `(*FirebaseClaimsWriter).SetRoleClaims`;
-    a value receiver drops the star. Export is judged on the *method* name, not the receiver's:
-    an exported method on an unexported type is still part of the surface.
-    """
-    out: list[str] = []
-    for star, receiver, method, func, typename in GO_DECL.findall(text):
-        if method:
-            if method[:1].isupper():
-                owner = f"(*{receiver})" if star else receiver
-                out.append(f"{owner}.{method}")
-            continue
-        name = func or typename
-        if name[:1].isupper():
-            out.append(name)
-    return out
-
-
-def symbols(path: Path, text: str) -> list[str]:
-    if path.suffix == ".py":
-        return [m.group(1) for m in PY_DECL.finditer(text) if not m.group(1).startswith("_")]
-    if path.suffix == ".go":
-        return _go_symbols(text)
-    if path.suffix in {".ts", ".tsx"}:
-        return [m.group(1) for m in TS_DECL.finditer(text)]
-    if path.suffix == ".php":
-        return _php_symbols(text)
-    if path.suffix == ".twig":
-        return TWIG_DECL.findall(text)
-    return []
 
 
 # --- operational surface (the run-surface inventory, docs/okf-runbook.md §5.3) -------------
@@ -245,7 +165,7 @@ def operational_units(source: Path, repo_root: Path, excludes: list[str],
     return units
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     source = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
     output = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else source / ".source-inventory.json"
     excludes = [part.strip().strip("/") for part in (sys.argv[3] if len(sys.argv) > 3 else "").split(",")
@@ -255,6 +175,7 @@ def main() -> None:
     units: list[dict[str, str]] = []
     operational = operational_units(source, repo_root, excludes, errors)
     if not source.is_dir():
+        logger.warning("source root is not a directory: %s — the inventory will be empty", source)
         errors.append(f"source root is not a directory: {source}")
     else:
         seen_suffixes: Counter[str] = Counter()
@@ -267,6 +188,11 @@ def main() -> None:
             # yield an empty inventory + no errors — which reads downstream as "fully covered".
             # Blindness must be loud: an unsupported language is a failure, not a clean bill.
             top = ", ".join(f"{s or '(none)'}×{n}" for s, n in seen_suffixes.most_common(5))
+            logger.warning(
+                "no readable source under %s — the tree holds %s but the symbol front end "
+                "only reads %s; reporting an error rather than an empty (= 'covered') inventory",
+                source, top or "no files", sorted(SOURCE_SUFFIXES),
+            )
             errors.append(
                 f"no readable source under {source}: the symbol front end supports "
                 f"{sorted(SOURCE_SUFFIXES)} but the tree holds {top or 'no files'} — "
@@ -290,6 +216,8 @@ def main() -> None:
                 units.append({"kind": "symbol", "path": rel, "symbol": symbol,
                               "code": f"{rel}::{symbol}"})
 
+    logger.info("inventoried %s: %d code unit(s), %d operational unit(s), %d error(s) → %s",
+                source, len(units), len(operational), len(errors), output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps({
         "version": 1,
@@ -309,4 +237,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("inventory-source"))

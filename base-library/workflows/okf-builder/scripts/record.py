@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).strip().lower()
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     wl_path = Path(sys.argv[1])
     current = sys.argv[2] if len(sys.argv) > 2 else ""
     discovered = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -52,14 +53,25 @@ def main() -> None:
         cur = _loads(current)
         if isinstance(cur, dict):
             ck = (_norm(cur.get("kind")), _norm(cur.get("target")))
+            logger.info("marking item '%s' (%s) done", cur.get("target", "?"),
+                        cur.get("kind", "?"))
             for i in items:
                 if (_norm(i.get("kind")), _norm(i.get("target"))) == ck:
                     i["status"] = "done"
+        else:
+            # Unparseable current item: nothing is marked done, so the loop re-picks the
+            # same active item next round and appears to spin in place.
+            logger.warning("current item is not parseable JSON — no item marked done: %.200s",
+                           current)
 
     added = 0
     if discovered:
         dlist = _loads(discovered)
         if not isinstance(dlist, list):
+            # The agent's discoveries are dropped silently otherwise — the crawl just
+            # stops finding new work and looks like it ran out of surface.
+            logger.warning("discovered items are not a JSON list — dropping them: %.200s",
+                           discovered)
             dlist = []
         for d in dlist:
             if not isinstance(d, dict):
@@ -83,8 +95,13 @@ def main() -> None:
     wl_path.write_text(json.dumps(data, indent=2))
     done = sum(1 for i in items if i.get("status") == "done")
     pend = sum(1 for i in items if i.get("status") == "pending")
+    logger.info("worklist %s: added %d new item(s), now %d done / %d pending",
+                wl_path, added, done, pend)
     emit(done_count=done, pending_count=pend, added=added)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("record"))

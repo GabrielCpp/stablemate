@@ -24,12 +24,7 @@ import sys
 
 from workhorse.scriptutil import build_dispatch_list, find_repo_root, load_json, resolve_workspace
 
-logger = logging.getLogger(__name__)
-
-
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-
+def main(logger: logging.Logger) -> None:
     spec_dir_rel = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     current_index = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].lstrip("-").isdigit() else -1
 
@@ -81,4 +76,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("select-next-layer"))

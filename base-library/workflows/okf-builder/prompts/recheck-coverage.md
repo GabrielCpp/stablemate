@@ -4,16 +4,22 @@ agent: agent
 
 # okf-builder — coverage re-scan (the exhaustiveness backstop)
 
-The worklist drained and `ostler doctor` is clean. Before finishing, **prove the book is complete**:
-re-enumerate from code and from the graph, find anything the crawl missed, and queue it. Also queue
-the **journeys** once the nodes exist. This is the backstop that makes the build exhaustive rather
-than best-effort.
+The worklist drained, `ostler doctor` is clean, and **`ostler coverage` has already computed that
+this book is incomplete** — that is why you are running. Your job is to turn the computed gap into
+drainable work, plus find the gaps arithmetic cannot see (orphans, stubs, journeys, the runbook).
+
+**You do not decide whether the book is complete.** That verdict is a join between the source
+inventory and the book's `code:` citations, and the machine computes it — coverage is arithmetic,
+not a self-report. What is genuinely yours is the *ambiguity*: whether a computed miss is a real gap
+or a unit already folded into a documented contract. Adjudicate those, record each with its reason,
+and queue everything else.
 
 Load the method: {{ skill_load_ref("stablemate-okf-modeling", skill_dir() + "/stablemate-okf-modeling/SKILL.md") }}
 
 **Guardrails (unattended):** you may run read-only `ostler` (graph/list/trace/doctor) and read code,
 but do **not** modify code, run `git`, or run builds/tests. Queue work by returning items; don't
-author nodes yourself this turn. Stay inside the service's own source.
+author nodes yourself this turn. Stay inside the service's own source. The **one** file you may
+write is the waivers file below.
 
 **Query the graph, don't grep it.** `ostler graph --surface ‹service›` is the source of truth for
 what's documented: `--has-bullet code` lists every grounded node (diff against the mechanical source
@@ -27,22 +33,43 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
 - source root: `{{ workhorse_var('source_root') }}`
 - excluded source paths: `{{ workhorse_var('source_excludes') }}`
 - mechanical source inventory: `{{ workhorse_var('source_inventory_path') }}`
-- inventory errors (must be empty before declaring coverage): `{{ workhorse_var('inventory_errors') }}`
+- inventory errors: `{{ workhorse_var('inventory_errors') }}`
+- **the computed coverage verdict:** `{{ workhorse_var('coverage_summary') }}`
+- **the computed missing list** (your input for check 1): `{{ workhorse_var('missing_path') }}`
+  — `{{ workhorse_var('missing_count') }}` units
+- coverage errors (a blind instrument, if non-empty): `{{ workhorse_var('coverage_error') }}`
+- waivers file (the one file you may write): `{{ workhorse_var('waivers_path') }}`
+
+If `coverage_error` is non-empty, the instrument could not measure this book — fix nothing and queue
+nothing on the strength of it; report it in your items' context so a human sees it. An unmeasurable
+book is not an empty gap.
 
 ## Checks — emit an item for every gap you find
 
-1. **Code inventory — the exhaustiveness floor (do this first, most rigorously).** Entry-point
-   descent alone always misses siblings and non-entry modules; this diff is what makes the book
-   *complete* rather than merely reachable. Read the complete, deterministic inventory at the
-   supplied `source_inventory_path`; do not replace it with a sampled grep. It inventories modules
-   plus public Python `class`/`def`, exported Go `func`/`type ... struct|interface`, and exported TS/TSX
-   `function`/`class`/`interface`/`type`/`const`/`enum` declarations under the explicit source root,
-   excluding tests, generated output, dependencies, and build artifacts. Then get **every**
-   grounded symbol from the graph:
-   `ostler graph --surface ‹service› --has-bullet code --json` (their `code:` bullets). A code unit
-   counts as **covered** only if it has its own node
-   **or** is explicitly folded into a documented behavior's `does:` / a concept's parts. Queue every
-   uncovered unit — and watch for the two blind spots that motivated this check:
+1. **The computed missing list — adjudicate it, don't recompute it (do this first).** Read
+   `missing_path`. Every row is a source unit the join found no `code:` citation for; the join
+   already applied the transitive module rule (a module is covered when it is cited, or when it
+   declares symbols and all of them are cited), so do not re-litigate that arithmetic and do not
+   replace the list with a sampled grep. For each row decide **exactly one** of:
+   - **a real gap** → queue it as an item (batched, per the Output rules below);
+   - **not a unit** → *waive* it, with a reason. A helper genuinely folded into a documented
+     behavior's `does:` or a concept's parts, or a deliberate non-unit. A waiver is a claim that the
+     book already says this — so name the node that says it. "Too small to document" is not a
+     reason; "folded into `‹node-id›`'s contract" is.
+
+   Waive by writing `waivers_path` as JSON, **preserving any entries already there** (they are prior
+   rounds' judgements — reviewed, committed, and not yours to drop):
+
+   ```json
+   {"waivers": [{"code": "api/internal/x.go::parseRequest",
+                 "reason": "folded into UI-EP-0007's does: contract"}]}
+   ```
+
+   A waived unit counts as covered on the next round's join, which is why the reason is committed
+   and diffable rather than argued once and forgotten. Waive nothing you cannot justify in review:
+   the join is the only thing standing between this book and a number nobody can reproduce.
+
+   Watch for the two blind spots that motivated this check:
    - **Every implementation of an interface / ABC is its own node.** If the code has N subclasses of
      a base but the graph documents fewer, queue the missing ones. (e.g. an `AgentBackend` base with
      `Claude`/`Codex`/`Copilot`/`OpenCode`/`Aider` subclasses ⇒ **five** sibling `concept`s, not one
@@ -68,8 +95,8 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
    exist yet, emit at most 3-8 coherent domain journeys for a large service (for example
    signup-to-account-completion, project lifecycle, datasheet management, and command-order
    fulfillment), each allowed to traverse several invocations. A small single-purpose service may
-   need only 1-3. Set `needs_journeys: yes` with `coverage_complete: no` so the loop drains them,
-   then re-checks. If representative flows exist, do not expand them merely for endpoint coverage.
+   need only 1-3. Set `needs_journeys: yes` so the loop drains them, then re-checks. If
+   representative flows exist, do not expand them merely for endpoint coverage.
 6. **Operational surface — the run surface must be a `runbook`** (the OKF runbook profile).
    The inventory file carries an `operational` list —
    the mechanical run surface (make/just targets, compose services, package/console scripts,
@@ -87,16 +114,17 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
 
 ```json
 {"discovered": [{"kind": "element", "target": "…", "context": "…"}],
- "coverage_complete": "yes",
  "needs_journeys": "no"}
 ```
 
-Set `coverage_complete: yes` **only** when checks 1–4 find nothing (the code inventory is fully
-covered), the operational surface (check 6) is a complete `runbook`/`environment` set,
-`inventory_errors` is empty, and journeys exist. Otherwise `no` (with the items to drain).
+There is no `coverage_complete` to emit — the build ends when the next round's `ostler coverage`
+*computes* that every unit is covered (by a citation or by a waiver you justified), the round cap is
+bounded, and `doctor` is clean. Your items and your waivers are what move that number; nothing you
+can say about your own work does.
+
 Batch uncovered source units by their nearest coherent module/package and emit one `layer` item per
 group, listing every uncovered unit in `context`; do not emit hundreds of one-symbol items. Batch a
 large surface's missing elements into `surface-slice` items by route/domain/screen region.
 For a below-bar or orphan node already visited, add `"requeue": true` to its item so the worklist
-opens it again. Empty `discovered` +
-`coverage_complete: yes` ends the build.
+opens it again. Returning empty `discovered` while the join still reports misses does not end the
+build — it burns a round, and the run fails when the rounds run out.

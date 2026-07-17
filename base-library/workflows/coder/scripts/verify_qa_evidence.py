@@ -40,6 +40,7 @@ Outputs JSON captured under the node's `qa_result` key:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -72,7 +73,7 @@ def evidence_exists(ref: str, root: Path, spec_dir: Path) -> bool:
     return any(c.is_file() for c in candidates)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     spec_dir_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     claimed_status = (sys.argv[2] if len(sys.argv) > 2 else "").strip().lower()
     claimed_notes = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -85,9 +86,11 @@ def main() -> None:
             if claimed_status in {"failed", "blocked", "invalid"}
             else "invalid"
         )
+        logger.info("claimed status '%s' is not 'passed' — passing through as '%s'", claimed_status, status)
         emit(status, claimed_notes)
 
     if not spec_dir_arg:
+        logger.warning("no spec_dir provided to locate qa-evidence.json")
         emit(
             "invalid",
             "QA evidence gate: no spec_dir provided to locate qa-evidence.json.",
@@ -98,6 +101,7 @@ def main() -> None:
     evidence_path = spec_dir / EVIDENCE_FILE
 
     if not evidence_path.is_file():
+        logger.warning("%s/%s is missing", spec_dir_arg, EVIDENCE_FILE)
         emit(
             "invalid",
             f"QA evidence gate: {spec_dir_arg}/{EVIDENCE_FILE} is missing. A claimed pass must "
@@ -109,10 +113,12 @@ def main() -> None:
     try:
         data = json.loads(evidence_path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001 - any parse error fails the gate
+        logger.warning("%s is not valid JSON: %s", EVIDENCE_FILE, exc)
         emit("invalid", f"QA evidence gate: {EVIDENCE_FILE} is not valid JSON ({exc}).")
 
     criteria = data.get("criteria") if isinstance(data, dict) else None
     if not isinstance(criteria, list) or not criteria:
+        logger.warning("%s has no `criteria` array", EVIDENCE_FILE)
         emit("invalid", f"QA evidence gate: {EVIDENCE_FILE} has no `criteria` array.")
 
     problems: list[str] = []
@@ -438,6 +444,7 @@ def main() -> None:
                     )
 
     if problems:
+        logger.warning("QA evidence gate invalidated this pass — %d problem(s)", len(problems))
         emit(
             "invalid",
             "QA evidence gate invalidated this pass — the machine-checkable proof is missing or "
@@ -450,8 +457,12 @@ def main() -> None:
     if vet_notes:
         note += "visual_fidelity: " + "; ".join(vet_notes) + ". "
     note += claimed_notes or ""
+    logger.info("QA evidence gate passed: %d criteria validated", n)
     emit("passed", note.strip())
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("verify_qa_evidence"))

@@ -153,9 +153,9 @@ class RunConfig:
     def get_script_runner(self) -> ScriptRunner:
         if self.script_runner is not None:
             return self.script_runner
-        from workhorse.runner.script import SubprocessScriptRunner
+        from workhorse.runner.script import default_script_runner
 
-        return SubprocessScriptRunner()
+        return default_script_runner()
 
 
 def _configured_gas(environ: Mapping[str, str]) -> int:

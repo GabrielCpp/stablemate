@@ -53,9 +53,7 @@ def open_or_find_pr(gh_repo, branch: str, base: str, slug: str):
         return None
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[open-multi-repo-pr] %(message)s")
-
+def main(logger: logging.Logger) -> None:
     slug = sys.argv[1] if len(sys.argv) > 1 else ""
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
 
@@ -142,4 +140,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[open-multi-repo-pr] %(message)s")
+    main(logging.getLogger("open-multi-repo-pr"))

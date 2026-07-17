@@ -28,6 +28,7 @@ Args:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -52,7 +53,7 @@ def emit(ok: str, errors: str = "", report: str = "") -> NoReturn:
     sys.exit(0)  # status is in the payload; a non-zero exit would hard-fail the node
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epic_filter = sys.argv[1].strip() if len(sys.argv) > 1 else ""
     root = find_repo_root()
     okf = Ostler(root)
@@ -60,6 +61,7 @@ def main() -> None:
     try:
         report = okf.doctor(epic=epic_filter or None)
     except (OSError, ValueError, RuntimeError) as exc:
+        logger.warning("ostler doctor could not run (%s) — skipped", exc)
         emit("skip", report=f"ostler doctor could not run ({exc}) — skipped")
 
     org = report.get("org", "?")
@@ -68,6 +70,7 @@ def main() -> None:
     errors = [f for f in findings if f.get("severity") == "error"]
     warns = [f for f in findings if f.get("severity") == "warn"]
     summary = f"ostler doctor [{org}/{profile}]: {len(errors)} error(s), {len(warns)} warning(s)"
+    logger.info(summary)
 
     if not errors:
         emit("yes", report=summary)
@@ -88,4 +91,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("ostler-doctor"))

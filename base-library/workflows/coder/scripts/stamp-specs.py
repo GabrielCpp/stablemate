@@ -22,12 +22,7 @@ import sys
 from ostler import Ostler, markdown, registry
 from workhorse.scriptutil import find_docs_root
 
-logger = logging.getLogger(__name__)
-
-
-def main() -> int:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[stamp-specs] %(message)s")
-
+def main(logger: logging.Logger) -> int:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     slug = sys.argv[2] if len(sys.argv) > 2 else ""
     if not slug:
@@ -76,4 +71,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[stamp-specs] %(message)s")
+    sys.exit(main(logging.getLogger("stamp-specs")))

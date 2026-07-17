@@ -51,9 +51,7 @@ def branch_repo(repo_path: Path, repo_name: str, branch: str) -> str:
     return "branched"
 
 
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-
+def main(logger: logging.Logger) -> None:
     spec_dir_rel = sys.argv[1] if len(sys.argv) > 1 else ""
     branch_arg = sys.argv[2] if len(sys.argv) > 2 else ""
 
@@ -88,4 +86,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("branch-code-repos"))

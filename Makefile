@@ -37,6 +37,13 @@ test-workflows: ## Run each workflow's own test suite (the base library is data;
 		( cd "$$d" && uv run pytest tests -q ) || exit 1; \
 	done
 
+.PHONY: okf-verify
+okf-verify: ## Verify every OKF book's coverage against its source (non-zero = incomplete)
+	# The predicate a stop condition can be held to. A goal phrased as prose ("the books
+	# are complete") is judged by the self-assessment the coverage instrument exists to
+	# remove; `make okf-verify exits 0` is something a run can be refused by.
+	uv run python scripts/okf_verify.py
+
 .PHONY: check-public
 check-public: ## Guard the public/private split (no private names; the base stands alone)
 	# Two silent failure modes, both invisible on a machine where the private overlay

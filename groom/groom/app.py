@@ -337,6 +337,28 @@ async def otlp_metrics(request: Request) -> Response:
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
+@post("/v1/logs", include_in_schema=False)
+async def otlp_logs(request: Request) -> Response:
+    """Standard OTLP/HTTP log receiver.
+
+    This is where a script node's diagnostics land now that workhorse imports and
+    runs scripts in-process rather than spawning them: their records ride the
+    engine's own logger, so they arrive with the same run_id/run_dir resource as
+    the spans and can be read per node with ``groom logs --node``.
+
+    No alert rules fire on logs — deliberately. Liveness is already answered by
+    the heartbeat metrics, and paging on log content would mean guessing which
+    strings are worth waking someone for, per workflow. Logs are here to be
+    *queried* once a metric has told you where to look.
+    """
+    try:
+        records = otlp.parse_logs(await request.body())
+    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
+        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
+    store.insert_logs(records)
+    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
+
+
 @get("/traces", include_in_schema=False)
 async def traces(
     run: str = "", node: str = "", status: str = "", slower_than: str = ""
@@ -595,6 +617,7 @@ def create_app() -> Litestar:
             push_exited,
             otlp_traces,
             otlp_metrics,
+            otlp_logs,
             traces,
             dashboard_ws,
             dashboard_sidecar,

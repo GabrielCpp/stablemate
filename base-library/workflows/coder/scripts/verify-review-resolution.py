@@ -40,6 +40,7 @@ Outputs JSON: {"impl_result": {"status": "...", "notes": "..."}}
 from __future__ import annotations
 
 import json
+import logging
 import sys
 
 from ostler import Ostler
@@ -53,7 +54,7 @@ def _emit(status: str, notes: str) -> None:
     print(json.dumps({"impl_result": {"status": status, "notes": notes}}))
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     slug = sys.argv[2] if len(sys.argv) > 2 else ""
     claimed_status = (sys.argv[3] if len(sys.argv) > 3 else "") or "applied"
@@ -66,6 +67,7 @@ def main() -> None:
     spec_dir = docs_root / "docs" / "specs" / slug
     resolution = spec_dir / RESOLUTION_FILE
     if not slug or not resolution.is_file():
+        logger.info("no %s for '%s' — passing claimed status '%s' through", RESOLUTION_FILE, slug, claimed_status)
         _emit(claimed_status, claimed_notes)
         return
 
@@ -76,6 +78,7 @@ def main() -> None:
         # a missing story. Don't trust it — route back to re-apply (bounded by guard_review),
         # surfacing the reason rather than spinning on fabricated progress.
         reason = plan.error or "ostler settle-review failed"
+        logger.warning("ostler settle-review failed for '%s': %s", slug, reason)
         _emit("needs_changes", f"review settlement FAILED: {reason}")
         return
 
@@ -85,20 +88,27 @@ def main() -> None:
     try:
         ledger = json.loads(settlement.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
+        logger.warning("settlement ledger unreadable after settle-review (%s)", exc)
         _emit("needs_changes", f"settlement ledger unreadable after settle-review ({exc})")
         return
 
     if ledger.get("any_blocked"):
         ids = ", ".join(ledger.get("blocked", [])) or "a finding"
+        logger.info("review settlement blocked for '%s': %s", slug, ids)
         _emit("blocked", f"review settlement: {ids} reported unresolvable (blocked) — escalating.")
         return
     if ledger.get("all_verified"):
         ids = ", ".join(ledger.get("verified", [])) or "all findings"
+        logger.info("review settlement applied for '%s': %s", slug, ids)
         _emit("applied", f"review settlement: every finding verified against cited artifacts ({ids}).")
         return
     open_ids = ", ".join(f.get("id", "?") for f in ledger.get("open", []) if isinstance(f, dict)) or "some findings"
+    logger.info("review settlement needs_changes for '%s': %s still open", slug, open_ids)
     _emit("needs_changes", f"review settlement: {open_ids} still open (proof missing/wrong) — re-applying.")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("verify-review-resolution"))

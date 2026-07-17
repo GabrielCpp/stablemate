@@ -36,11 +36,9 @@ from __future__ import annotations
 import io
 import json
 import os
-import runpy
 import signal
 import subprocess
 import sys
-import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +47,7 @@ from typing import Any
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.main import Workhorse
 from workhorse.runner.agent import BackendInvocationError
+from workhorse.runner.script import InProcessScriptRunner as _ProdInProcessScriptRunner
 
 __all__ = [
     "WorkflowRun",
@@ -94,54 +93,19 @@ def make_git_repo(path: Path, *, name: str = "test") -> Path:
 class _HarnessTimeout(Exception):
     """Internal signal used by WorkflowRun timeout compatibility."""
 
-class InProcessScriptRunner:
-    """Execute a Python script node IN THE CURRENT PROCESS via ``runpy``.
 
-    Mirrors ``python <script.py> <argv>`` — sets ``sys.argv``, the cwd, ``os.environ``
-    and ``sys.path[0]`` (so ``from lib import ...`` resolves), captures stdout/stderr,
-    and translates ``SystemExit`` into a return code — all restored afterwards. Because
-    the script's ``workhorse.scriptutil`` / ``lib.*`` calls happen in this process, a
-    test can monkeypatch them (e.g. ``scriptutil.github_client``) to intercept external
-    services without a PATH shim or CLI subprocess."""
+class InProcessScriptRunner(_ProdInProcessScriptRunner):
+    """The production in-process runner, with the harness's timeout let through.
 
-    def run(
-        self, script_path: Path, argv: list[str], cwd: str, env: dict[str, str]
-    ) -> tuple[int, str, str]:
-        old_argv = sys.argv[:]
-        old_cwd = os.getcwd()
-        old_env = os.environ.copy()
-        old_path = sys.path[:]
-        out, err = io.StringIO(), io.StringIO()
-        code = 0
-        try:
-            sys.argv = [str(script_path), *argv]
-            os.chdir(cwd)
-            os.environ.clear()
-            os.environ.update(env)
-            # The sanctioned exception to "no sys.path surgery": CPython puts a
-            # script's own dir on sys.path[0] when run as `python script.py`, which is
-            # how runner/script.py invokes it. Emulate that, or a script node's
-            # sibling import would resolve in production and fail only here.
-            sys.path.insert(0, str(Path(script_path).parent))
-            with redirect_stdout(out), redirect_stderr(err):
-                try:
-                    runpy.run_path(str(script_path), run_name="__main__")
-                except SystemExit as exc:
-                    c = exc.code
-                    code = 0 if c is None else (c if isinstance(c, int) else 1)
-                except _HarnessTimeout:
-                    raise
-                except Exception as exc:  # noqa: BLE001 — surface a script crash as exit 1
-                    code = 1
-                    err.write(f"\n{type(exc).__name__}: {exc}\n")
-                    traceback.print_exc(file=err)
-        finally:
-            sys.argv = old_argv
-            os.chdir(old_cwd)
-            os.environ.clear()
-            os.environ.update(old_env)
-            sys.path[:] = old_path
-        return code, out.getvalue(), err.getvalue()
+    This used to be a parallel implementation, back when production spawned a
+    child and only tests ran scripts in-process. Now that production does too,
+    a second copy would be the thing that lets a test pass against semantics no
+    real run has — particularly around how ``main(logger)`` is called. So it
+    subclasses instead, and adds exactly one behavior: ``_HarnessTimeout`` is the
+    harness's own control flow and must not be swallowed as a script crash.
+    """
+
+    _reraise = (_HarnessTimeout,)
 
 
 # ── Mock agent backend ─────────────────────────────────────────────────────────

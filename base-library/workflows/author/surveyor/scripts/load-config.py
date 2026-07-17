@@ -35,6 +35,7 @@ Outputs JSON: {"cfg": {repo_root, rubric, survey_dir, rules, inventory, findings
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -53,7 +54,7 @@ def find_repo_root() -> Path:
     return here
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     rubric = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/survey/rubric.md"
     survey_dir = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/survey"
     backlog = (sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else "") or "docs/backlog.md"
@@ -61,6 +62,7 @@ def main() -> None:
     root = find_repo_root()
     rubric_path = (root / rubric).resolve()
     if not rubric_path.is_file():
+        logger.warning("rubric file not found: %s", rubric_path)
         sys.exit(
             f"[load-config] rubric file not found: {rubric_path}\n"
             f"Create {rubric} (a markdown document defining the cross-cutting concern being "
@@ -81,8 +83,12 @@ def main() -> None:
         "unit_manifest": f"{survey_dir}/unit-manifest.json",
         "context": f"{survey_dir}/_survey-context.md",
     }
+    logger.info("config loaded: rubric=%s survey_dir=%s repo_root=%s", rubric, survey_dir, root)
     print(json.dumps({"cfg": cfg}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("load-config"))

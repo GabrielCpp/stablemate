@@ -12,6 +12,7 @@ Outputs JSON: {"publish_result": {"pushed": true|false, "branch": "...", "status
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -22,9 +23,9 @@ def _emit(pushed: bool, branch: str, status: str = "ok") -> None:
     print(json.dumps({"publish_result": {"pushed": pushed, "branch": branch, "status": status}}))
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     if len(sys.argv) < 2 or not sys.argv[1]:
-        print("[publish] repo dir required", file=sys.stderr)
+        logger.error("repo dir required")
         sys.exit(1)
     repo_dir = sys.argv[1]
     result_branch = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else "research/auto"
@@ -45,7 +46,7 @@ def main() -> None:
     checkout(repo_dir, result_branch, reset=True)
 
     if not commit_all(repo_dir, f"{program_label}: automated gate update"):
-        print("[publish] no changes to commit", file=sys.stderr)
+        logger.info("no changes to commit")
         _emit(False, result_branch)
         return
 
@@ -53,10 +54,13 @@ def main() -> None:
         _emit(True, result_branch)
     else:
         # No write credential / no remote: keep edits local; artifacts still capture them.
-        print(f"[publish] push failed — edits remain on local branch {result_branch} only",
-              file=sys.stderr)
+        logger.warning(
+            "push failed — edits remain on local branch %s only", result_branch,
+        )
         _emit(False, result_branch, status="push_failed")
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("publish"))

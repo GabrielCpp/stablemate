@@ -22,12 +22,7 @@ from pathlib import Path
 from ostler import Ostler
 from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
 
-logger = logging.getLogger(__name__)
-
-
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-
+def main(logger: logging.Logger) -> None:
     spec_dir_rel = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     def _emit(status: str, errors: list[str]) -> None:
         print(json.dumps({"validation_result": {"status": status, "errors": errors}}))
@@ -161,4 +156,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("validate-plan-context"))

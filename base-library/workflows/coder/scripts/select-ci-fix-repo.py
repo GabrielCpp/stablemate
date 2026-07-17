@@ -22,12 +22,7 @@ import sys
 
 from workhorse.scriptutil import find_repo_root, resolve_workspace
 
-logger = logging.getLogger(__name__)
-
-
-def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-
+def main(logger: logging.Logger) -> None:
     repo_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     # ci_summary and docs_path are passed but not used for routing logic here —
     # repo ordering is workspace-based, not ci_summary-based. They're accepted so
@@ -85,4 +80,7 @@ def _done(processed: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    main(logging.getLogger("select-ci-fix-repo"))

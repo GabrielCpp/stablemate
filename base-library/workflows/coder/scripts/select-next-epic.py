@@ -21,6 +21,7 @@ Outputs JSON: {"has_epic": "yes"|"no", "epic": "<name>", "reason": "..."}
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -55,7 +56,7 @@ def _queue_from_json(root: Path) -> list[str] | None:
     return [str(x) for x in data] if isinstance(data, list) else None
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     root = find_docs_root(docs_path_arg)
     okf = Ostler(root)
@@ -68,12 +69,18 @@ def main() -> None:
         if json_epics is not None:
             epics = json_epics
     if epics is None:
+        logger.warning("could not read the epics queue (ostler todo list)")
         emit(reason="could not read the epics queue (ostler todo list)")
     if not epics:
+        logger.info("epic queue is empty — every epic has been merged")
         emit(reason="epic queue is empty — every epic has been merged")
 
+    logger.info("selected epic '%s'", epics[0])
     emit(has_epic="yes", epic=str(epics[0]))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse imports this and calls main(logger) itself; this guard is only for
+    # running the script by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("select-next-epic"))

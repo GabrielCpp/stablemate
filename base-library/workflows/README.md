@@ -87,9 +87,41 @@ One Markdown file per `agent` node. Use `{placeholder}` syntax for values inject
 
 ### `scripts/`
 
-Script nodes are **Python only** (run with `sys.executable`). Scripts must write
-**JSON to stdout** matching the shape declared in the node's `outputs`. The workflow
-runtime captures stdout and merges the returned keys into the variable scope.
+Script nodes are **Python only**. Workhorse **imports the script and calls
+`main(logger)`** in its own process — it does not spawn `python script.py`. So the
+entry point is:
+
+```python
+import json
+import logging
+
+def main(logger: logging.Logger) -> None:
+    logger.info("scanning %s", target)      # diagnostics → the logger
+    print(json.dumps({"validation": {"status": "ok"}}))   # data → stdout
+
+if __name__ == "__main__":
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate"))
+```
+
+**stdout is the data channel, not a place for messages.** Workhorse parses the
+whole of it as the node's JSON `outputs`, so a stray `print("checking...")`
+corrupts them. Anything you want a human to read goes to `logger`.
+
+**Use the logger.** With `WORKHORSE_OTEL=1` these records reach the collector
+tagged with the run and the node (`groom logs --node <id>`), which is the only
+after-the-fact account of what a script decided. A script that logs nothing is a
+script whose behavior can only be inferred from its outputs — and a silent early
+exit (an empty result, a budget cap, a dry drain) then looks identical to a hang.
+Log the decisions and the early-exit paths.
+
+Scripts still behave as if spawned: `sys.argv` carries the node's rendered `args`,
+the cwd and `os.environ` are set per node, and `sys.exit(2)` still becomes the
+node's exit code. Two older shapes keep working — `def main()` with no parameter
+(the logger is simply not passed) and a script with no `main()` at all (its
+top-level code runs under `__main__`) — so migration is per-script, not a flag
+day.
 
 Example output from a script node with `outputs: [{key: validation}]`:
 

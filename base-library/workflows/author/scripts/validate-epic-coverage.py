@@ -15,6 +15,7 @@ Outputs JSON: {"coverage_ok": "yes"|"no", "coverage_errors": "<newline-joined>"}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -39,9 +40,10 @@ def find_repo_root() -> Path:
     return here
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     epic_dir_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     if not epic_dir_rel:
+        logger.warning("no epic_dir supplied")
         print(json.dumps({"coverage_ok": "no", "coverage_errors": "no epic_dir supplied"}))
         return
     epic = Path(epic_dir_rel).name
@@ -52,6 +54,7 @@ def main() -> None:
     try:
         report = okf.doctor(epic=epic)
     except (OSError, ValueError, RuntimeError):
+        logger.warning("ostler doctor for epic %s could not run", epic)
         print(json.dumps({"coverage_ok": "no",
                           "coverage_errors": f"ostler doctor for epic {epic} could not run"}))
         return
@@ -59,9 +62,12 @@ def main() -> None:
         if f.get("severity") == "error" and f.get("code") in _COVERAGE_CODES:
             errors.append(f"[{f.get('code')}] {f.get('message')}")
 
+    logger.info("epic '%s' coverage: %d error(s)", epic, len(errors))
     print(json.dumps({"coverage_ok": "no" if errors else "yes",
                       "coverage_errors": "\n".join(errors)}))
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("validate-epic-coverage"))

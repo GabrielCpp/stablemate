@@ -68,7 +68,7 @@ Key flags (run `workhorse --help` for the full list):
 |---|---|
 | `--workflow <path>` | Path to the `workflow.yaml` to run. Alternatively use the positional form: `workhorse run <name> [<flow>]` |
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<workflow-dir>/runs`) |
-| `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default `default` |
+| `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
 | `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
@@ -366,8 +366,15 @@ in the **harness's own config** — there is no workhorse proxy to do it for you
 ## Resuming and run identity
 
 The controller is **auto-resume-in-place** by default. Each `(workflow, run-id)`
-pair maps to one stable run dir (`<workflow>-<run-id>`, run-id defaults to
-`default`). On start the controller looks for a checkpoint there:
+pair maps to one stable run dir (`<workflow>-<run-id>`). When you don't pass
+`--run-id`, the id defaults to a short **digest of `--params`** (e.g.
+`okf-builder-p1c7e4b2a`), or to `default` when the run carries no params. This keeps
+the resume contract while stopping distinct targets from colliding: a build for
+`{service: report}` and one for `{service: api}` get different dirs automatically, so
+the second never silently resumes the first (and drops its `--params`). Re-running
+the *same* params re-derives the *same* id, so a crash/reboot/plain re-run still
+resumes the existing checkpoint — which is why it's a digest, not a random id.
+On start the controller looks for a checkpoint there:
 
 - **No checkpoint** → start fresh from the `start` node in that dir.
 - **Checkpoint present** → resume from the checkpointed node, restoring the saved
@@ -384,10 +391,10 @@ of the auto behavior above):
 
 | Flag | Purpose |
 |---|---|
-| `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default `default` |
+| `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--resume-run <path-or-name>` | Resume a specific run dir from its checkpoint |
 | `--resume-latest` | Resume the most recent unfinished run under `--runs-dir` |
-| `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start |
+| `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start (also keys the default run dir) |
 
 "Survives reboot" therefore covers both the *work products* (commits, sessions,
 artifacts) **and** graph position — an interrupted graph auto-resumes mid-run.
@@ -401,6 +408,7 @@ runs/
 └── <workflow-name>-<timestamp>-<id>/
     ├── run.json                  # start/end time, terminal state
     ├── context.json              # final context snapshot
+    ├── sessions.jsonl            # {node, session_id} per agent turn — map a node to its CLI session
     ├── <step-id>/
     │   ├── prompt.md             # rendered prompt, written before agent invocation
     │   ├── output.json           # extracted JSON outputs
@@ -415,6 +423,16 @@ so failed or interrupted nodes remain inspectable without dumping variables. The
 Docker harness redirects artifacts to a persistent volume instead — see
 [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
+`prompt.md` and `output.json` capture a node's *input* and *final* answer, not the
+agent's step-by-step reasoning and tool calls in between — that transcript lives in
+the agent CLI's own session store, keyed by session id. `sessions.jsonl` records the
+`node → session_id` map for every agent turn so you can recover it afterward (e.g.
+`opencode export <session_id>`). It is an append-only manifest because the live
+`.session_id` file holds only the *current* node's session; a node can appear more
+than once (loop revisits, compact/reframe within a node), so the mapping is
+`node → sessions` and consumers dedup on read. With `WORKHORSE_OTEL=1` the same
+session id is also set as the `session.id` attribute on the agent-turn span.
+
 ## Telemetry (opt-in OpenTelemetry)
 
 For away-from-keyboard monitoring of long runs, workhorse can stream OpenTelemetry
@@ -428,8 +446,10 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # groom serve (the de
 ```
 
 Emitted: a root span per run, a span per node visit (nested through flows), a span
-per agent-CLI turn with duration + token usage, span events for the recovery ladder
-(retry/reframe/compact/watchdog-kill), the gas gauge, and a **cap-wait heartbeat**
+per agent-CLI turn with duration + token usage (and a `session.id` attribute linking
+it to the CLI session transcript), span events for the recovery ladder
+(retry/reframe/compact/watchdog-kill), the gas gauge, **log records** from the
+engine and its in-process script nodes (`groom logs`), and a **cap-wait heartbeat**
 metric each pause tick — the signal that lets a collector distinguish a legitimate
 multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). Unset,
 telemetry is a complete no-op and adds no dependencies; exports are best-effort, so
@@ -527,13 +547,25 @@ Output JSON only:
 ```
 ```
 
-**Scripts** are Python (run with `sys.executable`); they receive Jinja2-rendered
-args as positional arguments and must print JSON to stdout:
+**Scripts** are Python. Workhorse **imports the script and calls its
+`main(logger)`** in its own process; they receive Jinja2-rendered args as
+positional `sys.argv` entries and must print JSON to stdout:
 
 ```python
 import json
-print(json.dumps({"result": {"status": "ok"}}))
+import logging
+
+def main(logger: logging.Logger) -> None:
+    logger.info("deciding...")                      # diagnostics → the logger
+    print(json.dumps({"result": {"status": "ok"}})) # data → stdout
 ```
+
+stdout is the node's **data** channel — it is parsed whole as the declared
+`outputs`, so diagnostics must go to the logger, never `print`. With
+`WORKHORSE_OTEL=1` those records reach the collector tagged with the run and node.
+`def main()` (no logger) and scripts with no `main()` at all keep working
+unchanged. See [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)
+for the isolation trade-off and `WORKHORSE_SCRIPT_INPROCESS=0`.
 
 ### Unattended resilience (output `default`)
 

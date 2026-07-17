@@ -22,6 +22,7 @@ Outputs JSON: {"backlog_pruned": {"removed": <n>, "remaining": <n>}}
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -47,22 +48,25 @@ def emit(removed: int, remaining: int) -> None:
     sys.exit(0)
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     backlog_rel = (sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else "") or "docs/backlog.md"
     bullet_id = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     from_backlog = sys.argv[3].strip().lower() if len(sys.argv) > 3 and sys.argv[3] else ""
 
     if from_backlog != "yes" or not bullet_id:
+        logger.info("bullet '%s' is not from the backlog (or missing) — no-op", bullet_id)
         emit(0, 0)  # inline bullet (or nothing to prune): no-op
 
     root = find_repo_root()
     backlog_path = root / backlog_rel
     if not backlog_path.is_file():
+        logger.info("no backlog at %s — nothing to prune", backlog_path)
         emit(0, 0)
 
     try:
         lines = backlog_path.read_text(encoding="utf-8").splitlines(keepends=True)
     except OSError:
+        logger.warning("could not read backlog %s — nothing to prune", backlog_path)
         emit(0, 0)
 
     kept: list[str] = []
@@ -81,10 +85,14 @@ def main() -> None:
         try:
             backlog_path.write_text("".join(kept), encoding="utf-8")
         except OSError:
-            pass  # best-effort: never fail the run over a tidy-up write
+            logger.warning("could not write pruned backlog %s — best-effort, continuing", backlog_path)
 
+    logger.info("pruned bullet '%s' from %s (removed=%d, remaining=%d)",
+                bullet_id, backlog_rel, removed, remaining_bullets)
     emit(removed, remaining_bullets)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("prune-bullet"))

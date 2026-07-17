@@ -19,6 +19,7 @@ Stdlib-only: runs under the system python3.
 """
 import argparse
 import datetime
+import logging
 import os
 import sys
 from pathlib import Path
@@ -46,7 +47,7 @@ def write(path: Path, content: str, force: bool) -> None:
     print(f"  wrote {path}")
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=os.environ.get("AGENT_REPO_DIR") or ".")
     ap.add_argument("--dir", required=True, help="repo-relative program dir, e.g. specs/my-program")
@@ -85,7 +86,7 @@ def main() -> None:
     if args.result_branch:
         manifest.append(f"result_branch: {result_branch}")
 
-    print(f"[new_program] scaffolding {program_dir} (repo={repo})")
+    logger.info("scaffolding %s (repo=%s)", program_dir, repo)
     write(abs_dir / "program.yml", "\n".join(manifest) + "\n", args.force)
     write(abs_dir / "README.md", render("README.md", repl), args.force)
     write(repo / progress_path, render("PROGRESS.md", repl), args.force)
@@ -102,14 +103,17 @@ def main() -> None:
             "# Active research program for `make agent-native`. Edit to switch.\n"
             f"{program_dir}\n"
         )
-        print(f"  set default program -> {pointer}")
+        logger.info("set default program -> %s", pointer)
 
-    print(
-        f"[new_program] done. Next: fill README ladder + {gate} thresholds, then\n"
-        f"  make agent-native"
-        + ("" if args.set_default else f" PARAMS='{{\"program\":\"{program_dir}\"}}'")
+    logger.info(
+        "done. Next: fill README ladder + %s thresholds, then\n"
+        "  make agent-native%s",
+        gate,
+        "" if args.set_default else f" PARAMS='{{\"program\":\"{program_dir}\"}}'",
     )
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("new_program"))

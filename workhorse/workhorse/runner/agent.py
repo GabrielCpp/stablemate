@@ -124,6 +124,13 @@ _WATCHDOG_GRACE_S = float(os.environ.get("AGENT_WATCHDOG_GRACE_S", "120"))
 # watchdog above is the always-on backstop. Set >0 to fail stalls faster.
 _DEFAULT_IDLE_TIMEOUT_S = float(os.environ.get("AGENT_IDLE_TIMEOUT_S", "0"))
 
+# How often the streaming loop emits a turn-liveness heartbeat metric. This only
+# REPORTS the idleness the loop already tracks for the cutoff above — it never kills
+# anything, so it is safe to leave on by default (and is a no-op unless WORKHORSE_OTEL
+# is set). Kept well under groom's stall window so a live turn is provably alive long
+# before the alerter would consider paging.
+_HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
+
 
 def _arm_watchdog(
     proc: subprocess.Popen,
@@ -216,11 +223,20 @@ def stream_subprocess(
     assert proc.stdout is not None
     try:
         start = time.monotonic()
+        last_line_at = start
+        last_beat_at = start
         while True:
-            elapsed = time.monotonic() - start
+            now = time.monotonic()
+            elapsed = now - start
             if elapsed > timeout:
                 timed_out = True
                 break
+            # Liveness telemetry, emitted here at the top so it also ticks while the
+            # stream is SILENT — the wedged case, and the only one worth paging on.
+            # The turn's own span cannot report this: it does not export until it ends.
+            if now - last_beat_at >= _HEARTBEAT_EVERY_S:
+                otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
+                last_beat_at = now
             # Short select slices keep the in-loop wall-clock check live for a cleanly
             # arriving stream; the watchdog is the backstop for a stream that wedges
             # mid-line (where readline() below would otherwise block past the deadline).
@@ -232,6 +248,7 @@ def stream_subprocess(
             raw = proc.stdout.readline()
             if not raw:  # EOF
                 break
+            last_line_at = time.monotonic()
             if on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
                 timed_out = True
                 break
@@ -397,6 +414,38 @@ class BackendInvocationError(RuntimeError):
         self.reset_at = reset_at
 
 
+def record_session_map(
+    session_id_path: Path | None, node_id: str, session_id: str | None
+) -> None:
+    """Map ``node_id`` to the harness CLI ``session_id`` so the agent's session
+    transcript can be recovered after the run — ``opencode export <session_id>``
+    (and the equivalent for other backends) yields its full reasoning/tool trace,
+    which the node's ``prompt.md`` / ``output.json`` do not carry.
+
+    Two sinks, because they answer the mapping at different times:
+
+    - the open agent-turn span gets a ``session.id`` attribute (queryable in groom
+      / any trace store, live and after the fact);
+    - an append-only ``sessions.jsonl`` beside ``.session_id`` keeps the history on
+      disk. ``.session_id`` is overwritten every node, so it only ever holds the
+      *current* node's session; the manifest is what survives to map a *past* node
+      back to its session, and it needs no collector.
+
+    A node can appear more than once (loop revisits, compact/reframe within a
+    node), so the mapping is node -> sessions; consumers dedup on read. Best-effort
+    like the rest of telemetry: a write failure must never fault an unattended run.
+    """
+    if not (session_id_path and session_id):
+        return
+    otel.turn_session(session_id)
+    try:
+        manifest = session_id_path.parent / "sessions.jsonl"
+        with manifest.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"node": node_id, "session_id": session_id}) + "\n")
+    except OSError:
+        pass
+
+
 def classify_turn(
     backend_name: str,
     node_id: str,
@@ -475,6 +524,7 @@ def classify_turn(
     if _is_context_overflow(diagnostics):
         if session_id_path and session_id:
             session_id_path.write_text(session_id)
+            record_session_map(session_id_path, node_id, session_id)
         raise BackendInvocationError(
             f"Context window exhausted for node '{node_id}'{tail}",
             transient=False,
@@ -494,6 +544,7 @@ def classify_turn(
         )
     if session_id_path and session_id:
         session_id_path.write_text(session_id)
+        record_session_map(session_id_path, node_id, session_id)
     return result_text
 
 

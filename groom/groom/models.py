@@ -67,7 +67,18 @@ class RunTelemetry:
     branch: str = ""
     first_seen_ts: float = 0.0
     last_span_ts: float = 0.0
+    # Any workhorse liveness tick (run/turn/cap-wait heartbeat) — proof the run's
+    # PROCESS is alive. Its absence, not a node's slowness, is what STALL means.
     last_heartbeat_ts: float = 0.0
+    # Where the run is right now, straight from the node-active gauge rather than
+    # inferred from the last completed span's workhorse.next. Open node spans do
+    # not export, so this is the only live answer to "which node?".
+    current_node: str = ""
+    # How long that node has been open, as measured inside the run process.
+    node_elapsed_s: float = 0.0
+    # Seconds since the streaming agent last wrote a line. Small = streaming and
+    # healthy however long the turn runs; climbing = wedged.
+    turn_idle_s: float = 0.0
     terminal: str = ""  # root span's terminal status; "" while the run is live
     # Node-span repeats since the last gas refuel — the churn signal. A refuel
     # (forward progress) resets it; the same node re-completing N times on one

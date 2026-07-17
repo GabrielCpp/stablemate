@@ -47,6 +47,7 @@ Outputs JSON: {"backlog_items_appended": <n>, "backlog_items_skipped": <n>, "not
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -162,19 +163,21 @@ def insert_under_section(lines: list[str], section: str, bullet: str) -> list[st
     return lines
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     docs_path_arg = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
     root = find_docs_root(docs_path_arg)
     backlog_rel = "docs/backlog.md"
 
     if not spec_dir:
+        logger.info("no spec_dir supplied — nothing to drain")
         emit(0, 0, "no spec_dir supplied — nothing to drain")
         return
 
     items_path = root / spec_dir / "backlog-items.json"
     items = load_items(items_path)
     if not items:
+        logger.info("no backlog items to file at %s", items_path)
         emit(0, 0, "no backlog items to file")
         return
 
@@ -189,7 +192,7 @@ def main() -> None:
         except OSError as e:
             # Truly unwritable (read-only fs / bad path) — degrade to a no-op, keep the items
             # file so a later run can still drain them.
-            print(f"[append-backlog-item] could not create backlog at {backlog_rel}: {e}", file=sys.stderr)
+            logger.warning("could not create backlog at %s: %s", backlog_rel, e)
             emit(0, len(items), f"no backlog at {backlog_rel} and could not create it — {len(items)} item(s) not filed (items file kept)")
             return
 
@@ -224,12 +227,15 @@ def main() -> None:
         items_path.unlink()
         removed = True
     except OSError as e:
-        print(f"[append-backlog-item] could not remove items file: {e}", file=sys.stderr)
+        logger.warning("could not remove items file: %s", e)
 
     note = f"filed {appended}, skipped {skipped} (duplicate/invalid)"
     note += "; removed backlog-items.json" if removed else "; backlog-items.json left in place"
+    logger.info(note)
     emit(appended, skipped, note)
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("append-backlog-item"))

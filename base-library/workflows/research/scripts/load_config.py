@@ -38,6 +38,7 @@ Outputs JSON: {"cfg": { program_dir, code_root, progress_path, result_branch,
                        goal, program }}
 """
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -144,7 +145,7 @@ def read_pointer(repo_root: Path) -> str:
     return ""
 
 
-def main() -> None:
+def main(logger: logging.Logger) -> None:
     explicit = (sys.argv[1].strip() if len(sys.argv) > 1 else "").strip("/") or (
         os.environ.get("RESEARCH_PROGRAM", "").strip().strip("/")
     )
@@ -162,44 +163,46 @@ def main() -> None:
         program_dir = read_pointer(repo_root)
         selected_by = "pointer"
     if not program_dir:
-        sys.exit(
-            "[load_config] no program selected. Set a top-level `program:` in "
-            f"{repo_root / 'agents.yml'}, pass --params '{{\"program\": \"<dir>\"}}', "
-            "or launch from inside a program folder (one containing program.yml)."
+        logger.error(
+            "no program selected. Set a top-level `program:` in %s, pass "
+            "--params '{\"program\": \"<dir>\"}', or launch from inside a program "
+            "folder (one containing program.yml).", repo_root / "agents.yml",
         )
-    print(
-        f"[load_config] program {program_dir!r} selected by {selected_by} "
-        f"(repo_root={repo_root}, launch_dir={launch_dir()})",
-        file=sys.stderr,
+        sys.exit(1)
+    logger.info(
+        "program %r selected by %s (repo_root=%s, launch_dir=%s)",
+        program_dir, selected_by, repo_root, launch_dir(),
     )
 
     manifest = repo_root / program_dir / "program.yml"
     if not manifest.is_file():
-        sys.exit(
-            f"[load_config] no program.yml at {program_dir}/program.yml "
-            f"(repo_root={repo_root}). Create it with at least `code_root: <src dir>`."
+        logger.error(
+            "no program.yml at %s/program.yml (repo_root=%s). Create it with at "
+            "least `code_root: <src dir>`.", program_dir, repo_root,
         )
+        sys.exit(1)
 
     cfg = parse_flat_yaml(manifest.read_text(), str(manifest))
     missing = [k for k in REQUIRED if not cfg.get(k)]
     if missing:
-        sys.exit(f"[load_config] {manifest} missing required keys: {missing}")
+        logger.error("%s missing required keys: %s", manifest, missing)
+        sys.exit(1)
 
     # Preflight: a program the gate-loop can actually consume. select_gate reads the
     # README ladder first, so a missing README is fatal; a missing code_root is only a
     # warning (greenfield programs write their first experiment into it).
     readme = repo_root / program_dir / "README.md"
     if not readme.is_file():
-        sys.exit(
-            f"[load_config] {program_dir}/README.md is missing — the gate ladder lives "
-            f"there. Scaffold a well-formed program with `make research-new "
-            f"DIR={program_dir} CODE_ROOT={cfg['code_root']}`."
+        logger.error(
+            "%s/README.md is missing — the gate ladder lives there. Scaffold a "
+            "well-formed program with `make research-new DIR=%s CODE_ROOT=%s`.",
+            program_dir, program_dir, cfg["code_root"],
         )
+        sys.exit(1)
     if not (repo_root / cfg["code_root"]).is_dir():
-        print(
-            f"[load_config] warning: code_root {cfg['code_root']!r} does not exist yet "
-            f"under {repo_root} — first experiment will create it.",
-            file=sys.stderr,
+        logger.warning(
+            "code_root %r does not exist yet under %s — first experiment will create it.",
+            cfg["code_root"], repo_root,
         )
 
     cfg["program_dir"] = program_dir
@@ -212,4 +215,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("load_config"))

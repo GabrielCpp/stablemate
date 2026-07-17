@@ -16,15 +16,8 @@ from pathlib import Path
 
 from workhorse.scriptutil import checkout_workspace
 
-logger = logging.getLogger(__name__)
 
-
-def main() -> None:
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="[author-checkout] %(message)s",
-    )
+def main(logger: logging.Logger) -> None:
     token_script = Path(__file__).resolve().with_name("gh-token.py")
     result = subprocess.run(
         [sys.executable, str(token_script)],
@@ -43,4 +36,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # workhorse calls main(logger) itself; this guard is only for running by hand.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[%(name)s] %(message)s")
+    main(logging.getLogger("checkout-workspace"))
