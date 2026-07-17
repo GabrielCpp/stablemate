@@ -107,6 +107,21 @@ Both tools read and write one file, `~/.config/stablemate/config.toml` (override
 thing to each. Per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still read
 when it is absent, and the first write folds them in.
 
+The file carries a `config_version`, and **that** is what keeps the tools honest with each
+other. They install separately and version independently — `pipx install workhorse-agent`
+and `pipx install farrier` are two venvs, each with its own copy of the config code —
+while the config path is per *user*, not per venv. So no packaging arrangement can make
+them agree; the guard has to live on the file:
+
+- a tool **refuses to write** a config newer than it understands, rather than serializing
+  back a schema it cannot represent and dropping the keys it does not know;
+- a newer tool **migrates** an older config forward on its first write (keeping a
+  `config.toml.v<n>.bak`), which closes the door behind it;
+- **reads never fail** on a newer config — they warn. `resolve_power` re-reads per node,
+  and a week-long unattended run must not die because another tool was upgraded.
+
+If a tool refuses, upgrade it — that is the mechanism working, not a bug.
+
 An overlay library shadows the base name-for-name via `farrier config set-library` (or
 `$FARRIER_LIBRARY_DIR` / `$WORKHORSE_LIBRARY_DIR`).
 

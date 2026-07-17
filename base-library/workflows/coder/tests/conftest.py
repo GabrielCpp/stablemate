@@ -19,6 +19,7 @@ import hashlib
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 # This repo's interpreter has a libedit-backed ``readline``. At import it runs the
@@ -302,11 +303,33 @@ _ALL_GRAPH_METHODS = _QUEUE_PATH_METHODS + (
 )
 
 
+@contextmanager
+def script_dir_on_path(directory: Path):
+    """Make a workflow script's own directory importable, exactly as running it does.
+
+    The engine executes a script node as ``[sys.executable, script.py]``
+    (``workhorse.runner.script``), and CPython itself puts the script's directory on
+    ``sys.path[0]`` in that mode — which is what lets the QA adapters do
+    ``from qa_cli import ...`` with no packaging of their own. Tests import the
+    adapters out-of-context, so they have to reproduce that one condition or they
+    would fail on an import that works fine in production.
+
+    This is the narrow exception to "no ``sys.path`` surgery": it emulates the
+    interpreter rather than papering over a packaging gap, and it is scoped —
+    ``sys.path`` is restored on the way out.
+    """
+    saved = sys.path[:]
+    sys.path.insert(0, str(directory))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
 def _qa_cli_module():
     """The coder scripts' ``qa_cli`` helper (the QA adapters import from it)."""
-    if str(_SCRIPTS_DIR) not in sys.path:
-        sys.path.insert(0, str(_SCRIPTS_DIR))
-    import qa_cli
+    with script_dir_on_path(_SCRIPTS_DIR):
+        import qa_cli
 
     return qa_cli
 

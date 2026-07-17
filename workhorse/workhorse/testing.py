@@ -118,6 +118,10 @@ class InProcessScriptRunner:
             os.chdir(cwd)
             os.environ.clear()
             os.environ.update(env)
+            # The sanctioned exception to "no sys.path surgery": CPython puts a
+            # script's own dir on sys.path[0] when run as `python script.py`, which is
+            # how runner/script.py invokes it. Emulate that, or a script node's
+            # sibling import would resolve in production and fail only here.
             sys.path.insert(0, str(Path(script_path).parent))
             with redirect_stdout(out), redirect_stderr(err):
                 try:

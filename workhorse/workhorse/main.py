@@ -17,7 +17,13 @@ from stablemate_core import base_cache
 from stablemate_core.base_cache import BASE_REPO_URL, ensure_cached_base
 from stablemate_core.discovery import base_library_dir as _base_library_dir
 from stablemate_core.discovery import is_library_dir as _is_base_library_dir
-from stablemate_core.config import config_path, get_config_value, load_config, write_config_key
+from stablemate_core.config import (
+    ConfigVersionError,
+    config_path,
+    get_config_value,
+    load_config,
+    write_config_key,
+)
 from workhorse.config_run import RunConfig
 from workhorse.graph.context import WorkflowContext
 from workhorse.graph.loader import load_workflow
@@ -1380,6 +1386,15 @@ def main() -> None:
 
 
 def _run_config(args: argparse.Namespace) -> None:
+    try:
+        _dispatch_config(args)
+    except ConfigVersionError as exc:
+        # A config written by a newer stablemate-core. Actionable and deterministic, so
+        # it exits cleanly like every other config error here rather than as a traceback.
+        raise SystemExit(f"error: {exc}") from exc
+
+
+def _dispatch_config(args: argparse.Namespace) -> None:
     if args.config_command == "set-library":
         path = Path(args.path).expanduser().resolve()
         write_config_key("library_dir", str(path))

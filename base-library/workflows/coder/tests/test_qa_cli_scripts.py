@@ -16,16 +16,19 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import script_dir_on_path
 
 SCRIPTS = Path(__file__).parent.parent / "scripts"
-sys.path.insert(0, str(SCRIPTS))  # so the adapters' `from qa_cli import …` resolves
 
 
 def _load(script: str):
     name = script.removesuffix(".py").replace("-", "_")
     spec = importlib.util.spec_from_file_location(name, SCRIPTS / script)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    # The adapter's `from qa_cli import ...` runs during exec_module, so the script
+    # dir has to be importable for exactly that window — see script_dir_on_path.
+    with script_dir_on_path(SCRIPTS):
+        spec.loader.exec_module(mod)
     return mod
 
 
