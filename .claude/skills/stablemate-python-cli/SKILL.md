@@ -40,6 +40,11 @@ so it breaks the moment the file is run directly. It also hides provenance: `.mo
 tells the reader nothing about where the code lives, and a rename can't be found by
 searching for the package name.
 
+This is enforced, not just advised — ruff's `TID252` with
+`ban-relative-imports = "all"` fails the lint. `ruff check --select TID252 --fix
+--unsafe-fixes` rewrites existing relative imports to absolute (the fix is "unsafe"
+only in that it edits imports; verify by running the suite afterwards).
+
 ## `sys.path` manipulation is prohibited
 
 Never write this, in source or in tests:
@@ -53,6 +58,31 @@ An unresolved import is a **packaging** problem and gets a packaging fix — add
 package as a workspace member, or install it into the venv — never path surgery at
 import time. `sys.path` edits are order-dependent global state: they work in the one
 file that does them and leave every other entry point broken.
+
+In a test file this is always redundant: `uv sync` installs the package, so
+`from mypkg.thing import X` already resolves — under pytest **and** under a direct
+`python tests/test_x.py`. An insert there only shadows the installed package with a
+directory that happens to look like it.
+
+The one narrow exception is a harness that **emulates the interpreter** rather than
+patching around a packaging gap: running a standalone script in-process has to
+reproduce what `python script.py` does — CPython puts the script's own directory on
+`sys.path[0]` — or a sibling import resolves in production and fails only in the test.
+Scope it to the call and restore `sys.path` afterwards:
+
+```python
+@contextmanager
+def script_dir_on_path(directory: Path):
+    saved = sys.path[:]
+    sys.path.insert(0, str(directory))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+```
+
+If you reach for that anywhere other than "I am standing in for the interpreter",
+it's the prohibited kind.
 
 ## uv is the package manager
 

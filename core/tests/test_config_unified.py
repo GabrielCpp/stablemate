@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import sys
 import tomllib
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pytest
 
-import pytest  # noqa: E402
-
-from stablemate_core import config as cfgmod  # noqa: E402
+from stablemate_core import config as cfgmod
 
 _POWER = """\
 [power.high.claude]
@@ -183,6 +180,118 @@ def test_corrupt_config_degrades_to_empty(cfg_file):
     cfg_file.write_text("this is not [ valid toml =")
     assert cfgmod.load_config() == {}
     assert cfgmod.resolve_power("high", "claude") == cfgmod.PowerMapping()
+
+
+# --- schema versioning -------------------------------------------------------
+#
+# One file, written by tools installed separately and versioned independently: two pipx
+# venvs each hold their own stablemate-core, and the config path is per-user, not per
+# venv. Nothing in packaging can make those agree, so the file carries the guard.
+
+
+@pytest.fixture(autouse=True)
+def _reset_warn_cache():
+    """The read-warning is once-per-version-per-process; tests must not inherit it."""
+    cfgmod._warned_too_new.clear()
+
+
+def test_writes_stamp_the_schema_version(cfg_file):
+    cfgmod.write_config_key("base_dir", "/p")
+    data = tomllib.loads(cfg_file.read_text())
+    assert data[cfgmod.CONFIG_VERSION_KEY] == cfgmod.CONFIG_VERSION
+
+
+def test_unversioned_config_reads_as_v1(cfg_file):
+    """v1 IS the unified file, so a config predating the key is v1 — never "unknown"."""
+    cfg_file.write_text(_POWER)
+    assert cfgmod.config_version_of(cfgmod.load_config()) == 1
+
+
+def test_config_version_of_rejects_a_bool(cfg_file):
+    """bool is an int subclass; `config_version = true` must not read as v1."""
+    assert cfgmod.config_version_of({cfgmod.CONFIG_VERSION_KEY: True}) == 1
+
+
+def test_write_refuses_a_newer_config(cfg_file):
+    """The load-bearing guard: an old tool must not serialize back a schema it cannot
+    represent, dropping the keys it does not understand — the original bug, exactly."""
+    cfg_file.write_text(f"{cfgmod.CONFIG_VERSION_KEY} = {cfgmod.CONFIG_VERSION + 1}\n" + _POWER)
+
+    with pytest.raises(cfgmod.ConfigVersionError) as excinfo:
+        cfgmod.write_config_key("base_dir", "/p")
+
+    assert "Refusing to write" in str(excinfo.value)
+    # And the file is untouched.
+    data = tomllib.loads(cfg_file.read_text())
+    assert "base_dir" not in data
+    assert data["power"]["high"]["claude"]["model"] == "opus"
+
+
+def test_reads_of_a_newer_config_survive_but_warn(cfg_file, caplog):
+    """Reads stay fail-soft: resolve_power re-reads per node, so raising here would kill
+    a week-long run. It must not be SILENT, though — that is the failure being guarded."""
+    cfg_file.write_text(f"{cfgmod.CONFIG_VERSION_KEY} = {cfgmod.CONFIG_VERSION + 1}\n" + _POWER)
+
+    with caplog.at_level("WARNING"):
+        assert cfgmod.resolve_power("high", "claude").model == "opus"
+
+    assert "understands v" in caplog.text
+
+
+def test_the_read_warning_is_not_repeated(cfg_file, caplog):
+    """Per-node re-reads must not bury an unattended run in duplicate warnings."""
+    cfg_file.write_text(f"{cfgmod.CONFIG_VERSION_KEY} = {cfgmod.CONFIG_VERSION + 1}\n")
+    with caplog.at_level("WARNING"):
+        for _ in range(5):
+            cfgmod.load_config()
+    assert caplog.text.count("understands v") == 1
+
+
+def test_check_config_version_raises_on_a_newer_config(cfg_file):
+    """The startup check, for CLIs — where failing is safe and actionable."""
+    cfg_file.write_text(f"{cfgmod.CONFIG_VERSION_KEY} = {cfgmod.CONFIG_VERSION + 1}\n")
+    with pytest.raises(cfgmod.ConfigVersionError):
+        cfgmod.check_config_version()
+
+
+def test_check_config_version_passes_on_a_current_config(cfg_file):
+    cfg_file.write_text(_POWER)
+    assert cfgmod.check_config_version() == cfgmod.CONFIG_VERSION
+
+
+def test_migration_walks_forward_and_backs_the_file_up(cfg_file, monkeypatch):
+    """Exercises the walk that CONFIG_VERSION = 1 leaves unreachable, so the mechanism
+    is proven before the release that needs it rather than after."""
+    cfg_file.write_text(f'{cfgmod.CONFIG_VERSION_KEY} = 1\nlibrary_dir = "/overlay"\n' + _POWER)
+
+    def v1_to_v2(cfg):
+        cfg["migrated_marker"] = "yes"
+        return cfg
+
+    monkeypatch.setattr(cfgmod, "CONFIG_VERSION", 2)
+    monkeypatch.setattr(cfgmod, "_MIGRATIONS", {1: v1_to_v2})
+
+    cfgmod.write_config_key("base_dir", "/p")
+
+    data = tomllib.loads(cfg_file.read_text())
+    assert data[cfgmod.CONFIG_VERSION_KEY] == 2, "the door must close behind a migration"
+    assert data["migrated_marker"] == "yes"
+    assert data["library_dir"] == "/overlay", "migration must not lose existing keys"
+    assert data["power"]["high"]["claude"]["model"] == "opus"
+
+    backup = cfg_file.with_name(cfg_file.name + ".v1.bak")
+    assert backup.is_file(), "migration is one-way; the old file must survive"
+    assert cfgmod.config_version_of(tomllib.loads(backup.read_text())) == 1
+
+
+def test_migration_refuses_when_no_step_is_registered(cfg_file, monkeypatch):
+    """Better to refuse than to stamp a version the data does not actually match."""
+    cfg_file.write_text(f"{cfgmod.CONFIG_VERSION_KEY} = 1\n")
+    monkeypatch.setattr(cfgmod, "CONFIG_VERSION", 2)
+    monkeypatch.setattr(cfgmod, "_MIGRATIONS", {})
+
+    with pytest.raises(cfgmod.ConfigVersionError, match="no migration registered"):
+        cfgmod.write_config_key("base_dir", "/p")
 
 
 if __name__ == "__main__":

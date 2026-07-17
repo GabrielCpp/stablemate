@@ -11,13 +11,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pytest
 
-import pytest  # noqa: E402
-
-from stablemate_core import base_cache as bc  # noqa: E402
-from stablemate_core import config as cfgmod  # noqa: E402
-from stablemate_core.discovery import (  # noqa: E402
+from stablemate_core import base_cache as bc
+from stablemate_core import config as cfgmod
+from stablemate_core.discovery import (
     BASE_DIR_ENV,
     base_library_dir,
     is_library_dir,

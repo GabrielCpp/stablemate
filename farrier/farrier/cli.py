@@ -13,6 +13,7 @@ from typing import Any
 
 from farrier import layers as _layers
 from stablemate_core.config import (
+    ConfigVersionError,
     config_path,
     read_config,
     write_base_dir,
@@ -93,6 +94,15 @@ def _run_install(args: argparse.Namespace) -> int:
 
 
 def _run_config(args: argparse.Namespace) -> int:
+    try:
+        return _dispatch_config(args)
+    except ConfigVersionError as exc:
+        # A config written by a newer stablemate-core. Actionable and deterministic, so
+        # it exits cleanly like every other config error here rather than as a traceback.
+        raise SystemExit(f"error: {exc}") from exc
+
+
+def _dispatch_config(args: argparse.Namespace) -> int:
     if args.config_action == "set-library":
         root = args.path.expanduser().resolve()
         if not is_library_dir(root):

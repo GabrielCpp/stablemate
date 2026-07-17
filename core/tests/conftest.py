@@ -9,16 +9,9 @@ so a test would pick up whatever this machine has configured.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import pytest
 
-# conftest is imported before any test module runs its own sys.path setup, so the
-# repo-root insert every standalone test file does has not happened yet.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import pytest  # noqa: E402
-
-from stablemate_core import base_cache, config  # noqa: E402
+from stablemate_core import base_cache, config
 
 
 @pytest.fixture(autouse=True)

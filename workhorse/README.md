@@ -265,6 +265,22 @@ pre-unification per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are 
 read when the shared one is absent, and the first write folds them into it, so an
 existing setup keeps working with no migration step.
 
+#### Config schema version
+
+The file carries a `config_version`. workhorse and farrier are installed separately and
+versioned independently, so the file — not the code — is where they are kept in step:
+
+| Situation | Behavior |
+|---|---|
+| Config is newer than this build | `config set-*` **refuses** (exit 1). Upgrade workhorse. |
+| Config is older than this build | Migrated forward on the next write; the old file is kept as `config.toml.v<n>.bak`. |
+| Reading a newer config | Succeeds, logs a warning. |
+
+Reads deliberately never raise: `power` is re-read per node, so a hard failure would kill
+an unattended run mid-flight because some other tool was upgraded. Writes are the guard,
+because a writer that does not understand a key drops it — which is exactly the bug that
+made this one file in the first place.
+
 #### Initial setup
 
 After installing workhorse for the first time, register your prompt library:
