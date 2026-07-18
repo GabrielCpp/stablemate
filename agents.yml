@@ -15,3 +15,9 @@ packs:
 skills:
   - ui/ui-accessibility
   - stacks/python/python-htmx-accessibility
+
+# Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
+# /update-skill-from-conversation command that folds a session's learnings back
+# into the agent library (skills, commands, root instructions).
+prompts:
+  - agent-library/update-skill-from-conversation
