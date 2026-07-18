@@ -346,6 +346,13 @@ _TRANSIENT_MARKERS = (
     "econnreset",
     "etimedout",
     "network",
+    # A stream that began then was cut off upstream ("API Error: Server error
+    # mid-response. The response above may be incomplete.") — a partial 5xx after
+    # the result started, exit 1. Retryable: a fresh turn usually completes. Kept
+    # narrow on purpose so a *deterministic* "Unexpected server error, check logs"
+    # (see test_finalize_turn_non_recoverable_names_each_backend) stays non-recoverable.
+    "mid-response",
+    "response above may be incomplete",
 )
 
 # Substrings (case-insensitive) that mark an exhausted context window — the model
