@@ -147,7 +147,7 @@ def test_operator_answered_scope_story_reworks_then_done(story_sandbox, monkeypa
     )
     mock_qa_control_plane(wf, monkeypatch)
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=params)
@@ -216,7 +216,7 @@ def test_impl_review_needs_changes_then_approved(story_sandbox, monkeypatch):
     wf.mock_agent("apply_review", {"impl_result": {"status": "applied", "notes": ""}})
     mock_qa_control_plane(wf, monkeypatch)
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))
@@ -258,7 +258,7 @@ def test_impl_review_apply_settles_without_rereview(story_sandbox, monkeypatch):
     wf.mock_agent("apply_review", {"impl_result": {"status": "applied", "notes": ""}})
     mock_qa_control_plane(wf, monkeypatch)
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))
@@ -303,7 +303,7 @@ def test_qa_fails_then_apply_fixes_passes(story_sandbox, monkeypatch):
         "apply_qa_fixes", {"qa_result": {"status": "passed", "notes": "Fixed."}}
     )
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))
@@ -311,6 +311,231 @@ def test_qa_fails_then_apply_fixes_passes(story_sandbox, monkeypatch):
     assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     fix_calls = [c for c in result.calls("claude") if c["node_id"] == "apply_qa_fixes"]
     assert fix_calls, "apply_qa_fixes should have been called"
+    assert (result.test_dir / "qa-run-count.txt").read_text() == "2"
+
+
+def test_semantic_plan_review_revises_before_execution(story_sandbox, monkeypatch):
+    git_mock_no_remote(story_sandbox)
+    wf = WorkflowRun(WORKFLOW, story_sandbox)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "approved", "notes": ""}},
+    )
+    mock_qa_control_plane(wf, monkeypatch)
+    wf.mock_agent_sequence(
+        "review_qa_plan",
+        [
+            {
+                "qa_plan_review": {
+                    "disposition": "revise",
+                    "notes": "The final assertion does not prove persistence.",
+                }
+            },
+            {
+                "qa_plan_review": {
+                    "disposition": "approved",
+                    "notes": "Persistence is now observed after reload.",
+                }
+            },
+        ],
+    )
+    wf.mock_agent(
+        "audit_qa",
+        {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}},
+    )
+
+    result = wf.run(params=story_params(story_sandbox))
+
+    assert result.passed(), result.stderr
+    assert len([c for c in result.calls("claude") if c["node_id"] == "plan_qa"]) == 2
+    assert (result.test_dir / "qa-run-count.txt").read_text() == "1"
+
+
+def test_plan_revisions_do_not_consume_product_fix_budget(story_sandbox, monkeypatch):
+    git_mock_no_remote(story_sandbox)
+    wf = WorkflowRun(WORKFLOW, story_sandbox)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "approved", "notes": ""}},
+    )
+    mock_qa_control_plane(wf, monkeypatch, ["failed", "passed"])
+    wf.mock_agent_sequence(
+        "review_qa_plan",
+        [
+            {
+                "qa_plan_review": {
+                    "disposition": "revise",
+                    "notes": f"Semantic revision {index}",
+                }
+            }
+            for index in range(3)
+        ]
+        + [
+            {
+                "qa_plan_review": {
+                    "disposition": "approved",
+                    "notes": "Semantically complete.",
+                }
+            },
+            {
+                "qa_plan_review": {
+                    "disposition": "approved",
+                    "notes": "Semantically complete after product fix.",
+                }
+            },
+        ],
+    )
+    wf.mock_agent("triage_qa", {"triage_action": "qa_fix", "qa_failure_class": "code"})
+    wf.mock_agent(
+        "apply_qa_fixes", {"qa_result": {"status": "applied", "notes": "Fixed product."}}
+    )
+    wf.mock_agent(
+        "audit_qa",
+        {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}},
+    )
+
+    result = wf.run(params=story_params(story_sandbox))
+
+    assert result.passed(), result.stderr
+    assert result.step_outputs("incr_qa_plan")["qa_plan_rework_count"]["value"] == 3
+    assert result.step_outputs("incr_qa")["qa_rework_count"]["value"] == 1
+    assert len([c for c in result.calls("claude") if c["node_id"] == "apply_qa_fixes"]) == 1
+
+
+def test_run_assessment_repairs_plan_when_objective_not_reached(story_sandbox, monkeypatch):
+    git_mock_no_remote(story_sandbox)
+    wf = WorkflowRun(WORKFLOW, story_sandbox)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "approved", "notes": ""}},
+    )
+    mock_qa_control_plane(wf, monkeypatch, ["passed", "passed"])
+    wf.mock_agent_sequence(
+        "assess_qa_run",
+        [
+            {
+                "qa_assessment": {
+                    "disposition": "repair_plan",
+                    "failure_class": "plan",
+                    "objective_reached": "no",
+                    "notes": "The browser deep-linked past the failing navigation chain.",
+                }
+            },
+            {
+                "qa_assessment": {
+                    "disposition": "confirmed",
+                    "failure_class": "none",
+                    "objective_reached": "yes",
+                    "notes": "Normal navigation and terminal objective were observed.",
+                }
+            },
+        ],
+    )
+    wf.mock_agent(
+        "audit_qa",
+        {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}},
+    )
+
+    result = wf.run(params=story_params(story_sandbox))
+
+    assert result.passed(), result.stderr
+    assert (result.test_dir / "qa-run-count.txt").read_text() == "2"
+    assert len([c for c in result.calls("claude") if c["node_id"] == "plan_qa"]) == 2
+
+
+def test_run_assessment_product_diagnosis_enters_fix_loop(story_sandbox, monkeypatch):
+    git_mock_no_remote(story_sandbox)
+    wf = WorkflowRun(WORKFLOW, story_sandbox)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "approved", "notes": ""}},
+    )
+    mock_qa_control_plane(wf, monkeypatch, ["passed", "passed"])
+    wf.mock_agent_sequence(
+        "assess_qa_run",
+        [
+            {
+                "qa_assessment": {
+                    "disposition": "confirmed",
+                    "failure_class": "product",
+                    "objective_reached": "yes",
+                    "notes": "The captured response contains an unexpected server error.",
+                }
+            },
+            {
+                "qa_assessment": {
+                    "disposition": "confirmed",
+                    "failure_class": "none",
+                    "objective_reached": "yes",
+                    "notes": "The corrected objective completed without errors.",
+                }
+            },
+        ],
+    )
+    wf.mock_agent("triage_qa", {"triage_action": "qa_fix", "qa_failure_class": "code"})
+    wf.mock_agent(
+        "apply_qa_fixes", {"qa_result": {"status": "applied", "notes": "Fixed server error."}}
+    )
+    wf.mock_agent(
+        "audit_qa",
+        {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}},
+    )
+
+    result = wf.run(params=story_params(story_sandbox))
+
+    assert result.passed(), result.stderr
+    assert result.step_outputs("mark_qa_assessment_failed")["qa_result"]["status"] == "failed"
+    assert len([c for c in result.calls("claude") if c["node_id"] == "apply_qa_fixes"]) == 1
+    assert (result.test_dir / "qa-run-count.txt").read_text() == "2"
+
+
+def test_product_audit_refutation_enters_fix_loop(story_sandbox, monkeypatch):
+    git_mock_no_remote(story_sandbox)
+    wf = WorkflowRun(WORKFLOW, story_sandbox)
+    wf.mock_agent("plan", {"plan_result": {"status": "done", "summary": ""}})
+    wf.mock_agent("implement_layer", {"impl_result": {"status": "done", "notes": ""}})
+    wf.mock_agent(
+        "review_implementation",
+        {"review_impl_result": {"status": "approved", "notes": ""}},
+    )
+    mock_qa_control_plane(wf, monkeypatch, ["passed", "passed"])
+    wf.mock_agent_sequence(
+        "audit_qa",
+        [
+            {
+                "qa_audit": {
+                    "verdict": "refuted",
+                    "refutation_class": "product-contradiction",
+                    "notes": "Reload evidence shows the old value.",
+                }
+            },
+            {
+                "qa_audit": {
+                    "verdict": "stands",
+                    "refutation_class": "none",
+                    "notes": "The corrected evidence stands.",
+                }
+            },
+        ],
+    )
+    wf.mock_agent("triage_qa", {"triage_action": "qa_fix", "qa_failure_class": "code"})
+    wf.mock_agent(
+        "apply_qa_fixes", {"qa_result": {"status": "applied", "notes": "Fixed persistence."}}
+    )
+
+    result = wf.run(params=story_params(story_sandbox))
+
+    assert result.passed(), result.stderr
+    assert result.step_outputs("mark_qa_audit_failed")["qa_result"]["status"] == "failed"
+    assert len([c for c in result.calls("claude") if c["node_id"] == "apply_qa_fixes"]) == 1
     assert (result.test_dir / "qa-run-count.txt").read_text() == "2"
 
 
@@ -337,7 +562,7 @@ def test_qa_fails_twice_then_passes(story_sandbox, monkeypatch):
     mock_qa_control_plane(wf, monkeypatch, ["failed", "failed", "passed"])
     wf.mock_agent("apply_qa_fixes", {"qa_result": {"status": "applied", "notes": ""}})
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))
@@ -404,7 +629,7 @@ def test_qa_blocked_setup_fix_ready_then_passes(story_sandbox, monkeypatch):
         },
     )
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))
@@ -442,7 +667,7 @@ def test_qa_failed_triage_rescope_reenters_dev_then_passes(story_sandbox, monkey
     mock_qa_control_plane(wf, monkeypatch, ["failed", "passed"])
     wf.mock_agent("triage_qa", {"triage_action": "rescope", "qa_failure_class": "code"})
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(params=story_params(story_sandbox))

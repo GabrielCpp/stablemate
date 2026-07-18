@@ -1,6 +1,6 @@
 # Coder Workflow Documentation
 
-The unified coder workflow supports two modes: **story** (single story, no queue/CI/PR) and **epic** (multi-story queue + CI/PR gating). Both modes share the core per-story stages (plan → implement → review → QA), with mode-specific routing at entry and exit points.
+The unified coder workflow supports two modes: **story** (single story, no queue/CI/PR) and **epic** (multi-story queue + CI/PR gating). Both modes share the core per-story stages (plan → implement → review → documentation → QA), with mode-specific routing at entry and exit points.
 
 ## Mode: story
 
@@ -22,13 +22,20 @@ Single-story workflow with no queue, CI gating, or PR management. Useful for:
    - Reuse rework: `check_code_reuse` finds an existing implementation the plan would rebuild → `rework_plan_reuse` re-plans to reuse it → re-check (bounded by `max_reuse_reworks`, fail-open to `implement`)
 
 2. **Implement** → `implement` → `code_review` → `code_reuse` → `review_implementation` → `decide_impl`
-   - Approved: → refresh implementation grounding → QA context generation
+   - Approved: → hard-gated OKF documentation → QA context generation
    - Needs changes: → `apply_review` → `review_implementation` (loop)
 
-3. **QA** → context generation/validation → YAML planning/validation → Ostler run → interpretation → evidence gate → audit
+3. **Documentation** → incremental OKF authoring → deterministic context and `ostler doctor` gate → independent semantic review
+   - New services, screens, components, commands, endpoints, concepts, formats, and flows must be merged into the current book
+   - Surface-only code ownership, graph errors, unreadable OKF, and semantic omissions enter a bounded repair loop
+   - Exhaustion or a product/author block terminates at `documentation_failed`; QA and commit cannot run
+   - Repositories without an OKF `docs/features/` tree are explicitly not applicable
+
+4. **QA** → context generation/validation → YAML planning/validation → semantic plan review → Ostler run → objective assessment → evidence gate → audit
    - `qa-plan.yml` is mandatory for command, Playwright, and Maestro surfaces
    - Ostler owns execution, cleanup, the append-only ledger, manifest, and evidence
-   - the QA agent only interprets output or appends replayable exploration for a workflow rerun
+   - the semantic reviewer checks whether each scenario can reach and observe its objective before execution
+   - the execution reviewer confirms whether the completed run actually exercised that objective
    - `verify_qa_evidence` rejects malformed runner proof as `invalid`; only valid passes reach `audit_qa`
    - Passed (gate + audit): → `done` (success, terminal)
    - Failed / refuted: → `guard_qa` (max 3 reworks) → `apply_qa_fixes` → `incr_qa` →
@@ -72,7 +79,7 @@ Multi-story queue with CI/PR gating. The workflow walks the epic queue (`docs/ep
    - Operator resumes: resets fix counter → `await_ci` (re-enter CI gate)
 
 5. **Story workflow** (shared with story mode)
-   - `reset_plan` → `plan` → implementation → review → implementation grounding update → QA control plane → regression/completion
+   - `reset_plan` → `plan` → implementation → review → hard-gated OKF documentation → QA control plane → regression/completion
    - Same context, YAML-plan, Ostler-run, evidence, and audit stages as story mode
 
 6. **QA exit routing** (epic-specific)
@@ -116,7 +123,7 @@ plan (opus) → decide_plan
 implement → code_review → code_reuse → review_implementation → decide_impl
 ├─ approved → check_impl_feedback → decide_impl_feedback
 │  ├─ feedback present → apply_impl_feedback → review_implementation (loop)
-│  └─ no feedback → implementation grounding update → QA flow
+│  └─ no feedback → documentation flow → QA flow
 └─ needs_changes → apply_review → review_implementation (loop)
 ```
 
@@ -126,26 +133,63 @@ implement → code_review → code_reuse → review_implementation → decide_im
 - No agent loop cap; assumes convergence through review
 - `check_impl_feedback` is a **non-blocking** poll of `<spec_dir>/feedback.md` (see [Non-blocking operator feedback](#non-blocking-operator-feedback)); with no feedback it falls straight through to QA
 
+### Documentation Loop
+
+```text
+prepare_story -> resolve_documentation_context -> detect_documentation_okf
+-> document_story -> build_documentation_context -> validate_documentation_context
+-> verify_story_documentation -> review_story_documentation -> documentation_done
+```
+
+- `document_story` follows the scaffold → author → fmt → doctor loop and merges the story delta
+  into the full current OKF contracts.
+- `verify_story_documentation` fails closed on invalid context, broad surface-only ownership, or
+  any error-level `ostler doctor` finding.
+- When source roots share the docs Git worktree, the deterministic mapper covers repository-wide
+  shared code, excludes configured document roots, and requires exact grounding for every changed
+  symbol. Multi-repo and non-Git docs roots
+  use doctor plus the independent semantic reviewer instead of attempting an invalid cross-repo
+  `git diff` from the docs directory.
+- `review_story_documentation` independently checks semantic completeness and rejects an invalid
+  `not_required` claim, especially for new services and UI/API/CLI surface nodes.
+- Deterministic or semantic failures loop through bounded re-authoring. Exhaustion reaches a
+  `type: fail` terminal, so neither story nor epic mode can flag-and-continue past missing docs.
+- The same flow runs again after QA, regression repair, and the inline fix drain. This final pass
+  validates the actual working tree that will be committed, not only the pre-QA implementation.
+- Epic QA give-up marker commits and standalone fix-story commits also pass through the docs flow.
+  CI and merge remediation have no selected story, so those agents are contract-preserving only:
+  a repair requiring observable behavior changes must fail and return to story/operator handling.
+- Run this phase alone with `workhorse run coder docs --params '{"story":"CASE-1234"}'`.
+
 ### QA Loop
 
 ```text
 prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 -> build_qa_okf_context -> validate_qa_okf_context -> plan_qa
--> validate_qa_plan -> run_qa_plan -> qa_interpret_and_explore
+-> validate_qa_plan -> review_qa_plan -> run_qa_plan -> assess_qa_run
 -> verify_qa_evidence -> audit_qa -> regression/completion
 ```
 
 - **Context**: `ostler qa context` derives obligations from HEAD/WORKTREE, the story, source roots,
   and current OKF grounding. Invalid/unmapped context routes to grounding repair.
-- **Plan**: `qa-plan.yml` covers every AC and required obligation for all surfaces; invalid plans
-  route back to planning.
+- **Plan**: `qa-plan.yml` covers every AC and required obligation for all surfaces; deterministic
+  invalidity or semantic-review revision routes back to planning.
 - **Run**: `ostler qa run` returns `passed|failed|blocked|invalid` and owns `qa/` plus cleanup.
-- **Interpretation**: the agent reads runner output but cannot execute primary QA or author evidence.
+- **Assessment**: the execution reviewer decides whether the run established its preconditions,
+  crossed required checkpoints, and reached its objective. It may request bounded plan repair or
+  extension but cannot execute primary QA, author evidence, or override the runner result.
+- **Audit**: only an objective-confirmed, evidence-valid candidate pass reaches the independent
+  auditor. The auditor treats plan/evidence as frozen and may only let the pass stand or refute it;
+  plan/evidence refutations replan, while product contradictions enter defect triage.
 - **Routing**: invalid → planning/context repair; blocked → setup/operator; failed → defect triage;
   passed → deterministic evidence verification and adversarial audit.
 - **Re-run, don't trust**: product fixes rebuild context before re-planning/running; setup fixes rerun
   the validated plan. No fixer or interpreter self-report can exit the loop as passed.
-- **Gate**: `guard_qa` enforces max 3 rework cycles
+- **Budgets**: context grounding, QA-plan convergence, and product repair have independent bounded
+  counters, so semantic-plan revisions cannot consume the story's product-fix allowance.
+- **Gate**: `guard_qa` enforces max 3 product-repair cycles.
+- **Regression re-QA**: regression fixes use one cumulative attempt budget. A pending marker forces
+  primary QA/evidence/audit once after each green repair without resetting that budget or looping.
 - `check_qa_feedback` is a **non-blocking** poll of `<spec_dir>/feedback.md` (see [Non-blocking operator feedback](#non-blocking-operator-feedback)); with feedback it applies it and re-runs QA, otherwise it commits/finishes as before
 - **Story mode**: QA failure halts the workflow (non-zero exit)
 - **Epic mode**: QA failure flags the story and continues the queue
@@ -190,7 +234,7 @@ Internal state (produced by script nodes at runtime, accessed via `get_node_outp
 
 ## Standalone Flow Invocation
 
-Each per-story flow (`dev`, `review`, `qa`) can be run standalone. The flow's own
+Each per-story flow (`dev`, `review`, `docs`, `qa`) can be run standalone. The flow's own
 `prepare_story` node resolves paths from the `story` slug, so you only need the minimal
 params.
 
@@ -203,6 +247,9 @@ workhorse run coder dev --params '{"story":"CASE-1234"}'
 
 # Review only
 workhorse run coder review --params '{"story":"CASE-1234"}'
+
+# Refresh and hard-gate this story's OKF documentation only
+workhorse run coder docs --params '{"story":"CASE-1234"}'
 ```
 
 `docs_path` and `epic` are optional — omit them to derive paths from the CWD via

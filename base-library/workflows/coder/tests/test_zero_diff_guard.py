@@ -79,9 +79,9 @@ def test_three_consecutive_zero_diff_commits_halt_the_run(tmp_path, monkeypatch)
     # The streak reached the literal threshold in guard_zero_diff (3)...
     assert_step_output(result, "incr_zero_diff", "zero_diff_count", {"value": 3})
     # ...so exactly 3 stories were processed before the halt — the 4th never ran.
-    # One qa_interpret_and_explore call per story's QA phase (the happy path passes
+    # One assess_qa_run call per story's QA phase (the happy path passes
     # first try), so the call count is the number of stories processed.
-    qa_calls = [c for c in result.calls("claude") if c["node_id"] == "qa_interpret_and_explore"]
+    qa_calls = [c for c in result.calls("claude") if c["node_id"] == "assess_qa_run"]
     assert len(qa_calls) == 3, f"expected 3 stories processed, got {len(qa_calls)}"
 
 

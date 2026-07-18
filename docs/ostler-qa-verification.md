@@ -230,6 +230,14 @@ reported impact.
   "journeys": [],
   "journeyNodes": [],
   "verificationRefs": [],
+  "verificationIndex": [
+    {
+      "node": "docs/features/groom/flows/operator-answers-blocked-gate.md",
+      "ref": "groom/tests/test_gates.py::test_answer_gate",
+      "path": "groom/tests/test_gates.py",
+      "impacted": true
+    }
+  ],
   "healthFindings": [],
   "obligations": [
     {
@@ -252,6 +260,12 @@ reported impact.
 
 `qa-okf-context.md` renders the same packet for humans and agents. It is not a
 second source of truth.
+
+`verificationRefs` contains executable references owned by impacted nodes.
+`verificationIndex` contains references from the complete graph and marks whether
+each owner is impacted. The coder regression gate uses that complete index for
+diagnostic ownership only. Impact attribution never removes a failure from the
+story's regression worklist; every regression remains fail-closed.
 
 ## 7. Universal QA plan
 
@@ -748,8 +762,9 @@ prepare_story
 -> validate_qa_okf_context
 -> plan_qa
 -> validate_qa_plan
+-> review_qa_plan
 -> run_qa_plan
--> qa_interpret_and_explore
+-> assess_qa_run
 -> verify_qa_evidence
 -> audit_qa
 -> regression and completion gates
@@ -766,17 +781,33 @@ layers. Its verification contract is the union of:
 - consistency-group obligations;
 - persistence obligations;
 - event producer-to-consumer obligations; and
-- concurrency and idempotency obligations.
+- concurrency and idempotency obligations;
+- flow start preconditions and end states; and
+- interaction, component, endpoint, invocation, method, and field requirements such
+  as guards, effects, states, keyboard behavior, status/error/auth behavior, returns,
+  raises, defaults, and semantics.
+
+Nested OKF bullets are preserved as individual requirements. For example, each child
+under `does:` or `steps:` remains visible to impact generation instead of collapsing
+to an empty parent value. UI plans start at a flow's declared entry rather than
+deep-linking past navigation, and assert the documented end state plus the absence of
+unexpected server or console errors.
 
 The human-readable `qa-plan.md` explains the selected scenarios and maps every
 AC and OKF obligation to executable evidence.
 
-### 14.2 Execution
+### 14.2 Semantic plan review and execution
 
-The workflow, not the QA agent, invokes `ostler qa validate` and `ostler qa run`.
-The QA agent receives the resulting runner-produced log and artifacts. It may add
-exploratory scenarios, but those scenarios must be appended to the plan and
-executed through Ostler before they can support a verdict.
+After deterministic validation, an independent semantic reviewer checks whether each
+scenario can establish its causal preconditions, traverse the required checkpoints,
+and produce terminal evidence that actually proves every `covers` claim. It does not
+execute or edit the plan. Revision returns to the bounded planning loop.
+
+The workflow, not an agent, invokes `ostler qa run`. A constructive execution
+reviewer then receives the runner-produced log and artifacts for every outcome and
+decides whether the run meaningfully reached its objective. It may diagnose plan or
+setup repair, or append replayable exploration, but only a subsequent Ostler run can
+produce evidence or a verdict.
 
 ### 14.3 Audit
 
@@ -788,9 +819,29 @@ The adversarial auditor reads:
 - `run-manifest.json`; and
 - `qa-evidence.json`.
 
-Coverage of required obligations is exhaustive and deterministic. The auditor
-may sample the riskiest evidence when rejudging quality, but it may not sample
-whether an obligation was omitted.
+Coverage of required obligations is exhaustive and deterministic. Only an
+objective-confirmed, evidence-valid candidate pass reaches the auditor. The auditor
+treats the plan and evidence as frozen: it cannot execute, edit, repair, or request
+exploration. It may sample the riskiest evidence when rejudging quality, but it may
+not sample whether an obligation was omitted. A refutation is classified as a plan
+defect, evidence defect, or product contradiction so routing does not confuse bad QA
+design with bad product behavior.
+
+### 14.4 Regression attribution and re-QA
+
+The full committed journey suite runs after story-scoped QA. Each parsed failure is
+matched against `verificationIndex`:
+
+- an impacted owner identifies a likely change-adjacent cause;
+- owners exclusively outside the impacted graph identify where else to investigate;
+  and
+- no owner identifies an OKF grounding gap.
+
+All three classifications remain story-blocking and go to the regression fixer.
+After any regression fix makes the suite green, the workflow rebuilds OKF impact and
+reruns the primary plan, evidence gate, and audit. Evidence captured before the code
+fix cannot authorize the final pass. A pending re-QA marker is cleared only after that
+fresh primary pass and does not reset the cumulative regression-fix budget.
 
 ## 15. Documentation ownership and timing
 
@@ -822,6 +873,7 @@ explicitly authorized story contract change.
 - Add timeouts, guaranteed cleanup, status classification, run manifests, and
   secret redaction.
 - Preserve all repeated `code:` and `verify:` bullets in graph output.
+- Preserve nested normative bullets such as `does:` and `steps:` in graph output.
 
 ### Phase 2: OKF impact and obligation coverage
 
@@ -830,6 +882,7 @@ explicitly authorized story contract change.
 - Generate `qa-okf-context.json` and its Markdown rendering.
 - Validate `covers` against required ACs and obligations.
 - Extend `qa-evidence.json` and its gate with `obligations`.
+- Index all `verify:` owners for scoped regression attribution.
 
 ### Phase 3: Playwright driver
 

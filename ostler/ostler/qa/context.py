@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import graph as graph_mod
-from ostler import markdown
+from ostler import inventory, markdown
 from ostler.model import Graph, _parse_ui_nodes, load
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -20,6 +20,30 @@ _SYMBOL_RE = re.compile(
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
 )
 _AC_RE = re.compile(r"^(?:AC\s*)?(\d+)\s*[:.)-]\s*(.+)$", re.IGNORECASE)
+_VERIFY_REF_RE = re.compile(
+    r"(?P<path>[A-Za-z0-9_./$-]+\.(?:py|tsx?|jsx?|go|mjs|cjs|ya?ml|dart|java|kts?|rs|sh|bash|sql|rb|php|cs|swift|feature))"
+    r"(?:::(?P<symbol>[^`,]+))?"
+)
+
+_QA_REQUIREMENT_KEYS = {
+    "flow": ("start", "end"),
+    "component": ("role", "name", "keyboard", "states"),
+    "command": ("does",),
+    "endpoint": ("does", "status", "statuses", "error", "errors", "auth", "authorization"),
+    "interaction": ("when", "does", "keyboard"),
+    "invocation": (
+        "when",
+        "does",
+        "status",
+        "statuses",
+        "error",
+        "errors",
+        "auth",
+        "authorization",
+    ),
+    "method": ("returns", "raises"),
+    "field": ("required", "default", "semantics"),
+}
 
 
 @dataclass(frozen=True)
@@ -45,9 +69,23 @@ def build_context(
 ) -> dict[str, Any]:
     root = root.resolve()
     source_roots = source_roots or {}
+    current = load(root)
     base_graph = _graph_at_revision(root, base, features_root)
-    head_graph = load(root) if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
-    changes = _changed_units(root, base, head, source_roots)
+    head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
+    excluded_doc_roots = {
+        path.resolve().relative_to(root).as_posix()
+        for path in current.doc_roots.values()
+        if path.resolve().is_relative_to(root)
+    }
+    changes = [
+        change
+        for change in _changed_units(root, base, head, source_roots)
+        if not any(
+            change.path == prefix or change.path.startswith(prefix.rstrip("/") + "/")
+            for prefix in excluded_doc_roots
+        )
+        and not _is_non_production_path(change.path)
+    ]
     base_nodes, base_edges = _serialized_graph(base_graph)
     head_nodes, head_edges = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
@@ -200,8 +238,19 @@ def build_context(
                 direct_reasons.setdefault(node_id, []).extend(reasons)
                 related = True
 
-    verification_refs: list[dict[str, str]] = []
-    for node_id in sorted(contracts | journeys):
+    selected = contracts | journeys
+    verification_index: list[dict[str, Any]] = []
+    for node_id, node in sorted(nodes_by_id.items()):
+        for ref in _verification_refs(node):
+            verification_index.append(
+                {"node": node_id, "ref": ref, "path": _code_path(ref), "impacted": node_id in selected}
+            )
+    verification_refs = [
+        {"node": item["node"], "ref": item["ref"], "path": item["path"]}
+        for item in verification_index
+        if item["impacted"]
+    ]
+    for node_id in sorted(selected):
         node = nodes_by_id[node_id]
         code_refs = _values(node.get("bullets", {}).get("code"))
         for ref in code_refs:
@@ -216,9 +265,7 @@ def build_context(
                         "message": "code grounding resolves in neither base nor head",
                     }
                 )
-        for ref in _values(nodes_by_id[node_id].get("bullets", {}).get("verify")):
-            verification_refs.append({"node": node_id, "ref": _normalize_code_ref(ref)})
-        if not _values(node.get("bullets", {}).get("verify")):
+        if not _verification_refs(node):
             health.append(
                 {
                     "kind": "missing-verification",
@@ -255,6 +302,7 @@ def build_context(
         "journeys": sorted(journeys),
         "journeyNodes": sorted(journeys),
         "verificationRefs": verification_refs,
+        "verificationIndex": verification_index,
         "healthFindings": health,
         "acceptanceCriteria": _acceptance_criteria(story_file),
         "obligations": obligations,
@@ -310,6 +358,8 @@ def validate_context(packet: Any) -> list[str]:
     for field in ("changedCode", "directNodes", "contracts", "journeys", "journeyNodes", "verificationRefs", "healthFindings", "obligations"):
         if not isinstance(packet.get(field), list):
             problems.append(f"context.{field} must be a list")
+    if "verificationIndex" in packet and not isinstance(packet["verificationIndex"], list):
+        problems.append("context.verificationIndex must be a list")
     seen: set[str] = set()
     for item in packet.get("obligations", []):
         if not isinstance(item, dict) or not item.get("id"):
@@ -430,14 +480,14 @@ def _changed_units(
                 status=status,
                 base_lines=tuple(sorted(item["base"])),
                 head_lines=tuple(sorted(item["head"])),
-                base_symbols=tuple(_symbols_for_lines(base_text, item["base"])),
-                head_symbols=tuple(_symbols_for_lines(head_text, item["head"])),
+                base_symbols=tuple(_symbols_for_lines(base_text, item["base"], item["old"])),
+                head_symbols=tuple(_symbols_for_lines(head_text, item["head"], item["new"])),
             )
         )
     return output
 
 
-def _symbols_for_lines(text: str, lines: set[int]) -> list[str]:
+def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
     if not text or not lines:
         return []
     try:
@@ -458,11 +508,41 @@ def _symbols_for_lines(text: str, lines: set[int]) -> list[str]:
         visit(tree)
     else:
         current = ""
-        for number, line in enumerate(text.splitlines(), start=1):
-            match = _SYMBOL_RE.match(line)
-            if match:
-                current = match.group(1) or match.group(2) or ""
-                symbols.append((number, number, current))
+        text_lines = text.splitlines()
+        declarations: list[tuple[int, str]] = []
+        suffix = Path(path).suffix
+        if suffix == ".go":
+            for match in inventory.GO_DECL.finditer(text):
+                star, receiver, method, func, typename = match.groups()
+                if method:
+                    owner = f"(*{receiver})" if star else receiver
+                    name = f"{owner}.{method}"
+                else:
+                    name = func or typename
+                declarations.append((text.count("\n", 0, match.start()) + 1, name))
+        elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
+            declarations.extend(
+                (number, match.group(1))
+                for number, line in enumerate(text_lines, start=1)
+                if line and not line[:1].isspace()
+                if (match := inventory.TS_ANY_DECL.match(line))
+            )
+        else:
+            for number, line in enumerate(text_lines, start=1):
+                match = _SYMBOL_RE.match(line)
+                if match:
+                    current = match.group(1) or match.group(2) or ""
+                    declarations.append((number, current))
+        symbols.extend(
+            (
+                start,
+                declarations[index + 1][0] - 1
+                if index + 1 < len(declarations)
+                else len(text_lines),
+                name,
+            )
+            for index, (start, name) in enumerate(declarations)
+        )
     found: set[str] = set()
     for line in lines:
         containing = [item for item in symbols if item[0] <= line <= item[1]]
@@ -501,7 +581,7 @@ def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
         return True
     for text in texts:
         all_lines = set(range(1, len(text.splitlines()) + 1))
-        if symbol in _symbols_for_lines(text, all_lines):
+        if symbol in _symbols_for_lines(text, all_lines, path):
             return True
     return False
 
@@ -547,14 +627,65 @@ def _code_path(value: str) -> str:
     return _normalize_code_ref(value).partition("::")[0]
 
 
+def _verification_refs(node: dict[str, Any]) -> list[str]:
+    refs: list[str] = []
+    for value in _values(node.get("bullets", {}).get("verify")):
+        refs.extend(
+            f"{match['path']}::{match['symbol'].strip()}"
+            if match["symbol"]
+            else match["path"]
+            for match in _VERIFY_REF_RE.finditer(value)
+        )
+    return list(dict.fromkeys(refs))
+
+
 def _surface_owner(path: str, roots: dict[str, list[str]]) -> str:
     matches = [
         (len(prefix.rstrip("/")), surface)
         for surface, prefixes in roots.items()
         for prefix in prefixes
-        if path == prefix.rstrip("/") or path.startswith(prefix.rstrip("/") + "/")
+        if prefix.rstrip("/") in ("", ".")
+        or path == prefix.rstrip("/")
+        or path.startswith(prefix.rstrip("/") + "/")
     ]
     return max(matches)[1] if matches else ""
+
+
+def _is_non_production_path(path: str) -> bool:
+    candidate = path.lower()
+    parts = Path(candidate).parts
+    non_production_dirs = {
+        "test",
+        "tests",
+        "__tests__",
+        "testdata",
+        "__snapshots__",
+        "snapshots",
+        "fixtures",
+        "fixture",
+        "golden",
+        "goldens",
+    }
+    if any(part in non_production_dirs for part in parts[:-1]):
+        return True
+    name = parts[-1] if parts else candidate
+    if name.startswith("test_") or name.endswith(("_test.py", "_test.go")):
+        return True
+    if any(token in name for token in (".test.", ".spec.")):
+        return True
+    if name.endswith(".md") and not any(part in {"prompts", "templates"} for part in parts[:-1]):
+        return True
+    if name.endswith((".lock", ".rst")) or name in {
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "uv.lock",
+        "readme.md",
+        "changelog.md",
+        "license.md",
+    }:
+        return True
+    return bool(parts and parts[0] in {".github", ".gitlab"})
 
 
 def _obligations(
@@ -583,6 +714,7 @@ def _obligations(
         "consumes",
         "concurrency",
         "idempotency",
+        *_QA_REQUIREMENT_KEYS.get(str(node.get("type", "")), ()),
     )
     for key in normative_keys:
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):

@@ -299,7 +299,7 @@ _QUEUE_PATH_METHODS = (
 )
 _ALL_GRAPH_METHODS = _QUEUE_PATH_METHODS + (
     "list", "backlog", "backlog_add", "backlog_prune", "create_epic", "create_story",
-    "add_seed", "set_status", "doctor", "query", "search",
+    "add_seed", "set_status", "query", "search",
 )
 
 
@@ -344,12 +344,54 @@ def _install_qa(monkeypatch, *, run_result) -> None:
 
     qa_cli = _qa_cli_module()
     monkeypatch.setattr(qa_cli, "qa_run", run_result)
-    monkeypatch.setattr(qa_cli, "qa_context", lambda *a, **k: (0, {"healthFindings": []}, ""))
+    def qa_context(spec_dir, *args, **kwargs):
+        packet = {
+            "version": 1,
+            "available": True,
+            "changedCode": [],
+            "directNodes": [],
+            "obligations": [],
+            "healthFindings": [],
+        }
+        path = Path(spec_dir)
+        docs_root = kwargs.get("docs_root")
+        if not path.is_absolute() and docs_root is not None:
+            path = Path(docs_root) / path
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "qa-okf-context.json").write_text(
+            json.dumps(packet), encoding="utf-8"
+        )
+        return 0, packet, ""
+
+    monkeypatch.setattr(qa_cli, "qa_context", qa_context)
     monkeypatch.setattr(qa_cli, "qa_validate", lambda *a, **k: (0, {"status": "passed"}, ""))
     monkeypatch.setattr(
         qa_cli, "qa_context_validate",
         lambda *a, **k: (0, {"status": "passed", "problems": []}, ""))
     monkeypatch.setattr(Ostler, "artifact_vet", lambda self, kind, spec: {"problems": []})
+    monkeypatch.setattr(Ostler, "doctor", lambda self: {"findings": []})
+
+
+def mock_documentation_happy(wf: WorkflowRun) -> None:
+    wf.mock_agent(
+        "document_story",
+        {
+            "documentation_result": {
+                "status": "not_required",
+                "nodes": [],
+                "notes": "Test fixture has no observable contract delta.",
+            }
+        },
+    )
+    wf.mock_agent(
+        "review_story_documentation",
+        {
+            "documentation_review": {
+                "status": "approved",
+                "notes": "No documentation update required for this fixture.",
+            }
+        },
+    )
 
 
 def mock_ostler_qa(monkeypatch, status: str = "passed") -> None:
@@ -434,9 +476,21 @@ def mock_qa_control_plane(
     else:
         wf.mock_agent_sequence("plan_qa", plan_entries)
     wf.mock_agent(
-        "qa_interpret_and_explore",
-        {"qa_interpretation": {"action": "continue", "notes": "interpreted"}},
+        "review_qa_plan",
+        {"qa_plan_review": {"disposition": "approved", "notes": "semantically sound"}},
     )
+    wf.mock_agent(
+        "assess_qa_run",
+        {
+            "qa_assessment": {
+                "disposition": "confirmed",
+                "failure_class": "none",
+                "objective_reached": "yes",
+                "notes": "objective assessed",
+            }
+        },
+    )
+    mock_documentation_happy(wf)
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +645,7 @@ def mock_all_agents_happy(
     # fix-loop tests pass mock_ostler_fix_passthrough so real ostler scaffolds the
     # `fixes` epic (which seed-fix-story.py has no JSON fallback for).
     (ostler_setup or mock_ostler_qa)(monkeypatch)
+    mock_documentation_happy(wf)
     plan_paths = story_md_paths or [
         wf._sandbox / "docs" / "epics" / "epic-1" / "stories" / "s-1" / "story.md"
     ]
@@ -620,17 +675,29 @@ def mock_all_agents_happy(
             ],
         )
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "review_qa_plan",
+        {"qa_plan_review": {"disposition": "approved", "notes": "semantically sound"}},
+    )
+    wf.mock_agent(
+        "audit_qa",
+        {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}},
     )
     wf.mock_agent("apply_qa_fixes", {"qa_result": {"status": "passed", "notes": ""}})
     wf.mock_agent("fix_ci_agent", {"fix_ci_result": {"status": "fixed", "notes": ""}})
 
-    qa_response = {"qa_interpretation": {"action": "continue", "notes": ""}}
+    qa_response = {
+        "qa_assessment": {
+            "disposition": "confirmed",
+            "failure_class": "none",
+            "objective_reached": "yes",
+            "notes": "",
+        }
+    }
     if not story_md_paths:
-        wf.mock_agent("qa_interpret_and_explore", qa_response)
+        wf.mock_agent("assess_qa_run", qa_response)
     elif len(story_md_paths) == 1:
         wf.mock_agent(
-            "qa_interpret_and_explore",
+            "assess_qa_run",
             qa_response,
             side_effects=[
                 {
@@ -641,7 +708,7 @@ def mock_all_agents_happy(
         )
     else:
         wf.mock_agent_sequence(
-            "qa_interpret_and_explore",
+            "assess_qa_run",
             [
                 {
                     "response": qa_response,

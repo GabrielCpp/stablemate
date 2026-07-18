@@ -101,6 +101,26 @@ def test_unresolved_relation(repo: Path):
     assert "unresolved-relation" in codes(report)
 
 
+def test_nested_flow_steps_are_checked_as_relation_values(repo: Path):
+    write(
+        repo / "docs/features/workhorse/concepts/target.md",
+        "---\ntype: concept\nslug: target\ntitle: Target\n---\n# Target\n",
+    )
+    write(
+        repo / "docs/features/workhorse/flows/journey.md",
+        "---\ntype: flow\nslug: journey\ntitle: Journey\n---\n# Journey\n\n"
+        "- start: ready\n"
+        "- steps:\n"
+        "  1. Open [target](../concepts/target.md)\n"
+        "  2. Finish\n"
+        "- end: complete\n",
+    )
+
+    report = _run(repo)
+
+    assert "unresolved-relation" not in codes(report)
+
+
 def test_bad_heading_type(repo: Path):
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"

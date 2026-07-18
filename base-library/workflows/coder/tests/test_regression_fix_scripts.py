@@ -60,6 +60,13 @@ def _seed_plan_context(spec_dir: Path, services: list[dict]) -> None:
     )
 
 
+def _seed_qa_context(spec_dir: Path, verification_index: list[dict]) -> None:
+    (spec_dir / "qa-okf-context.json").write_text(
+        json.dumps({"version": 1, "verificationIndex": verification_index}, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _seed_workspace_file(root: Path, folders: list[dict]) -> Path:
     ws_file = root / "workspace.code-workspace"
     ws_file.write_text(json.dumps({"folders": folders}, indent=2), encoding="utf-8")
@@ -145,6 +152,126 @@ def test_run_regression_suite_web_failed_parses_failing_tests(tmp_path):
     assert "does the thing" in run["failing_tests"][0]
     assert out["qa_result"]["status"] == "failed"
     assert out["qa_result"]["notes"] == run["notes"]
+
+
+def test_run_regression_suite_fails_okf_grounded_outside_impact_failure(tmp_path):
+    makefile = (
+        "e2e-journeys:\n"
+        "\t@echo '  1) [journeys] › e2e/journeys/accounts.spec.ts:12:3 › login works'\n"
+        "\t@exit 1\n"
+    )
+    _seed_web_service(tmp_path, "acme", "web", makefile)
+    ws_file = _seed_workspace_file(tmp_path, [{"name": "acme", "path": "acme"}])
+    spec_dir = tmp_path / "specs" / "s-1"
+    _seed_plan_context(
+        spec_dir, [{"repo": "acme", "path": "web", "type": "react-router"}]
+    )
+    _seed_qa_context(
+        spec_dir,
+        [
+            {
+                "node": "docs/features/acme/flows/account-login.md",
+                "ref": "web/e2e/journeys/accounts.spec.ts::login works",
+                "path": "web/e2e/journeys/accounts.spec.ts",
+                "impacted": False,
+            }
+        ],
+    )
+
+    result = _run(
+        "run-regression-suite.py",
+        ["specs/s-1", str(spec_dir / "qa"), "web"],
+        tmp_path,
+        extra_env={"CODER_WORKSPACE": str(ws_file)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    run = json.loads(result.stdout)["regression_run"]
+    assert run["status"] == "failed"
+    assert run["failure_attribution"][0]["classification"] == "outside-impact"
+    assert len(run["failing_tests"]) == 1
+    assert not (spec_dir / "backlog-items.json").exists()
+
+
+def test_run_regression_suite_fails_okf_grounded_impacted_failure(tmp_path):
+    makefile = (
+        "e2e-journeys:\n"
+        "\t@echo '  1) [journeys] › e2e/journeys/items.spec.ts:12:3 › create item'\n"
+        "\t@exit 1\n"
+    )
+    _seed_web_service(tmp_path, "acme", "web", makefile)
+    ws_file = _seed_workspace_file(tmp_path, [{"name": "acme", "path": "acme"}])
+    spec_dir = tmp_path / "specs" / "s-1"
+    _seed_plan_context(
+        spec_dir, [{"repo": "acme", "path": "web", "type": "react-router"}]
+    )
+    _seed_qa_context(
+        spec_dir,
+        [
+            {
+                "node": "docs/features/acme/flows/item-create.md",
+                "ref": "web/e2e/journeys/items.spec.ts::create item",
+                "path": "web/e2e/journeys/items.spec.ts",
+                "impacted": True,
+            }
+        ],
+    )
+
+    result = _run(
+        "run-regression-suite.py",
+        ["specs/s-1", str(spec_dir / "qa"), "web"],
+        tmp_path,
+        extra_env={"CODER_WORKSPACE": str(ws_file)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    run = json.loads(result.stdout)["regression_run"]
+    assert run["status"] == "failed"
+    assert run["failure_attribution"][0]["classification"] == "impacted"
+    assert not (spec_dir / "backlog-items.json").exists()
+
+
+def test_run_regression_suite_keeps_all_mixed_failures_in_fix_worklist(tmp_path):
+    makefile = (
+        "e2e-journeys:\n"
+        "\t@echo '  1) [journeys] › e2e/journeys/items.spec.ts:12:3 › create item'\n"
+        "\t@echo '  2) [journeys] › e2e/journeys/accounts.spec.ts:8:3 › login works'\n"
+        "\t@exit 1\n"
+    )
+    _seed_web_service(tmp_path, "acme", "web", makefile)
+    ws_file = _seed_workspace_file(tmp_path, [{"name": "acme", "path": "acme"}])
+    spec_dir = tmp_path / "specs" / "s-1"
+    _seed_plan_context(
+        spec_dir, [{"repo": "acme", "path": "web", "type": "react-router"}]
+    )
+    _seed_qa_context(
+        spec_dir,
+        [
+            {"node": "item-flow", "path": "web/e2e/journeys/items.spec.ts", "impacted": True},
+            {
+                "node": "account-flow",
+                "path": "web/e2e/journeys/accounts.spec.ts",
+                "impacted": False,
+            },
+        ],
+    )
+
+    result = _run(
+        "run-regression-suite.py",
+        ["specs/s-1", str(spec_dir / "qa"), "web"],
+        tmp_path,
+        extra_env={"CODER_WORKSPACE": str(ws_file)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    run = json.loads(result.stdout)["regression_run"]
+    assert run["status"] == "failed"
+    assert len(run["failing_tests"]) == 2
+    assert {item["classification"] for item in run["failure_attribution"]} == {
+        "impacted",
+        "outside-impact",
+    }
+    assert not (spec_dir / "backlog-items.json").exists()
 
 
 def test_run_regression_suite_web_blocked_when_stack_unreachable(tmp_path):

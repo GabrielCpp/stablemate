@@ -50,8 +50,10 @@ A **flow** is a named sub-graph — itself a full `Graph` — held in the workfl
 passes `args`, and the flow executes against its **own isolated `vars`**, so parent state can't
 silently leak in and the boundary stays explicit. A flow is also runnable standalone as a
 re-entry point — [`workhorse run <workflow> <flow>`](../workhorse.md#run), e.g.
-`workhorse run coder qa` — which is how a long workflow's phases (dev / review / qa) are launched
-in isolation.
+`workhorse run coder qa` or `workhorse run coder docs` — which is how a long workflow's phases
+(dev / review / documentation / QA) are launched in isolation. The coder's
+[documentation gate](../flows/coder-documentation-gate.md) uses the same flow twice in its parent
+graph: once before QA and once immediately before commit.
 
 ## Context — vars and env
 

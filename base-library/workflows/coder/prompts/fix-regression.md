@@ -5,11 +5,9 @@ agent: agent
 # {{ repo.name | title }} Regression Suite Fix
 
 The deterministic regression runner just executed the committed user-journey suite for this story
-and it did **not** come back clean. Your job is to **fix every failure it reported** — in-branch,
-now. There is no distinction between a real regression this story introduced, a stale/flaky spec
-that needs hardening, or a genuinely pre-existing bug the suite happened to catch: all three get
-fixed the same way. You are not here to classify, exclude, or file the failure to a backlog — that
-is not an acceptable outcome. The only way this loop ends is a clean run.
+and it did **not** come back clean. The deterministic runner compared failures with the complete
+OKF `verify:` index to provide diagnostic ownership, but attribution never excludes a regression
+from this story. Fix every reported failure in-branch now.
 
 You are **not** re-checking this story's ACs.
 
@@ -42,10 +40,9 @@ You are **not** re-checking this story's ACs.
 Make the next deterministic run of the regression suite pass cleanly. Read the failing tests and
 log excerpts above, reproduce each failure against the real stack, and fix its root cause.
 
-Use "is this failure on a surface this story touched" and "does it reproduce on the base branch
-without this story's diff" only as **diagnostic aids** for deciding *where* the fix belongs (this
-story's app code, an unrelated app-code defect the suite caught, or the spec itself), never as a
-reason to skip fixing something. Every failure the runner reported gets fixed before you finish.
+Use the supplied OKF attribution and the story diff to locate each fix, not to avoid one. An
+unattributed test is a documentation/grounding gap as well as a failing test; repair its root cause
+and add the missing `verify:` relationship rather than bypassing it.
 
 ## Rules
 
