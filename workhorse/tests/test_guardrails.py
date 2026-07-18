@@ -27,6 +27,8 @@ def test_transient_error_detection():
         "Connection timeout",
         "503 Service Unavailable",
         "Network error: ECONNRESET",
+        # A stream cut off upstream mid-flight (exit 1): retry, don't hard-fail.
+        "API Error: Server error mid-response. The response above may be incomplete.",
     ]
     
     for msg in transient_messages:
