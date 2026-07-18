@@ -170,13 +170,16 @@ def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
         key, _, value = text.partition(":")
         key = key.strip().lower()
         value = value.strip()
+        nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        values = [item for item in (value, *nested) if item]
+        parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
         previous = meta.get(key)
         if previous is None:
-            meta[key] = value
+            meta[key] = parsed
         elif isinstance(previous, list):
-            previous.append(value)
+            previous.extend(values)
         else:
-            meta[key] = [previous, value]
+            meta[key] = [previous, *values]
     return meta
 
 

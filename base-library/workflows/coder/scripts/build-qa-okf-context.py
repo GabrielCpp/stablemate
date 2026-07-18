@@ -21,6 +21,7 @@ def main(logger: logging.Logger) -> None:
     docs_root = (
         Path(sys.argv[7]).resolve() if len(sys.argv) > 7 and sys.argv[7] else None
     )
+    output_key = sys.argv[8] if len(sys.argv) > 8 else "qa_context_build"
 
     try:
         source_roots = json.loads(source_roots_json)
@@ -46,7 +47,7 @@ def main(logger: logging.Logger) -> None:
         if status == "passed"
         else "QA OKF context generation failed.",
     )
-    emit("qa_context_build", status, notes, payload)
+    emit(output_key, status, notes, payload)
 
 
 if __name__ == "__main__":

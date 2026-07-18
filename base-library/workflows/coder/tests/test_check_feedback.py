@@ -145,7 +145,7 @@ def test_qa_feedback_routes_through_apply_qa_feedback(story_sandbox, monkeypatch
     """Feedback dropped only at QA time → check_qa_feedback → apply_qa_feedback → re-QA → done.
 
     The feedback file must appear *during* the QA phase (so the post-impl check already
-    passed without seeing it). The QA agent is ``qa_interpret_and_explore``, so its
+    passed without seeing it). The execution reviewer is ``assess_qa_run``, so its
     first invocation writes a NEW feedback.md; the second (after the rework re-QAs)
     writes nothing, so the loop terminates after exactly one rework.
     """
@@ -153,13 +153,13 @@ def test_qa_feedback_routes_through_apply_qa_feedback(story_sandbox, monkeypatch
     git_mock_no_remote(story_sandbox)
     wf = WorkflowRun(WORKFLOW, story_sandbox)
     mock_all_agents_happy(wf, monkeypatch)
-    wf.mock_agent_sequence("qa_interpret_and_explore", [
+    wf.mock_agent_sequence("assess_qa_run", [
         {
-            "response": {"qa_interpretation": {"action": "continue", "notes": ""}},
+            "response": {"qa_assessment": {"disposition": "confirmed", "failure_class": "none", "objective_reached": "yes", "notes": ""}},
             "side_effects": [{"path": str(story_sandbox / inbox_rel),
                               "content": "STATUS: NEW\n\n## Feedback\nTighten the empty-state copy.\n"}],
         },
-        {"response": {"qa_interpretation": {"action": "continue", "notes": ""}}},
+        {"response": {"qa_assessment": {"disposition": "confirmed", "failure_class": "none", "objective_reached": "yes", "notes": ""}}},
     ])
     wf.mock_agent("apply_qa_feedback", {"qa_result": {"status": "passed", "notes": ""}})
 

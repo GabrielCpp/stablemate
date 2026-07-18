@@ -95,6 +95,132 @@ def test_build_context_passes_when_clean(monkeypatch, capsys):
     assert out["qa_context_build"]["status"] == "passed"
 
 
+def test_context_adapters_support_isolated_flow_output_keys(monkeypatch, capsys):
+    build = _load("build-qa-okf-context.py")
+    monkeypatch.setattr(build, "qa_context", lambda *args, **kwargs: (0, {}, ""))
+    built = _run_main(
+        build,
+        [
+            "build-qa-okf-context.py",
+            "/spec",
+            "",
+            "",
+            "[]",
+            "HEAD",
+            "WORKTREE",
+            "/docs",
+            "documentation_context_build",
+        ],
+        capsys,
+    )
+    assert built["documentation_context_build"]["status"] == "passed"
+
+    validate = _load("validate-qa-okf-context.py")
+    monkeypatch.setattr(
+        validate,
+        "qa_context_validate",
+        lambda spec_dir: (0, {"status": "passed", "problems": []}, ""),
+    )
+    validated = _run_main(
+        validate,
+        [
+            "validate-qa-okf-context.py",
+            "/spec",
+            "passed",
+            "documentation_context_result",
+        ],
+        capsys,
+    )
+    assert validated["documentation_context_result"]["status"] == "passed"
+
+
+def test_detect_okf_fails_closed_when_feature_tree_is_unreadable(
+    tmp_path, monkeypatch, capsys
+):
+    mod = _load("detect-okf-docs.py")
+    (tmp_path / "docs/features").mkdir(parents=True)
+
+    class BrokenOstler:
+        def __init__(self, _root):
+            pass
+
+        @property
+        def graph(self):
+            raise ValueError("malformed graph")
+
+    monkeypatch.setattr(mod, "Ostler", BrokenOstler)
+    monkeypatch.setattr(sys, "argv", ["detect-okf-docs.py", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(logging.getLogger("test"))
+
+    assert exc.value.code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["has_okf"] == "invalid"
+    assert out["features_root"] == str(tmp_path / "docs/features")
+
+
+def test_detect_okf_accepts_configured_greenfield_feature_root(
+    tmp_path, monkeypatch, capsys
+):
+    mod = _load("detect-okf-docs.py")
+    (tmp_path / "ostler.yml").write_text("docRoots: {}\n", encoding="utf-8")
+    custom = tmp_path / "knowledge/features"
+
+    class Graph:
+        doc_roots = {"features": custom}
+
+    class GreenfieldOstler:
+        def __init__(self, _root):
+            self.graph = Graph()
+
+    monkeypatch.setattr(mod, "Ostler", GreenfieldOstler)
+    monkeypatch.setattr(sys, "argv", ["detect-okf-docs.py", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(logging.getLogger("test"))
+
+    assert exc.value.code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["has_okf"] == "yes"
+    assert out["features_root"] == str(custom)
+
+
+def test_detect_okf_accepts_epics_only_bundle(tmp_path, monkeypatch, capsys):
+    mod = _load("detect-okf-docs.py")
+    (tmp_path / "docs/epics").mkdir(parents=True)
+
+    class Graph:
+        doc_roots = {"features": tmp_path / "docs/features"}
+
+    class BundleOstler:
+        def __init__(self, _root):
+            self.graph = Graph()
+
+    monkeypatch.setattr(mod, "Ostler", BundleOstler)
+    monkeypatch.setattr(sys, "argv", ["detect-okf-docs.py", str(tmp_path)])
+
+    with pytest.raises(SystemExit):
+        mod.main(logging.getLogger("test"))
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["has_okf"] == "yes"
+
+
+def test_detect_okf_does_not_treat_generic_agents_config_as_opt_in(
+    tmp_path, monkeypatch, capsys
+):
+    mod = _load("detect-okf-docs.py")
+    (tmp_path / "agents.yml").write_text("workspace: {}\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["detect-okf-docs.py", str(tmp_path)])
+
+    with pytest.raises(SystemExit):
+        mod.main(logging.getLogger("test"))
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["has_okf"] == "no"
+
+
 def test_context_and_plan_validation_normalize_invalid(monkeypatch, capsys):
     ctx_mod = _load("validate-qa-okf-context.py")
     monkeypatch.setattr(
@@ -118,3 +244,43 @@ def test_context_validation_passes_only_when_all_green(monkeypatch, capsys):
         lambda spec_dir: (0, {"status": "passed", "problems": []}, ""))
     out = _run_main(mod, ["validate-qa-okf-context.py", "/spec", "passed"], capsys)
     assert out["qa_context_result"]["status"] == "passed"
+
+
+def test_audit_product_refutation_becomes_normal_qa_failure(capsys):
+    mod = _load("mark-qa-audit-failed.py")
+
+    out = _run_main(mod, ["mark-qa-audit-failed.py", "Observed persisted wrong value"], capsys)
+
+    assert out == {
+        "qa_result": {
+            "status": "failed",
+            "notes": "Observed persisted wrong value",
+        }
+    }
+
+
+def test_assessment_product_diagnosis_becomes_normal_qa_failure(capsys):
+    mod = _load("mark-qa-assessment-failed.py")
+
+    out = _run_main(mod, ["mark-qa-assessment-failed.py", "Unexpected 500 observed"], capsys)
+
+    assert out == {
+        "qa_result": {
+            "status": "failed",
+            "notes": "Unexpected 500 observed",
+        }
+    }
+
+
+def test_clear_qa_gate_state_removes_consumed_diagnostics(capsys):
+    mod = _load("clear-qa-gate-state.py")
+
+    out = _run_main(mod, ["clear-qa-gate-state.py"], capsys)
+
+    assert out == {
+        "qa_plan_validation": {"notes": ""},
+        "qa_plan_review": {"notes": ""},
+        "qa_assessment": {"notes": ""},
+        "qa_audit": {"notes": ""},
+        "qa_result": {"notes": ""},
+    }

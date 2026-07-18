@@ -392,8 +392,9 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
     relation_hrefs: dict[tuple[str, str], str] = {}
     for node in graph.ui_nodes:
         for key in registry.RELATION_KEYS:
-            for _text, href in markdown.extract_refs(node.meta.get(key, "")).links:
-                relation_hrefs[(str(node.path), href)] = key
+            for value in _code_values(node.meta.get(key, "")):
+                for _text, href in markdown.extract_refs(value).links:
+                    relation_hrefs[(str(node.path), href)] = key
 
     # LINK validation is **document-wide**: resolve every link in every doc file, whether or not it
     # sits inside an indexed node — a broken link is broken either way. (Links inside code are

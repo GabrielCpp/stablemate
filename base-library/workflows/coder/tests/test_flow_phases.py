@@ -1,6 +1,6 @@
-"""Tests for the composable per-story phases (`flows: dev / review / qa`).
+"""Tests for the composable per-story phases (`flows: dev / review / docs / qa`).
 
-The per-story pipeline is factored into three `flows:` sub-graphs so any one phase
+The per-story pipeline is factored into four `flows:` sub-graphs so any one phase
 can be re-run STANDALONE against an already-built story without replaying the whole
 pipeline — the re-QA-a-flagged-story workflow:
 
@@ -15,6 +15,7 @@ test_story_mode.py / test_epic_mode.py.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from workhorse.graph.loader import load_workflow
@@ -22,8 +23,10 @@ from workhorse.testing import WorkflowRun, assert_step_output
 
 from conftest import (
     WORKFLOW,
+    _qa_cli_module,
     make_story,
     git_mock_no_remote,
+    mock_documentation_happy,
     mock_ostler_qa,
     mock_qa_control_plane,
 )
@@ -43,18 +46,19 @@ def _qa_params(sandbox: Path, epic: str = "epic-1", slug: str = "s-1") -> dict:
 
 def test_workflow_declares_phase_and_standalone_flows():
     g = load_workflow(WORKFLOW)
-    # dev/review/qa are the per-story phases; fix_ci and dream are standalone flows.
-    assert {"dev", "review", "qa"} <= set(g.flows)
+    # dev/review/docs/qa are the per-story phases; fix_ci and dream are standalone flows.
+    assert {"dev", "review", "docs", "qa"} <= set(g.flows)
     # Each phase flow's vars ARE its standalone parameter contract (slug + docs root).
     assert set(g.flows["dev"].vars) >= {"story", "docs_path", "epic"}
+    assert set(g.flows["docs"].vars) >= {"story", "docs_path", "epic"}
     assert set(g.flows["qa"].vars) >= {"story", "docs_path", "epic"}
-    # The parent sequences the three phases via `type: flow` nodes (dream is NOT inline —
+    # The parent sequences the four phases via `type: flow` nodes (dream is NOT inline —
     # it's offline consolidation, never sequenced into the per-story build pipeline).
     flow_nodes = {
         nid: n for nid, n in g.nodes.items() if getattr(n, "type", None) == "flow"
     }
     phase_names = {n.name for n in flow_nodes.values()}
-    assert {"dev", "review", "qa"} <= phase_names
+    assert {"dev", "review", "docs", "qa"} <= phase_names
     assert "dream" not in phase_names
 
 
@@ -89,7 +93,7 @@ def test_standalone_qa_passes(tmp_path, monkeypatch):
     git_mock_no_remote(tmp_path)
     mock_qa_control_plane(wf, monkeypatch)
     wf.mock_agent(
-        "audit_qa", {"qa_result": {"status": "passed", "notes": "Audit upheld."}}
+        "audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": "Audit upheld."}}
     )
 
     result = wf.run(flow="qa", params=_qa_params(tmp_path))
@@ -176,6 +180,91 @@ def test_standalone_review_runs_to_approved(tmp_path):
         "review_impl_result",
         {"status": "approved", "notes": ""},
     )
+
+
+def test_standalone_docs_gates_epics_bundle_before_first_feature(tmp_path, monkeypatch):
+    """An epics-only OKF bundle must scaffold/gate its first feature, not bypass docs."""
+    make_story(tmp_path, "epic-1", "s-1", "In progress")
+    wf = WorkflowRun(WORKFLOW, tmp_path)
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
+    mock_documentation_happy(wf)
+
+    result = wf.run(flow="docs", params=_qa_params(tmp_path))
+
+    assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert_step_output(result, "mark_documentation_passed", "doc_status", "passed")
+    assert [c for c in result.calls("claude") if c["node_id"] == "document_story"]
+
+
+def test_standalone_docs_passes_author_review_and_deterministic_gate(tmp_path, monkeypatch):
+    """An OKF workspace must clear authoring, context, doctor, and semantic review."""
+    from ostler import Ostler
+
+    make_story(tmp_path, "epic-1", "s-1", "In progress")
+    feature = tmp_path / "docs/features/acme/concepts/example.md"
+    feature.parent.mkdir(parents=True)
+    feature.write_text(
+        "---\ntype: concept\ntitle: Example\n---\n# Example\n\n- code: `src/example.py::Example`\n",
+        encoding="utf-8",
+    )
+    wf = WorkflowRun(WORKFLOW, tmp_path)
+    git_mock_no_remote(tmp_path)
+    mock_ostler_qa(monkeypatch)
+    monkeypatch.setattr(Ostler, "doctor", lambda self: {"findings": []})
+
+    packet = {
+        "version": 1,
+        "available": True,
+        "changedCode": [],
+        "directNodes": [],
+        "obligations": [],
+        "healthFindings": [],
+    }
+
+    def qa_context(spec_dir, **_kwargs):
+        path = Path(spec_dir)
+        if not path.is_absolute():
+            path = tmp_path / path
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "qa-okf-context.json").write_text(
+            json.dumps(packet), encoding="utf-8"
+        )
+        return 0, packet, ""
+
+    qa_cli = _qa_cli_module()
+    monkeypatch.setattr(qa_cli, "qa_context", qa_context)
+    monkeypatch.setattr(
+        qa_cli,
+        "qa_context_validate",
+        lambda *args, **kwargs: (0, {"status": "passed", "problems": []}, ""),
+    )
+    wf.mock_agent(
+        "document_story",
+        {
+            "documentation_result": {
+                "status": "documented",
+                "nodes": ["docs/features/acme/concepts/example.md"],
+                "notes": "Current contracts updated.",
+            }
+        },
+    )
+    wf.mock_agent(
+        "review_story_documentation",
+        {
+            "documentation_review": {
+                "status": "approved",
+                "notes": "Complete current book.",
+            }
+        },
+    )
+
+    result = wf.run(flow="docs", params=_qa_params(tmp_path))
+
+    assert result.passed(), f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert_step_output(result, "mark_documentation_passed", "doc_status", "passed")
+    calls = [c["node_id"] for c in result.calls("claude")]
+    assert calls == ["document_story", "review_story_documentation"]
 
 
 # ── Review remediation loop is BOUNDED (the 03b-editor-visual-fidelity incident) ──

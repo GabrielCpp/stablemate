@@ -31,6 +31,9 @@ Output (stdout, JSON): {"regression_run": {"status": "passed"|"failed"|
 "blocked", "failing_tests": [...], "log_path": "...", "notes": "..."},
 "qa_result": {"status": ..., "notes": ...}}
 
+OKF ``verify:`` ownership is attached to each failure as diagnostic attribution, but
+never weakens the gate: every regression failure remains part of the story's fix work.
+
 ``qa_result`` mirrors ``regression_run``'s status/notes verbatim so the existing
 blocked → guard_setup → setup_fix loop (which reads `qa_result.notes`, same as
 every other QA-phase blocked path) keeps working unchanged on the blocked case.
@@ -324,14 +327,52 @@ def _merge(web: dict, mobile: dict) -> dict:
     return _merge_results([web, mobile])
 
 
+def _same_test_path(left: str, right: str) -> bool:
+    left = left.removeprefix("./")
+    right = right.removeprefix("./")
+    return left == right or left.endswith(f"/{right}") or right.endswith(f"/{left}")
+
+
+def _attribute_failures(result: dict, context: dict) -> dict:
+    if result.get("status") != "failed" or not result.get("failing_tests"):
+        return result
+    index = context.get("verificationIndex", [])
+    attribution = []
+    for failure in result["failing_tests"]:
+        test_path = failure.split(": ", 1)[0]
+        owners = [
+            item
+            for item in index
+            if isinstance(item, dict)
+            and item.get("path")
+            and _same_test_path(test_path, str(item["path"]))
+        ]
+        if any(item.get("impacted") is True for item in owners):
+            classification = "impacted"
+        elif owners:
+            classification = "outside-impact"
+        else:
+            classification = "unattributed"
+        attribution.append(
+            {
+                "test": failure,
+                "path": test_path,
+                "classification": classification,
+                "nodes": sorted({str(item.get("node", "")) for item in owners}),
+            }
+        )
+    return {**result, "failure_attribution": attribution}
+
+
 def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     qa_dir = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else ""
     platform = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else "none"
 
     root = find_repo_root()
+    spec_path = root / spec_dir
     plan_ctx = (
-        load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
+        load_json(spec_path / "plan-context.json", "plan-context.json", logger)
         if spec_dir
         else {}
     )
@@ -352,6 +393,13 @@ def main(logger: logging.Logger) -> None:
             "log_path": "",
             "notes": f"platform={platform!r} — nothing to run",
         }
+
+    context = (
+        load_json(spec_path / "qa-okf-context.json", "qa-okf-context.json", logger)
+        if spec_dir
+        else {}
+    )
+    result = _attribute_failures(result, context)
 
     print(
         json.dumps(

@@ -106,14 +106,14 @@ args:
 
 ### Story Mode
 ```
-decide_mode → branch_story → prepare_story → dev → review → qa_phase
+decide_mode → branch_story → prepare_story → dev → review → docs → qa_phase
            → decide_post_sentinel → commit_story_pr → open_story_pr → done
 ```
 
 ### Epic Mode
 ```
 decide_mode → init_base → select_epic → decide_epic → branch_epic
-           → select_story → decide_story → prepare_story → dev → review → qa_phase
+           → select_story → decide_story → prepare_story → dev → review → docs → qa_phase
            → decide_post_sentinel → commit_story → select_story   (loop within epic)
                                  ↘ [story exhausted] prune_epic → open_pr
                                    → CI gate (reset_ci → await_ci → fix_ci loop)
@@ -143,6 +143,27 @@ In epic mode: `select_story` → `decide_story` → `prepare_story` (resolves fr
   next: dev
 ```
 
+### Documentation gate topology
+
+The reviewed implementation enters a standalone, hard-gated `docs` flow before QA:
+
+```text
+prepare_story -> resolve_documentation_context -> detect_documentation_okf
+-> document_story -> build/validate diff-to-OKF context -> verify_story_documentation
+-> review_story_documentation -> documentation_done
+```
+
+Repositories without an OKF `docs/features/` tree are explicitly not applicable. Once that tree
+exists, an unreadable graph, `ostler doctor` error, surface-only production ownership, blocked
+authoring, semantic rejection, or exhausted repair budget ends at `documentation_failed`; it may
+not proceed to QA or commit. The parent invokes the same flow again after QA/regression/fix-drain
+mutations immediately before commit, and before QA-give-up or standalone fix-story commits.
+Local monorepos receive deterministic repository-wide code mapping with document roots excluded;
+multi-repo/non-Git docs roots
+use scoped doctor findings plus the independent semantic reviewer rather than an invalid cross-repo
+diff. CI/merge remediation is contract-preserving and must escalate if behavior would change. Run
+the phase independently with `workhorse run coder docs`.
+
 ### QA control-plane topology
 
 The primary QA path is fixed:
@@ -150,21 +171,31 @@ The primary QA path is fixed:
 ```text
 prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 -> build_qa_okf_context -> validate_qa_okf_context -> plan_qa
--> validate_qa_plan -> run_qa_plan -> qa_interpret_and_explore
+-> validate_qa_plan -> review_qa_plan -> run_qa_plan -> assess_qa_run
 -> verify_qa_evidence -> audit_qa -> regression/completion gates
 ```
 
 `qa-plan.yml` is mandatory for command, browser, and mobile surfaces. Workflow script
-nodes call `ostler qa context`, `context-validate`, `validate`, and `run`; the QA agent
-does not drive Playwright/Maestro/commands and does not author the run log, manifest, or
-evidence. It may append a replayable exploratory scenario and request a workflow rerun.
+nodes call `ostler qa context`, `context-validate`, `validate`, and `run`; no QA agent
+drives Playwright/Maestro/commands or authors the run log, manifest, or evidence.
+`review_qa_plan` independently checks whether the valid plan can reach and observe its
+objectives. `assess_qa_run` constructively judges whether each completed run actually did
+so and may request bounded plan repair/extension. `audit_qa` sees only an
+objective-confirmed, evidence-valid candidate pass, treats plan/evidence as frozen, and
+may only let it stand or refute it.
 
 Routing is fail-closed: `invalid` returns to context/planning repair, `blocked` enters
 setup/operator handling, `failed` enters defect triage, and only `passed` reaches the
 evidence gate and auditor. Never declare a default output of `passed`.
 
-The reviewed implementation's `code:`/`verify:` grounding is refreshed before entering
-the QA flow so impact generation sees current references. Product fixes loop back through
+Audit refutations are classified: plan/evidence defects return to planning, while a
+product contradiction becomes the normal failed `qa_result` and enters defect triage.
+Context grounding, semantic-plan convergence, and product repair use separate bounded
+counters. Regression fixes retain one cumulative budget; a pending marker forces fresh
+primary QA after a green fix without resetting that budget.
+
+The reviewed implementation's `code:`/`verify:` grounding is hard-gated by the docs flow before
+entering QA so impact generation sees current references. Product fixes loop back through
 context generation; setup-only fixes may rerun the already validated plan.
 
 ---

@@ -635,10 +635,10 @@ nodes:
     next: merge # resume → re-attempt the merge from a fresh attempt budget
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Per-story pipeline: three composable phases (dev → review → qa)
+  # Per-story pipeline: four composable phases (dev → review → docs → qa)
   # ════════════════════════════════════════════════════════════════════════════
-  # The plan/implement, review, and QA stages each live in a `flows:` sub-graph (see
-  # the bottom of this file). The parent only sequences the phases and owns what is
+  # The plan/implement, review, documentation, and QA stages each live in a `flows:`
+  # sub-graph (see the bottom of this file). The parent only sequences the phases and owns what is
   # genuinely queue-level: the shared epic-replan escape and the per-mode commit/PR
   # finalize. The phases share the working tree (only context is isolated), so dev
   # writes the code, review refines it, and qa exercises it in turn.
@@ -682,7 +682,31 @@ nodes:
       epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
       operator_mode: "{{ operator_mode }}"
     outputs: []
-    next: detect_okf
+    next: docs
+
+  # Documentation phase: merge the reviewed story into the as-built OKF book and
+  # prove conformance + direct implementation grounding before QA derives obligations.
+  - id: docs
+    type: flow
+    name: docs
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: doc_status
+        default: failed
+      - key: doc_notes
+    next: decide_docs_outcome
+
+  - id: decide_docs_outcome
+    type: branch
+    path: doc_status
+    cases:
+      passed: qa_phase
+      not_applicable: qa_phase
+    default: documentation_failed
 
   # QA phase: plan + execute QA, the deterministic evidence gate, the adversarial
   # auditor, the bounded fix/setup loops, regression + sentinel gates, and the QA
@@ -732,46 +756,6 @@ nodes:
       # budget persists; the bumped triage_scope_count came back via qa_phase outputs.
       rescope: dev
     default: decide_post_sentinel
-
-  # ── Ground the reviewed implementation before QA context generation ───────────
-  # Refresh code:/verify: references after implementation review and before qa_phase
-  # computes diff-to-OKF impact. Gated by detect_okf and fail-soft for repositories
-  # without an OKF graph. A rescope re-enters dev/review and refreshes grounding again.
-  - id: detect_okf
-    type: script
-    script: scripts/detect-okf-docs.py
-    args:
-      - "{{ docs_path }}"
-    outputs:
-      - key: has_okf
-      - key: features_root
-    next: decide_okf
-
-  - id: decide_okf
-    type: branch
-    path: has_okf
-    cases:
-      "yes": document_story
-      "no": qa_phase
-    default: qa_phase
-
-  - id: document_story
-    type: agent
-    # medium: as-built doc authoring grounded in the just-shipped diff — mechanical
-    # relative to plan/implement, but needs to read code to ground code:/verify:.
-    power: medium
-    prompt: prompts/document-story.md
-    add_dirs: "{{ workspace_dirs }}"
-    args:
-      story_path: "{{ get_node_output('prepare_story', 'story_path') }}"
-      spec_dir: "{{ get_node_output('prepare_story', 'spec_dir') }}"
-      story_slug: "{{ get_node_output('prepare_story', 'story_slug') }}"
-      docs_path: "{{ docs_path }}"
-      features_root: "{{ get_node_output('detect_okf', 'features_root') }}"
-    outputs:
-      - key: doc_status
-        default: skipped
-    next: qa_phase
 
   # ── Shared escape: operator declared the epic premise wrong (SCOPE: epic) ──────
   # Reached from a plan block (dev) or a QA block (qa) when the operator's answer
@@ -1075,12 +1059,41 @@ nodes:
       - key: reason
     next: select_fix_item
 
-  # Backlog drained (or was empty to start) — proceed to the commit node the mode
-  # would have used directly before the fix-drain detour existed. A drained
-  # item's changes just ride along in that commit (no separate branch, no
-  # separate commit node) — see the standalone `flows: fix:` entry at the
-  # bottom of this file for the out-of-band entry point that commits per item.
+  # Backlog drained (or was empty to start) — re-run the hard documentation flow
+  # over the final working tree. QA, regression, operator feedback, and drained fixes
+  # can all mutate product code after the pre-QA docs pass; nothing commits until the
+  # final as-built book converges too.
   - id: decide_post_drain
+    type: branch
+    path: mode
+    cases:
+      epic: final_docs
+      story: final_docs
+    default: done
+
+  - id: final_docs
+    type: flow
+    name: docs
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: doc_status
+        default: failed
+      - key: doc_notes
+    next: decide_final_docs_outcome
+
+  - id: decide_final_docs_outcome
+    type: branch
+    path: doc_status
+    cases:
+      passed: decide_final_docs
+      not_applicable: decide_final_docs
+    default: documentation_failed
+
+  - id: decide_final_docs
     type: branch
     path: mode
     cases:
@@ -1121,9 +1134,31 @@ nodes:
     type: branch
     path: mode
     cases:
-      epic: qa_give_up # flag and continue to next story
+      epic: failed_docs # hard-gate the final failed working tree before marker commit
       story: qa_failed # halt with non-zero exit (single story failed)
     default: qa_failed
+
+  - id: failed_docs
+    type: flow
+    name: docs
+    args:
+      story: "{{ get_node_output('prepare_story', 'story_slug') }}"
+      docs_path: "{{ docs_path }}"
+      epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
+      target_env: "{{ target_env }}"
+    outputs:
+      - key: doc_status
+        default: failed
+      - key: doc_notes
+    next: decide_failed_docs_outcome
+
+  - id: decide_failed_docs_outcome
+    type: branch
+    path: doc_status
+    cases:
+      passed: qa_give_up
+      not_applicable: qa_give_up
+    default: documentation_failed
 
   # Max attempts reached: don't loop forever and don't halt the whole queue —
   # commit the story behind a [QA FAILED] marker, flag it for the reviewer, and
@@ -1207,6 +1242,9 @@ nodes:
   # Max QA-fix attempts reached for story mode — halt with non-zero exit
   # (epic mode uses qa_give_up to flag and continue instead)
   - id: qa_failed
+    type: fail
+
+  - id: documentation_failed
     type: fail
 
   - id: done
@@ -2047,6 +2085,269 @@ flows:
       - id: review_done
         type: terminal
 
+  # ── docs: hard-gated incremental OKF documentation ────────────────────────────
+  docs: &docs_flow
+    name: docs
+    # Standalone: workhorse run coder docs --params '{"story":"CASE-1234"}'
+    # Pipeline:   called after review and before QA derives its OKF obligations.
+    start: prepare_story
+    vars:
+      story: ""
+      docs_path: ""
+      epic: ""
+      target_env: "local"
+      documentation_rework_count: { value: 0 }
+    nodes:
+      - id: prepare_story
+        type: script
+        script: scripts/prepare-story.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ story }}"
+          - "{{ epic }}"
+        outputs:
+          - key: story_path
+          - key: spec_dir
+          - key: qa_dir
+          - key: story_slug
+        next: decide_documentation_story
+
+      - id: decide_documentation_story
+        type: branch
+        path: story_path
+        conditions:
+          - op: "=="
+            value: ""
+            next: documentation_failed
+        default: resolve_workspace
+
+      - id: resolve_workspace
+        type: script
+        script: scripts/resolve-workspace-dirs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: workspace_dirs
+        next: resolve_documentation_context
+
+      - id: resolve_documentation_context
+        type: script
+        script: scripts/resolve-impl-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ target_env }}"
+          - "{{ docs_path }}"
+        outputs:
+          - key: affected_repo_paths
+          - key: qa_source_roots_json
+        next: detect_documentation_okf
+
+      - id: detect_documentation_okf
+        type: script
+        script: scripts/detect-okf-docs.py
+        args:
+          - "{{ docs_path }}"
+        outputs:
+          - key: has_okf
+          - key: features_root
+          - key: reason
+        next: decide_documentation_okf
+
+      - id: decide_documentation_okf
+        type: branch
+        path: has_okf
+        cases:
+          "yes": reset_documentation_rework
+          "no": mark_documentation_not_applicable
+          invalid: documentation_failed
+        default: documentation_failed
+
+      - id: reset_documentation_rework
+        type: call
+        fn: seed
+        outputs:
+          - key: documentation_rework_count
+            wrap: value
+        next: classify_documentation_context
+
+      - id: document_story
+        type: agent
+        power: medium
+        prompt: prompts/document-story.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          story_slug: "{{ story_slug }}"
+          docs_path: "{{ docs_path }}"
+          features_root: "{{ features_root }}"
+          context_mode: "{{ documentation_context_mode }}"
+          context_notes: "{{ documentation_context_notes }}"
+          gate_notes: "{{ documentation_gate.notes }}"
+          review_notes: "{{ documentation_review.notes }}"
+        outputs:
+          - key: documentation_result
+            default:
+              status: blocked
+              nodes: []
+              notes: Documentation author produced no valid result.
+        next: decide_documentation_result
+
+      - id: decide_documentation_result
+        type: branch
+        path: documentation_result.status
+        cases:
+          documented: decide_documentation_context_mode
+          not_required: decide_documentation_context_mode
+          blocked: documentation_failed
+        default: documentation_failed
+
+      - id: classify_documentation_context
+        type: script
+        script: scripts/classify-documentation-context.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ qa_source_roots_json }}"
+        outputs:
+          - key: documentation_context_mode
+          - key: documentation_source_roots_json
+          - key: documentation_context_notes
+        next: document_story
+
+      - id: decide_documentation_context_mode
+        type: branch
+        path: documentation_context_mode
+        cases:
+          local: build_documentation_context
+          semantic: verify_story_documentation
+        default: documentation_failed
+
+      - id: build_documentation_context
+        type: script
+        script: scripts/build-qa-okf-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ story_path }}"
+          - "{{ features_root }}"
+          - "{{ documentation_source_roots_json }}"
+          - "HEAD"
+          - "WORKTREE"
+          - "{{ docs_path }}"
+          - "documentation_context_build"
+        outputs:
+          - key: documentation_context_build
+        next: validate_documentation_context
+
+      - id: validate_documentation_context
+        type: script
+        script: scripts/validate-qa-okf-context.py
+        args:
+          - "{{ spec_dir }}"
+          - "{{ documentation_context_build.status }}"
+          - "documentation_context_result"
+        outputs:
+          - key: documentation_context_result
+        next: verify_story_documentation
+
+      - id: verify_story_documentation
+        type: script
+        script: scripts/verify-story-documentation.py
+        args:
+          - "{{ docs_path }}"
+          - "{{ spec_dir }}"
+          - "{{ documentation_result.status }}"
+          - "{{ documentation_context_build.status }}"
+          - "{{ documentation_context_result.status }}"
+          - "{{ documentation_context_mode }}"
+          - "{{ documentation_result.nodes | tojson }}"
+        outputs:
+          - key: documentation_gate
+        next: decide_documentation_gate
+
+      - id: decide_documentation_gate
+        type: branch
+        path: documentation_gate.status
+        cases:
+          passed: review_story_documentation
+          invalid: guard_documentation
+        default: guard_documentation
+
+      - id: review_story_documentation
+        type: agent
+        power: high
+        prompt: prompts/review-story-documentation.md
+        add_dirs: "{{ workspace_dirs }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          docs_path: "{{ docs_path }}"
+          features_root: "{{ features_root }}"
+          author_status: "{{ documentation_result.status }}"
+          author_notes: "{{ documentation_result.notes }}"
+          gate_notes: "{{ documentation_gate.notes }}"
+        outputs:
+          - key: documentation_review
+            default:
+              status: revise
+              notes: Documentation review produced no valid result.
+        next: decide_documentation_review
+
+      - id: decide_documentation_review
+        type: branch
+        path: documentation_review.status
+        cases:
+          approved: mark_documentation_passed
+          revise: guard_documentation
+          blocked: documentation_failed
+        default: guard_documentation
+
+      - id: guard_documentation
+        type: branch
+        path: documentation_rework_count.value
+        conditions:
+          - op: ">="
+            value: "3"
+            next: documentation_failed
+        default: incr_documentation_rework
+
+      - id: incr_documentation_rework
+        type: call
+        fn: incr
+        args:
+          value: "{{ documentation_rework_count.value }}"
+        outputs:
+          - key: documentation_rework_count
+            wrap: value
+        next: document_story
+
+      - id: mark_documentation_passed
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "doc_status=passed"
+          - "doc_notes={{ documentation_review.notes }}"
+        outputs:
+          - key: doc_status
+          - key: doc_notes
+        next: documentation_done
+
+      - id: mark_documentation_not_applicable
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "doc_status=not_applicable"
+          - "doc_notes={{ reason }}"
+        outputs:
+          - key: doc_status
+          - key: doc_notes
+        next: documentation_done
+
+      - id: documentation_failed
+        type: fail
+
+      - id: documentation_done
+        type: terminal
+
   # ── qa: the full QA gate cluster (incl. the adversarial auditor) ──────────────
   qa:
     name: qa
@@ -2063,8 +2364,12 @@ flows:
       qa_dir: ""        # absolute path to <spec_dir>/qa/ — set by prepare_story
       triage_scope_count: 0 # parent-owned rescope budget (scalar), passed in by qa_phase
       qa_rework_count: { value: 0 }
+      qa_context_rework_count: { value: 0 }
+      qa_plan_rework_count: { value: 0 }
       setup_rework_count: { value: 0 }
       regression_fix_count: { value: 0 }
+      regression_fix_applied: "no"
+      regression_reqa_pending: "no"
       qa_bonus_used: "no"
     nodes:
       # Resolve slug → story_path / spec_dir / qa_dir / story_slug via ostler.
@@ -2170,7 +2475,7 @@ flows:
 
       - id: guard_qa_context
         type: branch
-        path: qa_rework_count.value
+        path: qa_context_rework_count.value
         conditions:
           - op: ">="
             value: "3"
@@ -2206,9 +2511,9 @@ flows:
         type: call
         fn: incr
         args:
-          value: "{{ qa_rework_count.value }}"
+          value: "{{ qa_context_rework_count.value }}"
         outputs:
-          - key: qa_rework_count
+          - key: qa_context_rework_count
             wrap: value
         next: build_qa_okf_context
 
@@ -2228,8 +2533,25 @@ flows:
           context_status: "{{ qa_context_result.status }}"
           context_notes: "{{ qa_context_result.notes }}"
           plan_validation_notes: "{{ qa_plan_validation.notes }}"
+          plan_review_notes: "{{ qa_plan_review.notes }}"
+          run_assessment_notes: "{{ qa_assessment.notes }}"
+          audit_notes: "{{ qa_audit.notes }}"
+          evidence_notes: "{{ qa_result.notes }}"
         outputs:
           - key: qa_plan_result
+        next: clear_qa_gate_state
+
+      # The planner has consumed the previous gate diagnostics. Clear them before
+      # producing the next review/run so stale findings cannot leak into another cycle.
+      - id: clear_qa_gate_state
+        type: script
+        script: scripts/clear-qa-gate-state.py
+        outputs:
+          - key: qa_plan_validation
+          - key: qa_plan_review
+          - key: qa_assessment
+          - key: qa_audit
+          - key: qa_result
         next: stamp_specs_qa_plan
 
       - id: stamp_specs_qa_plan
@@ -2255,13 +2577,39 @@ flows:
         type: branch
         path: qa_plan_validation.status
         cases:
-          passed: run_qa_plan
+          passed: review_qa_plan
           invalid: guard_qa_plan
+        default: guard_qa_plan
+
+      # Deterministic validation proves shape and declared coverage. This independent
+      # semantic review proves that the proposed actions can actually reach and observe
+      # each objective before the workflow spends time executing them.
+      - id: review_qa_plan
+        type: agent
+        power: high
+        prompt: prompts/review-qa-plan.md
+        add_dirs: "{{ affected_repo_paths }}"
+        args:
+          story_path: "{{ story_path }}"
+          spec_dir: "{{ spec_dir }}"
+          docs_path: "{{ docs_path }}"
+          target_env: "{{ target_env }}"
+        outputs:
+          - key: qa_plan_review
+            default: { disposition: revise, notes: "Semantic QA plan review produced no valid result." }
+        next: decide_qa_plan_review
+
+      - id: decide_qa_plan_review
+        type: branch
+        path: qa_plan_review.disposition
+        cases:
+          approved: run_qa_plan
+          revise: guard_qa_plan
         default: guard_qa_plan
 
       - id: guard_qa_plan
         type: branch
-        path: qa_rework_count.value
+        path: qa_plan_rework_count.value
         conditions:
           - op: ">="
             value: "3"
@@ -2272,9 +2620,9 @@ flows:
         type: call
         fn: incr
         args:
-          value: "{{ qa_rework_count.value }}"
+          value: "{{ qa_plan_rework_count.value }}"
         outputs:
-          - key: qa_rework_count
+          - key: qa_plan_rework_count
             wrap: value
         next: plan_qa
 
@@ -2287,9 +2635,9 @@ flows:
           - "{{ spec_dir }}"
         outputs:
           - key: qa_result
-        next: qa_interpret_and_explore
+        next: assess_qa_run
 
-      - id: qa_interpret_and_explore
+      - id: assess_qa_run
         type: agent
         power: medium
         prompt: prompts/qa-story.md
@@ -2303,7 +2651,8 @@ flows:
           runner_status: "{{ qa_result.status }}"
           runner_notes: "{{ qa_result.notes }}"
         outputs:
-          - key: qa_interpretation
+          - key: qa_assessment
+            default: { disposition: repair_plan, failure_class: plan, objective_reached: "no", notes: "QA run assessment produced no valid result." }
         next: stamp_specs_qa
 
       - id: stamp_specs_qa
@@ -2314,15 +2663,55 @@ flows:
           - "{{ story_slug }}"
         outputs:
           - key: specs_typed
-        next: decide_qa_interpretation
+        next: decide_qa_assessment
 
-      - id: decide_qa_interpretation
+      - id: decide_qa_assessment
         type: branch
-        path: qa_interpretation.action
+        path: qa_assessment.disposition
         cases:
-          rerun: validate_qa_plan
-          continue: decide_qa_run
-        default: decide_qa_run
+          confirmed: decide_qa_assessment_runner_status
+          repair_plan: guard_qa_plan
+          extend_plan: guard_qa_plan
+          repair_setup: guard_setup
+        default: guard_qa_plan
+
+      - id: decide_qa_assessment_runner_status
+        type: branch
+        path: qa_result.status
+        cases:
+          passed: decide_qa_assessment_class
+          failed: decide_qa_assessment_class
+          blocked: guard_setup
+          invalid: guard_qa_plan
+        default: guard_qa_plan
+
+      - id: decide_qa_assessment_class
+        type: branch
+        path: qa_assessment.failure_class
+        cases:
+          none: decide_qa_assessment_objective
+          product: mark_qa_assessment_failed
+          plan: guard_qa_plan
+          evidence: guard_qa_plan
+          environment: guard_setup
+        default: guard_qa_plan
+
+      - id: mark_qa_assessment_failed
+        type: script
+        script: scripts/mark-qa-assessment-failed.py
+        args:
+          - "{{ qa_assessment.notes }}"
+        outputs:
+          - key: qa_result
+        next: file_backlog_items
+
+      - id: decide_qa_assessment_objective
+        type: branch
+        path: qa_assessment.objective_reached
+        cases:
+          "yes": decide_qa_run
+          "no": guard_qa_plan
+        default: guard_qa_plan
 
       # Four-state fail-closed routing. Invalid is a planning/context defect;
       # blocked is setup/operator work; failed is product-defect triage; only a
@@ -2364,9 +2753,8 @@ flows:
         default: guard_qa_plan
 
       # ── Independent adversarial QA auditor ──────────────────────────────────────
-      # On a gate-validated PASS: re-judge the captured evidence and try to REFUTE it. A
-      # refute flips qa_result to `failed` with the concrete divergences as a worklist —
-      # two independent agents must agree before a story commits.
+      # On a gate-validated, objective-confirmed PASS: try to refute the frozen plan and
+      # runner-owned evidence. The auditor never edits the plan or executes the product.
       - id: audit_qa
         type: agent
         # Adversarial re-judging of captured evidence — only worth running on a model that
@@ -2380,6 +2768,40 @@ flows:
           qa_dir: "{{ qa_dir }}"
           qa_status: "{{ qa_result.status }}"
           qa_notes: "{{ qa_result.notes }}"
+        outputs:
+          - key: qa_audit
+            default: { verdict: refuted, refutation_class: plan-defect, notes: "Independent QA audit produced no valid result." }
+        next: decide_qa_audit
+
+      - id: decide_qa_audit
+        type: branch
+        path: qa_audit.verdict
+        cases:
+          stands: decide_qa_audit_stand
+          refuted: decide_qa_audit_refutation
+        default: guard_qa_plan
+
+      - id: decide_qa_audit_stand
+        type: branch
+        path: qa_audit.refutation_class
+        cases:
+          none: file_backlog_items
+        default: guard_qa_plan
+
+      - id: decide_qa_audit_refutation
+        type: branch
+        path: qa_audit.refutation_class
+        cases:
+          plan-defect: guard_qa_plan
+          evidence-defect: guard_qa_plan
+          product-contradiction: mark_qa_audit_failed
+        default: guard_qa_plan
+
+      - id: mark_qa_audit_failed
+        type: script
+        script: scripts/mark-qa-audit-failed.py
+        args:
+          - "{{ qa_audit.notes }}"
         outputs:
           - key: qa_result
         next: file_backlog_items
@@ -2559,9 +2981,8 @@ flows:
       # non-UI stories get "none" and skip without spawning an agent. run_regression
       # (script) mechanically runs the committed journey suite for UI-touching stories —
       # no LLM self-reported verdict. A real failure routes to fix_regression (agent),
-      # which fixes every failure in-branch (no distinction between a regression this
-      # story caused, a stale/flaky spec, or a pre-existing bug — all get fixed the same
-      # way; there is no exclude-to-backlog escape hatch). The fix is never trusted on
+      # which fixes every failure in-branch. OKF verify ownership is diagnostic only:
+      # no regression is excluded from the story's fix budget. The fix is never trusted on
       # its own word: incr_regression_fix loops back to run_regression to re-verify
       # mechanically. guard_regression_fix bounds the loop; on exhaustion it falls
       # through to the existing QA-fix loop (guard_qa) as a normal QA failure. blocked
@@ -2603,10 +3024,57 @@ flows:
         type: branch
         path: regression_run.status
         cases:
-          passed: flush_root_screenshots # journeys green → finalize
-          blocked: guard_setup # real stack couldn't be brought up → existing setup-fix loop
+          passed: decide_regression_fix_applied # a fresh fix invalidates primary QA evidence
+          blocked: prepare_regression_setup_reqa # setup recovery itself reruns primary QA
           failed: guard_regression_fix
         default: guard_regression_fix
+
+      - id: prepare_regression_setup_reqa
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=no"
+          - "regression_reqa_pending=yes"
+        outputs:
+          - key: regression_fix_applied
+          - key: regression_reqa_pending
+        next: guard_setup
+
+      - id: decide_regression_fix_applied
+        type: branch
+        path: regression_fix_applied
+        cases:
+          "yes": mark_regression_reqa_pending
+        default: decide_regression_reqa_pending
+
+      - id: decide_regression_reqa_pending
+        type: branch
+        path: regression_reqa_pending
+        cases:
+          "yes": clear_regression_reqa_pending
+        default: flush_root_screenshots
+
+      - id: mark_regression_reqa_pending
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=no"
+          - "regression_reqa_pending=yes"
+        outputs:
+          - key: regression_fix_applied
+          - key: regression_reqa_pending
+        next: build_qa_okf_context
+
+      - id: clear_regression_reqa_pending
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=no"
+          - "regression_reqa_pending=no"
+        outputs:
+          - key: regression_fix_applied
+          - key: regression_reqa_pending
+        next: flush_root_screenshots
 
       - id: guard_regression_fix
         type: branch
@@ -2615,7 +3083,18 @@ flows:
           - op: ">="
             value: "3" # == vars.max_regression_fix_reworks; literal so no Jinja in branch
             next: mark_regression_unresolved # fix attempts spent → fall through to the QA-fix loop
-        default: fix_regression
+        default: clear_regression_reqa_before_fix
+
+      - id: clear_regression_reqa_before_fix
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=no"
+          - "regression_reqa_pending=no"
+        outputs:
+          - key: regression_fix_applied
+          - key: regression_reqa_pending
+        next: fix_regression
 
       - id: fix_regression
         type: agent
@@ -2652,6 +3131,15 @@ flows:
         outputs:
           - key: regression_fix_count
             wrap: value
+        next: mark_regression_fix_applied
+
+      - id: mark_regression_fix_applied
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=yes"
+        outputs:
+          - key: regression_fix_applied
         next: run_regression
 
       # Budget exhausted: stamp a failed qa_result summarizing what's still failing,
@@ -2665,6 +3153,17 @@ flows:
           - "{{ regression_fix_count.value }}"
         outputs:
           - key: qa_result
+        next: clear_regression_state_unresolved
+
+      - id: clear_regression_state_unresolved
+        type: script
+        script: scripts/emit-kv.py
+        args:
+          - "regression_fix_applied=no"
+          - "regression_reqa_pending=no"
+        outputs:
+          - key: regression_fix_applied
+          - key: regression_reqa_pending
         next: guard_qa
 
       # ── Flush stray screenshots before committing ───────────────────────────────
@@ -2730,7 +3229,7 @@ flows:
           story_path: "{{ story_path }}"
           spec_dir: "{{ spec_dir }}"
           qa_dir: "{{ qa_dir }}"
-          qa_notes: "{{ qa_result.notes }}"
+          qa_notes: "{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"
         outputs:
           - key: qa_report_result
         next: qa_done
@@ -2845,7 +3344,7 @@ flows:
           story_path: "{{ story_path }}"
           spec_dir: "{{ spec_dir }}"
           qa_dir: "{{ qa_dir }}"
-          qa_notes: "{{ qa_result.notes }}"
+          qa_notes: "{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"
         outputs:
           - key: setup_result
             default: { status: unfixable } # if the fixer exhausts retries → escalate, don't loop
@@ -2893,7 +3392,7 @@ flows:
           spec_dir: "{{ spec_dir }}"
           qa_dir: "{{ qa_dir }}"
           block_kind: "qa"
-          block_notes: "{{ qa_result.notes }}"
+          block_notes: "{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"
         outputs:
           - key: resolve_status
             default: { decision: "answered" }
@@ -2909,7 +3408,7 @@ flows:
         script: scripts/await_operator.py
         args:
           - "{{ story_path }}"
-          - "{{ qa_result.notes }}"
+          - "{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"
         outputs:
           - key: operator_input
           - key: plan_rework_count
@@ -3195,7 +3694,7 @@ flows:
           - key: pruned
           - key: bullet_id
           - key: reason
-        next: commit_fix_item
+        next: document_fix_item
 
       - id: fix_give_up
         type: script
@@ -3208,7 +3707,32 @@ flows:
           - key: marked
           - key: bullet_id
           - key: reason
-        next: commit_fix_item
+        next: document_fix_item
+
+      - id: document_fix_item
+        type: flow
+        name: docs
+        args:
+          story: "{{ get_node_output('prepare_fix_story', 'story_slug') }}"
+          docs_path: "{{ docs_path }}"
+          epic: "{{ get_node_output('seed_fix_story', 'epic') }}"
+          target_env: "{{ target_env }}"
+        outputs:
+          - key: doc_status
+            default: failed
+          - key: doc_notes
+        next: decide_fix_documentation
+
+      - id: decide_fix_documentation
+        type: branch
+        path: doc_status
+        cases:
+          passed: commit_fix_item
+          not_applicable: commit_fix_item
+        default: fix_documentation_failed
+
+      - id: fix_documentation_failed
+        type: fail
 
       # Standalone-only: commit this one drained item onto the CURRENT branch.
       # Reuses commit-story.py unchanged — it resolves affected repos from THIS
@@ -3227,6 +3751,9 @@ flows:
 
       - id: done
         type: terminal
+
+    flows:
+      docs: *docs_flow
 
   # ── fix_ci: per-repo CI diagnosis + fix ──────────────────────────────────────
   # Iterates workspace repos (or a single named repo) and runs the fix-ci agent

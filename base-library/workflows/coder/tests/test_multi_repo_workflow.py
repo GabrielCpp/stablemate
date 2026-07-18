@@ -97,7 +97,7 @@ def test_layer_loop_iterates_all_services(tmp_path, monkeypatch):
     wf.mock_agent("review_implementation", {"review_impl_result": {"status": "approved", "notes": ""}})
     wf.mock_agent("apply_review", {"impl_result": {"status": "applied", "notes": ""}})
     wf.mock_agent("plan_qa", {"qa_plan_result": {"status": "done", "notes": ""}})
-    wf.mock_agent("audit_qa", {"qa_result": {"status": "passed", "notes": ""}})
+    wf.mock_agent("audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}})
     wf.mock_agent("qa", {"qa_result": {"status": "passed", "notes": ""}})
     wf.mock_agent("fix_ci_agent", {"fix_ci_result": {"status": "fixed", "notes": ""}})
 
@@ -187,7 +187,7 @@ def test_single_service_no_workspace_file(tmp_path):
     wf.mock_agent("review_implementation", {"review_impl_result": {"status": "approved", "notes": ""}})
     wf.mock_agent("apply_review", {"impl_result": {"status": "applied", "notes": ""}})
     wf.mock_agent("plan_qa", {"qa_plan_result": {"status": "done", "notes": ""}})
-    wf.mock_agent("audit_qa", {"qa_result": {"status": "passed", "notes": ""}})
+    wf.mock_agent("audit_qa", {"qa_audit": {"verdict": "stands", "refutation_class": "none", "notes": ""}})
     wf.mock_agent("qa", {"qa_result": {"status": "passed", "notes": ""}})
     wf.mock_agent("fix_ci_agent", {"fix_ci_result": {"status": "fixed", "notes": ""}})
 

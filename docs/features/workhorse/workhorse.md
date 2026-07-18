@@ -127,7 +127,9 @@ subcommand, a bare `workhorse [--workflow …]` is treated as `run`.
   `workhorse/tests/test_resume_auto.py::test_resume_latest_still_errors_when_none`
 
 `workhorse run coder qa --params '{"story":"CASE-1234"}'` runs the coder workflow's `qa`
-flow standalone.
+flow standalone. `workhorse run coder docs --params '{"story":"CASE-1234"}'` independently runs
+the same hard [documentation gate](flows/coder-documentation-gate.md) that the full coder pipeline
+executes before QA and again before commit.
 
 ### test
 - usage: `workhorse test <workflow_dir> [-k FILTER] [-v]`

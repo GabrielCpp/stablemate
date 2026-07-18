@@ -12,6 +12,7 @@ from qa_cli import emit, notes_for, qa_context_validate
 def main(logger: logging.Logger) -> None:
     spec_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     build_status = sys.argv[2] if len(sys.argv) > 2 else "invalid"
+    output_key = sys.argv[3] if len(sys.argv) > 3 else "qa_context_result"
     returncode, payload, stderr = qa_context_validate(spec_dir)
     cli_status = str(payload.get("status", "invalid")).lower()
     status = (
@@ -27,7 +28,7 @@ def main(logger: logging.Logger) -> None:
         else "QA OKF context is invalid.",
     )
     logger.info("qa context-validate for %s returned status=%s", spec_dir, status)
-    emit("qa_context_result", status, notes, payload)
+    emit(output_key, status, notes, payload)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,8 @@ plan file. This script reads it together with the workspace configuration
     docs/repo-modes.md for why the docs root cannot be inferred from the affected
      repos alone).
   - ``qa_source_roots_json``: JSON-encoded ``SURFACE=PATH`` arguments for
-    ``ostler qa context``. One repository root is emitted per affected surface.
+    ``ostler qa context``. One repository source root is emitted per affected surface so shared
+    implementation changed by a service is not hidden.
 
 Resolution is deterministic and side-effect-free. A missing/garbled plan-context
 degrades to empty lists (logged to stderr) so the implementer falls back to reading

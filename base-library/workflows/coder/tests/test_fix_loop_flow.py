@@ -29,6 +29,7 @@ from conftest import (
     make_queue,
     git_mock_no_remote,
     mock_all_agents_happy,
+    mock_documentation_happy,
     mock_ostler_fix_passthrough,
     story_params,
 )
@@ -62,6 +63,7 @@ def _mock_fix_agents_happy(wf: WorkflowRun) -> None:
     wf.mock_agent("plan_fix", {"plan_result": {"status": "done", "summary": "Fix planned."}})
     wf.mock_agent("implement_fix", {"impl_result": {"status": "done", "notes": ""}})
     wf.mock_agent("check_fix", {"qa_result": {"status": "passed", "notes": ""}})
+    mock_documentation_happy(wf)
 
 
 def _fix_params(sandbox: Path) -> dict:
@@ -252,7 +254,7 @@ def test_standalone_fix_mode_empty_backlog_is_a_noop(tmp_path):
         assert result.step_outputs(node) == {}, f"{node} must not run in the standalone fix flow"
 
 
-def test_standalone_fix_mode_drains_passed_item_and_commits_it(tmp_path):
+def test_standalone_fix_mode_drains_passed_item_and_commits_it(tmp_path, monkeypatch):
     """One filed bullet, check_fix passes first try: commit_fix_item commits it
     directly (no enclosing story commit exists in this flow), tagged with the
     self-created "fixes" epic identity, then the drain converges to empty and
@@ -262,6 +264,7 @@ def test_standalone_fix_mode_drains_passed_item_and_commits_it(tmp_path):
     git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
+    mock_ostler_fix_passthrough(monkeypatch)
     _mock_fix_agents_happy(wf)
     result = wf.run(flow="fix", params=_fix_params(tmp_path))
 
@@ -279,7 +282,7 @@ def test_standalone_fix_mode_drains_passed_item_and_commits_it(tmp_path):
         assert result.step_outputs(node) == {}
 
 
-def test_standalone_fix_mode_commits_blocked_item_too(tmp_path):
+def test_standalone_fix_mode_commits_blocked_item_too(tmp_path, monkeypatch):
     """check_fix fails, the one bounded retry still fails: fix_give_up annotates
     the bullet in place, and commit_fix_item STILL commits (the "commit whatever
     happened" rule the enclosing story's commit would apply anyway) — the run
@@ -289,6 +292,8 @@ def test_standalone_fix_mode_commits_blocked_item_too(tmp_path):
     git_mock_no_remote(tmp_path)
 
     wf = WorkflowRun(WORKFLOW, tmp_path)
+    mock_ostler_fix_passthrough(monkeypatch)
+    mock_documentation_happy(wf)
     wf.mock_agent("plan_fix", {"plan_result": {"status": "done", "summary": "Fix planned."}})
     wf.mock_agent("implement_fix", {"impl_result": {"status": "done", "notes": ""}})
     wf.mock_agent("check_fix", {"qa_result": {"status": "failed", "notes": "still broken"}})
