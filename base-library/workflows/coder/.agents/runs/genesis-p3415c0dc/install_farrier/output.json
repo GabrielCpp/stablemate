@@ -1,5 +1,0 @@
-{
-  "farrier_ok": "yes",
-  "farrier_note": "farrier install: adapters + .agents/agents-context.json rendered\nscaffold 'shared-docs' rendered at 'docs'\nscaffold 'go-service' rendered at 'api'",
-  "scaffolds_rendered": "shared-docs,go-service"
-}

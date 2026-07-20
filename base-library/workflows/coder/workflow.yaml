@@ -4071,13 +4071,20 @@ flows:
           - key: agents_yml_written
           - key: agents_yml_path
           - key: agents_yml_note
-        next: install_farrier
+        next: decide_skeleton
 
-      # farrier install renders the packs' adapters + .agents/agents-context.json (whose
+      # Runs AFTER init_skeleton, and the order is load-bearing. Scaffolds seed files into the
+      # service directory (a .gitignore), while stack generators refuse to write into a
+      # directory that already has any. Observed live: the react-router-web scaffold seeded
+      # web/.gitignore, and `npm create react-router` then aborted with "Destination directory
+      # contains files that would be overwritten". Native init first, scaffolds over the top —
+      # farrier's scaffold step never clobbers a file the repo already owns, so seeding after
+      # is safe while seeding before is not. (`go mod init` tolerates a non-empty dir, which is
+      # why `api` passed and only `web` failed — the bug was always there, just unexposed.)
+      #
+      # farrier install renders the packs' adapters + .agents/agents-context.json, whose
       # `instructions` map is how resolve-impl-context.py resolves skills — empty means
-      # implementation runs unskilled and still reports success). Then the scaffolds seed the
-      # conventional folders. Scaffolds are thin by design and produce no marker file; that
-      # comes from native tooling in the next node.
+      # implementation runs unskilled and still reports success.
       - id: install_farrier
         type: script
         script: scripts/install-genesis-farrier.py
@@ -4099,18 +4106,21 @@ flows:
         type: branch
         path: farrier_ok
         cases:
-          "yes": decide_skeleton
+          "yes": decide_skeleton_ok
         default: validate_genesis
 
       # Keyed on the SERVICE, not the repo. `go mod init` and friends fail or clobber when
-      # re-run over a live service, so an existing one skips straight to validation — but a
-      # service that does not exist yet is built even when the repo around it does, which is
-      # how a monorepo grows its second and third surface.
+      # re-run over a live service, so an existing one skips init and goes straight to the
+      # farrier refresh — but a service that does not exist yet is built even when the repo
+      # around it does, which is how a monorepo grows its second and third surface.
+      # (An existing service also leaves skeleton_ok unset, so decide_skeleton_ok below routes
+      # it past apply_conventions to validation — conventions are not re-applied to a live
+      # service, which is the intended behaviour on a config refresh.)
       - id: decide_skeleton
         type: branch
         path: service_state
         cases:
-          existing: validate_genesis
+          existing: install_farrier
         default: init_skeleton
 
       - id: init_skeleton
@@ -4125,7 +4135,7 @@ flows:
           - key: skeleton_ok
           - key: skeleton_note
           - key: marker_path
-        next: decide_skeleton_ok
+        next: install_farrier
 
       # A failed native init must NOT reach the conventions agent. Observed live: `npm create
       # react-router` produced no package.json, the flow walked on regardless, and the agent —

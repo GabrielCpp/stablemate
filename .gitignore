@@ -227,6 +227,6 @@ __marimo__/
 
 .playwright-mcp
 
-/.agents/*
+.agents/*
 !/.agents/agents.mk
 !/.agents/flavors/

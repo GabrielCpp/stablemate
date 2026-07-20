@@ -93,17 +93,33 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY workhorse/ workhorse/
 COPY ostler/ ostler/
+# core is a workspace member workhorse depends on (`stablemate-core`, declared
+# `workspace = true` in workhorse/pyproject.toml), so `uv sync` resolves it from
+# the tree, not PyPI — without this COPY the sync fails with
+# "Distribution not found at: file:///app/core". ostler needs no workspace member.
+COPY core/ core/
 
-# Install Python deps — run as root during build, nobody at runtime. groom is
-# omitted (installed at runtime as an editable tool from the bind); workhorse +
+# Install Python deps — run as root during build, unprivileged at runtime. groom
+# is omitted (installed at runtime as an editable tool from the bind); workhorse +
 # ostler are baked so the workflow runs offline. A missing groom/ workspace
 # member is tolerated by `uv sync` (farrier is likewise never copied).
+#
+# Runtime dirs are made writable by ANY uid rather than owned by one user. The
+# container no longer runs as a fixed `nobody`: compose passes the *host* user's
+# uid/gid (see compose.yaml's `user:`) so the agent can write git worktree
+# metadata into a bind-mounted host repo it does not own. Two consequences:
+#   - a FRESH named volume inherits its mountpoint's mode from the image, so
+#     0777 here is precisely what lets an arbitrary --user write to it. Chowning
+#     to nobody instead is what used to make entrypoint.sh exit 13 under any
+#     other uid.
+#   - /app must be writable too: `uv run` in the entrypoint may touch .venv and
+#     write bytecode there.
+# This is a single-tenant container — one agent, no other principals to isolate
+# from — so a permissive mode costs nothing that ownership was buying.
 RUN uv sync --frozen --package workhorse-agent --package ostler \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
-    && chown -R nobody:nogroup /app \
-    && mkdir -p /workspace /runs /claude-state \
-    && chown -R nobody:nogroup /workspace /runs /claude-state \
-    && mkdir -p /opt/uv-python \
+    && mkdir -p /workspace /runs /claude-state /opt/uv-python \
+    && chmod -R a+rwX /app /workspace /runs /claude-state \
     && chmod -R a+rX /opt/uv-python
 
 COPY workhorse/entrypoint.sh /entrypoint.sh

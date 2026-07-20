@@ -113,12 +113,53 @@ under a runbook's `## Steps`). They reuse the surface types above via a runbook'
 the spec-completeness bar, and how okf-builder generates and consumes them — lives in
 [okf-runbook.md](okf-runbook.md); their optional bullets are summarized below.
 
+### Required bullets on `screen` — the reachability contract
+
+A `screen` **must** declare three bullets. `ostler doctor` errors on a screen missing any of
+them, and `ostler scaffold` emits all three as stubs.
+
+- `route:` — the URL path, with parameters named (`/projects/:projectId/reports`).
+- `requires:` — the guard components that must already be satisfied, as links. These are the
+  wrappers that *redirect* when unmet, so an unsatisfied guard does not fail loudly — it
+  silently lands the caller somewhere else.
+- `params:` — one entry per `:token` in `route:`, binding it to the interaction that mints the
+  entity. This is what makes a data dependency routable: a walk that needs a `projectId` can
+  follow the link, run that interaction first, and come back.
+
+```markdown
+- route: `/projects/:projectId/reports`
+- requires:
+  - [protected-route](../components/auth-guards.md#protected-route)
+  - [require-complete-account](../components/auth-guards.md#require-complete-account)
+- params:
+  - projectId: from [submit-new-project](projects.new.md#submit-new-project)
+```
+
+**`none` is a value, and it is required.** An unconditional screen writes it out:
+
+```markdown
+- route: `/terms-of-use`
+- requires: none
+- params: none
+```
+
+Omitting the bullet is not the same as declaring it empty. A consumer cannot tell a screen with
+nothing to satisfy from one whose author never considered the question, and the two demand
+opposite behavior — walk it, or refuse and report a gap. `ostler reach` therefore reports
+`undeclared` separately from `unreachable`: both are defects, and a screen can be either or both.
+
+**Why this is required and `screenshot:` is not.** Together with `leads-to:`, these bullets are
+what let a consumer *derive* how to arrive at a screen instead of being told. That is the point
+of the graph: `ostler reach <screen> --from <landing>` returns the click-path plus what to
+satisfy at each hop, and exits non-zero when the book cannot answer. A tool that falls back to
+navigating straight to `route:` when no path exists has verified nothing — it has proven a URL
+renders, not that a user could ever get there.
+
 ### Optional structured bullets (conventions, never required)
 
 When a machine-readable hook helps, add a plain bullet. All optional.
 
 **`screen`**
-- `route:` — the landed URL path, captured live during a walkthrough.
 - `screenshot:` — a full-page capture of the screen in a named state, living **in the
   book** at `docs/features/<service>/gui/screenshots/<screen-slug>-<state>.png`
   (repo-relative path; one bullet per captured state). Evidence, not a code ref —
@@ -135,6 +176,16 @@ When a machine-readable hook helps, add a plain bullet. All optional.
 - `parent:` — a link to its containing component/screen (see §5).
 - `extends:` — a link to a shared/library component it reuses (see §5).
 - `states:` — comma-separated visual states (`active, collapsed, default`).
+- `leads-to:` — a link to the screen this component navigates to when activated. Optional
+  because most components do not navigate, but **load-bearing where it applies**: this is the
+  edge `ostler reach` walks, and it is the difference between a component the book merely
+  describes and one a consumer can act on. `parent:`/`extends:` are structure, not navigation —
+  following them moves nobody. A `leads-to:` pointing inside its own screen is a state change
+  and is not treated as navigation.
+
+  Global navigation is the easiest place to under-document this: an app shell's navbar is one
+  component that reaches many screens, and describing it without `leads-to:` bullets leaves the
+  whole graph disconnected at its hub.
 
 **`interaction`** (GUI event)
 - `on:` — a link to the `component` the interaction fires on.
@@ -535,6 +586,10 @@ title: groom shell — the IDE layout
 ---
 # groom shell
 
+- route: `/`
+- requires: none
+- params: none
+
 The VS Code-style shell: an activity bar switches modes; the picker lists the
 fleet; the detail pane shows the selected worker or the active mode. Realtime
 frames arrive over `/ws` and swap regions out-of-band.
@@ -545,9 +600,11 @@ frames arrive over `/ws` and swap regions out-of-band.
 - selector: `#activitybar`
 - code: `groom/groom/templates/dashboard.html`
 - states: (per-mode active button)
+- leads-to: [Changes view](changes-view.md)
 
 The mode switcher (Inbox / Fleet / Changes / Settings). Each `.act-btn[data-mode]`
-click calls `setMode`.
+click calls `setMode`. This is the shell's global navigation, so each mode it can
+reach carries its own `leads-to:` — without them nothing downstream is reachable.
 
 ### main-panel
 - selector: `#detail`
@@ -610,6 +667,10 @@ slug: changes-view
 title: Changes view — per-repo tree of working-tree diffs
 ---
 # Changes view
+
+- route: `/changes`
+- requires: none
+- params: none
 
 Groups every worker's working-tree diff per repo as a browsable file tree. Part of
 the [groom shell](groom.md#main-panel); presents the [diff](../../concepts/diff.md)

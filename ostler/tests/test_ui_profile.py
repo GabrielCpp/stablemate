@@ -41,6 +41,10 @@ title: Changes view
 ---
 # Changes view
 
+- route: `/changes`
+- requires: none
+- params: none
+
 Groups every worker's working-tree diff per repo.
 
 ## Components
@@ -378,7 +382,8 @@ title: Web runbook
 - provenance: derived
 """
 
-DASHBOARD = "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n"
+DASHBOARD = ("---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+             "- route: `/dashboard`\n- requires: none\n- params: none\n")
 
 
 def _write_runbook_trio(repo: Path) -> None:

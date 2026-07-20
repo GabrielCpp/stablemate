@@ -136,13 +136,21 @@ CODE_GROUNDING_KEYS = frozenset({"code", "verify"})
 # Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
 # ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
 RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
-                 "environment", "cli", "surfaces")
+                 "environment", "cli", "surfaces", "requires", "params", "leads-to")
 
 
 UI_TYPES: tuple[UINodeType, ...] = (
     # ---- file-level surfaces / nouns / artifacts ----
     UINodeType(
         name="screen", kind="file", context="gui/screens",
+        bullet_keys=(
+            # All three are required even when empty. A screen that simply omits `requires:` is
+            # indistinguishable from one that is genuinely unconditional, and a walk cannot tell
+            # "nothing to satisfy" from "nobody wrote it down" — so `none` must be *stated*.
+            BulletKey("route", required=True),
+            BulletKey("requires", required=True, nested=True, link=True),
+            BulletKey("params", required=True, nested=True, link=True),
+        ),
     ),
     UINodeType(
         name="cli", kind="file", context="",

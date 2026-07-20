@@ -165,7 +165,11 @@ AGENT_ARGS := $(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(PARAMS),--params '$(PA
 COMPOSE := docker compose -p $(PROJECT) \\
 \t-f $(LOCAL_WORKER)/compose.yaml \\
 \t-f $(CURDIR)/.agents/local.compose.yaml
-ENVV := PROJECT="$(PROJECT)" LOCAL_WORKER="$(LOCAL_WORKER)" STABLEMATE_DIR="$(STABLEMATE_DIR)" AGENTS_DIR="$(AGENTS_DIR)" REPO_SRC="$(CURDIR)" REPO_URL="$(REPO_URL)" REPO_CONFIG="$(REPO_CONFIG)" REPO_BRANCH="$(REPO_BRANCH)" REPO_NAME="$(REPO_NAME)"
+# The container runs as YOUR uid:gid, not a fixed `nobody`, so it can write into
+# bind-mounted host paths you own (see the `user:` key in local.compose.yaml).
+AGENT_UID    ?= $(shell id -u)
+AGENT_GID    ?= $(shell id -g)
+ENVV := PROJECT="$(PROJECT)" LOCAL_WORKER="$(LOCAL_WORKER)" STABLEMATE_DIR="$(STABLEMATE_DIR)" AGENTS_DIR="$(AGENTS_DIR)" REPO_SRC="$(CURDIR)" REPO_URL="$(REPO_URL)" REPO_CONFIG="$(REPO_CONFIG)" REPO_BRANCH="$(REPO_BRANCH)" REPO_NAME="$(REPO_NAME)" AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)"
 
 # Per-workflow run log + pid (under the gitignored .agents/runs/).
 RUNS_DIR     := $(CURDIR)/.agents/runs
@@ -198,7 +202,7 @@ agent-build: ## Rebuild the worker image, then run the workflow
 \t@bash -o pipefail -c '$(ENVV) $(COMPOSE) up --build --abort-on-container-exit --exit-code-from $(WF) $(WF) 2>&1 | tee "$(LOG)"'
 
 agent-hello: ## Smoke-test the worker + auth with the hello-world workflow
-\tWORKFLOW_DIR="$(AGENTS_DIR)/workflows/hello-world" PROJECT="$(PROJECT)" docker compose -p $(PROJECT) -f $(LOCAL_WORKER)/compose.yaml up --abort-on-container-exit
+\tWORKFLOW_DIR="$(AGENTS_DIR)/workflows/hello-world" PROJECT="$(PROJECT)" AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)" docker compose -p $(PROJECT) -f $(LOCAL_WORKER)/compose.yaml up --abort-on-container-exit
 
 agent-logs: ## Follow the current run's log (.agents/runs/$(WF).log)
 \t@mkdir -p $(RUNS_DIR); touch $(LOG); tail -n +1 -F $(LOG)
@@ -334,9 +338,11 @@ def render_local_compose(workflows: list[str], meta: dict[str, Any]) -> str:
         f"""  {wf}:
     image: *agent-image
     build: *agent-build
-    # Run the workflow container as nobody from process start; mounted volumes
-    # must already be writable by this container user.
-    user: "nobody"
+    # Run as the HOST user's uid:gid so the agent can write into bind-mounted
+    # host paths it does not own (e.g. git worktree metadata written back into
+    # the source repo). agents.mk exports these from `id -u`/`id -g`; the 65534
+    # fallback is nobody:nogroup — the previous fixed-user behavior.
+    user: "${{AGENT_UID:-65534}}:${{AGENT_GID:-65534}}"
     extra_hosts:
       # Lets the container's groom-sidecar — installed as an editable uv tool
       # when the GROOM_SRC bind below is set — reach a loopback-bound `groom`

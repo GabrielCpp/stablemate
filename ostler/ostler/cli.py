@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, path as path_mod, query as query_mod, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -70,6 +70,25 @@ def _build_parser() -> argparse.ArgumentParser:
     qy.add_argument("name", choices=query_mod.QUERIES)
     qy.add_argument("arg")
     qy.add_argument("--json", action="store_true")
+
+    rc = sub.add_parser(
+        "reach",
+        help="derive the documented click-path to a screen (or audit what has none)",
+    )
+    rc.add_argument(
+        "target",
+        nargs="?",
+        help="screen node id to route to; omit to audit every screen on the surface",
+    )
+    rc.add_argument(
+        "--from",
+        dest="start",
+        required=True,
+        metavar="ID",
+        help="screen the walk starts on, e.g. the post-login landing screen",
+    )
+    rc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    rc.add_argument("--json", action="store_true")
 
     gp = sub.add_parser(
         "graph", help="query the node/edge/bullet graph (nested + typed)"
@@ -525,6 +544,29 @@ def _result(res, as_json: bool = False) -> int:
     return 0 if res.ok else 1
 
 
+def _cmd_reach(graph, args) -> int:
+    """Route to one screen, or audit the whole surface when no target is given.
+
+    Exits non-zero when a route is missing — an unreachable screen is a defect in the book, and a
+    caller that shells out to this should stop rather than navigate by URL and paper over it.
+    """
+    if args.target:
+        data = graph_mod.build(graph, surface=args.surface)
+        by_id = {n["id"]: n for n in data["nodes"]}
+        path = reach.route(reach.navigation_edges(data), args.start, args.target, by_id)
+        if args.json:
+            print(json.dumps({"start": args.start, "target": args.target, "route": path}))
+        elif path is None:
+            print(f"no documented route from {args.start} to {args.target}")
+        else:
+            print(reach.render_route(path, args.start, args.target))
+        return 1 if path is None else 0
+
+    report = reach.reachability(graph, surface=args.surface, start=args.start)
+    print(json.dumps(report) if args.json else reach.render_reachability(report))
+    return 1 if report["unreachable"] else 0
+
+
 def _cmd_doctor(graph, args) -> int:
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
     if args.json:
@@ -852,6 +894,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         lines, found = trace.run(graph, args.token)
         print("\n".join(lines))
         return 0 if found else 1
+    if c == "reach":
+        return _cmd_reach(graph, args)
     if c == "graph":
         data = graph_mod.build(graph, surface=args.surface)
         sel = graph_mod.select(
