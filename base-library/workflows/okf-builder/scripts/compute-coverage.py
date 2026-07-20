@@ -16,8 +16,9 @@ meaningless without the exclude set it was computed under, the artifact is what 
 visible to CI and to a reader, and its ``commit`` is the anchor a later delta build diffs against.
 
 Args: [repo_root] [features_root] [service] [source_inventory_path] [waivers_path]
+      [rescan_round]
 Outputs JSON: {"coverage_complete","missing_count","missing_path","coverage_path",
-               "coverage_summary","coverage_error"}
+               "coverage_summary","coverage_error","rescan_round"}
 """
 from __future__ import annotations
 
@@ -28,10 +29,19 @@ from pathlib import Path
 from typing import NoReturn
 
 
+# The coverage re-scan counter, incremented once per run of this node — the only node that
+# sits on the re-scan loop and nowhere else. It is a module global so that EVERY exit path,
+# including the early error emits above, carries the increment forward. A path that emitted
+# the default would reset the bound, and an error that recurs every pass would then loop
+# forever on the one branch that exists to stop it.
+_RESCAN_ROUND = 0
+
+
 def emit(**kw: object) -> NoReturn:
     payload: dict[str, object] = {
         "coverage_complete": "no", "missing_count": 0, "missing_path": "",
         "coverage_path": "", "coverage_summary": "", "coverage_error": "",
+        "rescan_round": _RESCAN_ROUND,
     }
     payload.update(kw)
     print(json.dumps(payload))
@@ -68,6 +78,14 @@ def main(logger: logging.Logger) -> None:
     service = sys.argv[3] if len(sys.argv) > 3 else ""
     inventory_path = sys.argv[4] if len(sys.argv) > 4 else ""
     waivers_path = sys.argv[5] if len(sys.argv) > 5 else ""
+
+    global _RESCAN_ROUND
+    try:
+        _RESCAN_ROUND = int(sys.argv[6]) if len(sys.argv) > 6 and sys.argv[6] else 0
+    except ValueError:
+        _RESCAN_ROUND = 0
+    _RESCAN_ROUND += 1
+    logger.info("coverage re-scan %d", _RESCAN_ROUND)
 
     # Imported inside main() so an ostler that will not import emits a "no" verdict with its
     # reason, rather than dying at module scope before this script can say anything at all.

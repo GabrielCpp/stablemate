@@ -8,7 +8,12 @@ needs is read *from the book itself* via ``ostler search`` + the doc bodies:
 
   * web-app?      — the service documents at least one ``screen`` surface.
   * entry URL     — the ``server`` doc's machine-readable ``entry-url:`` bullet.
-  * launch recipe — the server's ``launch:`` and ``working-directory:`` bullets.
+  * launch recipe — the server's ``launch:`` and ``working-directory:`` bullets, plus
+                    the optional ``stop:``/``boot-timeout:`` bullets a bring-up command
+                    (docker compose, a make target) needs and a foreground server does not.
+  * which server  — a service may document several ways to run one app; ``walkthrough:
+                    true`` marks the production-like one the walk drives (see
+                    ``select_server``).
   * identity      — a unique literal expected from ``health-path:`` so a process already
                     occupying the port cannot be mistaken for this service.
 
@@ -23,8 +28,8 @@ playwright-MCP ``--cdp-endpoint``).
 
 Args: [docs_path] [service] [source_path]
 Outputs JSON: {"is_webapp","repo_root","source_root","features_root","entry_url","launch_cmd",
-               "health_path","app_cwd","app_identity","wt_worklist_path","screenshots_dir",
-               "cdp_url","round"}
+               "health_path","app_cwd","app_identity","stop_cmd","boot_timeout",
+               "wt_worklist_path","screenshots_dir","cdp_url","round"}
 """
 from __future__ import annotations
 
@@ -53,7 +58,7 @@ def emit(**kw: object) -> None:
     payload: dict[str, object] = {
         "is_webapp": "no", "repo_root": "", "source_root": "", "features_root": "", "entry_url": "",
         "launch_cmd": "", "health_path": "/", "app_cwd": "", "app_identity": "",
-        "wt_worklist_path": "",
+        "stop_cmd": "", "boot_timeout": "", "wt_worklist_path": "",
         "screenshots_dir": "", "cdp_url": CDP_URL, "round": 0,
     }
     payload.update(kw)
@@ -81,10 +86,19 @@ def _read(repo_root: str, rel: str) -> str:
 
 
 def _bullet(text: str, key: str) -> str:
-    match = re.search(rf"(?m)^-\s*{re.escape(key)}:\s*(?:`([^`]+)`|(.+?))\s*$", text)
+    """The value of a machine-facing ``- key: value`` bullet.
+
+    These bullets are prose documentation as much as they are interface, so a backticked
+    value is the value even when explanation follows it on the same line (and even when
+    that explanation wraps onto the next). Only an unbackticked bullet takes the whole
+    line — there is no other way to tell value from commentary.
+    """
+    match = re.search(rf"(?m)^-\s*{re.escape(key)}:\s*(.+?)\s*$", text)
     if not match:
         return ""
-    return (match.group(1) or match.group(2) or "").strip()
+    value = match.group(1)
+    backticked = re.match(r"`([^`]+)`", value)
+    return backticked.group(1) if backticked else value.strip()
 
 
 def parse_launch_contract(text: str, repo_root: str, source_root: str) -> dict[str, str]:
@@ -105,7 +119,58 @@ def parse_launch_contract(text: str, repo_root: str, source_root: str) -> dict[s
         "health_path": _bullet(text, "health-path") or "/",
         "app_cwd": str(app_cwd.resolve()),
         "app_identity": _bullet(text, "identity"),
+        # A bring-up command (docker compose, a make target) returns once the stack is
+        # serving instead of staying in the foreground, and outlives the run — so it
+        # needs its own stop recipe, and a ceiling measured in builds rather than in
+        # process spawns. Both optional: a plain foreground server documents neither.
+        "stop_cmd": _bullet(text, "stop"),
+        "boot_timeout": _bullet(text, "boot-timeout"),
+        # Which server the walk drives, when a service documents more than one way to
+        # run the same app (a dev server, a production static server, a full stack).
+        # The book's author marks the most PRODUCTION-LIKE one — matching prod's bundle
+        # and request dispatch — because that is the app whose behaviour the screens
+        # should document. Without it selection would fall back to search order.
+        "walkthrough": _bullet(text, "walkthrough"),
     }
+
+
+def _is_marked(value: str) -> bool:
+    """Whether a `walkthrough:` bullet opts its server in. Prose is not a marker."""
+    return value.strip().lower() in {"true", "yes", "primary"}
+
+
+def select_server(paths, read_contract, logger: logging.Logger) -> dict[str, str]:
+    """Pick the ONE server the walk drives, out of every server the service documents.
+
+    A service can document several ways to run the same app — a dev server, a
+    production static server, a full stack behind a gateway. They serve the same
+    screens, so walking each in turn would only re-photograph them; what matters is
+    driving the one whose bundle and dispatch match production. The book says which
+    that is via ``walkthrough: true``; absent that, fall back to the first documented
+    server and say so, since an unmarked book is making the choice by accident.
+    """
+    contracts = [(path, read_contract(path)) for path in paths]
+    contracts = [(path, contract) for path, contract in contracts if contract]
+    if not contracts:
+        return {}
+
+    marked = [(path, c) for path, c in contracts if _is_marked(c.get("walkthrough", ""))]
+    if len(marked) > 1:
+        # Ambiguous on purpose-looking input: pick deterministically but be loud, since
+        # the book asserts two different apps are both the production-like one.
+        logger.warning("%d servers are marked `walkthrough:` — %s; walking %s. Mark exactly "
+                       "one, the most production-like.",
+                       len(marked), ", ".join(path for path, _ in marked), marked[0][0])
+    if marked:
+        logger.info("walking the server marked `walkthrough:` — %s", marked[0][0])
+        return marked[0][1]
+
+    if len(contracts) > 1:
+        logger.warning("%d servers document a launch contract (%s) but none is marked "
+                       "`walkthrough: true` — falling back to %s. Add the bullet to the "
+                       "most production-like one so this is not decided by file order.",
+                       len(contracts), ", ".join(path for path, _ in contracts), contracts[0][0])
+    return contracts[0][1]
 
 
 def main(logger: logging.Logger) -> None:
@@ -136,13 +201,16 @@ def main(logger: logging.Logger) -> None:
 
     # 2) Prefer the explicit runtime contract on the server node. It is both documentation
     #    and the executable launch interface consumed by this walkthrough.
-    contract: dict[str, str] = {}
-    for srv in _search(root, "server"):
-        if scope not in srv.get("path", ""):
-            continue
-        contract = parse_launch_contract(_read(root, srv["path"]), root, source_path or service)
-        if contract:
-            break
+    contract = select_server(
+        # Sorted so that an unmarked book picks the SAME server every run. Search order
+        # is not a promised interface, and a walk that silently changes which app it
+        # documents between runs is worse than one that documents the wrong app twice.
+        sorted(
+            (srv.get("path", "") for srv in _search(root, "server") if scope in srv.get("path", "")),
+        ),
+        lambda path: parse_launch_contract(_read(root, path), root, source_path or service),
+        logger,
+    )
 
     # Compatibility fallback for older books that only document a Python-style `serve`
     # command. New/updated books should always use the explicit server contract above.
@@ -155,6 +223,8 @@ def main(logger: logging.Logger) -> None:
         health_path = contract["health_path"]
         app_cwd = contract["app_cwd"]
         app_identity = contract["app_identity"]
+        stop_cmd = contract["stop_cmd"]
+        boot_timeout = contract["boot_timeout"]
     else:
         # No server contract: the guessed recipe carries no identity marker, so boot-app
         # cannot adopt a running app and will not reuse whatever holds the port.
@@ -185,6 +255,8 @@ def main(logger: logging.Logger) -> None:
         health_path = "/"
         app_cwd = source_root
         app_identity = ""
+        stop_cmd = ""
+        boot_timeout = ""
 
     # 4) Walk worklist stays build scratch; screenshots live IN the book — they are
     #    committed evidence the docs' `screenshot:` bullets reference.
@@ -199,6 +271,7 @@ def main(logger: logging.Logger) -> None:
     emit(is_webapp="yes", repo_root=root, source_root=source_root, features_root=features_root,
          entry_url=entry_url, launch_cmd=launch_cmd, health_path=health_path,
          app_cwd=app_cwd, app_identity=app_identity,
+         stop_cmd=stop_cmd, boot_timeout=boot_timeout,
          wt_worklist_path=str(wl), screenshots_dir=str(shots), round=0)
 
 

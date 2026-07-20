@@ -67,3 +67,36 @@ def test_create_feature(tmp_path: Path):
     assert res.ok
     feats = load(tmp_path).features
     assert any(f.slug == "signin" and f.area == "auth" for f in feats)
+
+
+# ── re-run idempotency ────────────────────────────────────────────────────────
+# The author workflow's bounded rework loops re-run these stages, and two independent
+# prompts document them as update-or-create: `write-epic.md` ("re-running `ostler seed add`
+# updates it rather than duplicating") and `split-stories.md` ("`ostler create story` for an
+# existing slug is a no-op"). Both used to return not-ok and exit 1, which turned every
+# rework loop into a hard failure.
+
+def test_add_seed_is_update_or_create(repo: Path):
+    assert crud.add_seed(load(repo), "epic-a", "dup-seed", status="researched",
+                         summary="first").ok
+    res = crud.add_seed(load(repo), "epic-a", "dup-seed", status="covered",
+                        summary="second")
+    assert res.ok and "updated" in res.message
+    seeds = [s for s in load(repo).epics[0].seeds if s.id == "dup-seed"]
+    assert len(seeds) == 1, "re-running must update in place, never duplicate the block"
+    assert seeds[0].status == "covered"
+
+
+def test_create_story_existing_slug_is_a_noop(repo: Path):
+    crud.add_seed(load(repo), "epic-a", "s1", status="researched")
+    first = crud.create_story(load(repo), "epic-a", "01-dup", "Dup", covers=["s1"])
+    assert first.ok
+    story_md = repo / "docs/epics/epic-a/stories/01-dup/story.md"
+    story_md.write_text(story_md.read_text(encoding="utf-8") + "\nhand-written body\n",
+                        encoding="utf-8")
+
+    second = crud.create_story(load(repo), "epic-a", "01-dup", "Dup", covers=["s1"])
+    assert second.ok and "already exists" in second.message
+    # The no-op must not re-allocate an id or clobber the body.
+    assert "hand-written body" in story_md.read_text(encoding="utf-8")
+    assert first.entity_id and second.entity_id in (None, "", first.entity_id)

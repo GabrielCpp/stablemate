@@ -117,7 +117,7 @@ def test_branch_creates_in_docs_and_repos(tmp_path):
     # Verify branch exists in both repos
     for repo_path in [docs_repo, tmp_path / "api-service"]:
         proc = subprocess.run(
-            ["git", "rev-parse", "--verify", "story/my-story"],
+            ["git", "rev-parse", "--verify", "my-story"],
             cwd=str(repo_path), capture_output=True,
         )
         assert proc.returncode == 0, f"Branch missing in {repo_path.name}"
@@ -324,7 +324,7 @@ def _checkout_branch(repo_path: Path, branch: str) -> None:
 def test_branch_code_repos_branches_affected_repos(tmp_path):
     """Branches code repos onto the branch that the docs repo is currently on."""
     ws_file, docs_repo = _seed_workspace(tmp_path, ["api-service", "web-app"])
-    _checkout_branch(docs_repo, "story/CASE-4403")
+    _checkout_branch(docs_repo, "CASE-4403")
 
     result = _run(
         "branch-code-repos.py",
@@ -341,7 +341,7 @@ def test_branch_code_repos_branches_affected_repos(tmp_path):
 
     for name in ["api-service", "web-app"]:
         proc = subprocess.run(
-            ["git", "rev-parse", "--verify", "story/CASE-4403"],
+            ["git", "rev-parse", "--verify", "CASE-4403"],
             cwd=str(tmp_path / name), capture_output=True,
         )
         assert proc.returncode == 0, f"Branch missing in {name}"
@@ -350,7 +350,7 @@ def test_branch_code_repos_branches_affected_repos(tmp_path):
 def test_branch_code_repos_skips_docs_repo(tmp_path):
     """The docs repo itself is never touched by branch-code-repos.py."""
     ws_file, docs_repo = _seed_workspace(tmp_path, ["api-service"])
-    _checkout_branch(docs_repo, "story/CASE-4403")
+    _checkout_branch(docs_repo, "CASE-4403")
 
     result = _run(
         "branch-code-repos.py",
@@ -368,7 +368,7 @@ def test_branch_code_repos_skips_docs_repo(tmp_path):
 def test_branch_code_repos_idempotent(tmp_path):
     """Running branch-code-repos.py twice: second run reports already_on_branch."""
     ws_file, docs_repo = _seed_workspace(tmp_path, ["api-service"])
-    _checkout_branch(docs_repo, "story/CASE-4403")
+    _checkout_branch(docs_repo, "CASE-4403")
     env = {"CODER_WORKSPACE": str(ws_file)}
 
     _run("branch-code-repos.py", ["specs/s-1"], docs_repo, extra_env=env)

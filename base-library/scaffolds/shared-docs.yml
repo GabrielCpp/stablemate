@@ -37,14 +37,14 @@ shared-docs:
         product-vision.md
         assets/
         features/
+        knowledge/
         roadmaps/
           starting-point.md
           mvp.md
         epics/
-          epics-todo.json
+          index.md
           <epic-short-name>/
             epic.md
-            dependencies.json
             stories/
               <story-short-name>/
                 story.md
@@ -122,15 +122,14 @@ shared-docs:
 
       Each epic folder should contain:
 
-      - `epic.md`: the planning document for that epic.
-      - `dependencies.json`: optional machine-readable story dependency graph.
+      - `epic.md`: the planning document for that epic, including its `## Seeds` (the in-scope work items) and `## Stories` (the story dependency graph). Both are markdown sections of `epic.md` — there are no sidecar `seed.json` / `dependencies.json` files.
       - `stories/`: story folders for implementation work.
 
       The queued epic execution order lives at:
 
-      `docs/epics/epics-todo.json`
+      `docs/epics/index.md`
 
-      This file is a JSON list of epic folder names. Completed epics are removed from the list after the coder workflow finishes the entire epic.
+      This is the OKF bundle index: one `- [<name>](<name>/epic.md) — <title>` line per epic, and the list order *is* the work order. Completed epics are removed from the list after the coder workflow finishes the entire epic.
 
       ## Stories
 
@@ -211,9 +210,31 @@ shared-docs:
       8. Update story status.
 
       Do not skip review or QA just because automated tests pass.
+    # The author workflow's `load-config.py` hard-exits when this file is absent, so a
+    # scaffolded repo seeds it rather than making the first author run fail on a missing
+    # input. Seeded empty-but-present: the bullets are the operator's to write.
+    $dir/backlog.md: |
+      # Backlog
+
+      A markdown bullet list of user-observable features, one per line. The author workflow
+      decomposes these into epics and stories, and prunes each bullet as it is fully authored.
+      Prefix a bullet with a `[stable-id]` to have that id reused verbatim by story mode.
+
+      ## Filed by coder
+
     $dir/specs:
+    # `epics/` is load-bearing beyond being a folder: ostler infers the graph profile from
+    # whether it is a directory (`full` when present, `exploration` when not), and only the
+    # `full` profile runs the structural doctor checks the author workflow's coverage gate
+    # depends on. Creating it here is deliberate, not incidental — a repo bootstrapped without
+    # it would see epic-coverage validation short-circuit and report success having checked
+    # nothing. `index.md` (the queue) is written by `ostler todo add`, not scaffolded empty.
     $dir/epics:
     $dir/features:
+    # Where the author workflow accumulates surface knowledge records (the derived,
+    # machine-built counterpart to the hand-curated feature docs above). `load-config.py`
+    # defaults `knowledge_dir` here, and the story-grounding gate requires a record per story.
+    $dir/knowledge:
     $dir/features/journeys/README.md: |
       # User journeys
 

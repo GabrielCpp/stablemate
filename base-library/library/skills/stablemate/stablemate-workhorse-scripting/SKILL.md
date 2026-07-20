@@ -192,7 +192,7 @@ from workhorse.scriptutil import (
     commits_ahead, commit_all, commit_paths, push_branch, origin_url,
 )
 
-# Branch: create or check out story/<slug>, idempotently
+# Branch: create or check out the story branch (bare id), idempotently
 if local_branch_exists(repo_path, branch):
     checkout(repo_path, branch)
 else:

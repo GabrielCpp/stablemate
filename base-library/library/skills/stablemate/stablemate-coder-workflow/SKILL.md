@@ -86,6 +86,7 @@ args:
 | `spec_dir` | `prepare_story` | dev, review, qa flow args; replan_epic; commit; PR nodes |
 | `story_slug` | `prepare_story` | dev, qa flow args; commit nodes; qa_give_up; open_story_pr |
 | `base_branch` | `branch_story` (story) or `init_base` (epic) | branch_epic, open_pr, open_story_pr |
+| `story_branch` | `branch_story` | open_story_pr — the branch is the cutting node's to name, never re-derived from the slug |
 | `epic` | `select_epic` | branch_epic, open_pr, prune_epic, replan_epic, qa_give_up, commit_story |
 | `ci_epic` | `open_pr` | await_ci, push_ci, fix_ci, merge, flag_ci_fail, await_ci_operator, fix_merge, push_merge, flag_merge_fail, await_merge_operator |
 | `ci_base` | `open_pr` | await_ci, merge, fix_merge, flag_merge_fail, await_merge_operator |
@@ -208,7 +209,7 @@ Ostler resolves slugs to canonical paths. Scripts call it instead of hardcoding 
 ```bash
 ostler path spec <slug>              # → docs/specs/<slug>
 ostler path story <epic> <slug>      # → docs/epics/<epic>/stories/<slug>/story.md
-ostler path branch <slug>            # → story/<slug>
+ostler path branch <slug>            # → <slug>  (bare id — already unique)
 ostler path branch <slug> --epic     # → feat/<slug>
 ```
 

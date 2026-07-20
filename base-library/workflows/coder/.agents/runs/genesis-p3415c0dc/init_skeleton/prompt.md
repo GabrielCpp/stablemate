@@ -1,0 +1,1 @@
+/mnt/data/workspace/stablemate/.venv/bin/python3 /mnt/data/workspace/stablemate/base-library/workflows/coder/scripts/init-genesis-skeleton.py /tmp/todo-app api go mod init example.com/todo-app/api go.mod

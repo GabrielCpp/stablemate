@@ -29,7 +29,7 @@ def test_path_resolution(repo: Path):
     okf = Ostler(repo)
     assert "01-foo" in okf.spec_path("01-foo")
     assert "01-foo" in okf.story_path("epic-a", "01-foo")
-    assert okf.branch("01-foo") == "story/01-foo"
+    assert okf.branch("01-foo") == "01-foo"
     assert okf.branch("epic-a", epic=True) == "feat/epic-a"
 
 

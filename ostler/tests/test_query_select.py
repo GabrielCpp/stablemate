@@ -74,6 +74,23 @@ def test_todo_queue(tmp_path: Path):
     assert todo.list_epics(load(tmp_path)) == ["one"]
 
 
+def test_todo_add_warns_when_the_epic_has_no_doc(tmp_path: Path):
+    """Queueing a name with no epic.md still succeeds (queue-ahead is legitimate), but says
+    so: selection silently skips such a name and then reports "every epic is fully authored",
+    which is a no-work run indistinguishable from a successful one."""
+    write(tmp_path / "docs/epics/.keep", "")
+    res = todo.add(load(tmp_path), "ghost")
+    assert res.ok
+    assert "WARNING" in res.message and "ghost" in res.message
+    assert todo.list_epics(load(tmp_path)) == ["ghost"]
+
+
+def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
+    crud.create_epic(load(tmp_path), "real", "Real", prefix="x")
+    res = todo.add(load(tmp_path), "real")
+    assert res.ok and "WARNING" not in res.message
+
+
 def test_backlog(tmp_path: Path):
     write(tmp_path / "docs/knowledge/.keep", "")  # make it a repo root with docs/
     g = load(tmp_path)

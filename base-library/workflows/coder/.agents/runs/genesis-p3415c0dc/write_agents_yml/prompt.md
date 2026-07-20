@@ -1,0 +1,1 @@
+/mnt/data/workspace/stablemate/.venv/bin/python3 /mnt/data/workspace/stablemate/base-library/workflows/coder/scripts/write-genesis-agents-yml.py /tmp/todo-app api go api go.mod,main.go coder,author shared-docs:docs,go-service:api claude

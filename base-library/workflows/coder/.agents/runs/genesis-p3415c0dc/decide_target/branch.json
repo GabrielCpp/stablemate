@@ -1,0 +1,5 @@
+{
+  "path": "target_ok",
+  "value": "yes",
+  "next": "decide_genesis"
+}

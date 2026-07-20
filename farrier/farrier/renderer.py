@@ -22,8 +22,9 @@ from farrier.launcher import (
     render_agents_mk,
     render_local_compose,
 )
-from farrier.layers import find_in_layers, searched_layers
+from farrier.layers import available_names, find_in_layers
 from farrier.naming import kebab, relative_reference, yaml_quote
+from farrier.selection_errors import unknown_selection_error
 from farrier.sources import Source, build_lookup, library_source_path, public_name
 from farrier.workflows import extract_workflow_dependencies
 
@@ -391,6 +392,8 @@ class Renderer:
                 outputs[output_path] = content
 
             for root in roots:
+                # Presence was validated up front (see the roots check below), so a miss
+                # here cannot happen silently; keep the guard for the tests-built Renderer.
                 root_hit = find_in_layers("library", "roots", f"{root}.md")
                 if root_hit is not None:
                     _root_layer, root_path = root_hit
@@ -434,12 +437,46 @@ class Renderer:
         # layer holds them (see render_agents_mk: the launcher passes the workflow NAME
         # and workhorse resolves it across the same layers).
         # Validate the selection is known so a typo still fails loudly here.
-        for workflow in workflows:
-            if find_in_layers("workflows", workflow) is None:
-                raise SystemExit(
-                    f"error: unknown workflow: {workflow}\n"
-                    f"No library layer provides it. Searched:\n{searched_layers()}"
+        unknown_workflows = sorted(
+            workflow for workflow in workflows
+            if find_in_layers("workflows", workflow) is None
+        )
+        if unknown_workflows:
+            raise SystemExit(
+                unknown_selection_error(
+                    "workflows",
+                    unknown_workflows,
+                    available_names("workflows", dirs=True),
+                    extra=(
+                        "Workflows are not copied into the repo — they run from the library "
+                        "layer that holds them, so the name must resolve at install time."
+                    ),
                 )
+            )
+
+        # Same discipline for roots. These render only into the copilot adapter, so an
+        # unknown one used to be skipped in silence — and on a repo with copilot disabled it
+        # was never even looked at. Validate unconditionally: the declaration is wrong
+        # regardless of which assistants happen to be enabled, and finding that out only
+        # after switching assistants on is the kind of delayed surprise this check exists
+        # to prevent.
+        unknown_roots = sorted(
+            root for root in roots
+            if find_in_layers("library", "roots", f"{root}.md") is None
+        )
+        if unknown_roots:
+            raise SystemExit(
+                unknown_selection_error(
+                    "roots",
+                    unknown_roots,
+                    available_names("library", "roots", suffix=".md"),
+                    extra=(
+                        "Roots render only into the copilot adapter, but the name is "
+                        "validated whether or not copilot is enabled — otherwise a bad "
+                        "declaration stays dormant until someone switches copilot on."
+                    ),
+                )
+            )
 
         # The launcher (.agents/agents.mk) is generated for EVERY repo: its
         # agent-install/agent-check targets are useful even with no workflow, and

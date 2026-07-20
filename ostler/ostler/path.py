@@ -22,7 +22,12 @@ def resolve_story(graph: Graph, epic: str, slug: str) -> str:
 
 
 def resolve_branch(slug: str, *, epic: bool = False) -> str:
-    """Resolve a slug to its git branch name."""
+    """Resolve a slug to its git branch name.
+
+    An epic branches under ``feat/`` — the one prefix in the system. A story
+    branches on its bare id: ids are minted by ostler and carry a repo prefix,
+    so they are already globally unique and need no namespace of their own.
+    """
     if epic:
         return f"feat/{slug}"
-    return f"story/{slug}"
+    return slug

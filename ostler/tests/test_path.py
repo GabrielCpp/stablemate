@@ -22,7 +22,8 @@ def test_resolve_story(repo):
 
 
 def test_resolve_branch_story():
-    assert resolve_branch("CASE-1234") == "story/CASE-1234"
+    # Bare id, no prefix — the id is already globally unique.
+    assert resolve_branch("CASE-1234") == "CASE-1234"
 
 
 def test_resolve_branch_epic():

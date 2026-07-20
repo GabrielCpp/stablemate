@@ -1,0 +1,5 @@
+{
+  "path": "target_state",
+  "value": "absent",
+  "next": "git_init"
+}

@@ -21,8 +21,8 @@ coder workflow's mode dispatch):
 - **`story`** — turn **one bullet** into a single coder-ready story appended to an **existing
   epic of your choice**, then stop. It runs the same per-story pipeline (gather knowledge →
   validate → write → validate) but skips epic decomposition, epic write, story split, and
-  whole-epic coverage. `story_setup` (`scripts/seed-story.py`) appends one `seed.json` item +
-  one `dependencies.json` story entry (the same contract `split-stories` emits) surgically — it
+  whole-epic coverage. `story_setup` (`scripts/seed-story.py`) appends one `## Seeds` item +
+  one `## Stories` entry to `epic.md` (the same contract `split-stories` emits) surgically — it
   never re-runs the split, so sibling stories are untouched. It is idempotent (a rerun reuses the
   story already covering the bullet). Story mode **requires the epic to already exist** and
   hard-fails otherwise — it appends to an epic, it never creates one.
@@ -50,7 +50,7 @@ make agent-native WF=author PARAMS='{"mode":"story","epic":"<epic-slug>","bullet
 The backlog is a **live worklist**: when an epic passes coverage validation (fully authored), its
 consumed bullets are pruned from the backlog by `prune-backlog.py` (matched via each seed item's
 `sourceBullet`), so the file shrinks to the outstanding scope — the same idea as coder pruning
-finished epics from `epics-todo.json`.
+finished epics from the queue in `docs/epics/index.md`.
 
 `load-config.py` reads `agents.yml` `template.*` for path conventions (`knowledge_dir`,
 `features_dir`, `surface_manifest`, `mockup_dir`). The source of truth is always the **OKF graph
@@ -98,7 +98,7 @@ picks the default `WF` as the **alphabetically first** registered workflow — s
 ```
 load_config
   └─ SURVEY INTAKE     [survey] generate backlog bullets + unit manifest, then continue as epic
-  └─ INTAKE            build_inventory  compile docs/features/*.md → inventory.json (derived)  [epic]
+  └─ INTAKE            build_inventory  count the feature Concepts under docs/features (no file built)  [epic]
   └─ SURFACE COVERAGE  verify_surface_coverage  grounding(default): claims ⊆ feature set
                           ↑ or full (coverage_mode=full): backlog covers every in-scope surface
                           ↑ fail → operator gate (add a feature doc / bullet, or mark out of scope)  [epic]
@@ -107,8 +107,8 @@ load_config
   ┌──────────────────────────────────────────────────────────────┘
   PER EPIC: select_epic ──(no)→ validate_artifacts → done
      │ (yes)
-     ├─ 2a write_epic            epic.md + seed.json (in-scope items, RESEARCHED per item)
-     ├─ 2b split_stories         dependencies.json skeleton (sized from the seed research)
+     ├─ 2a write_epic            epic.md + its ## Seeds (in-scope items, RESEARCHED per item)
+     ├─ 2b split_stories         epic.md ## Stories skeleton (sized from the seed research)
      ├─ 2c PER STORY: select_story ──(no)→ 2d
      │        │ (yes)
      │        ├─ gather_knowledge research surface; read feature-doc journeys; record chrome/transient
@@ -143,8 +143,10 @@ stage; author's job is a well-scoped, evidence-grounded story, not the build pla
   depth (plan, file lists, dependencies, QA method) is the **coder's** job, which iterates
   implementation and files follow-ups; over-specified stories shipped defects unnoticed and just
   rot. Repo-specific authoring rules live in that repo's author *flavor*, not this generic gate.
-- **`validate-epic-coverage.py`** (per epic) — `dependencies.json` parses & is acyclic, slug ==
-  folder, paths exist, and **every `seed.json` item id is covered by some story's `seedItems`**.
+- **`validate-epic-coverage.py`** (per epic) — the epic's story graph is acyclic and self-contained,
+  every story folder has a `story.md`, and **every seed id in the epic's `## Seeds` is covered by
+  some story's `covers`**. These are exactly the epic-scoped findings `ostler doctor --epic <epic>`
+  computes; the gate surfaces the coverage-relevant codes.
 
 An LLM reviewer adds the judgment a script can't:
 - **`review_coverage`** (per epic) — are the stories granular enough, or too coarse to implement
@@ -228,15 +230,14 @@ future extension.)
 
 | Artifact | Shape |
 |---|---|
-| `docs/epics/epics-todo.json` | ordered JSON array of epic folder names |
-| `docs/epics/<epic>/epic.md` | goal / why / method (source-of-truth) / scope / acceptance |
-| `docs/epics/<epic>/seed.json` | `{epic, items:[{id, summary, sourceBullet, currentState, legacySurface, backing, prerequisites, notes, status}]}` (author-only; the research fields feed story-split + per-story writing) |
-| `docs/epics/<epic>/dependencies.json` | `{stories:[{slug, path, dependencies, seedItems, …}]}` acyclic, slug==folder |
+| `docs/epics/index.md` | the epics queue — one `- [<name>](<name>/epic.md) — <title>` line per epic, in work order |
+| `docs/epics/<epic>/epic.md` | goal / why / method (source-of-truth) / scope / acceptance, **plus** the `## Seeds` and `## Stories` sections |
 | `docs/epics/<epic>/stories/<slug>/story.md` | bare-minimum: `## Implementation Status` (`- **Status**: Not started`) + `## Context` + `## Acceptance Criteria` (observable, user-facing) |
-| `docs/epics/<epic>/stories/<slug>/evidence/old-{1280,390}.png` | fidelity mode: captured old-side layout |
 
-`seed.json` and `seedItems` are author-only bookkeeping (coder ignores them); they drive the
-coverage validator so no scope item is silently dropped.
+There is no `seed.json` and no `dependencies.json`: seeds and the story DAG both fold into
+`epic.md` as `## Seeds` / `## Stories` subsections, which is what ostler reads. Seeds and each
+story's `covers` list are author-only bookkeeping (coder ignores them); they drive the coverage
+validator so no scope item is silently dropped.
 
 ## Scripts
 
@@ -267,8 +268,8 @@ coverage validator so no scope item is silently dropped.
 The git-tracked files are the single source of truth; two thin helpers sit on top (generated into
 `.agents/agents.mk` by farrier — `make agent-install`):
 
-- `make agent-status` — a read-only **status board** (`scripts/board.py`): walks `epics-todo.json`
-  → `dependencies.json` → each `story.md` `**Status**` line and prints epic → story → status with
+- `make agent-status` — a read-only **status board** (`scripts/board.py`): walks `docs/epics/index.md`
+  → each `epic.md` `## Stories` → each `story.md` `**Status**` line and prints epic → story → status with
   totals (and open-backlog count). `BOARD_ARGS='--json'` for machine output. Starts no daemon,
   writes nothing.
 - `make agent-chain` — runs **author then coder in sequence** (one call instead of two);

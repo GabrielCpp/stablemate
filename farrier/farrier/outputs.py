@@ -19,10 +19,15 @@ from farrier.launcher import (
 )
 from farrier.naming import kebab
 from farrier.renderer import Renderer
+from farrier.selection_errors import (
+    suggestions,
+    unknown_selection_error,
+)
 from farrier.sources import (
     collect_selection,
     load_layered_sources,
     selected_sources,
+    unmatched_patterns,
 )
 from farrier.workflows import (
     collect_template_values,
@@ -86,6 +91,44 @@ def remove_targets(repo: Path) -> None:
                 path.unlink()
 
 
+def check_selection(
+    groups: list[tuple[str, list, set[str]]],
+) -> None:
+    """Fail on any selection entry that names a library file which does not exist.
+
+    ``groups`` is ``[(kind, all_sources, include_patterns), ...]``. Literal names that match
+    nothing are typos and hard-fail; globs that match nothing are filters that selected
+    nothing, which is legitimate, so they are reported as a warning instead. Every miss across
+    every group is collected before raising so one run surfaces them all rather than making the
+    operator fix them one at a time.
+    """
+    reports: list[str] = []
+    for kind, all_sources, include_patterns in groups:
+        literals, globs = unmatched_patterns(all_sources, include_patterns)
+        available = [source.id for source in all_sources]
+        for pattern in globs:
+            close = suggestions(pattern.replace("*", "").replace("?", ""), available)
+            hint = f" Closest names: {', '.join(close)}." if close else ""
+            print(
+                f"warning: glob {pattern!r} in agents.yml `{kind}:` selected nothing.{hint}"
+            )
+        if literals:
+            reports.append(
+                unknown_selection_error(
+                    kind,
+                    literals,
+                    available,
+                    extra=(
+                        "Selection is a filter, so an entry naming a file that does not "
+                        "exist would otherwise contribute nothing and install silently — "
+                        "leaving the repo without something it declared."
+                    ),
+                )
+            )
+    if reports:
+        raise SystemExit("\n\n".join(reports))
+
+
 def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
     prefix = kebab(
@@ -104,15 +147,20 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     ) = collect_selection(config)
     exclude = config.get("exclude") or {}
 
+    all_skills = load_layered_sources("skill", "library", "skills")
+    all_prompts = load_layered_sources("prompt", "library", "prompts")
     skills = selected_sources(
-        load_layered_sources("skill", "library", "skills"),
-        include_skills,
-        set(exclude.get("skills", []) or []),
+        all_skills, include_skills, set(exclude.get("skills", []) or [])
     )
     prompts = selected_sources(
-        load_layered_sources("prompt", "library", "prompts"),
-        include_prompts,
-        set(exclude.get("prompts", []) or []),
+        all_prompts, include_prompts, set(exclude.get("prompts", []) or [])
+    )
+    # Fail loudly on a selection entry that names a file the library does not have, the same
+    # way `packs` and `workflows` already do. Selection is a filter, so without this a typo
+    # silently yields a repo missing a skill it declared — and the symptom is an agent running
+    # unskilled while every gate still reports success.
+    check_selection(
+        [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
     )
     if not skills and not prompts and not workflows:
         raise SystemExit(

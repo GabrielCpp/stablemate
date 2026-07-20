@@ -194,17 +194,26 @@ def test_open_author_pr_no_branch(tmp_path):
     assert "no author branch" in result.stderr
 
 
-def test_open_author_pr_no_git_repo(tmp_path):
+def test_open_author_pr_no_git_repo_skips(tmp_path):
+    """No .git at all — PR delivery is unconfigured, not failed."""
     repo = tmp_path / "not-a-repo"
     repo.mkdir()
     result = _run("open-author-pr.py", ["main", "author/run1", "epic", "", ""], repo)
 
-    assert result.returncode == 1
-    assert "no .git" in result.stderr
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["author_pr"] == "skipped"
+    assert "no .git" in payload["pr_skip_reason"]
 
 
-def test_open_author_pr_no_token_fails(tmp_path):
-    """A validated author run must not report success without PR credentials."""
+def test_open_author_pr_no_token_skips(tmp_path):
+    """No credentials configured is a supported local-only setup, not a failure.
+
+    The "PR delivery is required" invariant is scoped to runs where a forge *is* configured
+    (see test_open_author_pr_no_remote_skips for the sibling case): a greenfield repo created
+    by `coder genesis` is local-only by design, and failing it here would fail a run that
+    passed every authoring gate.
+    """
     repo = _init_git_repo(tmp_path / "repo")
     subprocess.run(["git", "checkout", "-b", "author/run1"], cwd=str(repo), check=True, capture_output=True)
 
@@ -216,8 +225,44 @@ def test_open_author_pr_no_token_fails(tmp_path):
         extra_env={"GH_TOKEN": "", "GITHUB_TOKEN": ""},
     )
 
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["author_pr"] == "skipped"
+    assert "token" in payload["pr_skip_reason"]
+
+
+def test_open_author_pr_no_remote_skips(tmp_path):
+    """A local-only repo (git init, no origin) has no forge to deliver to."""
+    repo = _init_git_repo(tmp_path / "repo")
+    subprocess.run(["git", "checkout", "-b", "author/run1"], cwd=str(repo), check=True, capture_output=True)
+
+    result = _run(
+        "open-author-pr.py", ["main", "author/run1", "epic", "", ""], repo,
+        extra_env={"GH_TOKEN": "fake-token", "GITHUB_TOKEN": "fake-token"},
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["author_pr"] == "skipped"
+    assert "github.com" in payload["pr_skip_reason"]
+
+
+def test_open_author_pr_missing_branch_still_fails(tmp_path):
+    """Delivery *is* configured here, so a genuine failure must stay a hard failure —
+    the skip path must not have swallowed the required-delivery invariant."""
+    repo = _init_git_repo(tmp_path / "repo")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:example-org/docs.git"],
+        cwd=str(repo), check=True, capture_output=True,
+    )
+
+    result = _run(
+        "open-author-pr.py", ["main", "author/does-not-exist", "epic", "", ""], repo,
+        extra_env={"GH_TOKEN": "fake-token", "GITHUB_TOKEN": "fake-token"},
+    )
+
     assert result.returncode == 1
-    assert "no GitHub token" in result.stderr
+    assert "no branch" in result.stderr
 
 
 def test_open_author_pr_resolves_local_clone_source_origin(tmp_path):

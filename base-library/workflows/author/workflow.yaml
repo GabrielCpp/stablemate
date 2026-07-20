@@ -168,13 +168,13 @@ nodes:
   - id: parity_survey_done
     type: terminal
 
-  # ── Intake: compile the human feature set into the derived surface manifest ───────
+  # ── Intake: report the feature set the coverage gate will check against ──────────
   # The human source of truth is plain-markdown feature docs (one per screen) under
   # cfg.features_dir; under the OKF model those docs ARE the typed feature Concepts ostler reads.
-  # This regenerates cfg.surface_manifest from those docs (non-lossy merge: undeclared fields
-  # like `mockup` are preserved) so the coverage gate below always checks a fresh manifest.
-  # Opt-in by presence: with no feature docs on disk it is a clean skip and leaves any existing
-  # manifest untouched. Always flows on — a build problem degrades to skip, never blocks.
+  # Nothing is regenerated: there is no derived inventory.json under the OKF model, so this
+  # node only *counts* what the graph holds (plus any surveyor unit manifest) and emits a note.
+  # Opt-in by presence: with no feature Concepts and no manifest it reports a clean skip.
+  # Always flows on — an unreadable graph degrades to zero, never blocks.
   - id: build_inventory
     type: script
     script: scripts/build-inventory.py
@@ -1557,6 +1557,7 @@ nodes:
     outputs:
       - key: author_pr
       - key: pr_url
+      - key: pr_skip_reason
     next: done
 
   - id: done

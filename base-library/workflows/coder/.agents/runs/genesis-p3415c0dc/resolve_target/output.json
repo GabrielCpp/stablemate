@@ -1,0 +1,8 @@
+{
+  "target_ok": "yes",
+  "target_dir": "/tmp/todo-app",
+  "target_state": "absent",
+  "service_state": "absent",
+  "service": "api",
+  "genesis_note": "/tmp/todo-app does not exist yet \u2014 running full genesis; service 'api' at api/ is absent (marker: go.mod)"
+}

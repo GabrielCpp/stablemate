@@ -1,0 +1,62 @@
+# The todo-app benchmark's four surfaces — the only stack knowledge in this benchmark.
+#
+# Genesis itself carries none: `scripts/check_public.py` asserts no base workflow may depend
+# on the private overlay, and the stack packs live there. So every stack-specific value is
+# data, passed in as flow params. This file is that data, and it is the one place to edit
+# when the benchmark's stack changes.
+#
+# Each entry maps 1:1 onto a `workhorse run coder genesis` invocation:
+#   service      logical name, and the workspace repo key
+#   service_root repo-relative directory the surface lives in
+#   packs        farrier packs supplying that stack's skills (resolved from the overlay)
+#   scaffolds    "<scaffold-id>:<dir>" pairs — folder convention + .gitignore hygiene
+#   init_cmd     the stack's own init tool; scaffolds do NOT produce a marker file
+#   marker       the file whose existence proves the skeleton is real
+#   markers      what agents.yml records as this repo's service_markers
+#
+# `run.sh` renders `docs` once (shared-docs), then walks these in order.
+
+repo:
+  # No `name:` here on purpose — the repo's name is its directory name (so `/tmp/todo-app`
+  # is `todo-app`). Two things key off it: the workspace `resolve_workspace` builds, and the
+  # prefix farrier gives generated skills. Setting it separately here would let this file
+  # disagree with the directory, which is how the workspace once ended up keyed on "api".
+  # Rendered once, before any surface. Creates docs/epics/ (which flips ostler's graph
+  # profile to `full`, arming the epic-coverage checks) and docs/backlog.md.
+  docs_scaffold: shared-docs:docs
+
+surfaces:
+  - service: api
+    service_root: api
+    packs: go
+    scaffolds: go-service:api
+    init_cmd: go mod init example.com/todo-app/api
+    marker: go.mod
+    markers: go.mod,main.go
+
+  - service: web
+    service_root: web
+    packs: react-router
+    scaffolds: react-router-web:web
+    # --yes to keep it non-interactive; the generator writes into the CWD it is run from,
+    # which init-genesis-skeleton.py sets to service_root.
+    init_cmd: npm create react-router@latest . -- --yes --no-git-init --no-install
+    marker: package.json
+    markers: package.json
+
+  - service: app
+    service_root: app
+    packs: flutter
+    scaffolds: flutter-app:app
+    # `flutter create .` refuses a name with dashes, so the project name is set explicitly.
+    init_cmd: flutter create . --project-name todo_app --platforms=android,ios
+    marker: pubspec.yaml
+    markers: pubspec.yaml
+
+  - service: infra
+    service_root: infra
+    packs: pulumi
+    scaffolds: pulumi-infra:infra
+    init_cmd: pulumi new gcp-go --name todo-app-infra --stack dev --yes --generate-only --force
+    marker: Pulumi.yaml
+    markers: Pulumi.yaml

@@ -43,6 +43,14 @@ coder could actually build and a QA could actually verify, grounded in the resea
    "looks right", "is performant"). An un-observable or untestable AC → **refuted**.
 2. **Grounded.** Each AC must trace to a component/gap in the knowledge record (or cited evidence).
    An AC asserting behaviour the record does not establish — invented scope — → **refuted**.
+
+   **When the surface does not exist yet**, grounding still applies but its evidence differs. On a
+   screen being built for the first time the record's built/`new[]` side is legitimately empty and
+   every AC describes something not yet on disk — that is the normal state, not invented scope. An
+   AC is grounded here if it traces to an **intended** component or an identified gap (an entry
+   under `old[]`, or one with `kind: "missing"`), or to the design/spec reference the record cites.
+   Refute what traces to *nothing* — an AC grounded in neither an intended component, a gap, nor a
+   cited reference is still invented scope, and "the surface is new" is not itself a warrant.
 3. **No hidden decisions.** Catch the semantic open-endedness the structural phrase-list misses:
    "match the legacy behaviour" without saying *what* behaviour, "reasonable defaults", "the usual
    states". If the coder still has a product/UX decision to make, the story isn't ready → **refuted**.
