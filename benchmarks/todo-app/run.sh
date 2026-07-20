@@ -148,7 +148,16 @@ REPAIR = {
     "fix_genesis", "fix_story", "fix_ci", "fix_merge", "setup_fix",
     "rework_story", "rework_epics", "apply_review", "apply_qa_fixes",
 }
-rows, total_repairs = [], 0
+# A report that can describe a run older than the code under test is the same vacuous
+# success it exists to detect — one level up. This bit me: a run aborted with exit 127
+# before doing anything, the previous run's artifacts were still on disk, and the report
+# scored them without complaint. Newest workflow-source mtime vs each run's own mtime.
+newest_src = 0.0
+for pat in ("workflow.yaml", "scripts/*.py", "prompts/*.md"):
+    for f in pathlib.Path("/mnt/data/workspace/stablemate/base-library/workflows").glob(f"*/{pat}"):
+        newest_src = max(newest_src, f.stat().st_mtime)
+
+rows, total_repairs, stale = [], 0, []
 for runs_dir in (pathlib.Path(a) for a in sys.argv[1:]):
     for run in sorted(p for p in runs_dir.glob("*") if p.is_dir()):
         events = run / "events.jsonl"
@@ -169,6 +178,8 @@ for runs_dir in (pathlib.Path(a) for a in sys.argv[1:]):
             if node.endswith("_failed"):
                 failed = True
         total_repairs += len(repairs)
+        if newest_src and events.stat().st_mtime < newest_src:
+            stale.append(run.name)
         rows.append((run.name, len(entered), repairs, failed))
 
 if not rows:
@@ -180,6 +191,12 @@ for name, n_nodes, repairs, failed in rows:
     mark = {"clean": "\u2713", "repaired": "\u26a0", "FAILED": "\u2717"}[status]
     detail = f"  ({', '.join(sorted(set(repairs)))} x{len(repairs)})" if repairs else ""
     print(f"  {mark} {name:<26} {n_nodes:>3} nodes  {status}{detail}")
+
+if stale:
+    print(f"\n  \u2717 {len(stale)} run(s) PREDATE the current workflow source and say nothing")
+    print("    about it. Reset and re-run before trusting any score below:")
+    for name in stale:
+        print(f"      - {name}")
 
 clean = sum(1 for _, _, r, f in rows if not r and not f)
 print(f"\n  {clean}/{len(rows)} run(s) completed with no repair loop.")

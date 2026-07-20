@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ostler import markdown
 from ostler.links import LinkResolver
 from ostler.model import Graph, UINode
 
@@ -31,13 +32,34 @@ def _surface_of(node: UINode, features_root: Path) -> str:
     return rel.parts[0] if rel.parts else ""
 
 
+def _edge_sources(node: UINode) -> dict[str, str]:
+    """Map each href in the node's bullets to the bullet key that carried it.
+
+    ``node.links`` is flat: once extracted, a ``leads-to:`` link and a passing prose mention are
+    the same shape. Anything that traverses the graph *as navigation* needs them apart — following
+    an ``extends:`` edge does not move a user between screens. The parsed bullet values keep their
+    raw markdown, so re-extracting links from them recovers the attribution without changing how
+    nodes are parsed. An href in two bullets keeps the first; prose links match nothing here and
+    the caller defaults them.
+    """
+    via: dict[str, str] = {}
+    for key, value in node.meta.items():
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            for _text, href in markdown.extract_refs(str(item)).links:
+                via.setdefault(href, key)
+    return via
+
+
 def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root: Path) -> dict:
     edges = []
+    via = _edge_sources(node)
     for text, href in node.links:
         lt = resolver.resolve(node.path, href)
         if lt is None:  # a URL or a code ref (`path::symbol`), not a graph edge
             continue
-        edges.append({"text": text, "href": href, "to": lt.node_id, "resolves": lt.resolved})
+        edges.append({"text": text, "href": href, "to": lt.node_id, "resolves": lt.resolved,
+                      "via": via.get(href, "prose")})
     return {
         "id": node.id,
         "type": node.type,
@@ -89,7 +111,7 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None)
         nodes.append(d)
         for e in d["edges"]:
             edges.append({"from": n.id, "to": e["to"], "text": e["text"],
-                          "href": e["href"], "resolves": e["resolves"]})
+                          "href": e["href"], "resolves": e["resolves"], "via": e["via"]})
     return {"counts": {"nodes": len(nodes), "edges": len(edges)}, "nodes": nodes, "edges": edges}
 
 

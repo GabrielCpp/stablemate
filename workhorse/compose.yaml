@@ -6,9 +6,14 @@ services:
       # (workhorse is a workspace member and has no lock file of its own).
       context: ..
       dockerfile: workhorse/Dockerfile
-    # Run the workflow container as nobody from process start; mounted volumes
-    # must already be writable by this container user.
-    user: "nobody"
+    # Run as the HOST user's uid:gid so the agent can write into bind-mounted
+    # host paths it does not own — specifically the git worktree metadata
+    # (.git/worktrees/<id>) that `git worktree add` writes back into the source
+    # repo. agents.mk exports these from `id -u`/`id -g`; the 65534 fallback is
+    # nobody:nogroup, i.e. the previous behavior when nothing sets them.
+    # The image makes /workspace, /runs and /claude-state world-writable so a
+    # fresh named volume is usable under any uid (see Dockerfile).
+    user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"
     extra_hosts:
       # Lets the container's groom-sidecar (installed as an editable uv tool from
       # the /mnt/groom-src bind below) reach a `groom` dashboard on the host.

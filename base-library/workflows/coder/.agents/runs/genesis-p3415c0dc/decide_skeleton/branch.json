@@ -1,5 +1,0 @@
-{
-  "path": "service_state",
-  "value": "absent",
-  "next": "init_skeleton"
-}

@@ -17,11 +17,17 @@ require_writable_dir() {
     fi
 }
 
-# The image and compose file run as nobody from process start.
-# Volume ownership must be prepared before launch; this container never repairs it
-# as root. The image pre-creates these mountpoints with nobody ownership so
-# fresh named volumes can inherit the intended owner, and existing volumes can be
-# fixed manually with chown when needed.
+# This container never runs as root and never repairs volume ownership itself —
+# it only asserts and fails loudly (exit 13) so a permission problem surfaces here
+# rather than as a confusing failure deep in a workflow node.
+#
+# The uid is NOT fixed: compose passes the host user's uid:gid so the agent can
+# write into bind-mounted host paths it does not own. The image therefore makes
+# these mountpoints world-writable rather than nobody-owned, so a fresh named
+# volume (which inherits the mountpoint's mode) is writable under whatever uid
+# you run as. A volume created by an OLDER image still carries nobody ownership
+# and will trip the check below under a different uid — remove it
+# (`docker volume rm`) or chown it to your uid to migrate.
 require_writable_dir /workspace
 require_writable_dir /runs
 require_writable_dir "$CLAUDE_HOME"

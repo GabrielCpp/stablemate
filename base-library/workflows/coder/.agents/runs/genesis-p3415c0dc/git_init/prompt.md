@@ -1,1 +1,0 @@
-/mnt/data/workspace/stablemate/.venv/bin/python3 /mnt/data/workspace/stablemate/base-library/workflows/coder/scripts/genesis-git-init.py /tmp/todo-app absent

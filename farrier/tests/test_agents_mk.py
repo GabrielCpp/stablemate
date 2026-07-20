@@ -66,6 +66,39 @@ def test_local_compose_defaults_to_read_only_host_checkout():
     assert "${HOME}/.claude/.credentials.json" not in compose
 
 
+def test_local_compose_runs_as_the_host_uid_not_a_fixed_user():
+    """Services run as ${AGENT_UID}:${AGENT_GID}, not a hardcoded `nobody`.
+
+    The container must be able to write into bind-mounted host paths it does not
+    own — git worktree metadata goes back into the source repo's .git. A fixed
+    `nobody` cannot. The 65534 fallback preserves the old behavior when nothing
+    exports the vars (e.g. a hand-run `docker compose up`).
+    """
+    compose = render_local_compose(["author", "coder"], META)
+
+    assert 'user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"' in compose
+    assert 'user: "nobody"' not in compose
+    # Every generated service gets it, not just the first.
+    assert compose.count('user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"') == 2
+
+
+def test_agents_mk_exports_the_host_uid_to_compose():
+    """agents.mk must derive and forward the uid/gid, or the compose default
+    (65534/nobody) silently applies and worktree writes fail on a host repo."""
+    mk = render_agents_mk(["coder"], META)
+
+    assert "AGENT_UID    ?= $(shell id -u)" in mk
+    assert "AGENT_GID    ?= $(shell id -g)" in mk
+    # Forwarded on the compose path...
+    assert 'AGENT_UID="$(AGENT_UID)"' in mk
+    assert 'AGENT_GID="$(AGENT_GID)"' in mk
+    # ...including agent-hello, which builds its own docker compose invocation
+    # rather than going through $(ENVV).
+    hello = mk[mk.index("agent-hello:"):]
+    hello = hello[: hello.index("\n\n")]
+    assert 'AGENT_UID="$(AGENT_UID)"' in hello
+
+
 def test_local_compose_mounts_claude_credentials_when_claude_enabled():
     meta = dict(META)
     meta["agents"] = {"claude": True, "codex": False, "copilot": False}
