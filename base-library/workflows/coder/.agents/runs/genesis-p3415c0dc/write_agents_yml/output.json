@@ -1,0 +1,5 @@
+{
+  "agents_yml_written": "yes",
+  "agents_yml_path": "agents.yml",
+  "agents_yml_note": "wrote agents.yml for repo 'todo-app', service 'api' (packs: go; scaffolds: shared-docs, go-service; agents: claude; service_roots: api; service_markers: go.mod, main.go)"
+}

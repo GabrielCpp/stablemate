@@ -81,3 +81,31 @@ def test_a_blind_inventory_is_not_a_pass(tmp_path, monkeypatch, capsys):
               monkeypatch, capsys)
     assert out["coverage_complete"] == "no"
     assert "unreadable" in out["coverage_error"]
+
+
+# ── the re-scan counter is this node's, not the checkpoint's ──────────────────────────
+
+def test_the_rescan_counter_advances_on_every_exit(tmp_path, monkeypatch, capsys):
+    """`guard_rounds` bounds the coverage re-scan, so only this node may advance its counter.
+
+    It used to read `round`, which `checkpoint` bumps on every doctor pass — including the
+    fixup re-drains, which are a different loop. A build that took 40 fixup rounds to get
+    doctor green reached the guard at round=41 and failed on its first clean checkpoint,
+    having never run a single coverage re-scan. The cap reported "the coverage check would
+    not converge" about a check that had not run once.
+
+    The error exits must carry the increment too: a re-scan that fails the same way every
+    pass has to reach the bound, not reset it.
+    """
+    out = run(["compute-coverage.py", str(tmp_path), "", "api", "", "", "4"],
+              monkeypatch, capsys)
+    assert out["coverage_error"]          # an early exit, before any coverage was computed
+    assert out["rescan_round"] == 5       # and it still advanced the bound
+
+
+def test_the_rescan_counter_starts_at_one(tmp_path, monkeypatch, capsys):
+    """A missing or unparseable counter starts the loop, it does not disable the bound."""
+    for argv_tail in ([], [""], ["not-a-number"]):
+        out = run(["compute-coverage.py", str(tmp_path), "", "api", "", *argv_tail],
+                  monkeypatch, capsys)
+        assert out["rescan_round"] == 1

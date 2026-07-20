@@ -41,7 +41,7 @@ def open_or_find_pr(gh_repo, branch: str, base: str, slug: str):
             logger.info("%s: PR already open for %s", gh_repo.name, branch)
             return existing
         pr = gh_repo.create_pull(
-            title=f"story/{slug}",
+            title=slug,
             body=f"## Story: {slug}\n\nPart of a multi-repo story.",
             head=branch,
             base=base,
@@ -62,7 +62,7 @@ def main(logger: logging.Logger) -> None:
         print(json.dumps({"pr_urls": {}, "opened": "no"}))
         return
 
-    branch = f"story/{slug}"
+    branch = slug
 
     root = find_repo_root()
     token = resolve_github_token(root)

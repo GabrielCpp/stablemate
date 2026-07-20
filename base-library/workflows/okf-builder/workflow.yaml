@@ -27,7 +27,8 @@ vars:
   # Resume/repair an already-populated book at checkpoint + coverage without rediscovering roots.
   recheck_only: "no"
   docs_path: "" # repo/docs root; "" -> AGENT_REPO_DIR
-  round: "0" # checkpoint round counter (bounds the coverage re-scan)
+  round: "0" # checkpoint round counter — counts doctor/fixup re-drains, reported not bounded
+  rescan_round: "0" # coverage re-scan counter — the one `guard_rounds` bounds
   # OPTIONAL safety valve, NOT the stop condition. 0 = run to convergence (the intended mode:
   # the build ends when the code inventory is fully covered + doctor is green). Set >0 only to
   # bound a small practice/quota-limited run. Runaway is guarded by the gas tank + round cap,
@@ -242,13 +243,20 @@ nodes:
       - key: added
     next: select_item
 
+  # Bound the re-scan on `rescan_round`, which only `compute_coverage` increments, NOT on
+  # `round`, which `checkpoint` bumps on every doctor pass including the fixup re-drains. Those
+  # are two different loops sharing one counter: a build that took 40 fixup rounds to get doctor
+  # green arrived here with round=41 and failed on its FIRST clean checkpoint, having never run
+  # a single coverage re-scan. The cap read as "the coverage check would not converge" about a
+  # check that had not yet run once.
+  #
   # Bound the re-scan so an unconverging coverage check can't loop forever. Exhausting the
   # cap is NOT convergence: the run gave up with the book still short, and it says so with a
   # non-zero exit. Reporting that identically to a finished book is what made "complete" a
   # word the run could not be held to.
   - id: guard_rounds
     type: branch
-    path: round
+    path: rescan_round
     conditions:
       - op: ">="
         value: "6" # == a sane max of dry-drain re-scans
@@ -285,7 +293,9 @@ nodes:
       - "{{ service }}"
       - "{{ source_inventory_path }}"
       - "{{ features_root }}/coverage-waivers.json"
+      - "{{ rescan_round }}"
     outputs:
+      - key: rescan_round
       - key: coverage_complete
       - key: missing_count
       - key: missing_path
@@ -415,6 +425,8 @@ flows:
           - key: health_path
           - key: app_cwd
           - key: app_identity
+          - key: stop_cmd
+          - key: boot_timeout
           - key: wt_worklist_path
           - key: screenshots_dir
           - key: cdp_url # the shared browser's CDP endpoint (MCP + ostler vet)
@@ -439,6 +451,7 @@ flows:
           - "{{ app_cwd }}"
           - "{{ repo_root }}"
           - "{{ app_identity }}"
+          - "{{ boot_timeout }}"
         outputs:
           - key: boot_ok
           - key: entry_url # resolved/echoed
@@ -613,6 +626,11 @@ flows:
         args:
           - "--teardown"
           - "{{ app_pgid }}"
+          # A bring-up command leaves nothing in our process group; `stop:` is the only
+          # way to reap it. Books that omit it keep their stack up between walks on
+          # purpose — an expensive shared stack is cheaper to leave running.
+          - "{{ stop_cmd }}"
+          - "{{ app_cwd }}"
         outputs:
           - key: torn_down
         next: teardown_browser

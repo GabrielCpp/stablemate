@@ -2,7 +2,7 @@
 
 Story mode skips the epic queue and CI/merge machinery: the caller provides
 story_path, spec_dir, story_slug, and epic directly. The workflow
-cuts a per-story branch (story/<slug>), runs the plan → implement → review → QA
+cuts a per-story branch (the bare story id), runs the plan → implement → review → QA
 pipeline once (no separate plan-review agent), commits, and opens a PR at the end —
 but never merges it (the PR is left open for a human).
 
@@ -19,6 +19,7 @@ Paths covered:
 
 from __future__ import annotations
 
+from workhorse.graph.loader import load_workflow
 from workhorse.testing import (
     WorkflowRun,
     assert_step_output,
@@ -72,6 +73,26 @@ def test_story_mode_branches_and_opens_pr_no_merge(story_sandbox, monkeypatch):
     assert_step_output(result, "branch_story", "story_branch", "s-1")
     # the story PR step ran as the terminal step (offline → skipped, but reached)
     assert_step_output(result, "open_story_pr", "story_pr", "skipped")
+
+
+def test_open_story_pr_consumes_the_cut_branch():
+    """open_story_pr must take its branch from branch_story, never re-derive it.
+
+    Regression guard: these two drifted once. branch-story.py cut the bare story
+    id while open-story-pr.py rebuilt the name with a `story/` prefix, so every
+    story-mode PR targeted a branch that had never been cut. Both agree today,
+    which is exactly why a value-equality test would pass either way — the
+    invariant worth pinning is the *wiring*, not the current string.
+    """
+    g = load_workflow(WORKFLOW)
+    args = g.nodes["open_story_pr"].args
+
+    assert "get_node_output('branch_story', 'story_branch')" in " ".join(args), (
+        "open_story_pr must consume branch_story's story_branch output; "
+        f"got args={args}"
+    )
+    # branch_story must actually publish it (the arg above is silently "" otherwise).
+    assert "story_branch" in {o.key for o in g.nodes["branch_story"].outputs}
 
 
 # ---------------------------------------------------------------------------

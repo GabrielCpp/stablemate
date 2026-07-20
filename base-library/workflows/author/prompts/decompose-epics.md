@@ -65,7 +65,7 @@ queue it:
 
 ```bash
 # Allocates the id, scaffolds {{ epics_dir }}/<slug>/epic.md with empty ## Seeds + ## Stories:
-EPIC_ID=$(ostler create epic <slug> --title "<Epic Title>" --json | jq -r .id)   # → e.g. "pred-7"
+EPIC_ID=$(ostler create epic <slug> --title "<Epic Title>" --json | jq -r .id)   # → e.g. "ACME-7" (prefix is uppercased by ostler)
 # Append the epic to the queue (docs/epics/index.md):
 ostler todo add <slug>
 ```

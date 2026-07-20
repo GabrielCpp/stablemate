@@ -318,7 +318,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--epic",
         action="store_true",
         dest="is_epic",
-        help="emit feat/<slug> instead of story/<slug>",
+        help="emit feat/<slug> instead of the bare <slug>",
     )
 
     fz = sub.add_parser(

@@ -61,7 +61,14 @@ def add(graph: Graph, name: str, *, front: bool = False) -> Result:
     if name in names:
         return Result(False, f"epic '{name}' already in the queue")
     names.insert(0, name) if front else names.append(name)
-    return Result(True, f"queued epic '{name}'", [_write(graph, names)])
+    # Warn — never fail — on an epic with no epic.md: selection silently skips such a name
+    # and then reports "every epic is fully authored", which is a no-work run indistinguishable
+    # from success. Queueing ahead of the epic doc is legitimate, so this stays advisory.
+    msg = f"queued epic '{name}'"
+    if not (graph.doc_roots["epics"] / name / "epic.md").exists():
+        msg += (f" — WARNING: no '{name}/epic.md' yet, so epic selection will skip it "
+                f"and report no work remaining")
+    return Result(True, msg, [_write(graph, names)])
 
 
 def prune(graph: Graph, name: str) -> Result:

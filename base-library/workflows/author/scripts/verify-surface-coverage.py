@@ -208,8 +208,21 @@ def main(logger: logging.Logger) -> None:
     features = features or []
     units = units or []
     if not features and not units:
-        logger.info("no feature Concepts and no unit manifest — surface-coverage gate skipped")
-        emit("skip", "no feature Concepts and no unit manifest — surface-coverage gate skipped")
+        # Say plainly that nothing was asserted. In `full` mode especially, a bare "skip" reads
+        # as a satisfied buildout gate when in fact the haystack was never searched — and survey
+        # mode force-sets `full`, so it inherits that. Routing is correct; only the note was mute.
+        note = (
+            f"[{mode}] surface-coverage gate ASSERTED NOTHING: there are no feature Concepts "
+            f"under the OKF graph and no survey unit manifest, so there were no surfaces to "
+            f"check coverage against"
+        )
+        if mode == "full":
+            note += (
+                " — this is not a satisfied buildout claim. Author the feature set (or run the "
+                "surveyor) before treating `coverage_mode: full` as meaningful."
+            )
+        logger.info(note)
+        emit("skip", note)
 
     logger.info("surface-coverage mode=%s (%d feature(s), %d unit(s))", mode, len(features), len(units))
     if mode == "full":

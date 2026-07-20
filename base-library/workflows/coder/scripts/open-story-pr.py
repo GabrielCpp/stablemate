@@ -10,7 +10,11 @@ Each PR carries:
 Best-effort: failures are logged to stderr, never halt the run. The script
 always exits 0 and emits valid JSON.
 
-Args: <story_slug> <base_branch> <story_path> <spec_dir>
+Args: <story_slug> <base_branch> <story_path> <spec_dir> [<story_branch>]
+
+<story_branch> comes from branch_story; when absent the slug is used (the branch
+name and the story id are the same thing today, but the branch is branch_story's
+to name, not this script's to guess).
 Outputs JSON: {"story_pr": "opened|exists|skipped", "pr_urls": [...]}
 """
 from __future__ import annotations
@@ -178,13 +182,19 @@ def main(logger: logging.Logger) -> None:
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
     story_path = sys.argv[3] if len(sys.argv) > 3 else ""
     spec_dir_rel = sys.argv[4] if len(sys.argv) > 4 else ""
+    story_branch = sys.argv[5] if len(sys.argv) > 5 else ""
 
     if not slug:
         logger.info("no story slug — nothing to PR")
         print(json.dumps({"story_pr": "skipped", "pr_urls": []}))
         return
 
-    branch = f"story/{slug}"
+    # Consume branch_story's branch rather than re-deriving it from the slug: the
+    # two drifted once already (this script kept a `story/` prefix after
+    # branch-story.py dropped it, so every PR targeted a branch that was never
+    # cut). Falls back to the slug for a standalone/hand invocation with no
+    # branch_story output to read.
+    branch = story_branch or slug
     base = base or "main"
 
     root = find_repo_root()

@@ -176,7 +176,8 @@ nodes:
 
   # ── Story mode: cut a per-story branch, run the pipeline once, then open a PR ──
   # Story mode is a single story on its OWN branch named after the story id
-  # (story/<slug>). It runs the same plan→implement→QA pipeline, commits, and opens a
+  # (the bare id, e.g. CASE-1234 — only epics take a prefix). It runs the same
+  # plan→implement→QA pipeline, commits, and opens a
   # PR at the end — but does NOT merge it (no queue, no CI gate, no merge; the PR is
   # left open for a human). branch_story records the branch the run started from as
   # the PR base.
@@ -1122,6 +1123,9 @@ nodes:
       - "{{ get_node_output('branch_story', 'base_branch') }}"
       - "{{ get_node_output('prepare_story', 'story_path') }}"
       - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+      # The branch to push/PR comes from the node that cut it — never re-derived
+      # from the slug here (they drifted once; see open-story-pr.py).
+      - "{{ get_node_output('branch_story', 'story_branch') }}"
     outputs:
       - key: story_pr
       - key: pr_urls
@@ -3950,3 +3954,270 @@ flows:
 
       - id: dream_done
         type: terminal
+
+  # ── Genesis: create a repo/service from nothing (standalone flow) ──────────────
+  # Never sequenced by the main loop — like `dream`, it lives in `flows:` and is only ever
+  # entered directly. It produces the preconditions the main loop *assumes*: a git repo, an
+  # agents.yml with a workspace: block, installed skills, a scaffolded docs tree, and a
+  # service skeleton with its marker file. Several apparent author/coder "greenfield bugs"
+  # are really these preconditions being absent, so genesis supplies them structurally rather
+  # than each validator being taught to tolerate their absence.
+  #
+  #   workhorse run coder genesis --params '{
+  #     "target": "/path/to/new-repo", "service": "api", "service_root": "api",
+  #     "packs": "go", "scaffolds": "shared-docs:docs,go-service:api",
+  #     "init_cmd": "go mod init example.com/api", "marker": "go.mod",
+  #     "markers": "go.mod,main.go"}'
+  #
+  # GENESIS CARRIES ZERO STACK KNOWLEDGE. Every stack-specific value above is a parameter,
+  # written through verbatim. `scripts/check_public.py` asserts no base workflow may depend on
+  # the private overlay, and the stack skills/packs live there — a base flow that knew `go`
+  # meant `go.mod` would be a base flow that knows the overlay's contents. `init_cmd`/`marker`
+  # are parameters rather than a farrier pack field because `load_pack` merges exactly five
+  # set-valued keys with no slot for them; promote to a pack `genesis:` block once the shape
+  # has been proven across all four stacks, not before.
+  genesis:
+    name: genesis
+    start: resolve_target
+    vars:
+      target: ""            # required — path to the repo to create
+      service: ""           # logical service name (workspace repo key)
+      service_root: ""      # repo-relative dir the service lives in (e.g. "api")
+      packs: ""             # comma-separated farrier pack ids
+      scaffolds: ""         # comma-separated "<scaffold-id>:<dir>" pairs
+      init_cmd: ""          # the stack's native init command
+      marker: ""            # file that proves the init worked (e.g. "go.mod")
+      markers: ""           # comma-separated service_markers for agents.yml
+      workflows: "coder"    # workflows to register in agents.yml
+      assistants: "claude"  # agent backends to enable; farrier install requires >= 1
+      max_genesis_reworks: "2"
+    nodes:
+      # Classify before mutating. This is what makes genesis safe to re-run during setup
+      # iteration: an already-initialised repo refreshes config only and is never
+      # re-scaffolded over the top of real work.
+      - id: resolve_target
+        type: script
+        script: scripts/resolve-genesis-target.py
+        args:
+          - "{{ target }}"
+          - "{{ service }}"
+          - "{{ service_root }}"
+          - "{{ marker }}"
+        outputs:
+          - key: target_ok
+          - key: target_dir
+          - key: target_state
+          - key: service_state
+          - key: service
+          - key: genesis_note
+        refuel: target_dir
+        next: decide_target
+
+      # Fail fast on a missing target. Without this the whole flow runs against an empty
+      # path — every script no-ops with a note and the run still reaches the conventions
+      # agent, burning a model call to discover there is nothing there.
+      - id: decide_target
+        type: branch
+        path: target_ok
+        cases:
+          "yes": decide_genesis
+        default: genesis_failed
+
+      # Repo-level only: an existing repo already has git, so skip that one node. It still
+      # flows through agents.yml/farrier (config refresh) and on to the service-level
+      # decision below — a long-established monorepo is exactly where a *new* service gets
+      # added, so "repo exists" must not short-circuit the build.
+      - id: decide_genesis
+        type: branch
+        path: target_state
+        cases:
+          existing: write_agents_yml
+        default: git_init
+
+      # MUST be the first mutating node. ostler's find_root walks UP for .git/docs/
+      # ostler.yml/agents.yml; a brand-new directory matches none of them, so any ostler call
+      # made before this binds to an ancestor repo *silently* — ids from the parent's registry,
+      # docs into the parent's tree, no error anywhere. validate_genesis asserts the binding
+      # landed correctly, because that misbind is undetectable after the fact.
+      - id: git_init
+        type: script
+        script: scripts/genesis-git-init.py
+        args:
+          - "{{ get_node_output('resolve_target', 'target_dir') }}"
+          - "{{ get_node_output('resolve_target', 'target_state') }}"
+        outputs:
+          - key: git_ready
+          - key: git_note
+          - key: initial_commit
+        next: write_agents_yml
+
+      # The workspace: block is what lets the planner target the service at all —
+      # resolve_workspace merges it into the repo record validate-plan-context.py reads.
+      # `scaffolds` is written here too: `farrier scaffold <id>` refuses an id that is not
+      # enabled in agents.yml, so install_farrier would render nothing without it.
+      - id: write_agents_yml
+        type: script
+        script: scripts/write-genesis-agents-yml.py
+        args:
+          - "{{ get_node_output('resolve_target', 'target_dir') }}"
+          - "{{ get_node_output('resolve_target', 'service') }}"
+          - "{{ packs }}"
+          - "{{ service_root }}"
+          - "{{ markers or marker }}"
+          - "{{ workflows }}"
+          - "{{ scaffolds }}"
+          - "{{ assistants }}"
+        outputs:
+          - key: agents_yml_written
+          - key: agents_yml_path
+          - key: agents_yml_note
+        next: install_farrier
+
+      # farrier install renders the packs' adapters + .agents/agents-context.json (whose
+      # `instructions` map is how resolve-impl-context.py resolves skills — empty means
+      # implementation runs unskilled and still reports success). Then the scaffolds seed the
+      # conventional folders. Scaffolds are thin by design and produce no marker file; that
+      # comes from native tooling in the next node.
+      - id: install_farrier
+        type: script
+        script: scripts/install-genesis-farrier.py
+        args:
+          - "{{ get_node_output('resolve_target', 'target_dir') }}"
+          - "{{ scaffolds }}"
+          - "{{ 'yes' if not packs else '' }}"
+        outputs:
+          - key: farrier_ok
+          - key: farrier_note
+          - key: scaffolds_rendered
+        next: decide_farrier
+
+      # A failed install/scaffold means no skills and no docs tree. Skip straight to
+      # validation rather than running the conventions agent against a repo with nothing
+      # installed for it to be conventional *about* — validate_genesis names the real
+      # errors and the bounded fix loop repairs them.
+      - id: decide_farrier
+        type: branch
+        path: farrier_ok
+        cases:
+          "yes": decide_skeleton
+        default: validate_genesis
+
+      # Keyed on the SERVICE, not the repo. `go mod init` and friends fail or clobber when
+      # re-run over a live service, so an existing one skips straight to validation — but a
+      # service that does not exist yet is built even when the repo around it does, which is
+      # how a monorepo grows its second and third surface.
+      - id: decide_skeleton
+        type: branch
+        path: service_state
+        cases:
+          existing: validate_genesis
+        default: init_skeleton
+
+      - id: init_skeleton
+        type: script
+        script: scripts/init-genesis-skeleton.py
+        args:
+          - "{{ get_node_output('resolve_target', 'target_dir') }}"
+          - "{{ service_root }}"
+          - "{{ init_cmd }}"
+          - "{{ marker }}"
+        outputs:
+          - key: skeleton_ok
+          - key: skeleton_note
+          - key: marker_path
+        next: decide_skeleton_ok
+
+      # A failed native init must NOT reach the conventions agent. Observed live: `npm create
+      # react-router` produced no package.json, the flow walked on regardless, and the agent —
+      # handed an empty service directory and asked to make it conventional — fabricated a
+      # placeholder tree (routes.ts, .gitkeep) that looked like a service but was not one. It
+      # correctly declined to forge package.json itself, so the marker check still caught it,
+      # but only after a wasted agent call and a repair loop. Route straight to validation:
+      # it names the missing marker precisely and fix_genesis re-runs the real init tool.
+      - id: decide_skeleton_ok
+        type: branch
+        path: skeleton_ok
+        cases:
+          "yes": apply_conventions
+        default: validate_genesis
+
+      # The one genuinely judgement-shaped step: make the repo conventional for its stack,
+      # guided by the skills farrier just installed. Structure only — there are no stories
+      # yet, so any product code written here is scope nobody asked for.
+      - id: apply_conventions
+        type: agent
+        power: low
+        cwd: "{{ get_node_output('resolve_target', 'target_dir') }}"
+        prompt: prompts/apply-genesis-conventions.md
+        args:
+          target_dir: "{{ get_node_output('resolve_target', 'target_dir') }}"
+          service_root: "{{ service_root }}"
+          marker_path: "{{ get_node_output('init_skeleton', 'marker_path') }}"
+        outputs:
+          - key: conventions_result
+            default: { status: blocked }
+        next: validate_genesis
+
+      # Genesis's postcondition IS the main loop's precondition — they share one assertion
+      # implementation (scripts/service_contract.py) so they cannot drift apart silently.
+      - id: validate_genesis
+        type: script
+        script: scripts/validate-genesis.py
+        args:
+          - "{{ get_node_output('resolve_target', 'target_dir') }}"
+          - "{{ service_root }}"
+          - "{{ markers or marker }}"
+        outputs:
+          - key: genesis_valid
+          - key: genesis_errors
+          - key: genesis_warnings
+        next: decide_valid
+
+      - id: decide_valid
+        type: branch
+        path: genesis_valid
+        cases:
+          "yes": genesis_done
+          "no": guard_genesis
+        default: guard_genesis
+
+      - id: guard_genesis
+        type: branch
+        path: genesis_rework_count.value
+        conditions:
+          - op: ">="
+            value: "2" # == vars.max_genesis_reworks; literal so no Jinja in branch
+            next: genesis_failed
+        default: fix_genesis
+
+      - id: fix_genesis
+        type: agent
+        power: high
+        cwd: "{{ get_node_output('resolve_target', 'target_dir') }}"
+        prompt: prompts/fix-genesis.md
+        args:
+          target_dir: "{{ get_node_output('resolve_target', 'target_dir') }}"
+          genesis_errors: "{{ get_node_output('validate_genesis', 'genesis_errors') }}"
+          genesis_warnings: "{{ get_node_output('validate_genesis', 'genesis_warnings') }}"
+        outputs:
+          - key: fix_result
+            default: { status: blocked }
+        next: incr_genesis
+
+      - id: incr_genesis
+        type: call
+        fn: incr
+        args:
+          value: "{{ genesis_rework_count.value }}"
+        outputs:
+          - key: genesis_rework_count
+            wrap: value
+        next: validate_genesis
+
+      - id: genesis_done
+        type: terminal
+
+      # Fail loudly rather than handing back a repo the main loop will reject later with a
+      # confusing planner error several stages downstream.
+      - id: genesis_failed
+        type: fail

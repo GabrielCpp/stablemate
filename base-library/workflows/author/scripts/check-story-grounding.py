@@ -13,9 +13,14 @@ Strictly presence/structure — **no semantic judgment** (that is the auditor's 
     from ``epic.md`` via the in-process ostler API (``Ostler.list``);
   - a surface **knowledge record** (a ``knowledge`` Concept) exists that this story grounds in
     (matched generously by slug / seed-item / legacy-surface tokens — proves gather_knowledge ran);
-  - **iff** ``features_dir`` is configured: that matched record actually read the feature
-    doc / journey — its ``journeys[]`` is non-empty OR ``provenance.sourcesRead`` references a
-    path under ``features_dir`` (proves the journey grounding ran, not just that a record exists).
+  - **iff** the graph actually holds ``feature`` Concepts: that matched record actually read the
+    feature doc / journey — its ``journeys[]`` is non-empty OR ``provenance.sourcesRead``
+    references a path under ``features_dir`` (proves the journey grounding ran, not just that a
+    record exists). Armed on the *graph*, not on ``features_dir`` — which ``load-config.py``
+    defaults unconditionally, so it is never falsy and would arm this check on a greenfield repo
+    that legitimately has no feature docs yet. Same opt-in-by-presence discipline as
+    ``verify-surface-coverage.py``; as feature Concepts accrue (including ones
+    ``gather_knowledge`` drafts mid-run) the check re-arms itself with no flag.
 
 Stdlib-only except for the in-process ``ostler`` API (``from ostler import Ostler``) and PyYAML,
 which ships with the system interpreter, to read the matched record's front-matter for the journey
@@ -157,8 +162,15 @@ def main(logger: logging.Logger) -> None:
             "written"
         )
 
-    # ── feature-doc / journey grounding actually ran (only when features_dir configured) ──
-    if features_dir and matched_path:
+    # ── feature-doc / journey grounding actually ran (only when feature Concepts exist) ──
+    # Opt-in by presence of the Concepts themselves, not by `features_dir` being set: that
+    # path is defaulted unconditionally by load-config.py, so arming on it would hard-fail
+    # every greenfield story. An empty-but-present docs/features/ leaves this disarmed too.
+    try:
+        feature_concepts = okf.list("feature")
+    except (OSError, ValueError, RuntimeError):
+        feature_concepts = []
+    if features_dir and matched_path and feature_concepts:
         record = {}
         rec_file = root / matched_path
         if rec_file.is_file():

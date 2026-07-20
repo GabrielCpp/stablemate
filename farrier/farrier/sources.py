@@ -11,8 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from farrier.frontmatter import read_yaml
-from farrier.layers import Layer, find_in_layers, layer_dirs, searched_layers
+from farrier.layers import (
+    Layer,
+    available_names,
+    find_in_layers,
+    layer_dirs,
+)
 from farrier.naming import kebab, normalize_pattern, source_id
+from farrier.selection_errors import unknown_selection_error
 
 
 @dataclass(frozen=True)
@@ -113,10 +119,15 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
     hit = find_in_layers("packs", f"{pack_id}.yml")
     if hit is None:
         raise SystemExit(
-            f"error: unknown pack: {pack_id}\n"
-            f"No library layer provides it. Searched:\n{searched_layers()}\n"
-            "If this pack lives in a private overlay library, point farrier at it:\n"
-            "    farrier config set-library <path-to-your-library>"
+            unknown_selection_error(
+                "packs",
+                [pack_id],
+                available_names("packs", suffix=".yml"),
+                extra=(
+                    "A pack may also be reached indirectly through another pack's "
+                    "`includes:` — check those too if you did not name this one yourself."
+                ),
+            )
         )
     _layer, path = hit
     data = read_yaml(path)
@@ -193,6 +204,40 @@ def selected_sources(
         if matches(source, include_patterns) and not matches(source, exclude_patterns)
     ]
     return sorted(selected, key=lambda item: item.id)
+
+
+_GLOB_CHARS = set("*?[")
+
+
+def is_glob(pattern: str) -> bool:
+    """Whether a selection entry is a filter rather than a named file.
+
+    The distinction drives severity: a glob matching nothing is a filter that happened to
+    select nothing, which is legitimate. A literal name matching nothing is a **typo** — the
+    config promised a specific file that the library does not have.
+    """
+    return any(char in _GLOB_CHARS for char in pattern)
+
+
+def unmatched_patterns(
+    all_sources: list[Source], include_patterns: set[str]
+) -> tuple[list[str], list[str]]:
+    """Include entries that selected nothing, split into ``(literals, globs)``.
+
+    Selection is a filter, so an entry naming a file that does not exist contributes nothing
+    and the render proceeds — the repo silently ends up without a skill it declared. That
+    surfaces much later as an agent running unskilled while every gate still reports success,
+    which is the worst shape a failure can take. ``packs`` and ``workflows`` already fail loudly
+    on the same typo (``load_pack``, ``renderer``'s workflow check); this closes the gap for
+    skills, prompts, and roots.
+    """
+    literals: list[str] = []
+    globs: list[str] = []
+    for pattern in sorted(include_patterns):
+        if any(matches(source, {pattern}) for source in all_sources):
+            continue
+        (globs if is_glob(pattern) else literals).append(pattern)
+    return literals, globs
 
 
 def build_lookup(sources: list[Source], prefix: str) -> dict[str, Source]:

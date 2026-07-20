@@ -1,0 +1,1 @@
+/mnt/data/workspace/stablemate/.venv/bin/python3 /mnt/data/workspace/stablemate/base-library/workflows/coder/scripts/install-genesis-farrier.py /tmp/todo-app shared-docs:docs,go-service:api 

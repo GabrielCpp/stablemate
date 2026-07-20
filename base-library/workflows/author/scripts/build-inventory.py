@@ -47,8 +47,15 @@ def find_repo_root() -> Path:
 
 
 def feature_count(okf: Ostler) -> int:
-    """Count of typed feature Concepts ostler reads directly (0 when there are none)."""
-    return len(okf.list("feature"))
+    """Count of typed feature Concepts ostler reads directly (0 when there are none).
+
+    Guarded the same way ``verify-surface-coverage.py`` guards the identical call: an
+    unreadable graph means "no features known", never a raised exception out of a gate.
+    """
+    try:
+        return len(okf.list("feature"))
+    except (OSError, ValueError, RuntimeError):
+        return 0
 
 
 def unit_count(root: Path, manifest_rel: str) -> int:

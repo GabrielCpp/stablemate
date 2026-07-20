@@ -1,0 +1,5 @@
+{
+  "skeleton_ok": "yes",
+  "skeleton_note": "native init ran in api; api/go.mod present",
+  "marker_path": "api/go.mod"
+}

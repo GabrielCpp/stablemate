@@ -3,11 +3,21 @@
 
 Author-workflow terminal: after final artifact validation passes, this script
 opens one PR in the single docs repo the run wrote into (author never touches
-code repos). PR delivery is required: any condition that prevents opening or
-finding an open PR exits non-zero so the workflow cannot report success.
+code repos).
+
+Two distinct outcomes, deliberately not conflated:
+
+* **PR delivery is not configured** — no ``.git``, no GitHub token, or an ``origin`` that is
+  not a github.com repository. A local-only repo (``git init`` with no remote, the greenfield
+  case) is a legitimate configuration, not a failure: emit ``author_pr: "skipped"`` and exit 0
+  so a run that passed every authoring gate is not failed by the absence of a forge.
+* **PR delivery was attempted and failed** — a push error, an unreachable repository, or a
+  create-pull error. Still exits non-zero: whenever a remote *is* configured, "PR delivery is
+  required" remains true and the workflow may not report success without one.
 
 Args: <base_branch> <author_branch> <mode> <epic> <bullet>
-Outputs JSON: {"author_pr": "opened"|"exists", "pr_url": "https://..."}
+Outputs JSON: {"author_pr": "opened"|"exists"|"skipped", "pr_url": "https://..."|"",
+               "pr_skip_reason": "<why delivery was not configured>"}
 """
 from __future__ import annotations
 
@@ -113,6 +123,13 @@ def fail(message: str) -> NoReturn:
     raise SystemExit(1)
 
 
+def skip(reason: str) -> NoReturn:
+    """PR delivery is not configured — a supported state, not a failure."""
+    logger.info("PR delivery not configured (%s) — skipping", reason)
+    print(json.dumps({"author_pr": "skipped", "pr_url": "", "pr_skip_reason": reason}))
+    sys.exit(0)
+
+
 def find_open_pr(repo, branch: str):
     """Return the first OPEN pull request whose head is ``branch``, or ``None``."""
     owner = repo.owner.login
@@ -128,8 +145,9 @@ def push_and_pr(repo_path: Path, branch: str, base: str, title: str, body: str, 
 
     repo_slug = resolve_github_slug(repo_path)
     if not repo_slug:
-        origins = ", ".join(scriptutil.remote_urls(repo_path)) or "<missing>"
-        fail(f"origin does not resolve to a github.com repository: {origins}")
+        # Not configured, not broken: a local-only repo has no forge to deliver to.
+        origins = ", ".join(scriptutil.remote_urls(repo_path)) or "<no remote>"
+        skip(f"origin does not resolve to a github.com repository: {origins}")
 
     # push_branch targets the resolved slug explicitly (the origin may be a local
     # bind-mount path in container runs, so we can't let it re-derive from origin).
@@ -167,19 +185,19 @@ def main(logger: logging.Logger) -> None:
 
     repo_root = find_repo_root()
     if not (repo_root / ".git").exists():
-        fail(f"no .git at {repo_root}")
+        skip(f"no .git at {repo_root}")
 
     scripts_dir = Path(__file__).resolve().parent
     token = resolve_token(scripts_dir)
     if not token:
-        fail("no GitHub token is configured; cannot push or open the author PR")
+        skip("no GitHub token is configured")
 
     base = get_base_branch(repo_root, base_branch)
     title = build_title(mode, epic, bullet)
     body = build_body(mode)
 
     status, pr_url = push_and_pr(repo_root, branch, base, title, body, token)
-    print(json.dumps({"author_pr": status, "pr_url": pr_url}))
+    print(json.dumps({"author_pr": status, "pr_url": pr_url, "pr_skip_reason": ""}))
 
 
 if __name__ == "__main__":

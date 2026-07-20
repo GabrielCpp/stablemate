@@ -117,7 +117,11 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
         return Result(False, f"no epic '{epic_name}'")
     story_md = edir / "stories" / slug / "story.md"
     if story_md.exists():
-        return Result(False, f"story '{slug}' already exists")
+        # Idempotent on purpose: the author workflow's bounded rework loops re-run
+        # `ostler create story`, and `split-stories.md` documents this as a no-op. Keep the
+        # existing story body and its already-allocated id untouched — re-allocating would
+        # break every reference to it.
+        return Result(True, f"story '{slug}' already exists in epic '{epic_name}'", [story_md])
 
     sid = ids.allocate(graph, prefix)
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
@@ -177,8 +181,12 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
         return Result(False, f"invalid status '{status}' (one of {', '.join(registry.SEED_STATUSES)})")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     sec = doc.find_section(registry.SEEDS_HEADING)
-    if sec is not None and any(c.title.strip() == seed_id for c in sec.children):
-        return Result(False, f"seed '{seed_id}' already exists in '{epic_name}'")
+    # Update-or-create: `write-epic.md` documents re-running this as updating the seed rather
+    # than duplicating it, and the author's bounded rework loops depend on that. The block is
+    # fully regenerated from the arguments, so an update is a replace.
+    existed = sec is not None and any(c.title.strip() == seed_id for c in sec.children)
+    if existed:
+        _remove_subsection(doc, registry.SEEDS_HEADING, seed_id)
     block = [f"### {seed_id}", f"- status: {status}"]
     for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceBullet"):
         val = (meta or {}).get(key)
@@ -189,7 +197,8 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
         block += [summary, ""]
     _insert_subsection(doc, registry.SEEDS_HEADING, block)
     epic_md.write_text(doc.render(), encoding="utf-8")
-    return Result(True, f"added seed '{seed_id}' to epic '{epic_name}'", [epic_md])
+    verb = "updated" if existed else "added"
+    return Result(True, f"{verb} seed '{seed_id}' in epic '{epic_name}'", [epic_md])
 
 
 def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:

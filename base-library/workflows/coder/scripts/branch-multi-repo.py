@@ -4,7 +4,7 @@
 Args: <story_slug>
 
 For each repo in affected_repos (read from plan-context.json via workspace
-resolution), cuts or checks out story/<slug>. Also branches the docs repo
+resolution), cuts or checks out the story branch (the bare story id). Also branches the docs repo
 (AGENT_REPO_DIR). Idempotent: existing branches are checked out without reset.
 
 Prints JSON: {"branched": "yes", "repos": ["api-service", "web-app", ...]}
@@ -46,7 +46,7 @@ def branch_repo(repo_path: Path, repo_name: str, branch: str) -> bool:
 
 def main(logger: logging.Logger) -> None:
     slug = sys.argv[1] if len(sys.argv) > 1 else "story"
-    branch = f"story/{slug}"
+    branch = slug
 
     root = find_repo_root()
     spec_dir_rel = os.environ.get("SPEC_DIR", "")

@@ -55,3 +55,30 @@ def test_dangling_dependency_fails(tmp_path):
 
 
 # ── deferral ownership ────────────────────────────────────────────────────────
+
+
+# ── C.3 probe: is there a real vacuity window on a greenfield repo? ────────────
+# `doctor.run` short-circuits on a non-`full` ostler profile, and profile is inferred from
+# whether `docs/epics/` is a directory. The worry was that a fresh repo could reach this gate
+# on an `exploration` profile, produce no findings, and report `coverage_ok: "yes"` for an epic
+# that covers nothing. These pin the actual behaviour rather than a fix applied on speculation.
+
+def test_zero_story_epic_fails_on_a_fresh_repo(tmp_path):
+    """An epic with seeds and no stories at all must fail, not pass vacuously."""
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}, {"id": "i2"}], stories=[])
+    out = cov(tmp_path)
+    assert out["coverage_ok"] == "no", (
+        "a zero-story epic passed — doctor short-circuited on a non-full profile, so this "
+        "gate asserted nothing"
+    )
+    assert "i1" in out["coverage_errors"] and "i2" in out["coverage_errors"]
+
+
+def test_profile_is_full_whenever_this_gate_can_run(tmp_path):
+    """Why the window above is closed structurally, not just by genesis: this gate is handed an
+    epic dir under `docs/epics/`, and that dir existing is exactly what flips the profile to
+    `full`. There is no reachable state where the gate has an epic to check but doctor
+    short-circuits."""
+    from ostler.model import load
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
+    assert load(tmp_path).profile == "full"

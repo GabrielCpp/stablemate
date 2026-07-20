@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from ostler import Ostler
+from service_contract import service_problems
 from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
 
 def main(logger: logging.Logger) -> None:
@@ -114,19 +115,15 @@ def main(logger: logging.Logger) -> None:
             logger.info("%s: new_service=true — skipping path existence check", label)
             continue
 
-        if not service_abs.exists():
-            errors.append(f"{label}: path does not exist at {service_abs}")
-            continue
-
-        if not service_abs.is_dir():
-            errors.append(f"{label}: path is not a directory")
-            continue
-
         markers = repo_info.get("service_markers", [])
         if svc_type == "terraform":
             markers = ["main.tf"]
-        if markers and not any((service_abs / m).exists() for m in markers):
-            errors.append(f"{label}: no service marker found (expected one of {markers} in {service_abs})")
+        # Shared with validate-genesis.py — the same assertion genesis must satisfy as a
+        # postcondition is the one the planner must satisfy as a precondition.
+        problems = service_problems(service_abs, markers, label)
+        if problems:
+            errors.extend(problems)
+            continue
 
         if plan_file and not (spec_dir / plan_file).exists():
             errors.append(f"{label}: plan file '{plan_file}' not found in spec dir")

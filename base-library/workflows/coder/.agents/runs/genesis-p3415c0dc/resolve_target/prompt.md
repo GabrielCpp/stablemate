@@ -1,0 +1,1 @@
+/mnt/data/workspace/stablemate/.venv/bin/python3 /mnt/data/workspace/stablemate/base-library/workflows/coder/scripts/resolve-genesis-target.py /tmp/todo-app api api go.mod

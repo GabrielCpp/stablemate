@@ -185,13 +185,15 @@ The interpreting agent does not run a modality directly.
 
 ### Branching
 
-All affected repos get the same branch name: `story/<slug>`.
+All affected repos get the same branch name: the bare story id. Ids are minted by
+ostler and carry a repo prefix, so they are already globally unique — only epics
+take a namespace (`feat/<epic-id>`).
 
 ```bash
 # scripts/branch-multi-repo.py creates:
-# api-service:         story/persist-profile
-# web-app:          story/persist-profile
-# vigilant-octo:   story/persist-profile
+# api-service:     CASE-1234
+# web-app:         CASE-1234
+# docs repo:       CASE-1234
 ```
 
 ### Committing
