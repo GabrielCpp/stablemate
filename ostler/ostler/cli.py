@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -89,6 +89,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     rc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
     rc.add_argument("--json", action="store_true")
+
+    lc = sub.add_parser(
+        "locators",
+        help="the Playwright locator for every documented control (and where it is ambiguous)",
+    )
+    lc.add_argument("screen", nargs="?", help="screen slug or node id; omit for every screen")
+    lc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    lc.add_argument("--json", action="store_true")
 
     gp = sub.add_parser(
         "graph", help="query the node/edge/bullet graph (nested + typed)"
@@ -567,6 +575,20 @@ def _cmd_reach(graph, args) -> int:
     return 1 if report["unreachable"] else 0
 
 
+def _cmd_locators(graph, args) -> int:
+    """Emit the derived locators, exiting non-zero when the one-to-one mapping is broken.
+
+    A collision or an unlocatable control means a caller cannot mechanically address what the book
+    documents. Failing here keeps that a documentation defect rather than letting it resurface as a
+    strict-mode violation in somebody's test run.
+    """
+    data = locators.build(graph, surface=args.surface, screen=args.screen)
+    print(locators.render_json(data) if args.json else locators.render(data))
+    broken = (data["collisions"] or data["unnamed"] or data["invalid_roles"]
+              or data["counts"]["unlocatable"])
+    return 1 if broken else 0
+
+
 def _cmd_doctor(graph, args) -> int:
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
     if args.json:
@@ -896,6 +918,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return 0 if found else 1
     if c == "reach":
         return _cmd_reach(graph, args)
+    if c == "locators":
+        return _cmd_locators(graph, args)
     if c == "graph":
         data = graph_mod.build(graph, surface=args.surface)
         sel = graph_mod.select(

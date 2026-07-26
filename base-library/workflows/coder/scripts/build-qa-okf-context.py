@@ -8,10 +8,11 @@ import logging
 import sys
 from pathlib import Path
 
-from qa_cli import emit, notes_for, qa_context
+from workhorse.scriptutil import fresh_import
 
 
 def main(logger: logging.Logger) -> None:
+    qa_cli = fresh_import("qa_cli", also_purge=("ostler",))
     spec_dir = sys.argv[1] if len(sys.argv) > 1 else ""
     story_file = sys.argv[2] if len(sys.argv) > 2 else ""
     features_root = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -29,7 +30,7 @@ def main(logger: logging.Logger) -> None:
         logger.warning("source_roots argument was not valid JSON — treating as empty")
         source_roots = []
 
-    returncode, payload, stderr = qa_context(
+    returncode, payload, stderr = qa_cli.qa_context(
         spec_dir, base=base, head=head, features_root=features_root, story_file=story_file,
         source_roots=source_roots if isinstance(source_roots, list) else [],
         docs_root=docs_root,
@@ -40,14 +41,14 @@ def main(logger: logging.Logger) -> None:
         else "invalid"
     )
     logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
-    notes = notes_for(
+    notes = qa_cli.notes_for(
         payload,
         stderr,
         "QA OKF context generated."
         if status == "passed"
         else "QA OKF context generation failed.",
     )
-    emit(output_key, status, notes, payload)
+    qa_cli.emit(output_key, status, notes, payload)
 
 
 if __name__ == "__main__":

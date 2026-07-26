@@ -77,8 +77,40 @@ def _farrier_globals(context: dict[str, Any], workflow_dir: Path) -> dict[str, A
     def skill_dir() -> str:
         return skill_dir_value if skill_dir_value else str(workflow_dir)
 
+    def resolve_instruction(name: str) -> str | None:
+        """The installed path for a skill, tolerating pack namespacing. None when unresolved.
+
+        A prompt asks for a *capability* (``story-docs``) while a pack is free to namespace
+        the skill that provides it (``process/process-story-docs``, installed as
+        ``process-story-docs``). An exact-only lookup makes those two names miss each other,
+        and the miss is silent: the placeholder below renders into the prompt as prose, so the
+        agent is handed "generated story-docs instruction file when installed" where a path
+        belonged and has to go find the skill itself. Observed live — it forced the author
+        workflow's epic-split gate to fail and escalate to its auto-resolver.
+
+        So: exact match first, then a **unique** suffix match on the last path segment. Unique
+        is the safety rule — two packs both ending in ``-story-docs`` is a genuine ambiguity,
+        and silently picking one would be a worse failure than not resolving at all.
+
+        Uniqueness is judged on the resolved *path*, not the key. Farrier indexes one skill
+        under several aliases (bare ``process-story-docs`` and repo-prefixed
+        ``todo-app-process-story-docs``), so counting keys makes every namespaced skill look
+        ambiguous with itself and resolve to nothing.
+        """
+        if name in instructions:
+            return instructions[name]
+        suffix = f"-{name}"
+        hits = {
+            instructions[key] for key in instructions
+            if "/" not in key and (key == name or key.endswith(suffix))
+        }
+        return next(iter(hits)) if len(hits) == 1 else None
+
     def instruction_ref(name: str = "") -> str:
-        return instructions.get(name, f"generated {name} instruction file when installed")
+        resolved = resolve_instruction(name)
+        if resolved is not None:
+            return resolved
+        return f"generated {name} instruction file when installed"
 
     def prompt_ref(name: str = "") -> str:
         return prompts.get(name, f"generated {name} prompt when installed")

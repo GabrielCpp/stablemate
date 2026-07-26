@@ -17,6 +17,14 @@ per-epic authoring. Do not write epics or stories.
 - The backlog file, the epics queue (`ostler todo list`, backed by `{{ epics_dir }}/index.md`), and
   every `epic.md` just authored.
 - `{{ instruction_ref('write-epics-and-stories') }}` and `{{ instruction_ref('story-docs') }}`.
+- `{{ epics_dir }}/_author-context.md` when present — operator answers to earlier questions,
+  including repo-location mixups from a prior blocked pass.
+
+If the backlog file or epics directory above don't exist relative to your current working
+directory, do not conclude the repo is missing before checking two things: the `_author-context.md`
+file just listed (an earlier stage may have already resolved a working-directory mixup — its
+answer applies to you too), and the `AGENT_REPO_DIR` environment variable, which pins the actual
+target repo root the same way it does for every script in this workflow.
 
 ## Checks
 

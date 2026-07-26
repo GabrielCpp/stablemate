@@ -257,6 +257,7 @@ nodes:
   # resolver's own say-so.
   - id: resolve_surface_coverage
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -352,6 +353,7 @@ nodes:
 
   - id: decompose_epics
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/decompose-epics.md
     args:
@@ -363,6 +365,7 @@ nodes:
 
   - id: review_epics
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/review-epics.md
     args:
@@ -392,6 +395,7 @@ nodes:
 
   - id: rework_epics
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/rework-epics.md
     args:
@@ -442,6 +446,7 @@ nodes:
   # re-verification), or halts on an awaiting one (the human fallback).
   - id: resolve_epics
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -518,6 +523,7 @@ nodes:
   # ── 2a. WRITE EPIC (epic.md narrative + ## Seeds via ostler seed add) ──────────────
   - id: write_epic
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/write-epic.md
     args:
@@ -559,6 +565,7 @@ nodes:
 
   - id: resolve_write_epic
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -617,6 +624,7 @@ nodes:
 
   - id: split_stories
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/split-stories.md
     args:
@@ -656,6 +664,7 @@ nodes:
 
   - id: resolve_split
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -742,6 +751,7 @@ nodes:
   # and escalated by write_story's own `blocked` path, not here).
   - id: gather_knowledge
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/gather-surface-knowledge.md
     args:
@@ -804,6 +814,7 @@ nodes:
   # Ask a model to repair the knowledge record so it parses + validates, preserving all content.
   - id: fix_knowledge
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/fix-knowledge.md
     args:
@@ -835,6 +846,7 @@ nodes:
   # feature doc).
   - id: design_mockup
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/design-mockup.md
     args:
@@ -851,6 +863,7 @@ nodes:
 
   - id: write_story
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/write-story.md
     args:
@@ -907,6 +920,7 @@ nodes:
   # agent's own notes may be stale.
   - id: resolve_write_story
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -994,6 +1008,7 @@ nodes:
 
   - id: audit_story
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/audit-story.md
     args:
@@ -1043,6 +1058,7 @@ nodes:
 
   - id: rework_story
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/rework-story.md
     args:
@@ -1123,6 +1139,7 @@ nodes:
 
   - id: document_surface
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     # medium: skeleton authoring from intent — no code to ground yet, lighter than write_story.
     power: medium
     prompt: prompts/document-surface.md
@@ -1164,6 +1181,7 @@ nodes:
 
   - id: apply_story_feedback
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/rework-story.md
     args:
@@ -1207,6 +1225,7 @@ nodes:
 
   - id: review_coverage
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/review-coverage.md
     args:
@@ -1268,6 +1287,7 @@ nodes:
 
   - id: resolve_coverage
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: the resolver does open-ended unblocking work and must not be cut off
     # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
@@ -1358,6 +1378,7 @@ nodes:
   # rather than trusting the resolver's own say-so.
   - id: resolve_reconcile
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     timeout: infinity
     prompt: prompts/resolve-operator.md
@@ -1464,6 +1485,7 @@ nodes:
   # rather than trusting the resolver's own self-check alone.
   - id: resolve_integrity
     type: agent
+    cwd: "{{ cfg.repo_root }}"
     power: high
     # Unbounded: open-ended reconciliation work that must not be cut off mid-fix.
     timeout: infinity
@@ -1640,6 +1662,7 @@ flows:
 
       - id: parity_assess_unit
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: medium
         prompt: surveyor/prompts/assess-parity-unit.md
         args:
@@ -1791,6 +1814,7 @@ flows:
 
       - id: plan_units
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: high
         prompt: surveyor/prompts/plan-units.md
         args:
@@ -1860,6 +1884,7 @@ flows:
 
       - id: resolve_plan
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: high
         timeout: infinity
         prompt: surveyor/prompts/resolve-operator.md
@@ -1929,6 +1954,7 @@ flows:
 
       - id: assess_unit
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: medium
         prompt: surveyor/prompts/assess-unit.md
         args:
@@ -2012,6 +2038,7 @@ flows:
 
       - id: fix_record
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: medium
         prompt: surveyor/prompts/fix-record.md
         args:
@@ -2100,6 +2127,7 @@ flows:
 
       - id: resolve_verify
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: high
         timeout: infinity
         prompt: surveyor/prompts/resolve-operator.md
@@ -2151,6 +2179,7 @@ flows:
 
       - id: partition_findings
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: high
         prompt: surveyor/prompts/partition-findings.md
         args:
@@ -2219,6 +2248,7 @@ flows:
 
       - id: resolve_partition
         type: agent
+        cwd: "{{ cfg.repo_root }}"
         power: high
         timeout: infinity
         prompt: surveyor/prompts/resolve-operator.md

@@ -270,3 +270,50 @@ def test_unknown_kind_is_error(tmp_path: Path):
     assert vet("nope", Path("x"), tmp_path).status == "error"
     assert get_kind("nope") is None
     assert {k["kind"] for k in list_kinds()} == {"plan-context", "qa-evidence", "backlog-items"}
+
+
+def _run_log(spec: Path, *, passes: int, fails: int = 0, run_id: str = "qa-run-1") -> None:
+    rows = []
+    for i in range(passes):
+        rows.append({"kind": "assert", "scenario": "s", "result": "PASS", "action": i + 1})
+    for i in range(fails):
+        rows.append({"kind": "assert", "scenario": "s", "result": "FAIL", "action": i + 1})
+    rows.append({"kind": "session_stop", "run_id": run_id})
+    ledger = spec / "qa" / "qa-run.ndjson"
+    ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    (spec / "qa" / "run-manifest.json").write_text(
+        json.dumps({"runId": run_id, "artifacts": [
+            {"path": "qa/qa-run.ndjson",
+             "sha256": hashlib.sha256(ledger.read_bytes()).hexdigest()}]}),
+        encoding="utf-8")
+
+
+def test_qa_evidence_unmodeled_surface_passes_on_run_log(tmp_path: Path):
+    """An infra/CLI story's changed code has no OKF feature-node owner, so the diff→OKF mapper
+    produces no obligations and _write_evidence records empty criteria+obligations even for a
+    genuine pass. Its proof is the command assertions in the run log — admit that case when the
+    log shows real passing assertions and zero failures. (Live: infra stories passed QA 12/12,
+    then this gate wrongly rejected them for lacking OKF-structured evidence.)"""
+    spec = _spec(tmp_path)
+    _run_log(spec, passes=12)
+    data = {"runId": "qa-run-1", "qa_run_log": "qa/qa-run.ndjson",
+            "overall": "Pass", "criteria": [], "obligations": []}
+    assert _qa_evidence_vet(data, spec, tmp_path) == []
+
+
+def test_qa_evidence_empty_with_no_run_log_still_rejected(tmp_path: Path):
+    """Anti-vacuity preserved: empty criteria+obligations AND no run-log proof is invalid."""
+    spec = _spec(tmp_path)
+    data = {"overall": "Pass", "criteria": [], "obligations": []}
+    problems = _qa_evidence_vet(data, spec, tmp_path)
+    assert problems and "at least one criterion or OKF obligation" in problems[0]
+
+
+def test_qa_evidence_empty_with_a_failing_run_log_rejected(tmp_path: Path):
+    """A run log with any failure cannot back a claimed pass, even for an un-modeled surface."""
+    spec = _spec(tmp_path)
+    _run_log(spec, passes=5, fails=1)
+    data = {"runId": "qa-run-1", "qa_run_log": "qa/qa-run.ndjson",
+            "overall": "Pass", "criteria": [], "obligations": []}
+    problems = _qa_evidence_vet(data, spec, tmp_path)
+    assert problems and "5 pass / 1 fail" in problems[0]

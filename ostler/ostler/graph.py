@@ -115,6 +115,20 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None)
     return {"counts": {"nodes": len(nodes), "edges": len(edges)}, "nodes": nodes, "edges": edges}
 
 
+def subset(data: dict, surface: str) -> dict:
+    """Scope an already-built dump to one surface, without rebuilding it.
+
+    ``build(surface=…)`` filters on exactly this field *after* resolving every node, so the work is
+    identical and only the filter differs — which makes rebuilding per surface pure waste. Doctor
+    runs several surface-scoped checks over one graph, and on a large book each rebuild costs more
+    than every other check combined.
+    """
+    nodes = [n for n in data["nodes"] if n["surface"] == surface]
+    keep = {n["id"] for n in nodes}
+    edges = [e for e in data["edges"] if e["from"] in keep]
+    return {"counts": {"nodes": len(nodes), "edges": len(edges)}, "nodes": nodes, "edges": edges}
+
+
 def render_text(data: dict) -> str:
     """Compact human view: a header line, then one line per node with its bullet keys + edge count."""
     lines = [f"{data['counts']['nodes']} nodes, {data['counts']['edges']} edges"]

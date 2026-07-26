@@ -124,6 +124,9 @@ class UINodeType:
     required_sections: tuple[str, ...] = ()     # file types: headings that must be present
     bullet_keys: tuple[BulletKey, ...] = ()     # recognized keys, in canonical order
     body_template: str = ""                     # optional explicit skeleton override (scaffold)
+    literal_id: bool = False                    # section types: `### id` is a code identifier
+                                                 # (case-sensitive), not an author-chosen slug —
+                                                 # `ostler fmt` must not kebab/lowercase it
 
     @property
     def bullet_by_key(self) -> dict[str, BulletKey]:
@@ -136,7 +139,8 @@ CODE_GROUNDING_KEYS = frozenset({"code", "verify"})
 # Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
 # ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
 RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
-                 "environment", "cli", "surfaces", "requires", "params", "leads-to")
+                 "environment", "cli", "surfaces", "requires", "params", "leads-to",
+                 "exclusive-with")
 
 
 UI_TYPES: tuple[UINodeType, ...] = (
@@ -150,6 +154,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("route", required=True),
             BulletKey("requires", required=True, nested=True, link=True),
             BulletKey("params", required=True, nested=True, link=True),
+            # Optional, and a claim when present: this screen is entered from outside in-app
+            # navigation (app root, emailed deep link, OAuth callback) and the value says how.
+            # It exempts the screen from the reachability check, so it is not a silencer.
+            BulletKey("entry"),
         ),
     ),
     UINodeType(
@@ -205,11 +213,20 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="component", kind="section", heading="Components",
         bullet_keys=(
             BulletKey("selector"),
-            BulletKey("role"),       # ARIA/semantic role — the accessibility contract + robust
-            BulletKey("name"),       # accessible name — Playwright `getByRole(role, {name})`
+            # Required, because they are the same fact twice: the accessibility contract a screen
+            # reader announces, and the `getByRole(role, {name})` a test locates by. `none` is a
+            # legitimate value — a decorative or purely presentational element has no accessible
+            # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
+            BulletKey("role", required=True),
+            BulletKey("name", required=True),
             BulletKey("keyboard"),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
             BulletKey("parent", link=True),
+            # Sibling(s) this control can never be in the DOM at the same time as. It is the runtime
+            # fact a static role+name check cannot see: two controls that share a locator but never
+            # co-render are not ambiguous. A *claim*, grounded in source (mutually-exclusive states,
+            # variant switch) — not a way to silence a real same-screen collision.
+            BulletKey("exclusive-with", link=True),
             BulletKey("states"),
             BulletKey("code", link=True),
         ),
@@ -246,10 +263,16 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("on", required=True, link=True),
             BulletKey("trigger", required=True),
-            BulletKey("role"),       # role/name of the target — the robust locator basis…
-            BulletKey("name"),       # …`getByRole(role, {name})` instead of a brittle selector
-            BulletKey("keyboard"),   # key/shortcut that fires it (e.g. `⌘K`)
+            # An interaction is by definition operable, so all three are required: the role/name
+            # give `getByRole(role, {name})` instead of a brittle selector, and `keyboard:` records
+            # how it is fired without a pointer. `none` on `keyboard:` is a claim that the control
+            # is pointer-only — which is an accessibility defect worth being able to *find*, not a
+            # blank to leave empty.
+            BulletKey("role", required=True),
+            BulletKey("name", required=True),
+            BulletKey("keyboard", required=True),
             BulletKey("when"),
+            BulletKey("exclusive-with", link=True),
             BulletKey("does", required=True, nested=True),
             BulletKey("code", link=True),
             BulletKey("verify", link=True),
@@ -268,9 +291,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", link=True),
         ),
     ),
-    # A callable on a concept/format — a nested `### method: …` or a `## Methods` child.
+    # A callable on a concept/format — a nested `### method: …` or a `## Methods` child. The id is
+    # the literal method name (a code identifier), so `literal_id` keeps its case as authored.
     UINodeType(
-        name="method", kind="section", heading="Methods",
+        name="method", kind="section", heading="Methods", literal_id=True,
         bullet_keys=(
             BulletKey("sig"),
             BulletKey("abstract"),
@@ -280,9 +304,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", link=True),
         ),
     ),
-    # A typed attribute — a nested `### field: …` or a `## Fields` child.
+    # A typed attribute — a nested `### field: …` or a `## Fields` child. The id is the literal
+    # field/property name (e.g. a JSON key or exported symbol) — often camelCase/PascalCase, so
+    # `literal_id` keeps its case as authored instead of being lowercased into a slug.
     UINodeType(
-        name="field", kind="section", heading="Fields",
+        name="field", kind="section", heading="Fields", literal_id=True,
         bullet_keys=(
             BulletKey("type"),
             BulletKey("default"),

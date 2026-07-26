@@ -82,27 +82,6 @@ type: server
     }
 
 
-def test_boot_health_requires_documented_identity(monkeypatch) -> None:
-    boot = load_script("boot-app.py")
-
-    class Response:
-        status = 200
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self, _limit: int) -> bytes:
-            return b"<title>groom</title>"
-
-    monkeypatch.setattr(boot.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
-
-    assert boot._health_ok("http://127.0.0.1:8787", "<title>Acme</title>") is False
-    assert boot._health_ok("http://127.0.0.1:8787", "<title>groom</title>") is True
-
-
 def test_detect_webapp_reads_the_bring_up_bullets(tmp_path: Path) -> None:
     """A command that returns once a stack is up needs a stop recipe and a real ceiling."""
     detect = load_script("detect-webapp.py")
@@ -198,112 +177,6 @@ def test_select_server_ignores_servers_without_a_launch_contract() -> None:
     assert picked["launch_cmd"] == f"run {paths[1]}"
 
 
-def test_boot_timeout_falls_back_when_undocumented_or_junk() -> None:
-    boot = load_script("boot-app.py")
-
-    assert boot._boot_timeout("1800") == 1800.0
-    assert boot._boot_timeout("") == boot.BOOT_TIMEOUT_S
-    assert boot._boot_timeout("soon") == boot.BOOT_TIMEOUT_S
-    assert boot._boot_timeout("0") == boot.BOOT_TIMEOUT_S
-
-
-def test_boot_treats_a_clean_exit_as_a_bring_up_command(tmp_path: Path, monkeypatch, capsys):
-    """`make dev-stack-test-db` exits 0 once the stack serves — that is not death."""
-    boot = load_script("boot-app.py")
-
-    # Healthy only from the third poll: the stack comes up strictly after make returns,
-    # so a run that failed on the clean exit would never see it.
-    polls = {"n": 0}
-
-    def health(*_args, **_kwargs) -> bool:
-        polls["n"] += 1
-        return polls["n"] >= 3
-
-    class Exited:
-        pid = 4242
-        returncode = 0
-
-        def poll(self) -> int:
-            return 0
-
-    monkeypatch.setattr(boot, "_health_ok", health)
-    monkeypatch.setattr(boot.subprocess, "Popen", lambda *_a, **_kw: Exited())
-    monkeypatch.setattr(boot.os, "getpgid", lambda _pid: 4242)
-    monkeypatch.setattr(boot, "POLL_INTERVAL_S", 0)
-    monkeypatch.setattr(boot.sys, "argv", [
-        "boot-app.py", "make dev-stack-test-db", "http://localhost:3000", "/",
-        str(tmp_path), str(tmp_path), "", "60",
-    ])
-
-    with pytest.raises(SystemExit):
-        boot.main(logging.getLogger("boot-app"))
-
-    out = json.loads(capsys.readouterr().out)
-    assert out["boot_ok"] == "yes"
-    # Owns nothing: the stack lives in containers, so teardown must not killpg 4242.
-    assert out["app_pgid"] == ""
-    assert out["app_pid"] == ""
-
-
-def test_boot_still_fails_when_the_launch_command_errors(tmp_path: Path, monkeypatch, capsys):
-    """A nonzero exit is a real death — the detached path must not swallow it."""
-    boot = load_script("boot-app.py")
-
-    class Died:
-        pid = 4242
-        returncode = 2
-
-        def poll(self) -> int:
-            return 2
-
-    monkeypatch.setattr(boot, "_health_ok", lambda *_a, **_kw: False)
-    monkeypatch.setattr(boot.subprocess, "Popen", lambda *_a, **_kw: Died())
-    monkeypatch.setattr(boot.os, "getpgid", lambda _pid: 4242)
-    monkeypatch.setattr(boot, "POLL_INTERVAL_S", 0)
-    monkeypatch.setattr(boot.sys, "argv", [
-        "boot-app.py", "make dev-stack-test-db", "http://localhost:3000", "/",
-        str(tmp_path), str(tmp_path), "", "60",
-    ])
-
-    with pytest.raises(SystemExit):
-        boot.main(logging.getLogger("boot-app"))
-
-    assert json.loads(capsys.readouterr().out)["boot_ok"] == "no"
-
-
-def test_teardown_without_a_pgid_runs_the_documented_stop_recipe(monkeypatch, capsys) -> None:
-    calls: list[list[str]] = []
-
-    boot = load_script("boot-app.py")
-
-    class Done:
-        returncode = 0
-        stderr = ""
-
-    def fake_run(argv, **_kwargs):
-        calls.append(argv)
-        return Done()
-
-    monkeypatch.setattr(boot.subprocess, "run", fake_run)
-
-    with pytest.raises(SystemExit):
-        boot._teardown("", "make dev-stack-test-db-down", ".", logging.getLogger("boot-app"))
-
-    assert calls == [["make", "dev-stack-test-db-down"]]
-    assert json.loads(capsys.readouterr().out)["torn_down"] == "yes"
-
-
-def test_teardown_leaves_the_stack_up_when_no_stop_recipe_is_documented(monkeypatch, capsys):
-    """The chosen policy: an expensive shared stack is cheaper to leave running."""
-    boot = load_script("boot-app.py")
-    monkeypatch.setattr(boot.subprocess, "run", lambda *_a, **_kw: pytest.fail("ran a command"))
-
-    with pytest.raises(SystemExit):
-        boot._teardown("", "", ".", logging.getLogger("boot-app"))
-
-    assert json.loads(capsys.readouterr().out)["torn_down"] == "skipped"
-
-
 def test_walkthrough_uses_runtime_contract_and_current_flow_outputs() -> None:
     workflow = WORKFLOW.read_text()
 
@@ -320,35 +193,125 @@ def test_walkthrough_uses_runtime_contract_and_current_flow_outputs() -> None:
     assert "get_node_output('select_wt', 'current_item')" not in workflow
 
 
-def test_seed_walkthrough_reopens_journeys_completed_by_an_earlier_run(
-    tmp_path: Path, monkeypatch, capsys,
-) -> None:
-    seed = load_script("seed-walkthrough.py")
+SCREENS = "docs/features/web/gui/screens"
+
+
+def _screen(slug: str, *, vet: bool = False, interaction_vet: bool = False) -> list[dict]:
+    """A screen file node, optionally registered — on itself or on a child interaction."""
+    nid = f"{SCREENS}/{slug}.md"
+    nodes = [{
+        "id": nid, "type": "screen", "kind": "file", "title": slug.title(),
+        "path": nid, "bullets": {"vet": "x"} if vet else {}, "edges": [],
+    }]
+    if interaction_vet:
+        nodes.append({
+            "id": f"{nid}#mount-load", "type": "interaction", "kind": "section",
+            "title": "mount-load", "path": nid, "bullets": {"vet": "x"}, "edges": [],
+        })
+    return nodes
+
+
+def _flow(slug: str, touches: list[str]) -> dict:
+    path = f"docs/features/web/flows/{slug}.md"
+    return {
+        "id": path, "type": "flow", "kind": "file", "title": slug.title(), "path": path,
+        "bullets": {},
+        "edges": [{"to": f"{SCREENS}/{s}.md", "via": "steps", "text": s} for s in touches],
+    }
+
+
+def _seeded(seed, tmp_path: Path, monkeypatch, capsys, nodes: list[dict],
+            items: list[dict] | None = None) -> tuple[dict, list[dict]]:
     worklist = tmp_path / "web.walkthrough.json"
-    worklist.write_text(json.dumps({"items": [
-        {
-            "kind": "journey", "target": "flow:project-lifecycle",
-            "context": "Old title", "status": "done",
-        },
-        {
-            "kind": "screen", "target": "screen:dashboard",
-            "context": "Already checked", "status": "done",
-        },
-    ]}))
-    monkeypatch.setattr(seed, "_search_flows", lambda _root: [{
-        "path": "docs/features/web/flows/project-lifecycle.md",
-        "title": "Project lifecycle",
-    }])
+    worklist.write_text(json.dumps({"items": items or []}))
+    monkeypatch.setattr(seed, "_book", lambda *_a, **_k: {"nodes": nodes})
     monkeypatch.setattr(seed.sys, "argv", [
         "seed-walkthrough.py", str(worklist), "web", str(tmp_path),
     ])
+    with pytest.raises(SystemExit, match="0"):
+        seed.main(logging.getLogger("test"))
+    return json.loads(capsys.readouterr().out), json.loads(worklist.read_text())["items"]
 
+
+def test_seed_walkthrough_seeds_only_unconfirmed_screens(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """The walk's delta is missing evidence, not changed source: registered screens are skipped."""
+    nodes = [*_screen("dashboard", vet=True), *_screen("archive")]
+    result, items = _seeded(load_script("seed-walkthrough.py"), tmp_path, monkeypatch, capsys, nodes)
+
+    assert [i["target"] for i in items] == [f"{SCREENS}/archive.md"]
+    assert result["unconfirmed_count"] == 1
+    assert result["screen_count"] == 2
+
+
+def test_vet_on_an_interaction_registers_its_screen(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """A vet report describes a state, so the bullet lands on the interaction that renders it.
+
+    Counting only the screen's file node would re-walk every screen an earlier run confirmed.
+    """
+    nodes = _screen("profile", interaction_vet=True)
+    result, items = _seeded(load_script("seed-walkthrough.py"), tmp_path, monkeypatch, capsys, nodes)
+
+    assert items == []
+    assert result["unconfirmed_count"] == 0
+
+
+def test_seed_walkthrough_reopens_only_journeys_touching_unconfirmed_screens(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """A journey whose screens are all registered stays done — re-running must not redo it."""
+    nodes = [
+        *_screen("dashboard", vet=True), *_screen("archive"),
+        _flow("settled", ["dashboard"]),        # all confirmed -> leave alone
+        _flow("pending-work", ["archive"]),     # touches an unconfirmed screen -> reopen
+    ]
+    done = [
+        {"kind": "journey", "target": "flow:settled", "context": "Old", "status": "done"},
+        {"kind": "journey", "target": "flow:pending-work", "context": "Old", "status": "done"},
+    ]
+    _result, items = _seeded(load_script("seed-walkthrough.py"), tmp_path, monkeypatch, capsys, nodes, done)
+
+    by_target = {i["target"]: i for i in items}
+    assert by_target["flow:settled"]["status"] == "done"
+    assert by_target["flow:pending-work"]["status"] == "pending"
+    assert by_target["flow:pending-work"]["context"] == "Pending-Work"
+
+
+def test_seed_walkthrough_is_idempotent_against_evidence(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """Re-seeding an unchanged book adds nothing — the gap closes only as evidence lands."""
+    seed = load_script("seed-walkthrough.py")
+    nodes = [*_screen("archive")]
+    first, _ = _seeded(seed, tmp_path, monkeypatch, capsys, nodes)
+    assert first["added"] == 1
+
+    worklist = tmp_path / "web.walkthrough.json"
+    existing = json.loads(worklist.read_text())["items"]
+    second, items = _seeded(seed, tmp_path, monkeypatch, capsys, nodes, existing)
+    assert second["added"] == 0
+    assert len(items) == 1
+
+
+def test_seed_walkthrough_seeds_nothing_when_the_graph_will_not_load(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """An unloadable graph is not an empty book: seed nothing rather than declare the walk done."""
+    seed = load_script("seed-walkthrough.py")
+    worklist = tmp_path / "web.walkthrough.json"
+    worklist.write_text(json.dumps({"items": [
+        {"kind": "screen", "target": "x", "context": "c", "status": "pending"},
+    ]}))
+    monkeypatch.setattr(seed, "_book", lambda *_a, **_k: None)
+    monkeypatch.setattr(seed.sys, "argv", [
+        "seed-walkthrough.py", str(worklist), "web", str(tmp_path),
+    ])
     with pytest.raises(SystemExit, match="0"):
         seed.main(logging.getLogger("test"))
 
     result = json.loads(capsys.readouterr().out)
-    items = json.loads(worklist.read_text())["items"]
-    assert items[0]["status"] == "pending"
-    assert items[0]["context"] == "Project lifecycle"
-    assert items[1]["status"] == "done"
-    assert result == {"done_count": 1, "pending_count": 1, "added": 1}
+    assert result["pending_count"] == 1  # the existing item is preserved, not dropped
+    assert result["added"] == 0

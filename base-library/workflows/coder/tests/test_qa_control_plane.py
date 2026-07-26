@@ -27,8 +27,17 @@ def test_primary_qa_topology_and_grounding_order() -> None:
     assert nodes["decide_qa_plan_validation"].cases["passed"] == "review_qa_plan"
     assert nodes["decide_qa_plan_validation"].cases["invalid"] == "guard_qa_plan"
     assert nodes["review_qa_plan"].next == "decide_qa_plan_review"
-    assert nodes["decide_qa_plan_review"].cases["approved"] == "run_qa_plan"
+    # An approved plan brings the QA stack up durably (workflow-owned, outside any
+    # agent turn) before it runs; skip/no manifest still reaches run_qa_plan.
+    assert nodes["decide_qa_plan_review"].cases["approved"] == "ensure_stack"
     assert nodes["decide_qa_plan_review"].cases["revise"] == "guard_qa_plan"
+    assert nodes["ensure_stack"].next == "decide_stack_ready"
+    assert nodes["decide_stack_ready"].cases["yes"] == "run_qa_plan"
+    assert nodes["decide_stack_ready"].cases["skip"] == "run_qa_plan"
+    assert nodes["decide_stack_ready"].cases["no"] == "guard_setup"
+    # A repaired stack manifest is re-brought-up (not straight to QA) after setup_fix.
+    assert nodes["decide_setup"].cases["ready"] == "ensure_stack"
+    assert nodes["decide_setup"].cases["unfixable"] == "gate_qa"
     assert nodes["run_qa_plan"].next == "assess_qa_run"
     assert nodes["decide_qa_assessment"].cases["confirmed"] == "decide_qa_assessment_runner_status"
     assert nodes["decide_qa_assessment"].cases["repair_plan"] == "guard_qa_plan"

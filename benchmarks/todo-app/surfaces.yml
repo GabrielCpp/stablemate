@@ -25,6 +25,17 @@ repo:
   # profile to `full`, arming the epic-coverage checks) and docs/backlog.md.
   docs_scaffold: shared-docs:docs
 
+  # Packs the WORKFLOWS need, as opposed to the ones a surface's stack needs. Installed with
+  # every surface so they are present regardless of which one runs first.
+  #
+  # Missing these is what made author escalate: its prompts resolve planning skills through
+  # `instruction_ref('write-epics-and-stories')` and `instruction_ref('story-docs')`, both
+  # supplied by product-planning. With the pack absent the refs resolved to nothing, the
+  # epic-split gate failed, and `resolve_epics` — the auto-resolver that stands in for a human
+  # at an operator gate — had to read the source skills directly to recover. Under
+  # `operator_mode: human` that run would have stopped and asked.
+  packs: product-planning
+
 surfaces:
   - service: api
     service_root: api

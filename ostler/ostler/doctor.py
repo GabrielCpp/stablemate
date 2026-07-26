@@ -60,6 +60,12 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     _check_surfaces(graph, f)
     _check_ui(graph, f)
+    # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
+    # rebuild costs more than every other check in this function put together.
+    ui_data = _ui_graph(graph)
+    if ui_data is not None:
+        _check_reachability(ui_data, f)
+        _check_locators(ui_data, f)
     if check_schema:
         _check_conformance(graph, f)
 
@@ -362,6 +368,110 @@ def _code_values(value) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)] if value else []
+
+
+def _ui_graph(graph: Graph) -> dict | None:
+    """The resolved node/edge dump, or None when it will not build.
+
+    A graph that cannot be assembled is already reported by the checks above, so the UI-profile
+    checks stay silent rather than reporting the same breakage in a second vocabulary.
+    """
+    from ostler import graph as graph_mod
+    try:
+        return graph_mod.build(graph)
+    except (OSError, ValueError, RuntimeError, KeyError):
+        return None
+
+
+def _check_reachability(data: dict, f: list[Finding]) -> None:
+    """Every screen must be reachable by clicking from a declared entry point.
+
+    An unreachable screen is a hole in the book, not a quirk of the app: if no documented path
+    leads there, a reader cannot get there and neither can a walk. The remedy is a ``leads-to:``
+    on whatever component navigates there — or an ``entry:`` bullet, when the screen really is
+    entered from outside (an emailed deep link, an OAuth callback, the app root).
+
+    Run per surface, because entry points are surface-scoped: a screen in ``web`` is not made
+    reachable by a root declared in ``legacy``.
+    """
+    from ostler import graph as graph_mod, reach
+
+    surfaces = {n["surface"] for n in data["nodes"] if n["type"] == "screen"}
+    for surface in sorted(s for s in surfaces if s):
+        scoped = graph_mod.subset(data, surface)
+        screens = reach.screens_of(scoped)
+        if not screens:
+            continue
+        unreachable, entries = reach.unreachable_screens(scoped)
+        if not entries:
+            # No root means the question is unanswerable, which is not the same as a pass. Warn
+            # rather than error: a book with no `entry:` anywhere predates the convention, and
+            # flooding it with one error per screen would bury the one fact that matters.
+            f.append(Finding("warn", "no-entry-point",
+                             f"{surface}: no screen declares `entry:` — reachability cannot be "
+                             f"checked for this surface",
+                             ref=surface, suggestion="- entry: <how this screen is entered>"))
+            continue
+        for screen in unreachable:
+            node = next((n for n in scoped["nodes"] if n["id"] == screen), None)
+            f.append(Finding("error", "unreachable-screen",
+                             f"{screen}: no documented path reaches this screen from "
+                             f"{'/'.join(sorted(entries)[:1])} — add a `leads-to:` on the "
+                             f"component that navigates here, or `entry:` if it is entered "
+                             f"from outside the app",
+                             path=screen, line=node["line"] if node else 0, ref=screen,
+                             suggestion="- leads-to: [<this screen>](<path>)"))
+
+
+def _check_locators(data: dict, f: list[Finding]) -> None:
+    """Every documented control must map to exactly one Playwright locator.
+
+    ``role:``/``name:`` being required gets the forward half for free — every component yields a
+    locator. The reverse half needs checking: two controls on one screen sharing a role and an
+    accessible name yield a locator that matches both, which Playwright rejects at runtime as a
+    strict-mode violation. Caught here, it is a doc defect with an obvious remedy; caught in CI it
+    is an intermittent test failure nobody traces back to the book.
+
+    ``unnamed-interactive`` is the accessibility half of the same fact. A button with no accessible
+    name is one a screen reader announces as "button" and a test cannot address at all — the same
+    omission, failing two audiences.
+    """
+    from ostler import locators as loc_mod
+
+    by_id = {n["id"]: n for n in data["nodes"]}
+
+    def _at(node_id: str) -> dict:
+        node = by_id.get(node_id, {})
+        return {"path": node_id.split("#")[0], "line": node.get("line", 0)}
+
+    for collision in loc_mod.collisions(data):
+        named = f" name={collision['name']!r}" if collision["name"] else " with no name"
+        for node_id in collision["nodes"]:
+            f.append(Finding(
+                "error", "ambiguous-locator",
+                f"{node_id}: role={collision['role']}{named} also matches "
+                + ", ".join(o.split("#")[-1] for o in collision["nodes"] if o != node_id)
+                + " on the same screen — `getByRole` cannot tell them apart",
+                ref=node_id,
+                suggestion="give each control a distinct accessible `name:`",
+                **_at(node_id)))
+
+    for bad in loc_mod.invalid_roles(data):
+        f.append(Finding(
+            "error", "invalid-role",
+            f"{bad['node']}: `role: {bad['role']}` is not an ARIA role — `getByRole` would match "
+            f"nothing; state the bare computed role, and put any caveat in prose",
+            ref=bad["node"], suggestion="- role: <one bare ARIA role, or `none`>",
+            **_at(bad["node"])))
+
+    for unnamed in loc_mod.unnamed_interactives(data):
+        f.append(Finding(
+            "error", "unnamed-interactive",
+            f"{unnamed['node']}: role={unnamed['role']} is operable but has no accessible "
+            f"`name:` — unannounceable to assistive tech and unaddressable by `getByRole`",
+            ref=unnamed["node"],
+            suggestion="- name: <the control's visible label or aria-label>",
+            **_at(unnamed["node"])))
 
 
 def _check_ui(graph: Graph, f: list[Finding]) -> None:

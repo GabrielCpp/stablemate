@@ -97,9 +97,14 @@ class Ostler:
         """The next epic with unfinished work, or ``None`` (``ostler next-epic``)."""
         return select.next_epic(self.graph)
 
-    def next_story(self, epic: str) -> dict | None:
-        """The next runnable story in ``epic``, or ``None`` (``ostler next-story``)."""
-        return select.next_story(self.graph, epic)
+    def next_story(self, epic: str,
+                   skip: frozenset[str] | set[str] | None = None) -> dict | None:
+        """The next runnable story in ``epic``, or ``None`` (``ostler next-story``).
+
+        ``skip`` — slugs given up this run — are excluded without counting as done, so one
+        story failing QA does not strand the rest of the epic. See ``select.next_story``.
+        """
+        return select.next_story(self.graph, epic, skip=skip)
 
     def todo(self) -> list[str]:
         """The epics queue, front-first (``ostler todo list``)."""

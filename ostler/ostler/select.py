@@ -39,20 +39,33 @@ def next_epic(graph: Graph) -> dict | None:
     return None
 
 
-def _runnable(epic: Epic, story: Story, done: set[str]) -> bool:
-    if is_done(story.status):
+def _runnable(epic: Epic, story: Story, done: set[str], skip: frozenset[str]) -> bool:
+    if is_done(story.status) or story.slug in skip:
         return False
     return all(dep in done for dep in story.dependencies)
 
 
-def next_story(graph: Graph, epic_name: str) -> dict | None:
+def next_story(graph: Graph, epic_name: str,
+               skip: frozenset[str] | set[str] | None = None) -> dict | None:
+    """The next runnable story in ``epic_name`` — not done, not skipped, all deps done.
+
+    ``skip`` is a set of story slugs to treat as ineligible without treating them as *done*:
+    a story the caller has given up on this run. Excluding it is essential — otherwise, since
+    a given-up story is not "done", it stays first-runnable forever and the selector keeps
+    returning it. The caller then rejects it and, finding nothing else, prunes the whole epic
+    while other independent stories sit "Not started". (Observed: an epic merged with 20 of 21
+    stories unbuilt after one story gave up on QA.) A skipped story is NOT added to ``done``,
+    so its dependents stay blocked — you don't build on unverified work — but every story that
+    does not depend on it remains selectable.
+    """
     epic = _epic_by_name(graph, epic_name)
     if epic is None:
         return None
+    skip = frozenset(skip or ())
     done = {s.slug for s in epic.stories if is_done(s.status)}
     # dependency order: a story is eligible once its deps are done; iterate to a fixpoint pick
     for story in epic.stories:
-        if _runnable(epic, story, done):
+        if _runnable(epic, story, done, skip):
             return {"slug": story.slug, "epic": epic.name, "title": story.title,
                     "status": story.status, "path": story.path,
                     "covers": story.seed_items, "dependsOn": story.dependencies}

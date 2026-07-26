@@ -127,3 +127,69 @@ def test_absent_auto_detected_manifest_returns_empty(monkeypatch, tmp_path):
     # No --context-file and no repo manifest → empty (manifest-free workflows run).
     monkeypatch.setenv("AGENT_REPO_DIR", str(tmp_path))
     assert wm._load_context_manifest(None) == {}
+
+
+# ── namespaced skills ─────────────────────────────────────────────────────────
+# A prompt asks for a capability ("story-docs"); a pack is free to namespace the skill that
+# provides it ("process/process-story-docs", installed as "process-story-docs"). Exact-only
+# lookup made those miss each other, and the miss was silent — the placeholder rendered into
+# the prompt as prose, handing the agent "generated story-docs instruction file when
+# installed" where a path belonged. Live consequence: the author workflow's epic-split gate
+# failed and escalated to its auto-resolver.
+
+NAMESPACED = {
+    **MANIFEST,
+    "instructions": {
+        "go": ".claude/skills/demo-go/SKILL.md",
+        # Farrier indexes one skill under several aliases — bare and repo-prefixed.
+        "process-story-docs": ".claude/skills/demo-process-story-docs/SKILL.md",
+        "demo-process-story-docs": ".claude/skills/demo-process-story-docs/SKILL.md",
+        "process/process-story-docs": ".claude/skills/demo-process-story-docs/SKILL.md",
+    },
+}
+
+
+def _ns_ctx():
+    return wm._build_manifest_context(NAMESPACED)
+
+
+def test_instruction_ref_resolves_through_a_pack_namespace():
+    out = render_string("{{ instruction_ref('story-docs') }}", _ns_ctx())
+    assert out == ".claude/skills/demo-process-story-docs/SKILL.md"
+
+
+def test_aliases_of_one_skill_are_not_treated_as_ambiguous():
+    """Uniqueness is judged on the resolved path, not the key. Counting keys would make every
+    namespaced skill look ambiguous with itself (bare vs repo-prefixed alias) and resolve to
+    nothing — which is how this first appeared to be unfixable."""
+    ctx = _ns_ctx()
+    assert len([k for k in NAMESPACED["instructions"] if k.endswith("-story-docs")]) > 1
+    assert render_string("{{ instruction_ref('story-docs') }}", ctx).endswith("SKILL.md")
+
+
+def test_genuinely_ambiguous_suffix_does_not_guess():
+    """Two different skills both ending in the requested name is a real ambiguity. Silently
+    picking one is a worse failure than not resolving, so it falls back to the placeholder."""
+    ambiguous = {
+        **MANIFEST,
+        "instructions": {
+            "alpha-story-docs": ".claude/skills/demo-alpha-story-docs/SKILL.md",
+            "beta-story-docs": ".claude/skills/demo-beta-story-docs/SKILL.md",
+        },
+    }
+    out = render_string("{{ instruction_ref('story-docs') }}",
+                        wm._build_manifest_context(ambiguous))
+    assert "generated story-docs instruction file when installed" in out
+
+
+def test_exact_match_still_wins_over_a_suffix_match():
+    exact = {
+        **MANIFEST,
+        "instructions": {
+            "story-docs": ".claude/skills/demo-story-docs/SKILL.md",
+            "process-story-docs": ".claude/skills/demo-process-story-docs/SKILL.md",
+        },
+    }
+    out = render_string("{{ instruction_ref('story-docs') }}",
+                        wm._build_manifest_context(exact))
+    assert out == ".claude/skills/demo-story-docs/SKILL.md"

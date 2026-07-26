@@ -320,3 +320,51 @@ def test_context_validation_accepts_version_one_packet_without_verification_inde
     }
 
     assert validate_context(packet) == []
+
+
+def test_build_and_config_files_are_not_production_units(tmp_path: Path):
+    """Build, dependency-manifest, and tooling-config files carry no user-observable behaviour
+    and no feature Concept owns them — correctly. Left classified as production they fail the
+    documentation gate as "unmapped production units", which is exactly what blocked the first
+    greenfield coder story: its diff legitimately touched go.mod/go.sum/a Makefile/Pulumi
+    config alongside the real Go. Real code stays production; only the scaffolding is excluded."""
+    from ostler.qa.context import _is_non_production_path as np
+
+    for path in (
+        "Makefile", "infra/Makefile", "infra/.gitignore", "infra/go.mod", "infra/go.sum",
+        "infra/Pulumi.yaml", "infra/Pulumi.dev.yaml", "web/package.json", "web/tsconfig.json",
+        "web/vite.config.ts", "app/pubspec.yaml", "app/pubspec.lock", "app/analysis_options.yaml",
+    ):
+        assert np(path), f"{path} should be non-production (build/config)"
+
+    for path in (
+        "infra/main.go", "api/handler.go", "api/internal/store/store.go",
+        "web/app/routes/todos.tsx", "app/lib/main.dart",
+    ):
+        assert not np(path), f"{path} is real code and must stay production"
+
+
+def test_context_ignores_build_files_alongside_real_change(tmp_path: Path):
+    """The end-to-end shape of the greenfield-coder failure: a story that touches production
+    code AND its build manifest must not be failed on the manifest."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/item.md").write_text(
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n", encoding="utf-8")
+    (tmp_path / "svc").mkdir()
+    code = tmp_path / "svc/service.py"
+    code.write_text("VALUE = 1\n", encoding="utf-8")
+    (tmp_path / "svc/go.mod").write_text("module x\n", encoding="utf-8")
+    (tmp_path / "svc/Makefile").write_text("build:\n\techo x\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    # Change the manifest and the Makefile — but NOT the code.
+    (tmp_path / "svc/go.mod").write_text("module x\n\nrequire y v1.2.3\n", encoding="utf-8")
+    (tmp_path / "svc/Makefile").write_text("build:\n\techo changed\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"svc": ["svc"]})
+    unmapped = [f for f in packet.get("healthFindings", []) if f["kind"] == "unmapped-change"]
+    assert unmapped == [], f"build/config files must not be unmapped production units: {unmapped}"

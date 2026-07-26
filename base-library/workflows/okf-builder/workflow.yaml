@@ -165,7 +165,8 @@ nodes:
       - key: checkpoint_clean
       - key: doctor_output
       - key: round
-      - key: fixup_items
+      - key: fixup_items # one repair item per offending node, not one blob per round
+      - key: backfill_count # of those, how many need a value derived from source
     next: budget_exhausted
 
   # The heart: document ONE item to the spec-complete bar and return the deeper items it
@@ -217,7 +218,8 @@ nodes:
       - key: checkpoint_clean
       - key: doctor_output
       - key: round
-      - key: fixup_items
+      - key: fixup_items # one repair item per offending node, not one blob per round
+      - key: backfill_count # of those, how many need a value derived from source
     next: decide_checkpoint
 
   - id: decide_checkpoint
@@ -502,6 +504,8 @@ flows:
           - key: done_count
           - key: pending_count
           - key: added
+          - key: unconfirmed_count # screens carrying no `vet:` evidence — the walk's delta
+          - key: screen_count
         next: select_wt
 
       # ── Walk drain loop (journeys are the unit) ─────────────────────────────────────

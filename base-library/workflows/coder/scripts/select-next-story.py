@@ -49,10 +49,17 @@ def emit(**kwargs: str) -> NoReturn:
     sys.exit(0)
 
 
-def _next_story(okf: Ostler, epic: str) -> dict | None | str:
-    """Return the next-story dict, None when none remain, or "" on a tooling failure."""
+def _next_story(okf: Ostler, epic: str, skip: set[str]) -> dict | None | str:
+    """Return the next-story dict, None when none remain, or "" on a tooling failure.
+
+    ``skip`` (slugs given up this run) is passed into ostler so a given-up story is not
+    re-offered — without it, that story stays first-runnable forever and the epic prunes
+    with other stories unbuilt. This is skip-aware selection at the source, replacing the
+    old ``dependencies.json`` fallback that could no longer run (that file folded into
+    ``epic.md``).
+    """
     try:
-        return okf.next_story(epic)
+        return okf.next_story(epic, skip=skip)
     except (OSError, ValueError, RuntimeError):
         return ""
 
@@ -154,10 +161,9 @@ def main(logger: logging.Logger) -> None:
     okf = Ostler(root)
     skip = _load_skip_set(root, run_dir_arg)
 
-    nxt = _next_story(okf, _EPIC)
-    # If ostler handed back a story we already gave up THIS run (its status marking
-    # didn't take), don't re-select it — force the skip-aware json selection to look
-    # for the next eligible story instead of re-grinding this one.
+    nxt = _next_story(okf, _EPIC, skip)
+    # Selection is now skip-aware at the ostler level, so a given-up story is never handed
+    # back here. This guard only fires if that contract regresses.
     forced_by_skip = isinstance(nxt, dict) and str(nxt.get("slug", "")) in skip
     if forced_by_skip:
         nxt = ""

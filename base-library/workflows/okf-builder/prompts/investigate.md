@@ -120,12 +120,95 @@ missing rather than re-reading the whole tree.
     assertion/test-id). Mark **every step you author `provenance: derived`** — the live walkthrough
     promotes them to `verified` later. Order the steps so a reader can stand the system up from the
     doc alone. Emit any surface/concept the runbook references but that isn't documented yet.
+- **harness** — document **one test tier**: how it is run, where its specs live, and how a
+  contributor adds one. A `verify:` bullet elsewhere in the book names a test; this is the node that
+  says what running it takes, so `verify:` points into something executable instead of a bare string.
+  Author it as a `runbook` under `docs/features/<svc>/ops/` (`ostler scaffold runbook <tier>
+  --service <svc>`) with `driver:` set to what the tier actually drives — `web` for a browser e2e
+  suite, `cli` for a unit/lint runner — plus an `environment:` link when it needs a booted stack.
+  Its ordered `## Steps` are the tier's real lifecycle: `prepare` (install deps, install browsers),
+  `service` (boot what the suite talks to, with a **real** `health:` probe — not a UI shell served
+  with the backend down), `run` (the exact command, with `working-directory:` when it is not the
+  repo root), and `verify` (how a pass is recognized: exit code, report artifact, CI job name).
+  Beyond the steps, the doc's prose must answer the questions a contributor actually has:
+  - **Where specs live and what they are named** — the glob, so a reader knows where a new file goes.
+  - **How to run one test, not the whole tier** — the filter flag (`-k`, `--grep`, `-run`). A tier a
+    contributor can only run in full is one they will stop running.
+  - **How to add a test for a new control** — for a UI tier, say that locators come from the book
+    (`ostler locators <screen> --json`) rather than being hand-written against the DOM, so a spec
+    and the doc it verifies cannot drift apart silently.
+  - **What CI gates** — the job name and whether it blocks merge. A tier CI does not run is
+    documentation of an intention, and should say so plainly rather than imply enforcement.
+  Mark every step `provenance: derived`; the live walkthrough promotes them. If a tier's config
+  exists but has no spec files, document it and **say the suite is empty** — an empty suite that
+  looks configured is precisely the gap worth recording. Emit nothing.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
   precondition → ordered steps → outcome) and write the `flow` node with linked `steps:`. Emit
   nothing (or a missing element you noticed).
-- **fixup** — the `context` holds `ostler doctor` output. Fix **each** finding by its mechanical
-  remedy (`fmt` for casing/order; `scaffold`/add the heading|key for missing sections/bullets; fix
-  the target for dangling links). Emit nothing.
+- **fixup** — the `context` holds this node's `ostler doctor` findings. Fix **each** by its mechanical
+  remedy (`fmt` for casing/order; `scaffold`/add the heading for a missing section; fix the target
+  for dangling links). Emit nothing.
+- **backfill** — the `context` holds one document's grounded findings (a `missing-required-bullet`
+  the doc predates, an `invalid-role`, an `unnamed-interactive`, an `ambiguous-locator`, an
+  `unreachable-screen`), sorted by line. Unlike a `fixup`, **the finding does not tell you the value** —
+  you must derive it from the source and cite what you read.
+  - **Read the source once, then fix every finding it explains.** The findings in one item
+    share a document and usually a cause — the same route module, the same component file —
+    so work top-down through the list rather than treating each as a fresh investigation.
+    Every finding in the item is yours to resolve this turn.
+  - Open the node's `code:` target and read it. Write each missing bullet from what the code
+    actually does: for a `screen`, `route:` from its route definition, `requires:` from the guard
+    wrappers that enclose it, `params:` binding each `:token` in the route to the interaction that
+    mints that entity (link it — that is what makes the dependency reachable).
+  - For a `component`/`interaction`, `role:` and `name:` come from the **rendered accessibility
+    contract**, not from the tag: read the JSX/template for an explicit `role=`, then `aria-label` /
+    `aria-labelledby` / the visible text that would become the accessible name. An element with an
+    explicit `role=` overriding its tag is the case that matters most and the easiest to miss.
+    `keyboard:` comes from the key handlers and `tabIndex` you can see; write `none` when the
+    control is genuinely pointer-only.
+  - **`role:` is one bare ARIA token and nothing else** — `link`, not `` `link` — renders an `<a>``
+    via ListItemButton`` and not `` `progressbar` (implicit MUI role)``. The value is fed straight
+    into `getByRole`, so a justification appended to it produces a locator matching nothing. The
+    same applies to `name:` — the bullet holds the accessible name itself; how you determined it
+    goes in prose.
+  - **Move the justification into prose — do not delete it.** Trimming `role: n/a — non-visual
+    wrapper, never renders its own DOM` down to `role: none` satisfies the linter and destroys the
+    only sentence explaining *why*, which is the part a reader cannot re-derive from the bullets.
+    Cut the value down to the bare token **and** add the explanation to the node's prose in the same
+    edit. A repair that loses knowledge is a worse outcome than the finding it closed.
+  - Write the bare word `none` for an empty value. `n/a`, `-` and similar are understood, but the
+    book should converge on one spelling.
+  - `ambiguous-locator` means two controls on one screen carry the same `role:` and `name:`. Read
+    both in the source and settle which of three cases it is:
+    - **One is mislabelled** → correct the wrong `role:`/`name:` to what the source actually renders.
+    - **They can never be in the DOM together** (mutually-exclusive states — one error slot cleared
+      before the other is set; alternative variants of one shell chosen by a switch) → add
+      `exclusive-with: [the sibling](#its-anchor)` to one of them. This is a *claim* about runtime,
+      grounded in the code that makes them exclusive — cite it in prose. It is not a way to quiet a
+      collision you did not investigate.
+    - **They genuinely co-render with the same name** (a trigger button and the confirm button of
+      the dialog it opens; two Save buttons both visible for one user) → that is a real
+      accessibility defect. **Leave the finding standing** and record what you saw in prose;
+      **do not invent a distinguishing label** the UI does not have, and do **not** write
+      `exclusive-with` — they are not exclusive.
+  - `unnamed-interactive` means an operable control has no accessible name. Find its label in the
+    source. If there genuinely is none, the app has an unlabeled control — again, record it rather
+    than name it for the app.
+  - **`none` is a claim, not a default.** Write `- requires: none` only when you have read the route
+    module and seen that no guard wraps it; `- params: none` only when the route has no `:token`.
+    Say in the doc's prose what you checked. An unverified `none` is worse than the missing bullet:
+    the bullet reads as *unknown* and will be re-queued, while `none` reads as *verified
+    unconditional* and silently ends the inquiry — and every consumer downstream believes it.
+  - If the source does not settle it, **leave the bullet off** and say why in `doc_status`. A node
+    that stays red is a correct outcome; a node made green by a guess is not.
+  - Emit nothing.
+
+**Do not run a full `ostler doctor` to check your own work.** It lints the entire repository — tens
+of seconds on a large book — to answer a question about one node, and multiplied across a drain of
+hundreds of items that dwarfs the actual documenting. Run `ostler fmt <touched files>` and stop
+there. The checkpoint re-runs doctor once per round and **re-queues any finding you did not fix**,
+so a mistake costs you one more item next round, not a missed defect. If you want to confirm a
+specific bullet landed, re-read the file you just wrote.
 
 Every path link you write must resolve; put a node's key relations in its **opening prose** (a file
 node's graph links are its intro region). Never invent a `verify:` — omit if no test exists.

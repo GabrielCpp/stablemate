@@ -1,8 +1,10 @@
 from __future__ import annotations
+import errno
 import json
 import os
 import re
 import select
+import shutil
 import signal
 import subprocess
 import threading
@@ -169,6 +171,87 @@ def _arm_watchdog(
     return timer
 
 
+# The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native binary
+# and self-updates by default (autoUpdates), and a manual `npm i -g` / package refresh
+# does the same. While that in-place rewrite is in flight, exec of the very same path
+# fails for a sub-second window: ETXTBSY ("text file busy", a native binary overwritten
+# while running) or ENOENT during the updater's rename. That is NOT a missing tool — the
+# shim still resolves on PATH — so a few short retries ride the update out instead of
+# crashing an otherwise-healthy turn. It is deliberately distinguished from a genuinely
+# absent CLI (a non-interactive PATH with no nvm shim, the classic launch-context bug):
+# there ENOENT persists and shutil.which() returns None, so we fail FAST rather than burn
+# the retry budget on a binary that will never appear.
+_EXEC_RETRY_MAX = int(os.environ.get("AGENT_EXEC_RETRY_MAX", "5"))
+_EXEC_RETRY_BASE_S = float(os.environ.get("AGENT_EXEC_RETRY_BASE_S", "1"))
+_EXEC_RETRY_CAP_S = float(os.environ.get("AGENT_EXEC_RETRY_CAP_S", "8"))
+# errnos that mean "the executable is momentarily un-exec'able", not "absent":
+# ETXTBSY = native binary being overwritten; ESTALE = NFS handle gone stale (flaky home
+# mount). ENOENT is conditional — transient only while the shim still resolves (see below).
+_EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ESTALE})
+
+
+def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subprocess.Popen:
+    """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window.
+
+    A transient exec failure (the CLI binary being rewritten in place by its own
+    auto-updater) is retried briefly so a healthy turn is not interrupted; a
+    permanently-missing CLI fails fast with an actionable ``BackendInvocationError``.
+    Both terminal cases raise ``BackendInvocationError`` (never a bare ``OSError``) so
+    they flow through the caller's existing ladder rather than crashing the run: a slow
+    update escalates as ``transient=True`` (the outer backoff gives it more time); an
+    absent CLI is ``transient=False`` (fail fast, resumable).
+    """
+    attempt = 0
+    while True:
+        try:
+            return subprocess.Popen(cmd, **popen_kwargs)
+        except OSError as exc:
+            # ETXTBSY/ESTALE mean the binary is momentarily busy/stale. ENOENT is
+            # AMBIGUOUS at a single instant: a self-updater's rename makes the binary
+            # briefly *absent*, and shutil.which() is exactly as blind as exec() during
+            # that window — so one probe cannot tell "mid-update" from "never installed".
+            # We therefore resolve ENOENT in TIME, not by probing once: retry it briefly.
+            # A self-update reappears within a second or two; a genuinely absent CLI never
+            # does, and only then (after the retries) do we fail. Other OSErrors — e.g.
+            # EACCES (permission) — are permanent, so they go terminal immediately.
+            retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
+            attempt += 1
+            if retryable and attempt <= _EXEC_RETRY_MAX:
+                delay = min(_EXEC_RETRY_BASE_S * (2 ** (attempt - 1)), _EXEC_RETRY_CAP_S)
+                code = errno.errorcode.get(exc.errno, str(exc.errno))
+                print(
+                    f"[{node_id}] ⏳ agent CLI '{cmd[0]}' unavailable ({code}) — likely "
+                    f"self-updating; retry {attempt}/{_EXEC_RETRY_MAX} in {int(delay)}s",
+                    flush=True,
+                )
+                otel.turn_event(
+                    "exec_retry", node=node_id, attempt=attempt, code=code, delay_s=int(delay)
+                )
+                time.sleep(delay)
+                continue
+            # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
+            # has had time to close. A CLI that resolves but still won't exec means the
+            # update outlasted our budget → hand to the outer transient ladder (more
+            # time). One that STILL does not resolve is genuinely absent (the classic
+            # non-interactive-PATH / missing-nvm launch bug) → fail fast, non-transient.
+            resolves = shutil.which(cmd[0]) is not None
+            if retryable and resolves:
+                raise BackendInvocationError(
+                    f"agent CLI '{cmd[0]}' still not exec'able after {_EXEC_RETRY_MAX} "
+                    f"retries ({exc}); likely a slow self-update",
+                    transient=True,
+                ) from exc
+            hint = (
+                " — a non-interactive shell does not load nvm; install the CLI on a "
+                "stable PATH or export it before launching workhorse"
+                if not resolves else ""
+            )
+            raise BackendInvocationError(
+                f"agent CLI '{cmd[0]}' could not be launched: {exc}{hint}.",
+                transient=False,
+            ) from exc
+
+
 def stream_subprocess(
     cmd: list[str],
     node_id: str,
@@ -193,8 +276,9 @@ def stream_subprocess(
     its own parsing/accumulation. Returns ``(timed_out, returncode)``.
     """
     env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
-    proc = subprocess.Popen(
+    proc = _spawn_streaming(
         cmd,
+        node_id,
         stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read

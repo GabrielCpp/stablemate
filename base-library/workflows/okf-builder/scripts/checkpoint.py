@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
 """okf-builder: the deterministic convergence gate, run when the drain is dry.
 
-Auto-canonicalizes (``ostler fmt`` write) then runs ``ostler doctor``. A dirty
-doctor is turned into a single ``fixup`` worklist item carrying the finding text,
-so the drain loop's investigator fixes it by its mechanical remedy and re-converges.
-Orphan / stub / coverage detection is left to the recheck agent (it needs to read
-code and walk ``ostler trace``); this script owns only the mechanical part.
+Auto-canonicalizes (``ostler fmt`` write) then runs ``ostler doctor``, turning a dirty doctor into
+worklist items the drain loop repairs before re-converging. Orphan / stub / coverage detection is
+left to the recheck agent (it needs to read code and walk ``ostler trace``); this script owns only
+the deterministic part.
+
+**One item per file, not one per run and not one per node.** An earlier version packed every
+finding into a single item whose context was the last 4000 characters of the findings JSON — so on
+a book with more than a dozen findings the rest were dropped silently, and the loop churned without
+ever seeing them. Truncation that looks like completion is the failure this gate exists to prevent.
+Splitting per *node* fixed that but overcorrected: a component file with a hundred findings became
+a hundred agent turns re-reading the same source. Per file, bounded by a chunk cap, keeps every
+finding while letting one turn repair everything one reading explains.
+
+**Two kinds, because two different repairs.** A dangling link or a mis-ordered bullet is mechanical:
+the finding names its own remedy. A *missing required bullet* is not — the profile evolves, and
+every book authored before a bullet became required is retroactively behind, with no way to derive
+the value from the finding text. Those are emitted as ``backfill``, whose prompt requires the value
+be grounded in source. Filed as ``fixup`` they would be "fixed" by writing an empty or ``none``
+stub, which satisfies the linter while asserting something nobody checked.
 
 Args: [repo_root] [features_root] [round]
-Outputs JSON: {"checkpoint_clean","doctor_output","round","fixup_items"}
+Outputs JSON: {"checkpoint_clean","doctor_output","round","fixup_items","backfill_count"}
 """
 from __future__ import annotations
 
@@ -19,9 +33,63 @@ import subprocess
 import sys
 
 
+# Findings whose remedy cannot be read off the finding: the value has to come from the source.
+# Everything else is mechanical and stays a `fixup`.
+GROUNDED_CODES = frozenset({
+    "missing-required-bullet",
+    "unreachable-screen",
+    # A collision is resolved by reading the two controls' real accessible names off the running
+    # app or the source — renaming one to silence the check invents a label the UI does not have.
+    "ambiguous-locator",
+    "unnamed-interactive",
+})
+
+
+# How many findings one repair item may carry. A doc's findings overwhelmingly share a cause — the
+# same component file, the same route module — so batching them is both cheaper and *better* work:
+# the agent reads the source once and fixes everything it explains. The cap exists because that
+# stops being true past a point, where a huge item invites a shallow pass over its tail.
+MAX_FINDINGS_PER_ITEM = 25
+
+
+def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
+    """One item per file (chunked), carrying that file's findings and nothing else.
+
+    Grouped by path, not by node. Per-node items make the drain re-derive the same context once per
+    node: a component file with a hundred findings became a hundred turns, each re-reading the same
+    route module to answer the same question. Per file, the agent opens it once — which is fewer
+    turns *and* a more coherent repair, because sibling controls are usually wrong the same way.
+
+    Findings stay sorted by line so an agent works top-down, and each chunk is bounded by
+    ``MAX_FINDINGS_PER_ITEM``. The round is in the target because a finding that survives its
+    repair must be re-queued next round rather than deduped away as already-seen.
+    """
+    groups: dict[str, list[dict]] = {}
+    for finding in findings:
+        groups.setdefault(str(finding.get("path", "")), []).append(finding)
+
+    items = []
+    for path, group in sorted(groups.items()):
+        group.sort(key=lambda f: (f.get("line", 0), f.get("code", "")))
+        chunks = [group[i:i + MAX_FINDINGS_PER_ITEM]
+                  for i in range(0, len(group), MAX_FINDINGS_PER_ITEM)]
+        for n, chunk in enumerate(chunks, start=1):
+            grounded = any(f.get("code") in GROUNDED_CODES for f in chunk)
+            # The suffix only appears when a file actually split, so the common target stays
+            # readable — and two chunks of one file remain distinct worklist entries.
+            suffix = f"#{n}" if len(chunks) > 1 else ""
+            items.append({
+                "kind": "backfill" if grounded else "fixup",
+                "target": f"r{rnd}:{path}{suffix}",
+                "context": json.dumps(chunk, indent=2),
+            })
+    return items
+
+
 def emit(**kw: object) -> None:
     payload: dict[str, object] = {
         "checkpoint_clean": "no", "doctor_output": "", "round": 0, "fixup_items": "[]",
+        "backfill_count": 0,
     }
     payload.update(kw)
     print(json.dumps(payload))
@@ -84,16 +152,18 @@ def main(logger: logging.Logger) -> None:
     clean = not findings
 
     fixups: list[dict[str, str]] = []
+    backfills = 0
     if clean:
         logger.info("round %d: doctor is clean for %s — the gate converges",
                     rnd, features or repo_root)
     else:
-        logger.info("round %d: doctor reports %d error(s) in %s — queuing one fixup item",
-                    rnd, len(findings), features or repo_root)
-        fixups = [{"kind": "fixup", "target": f"doctor-r{rnd}",
-                   "context": out[-4000:]}]
+        fixups = _repair_items(findings, rnd)
+        backfills = sum(1 for i in fixups if i["kind"] == "backfill")
+        logger.info("round %d: doctor reports %d error(s) across %d item(s) in %s — "
+                    "queuing %d backfill + %d fixup item(s)", rnd, len(findings), len(fixups),
+                    features or repo_root, backfills, len(fixups) - backfills)
     emit(checkpoint_clean="yes" if clean else "no", doctor_output=out[-4000:],
-         round=rnd, fixup_items=json.dumps(fixups))
+         round=rnd, fixup_items=json.dumps(fixups), backfill_count=backfills)
 
 
 if __name__ == "__main__":

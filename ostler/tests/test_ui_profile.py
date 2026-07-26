@@ -51,6 +51,9 @@ Groups every worker's working-tree diff per repo.
 
 ### changes-file-row
 - selector: `.tree-file`
+- role: treeitem
+- name: the file's repo-relative path
+- keyboard: `up`/`down` to move, `enter` to open
 - extends: [tree-node](../components/design-system.md#tree-node)
 - code: `groom/groom/render.py::_changes_worker`
 
@@ -61,6 +64,9 @@ A leaf of the per-worker file tree.
 ### click-file-opens-diff
 - on: [changes-file-row](#changes-file-row)
 - trigger: click
+- role: treeitem
+- name: the file's repo-relative path
+- keyboard: `enter`
 - when: `mode == changes`
 - does:
   - state: mark row `.active`, clear siblings
@@ -121,6 +127,8 @@ title: DS
 
 ### tree-node
 - selector: `.tree-file`
+- role: treeitem
+- name: none
 """
 
 
@@ -309,7 +317,8 @@ def test_section_nodes_in_a_feature_typed_library(repo: Path):
     # A shared component library is `type: feature` but still holds section-level components.
     write(repo / "docs/features/groom/gui/components/design-system.md",
           "---\ntype: feature\nslug: design-system\ntitle: DS\n---\n# DS\n\n"
-          "## Components\n\n### tree-node\n- selector: `.tree-file`\n- states: active, default\n")
+          "## Components\n\n### tree-node\n- selector: `.tree-file`\n- role: treeitem\n"
+          "- name: none\n- states: active, default\n")
     graph = load(repo)
     assert [c.anchor for c in graph.ui_nodes_of_type("component")] == ["tree-node"]
 
