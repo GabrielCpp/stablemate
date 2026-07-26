@@ -832,15 +832,18 @@ def _command_verdict(check: str, expected: Any, record: dict[str, Any]) -> tuple
     stdout = str(record.get("_stdout_actual", record.get("_stdout", "")))
     if check == "assert_contains":
         passed = str(expected) in stdout
-    elif check == "expect_http":
-        passed = record.get("http_status") == int(expected)
-    else:
-        try:
-            value = json.loads(stdout)
-            passed = isinstance(value, list) and len(value) == int(expected)
-        except (json.JSONDecodeError, ValueError):
-            passed = False
-    return passed, {"a": "PASS" if passed else "FAIL", "b": "PASS"}
+        return passed, {"a": str(expected) if passed else stdout, "b": str(expected)}
+    if check == "expect_http":
+        actual_status = record.get("http_status")
+        passed = actual_status == int(expected)
+        return passed, {"a": str(actual_status), "b": str(int(expected))}
+    try:
+        value = json.loads(stdout)
+        actual_count = len(value) if isinstance(value, list) else -1
+    except (json.JSONDecodeError, ValueError):
+        actual_count = -1
+    passed = actual_count == int(expected)
+    return passed, {"a": str(actual_count), "b": str(int(expected))}
 
 
 def _compile_maestro(target: dict[str, Any], scenario: dict[str, Any]) -> str:

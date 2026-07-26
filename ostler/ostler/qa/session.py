@@ -269,6 +269,7 @@ class QaSession:
             proc = subprocess.Popen(
                 cmd,
                 shell=True,  # noqa: S603 — agent-controlled command, explicit user intent
+                executable="/bin/bash",
                 stdout=lf,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -542,6 +543,7 @@ def _run_command(
     result = subprocess.run(
         cmd,
         shell=True,  # noqa: S603 — agent-authored command, explicit user intent
+        executable="/bin/bash",
         capture_output=True,
         timeout=timeout,
         cwd=cwd,

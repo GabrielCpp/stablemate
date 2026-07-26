@@ -64,6 +64,33 @@ def emit(status: str, notes: str) -> None:
     sys.exit(0)
 
 
+def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
+    """(passing, failing) assertion counts from the QA run log (``qa/qa-run.ndjson``).
+
+    The log is the ground truth the runner wrote: one ``{"kind": "assert", "result": ...}``
+    record per checked assertion. Used to admit an un-modeled infra/CLI story on its real
+    command proof when it has no OKF criteria/obligations — so a missing or empty log tallies
+    to (0, 0) and is correctly rejected rather than waved through.
+    """
+    log_path = spec_dir / "qa" / "qa-run.ndjson"
+    if not log_path.is_file():
+        return (0, 0)
+    passed = failed = 0
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("kind") != "assert":
+            continue
+        result = str(rec.get("result", "")).strip().upper()
+        if result == "PASS":
+            passed += 1
+        elif result == "FAIL":
+            failed += 1
+    return (passed, failed)
+
+
 def evidence_exists(ref: str, root: Path, spec_dir: Path) -> bool:
     """Resolve an evidence reference against the likely roots and confirm it is a real file."""
     if not ref or not str(ref).strip():
@@ -117,9 +144,39 @@ def main(logger: logging.Logger) -> None:
         emit("invalid", f"QA evidence gate: {EVIDENCE_FILE} is not valid JSON ({exc}).")
 
     criteria = data.get("criteria") if isinstance(data, dict) else None
-    if not isinstance(criteria, list) or not criteria:
-        logger.warning("%s has no `criteria` array", EVIDENCE_FILE)
-        emit("invalid", f"QA evidence gate: {EVIDENCE_FILE} has no `criteria` array.")
+    if not isinstance(criteria, list):
+        criteria = []
+    evidence_obls = data.get("obligations") if isinstance(data, dict) else None
+    if not isinstance(evidence_obls, list):
+        evidence_obls = []
+
+    # A story proves itself through `criteria` (UI acceptance checks) OR `obligations` (OKF
+    # contract/command checks). A surface the OKF graph does not model as a feature — an infra
+    # or CLI story whose changed code has no feature-node owner — produces neither: the diff→OKF
+    # mapper finds no obligations, so `_write_evidence` records empty arrays even for a genuine
+    # pass. Its real proof is the command assertions in the run log. Requiring OKF-structured
+    # proof there rejects a valid infra story for lacking evidence it categorically cannot have
+    # (observed: infra-datastore/infra-firebase-auth passed QA 12/12, then failed this gate).
+    #
+    # So: empty criteria AND empty obligations is acceptable ONLY when the run log shows real
+    # passing assertions and zero failures. That preserves the anti-vacuity property — an empty
+    # or failing log is still invalid — while letting an un-modeled surface commit on its actual
+    # command proof.
+    if not criteria and not evidence_obls:
+        passed, failed = _run_log_tally(spec_dir)
+        if passed == 0 or failed > 0:
+            logger.warning("%s has no criteria/obligations and no clean run-log proof", EVIDENCE_FILE)
+            emit(
+                "invalid",
+                f"QA evidence gate: {EVIDENCE_FILE} has neither `criteria` nor `obligations`, "
+                f"and the run log shows {passed} passing / {failed} failing assertion(s) — a claimed "
+                f"pass needs machine-checkable proof. For a UI story write acceptance criteria; for "
+                f"an infra/CLI story the QA plan's command assertions must all pass in the run log.",
+            )
+        logger.info(
+            "un-modeled surface (no OKF criteria/obligations): accepting on %d passing run-log "
+            "assertion(s), 0 failures", passed,
+        )
 
     problems: list[str] = []
 

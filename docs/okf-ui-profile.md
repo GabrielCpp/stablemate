@@ -135,6 +135,31 @@ them, and `ostler scaffold` emits all three as stubs.
   - projectId: from [submit-new-project](projects.new.md#submit-new-project)
 ```
 
+A fourth bullet is **optional but load-bearing when present**:
+
+- `entry:` — this screen is entered from *outside* in-app navigation, and the value says how
+  (`app root`, `emailed deep link`, `OAuth callback`). Declaring it makes the screen a traversal
+  root and exempts it from the reachability check below.
+
+```markdown
+- route: `/command-orders/:id/download/:token`
+- entry: emailed deep link — recipients arrive from the notification, never from in-app nav
+```
+
+**Every other screen must be reachable by clicking.** `ostler doctor` errors with
+`unreachable-screen` on any screen no documented path reaches from a declared `entry:`. The remedy
+is a `leads-to:` on whatever component navigates there — or an `entry:` bullet, if the screen
+genuinely is entered from outside.
+
+The check is transitive, not an inbound-edge count: a cluster of screens that link to each other
+but hangs off no entry point is precisely the shape a broken navigation graph takes, and counting
+inbound edges scores every member of that cluster as fine. On a real book this was the difference
+between catching 16 problems and catching 36.
+
+A surface where *no* screen declares `entry:` gets a single `no-entry-point` **warning**, not an
+error per screen. Reachability there is unanswerable rather than failing, and burying the one fact
+that matters under one error per screen helps nobody.
+
 **`none` is a value, and it is required.** An unconditional screen writes it out:
 
 ```markdown
@@ -154,6 +179,57 @@ of the graph: `ostler reach <screen> --from <landing>` returns the click-path pl
 satisfy at each hop, and exits non-zero when the book cannot answer. A tool that falls back to
 navigating straight to `route:` when no path exists has verified nothing — it has proven a URL
 renders, not that a user could ever get there.
+
+### Required bullets on `component` / `interaction` — the locator contract
+
+Every `component` must declare `role:` and `name:`. Every `interaction` must declare those plus
+`keyboard:`. As with `requires:`/`params:` above, `none` is a permitted value and an absent bullet
+is not — "this element has no accessible name" and "nobody looked" must not read alike.
+
+```markdown
+### save-button
+- selector: `.btn-save`
+- role: button
+- name: Save
+- keyboard: `enter`
+```
+
+**One fact, three consumers.** The `role` + `name` pair is simultaneously the accessibility
+contract a screen reader announces, the `getByRole(role, { name })` a Playwright spec locates by,
+and what `ostler vet` matches against the live accessibility tree. Requiring them is not tooling
+convenience: a control that cannot be addressed by role and name is one assistive technology
+cannot reach either, so a book complete enough to drive an end-to-end suite has, by construction,
+described an operable UI. The converse is the useful half — an a11y defect becomes a *locator*
+defect, which is the kind of defect a test run finds.
+
+**`ostler locators`** performs the translation, so no spec should hand-write a selector:
+
+```
+ostler locators <screen-slug> --json     # every control's Playwright call
+```
+
+It ranks what the book can produce, worst last: `role` (resilient, matches what a screen reader
+uses), `css` (a `selector:` fallback for a control with no role — it works, but couples the suite
+to the DOM and flags a control a11y cannot address), and `none` (nothing to point at).
+
+**One-to-one is a two-way claim, and only one direction is free.** That every component yields a
+locator follows from the bullets being required. That every locator yields *one* component does
+not, and doctor checks it:
+
+- **`ambiguous-locator`** (error) — two components on one screen share a role and an accessible
+  name, so the derived locator matches both. Playwright rejects that at runtime as a strict-mode
+  violation; found in the book it is a doc defect with an obvious remedy, found in CI it is an
+  intermittent failure nobody traces back here. Only `component` nodes are compared: an
+  `interaction`'s `role:`/`name:` describe the control it fires `on:`, so matching it is the point,
+  and two interactions on one control (a click and a shortcut) legitimately share a locator.
+- **`unnamed-interactive`** (error) — a control with an operable role (`button`, `link`, `textbox`,
+  `combobox`, `tab`, …) and `name: none`. The same omission failing two audiences: unannounceable
+  to assistive tech, unaddressable by `getByRole`. `name: none` on a non-interactive role
+  (`separator`, `presentation`) is a legitimate claim and is not flagged.
+
+Neither is repaired by editing the doc until it goes green. The accessible name belongs to the
+app; if two buttons really are both called "Save", the honest outcome is a recorded finding, not a
+label invented to satisfy the linter.
 
 ### Optional structured bullets (conventions, never required)
 
@@ -598,6 +674,9 @@ frames arrive over `/ws` and swap regions out-of-band.
 
 ### activitybar
 - selector: `#activitybar`
+- role: tablist
+- name: Modes
+- keyboard: `up`/`down` to move, `enter` to switch
 - code: `groom/groom/templates/dashboard.html`
 - states: (per-mode active button)
 - leads-to: [Changes view](changes-view.md)
@@ -608,6 +687,8 @@ reach carries its own `leads-to:` — without them nothing downstream is reachab
 
 ### main-panel
 - selector: `#detail`
+- role: region
+- name: Detail
 - code: `groom/groom/render.py::render_worker_detail`
 
 The right-hand surface. Other screens (e.g. [Changes](changes-view.md)) render into
@@ -619,6 +700,9 @@ half-typed answer.
 ### switch-mode
 - on: [activitybar](#activitybar)
 - trigger: click
+- role: tab
+- name: the mode's label (Inbox / Fleet / Changes / Settings)
+- keyboard: `enter` on the focused tab
 - does:
   - state: toggle `.app[data-mode]`
   - dom: for `changes`, `GET /changes` into `#detail`
@@ -646,6 +730,8 @@ title: groom — IDE console design system
 
 ### tree-node
 - selector: `.tree-file` (leaf) / `.repo` (group header)
+- role: treeitem
+- name: none
 - states: active, collapsed, default
 
 A single row of an indented, collapsible tree: an optional chevron, an icon/badge,
@@ -680,6 +766,9 @@ concept. Diffs are **click-to-reveal** — nothing renders until a file is click
 
 ### changes-file-row
 - selector: `.tree-file`
+- role: treeitem
+- name: the file's repo-relative path
+- keyboard: `up`/`down` to move, `enter` to open
 - extends: [tree-node](../components/design-system.md#tree-node)
 - parent: [changes-worker](#changes-worker)
 - code: `groom/groom/render.py::_changes_worker`
@@ -689,6 +778,8 @@ so the global worker-select can't hijack a file click.
 
 ### file-diff-panel
 - selector: `[data-filediff-for]`
+- role: region
+- name: Diff
 - parent: [changes-worker](#changes-worker)
 - code: `groom/groom/templates/dashboard.html::wireChanges`
 
@@ -699,6 +790,9 @@ The right pane; a single file's diff is rendered here client-side by diff2html.
 ### click-file-opens-diff
 - on: [changes-file-row](#changes-file-row)
 - trigger: click
+- role: treeitem
+- name: the file's repo-relative path
+- keyboard: `enter`
 - when: `mode == changes`
 - does:
   - state: mark row `.active`, clear siblings

@@ -23,6 +23,25 @@ default behavior — there is no mode flag to enable. Every agent node escalates
 through three layers before it can ever crash the run (see
 `workhorse/runner/agent.py::run_agent`):
 
+0. **Exec-retry (spawn-time, before a turn even starts)** — the agent CLI can be
+   replaced on disk *mid-run* by its own auto-updater (Claude Code ships a native
+   binary and self-updates by default) or a manual `npm i -g`. While that in-place
+   rewrite is in flight, `exec` of the same path fails for a sub-second window —
+   `ETXTBSY` (a running native binary being overwritten) or `ENOENT` during the
+   updater's rename. That must not interrupt an otherwise-healthy turn, so
+   `_spawn_streaming` retries the spawn a few times with short backoff
+   (`AGENT_EXEC_RETRY_*`). The subtle part is telling this apart from a *genuinely
+   absent* CLI (the classic launch-context bug: a non-interactive shell never loaded
+   the nvm `PATH`). You **cannot** do it by probing once — during an `ENOENT` rename
+   window `shutil.which()` is exactly as blind as `exec`, so the file looks missing
+   to both. So the ambiguity is resolved **in time, not by a probe**: `ENOENT` is
+   retried like `ETXTBSY`, and only *after* the bounded retries is the verdict made —
+   if the CLI now resolves but still won't exec, the update outlasted the budget and
+   it escalates as a normal transient (the ladder below gives it more time); if it
+   *still* does not resolve, it is genuinely absent and fails with an actionable
+   non-transient `BackendInvocationError`. (A single-probe check here is what let
+   okf-builder's `web-bf3` run misread a self-update as an absent CLI and fail its
+   last item.)
 1. **Transient retries** — rate limits, overloads, network blips, timeouts, and
    *empty results* (the `No 'result' event received` case above) are retried with
    exponential backoff. For JSONL backends, a matching provider error event or
@@ -121,6 +140,9 @@ The following environment variables control the guardrail behavior:
 | `AGENT_CAP_WAIT_MARGIN_S` | 120 | Extra seconds added after parsed reset time |
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
 | `AGENT_MAX_CAP_WAITS` | 48 | Maximum consecutive cap waits before giving up |
+| `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able (self-update in flight: `ETXTBSY`/`ENOENT` with the shim still resolving) before escalating to the transient ladder. A permanently-absent CLI (`which` → `None`) is not retried. |
+| `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |
+| `AGENT_EXEC_RETRY_CAP_S` | 8 | Upper bound on a single exec-retry delay |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
 
 ### Engine-level guards (workhorse/main.py)

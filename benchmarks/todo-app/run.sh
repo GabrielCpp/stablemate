@@ -30,8 +30,14 @@ SURFACES="${SURFACES:-$HERE/surfaces.yml}"
 CODER_DIR="$STABLEMATE/base-library/workflows/coder"
 AUTHOR_DIR="$STABLEMATE/base-library/workflows/author"
 LOG_DIR="${LOG_DIR:-$HERE/.runs}"
+# Run artifacts (events.jsonl, per-node output) are the benchmark's EVIDENCE, so they must
+# outlive the workflow source tree. Workhorse defaults them to `<cwd>/.agents/runs` — inside
+# the library dir, which is checked out, cleaned, and reinstalled. A whole run's evidence
+# vanished that way mid-session, and the reliability report then cheerfully answered
+# "no runs recorded yet" rather than noticing its own history had been erased.
+ARTIFACTS="${ARTIFACTS:-$LOG_DIR/artifacts}"
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$ARTIFACTS"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { printf '\033[31merror: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -53,7 +59,9 @@ for s in spec["surfaces"]:
         "target": target,
         "service": s["service"],
         "service_root": s["service_root"],
-        "packs": s.get("packs", ""),
+        # Process packs (repo-level) + this surface's stack pack. write_agents_yml unions
+        # them into agents.yml, so every surface carries the workflow packs too.
+        "packs": ",".join(x for x in (repo.get("packs", ""), s.get("packs", "")) if x),
         # The docs scaffold rides along with the first surface so docs/epics/ exists before
         # anything reads the graph; farrier's scaffold step skips files already present.
         "scaffolds": ",".join(x for x in (repo.get("docs_scaffold", ""), s.get("scaffolds", "")) if x),
@@ -75,12 +83,54 @@ print(' '.join(s['service'] for s in yaml.safe_load(open(sys.argv[1]))['surfaces
 " "$SURFACES"
 }
 
+# Refuse to start without the tools a phase needs. Author died three nodes in with a raw
+# `FileNotFoundError: 'claude'` from deep inside workhorse's subprocess layer — after the
+# agent had already been billed for two script nodes, and with a traceback that named
+# `subprocess.Popen` rather than the actual problem. A missing binary is knowable before the
+# first node runs, and the failure should say so in one line.
+#
+# The agent CLI is the one that actually bites: it usually lives under nvm, whose PATH entry
+# comes from an interactive shell profile, so it is present when you test by hand and absent
+# in a background or cron shell. Same command, same machine, different PATH.
+preflight() {
+  local phase="$1" missing=()
+  local agent_cli="${AGENT_CLI:-claude}"
+
+  command -v uv  >/dev/null 2>&1 || missing+=("uv (the workspace runner)")
+  command -v git >/dev/null 2>&1 || missing+=("git")
+  command -v "$agent_cli" >/dev/null 2>&1 \
+    || missing+=("$agent_cli (the agent CLI; often under ~/.nvm/versions/node/*/bin — that
+       PATH entry comes from an interactive shell profile, so it goes missing in
+       background/cron shells. Set AGENT_CLI to use a different backend.)")
+
+  # Stack init tools are genesis-only: author and coder never shell out to them.
+  if [ "$phase" = "genesis" ]; then
+    for tool in $(py -c "
+import re, sys, yaml
+spec = yaml.safe_load(open(sys.argv[1]))
+print(' '.join(sorted({(s.get('init_cmd') or '').split()[0]
+                       for s in spec['surfaces'] if s.get('init_cmd')})))
+" "$SURFACES"); do
+      command -v "$tool" >/dev/null 2>&1 || missing+=("$tool (init_cmd in $(basename "$SURFACES"))")
+    done
+  fi
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    printf '\033[31merror: cannot run %s — missing required tool(s):\033[0m\n' "$phase" >&2
+    printf '  - %s\n' "${missing[@]}" >&2
+    printf '\nNothing has been modified. Install or PATH-expose these, then re-run.\n' >&2
+    exit 1
+  fi
+}
+
 cmd_genesis() {
+  preflight genesis
   say "genesis → $TARGET"
   for svc in $(surface_names); do
     say "genesis: $svc"
     params="$(surface_params "$svc")"
-    ( cd "$CODER_DIR" && uv run workhorse run coder genesis --params "$params" ) \
+    ( cd "$CODER_DIR" && uv run workhorse run coder genesis \
+        --runs-dir "$ARTIFACTS" --params "$params" ) \
       2>&1 | tee "$LOG_DIR/genesis-$svc.log"
   done
   cmd_seed_backlog
@@ -97,17 +147,21 @@ cmd_seed_backlog() {
 }
 
 cmd_author() {
+  preflight author
   [ -f "$TARGET/docs/backlog.md" ] || die "no backlog at $TARGET/docs/backlog.md — run genesis"
   say "author → epics + stories"
   ( cd "$AUTHOR_DIR" && AGENT_REPO_DIR="$TARGET" uv run workhorse run author \
-      --params '{"backlog":"docs/backlog.md"}' ) 2>&1 | tee "$LOG_DIR/author.log"
+      --runs-dir "$ARTIFACTS" --params '{"backlog":"docs/backlog.md"}' ) \
+    2>&1 | tee "$LOG_DIR/author.log"
 }
 
 cmd_coder() {
+  preflight coder
   [ -f "$TARGET/docs/epics/index.md" ] || die "no epic queue — run author first"
   say "coder → implementation"
   ( cd "$CODER_DIR" && AGENT_REPO_DIR="$TARGET" uv run workhorse run coder \
-      --params "{\"docs_path\":\"$TARGET\"}" ) 2>&1 | tee "$LOG_DIR/coder.log"
+      --runs-dir "$ARTIFACTS" --params "{\"docs_path\":\"$TARGET\"}" ) \
+    2>&1 | tee "$LOG_DIR/coder.log"
 }
 
 cmd_status() {
@@ -138,15 +192,25 @@ print(next(s.get('marker','') for s in yaml.safe_load(open(sys.argv[1]))['surfac
 # left for someone to notice in a log.
 cmd_report() {
   say "machinery reliability"
-  py - "$CODER_DIR/.agents/runs" "$AUTHOR_DIR/.agents/runs" <<'PY'
+  py - "$ARTIFACTS" <<'PY'
 import json, pathlib, sys
 
 # Nodes that only ever run because something upstream failed. Reaching one is not an error —
 # the bounded loops exist so a run can recover — but it means the deterministic path did not
 # hold, which is the number this benchmark is actually about.
 REPAIR = {
-    "fix_genesis", "fix_story", "fix_ci", "fix_merge", "setup_fix",
+    "fix_genesis", "fix_story", "fix_ci", "fix_merge", "setup_fix", "fix_knowledge",
     "rework_story", "rework_epics", "apply_review", "apply_qa_fixes",
+}
+# A different and worse thing than a rework. These are the auto-resolver agents that stand in
+# for a human at an operator gate: reaching one means the run had exhausted its bounded retries
+# and, with `operator_mode: human`, would have HALTED for a person. Counting them alongside
+# ordinary reworks would hide that — an unattended benchmark can silently sail through every
+# point where it should have stopped and asked.
+ESCALATION = {
+    "resolve_coverage", "resolve_epics", "resolve_integrity", "resolve_reconcile",
+    "resolve_split", "resolve_surface_coverage", "resolve_write_epic",
+    "resolve_write_story", "await_operator", "qa_give_up",
 }
 # A report that can describe a run older than the code under test is the same vacuous
 # success it exists to detect — one level up. This bit me: a run aborted with exit 127
@@ -157,13 +221,13 @@ for pat in ("workflow.yaml", "scripts/*.py", "prompts/*.md"):
     for f in pathlib.Path("/mnt/data/workspace/stablemate/base-library/workflows").glob(f"*/{pat}"):
         newest_src = max(newest_src, f.stat().st_mtime)
 
-rows, total_repairs, stale = [], 0, []
+rows, total_repairs, total_escalations, stale = [], 0, 0, []
 for runs_dir in (pathlib.Path(a) for a in sys.argv[1:]):
     for run in sorted(p for p in runs_dir.glob("*") if p.is_dir()):
         events = run / "events.jsonl"
         if not events.is_file():
             continue
-        entered, repairs, failed = [], [], False
+        entered, repairs, escalations, failed = [], [], [], False
         for line in events.read_text(encoding="utf-8").splitlines():
             try:
                 ev = json.loads(line)
@@ -175,21 +239,37 @@ for runs_dir in (pathlib.Path(a) for a in sys.argv[1:]):
             entered.append(node)
             if node in REPAIR:
                 repairs.append(node)
+            if node in ESCALATION:
+                escalations.append(node)
             if node.endswith("_failed"):
                 failed = True
         total_repairs += len(repairs)
+        total_escalations += len(escalations)
         if newest_src and events.stat().st_mtime < newest_src:
             stale.append(run.name)
-        rows.append((run.name, len(entered), repairs, failed))
+        rows.append((run.name, len(entered), repairs, escalations, failed))
 
 if not rows:
     print("  no runs recorded yet")
     raise SystemExit(0)
 
-for name, n_nodes, repairs, failed in rows:
-    status = "FAILED" if failed else ("repaired" if repairs else "clean")
-    mark = {"clean": "\u2713", "repaired": "\u26a0", "FAILED": "\u2717"}[status]
-    detail = f"  ({', '.join(sorted(set(repairs)))} x{len(repairs)})" if repairs else ""
+for name, n_nodes, repairs, escalations, failed in rows:
+    if failed:
+        status = "FAILED"
+    elif escalations:
+        status = "ESCALATED"
+    elif repairs:
+        status = "repaired"
+    else:
+        status = "clean"
+    mark = {"clean": "\u2713", "repaired": "\u26a0",
+            "ESCALATED": "\u26a0", "FAILED": "\u2717"}[status]
+    bits = []
+    if repairs:
+        bits.append(f"{', '.join(sorted(set(repairs)))} x{len(repairs)}")
+    if escalations:
+        bits.append(f"would-halt: {', '.join(sorted(set(escalations)))} x{len(escalations)}")
+    detail = f"  ({'; '.join(bits)})" if bits else ""
     print(f"  {mark} {name:<26} {n_nodes:>3} nodes  {status}{detail}")
 
 if stale:
@@ -198,12 +278,21 @@ if stale:
     for name in stale:
         print(f"      - {name}")
 
-clean = sum(1 for _, _, r, f in rows if not r and not f)
+clean = sum(1 for _, _, r, e, f in rows if not r and not e and not f)
 print(f"\n  {clean}/{len(rows)} run(s) completed with no repair loop.")
 if total_repairs:
     print(f"  {total_repairs} repair-loop entr(y/ies) total — each one is a workflow defect,")
     print("  not a successful recovery. A clean re-run is the only proof a fix landed.")
+if total_escalations:
+    print(f"  {total_escalations} operator-gate escalation(s) — with operator_mode=human this")
+    print("  run would have STOPPED and asked. Unattended, it resolved itself and moved on.")
 PY
+
+  # Node timing, cap-wait-aware: a node sleeping on a usage cap is healthy and must never be
+  # flagged; only genuine ACTIVE-time overruns (retry churn / a wedged turn) are. This is why
+  # a node can show hours of wall-clock and still be fine — the report subtracts cap-wait.
+  say "node timing (hangs vs cap-waits)"
+  py "$HERE/hang-report.py" "$ARTIFACTS" "$LOG_DIR"
 }
 
 cmd_reset() {

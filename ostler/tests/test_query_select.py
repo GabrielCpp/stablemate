@@ -100,3 +100,47 @@ def test_backlog(tmp_path: Path):
     assert items == {"b1": "do a thing", "b2": "do another"}
     assert backlog.prune(load(tmp_path), "b1").ok
     assert dict(backlog.items(load(tmp_path))) == {"b2": "do another"}
+
+
+def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):
+    """The premature-epic-completion bug: a story that gave up on QA is not "done", so it
+    stays first-runnable forever and the selector keeps returning it. The caller rejects it
+    and, finding nothing else, prunes the whole epic — while independent stories sit unbuilt.
+    Observed live: an epic merged with 20 of 21 stories "Not started" after one gave up.
+
+    Skip-aware selection must exclude the given-up story WITHOUT counting it as done, then
+    return the next independent runnable story."""
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "first", "First")      # gives up
+    crud.create_story(load(tmp_path), "e", "independent", "Indep")  # no deps — must still run
+    crud.create_story(load(tmp_path), "e", "dependent", "Dep", depends=["first"])
+
+    # Without a skip set, selection returns the first story.
+    assert select.next_story(load(tmp_path), "e")["slug"] == "first"
+
+    # With 'first' given up: it is excluded, and the next INDEPENDENT story runs.
+    nxt = select.next_story(load(tmp_path), "e", skip={"first"})
+    assert nxt is not None, "epic must not be treated as complete — 2 stories remain runnable"
+    assert nxt["slug"] == "independent"
+
+
+def test_next_story_keeps_dependents_of_a_given_up_story_blocked(tmp_path: Path):
+    """A skipped story is not 'done', so its dependents stay blocked — you don't build on
+    unverified work. Only the skipped story and its dependents are excluded; nothing else."""
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "base", "Base")            # gives up
+    crud.create_story(load(tmp_path), "e", "onbase", "OnBase", depends=["base"])
+
+    # base skipped, onbase depends on it → nothing runnable → None (genuinely no work now).
+    assert select.next_story(load(tmp_path), "e", skip={"base"}) is None
+
+
+def test_next_story_skip_is_backward_compatible(tmp_path: Path):
+    """Existing callers pass no skip set; behaviour is unchanged."""
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "only", "Only")
+    assert select.next_story(load(tmp_path), "e")["slug"] == "only"
+    assert select.next_story(load(tmp_path), "e", skip=set())["slug"] == "only"

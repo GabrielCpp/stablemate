@@ -19,6 +19,8 @@ distinguish "nothing to satisfy" from "nobody wrote it down".
 
 from __future__ import annotations
 
+import re
+
 from collections import deque
 
 from ostler import graph as graph_mod, markdown
@@ -30,8 +32,17 @@ NAV_BULLET = "leads-to"
 STEP_BULLET = "steps"
 GUARD_BULLET = "requires"
 PARAM_BULLET = "params"
+# A screen entered from outside in-app navigation — the app root, an emailed deep link, an OAuth
+# callback. Its value says *how*. Declaring it makes the screen a traversal root; without the
+# bullet a screen must be reachable by clicking, which is the whole point of the graph.
+ENTRY_BULLET = "entry"
 # The literal that means "declared, and empty". Anything else is a real precondition.
 NONE = "none"
+# The spellings authors actually use for it. Recognizing only the canonical one is not the strict
+# reading it looks like — it is a silent wrong answer: `name: n/a` would be read as an accessible
+# name, and the derived locator would hunt for a control literally called "n/a", failing at runtime
+# as though the app were at fault. A sentinel the tooling does not know is worse than no sentinel.
+NONE_TOKENS = frozenset({NONE, "n/a", "n.a.", "na", "-", "—", "–", ""})
 
 
 def _values(value: object) -> list[str]:
@@ -39,6 +50,17 @@ def _values(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(v) for v in value]
     return [str(value)] if str(value).strip() else []
+
+
+def _is_none(raw: str) -> bool:
+    """Whether a precondition value states "nothing to satisfy".
+
+    Authors rarely write a bare ``none`` — they write ``none — public route, no auth guard``,
+    because the *reason* is the useful part. Matching only the bare token would read that as a
+    guard literally named "none — public route…", inventing a precondition out of an explanation.
+    """
+    head = re.split(r"[—:(]", raw.strip(), maxsplit=1)[0]
+    return head.strip().lower() in NONE_TOKENS
 
 
 def preconditions(node: dict) -> dict:
@@ -50,12 +72,12 @@ def preconditions(node: dict) -> dict:
     meta = node.get("bullets", {})
     guards, params = [], []
     for raw in _values(meta.get(GUARD_BULLET, "")):
-        if raw.strip().lower() == NONE:
+        if _is_none(raw):
             continue
         links = markdown.extract_refs(raw).links
         guards.append({"text": raw.strip(), "node": links[0][1] if links else ""})
     for raw in _values(meta.get(PARAM_BULLET, "")):
-        if raw.strip().lower() == NONE:
+        if _is_none(raw):
             continue
         name, _, source = raw.partition(":")
         links = markdown.extract_refs(source).links
@@ -166,6 +188,44 @@ def route(edges: list[dict], start: str, target: str,
             seen.add(nxt)
             queue.append((nxt, hop))
     return None
+
+
+def screens_of(data: dict) -> list[str]:
+    return [n["id"] for n in data["nodes"] if n["type"] == "screen" and n["kind"] == "file"]
+
+
+def entry_points(data: dict) -> list[str]:
+    """Screens declaring they are entered from outside in-app navigation — the traversal roots."""
+    return [n["id"] for n in data["nodes"]
+            if n["type"] == "screen" and n["kind"] == "file"
+            and ENTRY_BULLET in n.get("bullets", {})]
+
+
+def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
+    """Every screen reachable by clicking from any declared entry point."""
+    by_from = _index(edges)
+    seen = set(starts)
+    queue = deque(starts)
+    while queue:
+        for edge in by_from.get(queue.popleft(), []):
+            if edge["to"] not in seen:
+                seen.add(edge["to"])
+                queue.append(edge["to"])
+    return seen
+
+
+def unreachable_screens(data: dict) -> tuple[list[str], list[str]]:
+    """(unreachable, entries). An empty *entries* means the check could not run, not that it passed.
+
+    Reachability is transitive, so this is deliberately not "has an inbound edge": a cluster of
+    screens that link to each other but hangs off nothing is exactly the shape a broken navigation
+    graph takes, and an inbound-degree test scores every member of it as fine.
+    """
+    entries = entry_points(data)
+    if not entries:
+        return [], []
+    reached = reachable_from(navigation_edges(data), entries)
+    return sorted(set(screens_of(data)) - reached), entries
 
 
 def reachability(graph: Graph, *, surface: str | None = None, start: str) -> dict:

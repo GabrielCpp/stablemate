@@ -23,6 +23,7 @@ CLI still runs for real against a throwaway repo, so only the GitHub seam is fak
 """
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING, NoReturn
 
 import yaml
@@ -313,6 +315,25 @@ def find_docs_root(docs_path: str = "") -> Path:
             return p.resolve()
         return (find_repo_root() / p).resolve()
     return find_repo_root()
+
+
+def fresh_import(name: str, *, also_purge: tuple[str, ...] = ()) -> ModuleType:
+    """Re-import ``name`` straight from disk instead of whatever ``sys.modules`` holds.
+
+    The in-process script runner (``workhorse/runner/script.py``) reuses one Python
+    interpreter for an entire graph run. A script node re-executes fresh on every
+    call, but anything it merely ``import``s stays cached in ``sys.modules`` for the
+    rest of the run — so a fix landed on disk mid-run (e.g. an environment-fix loop
+    editing a QA-tool package while QA nodes are still ahead in the graph) stays
+    invisible to every later node unless that node forces a real reimport. Pass any
+    package ``name`` transitively imports and might change mid-run via
+    ``also_purge`` — e.g. ``fresh_import("qa_cli", also_purge=("ostler",))`` — so its
+    own stale submodules don't leak back in through the reimported caller.
+    """
+    for root in (name, *also_purge):
+        for mod in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
+            del sys.modules[mod]
+    return importlib.import_module(name)
 
 
 def get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | None = None):

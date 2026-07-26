@@ -39,6 +39,10 @@ class Story:
     path: str
     seed_items: list[str]
     dependencies: list[str]
+    # Allocated id, repo-prefixed (e.g. "TODO-15"). Minted by ostler when the story is
+    # created, recorded both in the epic's `## Stories` block and in the story's own
+    # frontmatter — mirroring Epic.eid so a story is addressable by id, not only by slug.
+    eid: str = ""
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
     status: str = ""
@@ -247,6 +251,7 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
             slug=slug,
             title=_meta_scalar(meta, "title"),
             path=rel,
+            eid=_meta_scalar(meta, "id"),
             seed_items=seed_items,
             dependencies=dependencies,
             raw=raw,

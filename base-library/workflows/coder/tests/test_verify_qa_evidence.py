@@ -467,3 +467,51 @@ def test_visual_fidelity_absent_claim_does_not_affect_pass(tmp_path):
     # No visual_fidelity claim at all — must not be treated as a downgrade condition.
     write_evidence(tmp_path, "s-1", behavioral_pass())
     assert run_gate(tmp_path, "docs/specs/s-1", "passed")["status"] == "passed"
+
+
+def _write_unmodeled(sandbox: Path, slug: str, *, passes: int, fails: int = 0) -> str:
+    """An infra/CLI story: empty criteria+obligations, proof only in the run log."""
+    spec = sandbox / "docs" / "specs" / slug
+    (spec / "qa").mkdir(parents=True, exist_ok=True)
+    (spec / "qa-plan.yml").write_text("version: 2\n", encoding="utf-8")
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps({"version": 1, "available": True, "obligations": []}), encoding="utf-8")
+    records = []
+    for i in range(passes):
+        records.append({"kind": "assert", "scenario": "cli", "action": i + 1, "result": "PASS"})
+    for i in range(fails):
+        records.append({"kind": "assert", "scenario": "cli", "action": i + 1, "result": "FAIL"})
+    records.append({"kind": "session_stop", "run_id": "test-run"})
+    ledger = spec / "qa" / "qa-run.ndjson"
+    ledger.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    (spec / "qa" / "run-manifest.json").write_text(
+        json.dumps({"runId": "test-run", "artifacts": [
+            {"path": "qa/qa-run.ndjson",
+             "sha256": hashlib.sha256(ledger.read_bytes()).hexdigest()}]}), encoding="utf-8")
+    (spec / "qa-evidence.json").write_text(json.dumps({
+        "runId": "test-run", "qa_run_log": "qa/qa-run.ndjson",
+        "overall": "Pass", "criteria": [], "obligations": []}), encoding="utf-8")
+    return f"docs/specs/{slug}"
+
+
+def test_unmodeled_infra_story_passes_on_run_log(tmp_path):
+    """The end-to-end gate: an infra/CLI story with no OKF criteria/obligations, whose 12
+    command assertions all pass in the run log, must clear the evidence gate. Before the fix
+    it failed 'has no criteria array' despite passing QA 12/12 — stranding every infra story."""
+    spec_rel = _write_unmodeled(tmp_path, "infra-thing", passes=12)
+    result = run_gate(tmp_path, spec_rel, "passed", "12/12")
+    assert result["status"] == "passed", result["notes"]
+
+
+def test_unmodeled_story_with_no_asserts_is_still_rejected(tmp_path):
+    """Anti-vacuity: empty criteria+obligations AND an empty run log is not proof of anything."""
+    spec_rel = _write_unmodeled(tmp_path, "empty-thing", passes=0)
+    result = run_gate(tmp_path, spec_rel, "passed", "")
+    assert result["status"] == "invalid"
+
+
+def test_unmodeled_story_with_a_failing_assert_is_rejected(tmp_path):
+    """A run log with any failure cannot back a claimed pass."""
+    spec_rel = _write_unmodeled(tmp_path, "failing-thing", passes=8, fails=1)
+    result = run_gate(tmp_path, spec_rel, "passed", "")
+    assert result["status"] == "invalid"

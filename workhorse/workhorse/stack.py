@@ -1,0 +1,323 @@
+"""Own the lifecycle of a QA/dev stack that must outlive a single agent turn.
+
+The agent runner reaps per-turn grandchildren (a browser, an MCP server), but it
+does **not** own the app or stack under test — that must be started *outside* any
+agent turn, or it dies when the turn tears down. This module is the durable owner:
+a workflow ``script`` node calls :func:`ensure_stack` before QA and
+:func:`teardown_stack` after, so the stack is brought up, health-gated, and reaped
+(or deliberately left up) by the workflow rather than backgrounded in an agent's
+shell where node teardown kills it mid-build.
+
+The logic here was proven in okf-builder's ``boot-app.py`` walkthrough launcher and
+is generalized so both that workflow and the coder QA flow share one implementation.
+Every function **returns** a plain dict and never calls ``sys.exit``/``print`` — the
+thin CLI wrappers (e.g. ``boot-app.py``) own the JSON-to-stdout contract.
+
+Two shapes of launch command are supported, told apart by what the process does
+rather than by a mode flag:
+
+  * a FOREGROUND server (``npm run dev``, uvicorn) stays alive; exiting during
+    startup means it died, and teardown reaps its process group.
+  * a BRING-UP command (``make dev-stack-test-db``, ``docker compose up -d``) exits 0
+    once the stack it started is serving *elsewhere* — in containers this process
+    does not own. A clean exit is therefore not death: keep polling health to the
+    deadline. Nothing is in our process group to reap, so teardown runs the
+    documented ``stop`` recipe if there is one, and otherwise leaves the stack up.
+
+Boot is idempotent: if the documented ``identity`` marker is already serving the
+entry URL (a leftover from a prior turn or a shared expensive stack), it is adopted
+rather than double-bound, and no process group is reported so teardown won't kill a
+process this run didn't start.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import shlex
+import signal
+import subprocess
+import time
+import urllib.request
+from typing import Any
+
+BOOT_TIMEOUT_S = 30.0     # a foreground dev server; overridable via a manifest `boot_timeout`
+POLL_INTERVAL_S = 0.5
+TERM_GRACE_S = 5.0
+STOP_TIMEOUT_S = 300.0    # ceiling on a documented `stop` recipe
+STEP_TIMEOUT_S = 600.0    # ceiling on one `prepare`/`seed`/`health` step
+
+
+def boot_timeout(raw: str, default: float = BOOT_TIMEOUT_S) -> float:
+    """The documented boot timeout in seconds, else the foreground-server default.
+
+    A bring-up command that builds images is minutes, not seconds; a manifest that
+    says so gets its ceiling. Junk falls back rather than crashing the run.
+    """
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def health_ok(url: str, identity: str = "") -> bool:
+    """True when *url* answers 2xx/3xx and (if given) *identity* is in the body."""
+    try:
+        with urllib.request.urlopen(url, timeout=3) as r:  # noqa: S310 (loopback)
+            if not 200 <= r.status < 400:
+                return False
+            if not identity:
+                return True
+            body = r.read(1_000_000).decode("utf-8", errors="replace")
+            return identity in body
+    except Exception:
+        return False
+
+
+def boot_app(
+    launch_cmd: str,
+    entry_url: str,
+    health_path: str,
+    app_cwd: str,
+    repo_root: str,
+    app_identity: str,
+    timeout_s: float,
+    *,
+    logger: logging.Logger,
+) -> dict[str, str]:
+    """Launch one app/stack and prove it healthy, or fail soft.
+
+    Returns ``{boot_ok, entry_url, app_pid, app_pgid}`` — ``app_pgid`` is empty when
+    this run owns no process to reap (an adopted stack, or a bring-up command whose
+    stack lives in containers), so teardown knows not to ``killpg`` a foreign group.
+    """
+    health_path = health_path or "/"
+    app_cwd = app_cwd or "."
+    repo_root = repo_root or app_cwd
+    health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/")
+
+    if not launch_cmd:
+        logger.warning("no launch command supplied — cannot boot the app under test")
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+
+    # Idempotent reuse: something already serving here → adopt it, own nothing. Safe
+    # only with an identity marker; without one, start the documented command and prove
+    # that owned process became healthy instead of adopting an arbitrary listener.
+    if app_identity and health_ok(health_url, app_identity):
+        logger.info("adopting the app already serving %s (identity %r matched); "
+                    "teardown will not reap it", health_url, app_identity)
+        return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+
+    logger.info("booting app: %s (cwd %s), waiting up to %.0fs for %s",
+                launch_cmd, app_cwd, timeout_s, health_url)
+    try:
+        proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
+            shlex.split(launch_cmd), cwd=app_cwd,
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning("launch command %r could not be spawned: %s", launch_cmd, exc)
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+
+    pgid = os.getpgid(proc.pid)
+    detached = False  # the command returned; whatever it started serves outside our pgid
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        # Health first: a bring-up command can exit the instant the stack is serving, so
+        # checking liveness first would race a successful boot into a spurious failure.
+        if health_ok(health_url, app_identity):
+            if detached:
+                logger.info("app is healthy at %s (brought up by a command that has "
+                            "since exited — this run owns no process to reap)", health_url)
+                return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+            logger.info("app is healthy at %s (pid %d, pgid %d)", health_url, proc.pid, pgid)
+            return {"boot_ok": "yes", "entry_url": entry_url,
+                    "app_pid": str(proc.pid), "app_pgid": str(pgid)}
+        if not detached and proc.poll() is not None:
+            if proc.returncode != 0:
+                logger.warning("app exited with code %s during startup", proc.returncode)
+                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+            # Exit 0 with nothing serving yet: a bring-up command that handed the app off
+            # to something it doesn't own (containers, a supervisor). Not death — keep
+            # polling health to the deadline.
+            logger.info("launch command exited cleanly without serving yet — treating it "
+                        "as a bring-up command and waiting for %s", health_url)
+            detached = True
+        time.sleep(POLL_INTERVAL_S)
+
+    if detached:
+        logger.warning("app did not answer %s within %.0fs after the bring-up command "
+                       "exited — failing soft; anything it started is still up",
+                       health_url, timeout_s)
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+
+    logger.warning("app did not answer %s within %.0fs — killing pgid %d and failing soft",
+                   health_url, timeout_s, pgid)
+    _killpg(pgid, signal.SIGKILL)
+    return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+
+
+def teardown_app(
+    pgid_arg: str, stop_cmd: str, app_cwd: str, *, logger: logging.Logger,
+) -> dict[str, str]:
+    """Reap a booted app, run its documented stop recipe, or deliberately leave it up.
+
+    Returns ``{torn_down}`` — ``"yes"`` when reaped, ``"skipped"`` when left up on
+    purpose (no owned process group and no stop recipe: an adopted or self-standing
+    stack an expensive shared run is cheaper to leave running), ``"no"`` on a stop
+    recipe that failed.
+    """
+    try:
+        pgid = int(pgid_arg)
+    except (TypeError, ValueError):
+        # No pgid: boot adopted a process it didn't start, or the launch was a bring-up
+        # command whose stack lives outside our group. A documented stop recipe is the
+        # only way to reap the latter.
+        if stop_cmd:
+            logger.info("no app_pgid — running the documented stop recipe: %s", stop_cmd)
+            try:
+                done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
+                    shlex.split(stop_cmd), cwd=app_cwd or ".",
+                    capture_output=True, text=True, timeout=STOP_TIMEOUT_S,
+                )
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                logger.warning("stop recipe %r failed: %s — the app may still be running",
+                               stop_cmd, exc)
+                return {"torn_down": "no"}
+            if done.returncode != 0:
+                logger.warning("stop recipe exited %d — the app may still be running: %s",
+                               done.returncode, (done.stderr or "").strip()[:500])
+                return {"torn_down": "no"}
+            return {"torn_down": "yes"}
+        logger.info("teardown skipped — no app_pgid and no stop recipe "
+                    "(nothing this run owns; an adopted or self-standing app is left up)")
+        return {"torn_down": "skipped"}
+    logger.info("tearing down app process group %d", pgid)
+    if not _killpg(pgid, signal.SIGTERM):
+        return {"torn_down": "yes"}  # already gone
+    deadline = time.monotonic() + TERM_GRACE_S
+    while time.monotonic() < deadline:
+        if not _killpg(pgid, 0):  # still alive?
+            return {"torn_down": "yes"}
+        time.sleep(POLL_INTERVAL_S)
+    _killpg(pgid, signal.SIGKILL)
+    return {"torn_down": "yes"}
+
+
+def ensure_stack(
+    manifest: dict[str, Any], *, repo_root: str | None = None, logger: logging.Logger,
+) -> dict[str, str]:
+    """Bring a whole QA stack to ready from a declarative manifest, or fail soft.
+
+    Manifest keys (all optional except a way to prove readiness):
+
+      * ``entry_url`` / ``health_path`` — the HTTP readiness probe (default ``/``).
+      * ``identity`` — a marker string in the served body enabling adopt-if-serving.
+      * ``app_cwd`` / ``repo_root`` / ``boot_timeout`` — launch context and ceiling.
+      * ``launch`` — the bring-up or foreground command owned by :func:`boot_app`.
+      * ``stop`` — the teardown recipe; absent means leave an expensive stack up.
+      * ``prepare`` — ordered blocking steps run *before* launch (deps/build/stack-up).
+      * ``seed`` — ordered **idempotent** steps run *after* the stack serves (fixtures).
+      * ``health`` — ordered command gates run last (e.g. a ``stack-health`` target).
+
+    ``prepare``/``seed``/``health`` entries are a bare command string or a mapping with
+    ``run`` (+ optional ``working-directory``/``timeout``). Returns
+    ``{ready, adopted, entry_url, app_pid, app_pgid[, failed_step]}``.
+    """
+    app_cwd = manifest.get("app_cwd") or "."
+    repo_root = repo_root or manifest.get("repo_root") or app_cwd
+    entry_url = manifest.get("entry_url", "")
+    health_path = manifest.get("health_path") or "/"
+    identity = manifest.get("identity", "")
+    timeout_s = boot_timeout(str(manifest.get("boot_timeout", "")))
+    launch_cmd = manifest.get("launch", "")
+    health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
+
+    def _fail(step: str, pid: str = "", pgid: str = "") -> dict[str, str]:
+        return {"ready": "no", "adopted": "no", "entry_url": entry_url,
+                "app_pid": pid, "app_pgid": pgid, "failed_step": step}
+
+    # Adopt-if-serving: a shared stack already up (this or a prior turn) is reused whole,
+    # so prepare/seed never re-run against a live stack and nothing is double-bound.
+    if identity and health_url and health_ok(health_url, identity):
+        logger.info("adopting the stack already serving %s (identity matched)", health_url)
+        return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
+                "app_pid": "", "app_pgid": ""}
+
+    for i, step in enumerate(manifest.get("prepare") or []):
+        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
+        if not ok:
+            logger.warning("prepare[%d] failed: %s", i, err)
+            return _fail(f"prepare[{i}]")
+
+    app_pid = app_pgid = ""
+    if launch_cmd:
+        res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
+                       identity, timeout_s, logger=logger)
+        if res["boot_ok"] != "yes":
+            return _fail("launch", res["app_pid"], res["app_pgid"])
+        app_pid, app_pgid = res["app_pid"], res["app_pgid"]
+
+    for i, step in enumerate(manifest.get("seed") or []):
+        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"seed[{i}]")
+        if not ok:
+            logger.warning("seed[%d] failed: %s", i, err)
+            return _fail(f"seed[{i}]", app_pid, app_pgid)
+
+    for i, step in enumerate(manifest.get("health") or []):
+        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"health[{i}]")
+        if not ok:
+            logger.warning("health[%d] failed: %s", i, err)
+            return _fail(f"health[{i}]", app_pid, app_pgid)
+
+    logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
+    return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
+            "app_pid": app_pid, "app_pgid": app_pgid}
+
+
+def teardown_stack(
+    handles: dict[str, str], manifest: dict[str, Any], *, logger: logging.Logger,
+) -> dict[str, str]:
+    """Reap a stack :func:`ensure_stack` brought up, honouring the leave-up policy."""
+    return teardown_app(
+        handles.get("app_pgid", ""), manifest.get("stop", ""),
+        manifest.get("app_cwd") or ".", logger=logger,
+    )
+
+
+# -- helpers ----------------------------------------------------------------------
+
+
+def _run_step(
+    step: Any, default_cwd: str, default_timeout: float,
+    logger: logging.Logger, *, label: str,
+) -> tuple[bool, str]:
+    """Run one blocking manifest step (a command string or ``{run, ...}`` mapping)."""
+    if isinstance(step, str):
+        cmd, cwd, timeout = step, default_cwd, default_timeout
+    else:
+        cmd = step.get("run", "")
+        cwd = step.get("working-directory") or step.get("cwd") or default_cwd
+        timeout = boot_timeout(str(step.get("timeout", "")), default=STEP_TIMEOUT_S)
+    if not cmd:
+        return False, f"{label}: no command"
+    logger.info("running %s: %s (cwd %s)", label, cmd, cwd)
+    try:
+        done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
+            shlex.split(cmd), cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    if done.returncode != 0:
+        return False, (done.stderr or "").strip()[:500]
+    return True, ""
+
+
+def _killpg(pgid: int, sig: int) -> bool:
+    """Signal a process group; return False when it is already gone."""
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+    return True

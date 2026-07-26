@@ -100,3 +100,32 @@ def test_create_story_existing_slug_is_a_noop(repo: Path):
     # The no-op must not re-allocate an id or clobber the body.
     assert "hand-written body" in story_md.read_text(encoding="utf-8")
     assert first.entity_id and second.entity_id in (None, "", first.entity_id)
+
+
+def test_story_frontmatter_carries_the_allocated_id(repo: Path):
+    """A story.md is read on its own constantly — by the coder workflow picking up work, by
+    `ostler trace`, by a human opening the file. Without the id in its own frontmatter the
+    story cannot be named from the file itself; you have to go back to the parent epic and
+    match on slug. Ids are ostler-minted and repo-prefixed."""
+    crud.add_seed(load(repo), "epic-a", "s1", status="researched")
+    res = crud.create_story(load(repo), "epic-a", "01-ided", "Has an id", covers=["s1"])
+    assert res.ok and res.entity_id
+
+    import yaml as _yaml
+    text = (repo / "docs/epics/epic-a/stories/01-ided/story.md").read_text(encoding="utf-8")
+    fm = _yaml.safe_load(text.split("---")[1])
+    assert fm["id"] == res.entity_id, "the allocated id must be in the story's own frontmatter"
+    # And the graph exposes it as a first-class field, mirroring Epic.eid.
+    found = load(repo).find_story("01-ided")
+    assert found is not None and found[1].eid == res.entity_id
+
+
+def test_story_id_uses_the_repo_prefix(tmp_path: Path):
+    """Prefix is the first four letters of the repo name, uppercased — so `todo-app` mints
+    TODO-n. Ostler alone mints ids."""
+    root = tmp_path / "todo-app"
+    (root / "docs").mkdir(parents=True)
+    crud.create_epic(load(root), "e1", "E1")
+    crud.add_seed(load(root), "e1", "s1", status="researched")
+    res = crud.create_story(load(root), "e1", "01-x", "X", covers=["s1"])
+    assert res.entity_id.startswith("TODO-"), res.entity_id

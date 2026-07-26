@@ -65,8 +65,24 @@ Real users do not type URLs or deep-link into screens — they start at the fron
 1. **Load the map from the book.** `ostler search "<slug>" --type flow --json`, then read the flow
    doc for its `start:` precondition, ordered `steps:`, and `leads-to`/screen links. For each screen
    the journey touches, `ostler search "<screen>" --type screen` and pull its controls'
-   `interaction`/`component` children (`--type interaction`) — their `role:` / `name:` / `keyboard:`
-   bullets are your `getByRole(role, {name})` locators; `leads-to` tells you the expected transition.
+   `interaction`/`component` children (`--type interaction`); `leads-to` tells you the expected
+   transition.
+
+   **Do not hand-write locators — derive them.** `ostler locators <screen-slug> --json` emits the
+   exact Playwright call for every documented control on that screen, built from its `role:`/`name:`
+   bullets. Use those verbatim. A locator you improvise from the live snapshot proves the *app* has
+   a control; a locator derived from the book and then found in the app proves the **book is right**,
+   which is the only thing this walk is for.
+
+   `locators` exits non-zero when the mapping is broken, and each case is a finding to heal:
+   - `! ambiguous` — two controls share a role and an accessible name, so the locator matches both.
+     Read their real labels off the app and correct the wrong `name:`.
+   - `! unnamed <role>` — an operable control with no accessible name. Read its label (visible text,
+     `aria-label`, `title`) from the snapshot and write it into `name:`.
+   - `~` (located by `selector:`) — a control with no `role:`. Read the computed role from the
+     accessibility snapshot and record it. A control the a11y tree cannot address is one a keyboard
+     and a screen-reader user cannot reach either — record it as a finding even when you can heal
+     the locator.
 2. **Walk it live.** Open the entry URL once, then follow the documented steps by acting on those
    controls, snapshotting after each transition. Stay on the happy path the journey describes.
 3. **Classify every documented claim** against the live snapshot:
@@ -79,7 +95,16 @@ Real users do not type URLs or deep-link into screens — they start at the fron
    - **URL capture** → `ostler set screen <slug> route=<path>` (or add a `url:` bullet) with the real
      landed path for each screen you reached.
    - **undocumented control on a known screen** → `ostler scaffold interaction <id> --in <screen doc>`,
-     author its `role:`/`name:`/`does:`/`leads-to:` from the snapshot, `ostler fmt`.
+     author its `role:`/`name:`/`keyboard:`/`does:`/`leads-to:` from the snapshot, `ostler fmt`.
+
+   **Read `role:`/`name:`/`keyboard:` off the accessibility snapshot, never off the markup.**
+   `browser_snapshot` *is* the accessibility tree, so it reports the computed role and accessible
+   name — the same two values Playwright matches on and a screen reader announces. Inferring them
+   from the tag (`<button>` ⇒ `button`) is a guess that disagrees with the app whenever a
+   `role=`/`aria-label` override is in play, which is exactly the case worth documenting. For
+   `keyboard:`, press `Tab` to confirm the control actually takes focus, and record `none` when it
+   does not — a pointer-only control is an accessibility defect the book should be able to *find*,
+   not a blank to leave empty.
    - **a new screen** you reached by navigation that has no doc → **return it in `discovered`** as
      `{"kind":"screen","target":"screen:<slug>","context":"<the click-path from the entry point that
      reaches it>"}` so a later turn walks it *via that user path*. Do not fully document it now.
@@ -112,11 +137,41 @@ Real users do not type URLs or deep-link into screens — they start at the fron
       **`screenshot:` bullet** pointing at its crop
       (`docs/specs/<screen-slug>/vet/<state>-<component>.png` — the `crop` paths in the vet report).
 
-### `screen` (a discovered screen — `target` is `screen:<slug>`)
+### `screen` (an unconfirmed screen — `target` is the screen's node id)
 
-`context` holds the user click-path that reaches it from the entry point. Open the entry URL once,
-follow that path by clicking (never by URL), then document/verify the screen and its controls exactly
-as in the journey case (steps 3–6). Return any further new screens in `discovered`.
+This is the sweep that reaches screens no journey covers. `target` is a node id
+(`docs/features/<service>/gui/screens/<slug>.md`); `context` is its title.
+
+1. **Derive the path from the book — do not invent one.** Identify the landing screen (the one
+   whose `route:` matches the entry URL's path), then:
+
+   ```
+   ostler reach <target> --from <landing-node-id> --surface {{ workhorse_var('service') }} --json
+   ```
+
+   It returns the hops — each with the component to `activate` or the interaction to `interact`
+   with — plus, per hop, the destination's `preconditions` (`guards` to satisfy, `params` naming
+   the interaction that mints a required entity). Satisfy a hop's preconditions before making it.
+
+2. **A missing route is a finding, not a licence to navigate by URL.** `reach` exits non-zero when
+   the book describes no way in. That is a real defect — a screen no documented path reaches is one
+   a user cannot reach either, and typing its `route:` would prove only that a URL renders, never
+   that the screen is reachable. Record it (see below) and move on; do **not** fall back to the
+   `route:` bullet, and do not mark the item confirmed.
+
+   The same applies to `! preconditions undeclared`: a screen whose `requires:`/`params:` are
+   missing cannot be walked with confidence, because you cannot know what state it needed.
+
+3. **Walk it and register it.** Follow the hops by clicking, then document/verify the screen and its
+   controls exactly as in the journey case (steps 3–6) — including the full-page screenshot and the
+   per-component `ostler vet` registration, which is what makes the screen *confirmed*. Return any
+   further new screens in `discovered`.
+
+**Recording an unreachable or undeclared screen.** Repair the book where you can ground the fix in
+what you actually saw: add the missing `leads-to:` to the component that navigates there, or the
+missing `requires:`/`params:` bullets. Where you cannot ground it, leave the screen unconfirmed and
+report it in `walk_status` — an unreachable screen is flagged, **never** pruned. The source says the
+screen exists; a failed walk only ever proves it was not confirmed, never that it is gone.
 
 ### `fixup` (`context` holds `ostler doctor` output)
 

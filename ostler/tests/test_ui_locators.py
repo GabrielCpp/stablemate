@@ -1,0 +1,403 @@
+"""`ostler locators` — the derived Playwright mapping, and the two ways it stops being one-to-one."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ostler import doctor, graph, locators
+from ostler.model import load
+
+from conftest import write
+
+SCREENS = "docs/features/web/gui/screens"
+DASH = f"{SCREENS}/dashboard.md"
+
+HEAD = """\
+---
+type: screen
+slug: dashboard
+title: Dashboard
+---
+# Dashboard
+
+- route: `/dashboard`
+- entry: app root
+- requires: none
+- params: none
+
+## Components
+"""
+
+
+def _screen(*components: str) -> str:
+    return HEAD + "\n" + "\n".join(components)
+
+
+SAVE = """\
+### save-button
+- selector: `.btn-save`
+- role: button
+- name: Save
+- keyboard: `enter`
+"""
+
+CANCEL = """\
+### cancel-button
+- selector: `.btn-cancel`
+- role: button
+- name: Cancel
+"""
+
+# Same role and the same accessible name as SAVE — one locator, two controls.
+DUPLICATE_SAVE = """\
+### footer-save-button
+- selector: `.footer .btn-save`
+- role: button
+- name: Save
+"""
+
+# Operable, but nothing to announce it by.
+UNNAMED = """\
+### icon-button
+- selector: `.icon`
+- role: button
+- name: none
+"""
+
+# No role at all: locatable only by its CSS selector, and only by a machine.
+CSS_ONLY = """\
+### legacy-widget
+- selector: `#legacy`
+- role: none
+- name: none
+"""
+
+# Nothing to point at in either vocabulary.
+NOTHING = """\
+### ghost
+- role: none
+- name: none
+"""
+
+
+def _build(repo: Path, body: str):
+    write(repo / DASH, body)
+    return graph.build(load(repo), surface="web")
+
+
+def test_role_and_name_become_a_get_by_role_call(repo: Path):
+    data = _build(repo, _screen(SAVE))
+    entry = locators.screen_locators(data)[0]["locators"][0]
+    assert entry["locator"] == 'getByRole("button", { name: "Save", exact: true })'
+    assert entry["strategy"] == "role"
+    assert entry["keyboard"] == "enter"  # the code fence is presentation, not content
+
+
+def test_selector_is_a_fallback_and_is_marked_as_one(repo: Path):
+    """A CSS locator works, so it is not an error — but it is not the a11y contract either."""
+    data = _build(repo, _screen(CSS_ONLY))
+    entry = locators.screen_locators(data)[0]["locators"][0]
+    assert entry["locator"] == 'locator("#legacy")'
+    assert entry["strategy"] == "css"
+
+
+def test_a_node_with_neither_is_unlocatable(repo: Path):
+    data = _build(repo, _screen(NOTHING))
+    entry = locators.screen_locators(data)[0]["locators"][0]
+    assert entry["strategy"] == "none" and entry["locator"] == ""
+    assert locators.build(load(repo), surface="web")["counts"]["unlocatable"] == 1
+
+
+def test_quotes_in_an_accessible_name_are_escaped(repo: Path):
+    """The locator is emitted as JS source, so a name with a quote must not end the string."""
+    data = _build(repo, _screen('### q\n- role: button\n- name: Say "hi"\n'))
+    assert locators.screen_locators(data)[0]["locators"][0]["locator"] == (
+        'getByRole("button", { name: "Say \\"hi\\"", exact: true })')
+
+
+def test_distinct_names_do_not_collide(repo: Path):
+    assert locators.collisions(_build(repo, _screen(SAVE, CANCEL))) == []
+
+
+def test_two_controls_sharing_role_and_name_collide(repo: Path):
+    """The reverse direction of one-to-one: this locator would match two nodes, not one."""
+    collisions = locators.collisions(_build(repo, _screen(SAVE, DUPLICATE_SAVE)))
+    assert len(collisions) == 1
+    assert collisions[0]["role"] == "button" and collisions[0]["name"] == "Save"
+    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == [
+        "footer-save-button", "save-button"]
+
+
+def test_an_interaction_may_share_its_components_locator(repo: Path):
+    """An interaction's role/name describe the control it fires `on:` — matching it is the point."""
+    body = _screen(SAVE) + """
+## Interactions
+
+### click-save
+- on: [save-button](#save-button)
+- trigger: click
+- role: button
+- name: Save
+- keyboard: `enter`
+- does:
+  - state: persist the draft
+"""
+    assert locators.collisions(_build(repo, body)) == []
+
+
+def test_two_interactions_on_one_control_do_not_collide(repo: Path):
+    """A click and a keyboard shortcut on the same button are two behaviors, one locator."""
+    body = _screen(SAVE) + """
+## Interactions
+
+### click-save
+- on: [save-button](#save-button)
+- trigger: click
+- role: button
+- name: Save
+- keyboard: none
+- does:
+  - state: persist the draft
+
+### keyboard-save
+- on: [save-button](#save-button)
+- trigger: keydown
+- role: button
+- name: Save
+- keyboard: `ctrl+s`
+- does:
+  - state: persist the draft
+"""
+    assert locators.collisions(_build(repo, body)) == []
+
+
+def test_unnamed_interactive_is_found(repo: Path):
+    unnamed = locators.unnamed_interactives(_build(repo, _screen(UNNAMED)))
+    assert [u["role"] for u in unnamed] == ["button"]
+
+
+def test_a_non_interactive_role_may_be_unnamed(repo: Path):
+    """`name: none` on a decorative element is a legitimate claim, not a defect to flag."""
+    data = _build(repo, _screen("### divider\n- role: separator\n- name: none\n"))
+    assert locators.unnamed_interactives(data) == []
+
+
+def _codes(repo: Path, severity: str = "error"):
+    return [f.code for f in doctor.run(load(repo)).findings if f.severity == severity]
+
+
+def test_doctor_errors_on_an_ambiguous_locator(repo: Path):
+    _build(repo, _screen(SAVE, DUPLICATE_SAVE))
+    codes = _codes(repo)
+    # one per node, so each offending doc gets the finding on its own line
+    assert codes.count("ambiguous-locator") == 2
+
+
+def test_doctor_errors_on_an_unnamed_interactive(repo: Path):
+    _build(repo, _screen(UNNAMED))
+    assert "unnamed-interactive" in _codes(repo)
+
+
+def test_doctor_is_green_on_a_clean_screen(repo: Path):
+    _build(repo, _screen(SAVE, CANCEL))
+    assert "ambiguous-locator" not in _codes(repo)
+    assert "unnamed-interactive" not in _codes(repo)
+
+
+def test_missing_role_is_a_required_bullet_finding(repo: Path):
+    """The forward half of one-to-one is enforced by the registry, not by this module."""
+    _build(repo, _screen("### bare\n- selector: `.bare`\n"))
+    assert "missing-required-bullet" in _codes(repo)
+
+
+def test_a_role_with_prose_stapled_to_it_is_not_a_role(repo: Path):
+    """The common real-world shape: a true role, plus a parenthetical the locator cannot use."""
+    data = _build(repo, _screen(
+        "### spinner\n- selector: `.spin`\n- role: `progressbar` (implicit MUI role)\n- name: none\n"))
+    assert [b["role"] for b in locators.invalid_roles(data)] == [
+        "`progressbar` (implicit MUI role)"]
+    # and it falls back rather than emitting a getByRole that matches nothing
+    assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
+
+
+def test_doctor_errors_on_an_invalid_role(repo: Path):
+    _build(repo, _screen("### spinner\n- role: a spinny thing\n- name: none\n"))
+    assert "invalid-role" in _codes(repo)
+
+
+def test_every_interactive_role_is_a_real_aria_role():
+    """The two lists must not drift: an interactive role outside ARIA_ROLES could never be set."""
+    assert locators.INTERACTIVE_ROLES <= locators.ARIA_ROLES
+
+
+def test_doctor_builds_the_ui_graph_once(repo: Path, monkeypatch):
+    """Reachability and locators share one build.
+
+    Each rebuild resolves every node in the book, so on a large book a per-check rebuild costs more
+    than every other check combined — and the cost is invisible in a small fixture, which is why it
+    is pinned here rather than left to notice in production.
+    """
+    from ostler import graph as graph_mod
+
+    _build(repo, _screen(SAVE, CANCEL))
+    calls = []
+    real = graph_mod.build
+
+    def counting(*a, **kw):
+        calls.append(kw.get("surface"))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(graph_mod, "build", counting)
+    doctor.run(load(repo))
+
+    # one unscoped build for both checks; per-surface scoping is a filter, not a rebuild
+    assert calls.count(None) == 1
+    assert [c for c in calls if c is not None] == []
+
+
+LIB = "docs/features/web/gui/components/app-shell.md"
+
+SHARED = """\
+---
+type: feature
+slug: app-shell
+title: App shell
+---
+# App shell
+
+## Components
+
+### navbar-home-link
+- selector: `.nav-home`
+- role: `link` — renders an `<a>` via ListItemButton
+- name: Home
+"""
+
+
+def test_a_shared_component_is_checked_too(repo: Path):
+    """A navbar lives in a component library, not on a screen — and renders on every screen.
+
+    Scoping the locator checks to screen docs would exempt exactly the controls with the widest
+    blast radius, which is the opposite of the intent.
+    """
+    write(repo / LIB, SHARED)
+    _build(repo, _screen(SAVE))
+    bad = locators.invalid_roles(graph.build(load(repo), surface="web"))
+    assert [b["node"].split("#")[-1] for b in bad] == ["navbar-home-link"]
+    assert "invalid-role" in _codes(repo)
+
+
+def test_shared_components_collide_within_their_own_file(repo: Path):
+    """Two library components sharing role+name collide; the same pair on a screen does not."""
+    write(repo / LIB, SHARED.replace(
+        "- role: `link` — renders an `<a>` via ListItemButton", "- role: link")
+        + "\n### navbar-home-dup\n- role: link\n- name: Home\n")
+    _build(repo, _screen(SAVE))
+    collisions = locators.collisions(graph.build(load(repo), surface="web"))
+    assert len(collisions) == 1
+    assert collisions[0]["screen"] == LIB
+
+
+def test_a_shared_base_may_be_unnamed_but_its_consumers_may_not(repo: Path):
+    """`extends:` marks a template whose name each consumer supplies — not a rendered control."""
+    write(repo / LIB, """\
+---
+type: feature
+slug: app-shell
+title: App shell
+---
+# App shell
+
+## Components
+
+### row-base
+- role: treeitem
+- name: none
+""")
+    write(repo / DASH, _screen("""\
+### dash-row
+- role: treeitem
+- name: none
+- extends: [row-base](../components/app-shell.md#row-base)
+"""))
+    unnamed = locators.unnamed_interactives(graph.build(load(repo), surface="web"))
+    # the base is exempt; the screen's concrete row still owes a name
+    assert [u["node"].split("#")[-1] for u in unnamed] == ["dash-row"]
+
+
+def test_na_is_the_same_claim_as_none(repo: Path):
+    """`n/a` is what authors actually write, and reading it as a name is a silent wrong answer.
+
+    A `getByRole("menu", {name: "n/a"})` hunts for a control literally called "n/a" and fails at
+    runtime looking like the app's fault — strictly worse than the bullet having been left blank.
+    """
+    data = _build(repo, _screen("### m\n- selector: `.m`\n- role: menu\n- name: n/a\n"))
+    entry = locators.screen_locators(data)[0]["locators"][0]
+    assert entry["locator"] == 'getByRole("menu")'
+    assert "n/a" not in entry["locator"]
+
+
+def test_na_role_is_the_empty_sentinel_not_an_invalid_role(repo: Path):
+    data = _build(repo, _screen("### w\n- selector: `.w`\n- role: n/a\n- name: n/a\n"))
+    assert locators.invalid_roles(data) == []
+    assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
+
+
+def test_an_unnamed_interactive_is_still_caught_when_spelled_na(repo: Path):
+    """The synonym must not become a way to smuggle an unlabeled control past the check."""
+    data = _build(repo, _screen("### b\n- selector: `.b`\n- role: button\n- name: n/a\n"))
+    assert [u["role"] for u in locators.unnamed_interactives(data)] == ["button"]
+
+
+def test_exclusive_with_clears_a_false_positive_collision(repo: Path):
+    """Two controls that share a locator but never co-render are not ambiguous at runtime."""
+    write(repo / DASH, _screen("""\
+### error-alert
+- role: alert
+- name: none
+- exclusive-with: [match-alert](#match-alert)
+""", """\
+### match-alert
+- role: alert
+- name: none
+"""))
+    # both are `role: alert` with no name → same locator; the declaration makes it not a collision
+    assert locators.collisions(graph.build(load(repo), surface="web")) == []
+    assert "ambiguous-locator" not in _codes(repo)
+
+
+def test_exclusive_with_is_symmetric(repo: Path):
+    """Annotating one of the two mutually-exclusive siblings is enough."""
+    write(repo / DASH, _screen("""\
+### a-alert
+- role: alert
+- name: none
+""", """\
+### b-alert
+- role: alert
+- name: none
+- exclusive-with: [a-alert](#a-alert)
+"""))
+    assert locators.collisions(graph.build(load(repo), surface="web")) == []
+
+
+def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(repo: Path):
+    """Three same-named controls, only one pair exclusive → the live pair still reports."""
+    write(repo / DASH, _screen("""\
+### save-a
+- role: button
+- name: Save
+- exclusive-with: [save-b](#save-b)
+""", """\
+### save-b
+- role: button
+- name: Save
+""", """\
+### save-c
+- role: button
+- name: Save
+"""))
+    collisions = locators.collisions(graph.build(load(repo), surface="web"))
+    assert len(collisions) == 1
+    # a↔b is excluded, but c collides with both a and b, so all three stay in the live conflict
+    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == ["save-a", "save-b", "save-c"]

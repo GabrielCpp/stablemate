@@ -235,7 +235,13 @@ shared-docs:
     # machine-built counterpart to the hand-curated feature docs above). `load-config.py`
     # defaults `knowledge_dir` here, and the story-grounding gate requires a record per story.
     $dir/knowledge:
-    $dir/features/journeys/README.md: |
+    # `index.md`, not `README.md`, and the name is load-bearing. Ostler's one hard OKF rule
+    # is that every non-reserved `.md` under a doc root carries a `type:` in frontmatter, and
+    # only `index.md`/`log.md` are reserved. A README here is human guidance, not a typed
+    # Concept, so it has no honest `type` to declare — as a README it made every repo
+    # bootstrapped from this scaffold fail `ostler doctor` on its first run with
+    # `okf-missing-type`. As the bundle index it is exempt by design.
+    $dir/features/journeys/index.md: |
       # User journeys
 
       A **user journey** is the ordered path a real user takes through the UI to reach a feature — by

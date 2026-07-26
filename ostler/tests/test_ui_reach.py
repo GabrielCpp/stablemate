@@ -261,6 +261,95 @@ def test_same_screen_is_a_zero_hop_route(repo: Path):
     assert reach.route(_edges(repo), LAND, LAND) == []
 
 
+def _entry(text: str, how: str = "app root") -> str:
+    """Add an `entry:` bullet after the screen's `route:` — the one bullet every fixture has."""
+    lines = text.splitlines()
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("- route:"))
+    lines.insert(at + 1, f"- entry: {how}")
+    return "\n".join(lines) + "\n"
+
+
+def _doctor(repo: Path):
+    from ostler import doctor
+    return doctor.run(load(repo))
+
+
+def _codes(report, severity: str = "error"):
+    return [f.code for f in report.findings if f.severity == severity]
+
+
+def test_doctor_warns_rather_than_errors_when_no_entry_is_declared(repo: Path):
+    """No root means the question is unanswerable — which is not the same as a pass."""
+    _repo(repo)
+    report = _doctor(repo)
+
+    assert "unreachable-screen" not in _codes(report)
+    assert "no-entry-point" in _codes(report, "warn")
+
+
+def test_doctor_flags_a_screen_no_path_reaches(repo: Path):
+    _repo(repo)
+    write(repo / SCREENS / "landing.md", _entry(LANDING))
+    report = _doctor(repo)
+
+    unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
+    assert [f.path for f in unreachable] == [ARCHIVE]
+    assert unreachable[0].severity == "error"
+
+
+def test_doctor_flags_an_island_that_has_an_inbound_edge(repo: Path):
+    """The case that rules out an inbound-degree test: linked, but hanging off nothing.
+
+    A cluster that links to itself is exactly the shape a broken navigation graph takes, and
+    counting inbound edges scores every member of it as fine.
+    """
+    _repo(repo)
+    write(repo / SCREENS / "landing.md", _entry(LANDING))
+    write(repo / SCREENS / "archive.md", ORPHAN + """
+## Components
+
+### archive-detail-link
+- leads-to: [Archive detail](archive-detail.md)
+""")
+    write(repo / SCREENS / "archive-detail.md", """\
+---
+type: screen
+slug: archive-detail
+title: Archive detail
+---
+# Archive detail
+
+- route: `/archive/detail`
+- requires: none
+- params: none
+""")
+    report = _doctor(repo)
+
+    flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
+    detail = f"{SCREENS}/archive-detail.md"
+    assert detail in flagged  # has an inbound edge from archive, still unreachable
+    assert ARCHIVE in flagged
+
+
+def test_entry_bullet_exempts_a_screen_and_makes_it_a_root(repo: Path):
+    """A deep-linked screen is entered from outside; declaring how is a claim, not a silencer."""
+    _repo(repo)
+    write(repo / SCREENS / "landing.md", _entry(LANDING))
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "emailed deep link"))
+    report = _doctor(repo)
+
+    assert "unreachable-screen" not in _codes(report)
+
+
+def test_reachable_screens_are_not_flagged(repo: Path):
+    _repo(repo)
+    write(repo / SCREENS / "landing.md", _entry(LANDING))
+    report = _doctor(repo)
+
+    flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
+    assert SIGNIN not in flagged and DASH not in flagged  # via leads-to and flow-step
+
+
 def test_intra_screen_leads_to_is_not_navigation(repo: Path):
     """A `leads-to:` pointing inside its own screen is a state change, not a transition."""
     write(repo / SCREENS / "dashboard.md", DASHBOARD + """
@@ -274,3 +363,13 @@ def test_intra_screen_leads_to_is_not_navigation(repo: Path):
 """)
     edges = reach.navigation_edges(graph.build(load(repo), surface="web"))
     assert not any(e["from"] == DASH and e["to"] == DASH for e in edges)
+
+
+def test_none_with_a_reason_still_reads_as_none(repo: Path):
+    """Authors write `none — public route, no auth guard`; the reason must not become a guard."""
+    _repo(repo)
+    write(repo / SCREENS / "landing.md", LANDING.replace(
+        "- requires: none",
+        "- requires:\n  - none — public route, no auth guard, no route loader"))
+    pre = reach.preconditions(_by_id(repo)[LAND])
+    assert pre["declared"] and pre["guards"] == []

@@ -131,7 +131,7 @@ least one machine-executed terminal assertion. `mechanism` is provenance
 - Use `{{env.NAME}}` for env-block values.
 - Payload files referenced in a step command must be written to `qa/payloads/` **before** the plan runs — include a `fixture` step or note them as pre-existing files.
 - `assert_count: 1` is the no-duplicate check — use it on queries where exactly one result is expected.
-- Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually.
+- Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
 - The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and `qa/asserts/` as sub-directories.
 - **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent DynamoDB lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{{key}}` in all steps that need it:
   ```yaml

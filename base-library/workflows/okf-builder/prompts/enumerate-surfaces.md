@@ -46,6 +46,15 @@ explicit source root below.
    - **one `environment` seed per target** you can identify (`local`, `test`, `prod`; a purely
      local tool may have only `local`, or none).
    Do not resolve the steps/ports/health here — the investigator documents each to the bar.
+3. Find the **test stack** — how the system is *verified*, and how a contributor adds to it. This is
+   the surface a `verify:` bullet points into, so a book that cites tests without describing the
+   harness that runs them cites something a reader cannot execute. Read `Makefile`/`justfile` test
+   targets, `package.json` scripts, `playwright.config.*` / `vitest.config.*` / `jest.config.*` /
+   `pytest.ini` / `pyproject [tool.pytest]` / `go.mod` + `*_test.go` layout, and the CI workflow —
+   CI is the authority on what is *actually* required to pass, as opposed to what the README hopes.
+   Emit **one `harness` seed per tier** the repo really has (unit, component, integration, e2e,
+   lint/static, a11y). Do not invent a tier that has no config and no test files: a repo with no
+   e2e suite gets no e2e harness, and that absence is itself worth seeing.
 4. Do **not** document their internals yet — just identify each surface and where its entry code
    lives. (The drain loop investigates each surface: enumerating its elements, then descending the
    code layer by layer.)
@@ -62,11 +71,14 @@ explicit source root below.
   {"kind": "surface", "target": "server:groom", "context": "groom/groom/app.py::create_app"},
   {"kind": "surface-slice", "target": "screens:projects", "context": "routes: /projects -> app/routes/projects.tsx; /projects/new -> app/routes/projects.new.tsx"},
   {"kind": "environment", "target": "environment:local", "context": "selector: GROOM_BIND=127.0.0.1; services: dashboard @ :8787"},
-  {"kind": "runbook", "target": "runbook:web", "context": "driver: web; env: local; launch: `groom serve`; evidence: pyproject console-script `groom`, README run section"}
+  {"kind": "runbook", "target": "runbook:web", "context": "driver: web; env: local; launch: `groom serve`; evidence: pyproject console-script `groom`, README run section"},
+  {"kind": "harness", "target": "harness:e2e", "context": "runner: playwright; config: web/playwright.config.ts; specs: web/e2e/**/*.spec.ts; command: `npm run test:e2e` (cwd web); ci: .github/workflows/ci.yml job `e2e`"},
+  {"kind": "harness", "target": "harness:unit", "context": "runner: vitest; config: web/vitest.config.ts; specs: web/src/**/*.test.ts; command: `npm test` (cwd web); ci: job `unit`"}
 ]}
 ```
 
 `target` is `<type>:<name>` (or `screens:<family>` for a large GUI batch); `context` points at the
 entry symbol, carries the complete bounded route/module list, or (for `runbook`/`environment`) the
-driver + launch evidence the investigator will resolve. Empty list only if the service truly has no
+driver + launch evidence the investigator will resolve. For `harness`, name the runner, its config
+file, the spec glob, the exact command with its working directory, and the CI job that gates it. Empty list only if the service truly has no
 surfaces and nothing to run.

@@ -142,6 +142,29 @@ def _qa_evidence_scaffold() -> dict:
     }
 
 
+def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
+    """(passing, failing) assertion counts from ``qa/qa-run.ndjson`` — the runner's ground
+    truth. A missing/empty log tallies to (0, 0) so an un-modeled surface without real proof
+    is still rejected."""
+    log_path = spec_dir / "qa" / "qa-run.ndjson"
+    if not log_path.is_file():
+        return (0, 0)
+    passed = failed = 0
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("kind") != "assert":
+            continue
+        result = str(rec.get("result", "")).strip().upper()
+        if result == "PASS":
+            passed += 1
+        elif result == "FAIL":
+            failed += 1
+    return (passed, failed)
+
+
 def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noqa: C901
     if not isinstance(data, dict):
         return ["qa-evidence.json must be a JSON object."]
@@ -158,7 +181,16 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if not isinstance(obligations, list):
         return ["'obligations' must be an array when present."]
     if not criteria and not obligations:
-        return ["qa-evidence must contain at least one criterion or OKF obligation."]
+        # A surface the OKF graph does not model as a feature (an infra/CLI story) yields no
+        # acceptance criteria and no obligations — the diff→OKF mapper has nothing to map. Its
+        # proof is the command assertions in the run log. Admit that case ONLY when the log
+        # shows real passing assertions and zero failures, so an empty/failing log is still
+        # rejected and this can never wave through a vacuous pass.
+        passed, failed = _run_log_tally(spec_dir)
+        if passed == 0 or failed > 0:
+            return ["qa-evidence must contain at least one criterion or OKF obligation "
+                    "(or, for an un-modeled infra/CLI surface, a run log with passing "
+                    f"assertions and no failures — found {passed} pass / {failed} fail)."]
 
     overall = str(data.get("overall", "")).strip().lower()
     any_fail = False

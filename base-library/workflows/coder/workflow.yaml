@@ -2249,6 +2249,7 @@ flows:
           - "{{ spec_dir }}"
           - "{{ documentation_context_build.status }}"
           - "documentation_context_result"
+          - "{{ docs_path }}"
         outputs:
           - key: documentation_context_result
         next: verify_story_documentation
@@ -2465,6 +2466,8 @@ flows:
         args:
           - "{{ spec_dir }}"
           - "{{ qa_context_build.status }}"
+          - "qa_context_result"
+          - "{{ docs_path }}"
         outputs:
           - key: qa_context_result
         next: decide_qa_okf_context
@@ -2573,6 +2576,7 @@ flows:
         script: scripts/validate-qa-plan.py
         args:
           - "{{ spec_dir }}"
+          - "{{ docs_path }}"
         outputs:
           - key: qa_plan_validation
         next: decide_qa_plan_validation
@@ -2607,9 +2611,41 @@ flows:
         type: branch
         path: qa_plan_review.disposition
         cases:
-          approved: run_qa_plan
+          approved: ensure_stack
           revise: guard_qa_plan
         default: guard_qa_plan
+
+      # Bring the QA stack up durably, OUTSIDE any agent turn, so node teardown cannot
+      # kill it mid-build (the failure that burned three QA attempts on a real run).
+      # ensure-stack.py reads the repo's stack manifest and hands the lifecycle to
+      # workhorse.stack: it brings the heavyweight stack up (compose/emulators/DB +
+      # baseline seed) or adopts one already serving, health-gates it, and leaves an
+      # expensive shared stack up for the next story to adopt. Foreground in-QA services
+      # (a dev server) stay in the QA plan's `background:` block, owned by ostler.
+      # No manifest authored yet → stack_ready=skip, and the flow proceeds as before.
+      - id: ensure_stack
+        type: script
+        script: scripts/ensure-stack.py
+        args:
+          - "qa-stack.yml"
+          - "{{ docs_path }}"
+        outputs:
+          - key: stack_ready
+          - key: stack_app_pid
+          - key: stack_app_pgid
+          - key: stack_entry_url
+          - key: stack_failed_step
+          - key: stack_notes
+        next: decide_stack_ready
+
+      - id: decide_stack_ready
+        type: branch
+        path: stack_ready
+        cases:
+          "yes": run_qa_plan
+          skip: run_qa_plan # no manifest → nothing durable to bring up; QA runs as before
+          "no": guard_setup # stack won't come up → repair the manifest via the setup loop
+        default: run_qa_plan
 
       - id: guard_qa_plan
         type: branch
@@ -2637,6 +2673,7 @@ flows:
         script: scripts/run-qa-plan.py
         args:
           - "{{ spec_dir }}"
+          - "{{ docs_path }}"
         outputs:
           - key: qa_result
         next: assess_qa_run
@@ -3368,9 +3405,9 @@ flows:
         type: branch
         path: setup_result.status
         cases:
-          ready: run_qa_plan # same validated plan, now with a runnable environment
+          ready: ensure_stack # re-run the (repaired) manifest to bring the stack up, then QA
           unfixable: gate_qa # genuinely human-only (secret/deploy/hardware) → operator
-        default: run_qa_plan
+        default: ensure_stack
 
       # Operator-mode switch for the QA gate (mirrors dev's gate_plan).
       - id: gate_qa

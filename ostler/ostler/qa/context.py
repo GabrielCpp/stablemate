@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import graph as graph_mod
-from ostler import inventory, markdown
+from ostler import inventory, markdown, registry
 from ostler.model import Graph, _parse_ui_nodes, load
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -320,6 +320,9 @@ def write_context(packet: dict[str, Any], spec_dir: Path) -> tuple[Path, Path]:
 
 def render_context(packet: dict[str, Any]) -> str:
     lines = [
+        "---",
+        f"type: {registry.spec_type_for('qa-okf-context.md')}",
+        "---",
         "# QA OKF Context",
         "",
         f"- Base: `{packet.get('base', '')}`",
@@ -684,6 +687,34 @@ def _is_non_production_path(path: str) -> bool:
         "changelog.md",
         "license.md",
     }:
+        return True
+    # Build, dependency-manifest, and tooling-config files. No feature Concept owns these
+    # and none should: they carry no user-observable behaviour for QA to verify. Left in,
+    # they fail the documentation gate as "unmapped production units" — which is exactly what
+    # blocked the first greenfield coder story, whose diff legitimately touched go.mod/go.sum/
+    # a Makefile/Pulumi config alongside the real code. Dependency manifests specifically are
+    # NOT ignored elsewhere by design (a version bump can change behaviour), but they have no
+    # OKF owner, so they belong here for the ownership gate.
+    build_config_names = {
+        "makefile",
+        "dockerfile",
+        ".gitignore",
+        ".dockerignore",
+        "go.mod",
+        "go.sum",
+        "go.work",
+        "go.work.sum",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "pubspec.yaml",
+        "pubspec.lock",
+        "analysis_options.yaml",
+    }
+    if name in build_config_names:
+        return True
+    # Pulumi stack config (Pulumi.yaml, Pulumi.<stack>.yaml) and CI/tooling dotfiles.
+    if name.startswith("pulumi.") and name.endswith((".yaml", ".yml")):
         return True
     return bool(parts and parts[0] in {".github", ".gitlab"})
 
