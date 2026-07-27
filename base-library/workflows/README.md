@@ -66,6 +66,7 @@ The `workflow.yaml` defines the DAG. Top-level keys:
 | `vars` | yes | Default input variables (overridden at invocation) |
 | `start` | yes | ID of the first node to execute |
 | `nodes` | yes | Ordered list of node definitions |
+| `labels` | no | Telemetry dimensions — Jinja templates re-rendered before every node, stamped on spans as `wf.<key>` (see below) |
 
 #### Node types
 
@@ -80,6 +81,29 @@ The `workflow.yaml` defines the DAG. Top-level keys:
 #### Variable interpolation
 
 Use `{{ var_name }}` anywhere in `args` or `path`. Nested keys from `outputs` are accessed with dot notation: `{{ discovery.next_file }}`.
+
+#### `labels` — telling telemetry what the run is working on
+
+Spans are dimensioned by run, node, backend and model automatically. What workhorse
+cannot know is the workflow's own unit of work — it is deliberately workflow-agnostic,
+so "a story" is vocabulary it must never learn. Declare it:
+
+```yaml
+labels:
+  work_id: "{{ story_slug or story }}"
+  epic: "{{ epic }}"
+```
+
+The values are re-rendered against the live context **before every node**, so a
+long-running queue stamps each span with whichever story was current when it opened.
+Keys land namespaced (`wf.work_id`), an expression that renders empty is dropped rather
+than stamped blank, and a label that fails to render costs one attribute and nothing
+else. Flows inherit their parent's rendered labels.
+
+Without this, a store can answer "how long did node `implement` take on average" but not
+"what did story CASE-1234 cost end-to-end" or "which stories needed three QA reworks" —
+those need a join back to run artifacts on disk. `coder/workflow.yaml` is the worked
+example.
 
 ### `prompts/`
 
@@ -109,7 +133,7 @@ if __name__ == "__main__":
 whole of it as the node's JSON `outputs`, so a stray `print("checking...")`
 corrupts them. Anything you want a human to read goes to `logger`.
 
-**Use the logger.** With `WORKHORSE_OTEL=1` these records reach the collector
+**Use the logger.** With a collector reachable these records reach it
 tagged with the run and the node (`groom logs --node <id>`), which is the only
 after-the-fact account of what a script decided. A script that logs nothing is a
 script whose behavior can only be inferred from its outputs — and a silent early

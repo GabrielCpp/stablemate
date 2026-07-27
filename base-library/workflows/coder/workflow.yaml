@@ -79,6 +79,19 @@ requires:
 # can run independently of the nested detour's enclosing story commit.
 #
 # Runs on the local-worker controller (Claude) — the same engine as story-coder.
+
+# Telemetry dimensions stamped on this run's spans (as `wf.*` attributes) whenever a
+# collector is reachable. Re-rendered before every node, so a span carries whichever
+# story/epic was current when it opened — which is what makes per-story cost, per-story
+# duration, and rework loops (the same node visited N times for one story) answerable
+# from the store rather than by joining against run artifacts on disk. An expression
+# that renders empty is dropped, so nodes upstream of the first selection simply carry
+# no `wf.work_id`. See workhorse/docs/WORKFLOW.md §1.2.
+labels:
+  work_id: "{{ story_slug or story }}"
+  epic: "{{ epic }}"
+  mode: "{{ mode }}"
+
 vars:
   # ── Required ────────────────────────────────────────────────────────────────
   # Select the run mode:

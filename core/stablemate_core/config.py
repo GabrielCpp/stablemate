@@ -327,6 +327,48 @@ def resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> 
     return _mapping_from_table(backend_table)
 
 
+def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]:
+    """Extra environment variables to hand the ``<backend>`` CLI, from ``[harness.<backend>]``.
+
+    ::
+
+        [harness.opencode]
+        env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
+
+    Every agent harness carries knobs that exist only as environment variables and
+    have no CLI flag, and the right value for one harness is meaningless to another.
+    This is the generic seam for them: workhorse learns no harness's vocabulary — it
+    forwards whatever the operator names.
+
+    Scoped per *harness*, not per power tier, for two reasons. A knob like the one
+    above is a property of the CLI, not of how hard a node is thinking, so a tier
+    would be the wrong axis to repeat it along. And ``[power.*]``/``[default.*]``
+    resolve by "first non-None wins" — replace semantics, which is right for picking
+    one model but wrong for an env table, where two layers should merge rather than
+    the narrower one erasing the wider one's variables.
+
+    Non-string values are dropped rather than coerced: ``env = { FOO = 1 }`` is a TOML
+    integer, and silently exporting ``"1"`` would make the config lie about what the
+    process received. Any missing or mistyped section yields ``{}`` — a config read
+    must never be what ends an unattended run.
+    """
+    data = cfg if cfg is not None else load_config()
+    harness_table = data.get("harness")
+    if not isinstance(harness_table, dict):
+        return {}
+    backend_table = harness_table.get(backend)
+    if not isinstance(backend_table, dict):
+        return {}
+    env_table = backend_table.get("env")
+    if not isinstance(env_table, dict):
+        return {}
+    return {
+        key: value
+        for key, value in env_table.items()
+        if isinstance(key, str) and key and isinstance(value, str)
+    }
+
+
 def get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any:
     data = cfg if cfg is not None else load_config()
     value: Any = data

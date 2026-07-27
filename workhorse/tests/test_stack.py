@@ -111,6 +111,34 @@ def test_boot_adopts_a_stack_already_serving(monkeypatch) -> None:
                    "app_pid": "", "app_pgid": ""}
 
 
+def test_boot_app_adopt_false_launches_even_when_serving(monkeypatch) -> None:
+    """adopt=False forces the (self-freshening) launch even if a stale stack is serving."""
+    launched = {"n": 0}
+
+    class Exited:
+        pid = 4242
+        returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+    def popen(*_a, **_kw):
+        launched["n"] += 1
+        return Exited()
+
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack.subprocess, "Popen", popen)
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "POLL_INTERVAL_S", 0)
+
+    out = stack.boot_app(
+        "docker compose up -d --build", "http://localhost:3000", "/", ".", ".",
+        "<title>Acme</title>", 60, adopt=False, logger=LOG,
+    )
+    assert out["boot_ok"] == "yes"
+    assert launched["n"] == 1  # did NOT adopt; ran the launch
+
+
 def test_teardown_without_a_pgid_runs_the_documented_stop_recipe(monkeypatch) -> None:
     calls: list[list[str]] = []
 
@@ -142,8 +170,8 @@ def test_teardown_leaves_the_stack_up_when_no_stop_recipe_is_documented(monkeypa
 # -- ensure_stack / teardown_stack ------------------------------------------------
 
 
-def test_ensure_stack_adopts_a_serving_stack_without_running_prepare(monkeypatch) -> None:
-    """Adopt-if-serving short-circuits before prepare/seed — no re-run on a live stack."""
+def test_ensure_stack_reuse_always_adopts_without_running_prepare(monkeypatch) -> None:
+    """reuse=always (code-independent stack) short-circuits before prepare/launch/seed."""
     monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
     monkeypatch.setattr(
         stack, "_run_step", lambda *_a, **_kw: pytest.fail("ran a step while adopting"),
@@ -152,13 +180,92 @@ def test_ensure_stack_adopts_a_serving_stack_without_running_prepare(monkeypatch
         stack, "boot_app", lambda *_a, **_kw: pytest.fail("booted while adopting"),
     )
     out = stack.ensure_stack(
-        {"entry_url": "http://localhost:8080", "identity": "acme",
+        {"entry_url": "http://localhost:8080", "identity": "acme", "reuse": "always",
          "prepare": ["make deps"], "launch": "make dev-stack-test-db"},
         logger=LOG,
     )
     assert out["ready"] == "yes"
     assert out["adopted"] == "yes"
     assert out["app_pgid"] == ""
+
+
+def test_ensure_stack_default_refuses_to_adopt_a_stale_serving_stack(monkeypatch) -> None:
+    """The default (if-fresh, no `fresh` probe) never adopts — it re-launches to refresh.
+
+    This is the staleness guard: a stack serving from a prior story was built from older
+    code, so adopting it blindly would run QA against a stale build.
+    """
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)  # something IS serving
+    launched = {"n": 0}
+
+    def boot(*_a, **kw):
+        launched["n"] += 1
+        assert kw["adopt"] is False  # ensure_stack owns the decision; launch must run
+        return {"boot_ok": "yes", "entry_url": "u", "app_pid": "", "app_pgid": ""}
+
+    monkeypatch.setattr(stack, "boot_app", boot)
+    out = stack.ensure_stack(
+        {"entry_url": "http://localhost:8080", "identity": "acme",
+         "launch": "docker compose up -d --build"},
+        logger=LOG,
+    )
+    assert out["ready"] == "yes"
+    assert out["adopted"] == "no"
+    assert launched["n"] == 1  # re-launched instead of adopting the stale stack
+
+
+def test_ensure_stack_if_fresh_adopts_when_probe_passes(monkeypatch) -> None:
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "_run_step", lambda *_a, **_kw: (True, ""))  # fresh passes
+    monkeypatch.setattr(stack, "boot_app", lambda *_a, **_kw: pytest.fail("re-launched a fresh stack"))
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "reuse": "if-fresh",
+         "fresh": "make stack-matches-head", "launch": "docker compose up -d --build"},
+        logger=LOG,
+    )
+    assert out["adopted"] == "yes"
+
+
+def test_ensure_stack_if_fresh_relaunches_when_probe_fails(monkeypatch) -> None:
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    # the fresh probe reports stale; every other step passes
+    monkeypatch.setattr(
+        stack, "_run_step",
+        lambda step, *_a, label="", **_kw: ((label != "fresh"), "stale" if label == "fresh" else ""),
+    )
+    launched = {"n": 0}
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: (launched.__setitem__("n", launched["n"] + 1)
+                            or {"boot_ok": "yes", "entry_url": "u", "app_pid": "", "app_pgid": ""}),
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "reuse": "if-fresh",
+         "fresh": "make stack-matches-head", "launch": "docker compose up -d --build"},
+        logger=LOG,
+    )
+    assert out["adopted"] == "no"
+    assert launched["n"] == 1
+
+
+def test_ensure_stack_reuse_never_relaunches_even_when_serving(monkeypatch) -> None:
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(
+        stack, "_run_step", lambda *_a, **_kw: pytest.fail("ran a `fresh` probe under reuse=never"),
+    )
+    launched = {"n": 0}
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: (launched.__setitem__("n", launched["n"] + 1)
+                            or {"boot_ok": "yes", "entry_url": "u", "app_pid": "", "app_pgid": ""}),
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "reuse": "never",
+         "fresh": "make stack-matches-head", "launch": "docker compose up -d --build"},
+        logger=LOG,
+    )
+    assert out["adopted"] == "no"
+    assert launched["n"] == 1
 
 
 def test_ensure_stack_runs_prepare_launch_seed_health_in_order(monkeypatch) -> None:

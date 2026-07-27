@@ -150,10 +150,10 @@ class ArtifactWriter:
                 f.write(json.dumps(record) + "\n")
         except OSError:
             pass
-        # Mirror the record to the opt-in OTel exporter — this is the one choke
-        # point every enter/done/terminal already funnels through (root run and
-        # nested flow scopes alike), so node spans need no other hook. A no-op
-        # unless WORKHORSE_OTEL is set; never raises (see workhorse/otel.py).
+        # Mirror the record to the OTel exporter — this is the one choke point
+        # every enter/done/terminal already funnels through (root run and nested
+        # flow scopes alike), so node spans need no other hook. A no-op when
+        # telemetry is off; never raises (see workhorse/otel.py).
         otel.record_event(record)
 
     def read_events(self) -> list[dict[str, Any]]:

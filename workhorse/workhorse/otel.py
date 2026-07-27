@@ -1,11 +1,19 @@
-"""Opt-in OpenTelemetry instrumentation for workhorse — no-op by default.
+"""OpenTelemetry instrumentation for workhorse — on when a collector is there.
 
-Enable by setting ``WORKHORSE_OTEL=1`` (plus ``OTEL_EXPORTER_OTLP_ENDPOINT``,
-default ``http://127.0.0.1:8787`` — groom's collector) and installing the
-``otel`` extra (``pip install 'workhorse-agent[otel]'``). With the env unset, or
-the SDK absent, every function here is a near-zero-cost no-op — instrumentation
-must never change how an unattended run behaves, let alone crash it, so every
-public entry point also swallows its own exceptions.
+``WORKHORSE_OTEL`` is tri-state. Set truthy it forces telemetry on; set falsy
+(``0``/``false``/``no``) it forces it off; **unset** it means *auto*, and
+``start_run`` decides by probing ``OTEL_EXPORTER_OTLP_ENDPOINT`` (default
+``http://127.0.0.1:8787`` — groom's collector). Auto is the default because the
+env var was a footgun: the runs worth having telemetry for are the unattended
+week-long ones, and those are exactly the runs nobody remembers to export a
+variable before launching. If groom is listening, a run should be observable.
+
+The probe is what keeps that honest — auto-on may not *cost* anything on a
+machine with no collector, so enabling is gated on one short-timeout TCP connect
+rather than on hope. With the endpoint dead, the SDK absent, or the var set
+falsy, every function here is a near-zero-cost no-op — instrumentation must never
+change how an unattended run behaves, let alone crash it, so every public entry
+point also swallows its own exceptions.
 
 The instrumentation sites call module-level functions rather than threading a
 tracer object through the engine: there is exactly one run per process, so the
@@ -50,19 +58,35 @@ working or dead. Only something that *increments* separates the two.
 from __future__ import annotations
 
 import os
+import socket
 import sys
 import threading
 import time
 from typing import Any
+from urllib.parse import urlparse
+
+
+def _tristate(raw: str | None) -> bool | None:
+    """Parse a force-on / force-off / auto env var. ``None`` means unset (auto)."""
+    value = (raw or "").strip().lower()
+    if not value:
+        return None
+    return value not in ("0", "false", "no")
+
 
 # Read once at import (the AGENT_*/_configured_gas() module-constant pattern).
-# WORKHORSE_OTEL gates everything; the endpoint defaults to groom's local port.
-_OTEL_ENABLED = (os.environ.get("WORKHORSE_OTEL") or "").strip().lower() not in (
-    "", "0", "false", "no",
-)
+# Tri-state, not a bool: True forces telemetry on, False forces it off, and None
+# ("unset") defers to the collector probe in start_run(). The endpoint defaults to
+# groom's local port.
+_OTEL_FORCED = _tristate(os.environ.get("WORKHORSE_OTEL"))
 _OTEL_ENDPOINT = (
     os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "http://127.0.0.1:8787"
 ).rstrip("/")
+# Seconds the auto-mode probe waits for the collector to accept. Deliberately tiny:
+# it sits on the critical path of every run start, and the endpoint it looks for is
+# normally a loopback port that accepts (or refuses) in microseconds. A remote or
+# firewalled endpoint is the only case that pays the full timeout, once per run.
+_PROBE_TIMEOUT_S = float(os.environ.get("WORKHORSE_OTEL_PROBE_S", "0.25"))
 # How often the background thread proves the run's process is alive. Script nodes are
 # why this exists: they run as a buffered child (``SubprocessScriptRunner``), so they
 # stream nothing a per-line heartbeat could hook, and a wedged one would otherwise be
@@ -79,11 +103,35 @@ def enabled() -> bool:
     return _active is not None
 
 
+def _collector_reachable(endpoint: str) -> bool:
+    """True when something accepts a TCP connection at ``endpoint``.
+
+    A listening socket is as much as a cheap probe can prove, and it is enough:
+    the OTLP exporter is batched and fire-and-forget, so guessing wrong costs
+    dropped spans, never a broken run. Anything that goes wrong here — refused,
+    unresolvable, timed out, malformed endpoint — means "no collector".
+    """
+    try:
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, port), _PROBE_TIMEOUT_S):
+            return True
+    except Exception:
+        return False
+
+
 def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
-    """Configure the SDK and open the run's root span. No-op unless
-    ``WORKHORSE_OTEL`` is set and the (optional) SDK is importable."""
+    """Configure the SDK and open the run's root span.
+
+    On unless ``WORKHORSE_OTEL`` is set falsy: with it set truthy the SDK is built
+    unconditionally, and with it unset (auto) only when the collector answers the
+    probe. Still a no-op if the optional SDK isn't importable.
+    """
     global _active
-    if not _OTEL_ENABLED or _active is not None:
+    if _active is not None or _OTEL_FORCED is False:
+        return
+    if _OTEL_FORCED is None and not _collector_reachable(_OTEL_ENDPOINT):
         return
     try:
         _active = _build(workflow, run_id, run_dir)
@@ -139,8 +187,14 @@ def gas_refuel(node_id: str) -> None:
     _call("gas_refuel", node_id)
 
 
-def turn_start(node_id: str, model: str | None, effort: str | None, timeout: float) -> None:
-    _call("turn_start", node_id, model, effort, timeout)
+def turn_start(
+    node_id: str,
+    model: str | None,
+    effort: str | None,
+    timeout: float,
+    backend: str | None = None,
+) -> None:
+    _call("turn_start", node_id, model, effort, timeout, backend)
 
 
 def turn_end(error: str | None = None) -> None:
@@ -148,8 +202,19 @@ def turn_end(error: str | None = None) -> None:
 
 
 def turn_result(event: dict[str, Any]) -> None:
-    """Attach the CLI result event's duration + token usage to the open turn."""
+    """Attach a turn's duration + token usage to the open agent-turn span.
+
+    ``event`` is already normalized (``runner/usage.py``), so every backend's
+    dialect arrives here in Claude's key names and one query reads them all."""
     _call("turn_result", event)
+
+
+def set_labels(labels: dict[str, str]) -> None:
+    """Set the workflow-declared dimensions (`labels:`) stamped on later spans.
+
+    Called once per node with the graph's labels rendered against the live
+    context. Values must already be strings; ``{}`` clears them."""
+    _call("set_labels", labels)
 
 
 def turn_session(session_id: str) -> None:
@@ -253,11 +318,15 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
-        print(
-            "[workhorse] ⚠ WORKHORSE_OTEL is set but the OTel SDK is not installed; "
-            "telemetry disabled. Install it with: pip install 'workhorse-agent[otel]'",
-            file=sys.stderr,
-        )
+        # Only worth a word to someone who asked for telemetry. In auto mode the
+        # collector merely happens to be up, so this would otherwise print on every
+        # run start on any machine without the extra — noise nobody opted into.
+        if _OTEL_FORCED is not None:
+            print(
+                "[workhorse] ⚠ WORKHORSE_OTEL is set but the OTel SDK is not installed; "
+                "telemetry disabled. Install it with: pip install 'workhorse-agent[otel]'",
+                file=sys.stderr,
+            )
         return None
 
     resource = Resource.create(
@@ -326,6 +395,16 @@ class _Telemetry:
         # span's own duration — is readable *while* the node is still running.
         self._stack: list[tuple[tuple[str, int], Any, float]] = []
         self._turn: Any = None
+        # Wall-clock bounds of the open turn, so a harness that reports no duration
+        # still gets one (see turn_end); the flag stops that fallback from clobbering
+        # a duration the backend did report.
+        self._turn_started: float | None = None
+        self._turn_has_duration = False
+        # Workflow-declared dimensions (the graph's `labels:`), already rendered
+        # against the live context by the caller. Stamped onto every node and turn
+        # span opened while they are set — this is what lets a query group turns by
+        # the workflow's own unit of work without workhorse knowing what one is.
+        self._labels: dict[str, str] = {}
         self._stop = threading.Event()
         self._beat_thread: threading.Thread | None = None
         # Instruments are best-effort: an older SDK without sync gauges just
@@ -437,6 +516,7 @@ class _Telemetry:
                         "workhorse.node": node_id,
                         "workhorse.seq": seq,
                         "workhorse.depth": len(self._stack),
+                        **self._labels,
                     },
                 )
                 self._stack.append(((node_id, seq), span, time.monotonic()))
@@ -502,19 +582,31 @@ class _Telemetry:
 
     # ---- agent turns ----------------------------------------------------- #
     def turn_start(
-        self, node_id: str, model: str | None, effort: str | None, timeout: float
+        self,
+        node_id: str,
+        model: str | None,
+        effort: str | None,
+        timeout: float,
+        backend: str | None = None,
     ) -> None:
         with self._lock:
             if self._turn is not None:  # defensive: never leak an open turn
                 self._turn.end()
+            self._turn_started = time.monotonic()
+            self._turn_has_duration = False
             self._turn = self._tracer.start_span(
                 "agent_turn",
                 context=self._parent_ctx(),
                 attributes={
                     "workhorse.node": node_id,
+                    # Which harness ran the turn. `model` alone cannot answer it —
+                    # two backends can drive the same model slug, and comparing
+                    # harnesses was impossible without this.
+                    "backend": backend or "",
                     "model": model or "",
                     "effort": effort or "",
                     "timeout_s": -1 if timeout == float("inf") else int(timeout),
+                    **self._labels,
                 },
             )
 
@@ -523,6 +615,14 @@ class _Telemetry:
             turn, self._turn = self._turn, None
             if turn is None:
                 return
+            # Every turn gets a duration, even from a harness that reports none —
+            # the engine timed it either way. Only fill the gap: a backend-reported
+            # duration excludes process spawn, so it is the truer number and wins.
+            if not self._turn_has_duration and self._turn_started is not None:
+                turn.set_attribute(
+                    "duration_ms", int((time.monotonic() - self._turn_started) * 1000)
+                )
+            self._turn_started = None
             if error:
                 turn.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
             turn.end()
@@ -534,17 +634,33 @@ class _Telemetry:
                 return
             if event.get("duration_ms") is not None:
                 turn.set_attribute("duration_ms", int(event["duration_ms"]))
+                self._turn_has_duration = True  # turn_end must not overwrite it
             usage = event.get("usage") or {}
             for field in (
                 "input_tokens",
                 "output_tokens",
                 "cache_read_input_tokens",
                 "cache_creation_input_tokens",
+                # Reported by codex and opencode; absent from Claude's result event.
+                # Left off the span entirely when unreported rather than zeroed, so
+                # "no reasoning tokens" stays distinguishable from "not measured".
+                "reasoning_output_tokens",
             ):
                 if usage.get(field) is not None:
                     turn.set_attribute(f"usage.{field}", int(usage[field]))
             if event.get("total_cost_usd") is not None:
                 turn.set_attribute("total_cost_usd", float(event["total_cost_usd"]))
+
+    def set_labels(self, labels: dict[str, str]) -> None:
+        """Replace the workflow-declared dimensions stamped on subsequent spans.
+
+        Replace, not merge: the labels describe what the run is working on *now*,
+        and a key that stopped resolving (the epic finished, the story cleared)
+        must stop appearing rather than linger at its last value and mislabel
+        every later span.
+        """
+        with self._lock:
+            self._labels = dict(labels)
 
     def turn_session(self, session_id: str) -> None:
         with self._lock:

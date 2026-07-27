@@ -36,6 +36,7 @@ from ostler import crud, doctor
 from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import select, todo as todo_mod
+from ostler import waivers as waivers_mod
 from ostler.crud import Result
 from ostler.model import Graph, load
 
@@ -177,6 +178,23 @@ class Ostler:
     def backlog_prune(self, item_id: str) -> Result:
         """Remove a backlog item (``ostler backlog prune``)."""
         return self._apply(backlog_mod.prune(self._fresh(), item_id))
+
+    def allocate_id(self) -> str:
+        """Mint and persist the next repo-prefixed ostler id (``PRED-15``) — the same id space
+        stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
+        from ostler import ids as ids_mod
+        return ids_mod.allocate(self.graph)
+
+    def add_doctor_waiver(self, code: str, ref: str, reason: str, backlog: str = "") -> Result:
+        """Record an accepted-defect doctor waiver so the finding downgrades error→warn.
+
+        The finding stays visible in ``doctor``; it just stops gating. Pairs with ``backlog_add``:
+        the caller files the IOU that tracks the real fix and passes its id here as ``backlog``.
+        """
+        # Uses only ``graph.root`` (writes a JSON file beside docs/), so the cached graph is fine —
+        # no ``_fresh()`` reload, which on a large book would cost seconds per waiver.
+        changed = waivers_mod.add(self.graph, code, ref, reason, backlog)
+        return Result(changed, "" if changed else "empty code or ref")
 
     def todo_add(self, name: str, *, front: bool = False) -> Result:
         """Enqueue an epic (``ostler todo add``)."""

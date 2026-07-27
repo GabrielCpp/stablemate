@@ -83,6 +83,7 @@ def boot_app(
     app_identity: str,
     timeout_s: float,
     *,
+    adopt: bool = True,
     logger: logging.Logger,
 ) -> dict[str, str]:
     """Launch one app/stack and prove it healthy, or fail soft.
@@ -90,6 +91,11 @@ def boot_app(
     Returns ``{boot_ok, entry_url, app_pid, app_pgid}`` — ``app_pgid`` is empty when
     this run owns no process to reap (an adopted stack, or a bring-up command whose
     stack lives in containers), so teardown knows not to ``killpg`` a foreign group.
+
+    *adopt*: when True (the default, and how a read-only walkthrough uses it), an app
+    already serving the identity is reused as-is. A caller that mutates the code the app
+    is built from — where a stack left serving from a prior run is *stale* — passes
+    ``adopt=False`` to force the (idempotent, self-freshening) launch to run instead.
     """
     health_path = health_path or "/"
     app_cwd = app_cwd or "."
@@ -103,7 +109,7 @@ def boot_app(
     # Idempotent reuse: something already serving here → adopt it, own nothing. Safe
     # only with an identity marker; without one, start the documented command and prove
     # that owned process became healthy instead of adopting an arbitrary listener.
-    if app_identity and health_ok(health_url, app_identity):
+    if adopt and app_identity and health_ok(health_url, app_identity):
         logger.info("adopting the app already serving %s (identity %r matched); "
                     "teardown will not reap it", health_url, app_identity)
         return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
@@ -213,16 +219,39 @@ def ensure_stack(
     Manifest keys (all optional except a way to prove readiness):
 
       * ``entry_url`` / ``health_path`` — the HTTP readiness probe (default ``/``).
-      * ``identity`` — a marker string in the served body enabling adopt-if-serving.
+      * ``identity`` — a marker string in the served body; the readiness signal, and a
+        precondition for reuse.
+      * ``reuse`` — when it is safe to adopt a stack already serving, rather than bring it
+        up again: ``if-fresh`` (default), ``always``, or ``never`` (see below).
+      * ``fresh`` — a probe command (exit 0 ⇔ the running stack reflects the current code)
+        that gates adoption under ``reuse: if-fresh``.
       * ``app_cwd`` / ``repo_root`` / ``boot_timeout`` — launch context and ceiling.
-      * ``launch`` — the bring-up or foreground command owned by :func:`boot_app`.
+      * ``launch`` — an **idempotent, self-freshening** bring-up command (e.g.
+        ``docker compose up -d --build``) owned by :func:`boot_app`. Safe to re-run: on
+        no change it is a cache-hit no-op; on changed code it rebuilds and recreates.
       * ``stop`` — the teardown recipe; absent means leave an expensive stack up.
       * ``prepare`` — ordered blocking steps run *before* launch (deps/build/stack-up).
       * ``seed`` — ordered **idempotent** steps run *after* the stack serves (fixtures).
       * ``health`` — ordered command gates run last (e.g. a ``stack-health`` target).
 
-    ``prepare``/``seed``/``health`` entries are a bare command string or a mapping with
-    ``run`` (+ optional ``working-directory``/``timeout``). Returns
+    **Staleness — why adoption is earned, not automatic.** A stack left serving from a
+    prior story was built from *older* code; adopting it blindly runs QA against a stale
+    build and reports a false result. So a serving stack is adopted only when the reuse
+    policy proves it is safe:
+
+      * ``if-fresh`` (default) — adopt only if a ``fresh`` probe is declared and passes;
+        otherwise re-run ``launch`` (which rebuilds). With no ``fresh`` probe, the default
+        never adopts — it always re-launches, so staleness is impossible unless the author
+        opts out. A code-embedding service that must be live is better run from source in
+        the QA plan's ``background:`` block, where it always reflects the working tree.
+      * ``always`` — adopt whenever the identity is serving. Reserve this for a
+        **code-independent** stack (a stock DB/emulator holding fixtures) whose build does
+        not depend on the code under test; it is the only case where skipping bring-up and
+        re-seed is safe.
+      * ``never`` — never adopt; always re-run ``launch``.
+
+    ``prepare``/``seed``/``health``/``fresh`` entries are a bare command string or a mapping
+    with ``run`` (+ optional ``working-directory``/``timeout``). Returns
     ``{ready, adopted, entry_url, app_pid, app_pgid[, failed_step]}``.
     """
     app_cwd = manifest.get("app_cwd") or "."
@@ -230,6 +259,7 @@ def ensure_stack(
     entry_url = manifest.get("entry_url", "")
     health_path = manifest.get("health_path") or "/"
     identity = manifest.get("identity", "")
+    reuse = str(manifest.get("reuse", "if-fresh"))
     timeout_s = boot_timeout(str(manifest.get("boot_timeout", "")))
     launch_cmd = manifest.get("launch", "")
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
@@ -238,12 +268,16 @@ def ensure_stack(
         return {"ready": "no", "adopted": "no", "entry_url": entry_url,
                 "app_pid": pid, "app_pgid": pgid, "failed_step": step}
 
-    # Adopt-if-serving: a shared stack already up (this or a prior turn) is reused whole,
-    # so prepare/seed never re-run against a live stack and nothing is double-bound.
+    # Adopt-if-serving — but only when the reuse policy proves the running stack is not
+    # stale (built from older code). Otherwise fall through and re-run the (idempotent,
+    # self-freshening) launch so QA never runs against a stale build.
     if identity and health_url and health_ok(health_url, identity):
-        logger.info("adopting the stack already serving %s (identity matched)", health_url)
-        return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
-                "app_pid": "", "app_pgid": ""}
+        if _may_adopt(reuse, manifest, app_cwd, timeout_s, logger):
+            logger.info("adopting the stack already serving %s (reuse=%s)", health_url, reuse)
+            return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
+                    "app_pid": "", "app_pgid": ""}
+        logger.info("stack serving %s but not adopted (reuse=%s) — re-running launch to "
+                    "refresh it against current code", health_url, reuse)
 
     for i, step in enumerate(manifest.get("prepare") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
@@ -253,8 +287,10 @@ def ensure_stack(
 
     app_pid = app_pgid = ""
     if launch_cmd:
+        # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
+        # always run (and be self-freshening) once we have decided not to adopt.
         res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
-                       identity, timeout_s, logger=logger)
+                       identity, timeout_s, adopt=False, logger=logger)
         if res["boot_ok"] != "yes":
             return _fail("launch", res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
@@ -287,6 +323,33 @@ def teardown_stack(
 
 
 # -- helpers ----------------------------------------------------------------------
+
+
+def _may_adopt(
+    reuse: str, manifest: dict[str, Any], app_cwd: str, timeout: float,
+    logger: logging.Logger,
+) -> bool:
+    """Decide whether a stack already serving may be adopted, or must be re-launched.
+
+    ``always`` trusts the operator's declaration that the stack is code-independent.
+    ``never`` always rebuilds. ``if-fresh`` (the default) adopts only when a ``fresh``
+    probe is declared *and* exits 0 — with no probe it refuses, so the default can never
+    silently adopt a stale build.
+    """
+    if reuse == "always":
+        return True
+    if reuse == "never":
+        return False
+    # if-fresh (and any unknown value → the safe default)
+    fresh = manifest.get("fresh")
+    if not fresh:
+        logger.info("reuse=if-fresh with no `fresh` probe — refusing to adopt "
+                    "(cannot prove the running stack matches current code)")
+        return False
+    ok, err = _run_step(fresh, app_cwd, timeout, logger, label="fresh")
+    if not ok:
+        logger.info("`fresh` probe reports the running stack is stale (%s) — will re-launch", err)
+    return ok
 
 
 def _run_step(

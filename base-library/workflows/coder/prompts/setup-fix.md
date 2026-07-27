@@ -66,12 +66,18 @@ Read, then act:
 Make `qa-stack.yml` correct and give it everything its steps need, e.g.:
 
 - **Author or repair `qa-stack.yml`** so the workflow can stand the stack up from cold: point `launch`
-  at the repo's documented bring-up command (a `make dev-stack-*` target, `docker compose up -d`, a dev
-  server), set a real `entry_url`/`health_path` readiness probe, and list the `prepare` (deps/build/
-  migrations) and `seed` (baseline fixtures, the Auth-emulator test user) steps as ordered commands.
-  Add a `stop` recipe only if the stack should be torn down; omitting it leaves an expensive shared
-  stack up for reuse, which is the intended default. Set an `identity` marker so an already-serving
-  stack is adopted rather than double-bound.
+  at an **idempotent, self-freshening** bring-up command (`docker compose up -d --build`, a
+  `make dev-stack-*` target that rebuilds), set a real `entry_url`/`health_path` readiness probe, and
+  list the `prepare` (deps/build/migrations) and `seed` (baseline fixtures, the Auth-emulator test
+  user) steps as ordered commands. Add a `stop` recipe only if the stack should be torn down; omitting
+  it leaves an expensive stack up for reuse.
+- **Do not let QA run against a stale build.** A container built from the code under test goes out of
+  date the moment a story changes that code. So the manifest's `launch` must *rebuild* (a bare
+  `docker compose up -d` that reuses an old image is the bug), and adoption is governed by `reuse`:
+  the default `if-fresh` with no `fresh` probe never adopts a serving stack — it re-runs `launch`.
+  Only mark a stack `reuse: always` when it is **code-independent** (a stock DB/emulator with
+  fixtures). A service that must reflect the working tree belongs in the QA plan's `background:` block
+  (run live from source), not adopted here.
 - **Install missing tooling**: project dependencies (`npm ci` / `pub get` / `go mod download`),
   **Playwright browsers** (`npx playwright install`), Maestro, or other QA tools the runbook names.
   Installing an absent QA tool is setup, never a "blocked" condition. (These belong as `prepare` steps

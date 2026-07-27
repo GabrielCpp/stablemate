@@ -21,11 +21,21 @@ the value from the finding text. Those are emitted as ``backfill``, whose prompt
 be grounded in source. Filed as ``fixup`` they would be "fixed" by writing an empty or ``none``
 stub, which satisfies the linter while asserting something nobody checked.
 
-Args: [repo_root] [features_root] [round]
-Outputs JSON: {"checkpoint_clean","doctor_output","round","fixup_items","backfill_count"}
+**Stall detection.** The drain-then-recheck loop assumes each fixup round *reduces* the findings —
+but a defect whose only real fix is a code change (two controls that genuinely co-render with the
+same accessible name) survives its doc-repair and doctor re-flags the identical set every round. That
+is an infinite loop the gas tank never catches, because each round still marks its fixup item done.
+So this node fingerprints the finding set and reports how many consecutive rounds it has recurred
+*unchanged* (``stall_rounds``); the workflow bounds the loop on that, not on the raw round count —
+which legitimately climbs on a big book that takes many *productive* fixup rounds to converge.
+
+Args: [repo_root] [features_root] [round] [prev_signature] [prev_stall]
+Outputs JSON: {"checkpoint_clean","doctor_output","round","fixup_items","backfill_count",
+               "fixup_signature","stall_rounds"}
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -89,11 +99,28 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
 def emit(**kw: object) -> None:
     payload: dict[str, object] = {
         "checkpoint_clean": "no", "doctor_output": "", "round": 0, "fixup_items": "[]",
-        "backfill_count": 0,
+        "backfill_count": 0, "fixup_signature": "", "stall_rounds": 0,
     }
     payload.update(kw)
     print(json.dumps(payload))
     sys.exit(0)
+
+
+def _signature(findings: list[dict]) -> str:
+    """A stable fingerprint of a finding SET, order-independent.
+
+    Keyed on ``(code, path, line, ref)`` — the identity of a finding, not its prose (a reworded
+    message must not read as a different finding). Empty findings → "" so a clean round can never
+    match a prior dirty signature.
+    """
+    if not findings:
+        return ""
+    keys = sorted(
+        (str(f.get("code", "")), str(f.get("path", "")), int(f.get("line", 0) or 0),
+         str(f.get("ref", "")))
+        for f in findings
+    )
+    return hashlib.sha1(json.dumps(keys).encode()).hexdigest()[:16]
 
 
 def _run(args: list[str], cwd: str) -> str:
@@ -140,6 +167,11 @@ def main(logger: logging.Logger) -> None:
     except ValueError:
         rnd = 0
     rnd += 1
+    prev_signature = sys.argv[4] if len(sys.argv) > 4 else ""
+    try:
+        prev_stall = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else 0
+    except ValueError:
+        prev_stall = 0
 
     if features:
         _run(["ostler", "fmt", features], repo_root)
@@ -151,6 +183,17 @@ def main(logger: logging.Logger) -> None:
     findings, out = _doctor_for_features(repo_root, features)
     clean = not findings
 
+    signature = _signature(findings)
+    if clean:
+        stall = 0
+    elif signature and signature == prev_signature:
+        # The identical finding set as last round: a repair that cannot land (a code-fix-only
+        # defect re-flagged unchanged). Count it so the workflow can bound the loop.
+        stall = prev_stall + 1
+    else:
+        # Findings changed — something was repaired or discovered. Real progress; reset.
+        stall = 0
+
     fixups: list[dict[str, str]] = []
     backfills = 0
     if clean:
@@ -160,10 +203,12 @@ def main(logger: logging.Logger) -> None:
         fixups = _repair_items(findings, rnd)
         backfills = sum(1 for i in fixups if i["kind"] == "backfill")
         logger.info("round %d: doctor reports %d error(s) across %d item(s) in %s — "
-                    "queuing %d backfill + %d fixup item(s)", rnd, len(findings), len(fixups),
-                    features or repo_root, backfills, len(fixups) - backfills)
+                    "queuing %d backfill + %d fixup item(s)%s", rnd, len(findings), len(fixups),
+                    features or repo_root, backfills, len(fixups) - backfills,
+                    f" [stall {stall}: same findings as last round]" if stall else "")
     emit(checkpoint_clean="yes" if clean else "no", doctor_output=out[-4000:],
-         round=rnd, fixup_items=json.dumps(fixups), backfill_count=backfills)
+         round=rnd, fixup_items=json.dumps(fixups), backfill_count=backfills,
+         fixup_signature=signature, stall_rounds=stall)
 
 
 if __name__ == "__main__":

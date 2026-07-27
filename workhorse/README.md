@@ -232,6 +232,43 @@ Model resolution order per node: `power.<tier>.<backend>` mapping → `AGENT_MOD
 default (`sonnet` for claude; unset for the others, meaning the harness decides).
 Effort resolves as: power mapping → `[default.<backend>]` (no env override exists).
 
+#### Per-harness environment (`[harness.<backend>].env`)
+
+Some harness knobs exist only as **environment variables** — no CLI flag, no
+setting workhorse could pass through. Name them per backend and workhorse exports
+them into that CLI's subprocess (and nothing else's):
+
+```toml
+[harness.opencode]
+env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
+
+[harness.claude]
+env = { MAX_THINKING_TOKENS = "31999" }
+```
+
+Applied on top of the inherited environment, so a variable set here wins over the
+same one exported by the launching shell. Values must be **strings**: `env = { FOO
+= 1 }` is a TOML integer and is dropped rather than coerced, so the config can't
+claim to have set something the process never received.
+
+Workhorse learns no harness's vocabulary here — it forwards whatever you name. It
+also does not validate the names, so a typo is silent; check the harness's own docs
+for what it reads.
+
+The worked example is the one above. `opencode` auto-summarizes a long session, and
+each summary rewrites the conversation prefix — so the next turn bills a full-price
+prompt instead of a cache read. On a model whose context window you will never
+approach (the 1M-token OpenRouter endpoints in [OpenRouter models](#openrouter-models--aider-and-opencode)),
+that is pure cost with nothing gained. Turning it off is right for *those* runs and
+wrong for a run against a 272k window, which is exactly why it is scoped to the
+harness config rather than set globally in `~/.config/opencode/opencode.jsonc`.
+
+Scoped per **harness**, not per power tier: a knob like that is a property of the
+CLI, not of how hard a node is thinking. (And unlike `model`/`effort`, which resolve
+by "first layer that names one wins", an env table would want to *merge* across
+layers — so a second layer would be a different resolution rule, not more of the
+same one.)
+
 Inspect or set config:
 
 ```bash
@@ -352,16 +389,63 @@ model = "openrouter/xiaomi/mimo-v2.5"
 | Reasoning effort | `--reasoning-effort` (clamped to `high`) | `--variant` (minimal/high/max) |
 | Editing | search/replace diffs (robust on weak models) | tool-calling |
 
-**Provider pin + prompt caching (MiMo).** MiMo-V2.5 has two OpenRouter providers;
-only `xiaomi` serves the implicit prompt cache (~98% off input on every turn). Pin it
-in the **harness's own config** — there is no workhorse proxy to do it for you:
+**Pin the upstream endpoint — it is the largest cost lever, not a tuning detail.**
+An OpenRouter *model* is a fan-out over many upstream *endpoints*, and they differ on
+the two things a long run is made of:
 
-- **opencode** caches automatically (verified: `cache.read` fires); pin the provider
-  in its own config (`~/.config/opencode/opencode.jsonc`) under provider options
-  (`provider.openrouter` → routing → `order: [xiaomi]`, fallbacks off).
-- **aider** is litellm-based: set
-  `extra_params.extra_body.provider.order: [xiaomi]` (plus `--cache-prompts`) in a
+- **Price.** Across GLM 5.2's 33 endpoints the input price spans **7.0x**; across
+  MiMo-V2.5-Pro's 6 it spans 5.3x. Cache-read discounts diverge further — 98–99% off
+  on the best endpoints, ~64% on others.
+- **Context window.** Same model slug, windows from 96k to 1.05M. An unpinned run can
+  fail over onto a 96k endpoint mid-workflow and start overflowing on prompts the
+  previous turn handled fine.
+
+And a prompt cache lives **on the endpoint**, so every silent failover starts a cold
+prefix: the next turn bills a ~100k-token prompt at full input price. Left to default
+routing, none of this is visible — the run just costs more.
+
+Pin it in the **harness's own config** (there is no workhorse proxy to do it for you),
+choosing endpoints by *tag slug* (`baidu/fp8`, not `baidu`), with fallbacks off so
+drift surfaces as an error rather than a bill:
+
+- **opencode** caches automatically (verified: `cache.read` fires). In
+  `~/.config/opencode/opencode.jsonc` set
+  `provider.openrouter.models.<slug>.options.provider` to
+  `{ "order": [...], "allow_fallbacks": false }`, and
+  `provider.openrouter.options.setCacheKey: true` to send `prompt_cache_key` so repeat
+  turns route back to the node holding the prefix.
+- **aider** is litellm-based: set the same object at
+  `extra_params.extra_body.provider` (plus `--cache-prompts`) in a
   `--model-settings-file`.
+
+List the current endpoints, prices and windows before choosing — they change:
+
+```bash
+curl -s https://openrouter.ai/api/v1/models/xiaomi/mimo-v2.5-pro/endpoints \
+  | jq -r '.data.endpoints[] | [.tag, .context_length, .pricing.prompt,
+                               .pricing.input_cache_read, .uptime_last_30m] | @tsv'
+```
+
+**Turn opencode's auto-summarization off for runs on a huge-window endpoint** — but
+per run, not globally. Each auto-compaction rewrites the conversation prefix and so
+throws the cache away; when the pinned endpoint carries a 1M window and the workflow
+never exceeds ~200k, that summary buys nothing and costs a cold prompt:
+
+```toml
+# ~/.config/stablemate/config.toml
+[harness.opencode]
+env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
+```
+
+…or for a single run, `OPENCODE_DISABLE_AUTOCOMPACT=1 workhorse run <workflow> --cli
+opencode`. Either way it is scoped to the harness, which is the point: do **not** set
+`"compaction": {"auto": false}` in `opencode.jsonc`, because that key is global with
+no per-provider scope and would also disable compaction for models that run close to
+their ceiling and rely on it. See
+[Per-harness environment](#per-harness-environment-harnessbackendenv). Note the ladder still covers a
+genuine overflow either way — opencode exposes no in-place `/compact`
+(`supports_compaction = False`), so workhorse reframes the node in a fresh session
+rather than compacting.
 
 ## Resuming and run identity
 
@@ -430,31 +514,71 @@ the agent CLI's own session store, keyed by session id. `sessions.jsonl` records
 `opencode export <session_id>`). It is an append-only manifest because the live
 `.session_id` file holds only the *current* node's session; a node can appear more
 than once (loop revisits, compact/reframe within a node), so the mapping is
-`node → sessions` and consumers dedup on read. With `WORKHORSE_OTEL=1` the same
+`node → sessions` and consumers dedup on read. With telemetry on the same
 session id is also set as the `session.id` attribute on the agent-turn span.
 
-## Telemetry (opt-in OpenTelemetry)
+## Telemetry (automatic when a collector is reachable)
 
-For away-from-keyboard monitoring of long runs, workhorse can stream OpenTelemetry
+For away-from-keyboard monitoring of long runs, workhorse streams OpenTelemetry
 spans and metrics to a local OTLP collector — by default `groom`, which stores them
-in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn:
+in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn. Install the
+extra once and it turns itself on whenever the collector is up:
 
 ```bash
 pip install 'workhorse-agent[otel]'
-export WORKHORSE_OTEL=1
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # groom serve (the default)
+groom serve                                                # now every run is observed
 ```
 
+**Enablement is a tri-state.** With `WORKHORSE_OTEL` unset (the default),
+`start_run` opens one short TCP connection to the endpoint and enables telemetry
+only if something is listening — so a machine running `groom serve` gets spans with
+no env var, and a machine without one stays a complete no-op. Set it explicitly to
+override that decision in either direction:
+
+| `WORKHORSE_OTEL` | Behavior |
+|---|---|
+| _unset_ (default) | **Auto** — probe the endpoint; enable only if it answers |
+| `1` / `true` / `yes` | Force on — no probe (for a collector that comes up later, or one a TCP connect can't see) |
+| `0` / `false` / `no` | Force off — no probe, never enabled |
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # groom serve (the default)
+export WORKHORSE_OTEL=0                                    # opt out of auto-on
+```
+
+Auto-on is the default because the runs most worth observing are the unattended
+week-long ones — exactly the runs nobody remembers to export a variable before
+launching. Without the `otel` extra installed, auto mode stays silently inert (an
+explicit `WORKHORSE_OTEL=1` still warns that the SDK is missing, since you asked).
+
 Emitted: a root span per run, a span per node visit (nested through flows), a span
-per agent-CLI turn with duration + token usage (and a `session.id` attribute linking
-it to the CLI session transcript), span events for the recovery ladder
+per agent-CLI turn with duration + token usage + cost (and a `session.id` attribute
+linking it to the CLI session transcript), span events for the recovery ladder
 (retry/reframe/compact/watchdog-kill), the gas gauge, **log records** from the
 engine and its in-process script nodes (`groom logs`), and a **cap-wait heartbeat**
 metric each pause tick — the signal that lets a collector distinguish a legitimate
-multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). Unset,
-telemetry is a complete no-op and adds no dependencies; exports are best-effort, so
-a down collector can never slow or wedge a run. Any standard OTLP/HTTP backend
-(Jaeger, Grafana Tempo) works unchanged. There is also an engine wall-clock ceiling,
+multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). With no
+collector reachable, telemetry is a complete no-op and adds no dependencies;
+exports are best-effort, so a collector that dies *mid-run* can never slow or wedge
+a run either. Any standard OTLP/HTTP backend
+(Jaeger, Grafana Tempo) works unchanged.
+
+**Turn spans are comparable across backends.** Every harness reports what a turn
+consumed and every one spells it differently, so workhorse normalizes them onto one
+set of attribute names (Claude's, since those spans are already in the store): tokens
+in/out, cache read/write, reasoning tokens, and `total_cost_usd` where the harness
+reports money at all. Cost is left *absent* rather than zeroed when a harness doesn't
+say — a real `0.0` (a subscription turn) and "this CLI doesn't report cost" are
+different facts, and averaging them together understates spend. `duration_ms` is
+stamped by the engine when the CLI omits it, so latency coverage is total regardless
+of harness. Backends that report per *step* rather than per turn (opencode) are summed.
+
+**Tag spans with your own unit of work** via a workflow's `labels:` block — Jinja
+templates re-rendered before every node and stamped as `wf.*` span attributes. Without
+it a store can group by run and node but not by task; see
+[docs/WORKFLOW.md §1.2](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md#12-labels--tagging-telemetry-with-the-unit-of-work).
+
+There is also an engine wall-clock ceiling,
 `WORKHORSE_MAX_RUNTIME_S` — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)
 for both.
@@ -562,7 +686,7 @@ def main(logger: logging.Logger) -> None:
 
 stdout is the node's **data** channel — it is parsed whole as the declared
 `outputs`, so diagnostics must go to the logger, never `print`. With
-`WORKHORSE_OTEL=1` those records reach the collector tagged with the run and node.
+telemetry on, those records reach the collector tagged with the run and node.
 `def main()` (no logger) and scripts with no `main()` at all keep working
 unchanged. See [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)
 for the isolation trade-off and `WORKHORSE_SCRIPT_INPROCESS=0`.
@@ -607,7 +731,7 @@ agents/local-worker/          # source repo dir for the workhorse controller
 │   ├── main.py                # CLI + the graph walk loop: checkpoint → run node → advance
 │   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
 │   ├── artifacts.py           # ArtifactWriter: run dir, checkpoints, per-step artifacts
-│   ├── otel.py                # Opt-in OpenTelemetry facade (no-op unless WORKHORSE_OTEL is set)
+│   ├── otel.py                # OpenTelemetry facade (auto-on if a collector answers; else no-op)
 │   ├── graph/
 │   │   ├── nodes.py           # Pydantic node models (AgentNode/ScriptNode/BranchNode/TerminalNode) + Graph
 │   │   ├── loader.py          # Parse + validate workflow.yaml into a Graph

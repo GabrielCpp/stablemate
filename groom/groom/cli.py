@@ -69,8 +69,9 @@ def _format_status(rows: list[dict], now: float) -> str:
     if not rows:
         return (
             "no runs have reported telemetry yet.\n"
-            "  Is the run exporting? It needs WORKHORSE_OTEL=1 and the otel extra "
-            "installed in the SAME interpreter that runs workhorse."
+            "  Is the run exporting? A run auto-exports when this collector is reachable,\n"
+            "  but it needs the otel extra installed in the SAME interpreter that runs\n"
+            "  workhorse — and WORKHORSE_OTEL must not be set to 0/false/no."
         )
     lines = []
     for row in rows:
@@ -116,7 +117,7 @@ def _format_logs(rows: list[dict]) -> str:
     if not rows:
         return (
             "no log records match.\n"
-            "  Runs export logs only with WORKHORSE_OTEL=1, and only script nodes\n"
+            "  Runs export logs only while telemetry is on, and only script nodes\n"
             "  running in-process emit them (WORKHORSE_SCRIPT_INPROCESS=0 turns that off)."
         )
     import datetime as _dt

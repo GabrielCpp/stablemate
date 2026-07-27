@@ -26,6 +26,7 @@ class Finding:
     line: int = 0              # 1-based, file-absolute
     suggestion: str = ""       # expected form / nearest match
     fixable: bool = False      # `ostler fmt`/`scaffold`/relink can apply the remedy
+    waived: bool = False       # an accepted-defect waiver downgraded this from error to warn
 
 
 @dataclass
@@ -71,6 +72,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
+        _apply_waivers(graph, report.findings)
         return report
 
     all_story_slugs = graph.all_story_slugs()
@@ -90,7 +92,36 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     # epic is being filtered), so run them after any epic trim, appending to the live list.
     _check_frozen(graph, report.findings)
 
+    _apply_waivers(graph, report.findings)
     return report
+
+
+def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:
+    """Downgrade every error finding that carries an accepted-defect waiver from error to warn.
+
+    A waiver never removes the finding — it stays in the report at ``warn`` with its reason and the
+    backlog id tracking the real fix, so ``doctor --json`` still shows it while the gate (which
+    counts only ``error``) stops treating it as a blocker. See ostler/waivers.py. Imported locally to
+    keep the module import graph acyclic, matching ``_check_locators``' local ``locators`` import.
+    """
+    from ostler import waivers as waivers_mod
+    from ostler.coverage import normalize_ref
+
+    table = waivers_mod.load(graph)
+    if not table:
+        return
+    for fd in findings:
+        if fd.severity != "error":
+            continue
+        entry = table.get((fd.code, normalize_ref(fd.ref)))
+        if entry is None:
+            continue
+        fd.severity = "warn"
+        fd.waived = True
+        fd.fixable = False
+        tag = f" [waived — see backlog {entry['backlog']}]" if entry.get("backlog") else " [waived]"
+        reason = f": {entry['reason']}" if entry.get("reason") else ""
+        fd.message = f"{fd.message}{tag}{reason}"
 
 
 def _check_frozen(graph: Graph, f: list[Finding]) -> None:

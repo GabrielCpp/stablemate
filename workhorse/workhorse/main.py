@@ -249,8 +249,9 @@ def run(
     # write even when telemetry is off; start_run then also hangs the OTel log
     # handler off the same root logger when it is on.
     logsetup.setup()
-    # Opt-in telemetry (WORKHORSE_OTEL): the run's root span opens here and every
-    # node/turn span nests under it; end_run flushes on every exit path below.
+    # Telemetry decides here whether it is on at all (collector probe / WORKHORSE_OTEL);
+    # the run's root span opens here and every node/turn span nests under it, and
+    # end_run flushes on every exit path below.
     otel.start_run(graph.name, writer.run_id, str(writer.run_dir))
 
     try:
@@ -438,6 +439,7 @@ def _step_loop(
     config: RunConfig,
     depth: int = 0,
     deadline: float | None = None,
+    inherited_labels: dict[str, str] | None = None,
 ) -> str:
     """Step ``graph`` from ``current_id`` until a TerminalNode, mutating ``ctx`` in
     place. Returns the terminal node's type ("terminal" | "fail") WITHOUT finalizing
@@ -446,7 +448,13 @@ def _step_loop(
     sub-graph (see the FlowNode branch). ``tank`` is the run-wide gas guard, shared
     across the root and all flows so a non-progressing cycle anywhere fails loudly;
     ``deadline`` is the run-wide wall-clock budget (unix epoch, None = unbounded),
-    likewise shared so a flow can't outlive the run's ceiling."""
+    likewise shared so a flow can't outlive the run's ceiling.
+
+    ``inherited_labels`` are the caller's already-rendered telemetry labels. A flow's
+    child context holds only its rendered args, so a flow usually *cannot* re-derive
+    which story the parent is on; inheriting the parent's rendered values keeps spans
+    inside a flow attributable to the same unit of work. A flow that declares its own
+    ``labels:`` layers them on top."""
     while True:
         node = graph.nodes[current_id]
 
@@ -466,6 +474,17 @@ def _step_loop(
         # Infinite-loop guard: spend one unit of gas for this step (across root +
         # flows). Refuel happens below, after a progress-marking node advances.
         tank.burn(current_id)
+
+        # Re-render the workflow's telemetry labels against the context as it is
+        # NOW, before the checkpoint below emits this node's `enter` event (which is
+        # what opens the node span). Re-rendered every step rather than once per run
+        # because the values they track — which story, which epic — are exactly what
+        # a long run moves through.
+        labels = {
+            **(inherited_labels or {}),
+            **_render_labels(graph.labels, ctx.as_dict()),
+        }
+        otel.set_labels(labels)
 
         # Checkpoint the node we're about to run and the context going into it.
         # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
@@ -617,6 +636,7 @@ def _step_loop(
                 depth=depth,
                 deadline=deadline,
                 resume=is_flow_resume,
+                labels=labels,
             )
             ctx.merge(outputs)
             if node.next is None:
@@ -681,6 +701,7 @@ def _run_flow(
     depth: int,
     deadline: float | None = None,
     resume: bool = False,
+    labels: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run the flow named by ``node`` as a child graph and return its declared
     outputs. The child context is ``{manifest, flow.vars, rendered_args}`` — only the
@@ -719,6 +740,7 @@ def _run_flow(
         config=config,
         depth=depth + 1,
         deadline=deadline,
+        inherited_labels=labels,
     )
     child_writer.write_final_context(child_ctx.as_dict())
     child_writer.finish(terminal=term)
@@ -844,6 +866,31 @@ def _find_latest_resumable(runs_dir: Path) -> Path | None:
     if not candidates:
         return None
     return max(candidates)[1]
+
+
+def _render_labels(labels: dict[str, str], ctx: dict[str, Any]) -> dict[str, str]:
+    """Render a graph's `labels:` against the live context, for telemetry.
+
+    Prefixes every key with ``wf.`` so a workflow can never shadow ``workhorse.*``,
+    ``model``, or an OTel semantic-convention attribute — the workflow chooses the
+    name, but not the namespace.
+
+    Empty renders are dropped. Jinja here is the resilient dialect (a missing
+    variable renders empty rather than raising), so an expression naming a key the
+    context does not have yet — the common case early in a run, before a story is
+    selected — would otherwise stamp every span with a blank attribute that looks
+    like data. Nothing raises: a bad expression costs one missing label, never the
+    run.
+    """
+    out: dict[str, str] = {}
+    for key, template in (labels or {}).items():
+        try:
+            value = render_string(template, ctx, quiet=True).strip()
+        except Exception:  # instrumentation must never break a run
+            continue
+        if value:
+            out[f"wf.{key}"] = value
+    return out
 
 
 def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:

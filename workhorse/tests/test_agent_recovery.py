@@ -224,7 +224,7 @@ def test_overflow_compacts_then_continues_same_prompt():
 
     compacted = {"n": 0}
 
-    def fake_compact(session_id_path, node_id, model=None):
+    def fake_compact(session_id_path, node_id, model=None, **kwargs):
         compacted["n"] += 1
         return True  # compaction succeeded
 
@@ -244,7 +244,7 @@ def test_overflow_falls_back_to_reframe_when_compaction_fails():
     def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("prompt is too long", overflow=True)
 
-    def failed_compact(session_id_path, node_id, model=None):
+    def failed_compact(session_id_path, node_id, model=None, **kwargs):
         return False  # /compact unavailable/ineffective
 
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
@@ -264,7 +264,7 @@ def test_overflow_compaction_attempts_are_bounded():
     def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("context window exceeded", overflow=True)
 
-    def ok_compact(session_id_path, node_id, model=None):
+    def ok_compact(session_id_path, node_id, model=None, **kwargs):
         compacted["n"] += 1
         return True  # succeeds but the node keeps overflowing anyway
 
