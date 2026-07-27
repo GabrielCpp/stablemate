@@ -86,6 +86,27 @@ Design points worth keeping:
 Not addressed: script nodes still have no timeout and no watchdog, and workhorse's engine output is
 still `print()` rather than `logging`, so what flows to `/v1/logs` today is overwhelmingly the scripts'.
 
+**Amended 2026-07-26 — enablement is a probe, not an env var.** Everything below describes telemetry
+as opt-in via `WORKHORSE_OTEL=1`, and that gate turned out to select against the runs it exists for.
+The evidence is the store itself: months of collected spans, all of them from `okf-builder` — the one
+workflow whose runs are launched by hand from a recipe that happens to export the variable. Not one
+coder run, the long unattended kind this was built to watch, ever exported anything. An env var only
+gets set by whoever remembers at launch, and nobody launching a week-long run remembers.
+
+`start_run` now decides for itself: with `WORKHORSE_OTEL` unset (the new default) it makes one TCP
+connect to `OTEL_EXPORTER_OTLP_ENDPOINT` (default groom's `127.0.0.1:8787`, `WORKHORSE_OTEL_PROBE_S`
+timeout, 0.25 s) and enables telemetry only if something answers. The variable survives as a
+tri-state override — truthy forces on and skips the probe, falsy forces off.
+
+- **A listening socket is all a cheap probe can prove, and it is enough.** The OTLP exporter is
+  batched and fire-and-forget, so a wrong guess costs dropped spans, never a broken run — the same
+  resilience property the design below already leaned on.
+- **The no-op path is unchanged for a machine with no collector.** A refused loopback connect returns
+  in microseconds; only a remote or firewalled endpoint pays the full timeout, once per run.
+- **Auto mode stays silent about a missing SDK.** The "installed but not exporting" warning now fires
+  only when `WORKHORSE_OTEL` was set explicitly. Under auto the collector merely happens to be up,
+  and warning would mean nagging every run on every machine without the extra.
+
 Proposed 2026-07-08. Instrument the `workhorse` engine with OpenTelemetry (opt-in,
 no-op by default) and extend `groom` into a local OTLP collector + searchable store + alerter, so an
 away-from-keyboard operator is paged when the `coder` workflow churns or hangs — instead of finding a

@@ -179,6 +179,20 @@ class Graph(BaseModel):
     #   env:
     #     CODER_WORKSPACE: "{{ workspace_file }}"
     env: dict[str, str] = Field(default_factory=dict)
+    # Telemetry dimensions this workflow wants stamped on its spans. Values are
+    # Jinja2-rendered from workflow context before every node, so they track what
+    # the run is working on; keys land as span attributes prefixed `wf.`. This is
+    # how a workflow's own unit of work reaches telemetry without workhorse ever
+    # learning what one is — the engine renders strings and stamps them, and only
+    # the workflow knows that a "work_id" is a story or an epic. Without it, spans
+    # can be grouped by run and node but not by task, so two runs of the same work
+    # cannot be compared except by joining to artifacts on disk.
+    #   labels:
+    #     work_id: "{{ story.id or epic.id }}"
+    #     phase: "{{ current_phase }}"
+    # An expression that renders empty is dropped rather than stamped blank, so a
+    # label simply does not appear on spans from before its value exists.
+    labels: dict[str, str] = Field(default_factory=dict)
     # Tools this workflow uses DIRECTLY, checked before the first node runs. Not a
     # transitive closure and not the target repo's toolchain: `make`/`go` belong to
     # whatever repo a workflow is pointed at, so they can't be declared here.

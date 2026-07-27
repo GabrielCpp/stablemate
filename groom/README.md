@@ -52,14 +52,18 @@ uv run groom serve --host 127.0.0.1   # loopback only (no container access)
 `groom` is also the default local **OpenTelemetry collector** for `workhorse`
 runs (see `docs/workhorse-otel.md` at the repo root). The same uvicorn process
 and port expose standard OTLP/HTTP receivers — `POST /v1/traces`,
-`POST /v1/metrics` and `POST /v1/logs` — so a run started with
+`POST /v1/metrics` and `POST /v1/logs` — so an ordinary run
 
 ```bash
 pip install 'workhorse-agent[otel]'
-WORKHORSE_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787 workhorse run coder
+workhorse run coder      # probes the endpoint at start; exports if groom answers
 ```
 
-streams node/agent-turn spans, gas/heartbeat metrics, and the log records of the
+(No env var is needed while `groom serve` is up on the default port — workhorse
+enables telemetry when it finds a collector listening. Point elsewhere with
+`OTEL_EXPORTER_OTLP_ENDPOINT`, or opt out with `WORKHORSE_OTEL=0`.)
+
+It streams node/agent-turn spans, gas/heartbeat metrics, and the log records of the
 engine and its in-process script nodes into `groom`. Because a
 pushed span carries its own identity, **native (non-Docker) runs appear too** —
 no discovery gate. Spans and metrics persist in an embedded SQLite file

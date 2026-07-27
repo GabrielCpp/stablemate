@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from workhorse import otel
+from workhorse.runner import usage
 from stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.graph.nodes import AgentNode
 
@@ -128,8 +129,8 @@ _DEFAULT_IDLE_TIMEOUT_S = float(os.environ.get("AGENT_IDLE_TIMEOUT_S", "0"))
 
 # How often the streaming loop emits a turn-liveness heartbeat metric. This only
 # REPORTS the idleness the loop already tracks for the cutoff above — it never kills
-# anything, so it is safe to leave on by default (and is a no-op unless WORKHORSE_OTEL
-# is set). Kept well under groom's stall window so a live turn is provably alive long
+# anything, so it is safe to leave on by default (and is a no-op when telemetry is
+# off). Kept well under groom's stall window so a live turn is provably alive long
 # before the alerter would consider paging.
 _HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
 
@@ -174,8 +175,10 @@ def _arm_watchdog(
 # The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native binary
 # and self-updates by default (autoUpdates), and a manual `npm i -g` / package refresh
 # does the same. While that in-place rewrite is in flight, exec of the very same path
-# fails for a sub-second window: ETXTBSY ("text file busy", a native binary overwritten
-# while running) or ENOENT during the updater's rename. That is NOT a missing tool — the
+# fails for a sub-second window in one of three ways: ETXTBSY ("text file busy", a native
+# binary overwritten while running), ENOENT during the updater's rename (the path is
+# momentarily absent), or ENOEXEC ("exec format error", the file is present but only
+# half-written so its header is not yet a valid executable). That is NOT a missing tool — the
 # shim still resolves on PATH — so a few short retries ride the update out instead of
 # crashing an otherwise-healthy turn. It is deliberately distinguished from a genuinely
 # absent CLI (a non-interactive PATH with no nvm shim, the classic launch-context bug):
@@ -185,9 +188,12 @@ _EXEC_RETRY_MAX = int(os.environ.get("AGENT_EXEC_RETRY_MAX", "5"))
 _EXEC_RETRY_BASE_S = float(os.environ.get("AGENT_EXEC_RETRY_BASE_S", "1"))
 _EXEC_RETRY_CAP_S = float(os.environ.get("AGENT_EXEC_RETRY_CAP_S", "8"))
 # errnos that mean "the executable is momentarily un-exec'able", not "absent":
-# ETXTBSY = native binary being overwritten; ESTALE = NFS handle gone stale (flaky home
-# mount). ENOENT is conditional — transient only while the shim still resolves (see below).
-_EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ESTALE})
+# ETXTBSY = native binary being overwritten; ENOEXEC = binary present but half-written
+# (invalid header) mid-update; ESTALE = NFS handle gone stale (flaky home mount). All three
+# are the SAME self-update window seen at a different instant — the file is there but not yet
+# runnable — so all retry the same way. ENOENT (the rename gap) is handled alongside them in
+# the retry test below; it is only *conditional* at terminal classification (see `resolves`).
+_EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
 
 
 def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subprocess.Popen:
@@ -206,7 +212,8 @@ def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subpr
         try:
             return subprocess.Popen(cmd, **popen_kwargs)
         except OSError as exc:
-            # ETXTBSY/ESTALE mean the binary is momentarily busy/stale. ENOENT is
+            # ETXTBSY/ENOEXEC/ESTALE mean the binary is momentarily busy / half-written /
+            # stale — present but not runnable this instant. ENOENT is
             # AMBIGUOUS at a single instant: a self-updater's rename makes the binary
             # briefly *absent*, and shutil.which() is exactly as blind as exec() during
             # that window — so one probe cannot tell "mid-update" from "never installed".
@@ -274,6 +281,11 @@ def stream_subprocess(
     browser / JVM grandchildren), and the active-process registration behave identically
     regardless of backend. ``on_line`` receives each raw line (newline included) and does
     its own parsing/accumulation. Returns ``(timed_out, returncode)``.
+
+    ``env_extra`` layers over the inherited environment — the operator's
+    ``[harness.<backend>].env`` table, resolved by the backend that knows its own
+    name. It is applied last, so a harness knob configured for a run wins over the
+    same variable inherited from the launching shell.
     """
     env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
     proc = _spawn_streaming(
@@ -991,7 +1003,7 @@ def _invoke_claude(
             print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
             # One agent-turn span per CLI invocation; the result event's
             # duration/usage attach via otel.turn_result (see _stream_events).
-            otel.turn_start(node_id, model, effort, timeout)
+            otel.turn_start(node_id, model, effort, timeout, backend=backend.name)
             result = backend.run_turn(
                 attempt_prompt, node_id, session_id_path, model, timeout=timeout,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
@@ -1061,6 +1073,7 @@ def _run_claude_cli(
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
+    env_extra: dict[str, str] | None = None,
 ) -> str:
     """Run a single Claude CLI turn for ``prompt``, returning the final result
     text. Raises ``BackendInvocationError`` (via ``classify_turn``) on CLI failure,
@@ -1071,6 +1084,8 @@ def _run_claude_cli(
         timeout: Maximum seconds to wait for a result event from the agent.
         cwd: Working directory for the subprocess (controls CLAUDE.md discovery).
         add_dirs: Additional directories to grant the agent access to.
+        env_extra: Operator-configured extra environment for this harness
+            (``[harness.claude].env``), layered over the inherited environment.
     """
     cmd = [
         "claude",
@@ -1099,7 +1114,9 @@ def _run_claude_cli(
     # captures non-event output (e.g. "Spending cap reached") and error-result subtypes
     # so the caller can classify transient failures.
     result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode = (
-        _stream_events(cmd, node_id, timeout, stdin_data=prompt, cwd=cwd or None)
+        _stream_events(
+            cmd, node_id, timeout, stdin_data=prompt, cwd=cwd or None, env_extra=env_extra
+        )
     )
 
     # Classify the finished turn through the one shared classifier so the Claude
@@ -1127,6 +1144,7 @@ def _compact_session(
     node_id: str,
     model: str | None = None,
     timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    env_extra: dict[str, str] | None = None,
 ) -> bool:
     """Best-effort: resume the node's session and run the CLI's ``/compact`` command
     to summarize the conversation so far, freeing context so the node can continue
@@ -1188,7 +1206,9 @@ def _compact_session(
     try:
         # Shares the supervised spawn path (own process group, hard watchdog, group
         # reap), so a wedged /compact turn can't hang the run either.
-        stream_subprocess(cmd, node_id, timeout, on_line, stdin_data="/compact")
+        stream_subprocess(
+            cmd, node_id, timeout, on_line, stdin_data="/compact", env_extra=env_extra
+        )
     except Exception as exc:  # noqa: BLE001 — compaction is best-effort
         print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
         return False
@@ -1393,6 +1413,7 @@ def _stream_events(
     *,
     stdin_data: str | None = None,
     cwd: str | None = None,
+    env_extra: dict[str, str] | None = None,
 ) -> tuple[str, str | None, str, bool, bool, float | None, int]:
     """Run ``cmd`` through the shared supervised spawn path and parse Claude's
     stream-json, echoing a concise live view to stdout. Returns ``(result_text,
@@ -1430,8 +1451,10 @@ def _stream_events(
         if etype == "result":
             st["result_text"] = event.get("result", "") or st["result_text"]
             # Attach the turn's duration + token usage to the open turn span so
-            # per-node latency/cost attribution needs no artifact join.
-            otel.turn_result(event)
+            # per-node latency/cost attribution needs no artifact join. Normalized
+            # through the same mapper every other backend uses, so one query shape
+            # reads them all (workhorse/runner/usage.py).
+            otel.turn_result(usage.normalize(event))
             # An error result carries the reason in its subtype / is_error flag.
             if event.get("is_error") or event.get("subtype") not in (None, "success"):
                 diagnostics.append(str(event.get("subtype") or "") + " " + str(event.get("result") or ""))
@@ -1446,7 +1469,7 @@ def _stream_events(
         _emit_event(node_id, event)
 
     timed_out, returncode = stream_subprocess(
-        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd
+        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd, env_extra=env_extra
     )
     return (
         st["result_text"], st["session_id"], "\n".join(diagnostics),

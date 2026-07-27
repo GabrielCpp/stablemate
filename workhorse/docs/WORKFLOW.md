@@ -23,6 +23,8 @@ requires:                # optional — tools this workflow uses directly (prefl
     version: ">=0.1.0"
 env:                     # optional — env vars injected into every script node
   CODER_WORKSPACE: "{{ workspace_file }}"
+labels:                  # optional — telemetry dimensions stamped on this run's spans
+  work_id: "{{ story.id or epic }}"
 nodes:                   # REQUIRED — the list of nodes (each needs a unique id + type)
   - id: first
     type: agent
@@ -36,6 +38,7 @@ nodes:                   # REQUIRED — the list of nodes (each needs a unique i
 | `vars` | mapping | no | Initial context variables. Merged before the first node; `--params` overrides them on a fresh start (not on resume). |
 | `requires` | list | no | Tools the workflow uses directly. Checked before the first node runs — see [1.1](#11-requires--declaring-the-tools-a-workflow-uses). |
 | `env` | mapping | no | Env vars injected into every script node's subprocess (Jinja-rendered; per-node `env` merges on top). |
+| `labels` | mapping | no | Telemetry dimensions stamped on this workflow's spans — see [1.2](#12-labels--tagging-telemetry-with-the-unit-of-work). |
 | `nodes` | list | **yes** | Node definitions. Every node has a unique `id` and a `type`. |
 | `flows` | mapping | no | Named sub-graphs callable via a `flow` node — see [2.6](#26-flow--invoke-a-named-sub-graph). |
 
@@ -86,6 +89,43 @@ dependency, not the workflow's.
 **Version probing is best-effort.** A tool that is present but whose version can't be
 read or parsed is reported as unverifiable, not missing — blocking there would strand a
 workflow on a tool that is in fact installed.
+
+### 1.2 `labels` — tagging telemetry with the unit of work
+
+Spans are automatically dimensioned by run, node, and backend. What they cannot know
+is what the run is *working on*, because only the workflow knows that its unit of work
+is a story, or an epic, or a service. `labels:` is how a workflow tells the engine:
+
+```yaml
+labels:
+  work_id: "{{ story.id or epic }}"
+  phase: "{{ current_phase }}"
+```
+
+Each value is a Jinja template rendered against the live context **before every node**,
+and the results land as span attributes namespaced `wf.` — `wf.work_id`, `wf.phase`.
+Re-rendering per node (rather than once at start) is the point: a week-long run moves
+through many stories, and each node span carries whichever one was current when it
+opened. That is what makes "how much did story ACME-1 cost" and "which nodes did it
+revisit" answerable from the store, instead of requiring a join against run artifacts
+on disk.
+
+Rules worth knowing:
+
+- **Keys are namespaced, values are yours.** The `wf.` prefix is added for you, so a
+  label can never shadow `workhorse.*`, `model`, or an OTel semantic-convention
+  attribute.
+- **An expression that renders empty is dropped, not stamped blank.** Templating is
+  resilient (a missing variable renders empty rather than raising), so early in a run —
+  before a story is selected — the label simply does not appear, rather than every span
+  carrying an empty string that reads like data.
+- **Nothing here can break a run.** A label whose expression throws costs that one
+  attribute and is skipped.
+- **Flows inherit.** A flow's child context holds only its rendered `args`, so it
+  usually cannot re-derive which story the parent was on; spans inside a flow carry the
+  parent's rendered labels. A flow that declares its own `labels:` layers them on top.
+- With no collector reachable, this is inert like the rest of telemetry — see the
+  README's Telemetry section.
 
 ---
 

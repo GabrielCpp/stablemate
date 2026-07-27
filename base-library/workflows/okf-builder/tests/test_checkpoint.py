@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 from pathlib import Path
+
+import pytest
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "checkpoint.py"
@@ -120,3 +123,63 @@ def test_repair_targets_carry_the_round_so_survivors_requeue():
     second = checkpoint._repair_items([_finding("a.md", 6, "dangling-link")], rnd=2)
 
     assert first[0]["target"] != second[0]["target"]
+
+
+# ── Stall detection (the doctor→fixup→doctor loop's escape hatch) ────────────────────────
+
+def test_signature_is_set_based_and_order_independent():
+    a = [_finding("a.md", 6, "ambiguous-locator"), _finding("b.md", 1, "unnamed-interactive")]
+    b = list(reversed(a))
+    assert checkpoint._signature(a) == checkpoint._signature(b)   # same set, any order
+    assert checkpoint._signature([]) == ""                        # clean can't match a dirty sig
+    moved = [_finding("a.md", 7, "ambiguous-locator"), _finding("b.md", 1, "unnamed-interactive")]
+    assert checkpoint._signature(a) != checkpoint._signature(moved)   # a line moved → different
+
+
+def _run_checkpoint(tmp_path, report, prev_sig, prev_stall, monkeypatch, capsys, rnd=0):
+    features = tmp_path / "docs/features/web"
+
+    class R:
+        stdout = json.dumps(report)
+        stderr = ""
+
+    monkeypatch.setattr(checkpoint.subprocess, "run", lambda *a, **k: R())
+    monkeypatch.setattr("sys.argv",
+                        ["checkpoint.py", str(tmp_path), str(features), str(rnd), prev_sig,
+                         str(prev_stall)])
+    with pytest.raises(SystemExit):
+        checkpoint.main(logging.getLogger("t"))
+    return json.loads(capsys.readouterr().out)
+
+
+def _dirty_report():
+    return {"findings": [{"severity": "error", "path": "docs/features/web/x.md", "line": 5,
+                          "code": "ambiguous-locator", "ref": "docs/features/web/x.md#s/a",
+                          "message": "collision"}]}
+
+
+def test_stall_increments_when_the_identical_finding_set_recurs(tmp_path, monkeypatch, capsys):
+    r = _dirty_report()
+    o1 = _run_checkpoint(tmp_path, r, "", 0, monkeypatch, capsys)
+    assert o1["checkpoint_clean"] == "no"
+    assert o1["stall_rounds"] == 0 and o1["fixup_signature"]      # first sighting: baseline
+    sig = o1["fixup_signature"]
+    o2 = _run_checkpoint(tmp_path, r, sig, 0, monkeypatch, capsys)
+    assert o2["stall_rounds"] == 1 and o2["fixup_signature"] == sig
+    o3 = _run_checkpoint(tmp_path, r, sig, 1, monkeypatch, capsys)
+    assert o3["stall_rounds"] == 2                                # climbs while nothing changes
+
+
+def test_stall_resets_when_the_findings_change(tmp_path, monkeypatch, capsys):
+    # A productive round: a different finding set than last round → not stalled, even at high count.
+    other = {"findings": [{"severity": "error", "path": "docs/features/web/y.md", "line": 1,
+                           "code": "dangling-link", "ref": "docs/features/web/y.md#l",
+                           "message": "link"}]}
+    out = _run_checkpoint(tmp_path, other, "some-old-signature", 5, monkeypatch, capsys)
+    assert out["stall_rounds"] == 0
+
+
+def test_a_clean_checkpoint_zeroes_the_stall(tmp_path, monkeypatch, capsys):
+    out = _run_checkpoint(tmp_path, {"findings": []}, "some-old-signature", 9, monkeypatch, capsys)
+    assert out["checkpoint_clean"] == "yes"
+    assert out["stall_rounds"] == 0 and out["fixup_signature"] == ""

@@ -166,12 +166,20 @@ prepare_story -> resolve_documentation_context -> detect_documentation_okf
 ```text
 prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 -> build_qa_okf_context -> validate_qa_okf_context -> plan_qa
--> validate_qa_plan -> review_qa_plan -> run_qa_plan -> assess_qa_run
+-> validate_qa_plan -> review_qa_plan -> ensure_stack -> run_qa_plan -> assess_qa_run
 -> verify_qa_evidence -> audit_qa -> regression/completion
 ```
 
 - **Context**: `ostler qa context` derives obligations from HEAD/WORKTREE, the story, source roots,
   and current OKF grounding. Invalid/unmapped context routes to grounding repair.
+- **Stack (durable, workflow-owned)**: `ensure_stack` brings the heavyweight QA stack up from the
+  repo's `qa-stack.yml` manifest — via `workhorse.stack`, **outside any agent turn** so node teardown
+  cannot kill it — or adopts one already serving, then leaves an expensive shared stack up for the
+  next story. A repo with no manifest reports `skip` and QA proceeds as before; a stack that will not
+  come up routes to the setup loop to repair the manifest (never to background it in an agent shell).
+  Foreground in-QA services stay in the QA plan's `background:` block, owned by ostler for the run.
+  See [qa-stack-manifest.md](../../../../docs/qa-stack-manifest.md) and workhorse `docs/GUARDRAILS.md`
+  ("Long-lived processes must be owned, not backgrounded").
 - **Plan**: `qa-plan.yml` covers every AC and required obligation for all surfaces; deterministic
   invalidity or semantic-review revision routes back to planning.
 - **Run**: `ostler qa run` returns `passed|failed|blocked|invalid` and owns `qa/` plus cleanup.

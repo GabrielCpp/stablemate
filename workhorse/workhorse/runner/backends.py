@@ -40,10 +40,14 @@ import urllib.request
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from stablemate_core.config import resolve_harness_env
+
 # Import the module (not its names) so test monkeypatches of e.g.
 # ``agent._run_claude_cli`` are resolved at call time. agent.py imports this
 # module only lazily (inside run_agent/_invoke_claude), so there is no import cycle.
+from workhorse import otel
 from workhorse.runner import agent as _agent
+from workhorse.runner import usage as _usage
 
 
 class AgentBackend(ABC):
@@ -56,6 +60,20 @@ class AgentBackend(ABC):
     #: Whether the CLI can compact a long session in place. When False the
     #: resilience ladder reframes on context overflow instead of compacting.
     supports_compaction: bool = False
+
+    def harness_env(self) -> dict[str, str]:
+        """Operator-configured extra environment for this CLI (``[harness.<name>].env``).
+
+        Read per turn rather than once at startup: a config read is one small TOML
+        parse against a turn measured in minutes, and a week-long run picks up an
+        edit at its next node instead of needing a restart.
+
+        A backend knows its own ``name``, so it resolves its own env and hands it to
+        the spawn helper. That keeps ``run_turn``'s signature — implemented five
+        times and faked in ``workhorse.testing`` — free of a parameter every
+        implementation would only pass straight through.
+        """
+        return resolve_harness_env(self.name)
 
     @abstractmethod
     def run_turn(
@@ -124,6 +142,7 @@ class ClaudeBackend(AgentBackend):
             cwd=cwd,
             add_dirs=add_dirs,
             effort=effort,
+            env_extra=self.harness_env(),
         )
 
     def compact(
@@ -133,7 +152,12 @@ class ClaudeBackend(AgentBackend):
         model: str | None = None,
         timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
     ) -> bool:
-        return _agent._compact_session(session_id_path, node_id, model)
+        # Same harness, same environment: a knob that shapes the turn must also shape
+        # the /compact turn, or compaction runs under a different CLI configuration
+        # than the conversation it is compacting.
+        return _agent._compact_session(
+            session_id_path, node_id, model, env_extra=self.harness_env()
+        )
 
 
 # ── Shared JSONL plumbing for non-Claude backends ──────────────────────────────
@@ -150,7 +174,7 @@ def _read_session_id(session_id_path: Path | None) -> str | None:
     return None
 
 
-def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
+def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None, env_extra=None):
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
 
@@ -158,7 +182,9 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
     process-group kill behave identically to every other harness. ``cwd`` sets the
     subprocess working directory (previously silently dropped here, so Codex/Copilot/
     OpenCode nodes always ran in the launching process's CWD regardless of a node's
-    ``cwd:``). Returns ``(state, diagnostics, timed_out, returncode)`` where ``state``
+    ``cwd:``). ``env_extra`` layers the harness's operator-configured environment
+    (``[harness.<backend>].env``) over the inherited one.
+    Returns ``(state, diagnostics, timed_out, returncode)`` where ``state``
     carries ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
     diagnostics so failure classification can see them."""
     state: dict = {"result_text": "", "session_id": None}
@@ -192,7 +218,7 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
         return False
 
     timed_out, returncode = _agent.stream_subprocess(
-        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd
+        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd, env_extra=env_extra
     )
     return state, "\n".join(diagnostics), timed_out or bool(early_abort[0]), returncode
 
@@ -215,6 +241,12 @@ def _finalize_turn(
     ``rate_reset_at`` is an optional unix epoch when a cap's window reopens (the
     opencode/Codex path fetches it out-of-band); on a cap the classifier attaches it
     so the runner sleeps until exactly then instead of the blind default wait."""
+    # The one place every non-Claude turn ends, so it is where usage reaches the
+    # open turn span — no backend needs its own otel call, and a new backend gets
+    # cost/token attribution by populating `state["usage_acc"]` and nothing else.
+    acc = state.get("usage_acc")
+    if acc:
+        otel.turn_result(acc)
     return _agent.classify_turn(
         backend_name,
         node_id,
@@ -257,10 +289,15 @@ def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
 
 def _codex_on_event(event, state, node_id, diagnostics):
     """Codex `exec --json`: thread.started → resume id; item.completed agent_message
-    → answer text (last wins); anything error/failed → diagnostics."""
+    → answer text (last wins); turn.completed → token usage; error/failed →
+    diagnostics."""
     etype = event.get("type") or ""
     if etype == "thread.started":
         state["session_id"] = event.get("thread_id") or state["session_id"]
+    elif etype == "turn.completed":
+        # Carries `usage` only — codex under subscription auth reports no cost, so
+        # these turns land with tokens and no dollars (see usage.normalize).
+        _usage.accumulate(state.setdefault("usage_acc", {}), event)
     elif etype == "item.completed":
         item = event.get("item") or {}
         if item.get("type") == "agent_message":
@@ -286,6 +323,10 @@ def _copilot_on_event(event, state, node_id, diagnostics):
     elif etype == "result":
         if event.get("sessionId"):
             state["session_id"] = event["sessionId"]
+        # Copilot's usage shape is unverified here (see usage.py), so this leans on
+        # the tolerant search: if the result event carries counts anywhere, they are
+        # found; if not, the turn keeps engine-measured duration and nothing else.
+        _usage.accumulate(state.setdefault("usage_acc", {}), event)
         exit_code = event.get("exitCode")
         if exit_code not in (0, None):
             diagnostics.append(f"copilot exitCode={exit_code}")
@@ -349,7 +390,8 @@ class CodexBackend(AgentBackend):
         else:
             cmd = [*head, "exec", *flags, "-"]
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd
+            cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd,
+            env_extra=self.harness_env(),
         )
         return _finalize_turn(
             "codex", node_id, state, diag, timed_out, rc, session_id_path, timeout
@@ -416,7 +458,8 @@ class CopilotBackend(AgentBackend):
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _copilot_on_event, cwd=cwd
+            cmd, node_id, timeout, None, _copilot_on_event, cwd=cwd,
+            env_extra=self.harness_env(),
         )
         return _finalize_turn(
             "copilot", node_id, state, diag, timed_out, rc, session_id_path, timeout
@@ -441,7 +484,12 @@ def _opencode_on_event(event, state, node_id, diagnostics):
     if sid:
         state["session_id"] = sid
     etype = event.get("type") or ""
-    if etype == "text":
+    if etype == "step_finish":
+        # One per step, not per turn: a turn that calls three tools emits three, and
+        # only their sum is what the turn consumed. `part.cost` is 0 on subscription
+        # auth — a real zero, which accumulate() keeps distinct from "not reported".
+        _usage.accumulate(state.setdefault("usage_acc", {}), event)
+    elif etype == "text":
         part = event.get("part") or {}
         text = part.get("text") or ""
         if text:
@@ -597,7 +645,8 @@ class OpenCodeBackend(AgentBackend):
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _opencode_on_event, cwd=cwd
+            cmd, node_id, timeout, None, _opencode_on_event, cwd=cwd,
+            env_extra=self.harness_env(),
         )
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
         # headless path) so the runner sleeps until the window reopens, not a flat hour.
@@ -624,7 +673,7 @@ class OpenCodeBackend(AgentBackend):
         return False
 
 
-def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
+def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path, env_extra=None):
     """Run a NON-JSONL agent CLI (aider) that streams plain text to stdout: echo and
     accumulate every line as the turn result. Mirrors ``_stream_jsonl``'s timeout /
     live-echo loop, but these CLIs have no event protocol and no resumable session id
@@ -641,10 +690,12 @@ def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path):
         lines.append(line)
 
     timed_out, returncode = _agent.stream_subprocess(
-        cmd, node_id, timeout, on_line, cwd=cwd
+        cmd, node_id, timeout, on_line, cwd=cwd, env_extra=env_extra
     )
     text = "\n".join(lines).strip()
-    state = {"result_text": text, "session_id": None}
+    # A text backend has no event to carry usage, so the transcript is the only
+    # source: aider prints a "Tokens: … Cost: …" summary. No match → no attributes.
+    state = {"result_text": text, "session_id": None, "usage_acc": _usage.from_text(text)}
     return _finalize_turn(
         backend_name,
         node_id,
@@ -708,7 +759,10 @@ class AiderBackend(AgentBackend):
             cmd += ["--model", model]
         if effort:
             cmd += ["--reasoning-effort", _aider_effort(effort)]
-        return _run_text_turn("aider", cmd, node_id, timeout, cwd, session_id_path)
+        return _run_text_turn(
+            "aider", cmd, node_id, timeout, cwd, session_id_path,
+            env_extra=self.harness_env(),
+        )
 
     def compact(
         self,

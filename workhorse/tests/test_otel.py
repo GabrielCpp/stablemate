@@ -1,9 +1,11 @@
 """Tests for workhorse/otel.py — the opt-in OpenTelemetry facade.
 
 Two halves:
-- the NO-OP default (WORKHORSE_OTEL unset): every public function must be an
-  inert, exception-free call and ArtifactWriter._append_event must behave
-  exactly as before (instrumentation may never change a run);
+- the ENABLEMENT GATE and the no-op it falls back to: WORKHORSE_OTEL's tri-state
+  (force-on / force-off / auto) and the collector probe auto mode turns on, plus
+  the inert-with-nothing-configured contract — every public function must be an
+  exception-free call and ArtifactWriter._append_event must behave exactly as
+  before (instrumentation may never change a run);
 - the _Telemetry span logic, exercised with fake tracer/meter objects so the
   tests need no OTel SDK: (node, seq)-keyed enter/done pairing, flow nesting
   via the span stack, the end_run sweep of spans a crash left open, turn
@@ -13,8 +15,10 @@ Run: ./.venv/bin/python tests/test_otel.py   (or via pytest)
 """
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
+import socket
 import tempfile
 from pathlib import Path
 
@@ -131,12 +135,84 @@ def test_noop_by_default_all_calls_inert():
     assert otel._active is None
 
 
-def test_start_run_stays_noop_without_env():
-    # _OTEL_ENABLED was read at import with WORKHORSE_OTEL unset in the test
-    # environment, so start_run must not activate anything.
-    assert otel._OTEL_ENABLED is False
-    otel.start_run("wf", "run-1")
-    assert otel._active is None
+@contextlib.contextmanager
+def _gate(forced, reachable):
+    """Pin both inputs start_run's gate reads: the WORKHORSE_OTEL tri-state and the
+    collector probe. The probe must never be left live in a test — the dev machine
+    may well have `groom serve` up, which would make these pass or fail by
+    environment. _build is faked too, so no test needs the optional SDK."""
+    probes: list[str] = []
+    built: list[tuple] = []
+    saved = (otel._OTEL_FORCED, otel._collector_reachable, otel._build)
+    otel._OTEL_FORCED = forced
+    otel._collector_reachable = lambda endpoint: (probes.append(endpoint), reachable)[1]
+    otel._build = lambda *a: (built.append(a), "telemetry")[1]
+    try:
+        yield probes, built
+    finally:
+        otel._OTEL_FORCED, otel._collector_reachable, otel._build = saved
+        otel._active = None
+
+
+def test_tristate_parses_force_on_force_off_and_auto():
+    assert otel._tristate(None) is None  # unset → auto
+    assert otel._tristate("  ") is None  # blank → auto, not "on"
+    for off in ("0", "false", "no", "FALSE"):
+        assert otel._tristate(off) is False
+    for on in ("1", "true", "yes", "anything"):
+        assert otel._tristate(on) is True
+
+
+def test_auto_activates_when_the_collector_answers():
+    # The default path: nobody exported WORKHORSE_OTEL, groom is up, spans flow.
+    with _gate(forced=None, reachable=True) as (probes, built):
+        otel.start_run("wf", "run-1")
+        assert otel._active == "telemetry"
+        assert probes == [otel._OTEL_ENDPOINT]
+        assert built == [("wf", "run-1", None)]
+
+
+def test_auto_stays_noop_when_no_collector_is_listening():
+    with _gate(forced=None, reachable=False) as (_, built):
+        otel.start_run("wf", "run-1")
+        assert otel._active is None
+        assert built == []  # the SDK is never even built
+
+
+def test_force_off_wins_over_a_reachable_collector():
+    # WORKHORSE_OTEL=0 is the opt-out, and auto-on must not have weakened it.
+    with _gate(forced=False, reachable=True) as (probes, built):
+        otel.start_run("wf", "run-1")
+        assert otel._active is None
+        assert probes == []  # not even probed — the answer can't change the outcome
+        assert built == []
+
+
+def test_force_on_skips_the_probe():
+    # An explicit WORKHORSE_OTEL=1 targets a collector that may come up later (or
+    # sit behind something a TCP connect can't see), so it must not be gated on it.
+    with _gate(forced=True, reachable=False) as (probes, built):
+        otel.start_run("wf", "run-1")
+        assert otel._active == "telemetry"
+        assert probes == []
+        assert built == [("wf", "run-1", None)]
+
+
+def test_probe_detects_a_listening_socket_and_a_dead_port():
+    # The real probe against a real socket: bound-and-listening is reachable,
+    # and the same port is not once it's closed.
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+        assert otel._collector_reachable(f"http://127.0.0.1:{port}") is True
+    assert otel._collector_reachable(f"http://127.0.0.1:{port}") is False
+
+
+def test_probe_treats_a_malformed_endpoint_as_no_collector():
+    # Never raises out of start_run's gate, whatever the endpoint says.
+    assert otel._collector_reachable("not-a-url") is False
+    assert otel._collector_reachable("") is False
 
 
 def test_append_event_unchanged_with_noop_telemetry():

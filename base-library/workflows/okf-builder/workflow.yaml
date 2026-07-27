@@ -29,6 +29,12 @@ vars:
   docs_path: "" # repo/docs root; "" -> AGENT_REPO_DIR
   round: "0" # checkpoint round counter — counts doctor/fixup re-drains, reported not bounded
   rescan_round: "0" # coverage re-scan counter — the one `guard_rounds` bounds
+  # Stall detection for the doctor→fixup→doctor loop. `fixup_signature` fingerprints the finding
+  # set; `stall_rounds` counts consecutive rounds it recurs UNCHANGED — a code-fix-only defect the
+  # doc-repair can't land re-flags identically forever, and `guard_fixup_progress` bounds on this
+  # (NOT on `round`, which climbs legitimately on a big book's many productive fixup rounds).
+  stall_rounds: "0"
+  fixup_signature: ""
   # OPTIONAL safety valve, NOT the stop condition. 0 = run to convergence (the intended mode:
   # the build ends when the code inventory is fully covered + doctor is green). Set >0 only to
   # bound a small practice/quota-limited run. Runaway is guarded by the gas tank + round cap,
@@ -214,12 +220,16 @@ nodes:
       - "{{ repo_root }}"
       - "{{ features_root }}"
       - "{{ round }}"
+      - "{{ fixup_signature }}"
+      - "{{ stall_rounds }}"
     outputs:
       - key: checkpoint_clean
       - key: doctor_output
       - key: round
       - key: fixup_items # one repair item per offending node, not one blob per round
       - key: backfill_count # of those, how many need a value derived from source
+      - key: fixup_signature # fingerprint of the finding set, to detect an unchanging re-flag
+      - key: stall_rounds # consecutive rounds the finding set recurred unchanged
     next: decide_checkpoint
 
   - id: decide_checkpoint
@@ -227,9 +237,24 @@ nodes:
     path: checkpoint_clean
     cases:
       "yes": guard_rounds
-      "no": seed_fixup # doctor dirty -> queue a fixup item and drain it
+      "no": guard_fixup_progress # doctor dirty -> queue a fixup item, UNLESS the loop has stalled
     # Pessimistic: an unreadable verdict means "not clean". The `yes` case is the only way
     # past the gate, because a value nobody can parse is not evidence the book is healthy.
+    default: guard_fixup_progress
+
+  # The doctor→fixup→doctor loop's escape hatch. A fixup round is supposed to REDUCE the findings;
+  # when the identical set recurs for `stall_rounds` rounds the repair cannot land — a code-fix-only
+  # defect (two controls that genuinely co-render with one accessible name; an operable control the
+  # source leaves unnamed). Below the threshold we keep draining; at it we stop looping and hand off
+  # to `auto_waive`, which accepts the code-fix-only a11y defects (waiver + backlog IOU) so the book
+  # converges, and routes a genuinely-unrepairable finding to the honest `doctor_stuck` terminal.
+  - id: guard_fixup_progress
+    type: branch
+    path: stall_rounds
+    conditions:
+      - op: ">="
+        value: "3" # == 3 consecutive rounds with an unchanged finding set: not converging
+        next: auto_waive
     default: seed_fixup
 
   - id: seed_fixup
@@ -244,6 +269,31 @@ nodes:
       - key: pending_count
       - key: added
     next: select_item
+
+  # The stalled loop's resolution. Accept each code-fix-only a11y defect with a warn-level doctor
+  # waiver + a backlog IOU (the real fix, the un-waive step, the re-run to confirm), so the next
+  # checkpoint sees them as warnings and the book converges. Any stalled finding that is NOT
+  # auto-waivable routes to the honest `doctor_stuck` terminal instead — the run does not pretend.
+  - id: auto_waive
+    type: script
+    script: scripts/auto-waive.py
+    args:
+      - "{{ repo_root }}"
+      - "{{ features_root }}"
+      - "{{ service }}"
+    outputs:
+      - key: has_unwaivable
+      - key: waived_count
+      - key: note
+    next: decide_auto_waive
+
+  - id: decide_auto_waive
+    type: branch
+    path: has_unwaivable
+    cases:
+      "yes": doctor_stuck # a genuinely code-unrepairable finding remains -> honest failure
+      "no": checkpoint # waivers written -> the next doctor pass is green-with-waived -> converges
+    default: doctor_stuck
 
   # Bound the re-scan on `rescan_round`, which only `compute_coverage` increments, NOT on
   # `round`, which `checkpoint` bumps on every doctor pass including the fixup re-drains. Those
@@ -390,6 +440,12 @@ nodes:
     type: fail
 
   - id: budget_exhausted
+    type: fail
+
+  # The fixup loop stalled on a finding that is neither doc-repairable nor auto-waivable — doctor
+  # could not be made clean and the run will not pretend otherwise. `auto_waive` logs the standing
+  # findings before routing here; this exits non-zero so a stuck build never reads as a finished one.
+  - id: doctor_stuck
     type: fail
 
 # ── Flows ───────────────────────────────────────────────────────────────────────────────

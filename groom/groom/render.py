@@ -361,7 +361,10 @@ def render_traces(
     cards = "".join(_run_card(s, runs.get(s["run_id"])) for s in summaries)
     strip = f'<div class="run-cards">{cards}</div>' if cards else ""
     if not spans:
-        return strip + '<div class="empty">No spans match — telemetry appears once a run exports with WORKHORSE_OTEL=1.</div>'
+        return strip + (
+            '<div class="empty">No spans match — a run exports automatically once this '
+            "collector is reachable, provided workhorse has the otel extra installed.</div>"
+        )
     rows = "".join(_span_row(s) for s in spans)
     table = (
         '<table class="traces"><thead><tr>'

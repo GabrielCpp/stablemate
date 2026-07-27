@@ -28,6 +28,7 @@ def _shape_graph(raw: dict[str, Any], default_name: str) -> dict[str, Any]:
         "start": raw["start"],
         "vars": raw.get("vars") or {},
         "env": raw.get("env") or {},
+        "labels": raw.get("labels") or {},
         "requires": raw.get("requires") or [],
         "nodes": nodes,
         "flows": flows,

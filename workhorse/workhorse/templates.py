@@ -214,14 +214,23 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
     return tmpl.render(**context)
 
 
-def render_string(template_str: str, context: dict[str, Any]) -> str:
+def render_string(
+    template_str: str, context: dict[str, Any], *, quiet: bool = False
+) -> str:
     """Render an inline Jinja2 template string (used for node args/cwd/commands).
 
     Exposes the same farrier helpers as :func:`render` so node args in a
     library-resident ``workflow.yaml`` can use ``instruction_ref``/``template.*``
     the same way prompts do.
+
+    ``quiet`` suppresses the missing-variable warning (the render still yields
+    empty). It is for the callers where an unresolved reference is an *expected*
+    state rather than a symptom — telemetry labels, which are deliberately dropped
+    until the value they track exists, and which re-render before every node, so
+    warning would mean thousands of lines about a designed behavior. Everywhere a
+    missing variable really does indicate a broken prompt or arg, leave it off.
     """
-    env = Environment(undefined=ResilientUndefined)
+    env = Environment(undefined=ChainableUndefined if quiet else ResilientUndefined)
     workflow_dir = Path(context.get("_skill_dir") or ".")
     env.globals.update(_farrier_globals(context, workflow_dir))
     tmpl = env.from_string(template_str)

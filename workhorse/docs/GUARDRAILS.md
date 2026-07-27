@@ -124,7 +124,12 @@ The main controller:
 
 ## Configuration
 
-The following environment variables control the guardrail behavior:
+The following environment variables control the guardrail behavior. They are read by
+**workhorse itself**; to set variables read by the *agent CLI* — knobs that exist only
+as environment and have no flag — use `[harness.<backend>].env` in the shared config
+(see the README's "Per-harness environment"). Those are exported into that harness's
+subprocess only, including the `/compact` turn in layer 2, so compaction runs under the
+same CLI configuration as the conversation it is compacting.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -183,9 +188,29 @@ Script nodes still have **no timeout and no watchdog** — a wedged script hangs
 forever. This is unchanged, not introduced here; the run heartbeat below makes it
 *visible* (groom's STUCK rule) but nothing kills it.
 
-### Logs (opt-in OpenTelemetry)
+#### Long-lived processes must be owned, not backgrounded
 
-With `WORKHORSE_OTEL=1`, the root logger also ships to the collector's `/v1/logs`,
+The engine owns a node for the duration of that node only. A process a node
+**backgrounds** — a dev server, a stack, an emulator left running in the node's
+shell so a *later* node can use it — is not owned by anything: the engine tears the
+node's process tree down when the node ends, and an agent turn reaps its own
+grandchildren between turns. Such a process is killed mid-flight, which has cost
+real runs a stack that vanished between "bring it up" and "use it".
+
+A process that must **outlive the node that starts it** has to be started detached
+(`start_new_session=True`, its own process group) and owned explicitly — brought up,
+health-gated, and later reaped (or deliberately left up) by a step outside any agent
+turn. `workhorse.stack` is the parameterised primitive for this: `ensure_stack`
+brings a stack up from a manifest (or adopts one already serving) and
+`teardown_stack` reaps it or leaves an expensive shared stack running. It knows no
+workflow's schema — a workflow hands it a manifest dict — so any workflow that must
+own a long-lived stack across nodes uses the same lifecycle. (This is what
+okf-builder's walkthrough launcher and the coder QA flow both call; a workflow's own
+`script:` node is where the manifest is read.)
+
+### Logs (OpenTelemetry)
+
+Whenever telemetry is on, the root logger also ships to the collector's `/v1/logs`,
 carrying the same `run_id`/`workflow`/`run_dir` resource as the spans. Console
 output is unaffected — the console handler binds the real stderr at setup, so log
 records reach the terminal even while a script node's stdout/stderr are redirected
@@ -208,24 +233,82 @@ Note that workhorse's own engine output is still mostly `print()`, so it reaches
 the console but not the collector. The records that flow to `/v1/logs` today are
 overwhelmingly the **script nodes'** — which is the gap this closed.
 
-### Observability (opt-in OpenTelemetry)
+### Observability (automatic when a collector is reachable)
 
-Install the extra and set two env vars to stream spans/metrics to a local
-collector (`groom` by default — it pages you on stall/budget/churn; see
-`docs/workhorse-otel.md` in the repo root):
+Install the extra and start a local collector (`groom` by default — it pages you
+on stall/budget/churn; see `docs/workhorse-otel.md` in the repo root). Nothing
+else is required: at run start workhorse probes the OTLP endpoint and, if
+something is listening, streams spans/metrics/logs to it.
 
 ```bash
 pip install 'workhorse-agent[otel]'
-export WORKHORSE_OTEL=1
+groom serve                                                # now runs export
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # the default
+export WORKHORSE_OTEL=0                                    # …unless you opt out
 ```
 
-Unset (the default), telemetry is a complete no-op with zero added
-dependencies. When enabled, workhorse emits a root span per run, a span per
-node visit, a span per agent-CLI turn (with duration + token usage),
+Auto-on is deliberate: the runs most worth observing are the unattended
+week-long ones, and those are exactly the runs where nobody remembers to export a
+variable first. `WORKHORSE_OTEL` remains as an override — truthy forces telemetry
+on and skips the probe, falsy forces it off. The probe is one TCP connect with a
+`WORKHORSE_OTEL_PROBE_S` timeout, so a machine with no collector pays microseconds
+on loopback and stays a complete no-op.
+
+With no collector reachable, telemetry adds zero dependencies and does
+nothing. When enabled, workhorse emits a root span per run, a span per
+node visit, a span per agent-CLI turn (with duration + token usage + cost),
 retry/reframe/compact/watchdog span events, and the gas gauge.
 Exports are best-effort: a down collector never slows or crashes a run
 (`events.jsonl` on disk remains the durable record).
+
+#### Turn cost and tokens, normalized across harnesses
+
+Each backend reports a turn's consumption in its own vocabulary — claude's `result`
+event, codex's `turn.completed`, opencode's per-step `step_finish`, aider's plain-text
+`Tokens:` line — and until `runner/usage.py` existed only claude's was parsed. That is
+not a cosmetic gap: it meant 21% of recorded turns carried no usage at all, all of them
+non-claude, which is precisely the comparison ("does this model class cost less per unit
+of work") the store exists to answer.
+
+All backends now funnel through one normalizer and land on claude's key names
+(`input_tokens`, `output_tokens`, `cache_read_input_tokens`,
+`cache_creation_input_tokens`, `reasoning_output_tokens`, `total_cost_usd`), so the
+spans already in the store stay queryable alongside the new ones. Three decisions in
+there are deliberate and worth not undoing:
+
+- **Absent ≠ zero.** A harness that doesn't report money yields no `total_cost_usd`
+  attribute rather than `0.0`. Averaging a real zero together with an unknown
+  understates spend.
+- **Per-step reports are summed.** opencode emits one event per step, so a turn that
+  calls three tools reports three times; only the sum is the turn's cost.
+- **Extraction is tolerant, not a per-backend switch.** An unrecognized shape falls
+  back to a bounded search for a token-shaped dict, and finding nothing costs a missing
+  attribute — never an exception on the hot path of every streamed event. (copilot's
+  shape could not be verified against a live run, which is why.)
+
+`duration_ms` is guaranteed on every turn span: when the CLI reports it, that value is
+used; when it doesn't, `turn_end` stamps the engine's own wall clock. Latency is
+therefore comparable across harnesses even where tokens are not.
+
+#### `labels:` — the workflow's own dimensions
+
+Spans carry run, node, backend and model automatically. What the engine cannot know is
+what the run is *working on* — workhorse is workflow-agnostic by design, so "a story"
+and "an epic" are vocabulary it must never learn. A workflow declares those dimensions
+itself:
+
+```yaml
+labels:
+  work_id: "{{ story.id or epic }}"
+```
+
+Values are Jinja templates re-rendered against the live context **before every node**
+and stamped as `wf.`-prefixed span attributes. The prefix is the engine's, so a label
+can never collide with `workhorse.*` or an OTel convention; an expression that renders
+empty is dropped rather than stamped blank; a label that throws costs one attribute and
+nothing else. Flows inherit the parent's rendered labels (a flow's context holds only
+its rendered args, so it usually cannot re-derive them) and may layer their own on top.
+Full reference: [WORKFLOW.md §1.2](WORKFLOW.md#12-labels--tagging-telemetry-with-the-unit-of-work).
 
 #### Watching a run that has not finished
 
@@ -260,6 +343,8 @@ artifacts section), so it survives even with telemetry off.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `WORKHORSE_OTEL` | _unset_ | Tri-state override. Unset = auto (probe the endpoint); truthy forces telemetry on without probing; `0`/`false`/`no` forces it off |
+| `WORKHORSE_OTEL_PROBE_S` | 0.25 | Seconds the auto-mode probe waits for the collector to accept a connection. Only a remote or firewalled endpoint ever pays it in full, once per run |
 | `WORKHORSE_OTEL_HEARTBEAT_S` | 10 | Seconds between liveness ticks (run + agent turn) |
 | `OTEL_METRIC_EXPORT_INTERVAL` | 60000 | SDK knob: ms between metric exports. This — not the heartbeat interval — bounds how fresh a collector's view is; lower it (e.g. `15000`) when actively debugging a stall |
 

@@ -152,6 +152,12 @@ Bullets:
 - `provenance:` — `derived` (written by the build pass from static evidence) or `verified`
   (promoted by the walkthrough after it booted successfully — §7).
 
+> **Executable subset — the QA stack manifest.** The coder QA flow consumes this same step
+> vocabulary in an executable, machine-readable form: a repo-root `qa-stack.yml` whose
+> `prepare`/`seed`/`health` steps and `launch`/`stop` recipe the workflow's `ensure_stack`
+> node runs (via `workhorse.stack`) to stand the QA stack up outside any agent turn. See
+> [qa-stack-manifest.md](qa-stack-manifest.md).
+
 ### 4.4 Spec-completeness bar
 
 A `runbook` is at-bar when, from the doc alone, a reader can stand the system up and reach

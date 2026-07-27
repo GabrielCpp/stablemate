@@ -65,6 +65,32 @@ def test_absent_cli_fails_nontransient_after_bounded_retries():
     assert slept.call_count == agent._EXEC_RETRY_MAX
 
 
+def test_self_update_enoexec_half_written_binary_is_retried_then_succeeds():
+    """THE web-bf4 regression: a self-update was caught mid-write — attempt 1 hit ENOENT
+    (rename gap, retried), attempt 2 hit ENOEXEC (errno 8, 'exec format error': the new
+    binary was present but only half-written, so its header was not yet valid). ENOEXEC is
+    the same self-update window at a different instant and MUST be retried, not treated as a
+    permanent 'wrong format' failure. Before the fix ENOEXEC was absent from the retryable
+    set, so the run died non-recoverably one item short of done."""
+    proc = MagicMock()
+    calls = {"n": 0}
+
+    def fake(cmd, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))   # rename gap
+        if calls["n"] == 2:
+            raise OSError(errno.ENOEXEC, os.strerror(errno.ENOEXEC))  # half-written binary
+        return proc                                                   # update finished
+
+    with patch.object(agent.subprocess, "Popen", fake), \
+         patch.object(agent.time, "sleep"), \
+         patch.object(agent.shutil, "which", return_value="/x/claude"):
+        got = agent._spawn_streaming(["claude", "-p"], "n")
+    assert got is proc                    # rode out the update; the turn is NOT failed
+    assert calls["n"] == 3
+
+
 def test_self_update_enoent_rename_recovers_even_when_which_is_blind():
     """THE web-bf3 regression: during a self-update's rename BOTH exec and shutil.which()
     see the binary as absent (ENOENT + which()==None). A single which() probe cannot tell

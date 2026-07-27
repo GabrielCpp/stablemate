@@ -101,14 +101,15 @@ def test_non_claude_backends_registered():
 
 
 def _fake_stream(canned):
-    """Return a _stream_jsonl stand-in that records the cmd/stdin/cwd and returns canned
-    (state, diagnostics, timed_out, returncode)."""
+    """Return a _stream_jsonl stand-in that records the cmd/stdin/cwd/env and returns
+    canned (state, diagnostics, timed_out, returncode)."""
     captured = {}
 
-    def fake(cmd, node_id, timeout, stdin_data, on_event, cwd=None):
+    def fake(cmd, node_id, timeout, stdin_data, on_event, cwd=None, env_extra=None):
         captured["cmd"] = cmd
         captured["stdin"] = stdin_data
         captured["cwd"] = cwd
+        captured["env_extra"] = env_extra
         return canned
 
     return fake, captured
@@ -634,9 +635,10 @@ def _fake_text_turn():
     """Stand-in for _run_text_turn that records the cmd and returns canned text."""
     captured = {}
 
-    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path):
+    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path, env_extra=None):
         captured["cmd"] = cmd
         captured["cwd"] = cwd
+        captured["env_extra"] = env_extra
         return "AIDER OK"
 
     return fake, captured
