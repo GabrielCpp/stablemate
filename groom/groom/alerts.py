@@ -65,6 +65,38 @@ def _giveup_nodes() -> set[str]:
     return {name.strip() for name in raw.split(",") if name.strip()}
 
 
+def _evict_grace_s() -> float:
+    return float(os.environ.get("GROOM_RUN_EVICT_MIN", "30")) * 60
+
+
+def _dead_after_s() -> float:
+    return float(os.environ.get("GROOM_RUN_DEAD_HOURS", "48")) * 3600
+
+
+def stale_run_ids(now: float | None = None) -> list[str]:
+    """Run ids whose hot-cache entry can be dropped, so :data:`groom.state.RUNS`
+    stops growing one entry per distinct run for the life of the process (and, with
+    it, the per-tick :func:`check_time_rules` walk over that dict):
+
+    - a **terminated** run, kept a grace window after its root span so a just-finished
+      run doesn't vanish from the dashboard mid-glance, then evicted;
+    - a run **silent past the dead window** — no span, no heartbeat for so long its
+      process is certainly gone even though it never emitted a terminal (SIGKILL/OOM).
+
+    Native dashboard rows are retired alongside their run (see ``state.evict_runs``).
+    """
+    now = now if now is not None else time.time()
+    grace, dead = _evict_grace_s(), _dead_after_s()
+    stale: list[str] = []
+    for run in state.RUNS.values():
+        last_alive = max(run.last_span_ts, run.last_heartbeat_ts, run.first_seen_ts)
+        if run.terminal and (now - last_alive) > grace:
+            stale.append(run.run_id)
+        elif (now - last_alive) > dead:
+            stale.append(run.run_id)
+    return stale
+
+
 def _run(run_id: str, now: float) -> RunTelemetry:
     run = state.RUNS.get(run_id)
     if run is None:
@@ -94,8 +126,14 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         run.workflow = span.get("workflow") or run.workflow
         run.repo = span.get("repo") or run.repo
         run.branch = span.get("branch") or run.branch
+        run.run_dir = span.get("run_dir") or run.run_dir
+        run.workspace = span.get("workspace") or run.workspace
+        if span.get("pid") is not None:
+            run.pid = span.get("pid")
         run.last_span_ts = now
         attrs = span.get("attrs") or {}
+        if attrs.get("wf.activity"):
+            run.activity = str(attrs["wf.activity"])
         events = {event.get("name") for event in attrs.get("events") or []}
         label = f"{run.workflow or 'run'} {run_id}"
 
@@ -169,10 +207,21 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
             continue
         run = _run(run_id, now)
         run.workflow = point.get("workflow") or run.workflow
+        run.repo = point.get("repo") or run.repo
+        run.branch = point.get("branch") or run.branch
+        run.run_dir = point.get("run_dir") or run.run_dir
+        run.workspace = point.get("workspace") or run.workspace
+        if point.get("pid") is not None:
+            run.pid = point.get("pid")
         name = point.get("name") or ""
         attrs = point.get("attrs") or {}
         node = str(attrs.get("node", ""))
         value = float(point.get("value") or 0.0)
+        # The live gauges carry wf.activity (workhorse stamps the two dashboard
+        # dimensions on node.active + the heartbeats), so the row's "what is it
+        # doing" tracks the current node without waiting for a span to export.
+        if attrs.get("wf.activity"):
+            run.activity = str(attrs["wf.activity"])
         if name in _LIVENESS_METRICS:
             run.last_heartbeat_ts = now
         elif name == "workhorse.gas.refuels":

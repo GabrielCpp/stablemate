@@ -91,6 +91,10 @@ labels:
   work_id: "{{ story_slug or story }}"
   epic: "{{ epic }}"
   mode: "{{ mode }}"
+  # How far through the current epic the run is ("3/12"), from select_story's worklist
+  # snapshot. Renders empty before the first story pick (and is then dropped, like any
+  # empty label), so only spans opened once a queue position is known carry it.
+  progress: "{{ get_node_output('select_story', 'progress') }}"
 
 vars:
   # ── Required ────────────────────────────────────────────────────────────────
@@ -219,6 +223,10 @@ nodes:
   - id: prepare_story
     type: script
     script: scripts/prepare-story.py
+    # Dashboard subtitle for this step (Phase 1 `activity` → `wf.activity`). The " · 3/12"
+    # progress suffix is guarded so story mode (no queue, empty progress) shows just the
+    # slug with no dangling separator. See workhorse/docs/WORKFLOW.md §1.2.
+    activity: "preparing {{ get_node_output('select_story', 'story_slug') or story }}{% set p = get_node_output('select_story', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       - "{{ docs_path }}"
       - "{{ get_node_output('select_story', 'story_slug') or story }}"
@@ -340,6 +348,12 @@ nodes:
       - key: story_slug
       - key: epic
       - key: reason
+      # Queue progress ("done/total" + count remaining) for the dashboard, computed once
+      # here through the shared worklist snapshot. Threaded into `labels.progress` and the
+      # per-node `activity:` below so the groom row reads "coder · implementing PRED-A2JX ·
+      # 3/12" — the same shape every workflow's queue emits. See select-next-story.py.
+      - key: progress
+      - key: remaining_count
     # Refuel the engine's infinite-loop gas tank whenever a NEW story is picked
     # (story_slug changes) — real forward progress. If a story is re-selected forever
     # (e.g. it never gets marked "QA passed"), story_slug stays put, the tank is never
@@ -711,6 +725,7 @@ nodes:
   - id: dev
     type: flow
     name: dev
+    activity: "implementing {{ get_node_output('prepare_story', 'story_slug') }}{% set p = get_node_output('select_story', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       story: "{{ get_node_output('prepare_story', 'story_slug') }}"
       docs_path: "{{ docs_path }}"
@@ -737,6 +752,7 @@ nodes:
   - id: review
     type: flow
     name: review
+    activity: "reviewing {{ get_node_output('prepare_story', 'story_slug') }}{% set p = get_node_output('select_story', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       story: "{{ get_node_output('prepare_story', 'story_slug') }}"
       docs_path: "{{ docs_path }}"

@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import logging
 import os
 import shutil
 import sys
@@ -37,6 +38,13 @@ from workhorse.runner import script as script_runner
 from workhorse.runner.agent import BackendInvocationError
 from workhorse.runner.script import ScriptExitError
 from workhorse.templates import render_string
+
+# The engine's own narrative (node dispatch, per-node errors). Routed through the
+# root logger — not print — so that whenever telemetry is on it ships to the
+# collector's /v1/logs alongside the script nodes' records, making the run's own
+# progress visible in `groom logs` / the dashboard, not just the local console. The
+# console handler (logsetup) still writes it to the terminal.
+logger = logging.getLogger("workhorse.engine")
 
 # Canonical skill directory per backend — must match farrier's install layout.
 _BACKEND_SKILL_DIR: dict[str, str] = {
@@ -484,6 +492,13 @@ def _step_loop(
             **(inherited_labels or {}),
             **_render_labels(graph.labels, ctx.as_dict()),
         }
+        # A node's own `activity:` — "what this step is doing" — layered on top of the
+        # workflow labels. Unlike the graph labels it is per-node, not inherited: it
+        # describes THIS node, so it is rendered from the current node only and lands
+        # as `wf.activity` through the same resilient render (empty → dropped).
+        node_activity = getattr(node, "activity", None)
+        if node_activity:
+            labels.update(_render_labels({"activity": node_activity}, ctx.as_dict()))
         otel.set_labels(labels)
 
         # Checkpoint the node we're about to run and the context going into it.
@@ -491,7 +506,7 @@ def _step_loop(
         writer.write_checkpoint(current_id, ctx.as_dict())
 
         if isinstance(node, AgentNode):
-            print(f"[workhorse] agent  → {node.id}")
+            logger.info("[workhorse] agent  → %s", node.id)
             try:
                 # run_agent is self-healing: it retries transient failures, reframes
                 # the prompt, and finally defaults the node's outputs so the run
@@ -527,28 +542,24 @@ def _step_loop(
                 current_id = node.next
 
             except BackendInvocationError as e:
-                print(f"[workhorse] ERROR in node '{node.id}': {e}", file=sys.stderr)
+                logger.error("[workhorse] ERROR in node '%s': %s", node.id, e)
                 if e.transient:
-                    print(
-                        "[workhorse] This is a transient error - the workflow can be resumed",
-                        file=sys.stderr,
+                    logger.error(
+                        "[workhorse] This is a transient error - the workflow can be "
+                        "resumed"
                     )
-                    print(
-                        f"[workhorse] Resume command: --resume-run {writer.run_dir}",
-                        file=sys.stderr,
+                    logger.error(
+                        "[workhorse] Resume command: --resume-run %s", writer.run_dir
                     )
                 else:
-                    print(
-                        "[workhorse] This is a non-recoverable agent failure",
-                        file=sys.stderr,
-                    )
+                    logger.error("[workhorse] This is a non-recoverable agent failure")
                 raise
 
         elif isinstance(node, ScriptNode):
             # A re-entered script/branch carries no Claude session; clear the flag
             # so a later agent node isn't mistaken for an interrupted continuation.
             resume_interrupted_node = False
-            print(f"[workhorse] script → {node.id}")
+            logger.info("[workhorse] script → %s", node.id)
             try:
                 cmd_str, outputs = script_runner.run_script(
                     node, ctx, workflow_dir, graph.env or None,
@@ -574,30 +585,23 @@ def _step_loop(
                 # Propagate the script's own exit code so callers can distinguish
                 # expected halts (e.g. await_operator exits 2 for "blocked") from
                 # genuine crashes (exit 1).
-                print(
-                    f"[workhorse] ERROR in script node '{node.id}': {e}",
-                    file=sys.stderr,
-                )
+                logger.error("[workhorse] ERROR in script node '%s': %s", node.id, e)
                 sys.exit(e.exit_code)
             except Exception as e:
                 # Log script errors with context
-                print(
-                    f"[workhorse] ERROR in script node '{node.id}': {e}",
-                    file=sys.stderr,
+                logger.error("[workhorse] ERROR in script node '%s': %s", node.id, e)
+                logger.error(
+                    "[workhorse] Script execution failed - workflow can be resumed "
+                    "after fixing"
                 )
-                print(
-                    "[workhorse] Script execution failed - workflow can be resumed after fixing",
-                    file=sys.stderr,
-                )
-                print(
-                    f"[workhorse] Resume command: --resume-run {writer.run_dir}",
-                    file=sys.stderr,
+                logger.error(
+                    "[workhorse] Resume command: --resume-run %s", writer.run_dir
                 )
                 raise
 
         elif isinstance(node, CallNode):
             resume_interrupted_node = False
-            print(f"[workhorse] call   → {node.id}")
+            logger.info("[workhorse] call   → %s", node.id)
             label, outputs = call_runner.run_call(node, ctx, workflow_dir)
             ctx.merge(outputs)
             if node.refuel:
@@ -611,7 +615,7 @@ def _step_loop(
 
         elif isinstance(node, BranchNode):
             resume_interrupted_node = False
-            print(f"[workhorse] branch → {node.id}")
+            logger.info("[workhorse] branch → %s", node.id)
             next_id, value = branch_runner.evaluate(node, ctx)
             writer.write_branch(node.id, node.path, value, next_id)
             current_id = next_id
@@ -720,7 +724,7 @@ def _run_flow(
         )
     flow = graph.flows[node.name]  # existence validated at load time
     rendered = {k: render_string(v, parent_ctx.as_dict()) for k, v in node.args.items()}
-    print(f"[workhorse] flow   → {node.id} ({node.name})")
+    logger.info("[workhorse] flow   → %s (%s)", node.id, node.name)
 
     child_writer = writer.subscope(node.id, flow.name, resume=resume)
     initial = {**manifest, **flow.vars, **rendered}

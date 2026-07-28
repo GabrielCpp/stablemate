@@ -340,6 +340,14 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
             # lookup (prompt.md / output.json / events.jsonl) in one hop, instead
             # of a manual join through the runs/ tree.
             "run_dir": run_dir or "",
+            # This process's OS pid — the standard OTel semantic-convention key. A
+            # native run shares the collector's host, so advertising it lets a
+            # consumer (groom) correlate the run to its process and, later, signal it.
+            "process.pid": os.getpid(),
+            # The repo working-tree root, forwarded from an env var like repo/branch
+            # above so the engine learns no workflow's schema. A same-host consumer
+            # reads Files/Diff for the run straight from this path.
+            "workspace": os.environ.get("GROOM_WORKSPACE_DIR", ""),
         }
     )
     tracer_provider = TracerProvider(resource=resource)
@@ -483,15 +491,36 @@ class _Telemetry:
         while not self._stop.wait(_HEARTBEAT_EVERY_S):
             self._beat_once()
 
+    def _live_attrs(self, node_id: str) -> dict[str, str]:
+        """Metric attributes for the live "where is it now" signals: the node plus
+        the run's current *activity* and *work_id*.
+
+        Spans export only on completion, so these gauges are the only telemetry that
+        reaches a collector while a node is still open — which is exactly when a
+        monitor wants to show what the run is doing. So the two label dimensions a
+        dashboard renders (``wf.activity``, ``wf.work_id``) ride the gauges too, and
+        only those two, to keep metric attribute cardinality bounded. ``self._labels``
+        is rebound wholesale by ``set_labels``, so reading it without the lock sees a
+        consistent old-or-new dict, never a torn one.
+        """
+        attrs: dict[str, str] = {"node": node_id}
+        labels = self._labels
+        for key in ("wf.activity", "wf.work_id"):
+            value = labels.get(key)
+            if value:
+                attrs[key] = value
+        return attrs
+
     def _beat_once(self) -> None:
         """Emit one liveness tick for whatever node is open (or none)."""
         try:
             with self._lock:
                 top = self._stack[-1] if self._stack else None
             node = top[0][0] if top else ""
-            self._run_beats.add(1, {"node": node})
+            attrs = self._live_attrs(node)
+            self._run_beats.add(1, attrs)
             if top is not None and self._node_elapsed is not None:
-                self._node_elapsed.set(time.monotonic() - top[2], {"node": node})
+                self._node_elapsed.set(time.monotonic() - top[2], attrs)
         except Exception:
             # A telemetry bug must degrade to "no heartbeat", never take down the
             # thread (and with it every later liveness signal) mid-run.
@@ -693,7 +722,7 @@ class _Telemetry:
 
     def _set_node_active(self, node_id: str, value: int) -> None:
         if self._node_active is not None:
-            self._node_active.set(value, {"node": node_id})
+            self._node_active.set(value, self._live_attrs(node_id))
 
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:
         if self._turn_beats is not None:

@@ -155,7 +155,13 @@ def _exit_hint(wf: WorkflowContainer) -> str:
 
 def _inbox_row(wf: WorkflowContainer) -> str:
     gate = next(iter(sorted(wf.gates.values(), key=lambda g: g.file_path)), None)
-    tail = esc(gate.file_path) if gate else (_exit_hint(wf) or esc(wf.current_node))
+    # No gate → show what the run is doing: its `wf.activity` when it has stamped
+    # one ("reviewing PRED-A2JX"), else the raw node id.
+    tail = (
+        esc(gate.file_path)
+        if gate
+        else (_exit_hint(wf) or esc(wf.activity or wf.current_node))
+    )
     preview = (
         f'<span class="q">{esc(_question_preview(gate.question))}</span>'
         if wf.state == WorkflowState.BLOCKED and gate
@@ -258,11 +264,14 @@ def _diff_disclosure(wf: WorkflowContainer) -> str:
 
 
 def _detail_head(wf: WorkflowContainer) -> str:
+    activity = f" · {esc(wf.activity)}" if wf.activity else ""
+    pid = f" · pid {esc(str(wf.pid))}" if wf.pid else ""
     return (
         f'<div class="detail-head">{_state_dot(wf.state)}{_type_badge(wf.workflow_type)}'
         f'<span class="repo-branch">{esc(_repo_label(wf))}</span>'
         f'<span class="meta">#{esc(wf.container_id[:6])} · {esc(wf.state.value)}'
-        f'{(" · node " + esc(wf.current_node)) if wf.current_node else ""}</span>'
+        f'{(" · node " + esc(wf.current_node)) if wf.current_node else ""}'
+        f'{activity}{pid}</span>'
         f'{_exit_hint(wf)}</div>'
     )
 
@@ -319,11 +328,15 @@ def _run_card(summary: dict[str, Any], telemetry: RunTelemetry | None) -> str:
         for rule in sorted(telemetry.fired if telemetry else ())
     )
     window = f"{_fmt_ts(summary.get('first_ts') or 0)} → {_fmt_ts(summary.get('last_ts') or 0)}"
+    # What the run is doing right now, when it stamped a wf.activity (else the live
+    # node) — so the telemetry pane reads "reviewing PRED-A2JX", not just a run id.
+    doing = (telemetry.activity or telemetry.current_node) if telemetry else ""
+    doing_html = f'<span class="run-doing">{esc(doing)}</span>' if doing else ""
     return (
         f'<div class="run-card">'
         f'<span class="line1">{dot}'
         f'<span class="repo-branch">{esc(summary.get("workflow") or "run")}</span>'
-        f'<span class="wid">{esc(summary["run_id"])}</span>{chips}</span>'
+        f'<span class="wid">{esc(summary["run_id"])}</span>{chips}{doing_html}</span>'
         f'<span class="run-meta">{esc(window)} · {summary.get("span_count", 0)} spans {err}</span>'
         f"</div>"
     )

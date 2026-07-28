@@ -64,12 +64,34 @@ def prune_workflows(present_ids: set[str]) -> list[str]:
     the removed ids. Also forgets their per-gate locks so the maps don't grow
     unbounded across a long-lived groom process.
     """
-    removed = [cid for cid in WORKFLOWS if cid not in present_ids]
+    # Native rows have no container, so the docker present-set says nothing about
+    # them — they are retired by their own run's terminal telemetry, not here.
+    removed = [
+        cid
+        for cid, wf in WORKFLOWS.items()
+        if not wf.native and cid not in present_ids
+    ]
     for cid in removed:
         WORKFLOWS.pop(cid, None)
         for key in [k for k in _gate_locks if k.startswith(f"{cid}::")]:
             _gate_locks.pop(key, None)
     return removed
+
+
+def evict_runs(run_ids: list[str]) -> None:
+    """Drop telemetry hot-cache entries (and any native dashboard row they back)
+    for the given run ids — the eviction that bounds ``RUNS``/``WORKFLOWS`` growth
+    on a long-lived groom. Docker rows are left to the discovery prune; only native
+    rows (keyed by run_id, with no container behind them) are removed here, along
+    with their per-gate locks so those maps don't leak either.
+    """
+    for run_id in run_ids:
+        RUNS.pop(run_id, None)
+        wf = WORKFLOWS.get(run_id)
+        if wf is not None and wf.native:
+            WORKFLOWS.pop(run_id, None)
+            for key in [k for k in _gate_locks if k.startswith(f"{run_id}::")]:
+                _gate_locks.pop(key, None)
 
 
 def record_log(event: dict) -> None:

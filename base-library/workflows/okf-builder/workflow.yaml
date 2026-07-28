@@ -16,6 +16,16 @@ requires:
   - dist: ostler
     version: ">=0.1.0"
 
+# Telemetry dimensions stamped as `wf.*` on every span, re-rendered before each node, so
+# the dashboard row reads what the drain is working on rather than just a node id. `work_id`
+# is the current worklist item; `progress`/`kinds` come from select-item.py's worklist
+# snapshot (the "3/12" + "5 surface · 3 layer" composition). Empty renders are dropped, so
+# nodes before the first pick simply carry none. See workhorse/docs/WORKFLOW.md §1.2.
+labels:
+  work_id: "{{ get_node_output('select_item', 'item_target') }}"
+  service: "{{ service }}"
+  progress: "{{ get_node_output('select_item', 'progress') }}"
+
 vars:
   service: "" # which docs/features/<service> to build; "" = the whole docs/features tree
   # Source subtree to inventory. Defaults to `service`, which keeps the common one-repo/one-book
@@ -133,6 +143,10 @@ nodes:
       - key: pending_count
       - key: done_count
       - key: done_this_run
+      # Worklist snapshot for the dashboard: "3/12" progress and the "5 surface · 3 layer"
+      # kinds composition, from the shared worklist primitive. Fed into labels + activity.
+      - key: progress
+      - key: kinds
     # Refuel the gas tank on real progress (an item completed since the last visit); a
     # loop that stops completing items runs the tank dry and halts instead of spinning.
     refuel: done_count
@@ -183,6 +197,9 @@ nodes:
     prompt: prompts/investigate.md
     cwd: "{{ repo_root }}"
     add_dirs: "{{ repo_root }}"
+    # Dashboard subtitle for this step (→ wf.activity): what item is being documented, and
+    # how far through the drain. Progress suffix guarded so it never shows a dangling " · ".
+    activity: "documenting {{ item_kind }} {{ item_target }}{% set p = get_node_output('select_item', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       item_kind: "{{ item_kind }}"
       item_target: "{{ item_target }}"
@@ -580,6 +597,8 @@ flows:
           - key: item_context
           - key: pending_count
           - key: done_count
+          - key: progress
+          - key: kinds
         refuel: done_count
         next: guard_wt_budget
 
@@ -605,6 +624,7 @@ flows:
         prompt: prompts/walkthrough-web.md
         cwd: "{{ repo_root }}"
         add_dirs: "{{ repo_root }}"
+        activity: "walking {{ item_kind }} {{ item_target }}{% set p = get_node_output('select_wt', 'progress') %}{% if p %} · {{ p }}{% endif %}"
         args:
           item_kind: "{{ item_kind }}"
           item_target: "{{ item_target }}"

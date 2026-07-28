@@ -127,6 +127,33 @@ Rules worth knowing:
 - With no collector reachable, this is inert like the rest of telemetry — see the
   README's Telemetry section.
 
+**Per-node `activity`.** A `labels:` value is workflow-wide; a node's own `activity:`
+field is the *per-node* companion — a Jinja string describing what **that** step does
+(`activity: "reviewing {{ story_slug }}"`). It renders against the live context before
+the node runs and lands as `wf.activity`, following the same rules above (empty →
+dropped, resilient, never breaks a run). It is **not** inherited like `labels` — it
+describes the current node only. Unlike most labels, `wf.activity` (and `wf.work_id`)
+also ride the live liveness metrics, so a monitor can show what the run is doing *while*
+a node is still open, before its span exports. Available on `agent`, `script`, `flow`,
+and `call` nodes.
+
+**Where the "3/12" comes from — `workhorse.worklist`.** A useful `activity` often wants
+the run's progress through its backlog ("implementing ACME-1 · 3/12"). Rather than each
+workflow re-counting its own queue, a `script:` node computes it through the shared
+`workhorse.worklist` primitive — a *parameterised* worklist that learns no workflow's
+schema (an item is `{id, status, kind?, order?, payload?}`; a `Scheme` names which statuses
+mean done/active/blocked). Its `snapshot(items)` returns `{current, progress:"done/total",
+remaining, composition:"5 api · 1 ui", kinds:"5 epic · 30 story", counts}` — the shape a
+dashboard reads uniformly no matter which workflow produced it. `kind` is a first-class
+field so **one worklist can hold every list a run tracks** (epics, stories, fixes) in a
+single store; every operation takes `kind=` to scope to one list (`None` = all), and
+`counts`/`snapshot` report the mixed composition via `by_kind`/`kinds`. The node emits `progress` as an output; `labels:` and
+the per-node `activity:` interpolate it. Storage stays where it belongs: a workflow whose
+queue is a JSON file uses the built-in `JsonBackend`; one whose items live in a doc-graph
+or a markdown section hands its own items to the stateless `snapshot`/`select_next`/
+`counts` functions (the `coder` workflow's `select-next-story.py` is the worked example —
+it feeds ostler's report counts through `worklist.snapshot` into `wf.progress`).
+
 ---
 
 ## 2. Node types
@@ -161,6 +188,7 @@ Copilot), then extracts JSON outputs from the response.
 | `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
 | `power` | `low` \| `medium` \| `high` | no | Abstract capacity tier. Resolved through `~/.config/workhorse/config.toml` at `power.<tier>.<backend>` to concrete `model`/`effort`; missing config leaves model/effort unset so the backend default or `AGENT_MODEL` applies. |
 | `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
+| `activity` | string | no | A Jinja "what this node is doing" line, rendered per node and stamped live on telemetry as `wf.activity` — see [1.2](#12-labels--tagging-telemetry-with-the-unit-of-work). Also on `script`/`flow`/`call` nodes. |
 | `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
 
 **Output extraction.** Strict first: the response is scanned for a fenced

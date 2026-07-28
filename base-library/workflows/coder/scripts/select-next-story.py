@@ -46,10 +46,16 @@ from pathlib import Path
 from typing import NoReturn
 
 from ostler import Ostler
+from workhorse import worklist as wl
 from workhorse.scriptutil import find_docs_root
 
 
 _EPIC = ""
+# Uniform queue-progress telemetry (done/total + remaining), folded into every emit so
+# whichever outcome a run takes still carries "how far through this epic are we" to the
+# dashboard. Set once from the ostler report in main(); empty until then / when the
+# report can't say. See _progress_fields.
+_PROGRESS = {"progress": "", "remaining_count": ""}
 
 
 def emit(**kwargs: str) -> NoReturn:
@@ -58,10 +64,30 @@ def emit(**kwargs: str) -> NoReturn:
     payload = {
         "has_story": "no", "story_outcome": "blocked", "story_path": "", "spec_dir": "",
         "story_slug": "", "epic": _EPIC, "reason": "",
+        "progress": _PROGRESS["progress"], "remaining_count": _PROGRESS["remaining_count"],
     }
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
+
+
+def _progress_fields(report: dict | str) -> dict[str, str]:
+    """Queue progress for the dashboard, computed through the shared worklist snapshot so
+    coder's stories read the same "done/total" shape every workflow's queue will.
+
+    The story queue *is* a worklist — ``report['done']`` finished items plus the
+    ``report['remaining']`` not-done slugs — so we hand those to :func:`worklist.snapshot`
+    rather than formatting the numbers here. Best-effort: a legacy/failed report (a bare
+    string, or one without the counts) yields empty fields and the labels simply carry no
+    progress, exactly as an unrenderable label is dropped."""
+    if not isinstance(report, dict):
+        return {"progress": "", "remaining_count": ""}
+    done = int(report.get("done") or 0)
+    remaining = [str(s) for s in (report.get("remaining") or [])]
+    items = [{"id": f"__done_{i}", "status": "done"} for i in range(done)]
+    items += [{"id": s, "status": "pending"} for s in remaining]
+    snap = wl.snapshot(items)
+    return {"progress": snap["progress"], "remaining_count": str(snap["remaining"])}
 
 
 def _report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
@@ -174,7 +200,7 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
 
 
 def main(logger: logging.Logger) -> None:
-    global _EPIC
+    global _EPIC, _PROGRESS
     _EPIC = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
     docs_path_arg = sys.argv[2] if len(sys.argv) > 2 else ""
     run_dir_arg = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -188,6 +214,7 @@ def main(logger: logging.Logger) -> None:
     skip = _load_skip_set(root, run_dir_arg)
 
     report = _report(okf, _EPIC, skip)
+    _PROGRESS = _progress_fields(report)
     state = report.get("state", "") if isinstance(report, dict) else ""
     nxt = report.get("story") if isinstance(report, dict) else None
 

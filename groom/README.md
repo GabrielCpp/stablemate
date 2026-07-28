@@ -70,7 +70,17 @@ no discovery gate. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
 from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=…&
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
-`GROOM_RETENTION_DAYS` (14) are pruned at startup.
+`GROOM_RETENTION_DAYS` (14) are pruned at startup and on a periodic tick.
+
+**Native runs are first-class dashboard rows, not just telemetry.** A run on
+groom's own host advertises its `run_dir`, workspace path, pid, and per-node
+`wf.activity` on the OTLP resource; groom materializes a fleet row from that
+(keyed by `run_id`), shows what it is doing ("coder · reviewing PRED-A2JX"), and —
+because it shares the host — serves the row's Files/Diff panels and answers its
+operator gates straight from the local filesystem (`groom.localfs`), no docker
+volume or sidecar needed. The native test is self-validating: groom draws the row
+only for a run whose `run_dir` it can actually read locally, so a containerized
+producer (whose paths don't resolve on the host) never double-lists.
 
 Alert rules run on every ingest plus a periodic tick, and page you through
 browser notifications **and** an away-from-keyboard push — configure

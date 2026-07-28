@@ -15,7 +15,8 @@ Args: [worklist_path] [max_items] [done_baseline]
                  instantly over budget and hands out zero items, and the run reports success
                  having done nothing.
 Outputs JSON: {"has_item","over_budget","current_item","item_kind","item_target",
-               "item_context","pending_count","done_count","done_this_run"}
+               "item_context","pending_count","done_count","done_this_run",
+               "progress","kinds"}
 """
 from __future__ import annotations
 
@@ -24,12 +25,14 @@ import logging
 import sys
 from pathlib import Path
 
+from workhorse import worklist as wl
+
 
 def emit(**kw: object) -> None:
     payload: dict[str, object] = {
         "has_item": "no", "over_budget": "no", "current_item": "", "item_kind": "",
         "item_target": "", "item_context": "", "pending_count": 0, "done_count": 0,
-        "done_this_run": 0,
+        "done_this_run": 0, "progress": "", "kinds": "",
     }
     payload.update(kw)
     print(json.dumps(payload))
@@ -48,7 +51,14 @@ def main(logger: logging.Logger) -> None:
         baseline = 0
     data = json.loads(wl_path.read_text())
     items = data.get("items", [])
-    done = sum(1 for i in items if i.get("status") == "done")
+    # One worklist snapshot drives both the budget math (counts.done for the per-run cap)
+    # and the dashboard (progress "3/12" + the kinds line "5 surface · 3 layer" — okf's
+    # items are multi-kind, so that composition is the natural activity subtitle). The
+    # items already carry `kind`/`status`, so they are handed to the stateless functions
+    # as-is (no Backend; this script owns the JSON read/write and the budget cap the
+    # primitive knows nothing about). See workhorse.worklist.
+    snap = wl.snapshot(items)
+    done = snap["counts"]["done"]
     # Clamp: a baseline above the count means the worklist shrank under the run (a reset
     # mid-flight). Trusting it would make `done_this_run` negative and the cap unreachable.
     this_run = max(0, done - min(baseline, done))
@@ -60,34 +70,36 @@ def main(logger: logging.Logger) -> None:
     if max_items and this_run >= max_items:
         # Over budget: stop handing out work so the run converges the partial book
         # rather than burning quota all night. Pending items remain for a later resume.
-        pend = sum(1 for i in items if i.get("status") == "pending")
         # Reads as a silent early exit from the outside: the loop just stops handing
         # out work with pending items left, which looks identical to a dry drain.
         logger.warning(
             "over budget — %d done this run reaches the cap of %d; handing out no more "
-            "work with %d still pending (resume to continue)", this_run, max_items, pend,
+            "work with %d still pending (resume to continue)",
+            this_run, max_items, snap["counts"]["pending"],
         )
-        emit(has_item="no", over_budget="yes", pending_count=pend, done_count=done,
-             done_this_run=this_run)
+        emit(has_item="no", over_budget="yes", pending_count=snap["counts"]["pending"],
+             done_count=done, done_this_run=this_run, progress=snap["progress"],
+             kinds=snap["kinds"])
 
-    active = [i for i in items if i.get("status") == "active"]
-    pending = [i for i in items if i.get("status") == "pending"]
-    pick = active[0] if active else (pending[0] if pending else None)
+    pick = wl.select_next(items)  # active-first crash-safe re-pick, then first pending
     if pick is None:
         logger.info("drain is dry — no active or pending items; handing off to checkpoint")
-        emit(has_item="no", pending_count=0, done_count=done, done_this_run=this_run)
+        emit(has_item="no", pending_count=0, done_count=done, done_this_run=this_run,
+             progress=snap["progress"], kinds=snap["kinds"])
 
+    resumed = pick.get("status") == "active"
     pick["status"] = "active"
     wl_path.write_text(json.dumps(data, indent=2))
-    pend = sum(1 for i in items if i.get("status") == "pending")
+    pend = wl.counts(items)["pending"]  # one fewer after the flip
     logger.info(
         "picked %s item '%s' (%s), %d still pending",
-        "resumed active" if active else "next pending",
+        "resumed active" if resumed else "next pending",
         pick.get("target", "?"), pick.get("kind", "?"), pend,
     )
     emit(has_item="yes", current_item=json.dumps(pick), item_kind=pick.get("kind", ""),
          item_target=pick.get("target", ""), item_context=pick.get("context", ""),
-         pending_count=pend, done_count=done, done_this_run=this_run)
+         pending_count=pend, done_count=done, done_this_run=this_run,
+         progress=snap["progress"], kinds=snap["kinds"])
 
 
 if __name__ == "__main__":

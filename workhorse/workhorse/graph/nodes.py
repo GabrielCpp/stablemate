@@ -64,6 +64,11 @@ class AgentNode(BaseModel):
     # in the workflow context (e.g. `"{{ affected_repo_paths }}"` where the context
     # value is a list).
     add_dirs: list[str] | str = Field(default_factory=list)
+    # Human-readable "what this node is doing", Jinja2-rendered from context before
+    # the node runs (e.g. "reviewing {{ story_slug }}"). Stamped live on telemetry as
+    # `wf.activity` so a monitor can show the run's current activity without knowing
+    # the workflow's vocabulary. Empty render → dropped. See main.py's label render.
+    activity: str | None = None
     next: str | None = None
 
 
@@ -107,6 +112,9 @@ class ScriptNode(BaseModel):
     # workflow refuels on a new story (`story_slug`) and a new epic (`epic`). See
     # main.py `_GasTank`.
     refuel: str | None = None
+    # See AgentNode.activity — a Jinja2 "what this node is doing" stamped as
+    # `wf.activity` on telemetry.
+    activity: str | None = None
     next: str | None = None
 
 
@@ -125,6 +133,9 @@ class FlowNode(BaseModel):
     args: dict[str, str] = Field(default_factory=dict)
     # Keys to lift OUT of the child's terminal context back into the parent.
     outputs: list[OutputSpec] = Field(default_factory=list)
+    # See AgentNode.activity — a Jinja2 "what this node is doing" stamped as
+    # `wf.activity` on telemetry.
+    activity: str | None = None
     next: str | None = None
 
 
@@ -155,6 +166,9 @@ class CallNode(BaseModel):
     args: dict[str, str] = Field(default_factory=dict)
     outputs: list[CallOutputSpec] = Field(default_factory=list)
     refuel: str | None = None
+    # See AgentNode.activity — a Jinja2 "what this node is doing" stamped as
+    # `wf.activity` on telemetry.
+    activity: str | None = None
     next: str | None = None
 
 
