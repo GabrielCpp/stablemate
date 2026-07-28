@@ -16,6 +16,11 @@ an operator re-pends it or records an accepted disposition.
 
 Stdlib + PyYAML (available in the system interpreter).
 
+The inventory write itself is the shared ``workhorse.worklist`` primitive's mutation path:
+the inventory is a worklist keyed under ``units``, and stamping one unit's status is
+``WorkList.mark`` — a crash-safe load → set → atomic-save against that file. Everything
+around it (reading the record's front-matter, writing a blocked stub) is surveyor's own.
+
 Args:
     argv[1]  inventory   : repo-relative path to inventory.json
     argv[2]  unit_id     : the unit to mark
@@ -33,6 +38,8 @@ import os
 import re
 import sys
 from pathlib import Path
+
+from workhorse import worklist as wl
 
 try:
     import yaml
