@@ -6,6 +6,10 @@ criteria need in order to be exercised. The coder workflow's `ensure_stack` step
 and hands the lifecycle to `workhorse.stack`, so the stack is brought up **outside any
 agent turn** and cannot be killed by node teardown mid-build.
 
+> Deferred increments (consuming-repo manifests, epic-level teardown, re-seed skip, a `fresh`
+> fingerprint helper, env-pool phase 4) are tracked in
+> [qa-stack-followups.md](qa-stack-followups.md).
+
 ## Why it exists
 
 Before this contract, a coder run brought the stack up by having the setup/implement agent
@@ -22,8 +26,21 @@ run (a dev server pinned to branch source, an event tail) belongs in the QA plan
 
 ## Location
 
-`qa-stack.yml` at the repo root (the path the coder `ensure_stack` node passes). A repo with
-no manifest is not an error: `ensure_stack` reports `skip` and QA proceeds exactly as before.
+`qa-stack.yml` at the repo root — the default of the coder workflow's `qa_stack_manifest` var,
+which `ensure_stack` resolves against the repo root. A repo with no manifest is not an error:
+`ensure_stack` reports `skip` and QA proceeds exactly as before.
+
+One repo, one stack is the intended shape, and a repo whose services share a stack should keep
+the default. Point a run at a different manifest when a monorepo holds services whose stacks are
+genuinely disjoint — a new product standing up its own emulators alongside an existing app, where
+the root manifest would bring up infra the new service never touches (and vice versa):
+
+```bash
+workhorse run coder --params '{"qa_stack_manifest":"docsapp/qa-stack.yml"}'
+```
+
+The path is repo-relative, and it is threaded to the `setup-fix` agent too, so the repair loop
+authors the manifest at the path the run actually reads rather than at the root.
 
 ## Schema
 

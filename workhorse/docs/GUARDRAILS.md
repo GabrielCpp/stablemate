@@ -155,6 +155,7 @@ same CLI configuration as the conversation it is compacting.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WORKHORSE_SCRIPT_INPROCESS` | 1 | Run `script:` nodes **in the engine's own process** (import the module, call `main(logger)`). Set `0` to spawn them as child processes as before — see the trade-off below. |
+| `WORKHORSE_FRESH_IMPORT` | 1 | Whether `scriptutil.fresh_import` really purges `sys.modules` and re-imports from disk, so a fix landed mid-run reaches the nodes still ahead in the graph. Set `0` to return the cached module instead — the re-import builds a *new module object*, which discards every `monkeypatch` a test applied to the old one. `workhorse.testing.WorkflowRun` sets it for the duration of a run; nothing rewrites a package on disk there, so the behavior it exists for cannot occur. |
 | `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and its in-process script nodes. |
 | `WORKHORSE_GAS` | 5000 | Progress-metered loop guard: units burned per node step, refilled on real forward progress (a refuel node's value changing). 0 disables. A cycle that never progresses burns one tank and fails loudly (`OutOfGasError`). |
 | `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between nodes; trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the gas tank: gas catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |

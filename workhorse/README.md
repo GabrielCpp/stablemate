@@ -825,6 +825,13 @@ repo built with `make_git_repo` — git is never mocked. Assert on the `RunResul
 (`passed()`, `step_outputs(node)`, `prompt(node)`, `context()`, `calls(cli)`,
 `has_warning(text)`).
 
+For those patches to survive, the harness sets `WORKHORSE_FRESH_IMPORT=0` for the
+duration of a run. A script that calls `scriptutil.fresh_import` normally re-imports
+from disk and so gets a **new module object**, silently discarding every seam the test
+patched onto the old one — the mock is still in place, just no longer the thing the
+script calls. Nothing edits a package on disk mid-run under the harness, which is the
+only situation `fresh_import` exists for, so switching it off there costs nothing.
+
 ### Where docs go
 
 - **Tool/usage + development docs** → this `README.md` (root).

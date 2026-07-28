@@ -55,6 +55,8 @@ def test_mutation_invalidates_the_snapshot(repo: Path):
     # pre-mutation snapshot: 01-foo is done, so epic-a has no runnable story left.
     assert okf.graph is not snapshot
     assert okf.next_story("epic-a") is None
+    # And the facade says *why* there is none — "done" is what lets a caller merge.
+    assert okf.next_story_report("epic-a")["state"] == "done"
 
 
 def test_create_story_is_visible_to_the_next_read(repo: Path):

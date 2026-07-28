@@ -144,3 +144,52 @@ def test_next_story_skip_is_backward_compatible(tmp_path: Path):
     crud.create_story(load(tmp_path), "e", "only", "Only")
     assert select.next_story(load(tmp_path), "e")["slug"] == "only"
     assert select.next_story(load(tmp_path), "e", skip=set())["slug"] == "only"
+
+
+def test_report_separates_done_from_blocked(tmp_path: Path):
+    """The four ``None`` cases must be four distinct states — that split is the whole point.
+
+    ``done`` is the only one that means "prune and merge the epic"; the caller reads
+    ``state``, so a blocked epic reporting anything but ``blocked`` ships unbuilt scope.
+    """
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "a", "A")
+    crud.create_story(load(tmp_path), "e", "b", "B", depends=["a"])
+
+    ready = select.next_story_report(load(tmp_path), "e")
+    assert ready["state"] == "ready" and ready["story"]["slug"] == "a"
+
+    # 'a' given up → 'b' depends on it → nothing runnable, but the epic is NOT finished.
+    blocked = select.next_story_report(load(tmp_path), "e", skip={"a"})
+    assert blocked["state"] == "blocked"
+    assert blocked["story"] is None
+    assert set(blocked["remaining"]) == {"a", "b"}
+    assert blocked["skipped"] == ["a"]
+    assert blocked["waiting_on"] == {"b": ["a"]}
+    assert "given up this run: a" in blocked["detail"]
+
+    crud.set_status(load(tmp_path), "a", "QA passed")
+    crud.set_status(load(tmp_path), "b", "QA passed")
+    finished = select.next_story_report(load(tmp_path), "e")
+    assert finished["state"] == "done"
+    assert finished["done"] == finished["total"] == 2
+
+
+def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Path):
+    """An epic with no authored stories is ``no-stories``, never ``done``.
+
+    Zero stories done out of zero is arithmetically "all done", and calling it that drops
+    unwritten scope out of the queue silently. Absent epics get their own state too, so a
+    typo'd name cannot be read as completion either.
+    """
+    g = load(tmp_path)
+    crud.create_epic(g, "empty", "Empty", prefix="x")
+
+    empty = select.next_story_report(load(tmp_path), "empty")
+    assert empty["state"] == "no-stories"
+    assert empty["story"] is None
+
+    missing = select.next_story_report(load(tmp_path), "nope")
+    assert missing["state"] == "no-epic"
+    assert missing["story"] is None

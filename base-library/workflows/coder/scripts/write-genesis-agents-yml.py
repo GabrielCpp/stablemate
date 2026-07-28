@@ -16,6 +16,14 @@ Existing files are **merged, not overwritten**: on a re-run (``target_state: exi
 repo may carry hand-edits, and clobbering them would make genesis unsafe to re-run — which is
 the whole point of the detect/decide nodes upstream.
 
+**Comments are hand-edits too.** A ``safe_load``/``safe_dump`` round-trip preserves every
+value and destroys every comment, which on a mature repo is the larger loss — an
+``agents.yml`` earns its rationale over time ("this port is taken by the other stack", "these
+keys are omitted on purpose"), and none of it is recoverable from the data. So the file is
+round-tripped through ``ruamel.yaml``, which carries comments, key order and inline/flow style
+through the merge. The file is also left **untouched when the merge changes nothing**, so the
+common re-run rewrites nothing at all.
+
 Args:
     argv[1]  target_dir   : absolute path to the repo
     argv[2]  service      : logical service name (also the workspace repo key)
@@ -35,13 +43,56 @@ Outputs JSON: {"agents_yml_written": "yes"|"no", "agents_yml_path": "<rel>",
 """
 from __future__ import annotations
 
+import copy
+import io
 import json
 import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
+from ruamel.yaml.scalarstring import ScalarString
+
+
+def _yaml() -> YAML:
+    """Round-trip loader/dumper: comments, key order and flow style survive the merge.
+
+    ``width`` is set far above any real line because ruamel wraps long scalars at 80 by
+    default — which would reflow a hand-written value the merge never touched.
+    """
+    y = YAML()  # round-trip mode
+    y.preserve_quotes = True
+    y.default_flow_style = False
+    y.width = 4096
+    return y
+
+
+def _assign_seq(mapping: dict, key: str, merged: list) -> None:
+    """Set ``mapping[key]`` to ``merged``, keeping the existing sequence node when possible.
+
+    ``merged`` always starts with the current entries, so the normal case is "append the new
+    tail" — done in place so ruamel keeps the node's own style and comments. A flow sequence
+    (``service_roots: ["api", "web"]``) rewritten as a fresh list would come back as a block
+    list, reflowing a line the merge had no business touching.
+    """
+    current = mapping.get(key)
+    if isinstance(current, list) and list(current) == merged[:len(current)]:
+        current.extend(_like(current[0] if current else None, item)
+                       for item in merged[len(current):])
+        return
+    mapping[key] = merged
+
+
+def _like(sibling, value: str):
+    """Return ``value`` quoted the way ``sibling`` is quoted.
+
+    ruamel remembers the quoting of scalars it *loaded*, but a plain ``str`` appended next to
+    them dumps bare — leaving ``["api", "web", docs-api]``, which reads as a typo rather than
+    as an edit. Mirroring the neighbour keeps the line looking hand-written.
+    """
+    return type(sibling)(value) if isinstance(sibling, ScalarString) else value
 
 
 def emit(**kwargs) -> NoReturn:
@@ -85,16 +136,21 @@ def main(logger: logging.Logger) -> None:
     repo_name = target.name
     path = target / "agents.yml"
 
+    yml = _yaml()
     existing: dict = {}
     if path.is_file():
         try:
-            existing = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (yaml.YAMLError, OSError) as exc:
+            existing = yml.load(path.read_text(encoding="utf-8")) or {}
+        except (YAMLError, OSError) as exc:
             emit(agents_yml_note=f"existing agents.yml is unreadable ({exc}); refusing to clobber it")
         if not isinstance(existing, dict):
             emit(agents_yml_note="existing agents.yml is not a mapping; refusing to clobber it")
 
-    data = dict(existing)
+    # Mutate the loaded document in place rather than copying into a plain dict: the comments
+    # ride on the loaded mapping, and a `dict(existing)` would drop every one of them.
+    had_existing = bool(existing)
+    before = copy.deepcopy(existing)
+    data = existing
     data.setdefault("repo", {})
     if isinstance(data["repo"], dict):
         data["repo"].setdefault("name", repo_name)
@@ -111,21 +167,29 @@ def main(logger: logging.Logger) -> None:
     for key, values in (("packs", packs), ("workflows", workflows), ("scaffolds", scaffolds)):
         if values:
             merged = list(dict.fromkeys([*(data.get(key) or []), *values]))
-            data[key] = merged
+            _assign_seq(data, key, merged)
 
-    workspace = dict(data.get("workspace") or {})
+    # In place, again — a `dict(...)` copy here is what would strip the comments a monorepo
+    # writes into its own workspace block (which ports are taken, why a key is omitted).
+    if not isinstance(data.get("workspace"), dict):
+        data["workspace"] = {}
+    workspace = data["workspace"]
     workspace.setdefault("type", "mono")
-    if service_root:
-        workspace["service_roots"] = list(dict.fromkeys(
-            [*(workspace.get("service_roots") or []), service_root]))
-    if markers:
-        workspace["service_markers"] = list(dict.fromkeys(
-            [*(workspace.get("service_markers") or []), *markers]))
-    data["workspace"] = workspace
+    for key, values in (("service_roots", [service_root] if service_root else []),
+                        ("service_markers", markers)):
+        if values:
+            merged = list(dict.fromkeys([*(workspace.get(key) or []), *values]))
+            _assign_seq(workspace, key, merged)
 
-    path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
-                    encoding="utf-8")
-    verb = "updated" if existing else "wrote"
+    if data == before and path.is_file():
+        note = f"agents.yml for repo '{repo_name}' already carries this service; left untouched"
+        logger.info("%s", note)
+        emit(agents_yml_written="no", agents_yml_path="agents.yml", agents_yml_note=note)
+
+    buf = io.StringIO()
+    yml.dump(data, buf)
+    path.write_text(buf.getvalue(), encoding="utf-8")
+    verb = "updated" if had_existing else "wrote"
     note = (f"{verb} agents.yml for repo '{repo_name}'"
             f"{f", service '{service}'" if service else ''} "
             f"(packs: {', '.join(packs) or '<none>'}; "

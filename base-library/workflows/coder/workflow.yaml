@@ -173,6 +173,13 @@ vars:
   #   "dev"              — QA against the shared DEV environment (someone else's story).
   # Override: --params '{"target_env":"dev"}'
   target_env: "local"
+  # Repo-relative path to the QA stack manifest `ensure_stack` brings up (see
+  # docs/qa-stack-manifest.md). The repo root is the right default — one repo, one
+  # stack. A monorepo whose services need genuinely different stacks (a new product
+  # alongside an existing one) points each run at its own manifest instead:
+  # --params '{"qa_stack_manifest":"docsapp/qa-stack.yml"}'. A path that does not
+  # exist is not an error — ensure_stack reports `skip` and QA runs as before.
+  qa_stack_manifest: "qa-stack.yml"
 
 
 start: decide_mode
@@ -262,11 +269,16 @@ nodes:
   # Returns the front epic of docs/epics/index.md. prune-epic.py pops it off
   # the front once its PR is merged, so this advances to the next epic regardless of
   # the previous epic's completeness (pop-front-on-merge). Empty queue → done.
+  # The run dir carries the per-run BLOCKED set (flag_epic_blocked): epics whose stories
+  # are all given up/blocked this run are skipped here, so the run keeps working the
+  # epics behind them instead of re-offering one that cannot advance. All blocked →
+  # has_epic="no" → done, with the queue intact and nothing merged.
   - id: select_epic
     type: script
     script: scripts/select-next-epic.py
     args:
       - "{{ docs_path }}"
+      - "{{ workhorse_var('_run_dir') }}"
     outputs:
       - key: has_epic
       - key: epic
@@ -300,9 +312,11 @@ nodes:
     next: select_story
 
   # ── Story selection (WHICH story in the current epic) — separate concern ──────
-  # Returns the next runnable story IN the current epic. has_story=no means the epic
-  # is finished for now (all QA passed, or the next story is unauthored) → open its
-  # PR, gate CI, merge, prune the epic, and advance to the next one.
+  # Returns the next runnable story IN the current epic, and — when it returns none —
+  # WHY, as story_outcome. That distinction is load-bearing: "every story is done" and
+  # "the remaining stories were given up / are blocked / were never authored" both look
+  # like "no story", and merging on the second one merges an epic with unbuilt scope in
+  # it (observed: 20 of 21 stories unbuilt). Branch on story_outcome, never on has_story.
   - id: select_story
     type: script
     script: scripts/select-next-story.py
@@ -314,6 +328,13 @@ nodes:
       - "{{ workhorse_var('_run_dir') }}"
     outputs:
       - key: has_story
+      - key: story_outcome
+        # story | done | blocked. The script's own emit() defaults it to `blocked`, so a
+        # path that forgets to say "finished" sets the epic aside (recoverable: its branch
+        # keeps the work) instead of merging it. A script node that omits the key entirely
+        # fails the run rather than defaulting — `default:` here would be inert, since only
+        # the agent runner consults it — and decide_story's `default: flag_epic_blocked`
+        # catches any value that is none of the three.
       - key: story_path
       - key: spec_dir
       - key: story_slug
@@ -328,16 +349,42 @@ nodes:
 
   - id: decide_story
     type: branch
-    path: has_story
+    path: story_outcome
     cases:
-      "yes": prepare_story
-      # Epic finished → prune THIS epic from the queue first, so the prune is committed
-      # onto the epic branch (by open-pr.sh) and rides into the base via this epic's own
-      # PR. Pruning before the PR (not after the merge) is what keeps the queue draining:
-      # the merged base then no longer lists this epic, so the next branch_epic cuts from
-      # a base that has already dropped it — no resurrection, no infinite loop.
-      "no": prune_epic
-    default: prune_epic
+      story: prepare_story
+      # Epic FINISHED (every story done) → prune THIS epic from the queue first, so the
+      # prune is committed onto the epic branch (by open-pr.sh) and rides into the base via
+      # this epic's own PR. Pruning before the PR (not after the merge) is what keeps the
+      # queue draining: the merged base then no longer lists this epic, so the next
+      # branch_epic cuts from a base that has already dropped it — no resurrection, no
+      # infinite loop.
+      done: prune_epic
+      # Epic STUCK (stories remain, none runnable) → set it aside for this run. It keeps
+      # its place in the queue and its branch keeps whatever it built; nothing is merged.
+      blocked: flag_epic_blocked
+    # An unreadable outcome is treated as stuck, not finished: setting an epic aside is
+    # recoverable on the next run, merging unbuilt scope is not.
+    default: flag_epic_blocked
+
+  # ── Epic stuck: set aside for this run, keep the queue moving ─────────────────
+  # Deliberately NOT a fail node. One epic that cannot advance must not stop the epics
+  # behind it in an unattended run; select_epic skips the names recorded here and ends the
+  # run cleanly only once every queued epic is blocked.
+  - id: flag_epic_blocked
+    type: script
+    script: scripts/flag-epic-blocked.py
+    args:
+      - "{{ get_node_output('select_epic', 'epic') or epic }}"
+      - "{{ workhorse_var('_run_dir') }}"
+      - "{{ get_node_output('select_story', 'reason') }}"
+    outputs:
+      - key: epic_blocked
+      - key: blocked_epics
+      - key: reason
+    # Refuel on the blocked set growing: setting an epic aside IS forward progress at the
+    # queue level (one fewer epic can be offered), even though no story was built.
+    refuel: blocked_epics
+    next: select_epic
 
   # ── Epic finished: open its PR, gate CI, merge, prune, advance to next epic ───
   - id: open_pr
@@ -738,6 +785,7 @@ nodes:
       epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
       operator_mode: "{{ operator_mode }}"
       target_env: "{{ target_env }}"
+      qa_stack_manifest: "{{ qa_stack_manifest }}"
       # Parent-owned rescope budget, threaded into the isolated qa flow so the
       # triager can read it and guard_triage can stop the dev<->qa loop. Bare ref
       # (NOT get_node_output) so it picks up the ROLLING context value: init_triage_
@@ -1124,6 +1172,9 @@ nodes:
       - ""
       - "{{ get_node_output('prepare_story', 'story_slug') }}"
       - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+      # story.md path — the fallback target for the "QA passed" stamp when the doc
+      # graph can't resolve the slug (same arg flag-qa-failure takes on the give-up path).
+      - "{{ get_node_output('prepare_story', 'story_path') }}"
     outputs:
       - key: committed
     next: open_story_pr
@@ -1203,6 +1254,9 @@ nodes:
       - "{{ get_node_output('select_epic', 'epic') or epic }}"
       - "{{ get_node_output('prepare_story', 'story_slug') }}"
       - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+      # story.md path — the fallback target for the "QA passed" stamp when the doc
+      # graph can't resolve the slug (same arg flag-qa-failure takes on the give-up path).
+      - "{{ get_node_output('prepare_story', 'story_path') }}"
     outputs:
       - key: committed
     next: decide_committed # zero-diff churn guard, then loop within the epic
@@ -2379,6 +2433,10 @@ flows:
       epic: ""          # epic slug; empty → ostler finds story under any epic
       operator_mode: "auto"
       target_env: "local"
+      # Repo-relative stack manifest for ensure_stack; see the top-level var of the
+      # same name. Declared here too so the flow runs standalone against a non-default
+      # manifest: workhorse run coder qa --params '{"qa_stack_manifest":"docsapp/qa-stack.yml"}'
+      qa_stack_manifest: "qa-stack.yml"
       qa_dir: ""        # absolute path to <spec_dir>/qa/ — set by prepare_story
       triage_scope_count: 0 # parent-owned rescope budget (scalar), passed in by qa_phase
       qa_rework_count: { value: 0 }
@@ -2640,7 +2698,7 @@ flows:
         type: script
         script: scripts/ensure-stack.py
         args:
-          - "qa-stack.yml"
+          - "{{ qa_stack_manifest }}"
           - "{{ docs_path }}"
         outputs:
           - key: stack_ready
@@ -3399,6 +3457,10 @@ flows:
           spec_dir: "{{ spec_dir }}"
           qa_dir: "{{ qa_dir }}"
           qa_notes: "{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"
+          # The manifest ensure_stack actually reads. Passed rather than assumed: this
+          # node's whole job is repairing it, and a fixer that authors `qa-stack.yml` at
+          # the root while the run reads `<service>/qa-stack.yml` loops forever on `skip`.
+          stack_manifest: "{{ qa_stack_manifest }}"
         outputs:
           - key: setup_result
             default: { status: unfixable } # if the fixer exhausts retries → escalate, don't loop

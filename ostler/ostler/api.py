@@ -107,6 +107,17 @@ class Ostler:
         """
         return select.next_story(self.graph, epic, skip=skip)
 
+    def next_story_report(self, epic: str,
+                          skip: frozenset[str] | set[str] | None = None) -> dict:
+        """Why there is (or is not) a next story in ``epic`` — a ``state``, not an absence.
+
+        ``next_story``'s ``None`` conflates "the epic is finished" with "its remaining stories
+        are blocked or were given up on". A caller that acts on that absence — the coder
+        workflow prunes and merges the epic — must call this instead. See
+        ``select.next_story_report`` for the states.
+        """
+        return select.next_story_report(self.graph, epic, skip=skip)
+
     def todo(self) -> list[str]:
         """The epics queue, front-first (``ostler todo list``)."""
         return todo_mod.list_epics(self.graph)

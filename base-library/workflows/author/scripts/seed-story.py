@@ -26,6 +26,7 @@ Args:
     argv[2]  epics_dir      : repo-relative epics root (default docs/epics)
     argv[3]  bullet         : a backlog `[id]` or literal bullet text (required)
     argv[4]  knowledge_dir  : repo-relative knowledge root (reserved; unused)
+    argv[5]  backlog        : repo-relative backlog markdown (default docs/backlog.md)
 
 Outputs JSON: {"epic_dir": "...", "story_slug": "...", "story_dir": "...",
                "story_path": "...", "bullet_id": "...", "from_backlog": "yes"|"no",
@@ -72,9 +73,16 @@ def kebab(text: str, *, max_len: int = 60) -> str:
     return slug or "story"
 
 
-def resolve_bullet(root: Path, bullet: str) -> tuple[str, str, bool]:
-    """Return (id, sourceBullet, from_backlog)."""
-    backlog_path = root / "docs" / "backlog.md"
+def resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str, bool]:
+    """Return (id, sourceBullet, from_backlog).
+
+    ``backlog_rel`` is the run's backlog — not always ``docs/backlog.md``. A repo that scopes a
+    run to a subset of its work points ``backlog`` at a separate file, and this must follow: an
+    id resolved against the wrong file comes back ``from_backlog=False``, which reads as "literal
+    text the operator typed" and makes the ``story_prune`` tail skip the bullet. The story is
+    authored, the bullet is never consumed, and the next run re-authors it.
+    """
+    backlog_path = root / (backlog_rel or "docs/backlog.md")
     raw = bullet.strip()
     bare = raw[1:-1].strip() if raw.startswith("[") and raw.endswith("]") else raw
 
@@ -109,6 +117,7 @@ def main(logger: logging.Logger) -> None:
     epic = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     epics_dir_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/epics"
     bullet = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
+    backlog_rel = (sys.argv[5].strip() if len(sys.argv) > 5 and sys.argv[5] else "") or "docs/backlog.md"
 
     if not epic:
         die("no epic supplied — story mode needs the target epic slug "
@@ -125,7 +134,7 @@ def main(logger: logging.Logger) -> None:
         die(f"epic '{epic}' does not exist at {epic_dir}/epic.md — story mode appends to an "
             "EXISTING epic and never creates one; run epic mode first or fix the epic slug")
 
-    bullet_id, source_bullet, from_backlog = resolve_bullet(root, bullet)
+    bullet_id, source_bullet, from_backlog = resolve_bullet(root, bullet, backlog_rel)
     fb = "yes" if from_backlog else "no"
 
     okf = Ostler(root)

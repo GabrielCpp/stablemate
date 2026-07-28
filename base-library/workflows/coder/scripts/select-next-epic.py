@@ -14,7 +14,16 @@ Pop-front-on-merge: once an epic's PR is merged the workflow calls prune-epic.py
 (``todo prune``) to remove it from the front, so the next call here returns the
 following epic.
 
-Args: [<docs_path>]
+Per-run blocked set: an epic whose remaining stories are all given up / blocked / unauthored
+is set aside by flag-epic-blocked.py, which records it in ``<run_dir>/blocked-epics.txt``.
+Given the run dir (argv[2]) this script skips those names and returns the next epic
+instead, so one stuck epic does not stop every independent epic behind it — and cannot be
+handed back forever, which would spin the ``select_epic → select_story → flag_epic_blocked``
+loop. When every queued epic is blocked, ``has_epic="no"`` ends the run with the queue
+intact and nothing merged. Like the story skip set, it lives in the run dir: a fresh run
+retries every epic.
+
+Args: [<docs_path>] [<run_dir>]
 Outputs JSON: {"has_epic": "yes"|"no", "epic": "<name>", "reason": "..."}
 """
 
@@ -56,8 +65,23 @@ def _queue_from_json(root: Path) -> list[str] | None:
     return [str(x) for x in data] if isinstance(data, list) else None
 
 
+def _load_blocked(root: Path, run_dir: str) -> list[str]:
+    """Epics set aside THIS run by flag-epic-blocked.py. Missing dir/file → empty."""
+    if not run_dir:
+        return []
+    p = Path(run_dir)
+    if not p.is_absolute():
+        p = root / p
+    try:
+        text = (p / "blocked-epics.txt").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
 def main(logger: logging.Logger) -> None:
     docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    run_dir_arg = sys.argv[2] if len(sys.argv) > 2 else ""
     root = find_docs_root(docs_path_arg)
     okf = Ostler(root)
 
@@ -75,8 +99,22 @@ def main(logger: logging.Logger) -> None:
         logger.info("epic queue is empty — every epic has been merged")
         emit(reason="epic queue is empty — every epic has been merged")
 
-    logger.info("selected epic '%s'", epics[0])
-    emit(has_epic="yes", epic=str(epics[0]))
+    blocked = _load_blocked(root, run_dir_arg)
+    runnable = [e for e in epics if e not in blocked]
+    if not runnable:
+        # Every queued epic was set aside. Loud, because the run is about to end and the
+        # difference between this and a finished queue is invisible otherwise: the queue
+        # is still full, and nothing was merged.
+        logger.warning("all %d queued epic(s) were set aside this run (%s) — ending the run "
+                       "with the queue intact; start a new run to retry them",
+                       len(epics), ", ".join(blocked))
+        emit(reason=f"all {len(epics)} queued epic(s) were set aside this run "
+                    f"({', '.join(blocked)}) — nothing was merged; start a new run to retry")
+
+    if blocked:
+        logger.info("skipping %d epic(s) set aside this run (%s)", len(blocked), ", ".join(blocked))
+    logger.info("selected epic '%s'", runnable[0])
+    emit(has_epic="yes", epic=str(runnable[0]))
 
 
 if __name__ == "__main__":

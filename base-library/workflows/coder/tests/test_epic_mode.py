@@ -367,8 +367,8 @@ def test_qa_give_up_continues_to_next_story(tmp_path, monkeypatch):
     """QA always fails in epic mode → qa_give_up flags each story → the queue keeps moving.
 
     Two independent stories both fail QA past the rework budget. A give-up must *flag and
-    continue* (not halt), so select_story advances from s-1 to s-2, and once both are
-    flagged the epic's story loop ends and the run exits cleanly.
+    continue* (not halt), so select_story advances from s-1 to s-2; once both are flagged
+    the epic has nothing runnable left, is set aside, and the run exits cleanly.
     """
     make_epic(
         tmp_path,
@@ -424,5 +424,11 @@ def test_qa_give_up_records_per_run_skip_set(tmp_path, monkeypatch):
     assert "s-1" in skip_file.read_text(encoding="utf-8").split(), (
         f"expected 's-1' in skip set, got: {skip_file.read_text(encoding='utf-8')!r}"
     )
-    # The given-up story is not re-selected: the epic's story loop ends (has_story=no).
+    # The given-up story is not re-selected, and the epic it belongs to is set aside
+    # rather than merged: giving up on its only story is not the same as finishing it.
     assert_step_output(result, "select_story", "has_story", "no")
+    assert_step_output(result, "select_story", "story_outcome", "blocked")
+    blocked = (result.run_dir / "blocked-epics.txt").read_text(encoding="utf-8").split()
+    assert blocked == ["epic-1"], f"expected the epic set aside, got {blocked!r}"
+    # And nothing was merged — the epic keeps its place in the queue for a later run.
+    assert_json_file(tmp_path, "docs/epics/epics-todo.json", ["epic-1"])
