@@ -199,7 +199,9 @@ def test_run_summaries_flag_finished_and_errors():
                 )
             )
         )
-        summary = store.run_summaries()[0]
+        # now near the fixture's own (epoch-small) timestamps, so the recent-window
+        # bound in run_summaries includes them rather than filtering to wall-clock.
+        summary = store.run_summaries(now=200.0)[0]
         assert summary["run_id"] == "run-1"
         assert summary["error_count"] == 1 and summary["finished"] == 1
 

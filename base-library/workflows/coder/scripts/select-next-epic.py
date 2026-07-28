@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from ostler import Ostler
+from workhorse import worklist as wl
 from workhorse.scriptutil import find_docs_root
 
 
@@ -99,12 +100,20 @@ def main(logger: logging.Logger) -> None:
         logger.info("epic queue is empty — every epic has been merged")
         emit(reason="epic queue is empty — every epic has been merged")
 
+    # The epics queue is a worklist: an ordered list of items the run walks front-to-back,
+    # skipping the ones set aside this run. Hand it to the shared primitive rather than
+    # re-deriving "front item not in the skip set" here — the same select_next/counts that
+    # every workflow's queue uses, so remaining-work counts reach telemetry in one shape.
+    # (Selection is read-only: pruning a merged epic stays ostler-native in prune-epic.py,
+    # so no Backend is needed — the queue's items are handed to the stateless functions.)
     blocked = _load_blocked(root, run_dir_arg)
-    runnable = [e for e in epics if e not in blocked]
-    if not runnable:
-        # Every queued epic was set aside. Loud, because the run is about to end and the
-        # difference between this and a finished queue is invisible otherwise: the queue
-        # is still full, and nothing was merged.
+    items = [{"id": e, "status": "pending", "order": i} for i, e in enumerate(epics)]
+    nxt = wl.select_next(items, skip=blocked)
+    if nxt is None:
+        # No runnable epic. Every queued epic was set aside (the queue is non-empty but
+        # fully skipped) — loud, because the run is about to end and this is invisible
+        # otherwise: the queue is still full, and nothing was merged. (An empty queue was
+        # already reported above, so reaching here always means "all set aside".)
         logger.warning("all %d queued epic(s) were set aside this run (%s) — ending the run "
                        "with the queue intact; start a new run to retry them",
                        len(epics), ", ".join(blocked))
@@ -113,8 +122,8 @@ def main(logger: logging.Logger) -> None:
 
     if blocked:
         logger.info("skipping %d epic(s) set aside this run (%s)", len(blocked), ", ".join(blocked))
-    logger.info("selected epic '%s'", runnable[0])
-    emit(has_epic="yes", epic=str(runnable[0]))
+    logger.info("selected epic '%s'", nxt["id"])
+    emit(has_epic="yes", epic=str(nxt["id"]))
 
 
 if __name__ == "__main__":

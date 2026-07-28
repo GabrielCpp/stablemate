@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -252,5 +253,8 @@ class ArtifactWriter:
             "started_at": self._started_at,
             "ended_at": datetime.now(timezone.utc).isoformat() if terminal else None,
             "terminal": terminal,
+            # The pid is advertised on telemetry too (otel resource attr); recorded
+            # here as well so it survives with telemetry off.
+            "pid": os.getpid(),
         }
         (self.run_dir / "run.json").write_text(json.dumps(data, indent=2))

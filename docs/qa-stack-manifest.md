@@ -30,13 +30,22 @@ run (a dev server pinned to branch source, an event tail) belongs in the QA plan
 which `ensure_stack` resolves against the repo root. A repo with no manifest is not an error:
 `ensure_stack` reports `skip` and QA proceeds exactly as before.
 
-One repo, one stack is the intended shape, and a repo whose services share a stack should keep
-the default. Point a run at a different manifest when a monorepo holds services whose stacks are
-genuinely disjoint — a new product standing up its own emulators alongside an existing app, where
-the root manifest would bring up infra the new service never touches (and vice versa):
+**One repo, one stack, one manifest.** Keep the default. Adding a new service to a monorepo is
+not a reason to add a second manifest — it is a reason to extend the one that exists, because
+the new service almost certainly has to *talk* to the ones already there. Services that share an
+identity plane must share the emulator that mints its tokens: a second suite on shifted ports
+issues tokens the first suite's services reject, so one browser sign-in in QA authorizes a call
+to `web-app` and collects a 401 from `api-service` in the same session — a stack defect wearing
+a product bug's clothes. The same goes for a shared database, a shared message broker, or any
+fixture two services both read. Extending the root manifest costs a few lines; splitting it
+costs a class of failure that QA reports as the product's fault.
+
+A second manifest is right only when the stacks are genuinely disjoint — nothing shared, no
+service in one calling a service in the other — and the root manifest would bring up infra the
+other service never touches:
 
 ```bash
-workhorse run coder --params '{"qa_stack_manifest":"docsapp/qa-stack.yml"}'
+workhorse run coder --params '{"qa_stack_manifest":"mobile-app/qa-stack.yml"}'
 ```
 
 The path is repo-relative, and it is threaded to the `setup-fix` agent too, so the repair loop

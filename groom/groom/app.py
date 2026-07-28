@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 
 from litestar import Litestar, Request, Response, get, post, websocket
@@ -20,9 +21,20 @@ from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.static_files import create_static_files_router
 
-from groom import alerts, discovery, docker_io, notify, otlp, render, sidecar_hub, state, store
+from groom import (
+    alerts,
+    discovery,
+    docker_io,
+    localfs,
+    notify,
+    otlp,
+    render,
+    sidecar_hub,
+    state,
+    store,
+)
 from groom.gates import answer_gate
-from groom.models import GateInfo, WorkflowContainer, WorkflowState
+from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 _DASHBOARD_HTML = (Path(__file__).parent / "templates" / "dashboard.html").read_bytes()
@@ -32,6 +44,10 @@ _QUESTION_NOTIFY_LIMIT = 200
 # How often the absence-driven alert rules (STALL/BUDGET) are evaluated. Silence
 # never triggers an ingest, so these need their own clock.
 RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
+# How often the durable store is re-pruned while groom serves. Pruning is a set of
+# DELETEs, wasteful to run every rules tick, so it rides its own slower clock; the
+# startup prune still happens once immediately. Default 1h.
+PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
 
 
 def _all_workflows() -> list:
@@ -49,6 +65,8 @@ async def _ensure_volumes(container_id: str) -> None:
     do on first sight of a container and then never again.
     """
     wf = state.WORKFLOWS.get(container_id)
+    if wf and wf.native:
+        return  # a native row's paths come from telemetry, not a docker inspect
     if wf and wf.workspace_volume:
         return
     inspect = await asyncio.to_thread(docker_io.docker_inspect, container_id)
@@ -61,6 +79,67 @@ async def _ensure_volumes(container_id: str) -> None:
         runs_volume=found.runs_volume,
         workflow_type=found.workflow_type,
     )
+
+
+def _sync_native_row(run: RunTelemetry) -> bool:
+    """Project a run's telemetry hot-cache entry onto a dashboard row when the run
+    is **native** — i.e. its dir exists on groom's own host, which is both the test
+    for nativeness and exactly the capability the local-FS panels rely on.
+
+    A containerized run also exports telemetry, but its ``run_dir``/``workspace`` are
+    container paths that don't resolve here, so the verdict is False and it never
+    double-lists (its dashboard row stays owned by the docker/sidecar path). The
+    verdict is cached on the run so a containerized run is stat'd once, not per point.
+
+    Returns True when a row was created or a visible field changed, so the caller
+    knows to broadcast.
+    """
+    if run.native is None:
+        run.native = localfs.is_local_dir(run.run_dir) or localfs.is_local_dir(
+            run.workspace
+        )
+    if not run.native:
+        return False
+    before = state.WORKFLOWS.get(run.run_id)
+    prev = (
+        (before.state, before.current_node, before.activity) if before else None
+    )
+    if run.terminal:
+        new_state = WorkflowState.FINISHED
+    elif before and before.gates:
+        new_state = WorkflowState.BLOCKED
+    else:
+        new_state = WorkflowState.RUNNING
+    wf = state.upsert_workflow(
+        run.run_id,
+        name=run.workflow or run.run_id[:12],
+        native=True,
+        workflow_type=run.workflow,
+        repo_name=run.repo,
+        repo_branch=run.branch,
+        run_id=run.run_id,
+        # Host paths, not volume names — the local-FS panels read them directly.
+        workspace_volume=run.workspace,
+        runs_volume=run.run_dir,
+        current_node=run.current_node,
+        activity=run.activity,
+        pid=run.pid,
+        state=new_state,
+    )
+    if run.terminal:
+        wf.gates.clear()
+    return prev is None or prev != (wf.state, wf.current_node, wf.activity)
+
+
+async def _project_native_rows(records: list) -> None:
+    """After an OTLP ingest, refresh the dashboard rows of the native runs it
+    touched and broadcast once if any changed."""
+    run_ids = {r.get("run_id") for r in records if r.get("run_id")}
+    changed = [
+        _sync_native_row(state.RUNS[rid]) for rid in run_ids if rid in state.RUNS
+    ]
+    if any(changed):
+        await _broadcast_shell()
 
 
 @get("/", include_in_schema=False)
@@ -126,7 +205,8 @@ async def files(container_id: str, repo: str = "") -> Response:
     volume = wf.workspace_volume if wf else ""
     if not volume:
         return Response(content="", media_type=MediaType.TEXT)
-    paths = await asyncio.to_thread(docker_io.list_files, volume, repo)
+    reader = localfs.list_files if wf and wf.native else docker_io.list_files
+    paths = await asyncio.to_thread(reader, volume, repo)
     return Response(content="\n".join(paths), media_type=MediaType.TEXT)
 
 
@@ -148,8 +228,9 @@ async def file_content(container_id: str, repo: str = "", path: str = "") -> Res
     rel = f"{repo}/{path}".lstrip("/") if repo else path
     if not volume or not rel:
         return Response(content="", media_type=MediaType.TEXT)
+    reader = localfs.read_file if wf and wf.native else docker_io.read_file
     try:
-        text = await asyncio.to_thread(docker_io.read_file, volume, rel)
+        text = await asyncio.to_thread(reader, volume, rel)
     except ValueError:
         return Response(content="", media_type=MediaType.TEXT)
     return Response(content=text or "", media_type=MediaType.TEXT)
@@ -181,7 +262,8 @@ async def diff(container_id: str, repo: str = "") -> Response:
     volume = wf.workspace_volume if wf else ""
     if not volume:
         return Response(content="", media_type=MediaType.TEXT)
-    text = await asyncio.to_thread(docker_io.git_diff, volume, repo)
+    differ = localfs.git_diff if wf and wf.native else docker_io.git_diff
+    text = await asyncio.to_thread(differ, volume, repo)
     return Response(content=text, media_type=MediaType.TEXT)
 
 
@@ -318,6 +400,7 @@ async def otlp_traces(request: Request) -> Response:
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     store.insert_spans(spans)
     await _dispatch_alerts(alerts.ingest_spans(spans))
+    await _project_native_rows(spans)
     # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
     # defines success as 200 (Litestar's POST default would be 201).
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
@@ -334,6 +417,7 @@ async def otlp_metrics(request: Request) -> Response:
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     store.insert_metrics(points)
     await _dispatch_alerts(alerts.ingest_metrics(points))
+    await _project_native_rows(points)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
@@ -383,7 +467,13 @@ async def _handle_command(data: dict) -> None:
     answer = str(data.get("answer", ""))
     wf = state.WORKFLOWS.get(container_id)
     workspace_volume = wf.workspace_volume if wf else ""
-    result = await answer_gate(container_id, file_path, answer, workspace_volume=workspace_volume)
+    result = await answer_gate(
+        container_id,
+        file_path,
+        answer,
+        workspace_volume=workspace_volume,
+        native=bool(wf and wf.native),
+    )
     state.record_log(
         {"event": "answer", "container_id": container_id, "file_path": file_path, "ok": result.ok, "message": result.message}
     )
@@ -554,13 +644,23 @@ _rules_task: asyncio.Task | None = None
 
 
 async def _rules_loop() -> None:
-    """Periodic evaluation of the time-based alert rules. Each tick is wrapped
-    so one bad evaluation (or an unreachable notifier) never kills the loop —
-    the STALL watch itself must not be able to stall."""
+    """Periodic evaluation of the time-based alert rules, plus the two housekeeping
+    passes that bound groom's memory over a long serve: evicting finished/dead runs
+    from the hot cache, and re-pruning the durable store on its own slower clock.
+    Each tick is wrapped so one bad evaluation (or an unreachable notifier) never
+    kills the loop — the STALL watch itself must not be able to stall."""
+    last_prune = time.monotonic()
     while True:
         await asyncio.sleep(RULES_TICK_S)
         try:
-            await _dispatch_alerts(alerts.check_time_rules())
+            now = time.time()
+            await _dispatch_alerts(alerts.check_time_rules(now))
+            # Free finished/dead runs (and the native rows they back) so RUNS and
+            # the per-tick rule walk don't grow unbounded across a week-long serve.
+            state.evict_runs(alerts.stale_run_ids(now))
+            if time.monotonic() - last_prune >= PRUNE_EVERY_S:
+                await asyncio.to_thread(store.prune)
+                last_prune = time.monotonic()
         except Exception:  # noqa: BLE001
             pass
 

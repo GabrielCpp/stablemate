@@ -24,8 +24,17 @@ from typing import Any
 
 from platformdirs import user_data_dir
 
-# Days of span/metric history to keep; pruned at startup (see create_app).
+# Days of span/metric history to keep; pruned at startup and on a periodic tick.
 RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "14"))
+# How far back the fleet/telemetry views (run_summaries, live_status) scan. The
+# whole DB is retained for `RETENTION_DAYS` and stays queryable with raw SQL, but a
+# live-ops dashboard only wants recent runs, and bounding the scan here is what keeps
+# these queries from doing a full-table GROUP BY / window-function pass that grows
+# with total history rather than with what's on screen. Default 24h.
+ACTIVE_WINDOW_S = float(os.environ.get("GROOM_ACTIVE_WINDOW_S", "86400"))
+# A hard ceiling on rows the live_status window function returns, so a pathological
+# metric-cardinality run can't make one query materialize an unbounded result set.
+_LIVE_STATUS_CAP = 500
 # Logs are one row per line, not one per node visit, so they outgrow spans by
 # orders of magnitude on a long run — hence a separate, shorter default window.
 LOG_RETENTION_DAYS = float(os.environ.get("GROOM_LOG_RETENTION_DAYS", "3"))
@@ -200,11 +209,14 @@ def query_logs(
     level: str = "",
     contains: str = "",
     limit: int = 200,
+    before_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """The log search behind ``groom logs``, newest first.
 
     ``level`` is a floor, not an equality match — asking for WARNING and being
-    shown warnings but no errors would be the opposite of useful.
+    shown warnings but no errors would be the opposite of useful. ``before_ts`` is
+    the keyset cursor: pass the ``ts`` of the last row of the previous page to fetch
+    the next, so a chatty run's logs page instead of loading a whole run at once.
     """
     where, params = [], []
     if run:
@@ -222,6 +234,9 @@ def query_logs(
     if contains:
         where.append("body LIKE ?")
         params.append(f"%{contains}%")
+    if before_ts is not None:
+        where.append("ts < ?")
+        params.append(float(before_ts))
     clause = f"WHERE {' AND '.join(where)}" if where else ""
     conn = _connection()
     rows = conn.execute(
@@ -234,16 +249,27 @@ def query_logs(
     ]
 
 
+# The spans-table columns, named explicitly rather than `SELECT *` so a schema
+# migration can't silently change a query result's shape.
+_SPAN_COLUMNS = (
+    "span_id, trace_id, parent_id, run_id, workflow, repo, branch, node, name,"
+    " run_dir, start_ts, end_ts, status, attrs_json"
+)
+
+
 def query_spans(
     run: str = "",
     node: str = "",
     status: str = "",
     slower_than: float | None = None,
     limit: int = 200,
+    before_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """The /traces search: filter the spans table, newest first. ``slower_than``
-    is a minimum duration in seconds. Raw SQL against groom.db remains the
-    ad-hoc escape hatch; this covers the common fleet questions."""
+    is a minimum duration in seconds. ``before_ts`` is the keyset cursor — the
+    ``start_ts`` of the last row of the previous page — so a broad query pages
+    rather than materializing everything under one big LIMIT. Raw SQL against
+    groom.db remains the ad-hoc escape hatch; this covers the common questions."""
     clauses, params = ["1=1"], []
     if run:
         clauses.append("run_id = ?")
@@ -257,28 +283,35 @@ def query_spans(
     if slower_than is not None:
         clauses.append("(end_ts - start_ts) >= ?")
         params.append(float(slower_than))
+    if before_ts is not None:
+        clauses.append("start_ts < ?")
+        params.append(float(before_ts))
     params.append(max(1, min(int(limit), 1000)))
     rows = _connection().execute(
-        f"SELECT * FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - clauses are literals
+        f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals
         " ORDER BY start_ts DESC LIMIT ?",
         params,
     ).fetchall()
     return [dict(row) for row in rows]
 
 
-def run_summaries(limit: int = 50) -> list[dict[str, Any]]:
+def run_summaries(limit: int = 50, now: float | None = None) -> list[dict[str, Any]]:
     """One row per run for the fleet/telemetry view: workflow, span window,
     span/error counts, and whether a root (run:*) span has landed (= the run
-    ended; open runs have only node spans so far)."""
+    ended; open runs have only node spans so far).
+
+    Bounded to the last ``ACTIVE_WINDOW_S`` so the GROUP BY scans recent history
+    rather than the whole retained table; older runs stay queryable via raw SQL."""
+    cutoff = (now if now is not None else time.time()) - ACTIVE_WINDOW_S
     rows = _connection().execute(
         "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
         " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
         " COUNT(*) AS span_count,"
         " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS error_count,"
         " MAX(CASE WHEN name LIKE 'run:%' THEN 1 ELSE 0 END) AS finished"
-        " FROM spans WHERE run_id != '' GROUP BY run_id"
+        " FROM spans WHERE run_id != '' AND end_ts >= ? GROUP BY run_id"
         " ORDER BY last_ts DESC LIMIT ?",
-        (max(1, min(int(limit), 500)),),
+        (cutoff, max(1, min(int(limit), 500))),
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -316,10 +349,15 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
     now = now if now is not None else time.time()
     placeholders = ",".join("?" for _ in _LIVE_METRICS)
     params: list[Any] = list(_LIVE_METRICS)
+    # Bound the window-function scan to recent points. A live run beats within
+    # LIVE_AFTER_S (180s), so ACTIVE_WINDOW_S (24h) cannot hide one; without this the
+    # CTE scanned every metric row ever ingested on each dashboard render.
+    params.append(now - ACTIVE_WINDOW_S)
     run_clause = ""
     if run:
         run_clause = "AND run_id = ?"
         params.append(run)
+    params.append(_LIVE_STATUS_CAP)
     rows = _connection().execute(
         # One row per (run, metric, attribute-set): the most recent point wins.
         f"""
@@ -329,9 +367,10 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
                        PARTITION BY run_id, name ORDER BY ts DESC
                    ) AS rn
             FROM metrics
-            WHERE name IN ({placeholders}) AND run_id != '' {run_clause}
+            WHERE name IN ({placeholders}) AND run_id != '' AND ts >= ? {run_clause}
         )
         SELECT run_id, name, value, attrs_json, ts FROM latest WHERE rn = 1
+        LIMIT ?
         """,  # noqa: S608 - placeholders/clause are literals, values are bound
         params,
     ).fetchall()

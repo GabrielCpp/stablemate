@@ -39,11 +39,25 @@ class WorkflowContainer:
     state: WorkflowState = WorkflowState.IDLE
     current_node: str = ""
     run_id: str = ""
+    # For a docker row these are docker volume NAMES read via a throwaway container;
+    # for a native row (``native=True``) they are plain HOST PATHS the same-host
+    # groom reads directly. The consumer branches on ``native``, never on shape.
     workspace_volume: str = ""
     runs_volume: str = ""
     updated_at: str = ""
     exit_code: int | None = None
     gates: dict[str, GateInfo] = field(default_factory=dict)
+    # A native (non-container) run, materialized from its own OTLP telemetry rather
+    # than a docker scan/sidecar. It shares groom's host, so Files/Diff/gate reads go
+    # through the local filesystem (groom.localfs) instead of docker_io, and it is
+    # keyed by ``run_id`` (a host has no per-run container id). Kept out of the docker
+    # prune sweep; retired when its run's root span reports terminal.
+    native: bool = False
+    # "What the run is doing right now" — the workflow's per-node ``wf.activity``
+    # label, shown as the row subtitle. Empty until the run stamps one.
+    activity: str = ""
+    # The run process's OS pid (native runs only; from the telemetry resource).
+    pid: int | None = None
 
 
 @dataclass
@@ -65,6 +79,18 @@ class RunTelemetry:
     workflow: str = ""
     repo: str = ""
     branch: str = ""
+    # Local-filesystem identity, denormalized off the telemetry resource. On a
+    # native run these are real host paths (the dashboard row reads Files/Diff/gate
+    # from them); ``native`` caches the one-time "does run_dir exist on this host?"
+    # verdict so the sync path doesn't re-stat a containerized run's paths forever.
+    run_dir: str = ""
+    workspace: str = ""
+    pid: int | None = None
+    native: bool | None = None
+    # The run's current `wf.activity` label — what it is doing right now — carried
+    # here from the live gauges so a dashboard row can show it without waiting for a
+    # span to export.
+    activity: str = ""
     first_seen_ts: float = 0.0
     last_span_ts: float = 0.0
     # Any workhorse liveness tick (run/turn/cap-wait heartbeat) — proof the run's

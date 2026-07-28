@@ -55,6 +55,17 @@ def _attrs(key_values: Any) -> dict[str, Any]:
     return {kv.key: _any_value(kv.value) for kv in key_values}
 
 
+def _int_or_none(value: Any) -> int | None:
+    """A resource attribute coerced to int, or None when absent/unparseable — so a
+    missing pid stays distinguishable from pid 0 rather than defaulting to a number."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_traces(body: bytes) -> list[dict[str, Any]]:
     """Decode an ``ExportTraceServiceRequest`` into one dict per span:
     identity + timing columns ready for the spans table, plus an ``attrs``
@@ -89,6 +100,11 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         # The run's artifact dir: what makes a span → prompt.md /
                         # output.json lookup one hop instead of a hunt through runs/.
                         "run_dir": str(resource.get("run_dir", "")),
+                        # Local-FS identity for a same-host (native) run: the repo
+                        # working tree and the run's pid. Empty for a containerized
+                        # producer whose paths don't exist on groom's host.
+                        "workspace": str(resource.get("workspace", "")),
+                        "pid": _int_or_none(resource.get("process.pid")),
                         "node": str(attrs.get("workhorse.node", "") or span.name),
                         "name": span.name,
                         "start_ts": span.start_time_unix_nano / _NANOS,
@@ -178,6 +194,16 @@ def parse_metrics(body: bytes) -> list[dict[str, Any]]:
         resource = _attrs(resource_metrics.resource.attributes)
         run_id = str(resource.get("run_id", ""))
         workflow = str(resource.get("workflow", ""))
+        # Denormalized like the spans, because metrics — not spans — are what
+        # reaches groom *early* (heartbeats and node.active start at second zero,
+        # while the first span exports only when a node completes and the root span
+        # only when the run ends). So a native run's dashboard row is materialized
+        # from these, and it needs the same identity a span carries.
+        repo = str(resource.get("repo", ""))
+        branch = str(resource.get("branch", ""))
+        run_dir = str(resource.get("run_dir", ""))
+        workspace = str(resource.get("workspace", ""))
+        pid = _int_or_none(resource.get("process.pid"))
         for scope_metrics in resource_metrics.scope_metrics:
             for metric in scope_metrics.metrics:
                 for point in _points(metric):
@@ -190,6 +216,11 @@ def parse_metrics(body: bytes) -> list[dict[str, Any]]:
                         {
                             "run_id": run_id,
                             "workflow": workflow,
+                            "repo": repo,
+                            "branch": branch,
+                            "run_dir": run_dir,
+                            "workspace": workspace,
+                            "pid": pid,
                             "name": metric.name,
                             "ts": point.time_unix_nano / _NANOS,
                             "value": float(value),

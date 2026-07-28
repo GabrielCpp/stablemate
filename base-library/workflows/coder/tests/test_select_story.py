@@ -22,6 +22,7 @@ freezes the run right after the first ``select_story``. Those cases invoke
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -38,6 +39,15 @@ from conftest import (
 )
 
 _SELECT_STORY = Path(__file__).resolve().parent.parent / "scripts" / "select-next-story.py"
+
+
+def _load_select_story():
+    """Import select-next-story.py in-process (hyphenated name → importlib) so its pure
+    helpers can be unit-tested without spawning the whole workflow."""
+    spec = importlib.util.spec_from_file_location("select_next_story", _SELECT_STORY)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def run_select_story(root: Path, epic: str, run_dir: str = "") -> dict:
@@ -61,6 +71,26 @@ def run_select_story(root: Path, epic: str, run_dir: str = "") -> dict:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+def test_progress_fields_snapshot_the_queue_for_telemetry():
+    """The ostler report's done/total feed the shared worklist snapshot, so the dashboard
+    reads "3/12" — the Phase-1 activity payoff. This is the join: counts → wf.activity."""
+    mod = _load_select_story()
+    report = {"state": "ready", "total": 12, "done": 3,
+              "remaining": [f"s-{i}" for i in range(9)]}
+    fields = mod._progress_fields(report)
+    assert fields["progress"] == "3/12"
+    assert fields["remaining_count"] == "9"
+
+
+def test_progress_fields_are_empty_when_the_report_cannot_say():
+    """A legacy/failed report (a bare string, or one without counts) yields empty progress
+    — the label is then dropped, exactly like any unrenderable label."""
+    mod = _load_select_story()
+    assert mod._progress_fields("")["progress"] == ""
+    # A report present but without counts → 0/0, nothing remaining (still a valid shape).
+    assert mod._progress_fields({"state": "no-epic"})["progress"] == "0/0"
 
 
 def test_selects_first_incomplete_story(tmp_path):
