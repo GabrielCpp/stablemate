@@ -17,11 +17,14 @@ from conftest import (
 pytestmark = requires_ostler
 
 
-def _seed_ids(repo, epic):
+def _seeds(repo, epic):
     p = subprocess.run(["ostler", "list", "--type", "seed", "--epic", epic, "--json"],
                        cwd=str(repo), capture_output=True, text=True)
-    rows = json.loads(p.stdout[p.stdout.find("["):])
-    return [s["id"] for s in rows]
+    return json.loads(p.stdout[p.stdout.find("["):])
+
+
+def _seed_ids(repo, epic):
+    return [s["id"] for s in _seeds(repo, epic)]
 
 
 def _stories(repo, epic):
@@ -116,4 +119,37 @@ def test_literal_bullet_not_in_backlog_is_not_from_backlog(tmp_path):
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "01-s1", "covers": ["i1"]}])
     write_backlog(tmp_path, ["something-else"])
     out = run_script("seed-story.py", "e1", "docs/epics", "Totally unrelated work", repo=tmp_path)
+    assert out["from_backlog"] == "no"
+
+
+def test_scoped_backlog_resolves_bullet_verbatim(tmp_path):
+    """A run scoped to a non-default backlog resolves against THAT file, so the tail prunes it."""
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "01-s1", "covers": ["i1"]}])
+    write_backlog(tmp_path, ["rewrite-thing"])
+    write_backlog(tmp_path, ["scoped-thing"], texts={"scoped-thing": "build the scoped thing"},
+                  path="docs/backlog-scoped.md")
+    out = run_script("seed-story.py", "e1", "docs/epics", "scoped-thing", "docs/knowledge",
+                     "docs/backlog-scoped.md", repo=tmp_path)
+    assert out["bullet_id"] == "scoped-thing"
+    # from_backlog gates story_prune; "no" here would leave the bullet in the scoped backlog forever
+    assert out["from_backlog"] == "yes"
+    seed = next(s for s in _seeds(tmp_path, "e1") if s["id"] == "scoped-thing")
+    assert seed.get("sourceBullet") == "[scoped-thing] build the scoped thing"
+
+
+def test_default_backlog_still_used_when_arg_omitted(tmp_path):
+    """Callers that pass no backlog arg keep resolving against docs/backlog.md."""
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "01-s1", "covers": ["i1"]}])
+    write_backlog(tmp_path, ["default-thing"])
+    out = run_script("seed-story.py", "e1", "docs/epics", "default-thing", repo=tmp_path)
+    assert out["from_backlog"] == "yes"
+
+
+def test_bullet_from_the_other_backlog_is_not_from_backlog(tmp_path):
+    """Scoping is real: a bullet living only in the unscoped backlog is not consumed by this run."""
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "01-s1", "covers": ["i1"]}])
+    write_backlog(tmp_path, ["rewrite-thing"])
+    write_backlog(tmp_path, ["scoped-thing"], path="docs/backlog-scoped.md")
+    out = run_script("seed-story.py", "e1", "docs/epics", "rewrite-thing", "docs/knowledge",
+                     "docs/backlog-scoped.md", repo=tmp_path)
     assert out["from_backlog"] == "no"

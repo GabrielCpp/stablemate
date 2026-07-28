@@ -321,6 +321,10 @@ nodes:
       - "{{ epics_dir }}"
       - "{{ bullet }}"
       - "{{ cfg.knowledge_dir }}"
+      # The run's backlog, not the default — story mode resolves `bullet` against THIS file, and
+      # a miss returns from_backlog=no, which makes the `story_prune` tail skip the bullet and
+      # the next run re-author it.
+      - "{{ backlog }}"
     outputs:
       - key: epic_dir
       - key: story_slug

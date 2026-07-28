@@ -23,6 +23,10 @@ dependencies = [
   "stablemate-core>=0.1.0",
   "jinja2>=3.1",
   "pyyaml>=6.0",
+  # Round-trip YAML for the few writers that edit a file a human also maintains
+  # (genesis's agents.yml). pyyaml preserves every value and destroys every comment,
+  # which on a mature repo config is the larger loss and is not recoverable.
+  "ruamel.yaml>=0.18",
   "pydantic>=2.0",
   "json-repair>=0.30",
   "gitpython>=3.1",
@@ -68,3 +72,11 @@ packages = ["workhorse"]
 
 [tool.hatch.build.targets.sdist]
 include = ["workhorse", "README.md", "LICENSE", "docs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Autoclean. These tests drive whole runs against sandbox repos, and a run writes one
+# artifact set per node step. pytest's default (`all`) keeps a passing test's sandbox and
+# retains the three most recent runs, which is how a green suite still fills a disk. Keep
+# a sandbox only when it can still be read for a reason: a failing test.
+tmp_path_retention_policy = "failed"

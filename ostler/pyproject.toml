@@ -49,3 +49,6 @@ include = ["ostler", "README.md", "SPEC.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Discard a passing test's tmp_path immediately; keep it only for a failure. pytest's
+# default (`all`) retains three whole runs' worth of sandboxes.
+tmp_path_retention_policy = "failed"

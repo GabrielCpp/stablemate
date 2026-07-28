@@ -198,6 +198,50 @@ def test_agents_yml_merges_rather_than_clobbering(tmp_path):
     assert data["agents"] == {"copilot": True}, "unrelated keys must survive"
 
 
+def test_agents_yml_preserves_comments_and_flow_style(tmp_path):
+    """Comments are hand-edits. A safe_load/safe_dump round-trip keeps every value and
+    destroys every one of them — on a repo whose agents.yml has accumulated rationale
+    ("this port is taken by the other stack") that is the larger loss, and unlike a value
+    it cannot be re-derived. Flow style matters for the same reason: reflowing a line the
+    merge never touched shows up as noise in the diff that hides the real change."""
+    target = tmp_path / "monorepo"
+    target.mkdir()
+    (target / "agents.yml").write_text(
+        "# Why this repo is laid out this way.\n"
+        "repo:\n"
+        "  name: monorepo\n"
+        "workspace:\n"
+        "  # The planner discovers services from these roots.\n"
+        '  service_roots: ["api", "web"]\n',
+        encoding="utf-8")
+
+    _run("write-genesis-agents-yml.py",
+         [str(target), "docs", "go", "docs-api", "go.mod", "coder", "", "claude"], tmp_path)
+
+    text = (target / "agents.yml").read_text(encoding="utf-8")
+    assert "# Why this repo is laid out this way." in text
+    assert "# The planner discovers services from these roots." in text
+    assert '["api", "web", "docs-api"]' in text, "the flow sequence keeps its style"
+    assert _agents(target)["workspace"]["service_roots"] == ["api", "web", "docs-api"]
+
+
+def test_agents_yml_is_left_untouched_when_the_merge_changes_nothing(tmp_path):
+    """The re-run that adds nothing must not rewrite the file at all — rewriting it churns
+    mtime and risks reformatting for no gain."""
+    target = tmp_path / "monorepo"
+    target.mkdir()
+    _run("write-genesis-agents-yml.py",
+         [str(target), "api", "go", "api", "go.mod", "coder", "", "claude"], tmp_path)
+    first = (target / "agents.yml").read_text(encoding="utf-8")
+
+    out = _run("write-genesis-agents-yml.py",
+               [str(target), "api", "go", "api", "go.mod", "coder", "", "claude"], tmp_path)
+
+    assert out["agents_yml_written"] == "no"
+    assert "left untouched" in out["agents_yml_note"]
+    assert (target / "agents.yml").read_text(encoding="utf-8") == first
+
+
 def test_agents_yml_refuses_to_clobber_an_unreadable_file(tmp_path):
     target = tmp_path / "new"
     target.mkdir()

@@ -295,7 +295,8 @@ _SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 # Graph read/mutate facade methods a bare sandbox cannot serve → made to RAISE so
 # the scripts take their JSON-sidecar fallback (the old "exit 1" behavior).
 _QUEUE_PATH_METHODS = (
-    "todo", "todo_prune", "next_epic", "next_story", "spec_path", "story_path", "branch",
+    "todo", "todo_prune", "next_epic", "next_story", "next_story_report", "spec_path",
+    "story_path", "branch",
 )
 _ALL_GRAPH_METHODS = _QUEUE_PATH_METHODS + (
     "list", "backlog", "backlog_add", "backlog_prune", "create_epic", "create_story",

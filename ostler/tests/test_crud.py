@@ -14,10 +14,11 @@ def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g2 = load(tmp_path)
     assert g2.profile == "full"
     epic = next(e for e in g2.epics if e.name == "billing")
-    assert epic.eid == "pred-1" and epic.title == "Billing at parity"
-    # id registry advanced
+    assert epic.eid.startswith("pred-") and epic.title == "Billing at parity"
+    assert len(epic.eid.split("-", 1)[1]) == 26   # a ULID body, not a counter
+    # registry pins the prefix (no counter — ULIDs need no persisted sequence)
     ids = json.loads((tmp_path / ".agents/ids.json").read_text())
-    assert ids["prefix"] == "pred" and ids["counter"] == 2
+    assert ids["prefix"] == "pred" and "counter" not in ids
 
 
 def test_create_story_adds_block_and_scaffold(tmp_path: Path):

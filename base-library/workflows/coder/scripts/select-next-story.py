@@ -8,20 +8,33 @@ in-process ``ostler`` Python API (``Ostler.next_story(epic)``) which returns the
 story in dependency order whose status is not done (deps satisfied), or ``None`` when
 none remain.
 
-When the epic has no more runnable story, it returns ``has_story="no"`` — the workflow
-treats that as "this epic is finished for now": open its PR, merge, advance to the next
-epic.
+**"No story" is not one answer, and the workflow must not treat it as one.** An epic can
+run out of runnable stories because it is finished, or because its remaining stories were
+given up on this run, or because they wait on a dependency nothing will satisfy, or
+because they were never authored. Only the first means "merge it". So this script reports
+``story_outcome``, and the workflow branches on that:
+
+``story``    a story was selected — build it (``has_story="yes"``).
+``done``     every story in the epic is done — prune the epic, open its PR, merge.
+``blocked``  stories remain and none is runnable — set the epic aside for this run
+             (``flag_epic_blocked``) and move to the next one. Its committed work stays on
+             its branch, unmerged; a later run picks it up again.
+
+``has_story`` is still emitted ("yes"/"no") for anything reading it, but it is the
+outcome — not its absence — that decides whether an epic is merged. Conflating the two is
+what merged an epic with 20 of 21 stories unbuilt after one story gave up on QA.
 
 Per-run skip set: when ``qa_give_up`` gives up on a story it records the slug in
 ``<run_dir>/qa-skip-stories.txt``. This script (given the run dir as argv[3]) excludes
 those slugs so a story that already exhausted its rework budget THIS run is never
-re-selected and re-ground — we pick the next eligible story instead, or stop. The set
-lives in the run dir, so a fresh run starts empty (the story is retried) and an operator
-resets by clearing the file.
+re-selected and re-ground — we pick the next eligible story instead, or report ``blocked``.
+The set lives in the run dir, so a fresh run starts empty (the story is retried) and an
+operator resets by clearing the file.
 
 Args: <epic> [<docs_path>] [<run_dir>]
-Outputs JSON: {"has_story": "yes"|"no", "story_path": "...", "spec_dir": "...",
-               "story_slug": "...", "epic": "<epic>", "reason": "..."}
+Outputs JSON: {"has_story": "yes"|"no", "story_outcome": "story"|"done"|"blocked",
+               "story_path": "...", "spec_dir": "...", "story_slug": "...",
+               "epic": "<epic>", "reason": "..."}
 """
 
 from __future__ import annotations
@@ -40,26 +53,31 @@ _EPIC = ""
 
 
 def emit(**kwargs: str) -> NoReturn:
+    # `story_outcome` defaults to "blocked", not "done": an unexplained "no story" must
+    # never be the reason an epic is merged. Every path that means "finished" says so.
     payload = {
-        "has_story": "no", "story_path": "", "spec_dir": "", "story_slug": "",
-        "epic": _EPIC, "reason": "",
+        "has_story": "no", "story_outcome": "blocked", "story_path": "", "spec_dir": "",
+        "story_slug": "", "epic": _EPIC, "reason": "",
     }
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
 
 
-def _next_story(okf: Ostler, epic: str, skip: set[str]) -> dict | None | str:
-    """Return the next-story dict, None when none remain, or "" on a tooling failure.
+def _report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
+    """Ostler's next-story report, or "" on a tooling failure.
 
     ``skip`` (slugs given up this run) is passed into ostler so a given-up story is not
     re-offered — without it, that story stays first-runnable forever and the epic prunes
     with other stories unbuilt. This is skip-aware selection at the source, replacing the
     old ``dependencies.json`` fallback that could no longer run (that file folded into
     ``epic.md``).
+
+    The *report* rather than ``next_story``: it distinguishes "done" from "blocked", which
+    is the whole difference between merging an epic and setting it aside.
     """
     try:
-        return okf.next_story(epic, skip=skip)
+        return okf.next_story_report(epic, skip=skip)
     except (OSError, ValueError, RuntimeError):
         return ""
 
@@ -96,10 +114,14 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
     runnable story (not done, not in the per-run skip set, all deps done), respecting
     dependency order.
 
-    Returns a dict {slug, path}, None when all stories are done/skipped/missing, or ""
-    on error. The returned dict may include a "reason" key when a candidate story's
-    story.md is absent. A skipped story is NOT treated as done — its dependents stay
-    blocked, since they depend on work that did not pass.
+    Returns a dict {slug, path}, ``None`` when every story is DONE, or "" on error. A
+    skipped story is NOT treated as done — its dependents stay blocked, since they depend
+    on work that did not pass.
+
+    ``None`` means *done* and nothing else. The not-done-but-not-runnable cases each get
+    their own sentinel (``_all_skipped``, ``_blocked``, ``_missing_story_md``,
+    ``_no_dep_file``) because the caller merges the epic on "done" — so an epic that still
+    has unbuilt stories in it must never come back as ``None``.
     """
     dep_file = root / "docs" / "epics" / epic / "dependencies.json"
     if not dep_file.is_file():
@@ -121,12 +143,14 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
             done.add(slug)
 
     skipped_runnable = False  # a story that WOULD run but for the per-run skip set
+    waiting: list[str] = []   # not done, not runnable: deps unmet
     for s in stories:
         slug = str(s.get("slug", ""))
         if slug in done:
             continue
         deps = s.get("dependencies", [])
         if any(d not in done for d in deps):
+            waiting.append(slug)
             continue
         if slug in skip:
             # Runnable (deps satisfied) but given up this run — exclude, and remember we
@@ -144,7 +168,9 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
 
     if skipped_runnable:
         return {"_all_skipped": True}  # sentinel: remaining runnable stories were skipped
-    return None  # all done (or all blocked on unmet deps)
+    if waiting:
+        return {"_blocked": waiting}   # sentinel: remaining stories wait on unmet deps
+    return None  # all done
 
 
 def main(logger: logging.Logger) -> None:
@@ -161,45 +187,59 @@ def main(logger: logging.Logger) -> None:
     okf = Ostler(root)
     skip = _load_skip_set(root, run_dir_arg)
 
-    nxt = _next_story(okf, _EPIC, skip)
+    report = _report(okf, _EPIC, skip)
+    state = report.get("state", "") if isinstance(report, dict) else ""
+    nxt = report.get("story") if isinstance(report, dict) else None
+
     # Selection is now skip-aware at the ostler level, so a given-up story is never handed
     # back here. This guard only fires if that contract regresses.
     forced_by_skip = isinstance(nxt, dict) and str(nxt.get("slug", "")) in skip
     if forced_by_skip:
-        nxt = ""
+        nxt, state = None, "blocked"
 
-    # Fall back to dependencies.json when ostler is unavailable, returns nothing useful,
-    # or handed back a skipped story (forced_by_skip).
-    if nxt == "" or nxt is None:
+    if state == "done":
+        logger.info("%s", report["detail"])
+        emit(story_outcome="done", reason=report["detail"])
+    if state == "blocked":
+        detail = report["detail"] if isinstance(report, dict) and not forced_by_skip else (
+            f"the story ostler offered for epic '{_EPIC}' was given up this run")
+        logger.warning("epic '%s' is blocked: %s", _EPIC, detail)
+        emit(reason=f"{detail} — setting this epic aside for this run; its work stays on its "
+                    "branch, unmerged, and a later run retries it")
+
+    # Fall back to dependencies.json only when ostler could not answer at all: it failed
+    # (""), the epic is not in its graph, or the epic carries no stories there. A real
+    # ostler verdict is authoritative — consulting the legacy file after it would let a
+    # missing dependencies.json override a correct "all done".
+    if not nxt:
         json_nxt = _next_from_json(root, _EPIC, skip)
         if isinstance(json_nxt, dict) and json_nxt.get("_no_dep_file"):
-            if forced_by_skip:
-                emit(reason=f"only runnable story in epic '{_EPIC}' was given up this run — "
-                            "stopping to avoid re-grinding; start a new run or clear the skip set to retry")
-            emit(reason=f"no dependencies.json found for epic '{_EPIC}' — cannot select a story")
+            emit(reason=f"no dependencies.json found for epic '{_EPIC}' — cannot select a story; "
+                        "setting it aside rather than merging an epic we cannot read")
         if isinstance(json_nxt, dict) and json_nxt.get("_all_skipped"):
             emit(reason=f"remaining runnable stories in epic '{_EPIC}' were all given up this run — "
-                        "stopping; start a new run or clear the skip set to retry")
+                        "setting it aside; start a new run or clear the skip set to retry")
+        if isinstance(json_nxt, dict) and json_nxt.get("_blocked"):
+            emit(reason=f"remaining stories in epic '{_EPIC}' wait on unmet dependencies "
+                        f"({', '.join(json_nxt['_blocked'])}) — setting it aside")
         if isinstance(json_nxt, dict) and json_nxt.get("_missing_story_md"):
-            emit(reason=f"next story's story.md not found: {json_nxt['_missing_story_md']}")
+            emit(reason=f"next story's story.md not found: {json_nxt['_missing_story_md']} — "
+                        "unauthored scope, so this epic is set aside rather than merged")
         if isinstance(json_nxt, dict) and "slug" in json_nxt:
             nxt = json_nxt
         elif json_nxt is None:
-            nxt = None  # all done
-
-    if not nxt:
-        if forced_by_skip:
-            emit(reason=f"remaining runnable stories in epic '{_EPIC}' were all given up this run — "
-                        "stopping; start a new run or clear the skip set to retry")
-        emit(reason=f"no runnable story in epic '{_EPIC}' — all done or none authored")
+            emit(story_outcome="done",
+                 reason=f"every story in epic '{_EPIC}' is done")
+        else:
+            emit(reason=f"could not read the story DAG for epic '{_EPIC}' — setting it aside")
 
     slug = str(nxt.get("slug"))
     # Final guard: never hand back a story in this run's skip set (the fallback already
     # excludes them, so this only fires if a selection path regressed).
     if slug in skip:
         logger.warning("story '%s' was given up this run — stopping to avoid re-grinding", slug)
-        emit(reason=f"story '{slug}' was given up this run — stopping to avoid re-grinding; "
-                    "start a new run or clear the skip set to retry")
+        emit(reason=f"story '{slug}' was given up this run — setting the epic aside to avoid "
+                    "re-grinding; start a new run or clear the skip set to retry")
     try:
         spec_dir = okf.spec_path(slug) or f"docs/specs/{slug}"
     except (OSError, ValueError, RuntimeError):
@@ -209,6 +249,7 @@ def main(logger: logging.Logger) -> None:
     logger.info("selected story '%s' in epic '%s'", slug, _EPIC)
     emit(
         has_story="yes",
+        story_outcome="story",
         story_path=story_path,
         spec_dir=spec_dir,
         story_slug=slug,

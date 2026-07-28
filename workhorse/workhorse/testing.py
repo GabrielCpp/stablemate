@@ -425,6 +425,11 @@ class WorkflowRun:
         os.environ["AGENT_REPO_DIR"] = str(self._repo)
         os.environ["WORKHORSE_DEFAULT_SCRIPT_CWD"] = str(self._sandbox)
         os.environ["AGENT_CLI"] = cli
+        # A script's `fresh_import` re-imports from disk, producing a NEW module object
+        # and throwing away every seam the test monkeypatched on the old one. That is
+        # correct in production (a fix can land on disk mid-run) and wrong here, where
+        # nothing rewrites a package during a run and the fakes are the whole point.
+        os.environ["WORKHORSE_FRESH_IMPORT"] = "0"
         if extra_env:
             os.environ.update(extra_env)
         code = 0

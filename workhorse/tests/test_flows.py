@@ -242,7 +242,12 @@ def test_standalone_runs_flow_as_top_graph(tmp_path):
     assert rc == 0
     # the standalone flow run is independent of any `main-*` run.
     assert not (runs / "main-default").exists()
-    assert _ctx_after(runs, "sub-default", "s_emit")["r"] == "got-solo"
+    # `--params` with no `--run-id` keys the stable run dir on a digest of the params
+    # (see _derive_run_id), so the suffix is not 'default' — the flow name is what
+    # this test is pinning.
+    run_dirs = [d.name for d in runs.iterdir() if d.is_dir()]
+    assert len(run_dirs) == 1 and run_dirs[0].startswith("sub-"), run_dirs
+    assert _ctx_after(runs, run_dirs[0], "s_emit")["r"] == "got-solo"
 
 
 def test_nested_flow_depth_guard(tmp_path, monkeypatch):

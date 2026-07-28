@@ -329,7 +329,18 @@ def fresh_import(name: str, *, also_purge: tuple[str, ...] = ()) -> ModuleType:
     package ``name`` transitively imports and might change mid-run via
     ``also_purge`` — e.g. ``fresh_import("qa_cli", also_purge=("ostler",))`` — so its
     own stale submodules don't leak back in through the reimported caller.
+
+    ``WORKHORSE_FRESH_IMPORT=0`` disables the purge and returns the cached module.
+    Reimporting builds a *new module object*, so every ``monkeypatch.setattr`` a test
+    applied to the old one is silently discarded — which defeats the documented way to
+    fake a script's seams (see ``workhorse.testing``). Nothing edits a package on disk
+    mid-run under the test harness, so the behavior this exists for cannot occur there;
+    ``WorkflowRun`` sets the variable for the duration of a run.
     """
+    if (os.environ.get("WORKHORSE_FRESH_IMPORT") or "1").strip().lower() in (
+        "0", "false", "no", "off",
+    ):
+        return sys.modules.get(name) or importlib.import_module(name)
     for root in (name, *also_purge):
         for mod in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
             del sys.modules[mod]

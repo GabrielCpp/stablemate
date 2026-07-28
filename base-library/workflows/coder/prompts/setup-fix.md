@@ -11,9 +11,10 @@ and QA can drive the running app.
 
 **You do not start services and leave them running.** A long-running stack the workflow does not own
 dies at node teardown — that exact pattern is what burned three QA attempts on a real run. The
-workflow owns stack lifecycle through a declarative **stack manifest** (`qa-stack.yml`); your job is to
-make that manifest and the things it needs correct, then hand back. Concretely, the fixable problems
-are: a missing or wrong `qa-stack.yml`, a bring-up/seed/health command in it that fails, missing
+workflow owns stack lifecycle through a declarative **stack manifest**
+(`{{ workhorse_var('stack_manifest') }}`); your job is to make that manifest and the things it needs
+correct, then hand back. Concretely, the fixable problems
+are: a missing or wrong manifest, a bring-up/seed/health command in it that fails, missing
 tooling or dependencies it calls, or a broken local config file one of its steps needs. Only a blocker
 that genuinely needs a human (a real secret/credential that cannot be generated locally, a
 deployed/preview environment, or hardware) is `unfixable` → report that and the workflow escalates to
@@ -36,8 +37,9 @@ The blocking QA notes (read them — they name what could not run):
 
 Read, then act:
 
-- `qa-stack.yml` at the repo root (if present) — the **stack manifest** the workflow's `ensure_stack`
-  step runs. It declares `entry_url`/`health_path`, `launch` (the bring-up or foreground command),
+- `{{ workhorse_var('stack_manifest') }}` (repo-relative; if present) — the **stack manifest** the
+  workflow's `ensure_stack` step runs. **This exact path is the one it reads**, so author or repair it
+  here — a manifest written anywhere else is invisible and the stack stays down. It declares `entry_url`/`health_path`, `launch` (the bring-up or foreground command),
   ordered `prepare`/`seed`/`health` steps, and an optional `stop`. This is the artifact you repair; if
   it is absent and the stack needs standing up, **author it** from the repo's documented commands.
 - `{{ workhorse_var('spec_dir') }}/qa-plan.md` — the QA runbook. Its **pre-flight** names the stack,
@@ -63,9 +65,10 @@ Read, then act:
 
 ## What you may do (make the stack bring-up-able)
 
-Make `qa-stack.yml` correct and give it everything its steps need, e.g.:
+Make the manifest correct and give it everything its steps need, e.g.:
 
-- **Author or repair `qa-stack.yml`** so the workflow can stand the stack up from cold: point `launch`
+- **Author or repair `{{ workhorse_var('stack_manifest') }}`** so the workflow can stand the stack up
+  from cold: point `launch`
   at an **idempotent, self-freshening** bring-up command (`docker compose up -d --build`, a
   `make dev-stack-*` target that rebuilds), set a real `entry_url`/`health_path` readiness probe, and
   list the `prepare` (deps/build/migrations) and `seed` (baseline fixtures, the Auth-emulator test
@@ -95,8 +98,8 @@ your shell and not as a `launch` you leave running.
 ## Hard boundaries (load-bearing)
 
 - **Never background a long-lived process in your own shell.** A service you start and leave running is
-  killed at node teardown — the workflow owns stack lifecycle, not you. Durable services go in
-  `qa-stack.yml` (heavyweight bring-up, run by `ensure_stack`); foreground in-QA services go in the QA
+  killed at node teardown — the workflow owns stack lifecycle, not you. Durable services go in the
+  stack manifest (heavyweight bring-up, run by `ensure_stack`); foreground in-QA services go in the QA
   plan's `background:` block (run by ostler). You may run a bring-up/seed command **to completion,
   bounded by a wall-clock timeout,** to prove the recipe works — a bring-up command exits 0 once its
   stack serves — but never depend on a process still alive after this node returns.

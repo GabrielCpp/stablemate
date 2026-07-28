@@ -22,62 +22,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import re
 import sys
-import tempfile
 from pathlib import Path
 
-from ostler import Ostler
-
 from workhorse import scriptutil
-from workhorse.scriptutil import find_repo_root
+from workhorse.scriptutil import find_repo_root, fresh_import
 
 logger = logging.getLogger(__name__)
-
-STATUS_LINE_RE = re.compile(r"^- \*\*Status\*\*:.*$", re.MULTILINE)
-
-
-def mark_via_ostler(root: Path, slug: str, new_status: str) -> bool:
-    if not slug:
-        return False
-    try:
-        res = Ostler(root).set_status(slug, new_status)
-    except (OSError, ValueError, RuntimeError):
-        return False
-    if not res.ok:
-        if res.message:
-            sys.stderr.write(f"{res.message}\n")
-        logger.info("ostler set-status failed for %s — falling back to story.md edit", slug)
-        return False
-    return True
-
-
-def resolve_story_path(root: Path, epic: str, slug: str, story_path_arg: str) -> Path:
-    if story_path_arg and Path(story_path_arg).is_file():
-        return Path(story_path_arg)
-    return root / "docs" / "epics" / epic / "stories" / slug / "story.md"
-
-
-def rewrite_status(story_md: Path, new_status: str) -> None:
-    text = story_md.read_text(encoding="utf-8")
-    if STATUS_LINE_RE.search(text):
-        # Rewrite via a temp file + os.replace rather than editing in place, so a
-        # write failure can't leave story.md half-written (portable equivalent of
-        # the bash original's mktemp+mv, which existed to dodge GNU/BSD `sed -i`
-        # incompatibilities entirely).
-        new_text = STATUS_LINE_RE.sub(f"- **Status**: {new_status}", text, count=1)
-        fd, tmp_name = tempfile.mkstemp(dir=story_md.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(new_text)
-            os.replace(tmp_name, story_md)
-        except OSError:
-            os.unlink(tmp_name)
-            logger.warning("WARNING: could not rewrite Status in %s", story_md)
-    else:
-        with story_md.open("a", encoding="utf-8") as f:
-            f.write(f"- **Status**: {new_status}\n")
 
 
 def record_skip(run_dir_arg: str, slug: str) -> None:
@@ -116,14 +67,12 @@ def main(logger: logging.Logger) -> None:
     # run (or an operator clearing the skip set) will legitimately retry it.
     new_status = f"QA give-up after {attempts} attempts — needs manual review"
 
-    # ostler's set_status updates BOTH the frontmatter and the body; fall back to
-    # a body edit only when the doc graph can't load or ostler can't resolve the
-    # slug (e.g. non-standard test layouts).
-    marked = mark_via_ostler(root, slug, new_status)
-
-    story_md = resolve_story_path(root, epic, slug, story_path_arg)
-    if not marked and story_md.is_file():
-        rewrite_status(story_md, new_status)
+    # Graph-first, story.md body as the fallback — see story_status.mark. Imported
+    # fresh so a mid-run edit to ostler (an environment-fix loop landing a change
+    # while QA nodes are still ahead in the graph) is not shadowed by the copy
+    # cached in sys.modules from an earlier node.
+    story_status = fresh_import("story_status", also_purge=("ostler",))
+    story_status.mark(root, slug, new_status, epic=epic, story_path=story_path_arg, logger=logger)
 
     # Per-run skip set: record this story so select-next-story.py excludes it
     # for the REMAINDER OF THIS RUN even if the status marking above did not
