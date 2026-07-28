@@ -125,20 +125,22 @@ def main(logger: logging.Logger) -> None:
             logger.warning("unit '%s': record exists but is invalid — marked blocked", unit_id)
 
     inv_path = root / inv_rel
+    if not inv_path.is_file():
+        logger.warning("inventory at %s could not be read", inv_rel)
+        emit("no", status, f"inventory at {inv_rel} could not be read")
+        return
+    lst = wl.WorkList(wl.JsonBackend(inv_path, items_key="units"))
     try:
-        data = json.loads(inv_path.read_text(encoding="utf-8"))
+        hit = lst.mark(unit_id, status)
     except (OSError, json.JSONDecodeError, ValueError):
         logger.warning("inventory at %s could not be read", inv_rel)
         emit("no", status, f"inventory at {inv_rel} could not be read")
         return
 
-    for u in data.get("units") or []:
-        if isinstance(u, dict) and u.get("id") == unit_id:
-            u["status"] = status
-            inv_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            logger.info("unit '%s' marked '%s'", unit_id, status)
-            emit("yes", status, note)
-            return
+    if hit:
+        logger.info("unit '%s' marked '%s'", unit_id, status)
+        emit("yes", status, note)
+        return
 
     logger.warning("unit '%s' not found in %s", unit_id, inv_rel)
     emit("no", status, f"unit '{unit_id}' not found in {inv_rel}")
