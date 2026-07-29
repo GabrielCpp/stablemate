@@ -33,11 +33,18 @@ entry is longer than a few lines it belongs in the plan or in the commit message
 **Loop 1 is done.** All seven steps are committed. `research` runs end-to-end on the driver
 and the YAML engine is still green (`make test && make check-public`).
 
-Loop 2 starts from: **the second port**. The driver has one workflow proving it; the shapes it
+**Next is loop 1.1**, not loop 2. The porting work was pulled out of loop 2 into its own loop so
+that every port lands beside the YAML engine and nothing is deleted until all four workflows run
+on the driver — see "Loop 1.1 — port every workflow, decommission nothing" in the plan. Loop 2 is
+now deletion only, and its entry gate is this ledger carrying parity evidence per workflow.
+
+Loop 1.1 starts from: **the second port**. The driver has one workflow proving it; the shapes it
 has *not* met yet are `Await` (nothing in `research` waits on a human), `handoff` (no sub-flow),
-and a workflow whose states outnumber `research`'s twelve. `author` and `coder` are both, which
-is why they are next — and `coder` is the one that will say whether `self.output(node)` and the
-three-tier state rule hold at size.
+and a workflow whose states outnumber `research`'s twelve. Order is `author` → `okf-builder` →
+`coder`: `author` first because it is the first to exercise both unmet arms (12 `await-operator`
+sites, 2 `type: flow` nodes) and a defect found there costs one port rather than three;
+`okf-builder` second as the cheap confirmation; `coder` last, where `self.output(node)` and the
+three-tier state rule meet 4,366 lines, 19 awaits and 8 sub-flows.
 
 ## What landed
 
@@ -51,15 +58,27 @@ three-tier state rule hold at size.
 | — | `5d3f89d` | `research/models.py` → `schemas.py`; `self.agent(power=, timeout=)` reaches the turn |
 | 2 | `772b5d0` | The scriptutil split — `workhorse_workflows.kit.{git,github,workspace}`; scriptutil 1000 → 154 lines |
 | 7 | `2ea582a` | The `research` port — 30 YAML nodes → 12 states, both pyproject tables, 8 end-to-end tests |
-| — | _this commit_ | `--dry-run` reports a fail terminal instead of failing on it (the open question below, answered) |
+| — | `2637034` | `--dry-run` reports a fail terminal instead of failing on it (the open question below, answered) |
+
+### Loop 1.1
+
+| Step | Commit | What |
+|---|---|---|
+| 0 | _this commit_ | `research` restructured into the normative package layout — `nodes/` (3 subject modules + the shared `Blueprint`), tests to `workflows/tests/research/test_workflow.py`. No behavior change; 12 tests still pass |
 
 ## What is next
 
-1. **Port `author` (then `coder`).** Same shape as `research`: `nodes.py` + `schemas.py` +
-   `workflow.py`, one entry-point line and one console script per workflow in
-   `workflows/pyproject.toml`, and end-to-end tests in `workflows/tests/`. Take the test file
-   `workflows/tests/test_research_workflow.py` as the pattern — real nodes against a temp git
-   repo, only the agent turn scripted — because it is what made the port's claims checkable.
+1. **Port `author`, then `okf-builder`, then `coder`** — loop 1.1, deleting nothing. Each port is the
+   whole package per that section: `workflow.py` holding only the class, `nodes/` grouped by subject,
+   schemas, `paths.py` for the derivations, `flows/` per sub-graph, one entry-point line and one
+   console script in `workflows/pyproject.toml`, and tests under `workflows/tests/<workflow>/`
+   mirroring the node modules. Take `tests/research/test_workflow.py` as the pattern for what goes
+   *inside* a test module — real nodes against a temp git repo, only the agent turn scripted — because
+   it is what made the port's claims checkable. `author` includes the 16 scripts under
+   `base-library/workflows/author/surveyor/` (2,162 lines), which are author's and are easy to miss.
+2. **Record parity per workflow, here.** Same artifacts and same resume behavior as the YAML for at
+   least one real run. Both engines are present for the whole of loop 1.1, so the comparison is
+   available; loop 2 will not start without it.
 
 ## Open questions
 
@@ -70,6 +89,13 @@ None.
 Entries here mean an iteration went back to the plan for something it had lost. The plan section
 that settled it is named so the next reader can go straight there.
 
+- **The shared `Blueprint` lives in `nodes/_blueprint.py`, not `nodes/__init__.py`** *(step 0, found
+  while building)*. The plan says `nodes/__init__.py` "assembles the Blueprint", and it does — it is
+  the one import `workflow.py` needs. But the object itself cannot be *defined* there: every node
+  submodule decorates against it, so defining it in `__init__.py` makes each submodule import the
+  package that imports it. That resolves only because the name is bound before the submodule imports
+  run, i.e. by statement order, and ruff's E402 objects to the arrangement that makes it work. A
+  three-line private module has neither problem. Every port uses this shape.
 - **Typed payload models were removed** *("Rejected along the way")*. Lost across a compaction in
   loop 1's first run and rebuilt as `research/models.py`. This is the entry that motivated the
   ledger. **Settled:** what was rebuilt is *not* the rejected shape — nothing in the file crosses a
