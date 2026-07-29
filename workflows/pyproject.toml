@@ -37,21 +37,24 @@ dependencies = [
 test = ["pytest>=8.0"]
 
 # Discovery: `workhorse run <name>` resolves a name here before it looks in a library
-# directory. The value points at the `Workflow` OBJECT, not the entry function —
+# directory. The value points at the `Registry` OBJECT, not the entry function —
 # discovery needs the registry.
 #
-# Empty until the first workflow is ported. It is declared now, empty, because the
-# resolution path it feeds is what this package exists to provide.
+# A name declared here SHADOWS the base library's copy of the same workflow, which is
+# the intent: `base-library/workflows/research/` stays as the YAML original (still
+# runnable by path) and this is what `workhorse run research` gets.
 [project.entry-points."workhorse.workflows"]
+research = "workhorse_workflows.research.workflow:workflow"
 
 # One console script per workflow, pointing at the callable `workflow.main(Entry)`
 # RETURNS. `[project.scripts]` targets are called after import, so a module-level
-# `main = workflow.main(Author)` is the shape; `workflow.main(Author)()` is not.
+# `main = workflow.main(Research)` is the shape; `workflow.main(Research)()` is not.
 #
 # Both front doors run the same parser with the name bound differently:
-#     workhorse run coder qa --run-id=… --params …
-#     workhorse-coder  run qa --run-id=… --params …
+#     workhorse         run research --run-id=… --params …
+#     workhorse-research run          --run-id=… --params …
 [project.scripts]
+workhorse-research = "workhorse_workflows.research.workflow:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
