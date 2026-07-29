@@ -21,6 +21,7 @@ hooks: ## Install the git hooks (blocks private overlay names from this public r
 test: ## Run the packages' test suites, the workflow suites, and the public/private guard
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
+	$(MAKE) -C workflows test
 	$(MAKE) -C farrier test
 	$(MAKE) test-workflows
 	$(MAKE) check-public
@@ -55,6 +56,9 @@ check-public: ## Guard the public/private split (no private names; the base stan
 build: ## Build sdists + wheels (into each package's dist/)
 	$(MAKE) -C core build
 	$(MAKE) -C workhorse build
+	# workflows carries the workflows themselves and depends on workhorse-agent,
+	# so it builds after the engine. It is not published yet — see workflows/README.md.
+	$(MAKE) -C workflows build
 	$(MAKE) -C farrier build
 
 .PHONY: publish-test

@@ -1,0 +1,73 @@
+[project]
+name = "workhorse-workflows"
+version = "0.1.0"
+description = "The stablemate agent workflows — research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gabriel Côté" }]
+keywords = ["agent", "workflow", "claude", "llm", "automation", "orchestration"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Utilities",
+]
+dependencies = [
+  # The engine. This package is the only direction the dependency runs: workhorse
+  # knows nothing about any workflow in here, and must not.
+  "workhorse-agent>=0.8,<1",
+  # Workflow-side tools each land with the first workflow that imports one — a
+  # dependency nothing imports is a claim the lockfile cannot check. `ostler` arrives
+  # with the author/coder/okf-builder ports, along with the `visual` extra
+  # (`ostler[vet]`) their screenshot steps need.
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+# Discovery: `workhorse run <name>` resolves a name here before it looks in a library
+# directory. The value points at the `Workflow` OBJECT, not the entry function —
+# discovery needs the registry.
+#
+# Empty until the first workflow is ported. It is declared now, empty, because the
+# resolution path it feeds is what this package exists to provide.
+[project.entry-points."workhorse.workflows"]
+
+# One console script per workflow, pointing at the callable `workflow.main(Entry)`
+# RETURNS. `[project.scripts]` targets are called after import, so a module-level
+# `main = workflow.main(Author)` is the shape; `workflow.main(Author)()` is not.
+#
+# Both front doors run the same parser with the name bound differently:
+#     workhorse run coder qa --run-id=… --params …
+#     workhorse-coder  run qa --run-id=… --params …
+[project.scripts]
+
+[project.urls]
+Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
+Repository = "https://github.com/GabrielCpp/stablemate"
+Issues = "https://github.com/GabrielCpp/stablemate/issues"
+
+[tool.uv.sources]
+workhorse-agent = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# src/ layout, and the wheel must install unpacked: workhorse renders a workflow's
+# prompts with a filesystem template loader rooted at the package directory, so a
+# zip-imported install is refused at resolution (workhorse/packaged.py).
+[tool.hatch.build.targets.wheel]
+packages = ["src/workhorse_workflows"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+tmp_path_retention_policy = "failed"

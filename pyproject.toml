@@ -1,6 +1,8 @@
 # stablemate — a uv workspace housing the publishable packages that work
 # alongside the prompt library:
 #   - workhorse/  -> workhorse-agent  (the fail-soft workflow runtime)
+#   - workflows/  -> workhorse-workflows (the workflows themselves, as code that
+#                                       workhorse discovers by entry point)
 #   - farrier/    -> farrier          (renders the prompt library into a repo)
 #   - ostler/     -> ostler           (tends a repo's docs/ knowledge graph)
 #   - groom/      -> groom            (local dashboard + push notifications for
@@ -33,7 +35,7 @@ description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom 
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["core", "workhorse", "farrier", "ostler", "groom", "saddlebag"]
+members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag"]
 
 [dependency-groups]
 dev = [

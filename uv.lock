@@ -11,6 +11,7 @@ members = [
     "stablemate",
     "stablemate-core",
     "workhorse-agent",
+    "workhorse-workflows",
 ]
 
 [[package]]
@@ -421,6 +422,7 @@ dependencies = [
 
 [package.optional-dependencies]
 test = [
+    { name = "playwright" },
     { name = "pytest" },
 ]
 
@@ -430,6 +432,7 @@ requires-dist = [
     { name = "litestar", extras = ["standard"], specifier = ">=2.10" },
     { name = "opentelemetry-proto", specifier = ">=1.25" },
     { name = "platformdirs", specifier = ">=4.0" },
+    { name = "playwright", marker = "extra == 'test'", specifier = ">=1.44" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "websockets", specifier = ">=13" },
     { name = "workhorse-agent", editable = "workhorse" },
@@ -2082,3 +2085,23 @@ requires-dist = [
     { name = "stablemate-core", editable = "core" },
 ]
 provides-extras = ["test", "otel"]
+
+[[package]]
+name = "workhorse-workflows"
+version = "0.1.0"
+source = { editable = "workflows" }
+dependencies = [
+    { name = "workhorse-agent" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "workhorse-agent", editable = "workhorse" },
+]
+provides-extras = ["test"]
