@@ -161,14 +161,3 @@ and the body through `render_templates`, then re-emit front matter carrying the
   Local README` heading.
 
 - code: `farrier/farrier/install.py::Renderer.render_local_instruction`
-
-## `validate_workflow_dependencies`
-
-`validate_workflow_dependencies(workflow_name) -> list[str]` — not called by `render_expected`
-itself; checks that every skill/prompt a workflow's prompts reference via `instruction_ref(...)`/
-`prompt_ref(...)` (`extract_workflow_dependencies`, a regex scan of the workflow's `prompts/*.md`)
-is among this `Renderer`'s selected skills/prompts, returning one message per missing dependency
-(empty list if all satisfied). No current call site in `install.py` invokes this — it is exposed for
-external tooling/tests to pre-flight a workflow selection.
-
-- code: `farrier/farrier/install.py::Renderer.validate_workflow_dependencies`

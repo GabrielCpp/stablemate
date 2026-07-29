@@ -160,6 +160,18 @@ becomes `workhorse run coder`, resolved through the entry point. The full deleti
 | `outputs.py:71,232-237` `.agents/workflows` cleanup + `--check` skip | keep one release as legacy cleanup, then delete |
 | `workflows.py:24` `collect_template_values` | **survives** — reads `vars:`/`template:` from `agents.yml`; not workflow-specific, just misfiled |
 
+**Landed and deferred (2026-07-29, while building).** The four uncalled rows are gone, and with
+them `renderer.py`'s import and the `validate_workflow_dependencies` entry in
+`docs/features/farrier/concepts/renderer.md`. The **launcher rows did not land, and cannot until
+the first workflow is packaged**: they are one change, not two. `.agents/agents.mk`'s workflow
+targets and the whole of `.agents/local.compose.yaml` are generated *from the selection list* —
+delete the `workflows:` key and `make agent-run` / `make agent-native` / the compose services
+vanish from every installed repo, while the only way to run any base-library workflow is still
+exactly those targets (nothing is packaged yet; `workhorse run <name>` has an entry point to
+resolve but no distribution registering one). That is the "cannot land without breaking the YAML
+engine" case, so the launcher/compose move, the selection key and the unknown-name validation go
+together with the ports. `outputs.py`'s legacy cleanup stays as the table already says.
+
 **The one thing not to simply delete.** The pre-flight check is dead code, but the failure it was
 built for is live and worse than it looks: of the ~32 distinct skill names the base workflow prompts
 reference, only two (`stablemate-okf-modeling`, `stablemate-documentation`) exist in the base
