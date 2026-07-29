@@ -48,7 +48,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
+from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import resolve_workspace
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import active_branch, branch_exists, default_branch, find_repo_root
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import active_branch, branch_exists, default_branch
 
 
 def resolve_trunk(root) -> str:

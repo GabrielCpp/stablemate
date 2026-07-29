@@ -93,6 +93,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY workhorse/ workhorse/
 COPY ostler/ ostler/
+# The generic checkout the entrypoint runs before the engine starts lives in
+# `workhorse_workflows.kit` — the workflow half of the old `scriptutil`, and where
+# gitpython/PyGithub are now declared. The image needs it for that step alone.
+COPY workflows/ workflows/
 # core is a workspace member workhorse depends on (`stablemate-core`, declared
 # `workspace = true` in workhorse/pyproject.toml), so `uv sync` resolves it from
 # the tree, not PyPI — without this COPY the sync fails with
@@ -117,6 +121,7 @@ COPY core/ core/
 # This is a single-tenant container — one agent, no other principals to isolate
 # from — so a permissive mode costs nothing that ownership was buying.
 RUN uv sync --frozen --package workhorse-agent --package ostler \
+    --package workhorse-workflows \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
     && mkdir -p /workspace /runs /claude-state /opt/uv-python \
     && chmod -R a+rwX /app /workspace /runs /claude-state \

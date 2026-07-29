@@ -40,14 +40,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import (
-    build_dispatch_list,
-    find_docs_root,
-    find_repo_root,
-    get_affected_repos,
-    load_json,
-    resolve_workspace,
-)
+from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
+from workhorse_workflows.kit import build_dispatch_list, get_affected_repos, resolve_workspace
 
 MANIFEST_REL = ".agents/agents-context.json"
 

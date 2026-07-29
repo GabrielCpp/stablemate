@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import checkout_workspace
+from workhorse_workflows.kit import checkout_workspace
 
 
 def main(logger: logging.Logger) -> None:

@@ -17,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import allow_all_directories, clone, fetch_reset
+from workhorse_workflows.kit import allow_all_directories, clone, fetch_reset
 
 
 def _emit(repo_dir: str, status: str = "ok") -> None:

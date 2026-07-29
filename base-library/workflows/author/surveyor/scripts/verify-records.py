@@ -39,7 +39,7 @@ import re
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import show_file
+from workhorse_workflows.kit import show_file
 
 try:
     import yaml

@@ -12,15 +12,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import (
-    find_open_pr,
-    find_repo_root,
-    origin_url,
-    repo_full_name_from_url,
-    resolve_github_token,
-    resolve_repo,
-    sync_to_origin,
-)
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_open_pr, origin_url, repo_full_name_from_url, resolve_github_token, resolve_repo, sync_to_origin
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,8 @@ from pathlib import Path
 
 from ostler import Ostler
 from service_contract import service_problems
-from workhorse.scriptutil import find_repo_root, load_json, resolve_workspace
+from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import resolve_workspace
 
 def main(logger: logging.Logger) -> None:
     spec_dir_rel = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""

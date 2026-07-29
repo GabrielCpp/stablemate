@@ -22,7 +22,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import build_dispatch_list, find_repo_root, load_json, resolve_workspace
+from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import build_dispatch_list, resolve_workspace
 
 def main(logger: logging.Logger) -> None:
     spec_dir_rel = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""

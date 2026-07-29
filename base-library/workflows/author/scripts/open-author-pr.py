@@ -28,8 +28,9 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from workhorse import scriptutil
 from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import git as git_kit
+from workhorse_workflows.kit import github as github_kit
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def get_base_branch(repo_path: Path, declared: str, fallback: str = "main") -> s
     if declared:
         return declared
     for candidate in ("develop", "main", "master"):
-        if scriptutil.branch_exists(repo_path, candidate):
+        if git_kit.branch_exists(repo_path, candidate):
             return candidate
     return fallback
 
@@ -96,7 +97,7 @@ def resolve_github_slug(repo_path: Path) -> str:
     ``/mnt/repo-src``. In that case the clone's origin is local, but the mounted
     source repository still carries the real GitHub origin.
     """
-    origin_urls = scriptutil.remote_urls(repo_path)
+    origin_urls = git_kit.remote_urls(repo_path)
     for url in origin_urls:
         slug = github_slug(url)
         if slug:
@@ -109,7 +110,7 @@ def resolve_github_slug(repo_path: Path) -> str:
             source_path = (repo_path / source_path).resolve()
         if not source_path.exists():
             continue
-        for source_origin in scriptutil.remote_urls(source_path):
+        for source_origin in git_kit.remote_urls(source_path):
             slug = github_slug(source_origin)
             if slug:
                 return slug
@@ -140,22 +141,22 @@ def find_open_pr(repo, branch: str):
 
 def push_and_pr(repo_path: Path, branch: str, base: str, title: str, body: str, token: str) -> tuple[str, str]:
     """Push branch and open PR. Returns (status, pr_url)."""
-    if not scriptutil.branch_exists(repo_path, branch):
+    if not git_kit.branch_exists(repo_path, branch):
         fail(f"no branch {branch} in {repo_path}")
 
     repo_slug = resolve_github_slug(repo_path)
     if not repo_slug:
         # Not configured, not broken: a local-only repo has no forge to deliver to.
-        origins = ", ".join(scriptutil.remote_urls(repo_path)) or "<no remote>"
+        origins = ", ".join(git_kit.remote_urls(repo_path)) or "<no remote>"
         skip(f"origin does not resolve to a github.com repository: {origins}")
 
     # push_branch targets the resolved slug explicitly (the origin may be a local
     # bind-mount path in container runs, so we can't let it re-derive from origin).
-    if not scriptutil.push_branch(repo_path, token, branch, slug=repo_slug, verify=False):
+    if not github_kit.push_branch(repo_path, token, branch, slug=repo_slug, verify=False):
         fail(f"push failed for {branch}")
 
     try:
-        repo = scriptutil.github_client(token).get_repo(repo_slug)
+        repo = github_kit.github_client(token).get_repo(repo_slug)
     except Exception as exc:
         fail(f"cannot access github.com repository {repo_slug}: {exc}")
 

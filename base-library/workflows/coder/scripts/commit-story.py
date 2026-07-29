@@ -23,15 +23,8 @@ import logging
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import (
-    commit_all,
-    commit_paths,
-    find_repo_root,
-    fresh_import,
-    get_affected_repos,
-    load_json,
-    resolve_workspace,
-)
+from workhorse.scriptutil import find_repo_root, fresh_import, load_json
+from workhorse_workflows.kit import commit_all, commit_paths, get_affected_repos, resolve_workspace
 
 logger = logging.getLogger(__name__)
 

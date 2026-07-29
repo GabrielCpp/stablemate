@@ -14,7 +14,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import commit_all, find_repo_root
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import commit_all
 
 logger = logging.getLogger(__name__)
 

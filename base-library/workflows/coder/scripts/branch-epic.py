@@ -33,15 +33,8 @@ import re
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import (
-    branch_exists,
-    checkout,
-    find_repo_root,
-    rename_branch,
-    restore_paths,
-    short_sha,
-    show_file,
-)
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import branch_exists, checkout, rename_branch, restore_paths, short_sha, show_file
 
 logger = logging.getLogger(__name__)
 

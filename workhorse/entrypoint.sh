@@ -83,7 +83,7 @@ if [ -f /workflow/scripts/checkout-workspace.py ]; then
     uv run python3 /workflow/scripts/checkout-workspace.py
 else
     uv run python3 -c \
-        "from workhorse.scriptutil import checkout_workspace; checkout_workspace()"
+        "from workhorse_workflows.kit import checkout_workspace; checkout_workspace()"
 fi
 
 # Launch the groom-sidecar session in the background, ahead of the main run

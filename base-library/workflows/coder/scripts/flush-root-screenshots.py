@@ -32,7 +32,7 @@ import os
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import list_tracked_files
+from workhorse_workflows.kit import list_tracked_files
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 

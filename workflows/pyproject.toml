@@ -21,6 +21,12 @@ dependencies = [
   # The engine. This package is the only direction the dependency runs: workhorse
   # knows nothing about any workflow in here, and must not.
   "workhorse-agent>=0.8,<1",
+  # `kit` — the git/GitHub/workspace half of what used to be `workhorse.scriptutil`.
+  # These are here rather than on the engine because knowing how to open a pull
+  # request is workflow domain: workhorse never called either library, and every
+  # install of it paid for both.
+  "gitpython>=3.1",
+  "PyGithub>=2.0",
   # Workflow-side tools each land with the first workflow that imports one — a
   # dependency nothing imports is a claim the lockfile cannot check. `ostler` arrives
   # with the author/coder/okf-builder ports, along with the `visual` extra

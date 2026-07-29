@@ -20,7 +20,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import find_repo_root, resolve_workspace
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import resolve_workspace
 
 def main(logger: logging.Logger) -> None:
     repo_arg = sys.argv[1] if len(sys.argv) > 1 else ""

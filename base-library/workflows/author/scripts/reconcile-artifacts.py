@@ -38,7 +38,7 @@ import re
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import show_file
+from workhorse_workflows.kit import show_file
 
 _H2_RE = re.compile(r"^##\s+(.*\S)\s*$")
 _H3_RE = re.compile(r"^###\s+(.*\S)\s*$")

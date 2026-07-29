@@ -10,7 +10,8 @@ from pathlib import Path
 
 from git.exc import GitError
 
-from workhorse.scriptutil import find_docs_root, open_repo
+from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import open_repo
 
 
 def main(logger: logging.Logger) -> None:

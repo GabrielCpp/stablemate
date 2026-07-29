@@ -19,15 +19,8 @@ import os
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import (
-    checkout,
-    current_branch,
-    find_docs_root,
-    get_affected_repos,
-    load_json,
-    local_branch_exists,
-    resolve_workspace,
-)
+from workhorse.scriptutil import find_docs_root, load_json
+from workhorse_workflows.kit import checkout, current_branch, get_affected_repos, local_branch_exists, resolve_workspace
 
 logger = logging.getLogger(__name__)
 
