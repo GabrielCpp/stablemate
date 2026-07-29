@@ -13,6 +13,8 @@ Run: uv run python tests/test_pyflow_graph.py   (or via pytest)
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 from pathlib import Path
@@ -29,6 +31,7 @@ from workhorse.pyflow import (  # noqa: E402
     Done,
     Registry,
     Workflow,
+    WorkflowFailed,
     state,
 )
 from workhorse.pyflow.dot import to_dot  # noqa: E402
@@ -306,6 +309,53 @@ def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
         pyflow_run.run_pyflow(registry, runs_dir=runs, run_id="week-long", dry_run=True)
         assert not (runs / "acme-week-long").exists()
         assert (runs / "acme-dry-run").is_dir()
+
+
+class Halts(Workflow):
+    """A machine that can terminate either way, and whose measurement never says `ok`.
+
+    Both terminals are statically present, so the preflight passes; what decides which
+    one runs is a value — which is exactly the position a stand-in reply puts every
+    branch in under `--dry-run`.
+    """
+
+    def start(self) -> Transition:
+        report = self.call(measure, "over")
+        if report.verdict == "ok":
+            return Done(report)
+        raise WorkflowFailed("budget exhausted")
+
+
+def _run_halting(*, dry_run: bool) -> tuple[int, str]:
+    from workhorse.pyflow import run as pyflow_run
+
+    registry = Registry("acme").add_blueprints(bp)
+    registry.main(Halts)
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp:
+        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        with contextlib.redirect_stdout(out):
+            code = pyflow_run.run_pyflow(
+                registry, runs_dir=Path(tmp) / "runs", run_id="halt", dry_run=dry_run
+            )
+    return code, out.getvalue()
+
+
+def test_dry_run_reports_a_fail_terminal_rather_than_failing_on_it():
+    # Under `--dry-run` every agent reply is a blank stand-in, so the machine takes
+    # whichever branch a blank selects — which for any workflow with a reachable fail
+    # terminal can be that terminal. The check is what passed; say where it landed.
+    code, out = _run_halting(dry_run=True)
+    assert code == 0, out
+    assert "fail terminal in 'start'" in out, out
+    assert "budget exhausted" in out, out
+    assert "stand-in values" in out, out
+
+
+def test_a_real_run_still_fails_on_the_same_fail_terminal():
+    code, out = _run_halting(dry_run=False)
+    assert code == 1, out
+    assert "ERROR: budget exhausted" in out, out
 
 
 def test_the_run_parser_carries_dry_run():
