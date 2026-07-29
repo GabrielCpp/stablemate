@@ -125,7 +125,6 @@ from farrier.sources import (
 from farrier.workflows import (
     WORKFLOW_SKIP_PARTS,
     collect_template_values,
-    extract_workflow_dependencies,
     resolve_workflow_meta,
     should_skip_workflow_file,
 )
@@ -161,7 +160,6 @@ __all__ = [
     "ensure_agents_gitignore",
     "ensure_gitignore_entry",
     "ensure_makefile_include",
-    "extract_workflow_dependencies",
     "fetch_scaffold_url",
     "find_agents_config",
     "find_in_layers",

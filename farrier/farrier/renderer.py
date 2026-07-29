@@ -26,7 +26,6 @@ from farrier.layers import available_names, find_in_layers
 from farrier.naming import kebab, relative_reference, yaml_quote
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import Source, build_lookup, library_source_path, public_name
-from farrier.workflows import extract_workflow_dependencies
 
 
 # A generated skill/command is a *copy* of a library source. Without a marker, an
@@ -573,28 +572,3 @@ class Renderer:
             readme.read_text(encoding="utf-8"), target, output_path
         )
         return f"{banner}{rendered}\n\n## Local README\n\n{readme_body.strip()}\n"
-
-    def validate_workflow_dependencies(self, workflow_name: str) -> list[str]:
-        """Check that a workflow's dependencies are satisfied by selected skills/prompts.
-
-        Returns a list of missing dependencies (empty if all satisfied).
-        """
-        hit = find_in_layers("workflows", workflow_name)
-        if hit is None:
-            return []
-        _layer, workflow_root = hit
-        required_skills, required_prompts = extract_workflow_dependencies(workflow_root)
-
-        missing = []
-        for skill in required_skills:
-            if not self.optional_skill_source(skill):
-                missing.append(
-                    f"skill '{skill}' (referenced in {workflow_name} prompts)"
-                )
-        for prompt in required_prompts:
-            if not self.optional_prompt_source(prompt):
-                missing.append(
-                    f"prompt '{prompt}' (referenced in {workflow_name} prompts)"
-                )
-
-        return missing
