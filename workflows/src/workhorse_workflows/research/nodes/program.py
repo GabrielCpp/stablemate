@@ -1,97 +1,22 @@
-"""The research workflow's non-agent work: clone, configure, publish.
+"""Which research program, and what its manifest says.
 
-Ported from `base-library/workflows/research/scripts/{setup,load_config,publish}.py`.
-Three things change and nothing else does:
-
-* the JSON envelope on stdout becomes a **returned model** — a node is a function, so
-  its result needs no serialization round-trip to reach the caller;
-* the positional `sys.argv` entries become **typed parameters**, checked at the
-  callsite by `inspect.signature` rather than by index;
-* `sys.exit(1)` becomes `raise WorkflowFailed(...)`, which the driver records as the
-  run's terminal state instead of killing the interpreter under it.
-
-The **environment** reads stay verbatim (`AGENT_REPO_DIR`, `REPO_URL`, `REPO_BRANCH`,
-`RESEARCH_PROGRAM`, `AGENT_LAUNCH_DIR`, …): they are the operator contract that a
-compose file, a Makefile and a container entrypoint all write to, and rewriting them
-would break every launcher for no gain.
+Ported from `base-library/workflows/research/scripts/load_config.py`. The selection
+ladder is the part worth reading: a program is one folder in the target repo, and
+nothing in this package knows any program by name.
 """
 from __future__ import annotations
 
 import logging
 import os
-import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from workhorse.pyflow import Blueprint, WorkflowFailed
-from workhorse_workflows.kit import allow_all_directories, checkout, clone, commit_all, fetch_reset, push_to_origin, set_identity
-from workhorse_workflows.research.schemas import Program, PublishResult, RepoSetup
-
-blueprint = Blueprint("research")
+from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.research.nodes._blueprint import blueprint
+from workhorse_workflows.research.schemas import Program
 
 #: Keys `program.yml` must carry for the gate loop to have anything to run.
 REQUIRED = ["code_root"]
-
-
-# ── setup: get a working tree ───────────────────────────────────────────────
-
-
-@blueprint.node
-def clone_repo(logger: logging.Logger) -> RepoSetup:
-    """Check out the repo the program lives in, or adopt the one already there.
-
-    In-place mode wins: when the launcher already put a checkout in front of us
-    (`AGENT_REPO_DIR`), cloning would discard uncommitted work and point the run at
-    the wrong tree.
-    """
-    repo_dir_env = os.environ.get("AGENT_REPO_DIR") or os.environ.get("HRNET_REPO_DIR")
-    if repo_dir_env:
-        allow_all_directories()
-        logger.info("in-place mode: using existing repo at %s (no clone)", repo_dir_env)
-        return RepoSetup(repo_dir=repo_dir_env)
-
-    # Env before argv so a compose override can redirect the clone source without
-    # touching the workflow.
-    repo_url = os.environ.get("REPO_URL") or (sys.argv[1] if len(sys.argv) > 1 else "")
-    if not repo_url:
-        raise WorkflowFailed(
-            "no repo to work on: set REPO_URL (or AGENT_REPO_DIR for in-place mode)"
-        )
-    repo_branch = os.environ.get("REPO_BRANCH") or (
-        sys.argv[2] if len(sys.argv) > 2 else "main"
-    )
-
-    os.environ.setdefault("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=accept-new")
-    # A bind-mounted source repo is owned by the host user; git refuses it as
-    # "dubious ownership" without this.
-    allow_all_directories()
-
-    workspace = Path("/workspace")
-    repo_dir = workspace / Path(repo_url).name.removesuffix(".git")
-    workspace.mkdir(parents=True, exist_ok=True)
-
-    if (repo_dir / ".git").is_dir():
-        logger.info("repo already present at %s — fetching %s", repo_dir, repo_branch)
-        fetch_reset(repo_dir, repo_branch)
-    else:
-        logger.info("cloning %s (%s) into %s", repo_url, repo_branch, repo_dir)
-        clone(repo_url, repo_dir, branch=repo_branch, single_branch=True)
-
-    synced = subprocess.run(
-        ["uv", "sync", "--no-sources"],
-        cwd=str(repo_dir),
-        stdout=sys.stderr,
-        stderr=sys.stderr,
-        text=True,
-        check=False,
-    )
-    if synced.returncode != 0:
-        logger.warning("'uv sync --no-sources' failed; agent must resolve deps")
-    return RepoSetup(repo_dir=str(repo_dir))
-
-
-# ── load_program: which program, and what does it say ───────────────────────
 
 
 def parse_flat_yaml(text: str, source: str) -> dict[str, str]:
@@ -271,46 +196,5 @@ def load_program(logger: logging.Logger, program: str, repo_dir: str) -> Program
     )
 
 
-# ── publish: get the gate's work off this machine ───────────────────────────
 
-
-@blueprint.node
-def publish_results(
-    logger: logging.Logger,
-    repo_dir: str,
-    result_branch: str = "research/auto",
-    program_dir: str = "",
-) -> PublishResult:
-    """Commit whatever the gate produced onto the result branch and push it.
-
-    Every failure here is soft: an unpushed branch is still a branch on disk, and
-    losing a week of gate work because a remote was unreachable would be the wrong
-    trade for an unattended run.
-    """
-    if not repo_dir:
-        raise WorkflowFailed("publish_results needs a repo_dir")
-
-    if program_dir:
-        program_label = Path(program_dir).name
-    else:
-        program_label = (
-            result_branch.rsplit("/", 1)[0] if "/" in result_branch else result_branch
-        )
-    program_label = program_label or result_branch
-
-    set_identity(repo_dir, "Research Agent", "research-agent@local")
-    checkout(repo_dir, result_branch, reset=True)
-    if not commit_all(repo_dir, f"{program_label}: automated gate update"):
-        logger.info("no changes to commit")
-        return PublishResult(published=False, result_branch=result_branch)
-    if push_to_origin(repo_dir, result_branch, force_with_lease=True):
-        return PublishResult(published=True, result_branch=result_branch)
-    logger.warning(
-        "push failed — edits remain on local branch %s only", result_branch
-    )
-    return PublishResult(
-        published=False, result_branch=result_branch, status="push_failed"
-    )
-
-
-__all__ = ["blueprint", "clone_repo", "load_program", "publish_results"]
+__all__ = ["load_program"]

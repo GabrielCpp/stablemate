@@ -131,7 +131,7 @@ def _drive(script: dict[str, list[dict[str, Any]]]) -> tuple[Any, WorkflowFailed
             with patch.dict(os.environ, {"AGENT_REPO_DIR": str(repo)}):
                 # Writes `safe.directory=*` into ~/.gitconfig — the container's
                 # bind-mount concession, and not something a test may do to a laptop.
-                with patch("workhorse_workflows.research.nodes.allow_all_directories"):
+                with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
                     try:
                         result = drive(research.Research(program=PROGRAM_DIR), _env(root))
                     except WorkflowFailed as exc:
@@ -391,7 +391,7 @@ def test_publishing_commits_the_gate_onto_the_result_branch():
         pyflow_engine.agent_runner.run_agent = agent
         try:
             with patch.dict(os.environ, {"AGENT_REPO_DIR": str(repo)}):
-                with patch("workhorse_workflows.research.nodes.allow_all_directories"):
+                with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
                     drive(research.Research(program=PROGRAM_DIR), _env(root))
         finally:
             pyflow_engine.agent_runner.run_agent = real
