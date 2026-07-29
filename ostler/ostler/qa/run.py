@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import signal
 import sys
 from dataclasses import dataclass, field
@@ -413,7 +415,6 @@ def cmd_run(
     # A fresh qa/ is created immediately after so subsequent mkdir calls are no-ops.
     qa_dir = spec_dir / "qa"
     if qa_dir.exists():
-        import shutil
 
         shutil.rmtree(qa_dir)
     qa_dir.mkdir(parents=True, exist_ok=True)
@@ -562,7 +563,6 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
         problems.append("'steps' must be a list")
         return problems
 
-    import re
 
     _ENTROPY_RE = re.compile(
         r"\$\(date\b"  # $(date ...)

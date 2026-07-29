@@ -11,10 +11,8 @@ import json
 import subprocess
 
 from conftest import (
-    init_repo, requires_ostler, run_script, run_script_raw, write_backlog, write_epic,
+    init_repo, run_script, run_script_raw, write_backlog, write_epic,
 )
-
-pytestmark = requires_ostler
 
 
 def _seeds(repo, epic):
@@ -128,7 +126,7 @@ def test_scoped_backlog_resolves_bullet_verbatim(tmp_path):
     write_backlog(tmp_path, ["rewrite-thing"])
     write_backlog(tmp_path, ["scoped-thing"], texts={"scoped-thing": "build the scoped thing"},
                   path="docs/backlog-scoped.md")
-    out = run_script("seed-story.py", "e1", "docs/epics", "scoped-thing", "docs/knowledge",
+    out = run_script("seed-story.py", "e1", "docs/epics", "scoped-thing",
                      "docs/backlog-scoped.md", repo=tmp_path)
     assert out["bullet_id"] == "scoped-thing"
     # from_backlog gates story_prune; "no" here would leave the bullet in the scoped backlog forever
@@ -150,6 +148,6 @@ def test_bullet_from_the_other_backlog_is_not_from_backlog(tmp_path):
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "01-s1", "covers": ["i1"]}])
     write_backlog(tmp_path, ["rewrite-thing"])
     write_backlog(tmp_path, ["scoped-thing"], path="docs/backlog-scoped.md")
-    out = run_script("seed-story.py", "e1", "docs/epics", "rewrite-thing", "docs/knowledge",
+    out = run_script("seed-story.py", "e1", "docs/epics", "rewrite-thing",
                      "docs/backlog-scoped.md", repo=tmp_path)
     assert out["from_backlog"] == "no"

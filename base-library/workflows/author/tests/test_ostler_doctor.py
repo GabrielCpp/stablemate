@@ -13,7 +13,7 @@ import logging
 import sys
 
 import pytest
-from conftest import SCRIPTS, requires_ostler, run_script, write_epic, write_knowledge
+from conftest import SCRIPTS, run_script, write_epic, write_knowledge
 
 SCRIPT = SCRIPTS / "ostler-doctor.py"
 
@@ -26,7 +26,6 @@ def _load_script_module():
     return mod
 
 
-@requires_ostler
 def test_clean_graph_passes(tmp_path):
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])
     out = run_script("ostler-doctor.py", repo=tmp_path)
@@ -34,7 +33,6 @@ def test_clean_graph_passes(tmp_path):
     assert out["integrity_errors"] == ""
 
 
-@requires_ostler
 def test_errors_block_with_pointers(tmp_path):
     # A story covering a seed that no epic declares → dangling-seed (error).
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}],
@@ -46,7 +44,6 @@ def test_errors_block_with_pointers(tmp_path):
     assert "never" in out["integrity_errors"].lower()
 
 
-@requires_ostler
 def test_warnings_do_not_block(tmp_path):
     # A knowledge surface with no matching feature doc → ungrounded-surface (warn), never a block.
     write_epic(tmp_path, "e1", seeds=[{"id": "i1"}], stories=[{"slug": "s1", "covers": ["i1"]}])

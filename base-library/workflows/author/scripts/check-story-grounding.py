@@ -2,35 +2,32 @@
 """Thin deterministic grounding pre-gate for a written story — ostler-backed (fail-closed).
 
 ``validate-story.py`` checks a story is *structurally* a coder-ready contract. It cannot check
-that the story is *grounded* — that the surface was actually researched and (when feature docs
-are configured) its user journey was actually read. This gate enforces those machine-checkable
-preconditions so the adversarial ``audit-story`` agent isn't wasted re-judging a story that
-structurally cannot be grounded. It is the author analog of the coder's ``verify_qa_evidence.py``.
+that the story is *grounded* — that it was written against the surface documentation instead of
+from the author agent's imagination. This gate enforces those machine-checkable preconditions so
+the adversarial ``audit-story`` agent isn't wasted re-judging a story that structurally cannot be
+grounded. It is the author analog of the coder's ``verify_qa_evidence.py``.
 
 Strictly presence/structure — **no semantic judgment** (that is the auditor's job):
 
   - every seed item this story ``covers`` exists in the epic's seeds (no phantom scope) — read
     from ``epic.md`` via the in-process ostler API (``Ostler.list``);
-  - a surface **knowledge record** (a ``knowledge`` Concept) exists that this story grounds in
-    (matched generously by slug / seed-item / legacy-surface tokens — proves gather_knowledge ran);
-  - **iff** the graph actually holds ``feature`` Concepts: that matched record actually read the
-    feature doc / journey — its ``journeys[]`` is non-empty OR ``provenance.sourcesRead``
-    references a path under ``features_dir`` (proves the journey grounding ran, not just that a
-    record exists). Armed on the *graph*, not on ``features_dir`` — which ``load-config.py``
-    defaults unconditionally, so it is never falsy and would arm this check on a greenfield repo
-    that legitimately has no feature docs yet. Same opt-in-by-presence discipline as
-    ``verify-surface-coverage.py``; as feature Concepts accrue (including ones
-    ``gather_knowledge`` drafts mid-run) the check re-arms itself with no flag.
+  - **iff** the graph actually holds OKF UI nodes: the story cites at least one of them, and
+    every citation it does make resolves. A UI node's identity is a repo-relative path (or
+    ``path#anchor``), so a citation is an ordinary markdown link and
+    ``ostler query surfaces-referenced-by-story`` resolves it — ``kind: "ui"`` for a citation
+    that lands on a node, ``kind: "missing"`` for one that lands on nothing.
 
-Stdlib-only except for the in-process ``ostler`` API (``from ostler import Ostler``) and PyYAML,
-which ships with the system interpreter, to read the matched record's front-matter for the journey
-check.
+    Armed on the *graph*, not on a configured path: author only ever **reads** the book (the
+    okf-builder writes it, from code that exists), so as UI nodes accrue this check re-arms
+    itself with no flag, and a greenfield repo whose book is still empty is not asked to cite
+    what does not exist yet.
+
+Stdlib-only except for the in-process ``ostler`` API (``from ostler import Ostler``).
 
 Args:
     argv[1]  story_dir      : repo-relative story folder (…/stories/<slug>)
     argv[2]  epic_dir       : repo-relative epic folder (docs/epics/<epic>)
-    argv[3]  knowledge_dir  : repo-relative knowledge-record root (informational)
-    argv[4]  features_dir   : repo-relative feature-doc root ('' ⇒ presence-only grounding)
+    argv[3]  features_dir   : repo-relative feature-doc root (informational)
 
 Outputs JSON: {"story_grounding_ok": "yes"|"no", "story_grounding_errors": "<newline-joined>"}
 """
@@ -39,36 +36,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import NoReturn
 
 from ostler import Ostler
-
-try:
-    import yaml
-except ImportError:  # pragma: no cover - PyYAML ships with the system interpreter here
-    yaml = None
-
-_FRONT_MATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*(?:\n|$)", re.S)
-
-
-def load_record(text: str) -> dict:
-    """Parse a knowledge record (``.md`` with YAML front-matter)."""
-    if text.lstrip().startswith("---"):
-        m = _FRONT_MATTER_RE.match(text)
-        if not m or yaml is None:
-            return {}
-        try:
-            data = yaml.safe_load(m.group(1))
-        except yaml.YAMLError:
-            return {}
-        return data if isinstance(data, dict) else {}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {}
 
 
 def find_repo_root() -> Path:
@@ -90,19 +62,9 @@ def emit(ok: bool, errors: list[str]) -> NoReturn:
     sys.exit(0)
 
 
-def norm(s: object) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", str(s or "").lower()).strip("-")
-
-
-def tokens(s: object) -> set[str]:
-    """Meaningful (≥3 char) sub-tokens of a normalized string."""
-    return {t for t in norm(s).split("-") if len(t) >= 3}
-
-
 def main(logger: logging.Logger) -> None:
     story_dir_rel = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     epic_dir_rel = sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else ""
-    features_dir = sys.argv[4].strip() if len(sys.argv) > 4 and sys.argv[4] else ""
 
     errors: list[str] = []
     if not story_dir_rel or not epic_dir_rel:
@@ -120,8 +82,7 @@ def main(logger: logging.Logger) -> None:
     except (OSError, ValueError, RuntimeError):
         logger.warning("could not read the epic's seeds via the ostler API for %s", epic)
         emit(False, ["could not read the epic's seeds via the ostler API"])
-    seed_by_id = {str(s.get("id", "")).strip(): s for s in seeds if s.get("id")}
-    seed_ids = set(seed_by_id)
+    seed_ids = {str(s.get("id", "")).strip() for s in seeds if s.get("id")}
 
     stories = okf.list("story", epic=epic)
     story_row = next((s for s in stories if str(s.get("slug", "")).strip() == slug), None)
@@ -131,61 +92,24 @@ def main(logger: logging.Logger) -> None:
         if seed_ids and sid not in seed_ids:
             errors.append(f"story claims seed item '{sid}' that is not in the epic's seeds (phantom scope)")
 
-    # legacySurface / currentState of this story's seed items strengthen record matching.
-    legacy_surfaces: list[str] = []
-    for sid in story_seed_items:
-        s = seed_by_id.get(sid, {})
-        legacy_surfaces += [s.get("legacySurface"), s.get("currentState")]
-
-    # ── a knowledge record exists that this story grounds in ──
-    needles: set[str] = tokens(slug)
-    for sid in story_seed_items:
-        needles |= tokens(sid)
-    for ls in legacy_surfaces:
-        needles |= tokens(ls)
-
-    records = okf.list("knowledge")
-    matched_path: str | None = None
-    if needles:
-        for rec in records:
-            rec_tokens = (tokens(rec.get("surface")) | tokens(rec.get("route"))
-                          | tokens(Path(str(rec.get("path", ""))).stem))
-            if needles & rec_tokens:
-                matched_path = str(rec.get("path", ""))
-                break
-
-    if matched_path is None:
-        logger.info("no surface knowledge record grounds story '%s'", slug)
-        errors.append(
-            "no surface knowledge record grounds this story — gather_knowledge must research the "
-            "surface (a knowledge Concept whose surface/route matches this story) before it can be "
-            "written"
-        )
-
-    # ── feature-doc / journey grounding actually ran (only when feature Concepts exist) ──
-    # Opt-in by presence of the Concepts themselves, not by `features_dir` being set: that
-    # path is defaulted unconditionally by load-config.py, so arming on it would hard-fail
-    # every greenfield story. An empty-but-present docs/features/ leaves this disarmed too.
-    try:
-        feature_concepts = okf.list("feature")
-    except (OSError, ValueError, RuntimeError):
-        feature_concepts = []
-    if features_dir and matched_path and feature_concepts:
-        record = {}
-        rec_file = root / matched_path
-        if rec_file.is_file():
-            record = load_record(rec_file.read_text(encoding="utf-8"))
-        journeys = record.get("journeys")
-        sources = (record.get("provenance") or {}).get("sourcesRead") or []
-        feat_norm = norm(features_dir)
-        read_feature_doc = any(feat_norm and feat_norm in norm(s) for s in sources)
-        has_journeys = isinstance(journeys, list) and len(journeys) > 0
-        if not (has_journeys or read_feature_doc):
-            logger.info("journey grounding did not run for story '%s'", slug)
+    # ── the story cites the OKF book (only once the book actually holds nodes) ──
+    # Opt-in by presence of the nodes themselves: author reads the book, it never builds it,
+    # so a repo whose okf-builder has not run yet has nothing to cite and must not hard-fail.
+    if okf.graph.ui_nodes:
+        refs = okf.query("surfaces-referenced-by-story", slug)
+        cited = [r for r in refs if r.get("kind") == "ui"]
+        dangling = [str(r.get("path", "")) for r in refs if r.get("kind") == "missing"]
+        for path in dangling:
             errors.append(
-                "feature docs are configured but this surface's knowledge record records no "
-                "user journey (empty `journeys[]` and no `provenance.sourcesRead` under "
-                f"'{features_dir}') — the journey grounding did not run"
+                f"story cites '{path}', which resolves to no OKF node — cite the node's id "
+                "exactly as the book spells it (a repo-relative path, or path#anchor)"
+            )
+        if not cited:
+            logger.info("story '%s' cites no OKF node", slug)
+            errors.append(
+                "story cites no OKF node — link the ids of the surface/component/interaction "
+                "nodes this story works on from its `## Context`, so the scope is grounded in "
+                "the book instead of asserted"
             )
 
     logger.info("story '%s' grounding: %s", slug, "ok" if not errors else f"{len(errors)} error(s)")

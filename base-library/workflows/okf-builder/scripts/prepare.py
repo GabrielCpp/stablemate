@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+from ostler import Ostler
 from workhorse.scriptutil import find_docs_root
 
 
@@ -72,15 +73,11 @@ def load_worklist(wl: Path, service: str, features: Path) -> tuple[dict, bool]:
 def ostler_loads(root: Path) -> tuple[str, str]:
     """Whether ostler can load an OKF graph at this root, and why not if it cannot.
 
-    The import sits here rather than at module scope so an ostler that will not import is
-    reported as ``ostler_ok="no"`` — the branch this script exists to feed. At module scope
-    it killed the script with a traceback before ``main()`` could emit anything, so the
-    fail-soft guard could not fire for the one condition it is named after.
+    This is about the *graph*, not about ostler: an interpreter that cannot import ostler
+    never gets here, because the workflow declares ``dist: ostler`` in ``requires:`` and
+    workhorse refuses to start the run. What remains — a root with no book, an unreadable
+    one — is a real, reportable state of the repo, and is what ``ostler_ok`` branches on.
     """
-    try:
-        from ostler import Ostler
-    except ImportError as exc:
-        return "no", f"ostler is not importable by this interpreter: {exc}"
     try:
         _ = Ostler(root).graph
     except (OSError, ValueError, RuntimeError) as exc:

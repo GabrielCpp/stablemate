@@ -86,7 +86,7 @@ WORKDIR /app
 # the image and an edit reaches the sidecar with no image rebuild. A container
 # with no groom bind just runs without a sidecar.
 # ostler, by contrast, must be baked in globally: workflow script nodes
-# (validate-artifacts.py, verify-surface-coverage.py, reconcile-artifacts.py,
+# (validate-artifacts.py, reconcile-artifacts.py, check-story-grounding.py,
 # ostler-doctor.py) shell out to `ostler` directly as workhorse subprocesses,
 # not through an agent's own shell — an agent ad hoc `uv tool install ostler`-ing
 # itself mid-run does not make the binary visible to those sibling script processes.

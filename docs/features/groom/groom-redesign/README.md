@@ -9,10 +9,18 @@ status: implemented
 
 Superdesign output for reworking groom's UI from its single 7-column table into
 an **IDE-style operator console** (Zed / VSCode metaphor). This folder is the
-signed-off design result; implementation into the live
-`groom/` package is tracked separately.
+signed-off design result, and the design shipped.
 
-See [`../groom.md`](../groom.md) for the feature's architecture and signal model.
+Read it as a **design record**: it is what was agreed, not a description of the
+console as built. The console has moved on in two ways since — the **Inbox** and
+**Fleet** modes merged into one **Runs** pane, and several palette values changed
+to clear WCAG 2 AA contrast. [`design-system.md`](design-system.md) *is*
+maintained against the shipped CSS and records both. `groom-ide.html` is not
+maintained at all.
+
+See [`../groom.md`](../groom.md) for the feature's architecture and signal model,
+and [the dashboard screen doc](../gui/screens/groom-dashboard.md) for the
+console as it actually stands.
 
 ## Contents
 
@@ -31,7 +39,8 @@ A three-pane IDE shell over a live status bar:
 
 - **Activity bar** (left rail) — switch mode: **Inbox** (triage, blocked-first) ·
   **Fleet** (browse the whole repo→worker tree) · **Changes** (working-tree
-  diffs) · **Settings**.
+  diffs) · **Settings**. *(As built: Inbox and Fleet became one **Runs** pane,
+  Changes became **Diff**, and **Files** and **Telemetry** were added.)*
 - **Picker** — live `Repository → worker` tree; each repo header shows a compact
   type summary (`coder×2 author×1`) + a red blocked-count pill; each worker shows
   a state dot, type badge, `#id`, and current node.
@@ -46,9 +55,11 @@ A three-pane IDE shell over a live status bar:
 
 ## Load-bearing properties carried from groom (preserved by the design)
 
-- Gate questions are untrusted LLM-authored markdown → escaped `data-md` text
-  node → `marked` → `DOMPurify` only (the mockup includes an `<img onerror>` /
-  `<script>` XSS probe that renders inert).
+- Gate questions are untrusted LLM-authored markdown → `marked` → `DOMPurify`
+  only (the mockup includes an `<img onerror>` / `<script>` XSS probe that
+  renders inert). *(As built the markdown arrives as a JSON string rather than
+  through an escaped `data-md` text node — the server emits no markup at all —
+  but the sanitize-before-insert rule is unchanged.)*
 - Diffs render client-side with `diff2html` from `/diff/{id}` text (dark scheme).
 - No runtime CDN; every asset is vendored. No Node / bundler.
 

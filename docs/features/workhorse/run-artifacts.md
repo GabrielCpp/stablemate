@@ -63,6 +63,14 @@ state changes:
   after a resume (re-marked in-progress until it finishes again).
 - `terminal` — type `enum{terminal,fail} | null` — default `null` (in progress); the terminal node's
   `type` once the run ends.
+- `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
+  [`record_interrupt`](concepts/artifact-writer.md#record_interruptnode_id-error) when an operator
+  Ctrl-C stops the run. `terminal` stays `null` (an interrupted run must remain auto-resumable), so
+  this field is what separates *stopped by a human* from *still in flight, or wedged in a node* —
+  which are otherwise the same bytes on disk. Cleared by the next write: a resume, or the run
+  finishing.
+- `error` — type `string | null` — default `null`; the exception name accompanying
+  `interrupted_at` (today always `KeyboardInterrupt`).
 
 ### checkpoint.json
 - type: `object` — required: yes — default: absent until the first node is about to run
@@ -96,10 +104,12 @@ crash a run. Each line:
 - `seq` — type `int`, required — the checkpoint seq active when the event was recorded.
 - `node` — type `string`, required — the node id, or the literal `<run>` for the run-level
   `terminal` event.
-- `phase` — type `enum{enter,done,terminal}`, required.
+- `phase` — type `enum{enter,done,terminal,error}`, required.
 - extra fields — merged in by the call site: a `done` event adds `next` (type `string | null`); the
-  run-level `terminal` event adds `terminal` (type `enum{terminal,fail}`); an `enter` event carries
-  no extra fields today.
+  run-level `terminal` event adds `terminal` (type `enum{terminal,fail}`); an `error` event adds
+  `error` (type `string`) and closes the in-flight node's `enter` window when a Ctrl-C stops the run
+  (see [`record_interrupt`](concepts/artifact-writer.md#record_interruptnode_id-error)); an `enter`
+  event carries no extra fields today.
 
 ### context.json
 - type: `object` — required: no — default: `{}` (present only after the run reaches a terminal

@@ -5,30 +5,29 @@ title: Dashboard discovery scanning flag
 ---
 # Dashboard discovery scanning flag
 
-Dashboard discovery scanning flag is groom's process-local boolean owned by the [groom state module](groom-state-module.md#field-scanning) that tells dashboard renderers whether a container discovery pass is currently in flight. The [operator inbox](../operator-inbox.md) reads it when an empty inbox must choose between the normal inbox-zero state and the discovery-loading placeholder, the [dashboard shell fragment](../dashboard-shell-fragment.md#field-discovery-scanning-flag-input) carries that choice into websocket replacement HTML, the [search fragment endpoint](../http/groom.md#get-search-fragment) can return the same inbox loading placeholder for an empty unfiltered search response, [startup background discovery scan](startup-background-discovery-scan.md) clears it when initial discovery exits, and the [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation mutates it around manual reconciliation so connected dashboard tabs can show provisional loading state during a scan.
+Dashboard discovery scanning flag is groom's process-local boolean owned by the [groom state module](groom-state-module.md#field-scanning) that says whether a container discovery pass is currently in flight. It rides the wire as the `scanning` boolean on every [dashboard state payload](../dashboard-state-payload.md#field-scanning) — both the socket push and the [HTTP resync](../http/groom.md#get-dashboard-state) — and the browser decides the wording from it. [Startup background discovery scan](startup-background-discovery-scan.md) clears it when initial discovery exits, and the [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation mutates it around manual reconciliation so connected tabs can show provisional loading state during a scan.
+
+The flag exists because an empty fleet is two different facts. *Not scanned yet* and *scanned and genuinely empty* look identical in the run list, and only the server knows which one it is holding. Sending the boolean rather than the sentence keeps that judgement on the server and the wording in the browser, which is the same split every other field on the payload obeys.
 
 - code: groom/groom/state.py::SCANNING
 - verify: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 - verify: groom/tests/test_app.py::test_background_scan_clears_scanning_on_error
-- verify: groom/tests/test_render.py::test_empty_inbox_message
-- verify: groom/tests/test_render.py::test_empty_inbox_shows_spinner_while_scanning
-- verify: groom/tests/test_render.py::test_empty_inbox_shows_empty_state_when_not_scanning
-- verify: groom/tests/test_render.py::test_search_with_query_shows_empty_not_spinner_even_while_scanning
+- verify: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
+- verify: groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload
 
 ## Contract
 
-- scope: one in-memory boolean per groom server process; it is shared by HTTP handlers, background discovery, websocket shell rendering, and inbox rendering inside that process.
+- scope: one in-memory boolean per groom server process; it is shared by HTTP handlers, background discovery, and every state projection inside that process.
 - ownership: the flag is the `SCANNING` public data member of the [groom state module](groom-state-module.md#field-scanning); this concept owns its presentation-state semantics while the module concept owns the complete public-member inventory.
 - initial value: `True`, so the first served dashboard can display discovery loading until startup discovery has either completed or failed through the background scan path.
 - true meaning: a startup or manual container-discovery pass is considered in flight for dashboard presentation purposes.
-- false meaning: no discovery pass is currently advertised to the dashboard; an empty inbox should read as empty unless a caller sets the flag true before rendering.
-- empty-inbox effect: when true and the inbox query is empty, the [operator inbox empty-or-loading method](../operator-inbox.md#method-render-empty-or-loading) renders `Discovering containers…` instead of `No incoming messages — inbox zero.`.
-- filtered-empty rule: a non-empty inbox query ignores the flag and renders the ordinary empty-result text, because the operator is narrowing the current known fleet rather than waiting for discovery.
-- shell-fragment effect: the [dashboard shell fragment](../dashboard-shell-fragment.md) does not expose the raw boolean; it reflects the flag only through the delegated inbox-list fragment, while the status-bar fragment ignores it.
-- search-fragment effect: the [search fragment endpoint](../http/groom.md#get-search-fragment) renders only the inbox fragment and therefore can reflect the flag when `q` is empty and no gated workflows match; a non-empty `q` suppresses the loading placeholder even while the flag is true.
-- startup completion effect: [startup background discovery scan](startup-background-discovery-scan.md) sets the flag false after its reconciliation attempt exits, including when reconciliation raises, then broadcasts the dashboard shell with the completed loading state.
-- manual refresh start effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag true and broadcasts the dashboard shell before Docker reconciliation starts, so connected tabs can see the loading state before scan results arrive.
-- manual refresh completion effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag false after the reconciliation attempt exits; a successful refresh then broadcasts the completed shell and returns `ok: true` with the discovered workflow count.
+- false meaning: no discovery pass is currently advertised to the dashboard; an empty fleet is a finished, honest answer unless a caller sets the flag true again.
+- empty-fleet effect: when the frame carries `scanning: true`, the fleet is empty, *and* the operator's filter box is empty, the [runs live region](../gui/screens/groom-dashboard.md#runs-live-region) reads `Discovering containers…` instead of `No workhorse runs — nothing is running.`. The server picks neither string; it sends the boolean.
+- filtered-empty rule: a non-empty filter query ignores the flag and shows the ordinary empty-result text, because the operator is narrowing the currently known fleet rather than waiting for discovery. The filter is client-side, so this decision is the browser's alone.
+- wire effect: the [dashboard state payload](../dashboard-state-payload.md#field-scanning) serializes the raw boolean as `scanning`, and both the socket push and the HTTP resync body carry it. A tab that recovers by polling therefore learns the same loading state a tab on a live socket sees, from the same field.
+- startup completion effect: [startup background discovery scan](startup-background-discovery-scan.md) sets the flag false after its reconciliation attempt exits, including when reconciliation raises, then broadcasts one state payload carrying the cleared flag.
+- manual refresh start effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag true and broadcasts one state payload before Docker reconciliation starts, so connected tabs can see the loading state before scan results arrive.
+- manual refresh completion effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag false after the reconciliation attempt exits; a successful refresh then broadcasts a second state payload and returns `ok: true` with the discovered workflow count.
 - concurrency: no cross-process coordination, database, external broker, lock, reference count, or per-scan token participates; overlapping refreshes share the same process-local flag, so any refresh completion can clear the advertised loading state for the process.
 - lifetime: resets to the initial value on process start and is lost on process exit.
 - non-goal: the flag is presentation state only; it does not prove Docker is reachable, does not serialize scans, does not indicate that the workflow registry is complete, and does not change workflow, gate, sidecar, or browser selection data by itself.
@@ -41,10 +40,10 @@ Dashboard discovery scanning flag is groom's process-local boolean owned by the 
 - default: `True`
 - required: true
 - code: groom/groom/state.py::SCANNING
-- meaning: current process-level discovery-loading state consumed by dashboard fragment renderers and mutated by startup and manual discovery orchestration.
+- meaning: current process-level discovery-loading state consumed by the JSON projection and mutated by startup and manual discovery orchestration.
 - producer: module initialization creates the value before the server starts accepting requests; startup background discovery and manual refresh later assign boolean values directly.
-- consumer: inbox empty-state rendering reads the value only after filtering leaves no matching inbox rows.
-- visibility: user-visible only through rendered inbox fragments returned by HTTP search, rendered dashboard shell fragments, and websocket broadcasts; no HTTP response exposes the raw boolean as a standalone field.
+- consumer: the state projection reads the value on every payload it builds; the browser's fleet island then reads the serialized field only after client-side filtering leaves no matching rows.
+- visibility: serialized as the `scanning` boolean on every state payload, so it is visible verbatim to any client of `GET /api/state` as well as to the dashboard.
 - detail: [groom state module field](groom-state-module.md#field-scanning)
 
 ## State Changes
@@ -60,10 +59,11 @@ Dashboard discovery scanning flag is groom's process-local boolean owned by the 
 
 ## Readers
 
-- [method-render-empty-or-loading](../operator-inbox.md#method-render-empty-or-loading): reads the flag only when deciding how to render an empty inbox fragment; true plus empty query emits the loading placeholder, and false or any non-empty query emits the supplied empty text.
-- [dashboard shell fragment](../dashboard-shell-fragment.md#field-discovery-scanning-flag-input): observes the flag indirectly through the delegated inbox renderer and never serializes the raw boolean as a field.
-- [search fragment endpoint](../http/groom.md#get-search-fragment): observes the flag indirectly by calling the inbox renderer for an HTTP response that replaces only `#inbox-list`.
-- [dashboard shell broadcaster](dashboard-shell-broadcaster.md): observes the flag indirectly by rendering the inbox as part of shell broadcasts after startup discovery, manual refresh start, manual refresh completion, sidecar updates, push updates, and answer handling.
+- [state message](groom-projection-module.md#method-state-message): the only direct server-side reader. It copies the flag into the payload's `scanning` field and makes no wording decision from it.
+- [dashboard state payload](../dashboard-state-payload.md#field-scanning): carries the boolean verbatim on the socket push and on the HTTP resync body alike.
+- [serve dashboard state](../http/groom.md#serve-dashboard-state): returns the same projection, so a polling client sees the same flag as a socket client.
+- [dashboard shell broadcaster](dashboard-shell-broadcaster.md): observes the flag through the projection on every broadcast — after startup discovery, manual refresh start and completion, sidecar updates, push updates, answer handling, and every live-clock tick.
+- the browser's fleet island: the only reader that turns the boolean into words, and only when the fleet is empty and the filter box is too.
 
 ## Writers
 
@@ -83,9 +83,10 @@ Dashboard discovery scanning flag is groom's process-local boolean owned by the 
 ## Source Touchpoints
 
 - field: `groom/groom/state.py::SCANNING` stores the value and sets its import-time default to `True`.
-- reader: `groom/groom/render.py::_empty_or_loading` is the only direct source reader; it reads the flag after inbox filtering has produced no rows.
-- HTTP reader: `groom/groom/app.py::search` reaches the reader through `render.render_inbox` and returns the resulting inbox fragment without mutating the flag.
-- websocket reader: `groom/groom/app.py::_broadcast_shell` reaches the reader through `render.render_shell_data` and `render.render_inbox` before enqueueing the shell fragment.
+- reader: `groom/groom/projection.py::state_message` is the only direct source reader; it serializes the flag as `scanning` on every payload it builds.
+- HTTP reader: `groom/groom/app.py::api_state` reaches the reader through `projection.state_message` and returns the flag in the resync body without mutating it.
+- websocket reader: `groom/groom/app.py::_broadcast_shell` reaches the same projection before enqueueing the payload.
+- browser reader: `groom/groom/assets/dashboard.js::Fleet` is the only consumer that converts the boolean into visible text.
 - startup writer: `groom/groom/app.py::_background_scan` clears the flag to `False` in its cleanup path.
 - refresh writer: `groom/groom/app.py::refresh` sets the flag to `True` before its pre-scan broadcast and clears it to `False` in the reconciliation cleanup path.
-- non-touchpoints: discovery scanning, Docker I/O, sidecar sessions, gate answering, workflow upsert/prune helpers, and static dashboard template serving do not read or assign the flag directly.
+- non-touchpoints: discovery scanning, Docker I/O, sidecar sessions, gate answering, workflow upsert/prune helpers, and static dashboard document serving do not read or assign the flag directly. The served HTML in particular carries no loading state at all — the shell mounts with the client's own `scanning: true` default until the first payload arrives.

@@ -1,17 +1,27 @@
 #!/usr/bin/env python3
 """Select the next story in an epic whose story.md still needs writing — ostler-backed.
 
-The story dependency-DAG now lives in the epic's ``epic.md`` (``## Stories``), not a
-``dependencies.json`` — ostler reads it back. This selector asks ostler for the epic's
-stories (``Ostler(root).list("story", epic=<epic>)``), topologically sorts them by their
-``dependsOn`` edges (the same order coder executes them in), and returns the first story
-whose ``story.md`` is missing OR has no ``- **Status**:`` line yet (a placeholder/empty
-file from a partial run). When every story has a real ``story.md``, ``has_story`` is
-``"no"`` and the workflow proceeds to epic-coverage validation.
+The story dependency-DAG lives in the epic's ``epic.md`` (``## Stories``), not a
+``dependencies.json``. **ostler answers the whole question**: ``Ostler.next_story_report(epic,
+need="author")`` walks that DAG in dependency order — the order coder builds in — and returns the
+first story that is not *authored*, i.e. whose ``story.md`` is missing or whose required sections
+(``registry.STORY_SECTIONS``) are still empty. When every story is written the report's state is
+``done``, ``has_story`` is ``"no"``, and the workflow proceeds to epic-coverage validation.
 
-Full rubric validation is the ``validate_story`` node's job; this selector only advances
-the loop, so a freshly written story is validated (and reworked if needed) before the loop
-comes back here and skips it.
+This script does not open a ``story.md`` and does not define "written" for itself. It used to:
+it selected on the presence of a ``- **Status**:`` line, which ``ostler create story`` writes into
+every scaffold — so every story was born "done", the loop routed straight past ``write_story``, and
+a run produced 44 empty stories and reported success. One definition of authored, owned by the
+graph's owner, is the fix.
+
+Full rubric validation is the ``validate_story`` node's job; this selector only advances the loop,
+so a freshly written story is validated (and reworked if needed) before the loop comes back here
+and skips it.
+
+Selection runs through the shared ``workhorse.worklist`` primitive: the DAG-ordered stories are a
+worklist whose *done* items are the authored ones, so ``select_next`` returns the first not-done
+story — the same pick as the report — and its ``snapshot`` gives the dashboard the "3/12 authored"
+progress the run had no way to show.
 
 Stdlib-only except for the in-process ``ostler`` Python API (``from ostler import Ostler``).
 
@@ -19,7 +29,8 @@ Args:
     argv[1]  epic_dir : repo-relative epic folder (e.g. docs/epics/<epic>)
 
 Outputs JSON: {"has_story": "yes"|"no", "story_path": "...", "story_slug": "...",
-               "story_dir": "...", "reason": "..."}
+               "story_dir": "...", "reason": "...", "progress": "...",
+               "remaining_count": "..."}
 """
 from __future__ import annotations
 
@@ -31,6 +42,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from ostler import Ostler
+from workhorse import worklist as wl
 
 
 def find_repo_root() -> Path:
@@ -44,40 +56,9 @@ def find_repo_root() -> Path:
     return here
 
 
-def topo(stories: list[dict]) -> list[dict]:
-    by_slug = {s.get("slug"): s for s in stories if s.get("slug")}
-    order: list[str] = []
-    seen: set[str] = set()
-    temp: set[str] = set()
-
-    def visit(slug: str) -> None:
-        if slug in seen or slug in temp:
-            return
-        temp.add(slug)
-        for dep in by_slug.get(slug, {}).get("dependsOn", []):
-            if dep in by_slug:
-                visit(dep)
-        temp.discard(slug)
-        seen.add(slug)
-        order.append(slug)
-
-    for s in stories:
-        if s.get("slug"):
-            visit(s["slug"])
-    return [by_slug[slug] for slug in order]
-
-
-def has_status_line(story_md: Path) -> bool:
-    if not story_md.is_file():
-        return False
-    for line in story_md.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("- **Status**:"):
-            return True
-    return False
-
-
 def emit(**kwargs: str) -> NoReturn:
-    payload = {"has_story": "no", "story_path": "", "story_slug": "", "story_dir": "", "reason": ""}
+    payload = {"has_story": "no", "story_path": "", "story_slug": "", "story_dir": "",
+               "reason": "", "progress": "", "remaining_count": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
@@ -89,36 +70,45 @@ def main(logger: logging.Logger) -> None:
         logger.warning("no epic_dir supplied")
         emit(reason="no epic_dir supplied")
     epic = Path(epic_dir_rel).name
-    root = find_repo_root()
-    okf = Ostler(root)
+    okf = Ostler(find_repo_root())
 
     try:
-        stories = okf.list("story", epic=epic)
+        report = okf.next_story_report(epic, need="author")
     except (OSError, ValueError, RuntimeError):
         logger.warning("could not read stories for epic '%s' via ostler's in-process API", epic)
         emit(reason=f"could not read stories for epic '{epic}' via ostler's in-process API")
-    if not stories:
-        logger.info("epic '%s' lists no stories yet — story-split must populate `## Stories`", epic)
-        emit(reason="epic lists no stories yet — story-split must populate `## Stories`")
 
-    for story in topo(stories):
-        slug = story.get("slug", "")
-        path = story.get("path", "")
-        if not slug or not path:
-            continue
-        story_md = root / path
-        if not has_status_line(story_md):
-            logger.info("selected story '%s' — story.md missing or has no Status line yet", slug)
-            emit(
-                has_story="yes",
-                story_path=path,
-                story_slug=slug,
-                story_dir=str(Path(path).parent),
-                reason="story.md missing or has no `- **Status**:` line yet",
-            )
+    # `state` distinguishes "nothing left to write" from "there was never anything to write" —
+    # an absent story is not a finished one, so an epic with no `## Stories` must route back to
+    # story-split rather than read as authored.
+    if report["state"] in ("no-epic", "no-stories"):
+        logger.info("%s", report["detail"])
+        emit(reason=report["detail"])
 
-    logger.info("every story in epic '%s' has a written story.md", epic)
-    emit(reason="every story in the epic has a written story.md")
+    # The report's own tallies are the worklist: `done` stories are authored, `remaining` are the
+    # unwritten ones, in DAG order. Feeding them to the shared primitive keeps the dashboard's
+    # "3/12" identical in shape to every other worklist node in the library.
+    items = ([{"id": f"authored-{i}", "status": "done"} for i in range(int(report["done"]))]
+             + [{"id": slug, "status": "pending"} for slug in report["remaining"]])
+    snap = wl.snapshot(items)
+
+    if report["state"] != "ready":
+        logger.info("every story in epic '%s' has a written story.md", epic)
+        emit(reason=report["detail"],
+             progress=snap["progress"], remaining_count=str(snap["remaining"]))
+
+    story = report["story"]
+    slug, path = str(story.get("slug", "")), str(story.get("path", ""))
+    logger.info("selected story '%s' — %s", slug, report["detail"])
+    emit(
+        has_story="yes",
+        story_path=path,
+        story_slug=slug,
+        story_dir=str(Path(path).parent),
+        reason=report["detail"],
+        progress=snap["progress"],
+        remaining_count=str(snap["remaining"]),
+    )
 
 
 if __name__ == "__main__":

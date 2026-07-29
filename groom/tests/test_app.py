@@ -22,7 +22,14 @@ def _reset() -> None:
     state.WORKFLOWS.clear()
     state._gate_locks.clear()
     state.CLIENTS.clear()
+    state.WATCHING.clear()
     sidecar_hub.CONNECTIONS.clear()
+    # Discovery-in-progress is fleet state too. SCANNING defaults to True at
+    # import, and every `_hermetic_client()` starts a background scan that
+    # clears it whenever the loop next gets a turn — so a case that projects
+    # the fleet twice can otherwise catch the flag on either side of that flip
+    # and see two legitimately different payloads.
+    state.SCANNING = False
 
 
 class _FakeConn:
@@ -84,6 +91,337 @@ def test_push_exited_rejects_missing_container_id():
     assert resp.json() == {"ok": False}
 
 
+# ---- the notify frame: an edge, on its own frame, carrying no markup ----
+def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
+    _reset()
+    wf = WorkflowContainer(
+        container_id="abc123", name="coder-acme", state=WorkflowState.RUNNING, workspace_volume="v"
+    )
+    state.WORKFLOWS["abc123"] = wf
+
+    captured: list[dict] = []
+
+    async def _capture_broadcast(message):
+        captured.append(message)
+
+    with patch.object(state, "broadcast", _capture_broadcast):
+        client = _hermetic_client()
+        try:
+            resp = client.post(
+                "/push/blocked",
+                json={"container_id": "abc123", "file_path": "docs/gate.md", "question": "Ship it?"},
+            )
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": True}
+    assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
+    # The alert rides its own frame rather than a field on the snapshot, so it
+    # fires on the block and not on every clock tick that re-pushes it.
+    kinds = [m["type"] for m in captured]
+    assert kinds.index("state") < kinds.index("notify")
+    notify_frame = next(m for m in captured if m["type"] == "notify")
+    assert notify_frame == {"type": "notify", "message": "coder-acme: Ship it?"}
+
+
+def test_socket_blocked_delta_sends_the_same_notify_frame_as_the_http_push():
+    _reset()
+    wf = WorkflowContainer(
+        container_id="abc123", name="coder-acme", state=WorkflowState.RUNNING, workspace_volume="v"
+    )
+    state.WORKFLOWS["abc123"] = wf
+
+    captured: list[dict] = []
+
+    async def _capture_broadcast(message):
+        captured.append(message)
+
+    with patch.object(state, "broadcast", _capture_broadcast):
+        asyncio.run(
+            groom_app._apply_socket_blocked(
+                "abc123", {"file_path": "docs/gate.md", "question": "Ship it?"}
+            )
+        )
+
+    assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
+    notify_frame = next(m for m in captured if m["type"] == "notify")
+    assert notify_frame == {"type": "notify", "message": "coder-acme: Ship it?"}
+
+
+def test_the_notify_message_truncates_the_question_to_the_limit():
+    _reset()
+    limit = groom_app._QUESTION_NOTIFY_LIMIT
+    question = "q" * (limit + 50)
+    wf = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.RUNNING, workspace_volume="v"
+    )
+    state.WORKFLOWS["abc123"] = wf
+
+    captured: list[dict] = []
+
+    async def _capture_broadcast(message):
+        captured.append(message)
+
+    with patch.object(state, "broadcast", _capture_broadcast):
+        asyncio.run(
+            groom_app._apply_socket_blocked("abc123", {"file_path": "g.md", "question": question})
+        )
+
+    # A toast is an interruption, not the pane: the whole question is already on
+    # the wire in the run's detail payload.
+    notify_frame = next(m for m in captured if m["type"] == "notify")
+    assert notify_frame["message"] == "w: " + "q" * limit
+
+
+# ---- run detail + its refreshable slices (the fleet list's click target) ----
+def test_worker_detail_and_pushed_slices():
+    _reset()
+    wf = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.RUNNING,
+        current_node="write_epic", run_id="run-1",
+    )
+    state.WORKFLOWS["abc123"] = wf
+
+    client = _hermetic_client()
+    try:
+        detail = client.get("/worker/abc123")
+        pushed = groom_app._detail_message(wf)
+    finally:
+        client.__exit__(None, None, None)
+
+    # The fetch and the push must deliver the *same* object, because the client
+    # feeds both to one store slot: a pushed refresh that carried less than the
+    # fetch would make the pane change every time it reconnected. It can carry the
+    # whole pane — gates included — because the components are keyed, so the answer
+    # textarea keeps its DOM node and a half-typed answer survives the re-render.
+    assert detail.json() == pushed["detail"]
+    assert pushed["type"] == "detail" and pushed["id"] == "abc123"
+    assert pushed["detail"]["found"] is True
+    assert pushed["detail"]["head"]["node"] == "write_epic"
+
+
+def test_the_live_slice_endpoint_is_gone():
+    # Phase 2 replaced a per-tab 5s poll with a subscription. Leaving the route
+    # registered would let a stale cached page keep polling it forever, and the
+    # push path would never be the only one exercised.
+    _reset()
+    client = _hermetic_client()
+    try:
+        assert client.get("/worker/abc123/live").status_code == 404
+    finally:
+        client.__exit__(None, None, None)
+
+
+# ---- the per-tab subscription: who has which run open ----
+def test_watch_registers_the_tab_and_pushes_that_run_immediately():
+    # The immediate push is what makes a reconnect self-healing: the client re-sends
+    # `watch` on every socket open and gets current slices back without a fetch.
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
+        return queue, queue.get_nowait()
+
+    queue, first = asyncio.run(drive())
+    assert state.WATCHING[queue] == "abc123"
+    assert first["type"] == "detail" and first["id"] == "abc123"
+
+
+def test_a_detail_push_reaches_only_the_tabs_watching_that_run():
+    # The whole point of the registry. Broadcasting every open run's detail to every
+    # tab costs bandwidth proportional to tabs × runs, and each tab discards nearly
+    # all of it — which is what the old per-tab poll was avoiding by other means.
+    _reset()
+    for cid in ("abc123", "def456"):
+        state.WORKFLOWS[cid] = WorkflowContainer(
+            container_id=cid, name=cid, state=WorkflowState.RUNNING, run_id=cid
+        )
+
+    async def drive():
+        watcher, other, idle = asyncio.Queue(), asyncio.Queue(), asyncio.Queue()
+        for q in (watcher, other, idle):
+            state.add_client(q)
+        state.watch(watcher, "abc123")
+        state.watch(other, "def456")
+        await groom_app._push_detail("abc123")
+        return watcher, other, idle
+
+    watcher, other, idle = asyncio.run(drive())
+    assert watcher.get_nowait()["id"] == "abc123"
+    assert other.empty() and idle.empty()
+
+
+def test_a_closed_tab_stops_being_a_watcher():
+    # A subscription pointing at a queue nobody reads would grow WATCHING for the
+    # life of the process, and _push_detail would render for an audience of nobody.
+    _reset()
+    queue = asyncio.Queue()
+    state.add_client(queue)
+    state.watch(queue, "abc123")
+    state.remove_client(queue)
+    assert state.watched_ids() == set()
+    assert state.watchers_of("abc123") == []
+
+
+def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
+    # Same argument as the fleet list: "in node 12m" and the log trail are derived
+    # from `now`, and a merely-running run emits no state change to push.
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        state.watch(queue, "abc123")
+        task = asyncio.create_task(groom_app._live_loop())
+        try:
+            seen = []
+            while len(seen) < 2:
+                seen.append(await asyncio.wait_for(queue.get(), timeout=2.0))
+            return seen
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    with patch.object(groom_app, "LIVE_TICK_S", 0.01):
+        seen = asyncio.run(drive())
+
+    assert [m["type"] for m in seen] == ["state", "detail"]
+
+
+def test_api_state_is_the_resync_payload():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
+    )
+
+    client = _hermetic_client()
+    try:
+        body = client.get("/api/state").json()
+        filtered = client.get("/api/state", params={"q": "nomatch"}).json()
+    finally:
+        client.__exit__(None, None, None)
+
+    assert body["type"] == "state"
+    assert [r["id"] for r in body["runs"]] == ["abc123"]
+    assert body["status"]["counts"]["running"] == 1
+    assert filtered["runs"] == []
+
+
+def test_api_state_and_the_socket_push_the_same_payload():
+    # The point of the projection module: recovering from a dead socket is not a
+    # second rendering path that can rot unobserved, because it is the same JSON.
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
+    )
+
+    pushed = {}
+
+    async def _capture(message):
+        pushed["message"] = message
+
+    client = _hermetic_client()
+    try:
+        body = client.get("/api/state").json()
+        with patch.object(state, "broadcast", _capture):
+            asyncio.run(groom_app._broadcast_shell())
+    finally:
+        client.__exit__(None, None, None)
+
+    # `ts` is stamped per call, so compare everything the browser renders from.
+    assert {k: v for k, v in pushed["message"].items() if k != "ts"} == {
+        k: v for k, v in body.items() if k != "ts"
+    }
+
+
+# ---- the live clock: absence can't be pushed, so the list is re-rendered on a tick ----
+def test_live_loop_repushes_the_run_list_to_connected_clients():
+    # The row's liveness and its "silent 4m" / "in node 12m" are derived from
+    # `now` at projection time. Every other broadcast is edge-triggered, and the event
+    # that should turn a run's dot dead — it stopped emitting — is an absence, which
+    # no ingest can deliver. Without this tick the row keeps asserting it is alive.
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        task = asyncio.create_task(groom_app._live_loop())
+        try:
+            return await asyncio.wait_for(queue.get(), timeout=2.0)
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    with patch.object(groom_app, "LIVE_TICK_S", 0.01):
+        pushed = asyncio.run(drive())
+
+    assert pushed["type"] == "state"
+    assert [r["id"] for r in pushed["runs"]] == ["abc123"]
+
+
+def test_live_loop_skips_the_render_when_nobody_is_watching():
+    # A tick with no client attached would render the whole fleet into a fan-out of
+    # zero — pure cost on a machine left serving overnight.
+    _reset()
+    calls = []
+
+    async def drive():
+        task = asyncio.create_task(groom_app._live_loop())
+        await asyncio.sleep(0.1)  # many ticks at the patched interval
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    async def _spy():
+        calls.append(1)
+
+    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
+         patch.object(groom_app, "_broadcast_shell", _spy):
+        asyncio.run(drive())
+
+    assert calls == []
+
+
+def test_live_loop_survives_a_failing_tick():
+    # The watch must not be the thing that stops: one bad render (or a dead client)
+    # can't be allowed to kill the clock that reports everything else's death.
+    _reset()
+    calls = []
+
+    async def _boom():
+        calls.append(1)
+        raise RuntimeError("render blew up")
+
+    async def drive():
+        state.add_client(asyncio.Queue())
+        task = asyncio.create_task(groom_app._live_loop())
+        await asyncio.sleep(0.1)
+        alive = not task.done()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        return alive
+
+    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
+         patch.object(groom_app, "_broadcast_shell", _boom):
+        still_running = asyncio.run(drive())
+
+    assert still_running and len(calls) > 1  # kept ticking past the first failure
+
+
 # ---- Files/Diff panels: container+repo picker and per-checkout reads ----
 def test_repos_endpoint_lists_one_entry_per_container_repo():
     _reset()
@@ -99,13 +437,37 @@ def test_repos_endpoint_lists_one_entry_per_container_repo():
     finally:
         client.__exit__(None, None, None)
 
-    body = resp.text
-    assert body.count('role="option"') == 2
-    assert 'data-label="coder-001/acme"' in body and 'data-label="coder-001/globex"' in body
-    assert "pending" not in body  # volume-less workflow contributes no entry
+    groups = resp.json()
+    assert [g["container"] for g in groups] == ["abc123"]  # volume-less workflow contributes no group
+    assert [r["label"] for r in groups[0]["repos"]] == ["coder-001/acme", "coder-001/globex"]
 
 
-def test_files_endpoint_returns_newline_separated_paths():
+def test_repos_endpoint_reads_native_run_from_local_disk():
+    # A native run shares groom's host, so its checkouts are enumerated from local
+    # disk (localfs), never through a throwaway docker container.
+    _reset()
+    state.WORKFLOWS["nat1"] = WorkflowContainer(
+        container_id="nat1", name="author-docs-app", native=True,
+        workspace_volume="/host/checkout", state=WorkflowState.RUNNING,
+    )
+
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app.localfs, "list_repo_dirs", return_value=[""]) as ls, patch.object(
+            groom_app.docker_io, "list_repo_dirs",
+            side_effect=AssertionError("a native run must not touch docker"),
+        ):
+            resp = client.get("/repos")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert ls.call_args[0] == ("/host/checkout",)
+    groups = resp.json()
+    # a bare workspace-root entry (repo="") — the run is browsable even with no checkout under it
+    assert [g["repos"] for g in groups] == [[{"repo": "", "label": "author-docs-app"}]]
+
+
+def test_files_endpoint_returns_a_json_path_list():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
 
@@ -116,7 +478,7 @@ def test_files_endpoint_returns_newline_separated_paths():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "README.md\nsrc/a.py"
+    assert resp.json() == {"paths": ["README.md", "src/a.py"]}
     assert lf.call_args[0] == ("ws-vol", "acme")
 
 
@@ -131,7 +493,8 @@ def test_file_endpoint_joins_repo_and_path_and_returns_content():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "print(1)\n"
+    # `lang` is projected server-side so the extension table lives in one place.
+    assert resp.json() == {"path": "src/a.py", "content": "print(1)\n", "lang": "python"}
     assert rf.call_args[0] == ("ws-vol", "acme/src/a.py")
 
 
@@ -148,7 +511,7 @@ def test_file_endpoint_swallows_unsafe_path():
         client.__exit__(None, None, None)
 
     assert resp.status_code == 200
-    assert resp.text == ""
+    assert resp.json()["content"] == ""
 
 
 def test_diff_endpoint_passes_repo_through():
@@ -162,7 +525,7 @@ def test_diff_endpoint_passes_repo_through():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "diff --git a/x b/x\n"
+    assert resp.json() == {"diff": "diff --git a/x b/x\n"}
     assert gd.call_args[0] == ("ws-vol", "acme")
 
 
@@ -196,7 +559,7 @@ def test_refresh_skips_prune_when_docker_unavailable():
 
 
 # ---- answered gate: state flips to RUNNING + groom:answered is broadcast ----
-def test_handle_answer_flips_state_and_broadcasts_answered_script():
+def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
     _reset()
     wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
     wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
@@ -208,8 +571,8 @@ def test_handle_answer_flips_state_and_broadcasts_answered_script():
         state.clear_gate(cid, fp)  # mirror the real clear
         return AnswerResult(ok=True, message="answered")
 
-    async def _capture_broadcast(fragment):
-        captured["fragment"] = fragment
+    async def _capture_broadcast(message):
+        captured.setdefault("messages", []).append(message)
 
     with patch.object(groom_app, "answer_gate", _fake_answer_gate), \
          patch.object(state, "broadcast", _capture_broadcast):
@@ -220,8 +583,13 @@ def test_handle_answer_flips_state_and_broadcasts_answered_script():
         )
 
     assert state.WORKFLOWS["abc123"].state == WorkflowState.RUNNING
-    assert "groom:answered" in captured["fragment"]
-    assert "abc123" in captured["fragment"]
+    # The fleet changed shape (a gate closed) *and* this particular gate was
+    # answered: the first is fleet-wide, the second is what lets a tab decide
+    # whether the answered run is the one it has open.
+    kinds = [m["type"] for m in captured["messages"]]
+    assert "state" in kinds
+    answered = next(m for m in captured["messages"] if m["type"] == "answered")
+    assert answered["id"] == "abc123" and answered["file_path"] == "docs/gate.md"
 
 
 def test_handle_answer_failure_does_not_flip_or_dispatch():
@@ -306,7 +674,7 @@ def test_files_prefers_sidecar_socket_when_connected():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "a.py\nb.py"
+    assert resp.json() == {"paths": ["a.py", "b.py"]}
     lf.assert_not_called()  # socket served it; no throwaway container
 
 
@@ -322,7 +690,7 @@ def test_files_falls_back_to_volume_when_socket_errors():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "README.md"
+    assert resp.json() == {"paths": ["README.md"]}
     assert lf.call_args[0] == ("ws-vol", "acme")
 
 
@@ -338,7 +706,7 @@ def test_file_content_prefers_sidecar_socket():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "print(1)\n"
+    assert resp.json()["content"] == "print(1)\n"
     rf.assert_not_called()
 
 
@@ -354,7 +722,7 @@ def test_diff_prefers_sidecar_socket():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.text == "diff --git a/x b/x\n"
+    assert resp.json() == {"diff": "diff --git a/x b/x\n"}
     gd.assert_not_called()
 
 
@@ -455,6 +823,34 @@ def test_apply_hello_reconnect_rebuilds_gates_authoritatively():
     # Re-advertise is authoritative: the stale gate is gone and the worker is running again.
     assert state.WORKFLOWS["abc123def456"].gates == {}
     assert state.WORKFLOWS["abc123def456"].state == WorkflowState.RUNNING
+
+
+def test_the_shell_stamps_every_asset_url_with_the_files_version():
+    """An unstamped ``/assets/dashboard.js`` is a URL a browser may reuse from
+    cache without asking, so a client change can land while a tab keeps running
+    the old bundle against the new payload — silently.
+    """
+    html = groom_app.stamp_assets(
+        b'<link rel="stylesheet" href="/assets/dashboard.css">'
+        b'<script type="module" src="/assets/dashboard.js"></script>'
+    )
+    js = (groom_app.ASSETS_DIR / "dashboard.js").stat()
+    assert f'src="/assets/dashboard.js?v={int(js.st_mtime)}-{js.st_size}"'.encode() in html
+    assert b'href="/assets/dashboard.css?v=' in html
+
+
+def test_an_asset_that_is_not_on_disk_keeps_its_url():
+    """Stamping is an optimization of the cache story, not a routing decision: a
+    missing file still 404s at its own URL rather than at a mangled one.
+    """
+    html = b'<script src="/assets/nope.js"></script>'
+    assert groom_app.stamp_assets(html) == html
+
+
+def test_the_served_shell_is_the_stamped_one():
+    with TestClient(app=groom_app.create_app()) as client:
+        body = client.get("/").content
+    assert b'src="/assets/dashboard.js?v=' in body
 
 
 if __name__ == "__main__":

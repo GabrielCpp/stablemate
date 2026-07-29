@@ -28,6 +28,11 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:  # pragma: no cover - PyYAML ships with the local-worker runtime
+    yaml = None
+
 # Conventional fallbacks, tried after the repo-configured name.
 FALLBACK_ENV = ["GH_TOKEN", "GITHUB_TOKEN"]
 
@@ -50,13 +55,11 @@ def configured_token_env(root: Path) -> str | None:
     """The env-var name configured in agents.yml workflow.githubTokenEnv (or None)."""
     configured_path = os.environ.get("AGENT_CONFIG_FILE", "").strip()
     cfg = Path(configured_path) if configured_path else root / "agents.yml"
-    if not cfg.is_file():
+    if not cfg.is_file() or yaml is None:
         return None
     try:
-        import yaml  # available in the local-worker runtime
-
         data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
-    except Exception:
+    except (OSError, yaml.YAMLError):
         return None
     workflow = data.get("workflow") or {}
     if isinstance(workflow, dict):

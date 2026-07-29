@@ -12,7 +12,9 @@ from pathlib import Path
 
 from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas)
-from ostler.model import Graph, Epic
+from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
+from ostler.coverage import normalize_ref
+from ostler.model import Graph, Epic, section_gaps
 
 
 @dataclass
@@ -104,9 +106,6 @@ def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:
     counts only ``error``) stops treating it as a blocker. See ostler/waivers.py. Imported locally to
     keep the module import graph acyclic, matching ``_check_locators``' local ``locators`` import.
     """
-    from ostler import waivers as waivers_mod
-    from ostler.coverage import normalize_ref
-
     table = waivers_mod.load(graph)
     if not table:
         return
@@ -204,6 +203,15 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                              f"story '{story.slug}' has no story.md (path: {story.path or '?'})",
                              epic.name, story.slug))
         else:
+            # story.md says something — a file that is still the scaffold `ostler create story`
+            # wrote is not an authored story, and must not pass as one just by existing.
+            if story.unwritten_sections:
+                rel = story.story_md.relative_to(graph.root).as_posix()
+                f.append(Finding("error", "unwritten-story",
+                                 f"story '{story.slug}' is still a bare scaffold — "
+                                 f"{', '.join(story.unwritten_sections)} "
+                                 f"{'is' if len(story.unwritten_sections) == 1 else 'are'} empty",
+                                 epic.name, story.slug, path=rel, line=1))
             # knowledge paths referenced in prose exist on disk
             for ref in story.knowledge_refs:
                 if not (graph.root / ref).exists():
@@ -322,12 +330,13 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
 
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":
-        for heading in ftype.required_sections:
-            if doc.find_section(heading) is None:
-                f.append(Finding("error", "missing-required-section",
-                                 f"{rel}: {ftype.name} is missing its required `## {heading}` "
-                                 f"section", path=rel, line=1,
-                                 suggestion=f"## {heading}", fixable=True))
+        for spec, gap in section_gaps(doc, ftype.required_sections):
+            code = "missing-required-section" if gap == "missing" else "empty-required-section"
+            state = "is missing" if gap == "missing" else "leaves empty"
+            f.append(Finding("error", code,
+                             f"{rel}: {ftype.name} {state} its required `## {spec.heading}` "
+                             f"section", path=rel, line=1,
+                             suggestion=f"## {spec.heading}", fixable=(gap == "missing")))
 
 
 def _declares(path: Path, text: str, symbol: str) -> bool:
@@ -407,7 +416,6 @@ def _ui_graph(graph: Graph) -> dict | None:
     A graph that cannot be assembled is already reported by the checks above, so the UI-profile
     checks stay silent rather than reporting the same breakage in a second vocabulary.
     """
-    from ostler import graph as graph_mod
     try:
         return graph_mod.build(graph)
     except (OSError, ValueError, RuntimeError, KeyError):
@@ -425,8 +433,6 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
     Run per surface, because entry points are surface-scoped: a screen in ``web`` is not made
     reachable by a root declared in ``legacy``.
     """
-    from ostler import graph as graph_mod, reach
-
     surfaces = {n["surface"] for n in data["nodes"] if n["type"] == "screen"}
     for surface in sorted(s for s in surfaces if s):
         scoped = graph_mod.subset(data, surface)
@@ -467,8 +473,6 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
     name is one a screen reader announces as "button" and a test cannot address at all — the same
     omission, failing two audiences.
     """
-    from ostler import locators as loc_mod
-
     by_id = {n["id"]: n for n in data["nodes"]}
 
     def _at(node_id: str) -> dict:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import crud, doctor
+from ostler import crud, doctor, select
 from ostler.model import load
 
 
@@ -35,8 +35,16 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     assert story.seed_items == ["apercu-body"]
     assert story.story_md and story.story_md.exists()
     assert {s.id for s in epic.seeds} == {"apercu-body"}
-    # clean graph (seed covered, story present)
-    assert doctor.run(g2).errors == 0, [f.message for f in doctor.run(g2).findings if f.severity == "error"]
+
+    # A scaffold is not an authored story. This is the whole incident in one assertion: an
+    # author run created 44 of these, every checker read the scaffolded headings as evidence of
+    # writing, and the run reported success. `create_story` succeeds; the story is unwritten
+    # until somebody writes it, and `doctor` says so by name.
+    assert story.unwritten_sections == ["Context", "Acceptance Criteria"]
+    assert story.authored is False
+    unwritten = [f for f in doctor.run(g2).findings if f.code == "unwritten-story"]
+    assert [f.ref for f in unwritten] == ["01-apercu"]
+    assert "Context, Acceptance Criteria are empty" in unwritten[0].message
 
 
 def test_set_status_updates_frontmatter_and_line(repo: Path):
@@ -45,6 +53,56 @@ def test_set_status_updates_frontmatter_and_line(repo: Path):
     g = load(repo)
     story = g.find_story("01-foo")[1]
     assert story.status == "QA passed"
+
+
+def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
+    """A story may legitimately write about status and about QA passing. Neither is the field.
+
+    Both halves used to be text operations — a ``re.sub`` to write, a substring scan to read —
+    so a Context paragraph containing "QA passed" or a criterion headed "Status" was
+    indistinguishable from the ``- **Status**:`` bullet. Writing could hit the wrong line and
+    reading could return the wrong value; a story could report itself done on the strength of
+    its own prose. Both are now the parsed bullet, so the round-trip is exact and the
+    surrounding text comes back byte-identical.
+    """
+    g = load(tmp_path)
+    crud.create_epic(g, "billing", "Billing", prefix="pred")
+    crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
+    story_md = tmp_path / "docs/epics/billing/stories/01-apercu/story.md"
+    prose = (
+        "- The legacy screen's QA passed in 4.2; hold that behaviour.\n"
+        "- Status is shown in the header — do not move it.\n"
+    )
+    story_md.write_text(
+        story_md.read_text(encoding="utf-8").replace("## Context\n", f"## Context\n\n{prose}"),
+        encoding="utf-8",
+    )
+    before = story_md.read_text(encoding="utf-8")
+
+    assert crud.set_status(load(tmp_path), "01-apercu", "In progress").ok
+    after = story_md.read_text(encoding="utf-8")
+
+    assert prose in after, "the prose lines must survive the status write untouched"
+    assert after.count("Status") == before.count("Status"), "no line gained or lost the word"
+    assert "- **Status**: In progress" in after
+    # And the value reads back as the field — not as whatever the prose happens to say.
+    assert load(tmp_path).find_story("01-apercu")[1].status == "In progress"
+
+
+def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
+    """The read half on its own: prose mentioning "QA passed" must not make a story done."""
+    g = load(tmp_path)
+    crud.create_epic(g, "billing", "Billing", prefix="pred")
+    crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
+    story_md = tmp_path / "docs/epics/billing/stories/01-apercu/story.md"
+    story_md.write_text(
+        story_md.read_text(encoding="utf-8").replace(
+            "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),
+        encoding="utf-8",
+    )
+    story = load(tmp_path).find_story("01-apercu")[1]
+    assert story.status == "Not started"
+    assert not select.is_done(story.status)
 
 
 def test_delete_story_removes_block_and_dir(repo: Path):

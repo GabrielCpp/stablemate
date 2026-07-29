@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Mechanical referential-integrity gate over the planning-doc graph (via the ostler API).
 
-The surface-coverage gate relates authored work to the *feature set*; the per-epic coverage
-validator proves seeds map to stories *within* an epic. Neither catches the **cross-run drift**
-this gate does: a story referencing a seed that belongs to another epic, a knowledge path that
-resolves to nothing — the "AI forgot what it created itself" class. `ostler.doctor()` computes (never asserts) the graph facts and reports these as
+The per-epic coverage validator proves seeds map to stories *within* an epic; the story
+grounding gate proves a single story rests on real seeds and cites real surface docs. Neither
+catches the **cross-run drift** this gate does: a story referencing a seed that belongs to
+another epic, a doc reference that resolves to nothing — the "AI forgot what it created
+itself" class. `ostler.doctor()` computes (never asserts) the graph facts and reports these as
 typed findings; this node turns its error-level findings into a blocking gate so they route to
 the operator/resolver instead of shipping.
 
 Design (matches the other deterministic gates here):
 - **Opt-in by presence / fail-open on infra.** If the repo has no planning-doc graph, or the
   graph can't be loaded, the gate is a clean **skip** — it never blocks a run on tooling
-  problems (mirrors build-inventory / verify-surface-coverage).
+  problems (the same opt-in-by-presence stance the other author gates take).
 - **Errors block, warnings don't.** Only `severity == "error"` findings flip the gate to "no";
   `warn`-level (stale owners, schema nits) are surfaced in the report but never block.
 - **Always exits 0.** Status is carried in the JSON output (`integrity_ok`), not the exit code —

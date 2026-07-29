@@ -22,9 +22,19 @@ a container has genuinely stopped.
   a container with no `groom` listening behaves exactly as it does today. See
   `docs/features/groom/sidecar-live-sessions.md` for the message schema and the
   local `reload` dev loop.
-- `groom` itself holds all state in memory (no database, no broker) and
-  pushes updates to open browser tabs over a websocket using htmx +
-  htmx-ext-ws. Gate questions render as Markdown (`marked`, sanitized with
+- `groom` itself holds all state in memory (no database, no broker) and pushes
+  JSON state to open browser tabs over a websocket; the browser renders it with
+  Preact + htm (the vendored `htm/preact` standalone build — no build step, no
+  `node_modules`). Every shape the socket pushes is also fetchable over HTTP, so a
+  tab whose socket has gone quiet resyncs instead of going stale.
+  Those pushes are edge-triggered — something changed, so tell the
+  tabs — which covers everything except the half of a run row that is derived from
+  the clock: the liveness dot, `silent 4m`, `in node 12m`. The event that should
+  turn a row dead is the run *ceasing* to emit, and an absence cannot be pushed, so
+  the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
+  (5s), skipped entirely when no tab is connected. That is what makes the dashboard
+  safe to leave open and read without refreshing.
+  Gate questions render as Markdown (`marked`, sanitized with
   `DOMPurify` before insertion since the content is LLM-authored) and each
   workflow row can expand a `git diff` of its working tree (rendered with
   `diff2html`). All front-end assets are vendored locally; nothing is loaded

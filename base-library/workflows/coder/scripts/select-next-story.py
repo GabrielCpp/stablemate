@@ -45,7 +45,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from ostler import Ostler
+from ostler import Ostler, markdown, model, select
 from workhorse import worklist as wl
 from workhorse.scriptutil import find_docs_root
 
@@ -109,11 +109,20 @@ def _report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
 
 
 def _is_done(story_md: Path) -> bool:
-    """Return True if the story's status line contains 'QA passed'."""
+    """Whether a story.md declares a done status — ostler's parse, ostler's verdict.
+
+    Used only by the legacy ``dependencies.json`` fallback below, where there is no graph to
+    ask. It still must not disagree with the graph: the status is read as the *field*
+    (frontmatter ``status:``, else the parsed ``- **Status**:`` bullet) and judged by
+    ``ostler.select.is_done``. The old check was ``"QA passed" in <whole file>``, which a story
+    whose prose merely mentions QA passing satisfies — a story could be skipped as built while
+    still unbuilt, and its dependents would unblock on it.
+    """
     try:
-        return "QA passed" in story_md.read_text(encoding="utf-8")
+        doc = markdown.split(story_md.read_text(encoding="utf-8"))
     except OSError:
         return False
+    return select.is_done(model.story_status(doc))
 
 
 def _load_skip_set(root: Path, run_dir: str) -> set[str]:

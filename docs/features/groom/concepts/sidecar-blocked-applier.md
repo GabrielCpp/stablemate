@@ -5,7 +5,7 @@ title: Sidecar blocked applier
 ---
 # Sidecar blocked applier
 
-The sidecar blocked applier is the groom server layer that folds a connected sidecar's live `blocked` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It requires a non-empty gate file path, marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `BLOCKED`, creates or replaces one [gate info](gate-info.md) record for that file path, renders the current [dashboard shell fragment](../dashboard-shell-fragment.md) through the [dashboard shell renderer](dashboard-shell-renderer.md#method-render-shell-data), appends one [blocked notification script fragment](../blocked-notification-script-fragment.md) through the [blocked notification script renderer](blocked-notification-script-renderer.md#method-render-notify-script) using the [question notification limit](groom-app-module.md#field-question-notify-limit), and broadcasts the combined fragment to dashboard browser clients through the [dashboard client queue set](dashboard-client-queue-set.md#method-broadcast-dashboard-fragment). It is the websocket delta counterpart of the HTTP [blocked push payload](../blocked-push-payload.md): both apply one gate-file delta, replace only that gate key, and keep unrelated open gates visible.
+The sidecar blocked applier is the groom server layer that folds a connected sidecar's live `blocked` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It requires a non-empty gate file path, marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `BLOCKED`, creates or replaces one [gate info](gate-info.md) record for that file path, broadcasts the fleet's current [dashboard state payload](../dashboard-state-payload.md) plus that run's refreshed detail through the [dashboard shell broadcaster](dashboard-shell-broadcaster.md#method-broadcast-shell), and then sends one separate [dashboard notify message](../dashboard-notify-message.md) built with the [question notification limit](groom-app-module.md#field-question-notify-limit) to every dashboard browser client through the [dashboard client queue set](dashboard-client-queue-set.md#method-broadcast-dashboard-message). It is the websocket delta counterpart of the HTTP [blocked push payload](../blocked-push-payload.md): both apply one gate-file delta, replace only that gate key, and keep unrelated open gates visible.
 
 - code: groom/groom/app.py::_apply_socket_blocked
 
@@ -22,8 +22,9 @@ The sidecar blocked applier is the groom server layer that folds a connected sid
 - workflow creation rule: if no registry entry exists for the connected container id, the applier creates a placeholder workflow via [upsert workflow](workflow-registry.md#method-upsert-workflow) using the id-derived default name, then applies the blocked state and gate to that new record.
 - metadata rule: unlike the residual HTTP [blocked push payload](../blocked-push-payload.md), the websocket applier does not hydrate Docker volume metadata, repository identity, workflow type, run id, or current node; it preserves whatever registry state already exists for those fields.
 - notification rule: the blocked notification message is the workflow display name after upsert, followed by `": "`, followed by the normalized question truncated by the [question notification limit](groom-app-module.md#field-question-notify-limit).
-- ordering: the gate mutation completes before the workflow snapshot is read for shell rendering, and shell rendering completes before notification-script rendering and broadcast.
-- output: no return value; completion means registry mutation, gate replacement, shell rendering, notification-script rendering, and broadcast have completed or an upstream exception has interrupted the operation.
+- wire rule: everything this layer emits is JSON. The question reaches the browser twice — truncated as the notify frame's `message` string, and whole inside the run's detail payload — and in neither case is it interpolated into markup or into script source. There is no escaping step on this path that can be got wrong.
+- ordering: the gate mutation completes before the workflow snapshot is projected, and the state and detail payloads are broadcast before the notify frame, so a tab rendering frames in arrival order raises the alert against a row that already reads blocked.
+- output: no return value; completion means registry mutation, gate replacement, state and detail projection, and both broadcasts have completed or an upstream exception has interrupted the operation.
 - transport response: the layer does not send a websocket reply frame, RPC result, acknowledgement, or error frame for the blocked event.
 
 ## Effects
@@ -33,10 +34,10 @@ The sidecar blocked applier is the groom server layer that folds a connected sid
 - Creates one [gate info](gate-info.md) record with `workflow_id` equal to `container_id`, `file_path` equal to the normalized frame path, `question` equal to the normalized question string, and default gate status.
 - Stores the gate record in the workflow's gate map at the normalized file-path key, replacing any previous record for the same path while preserving other gate keys.
 - Reads the current workflow registry snapshot through [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot) after the gate mutation.
-- Renders one out-of-band [dashboard shell fragment](../dashboard-shell-fragment.md) through the [dashboard shell renderer](dashboard-shell-renderer.md#method-render-shell-data), so browser tabs receive updated operator-inbox and status-bar regions.
-- Renders one [blocked notification script fragment](../blocked-notification-script-fragment.md) through the [blocked notification script renderer](blocked-notification-script-renderer.md#method-render-notify-script), truncating the question preview by the [question notification limit](groom-app-module.md#field-question-notify-limit), and appends it after the dashboard shell fragment in the same broadcast payload.
-- Broadcasts the combined shell-plus-notification HTML fragment through [broadcast dashboard fragment](dashboard-client-queue-set.md#method-broadcast-dashboard-fragment), targeting the dashboard browser client queues registered at broadcast time.
-- Does not register or unregister sidecar sockets, resolve pending RPCs, send acknowledgement frames, answer gate files, clear other gate records, persist workflow state outside memory, append answer logs, prune vanished workflows, inspect Docker volumes, read workspace files, compute diffs, hydrate workflow metadata, update current node, update repository identity, or call the shared dashboard shell broadcaster helper.
+- Projects one [dashboard state payload](../dashboard-state-payload.md) through [state message](groom-projection-module.md#method-state-message) and broadcasts it to every registered browser client, so each tab re-renders its runs fleet view and status bar from the new snapshot.
+- Projects this run's refreshed detail through [detail message](groom-projection-module.md#method-detail-message) and pushes it to the tabs the [run watch registry](run-watch-registry.md) records as watching this run, so an operator with that run already open sees the new gate without asking for it.
+- Broadcasts one separate [dashboard notify message](../dashboard-notify-message.md) — `{"type": "notify", "message": ...}`, the workflow display name and the question truncated by the [question notification limit](groom-app-module.md#field-question-notify-limit) — through [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message), targeting the dashboard browser client queues registered at broadcast time. The alert is a separate frame rather than a field on the state payload precisely so it fires on the block itself rather than on every clock tick that re-pushes the same blocked row.
+- Does not register or unregister sidecar sockets, resolve pending RPCs, send acknowledgement frames, answer gate files, clear other gate records, persist workflow state outside memory, append answer logs, prune vanished workflows, inspect Docker volumes, read workspace files, compute diffs, hydrate workflow metadata, update current node, or update repository identity. It emits no HTML, no inline script, and no per-producer markup of any kind: the two frames it sends are the same ones the live clock and the HTTP push endpoints send.
 
 ## Methods
 
@@ -44,10 +45,10 @@ The sidecar blocked applier is the groom server layer that folds a connected sid
 
 - sig: `async _apply_socket_blocked(container_id: str, data: dict) -> None`
 - abstract: false
-- raises: propagates ordinary exceptions from workflow upsert, gate construction, shell rendering, notification rendering, or dashboard broadcast; intentionally raises nothing for an empty file path.
+- raises: propagates ordinary exceptions from workflow upsert, gate construction, state or detail projection, or dashboard broadcast; intentionally raises nothing for an empty file path.
 - code: groom/groom/app.py::_apply_socket_blocked
 
-Applies one live sidecar blocked delta to the in-memory dashboard state and emits one browser-facing same-swap update. The method is called only after [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) has accepted a sidecar `hello`, registered a live connection, and dispatched a `blocked` frame for that connected container.
+Applies one live sidecar blocked delta to the in-memory dashboard state and emits the two browser-facing JSON frames that follow from it. The method is called only after [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) has accepted a sidecar `hello`, registered a live connection, and dispatched a `blocked` frame for that connected container.
 
 #### Effects
 
@@ -58,9 +59,8 @@ Applies one live sidecar blocked delta to the in-memory dashboard state and emit
 - Creates: one [gate info](gate-info.md) record with default status for the connected workflow id, normalized file path, and normalized question.
 - Writes: stores the gate record in the returned workflow's gate map under the normalized file-path key, replacing only that key.
 - Calls: [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot) after the gate write.
-- Calls: [render shell data](dashboard-shell-renderer.md#method-render-shell-data) with the current workflow snapshot and out-of-band mode enabled by default.
-- Calls: [render notify script](blocked-notification-script-renderer.md#method-render-notify-script) with the workflow display name and question message truncated by the [question notification limit](groom-app-module.md#field-question-notify-limit).
-- Calls: [broadcast dashboard fragment](dashboard-client-queue-set.md#method-broadcast-dashboard-fragment) with the concatenated shell and notification fragments.
+- Calls: [broadcast shell](dashboard-shell-broadcaster.md#method-broadcast-shell) with this container id, which projects and broadcasts the state payload and then pushes this run's refreshed detail to its watchers.
+- Calls: [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message) a second time with the [dashboard notify message](../dashboard-notify-message.md), whose text is the workflow display name and the question truncated by the [question notification limit](groom-app-module.md#field-question-notify-limit).
 - Preserves: existing workflow identity, repository fields, current node, run id, workflow type, workspace volume, runs volume, exit code, unrelated gates, log entries, sidecar registrations, and dashboard-client registrations except for the broadcast send itself.
 - Emits: no Python return value, no HTTP body, no sidecar websocket message, and no dashboard command acknowledgement.
 
@@ -73,13 +73,13 @@ Applies one live sidecar blocked delta to the in-memory dashboard state and emit
 - step: Convert `data.get("question", "")` to text so the gate and notification preview have a deterministic string.
 - step: Upsert the workflow container with state `BLOCKED`, preserving existing identity, current node, repository fields, workflow type, volume metadata, run id, exit code, and unrelated fields that this delta does not supply.
 - step: Store a gate record under the normalized file path; if that key already exists, replace that one gate, and if other gate keys exist, leave them in place.
-- step: Read the current workflow-registry snapshot after mutation so the emitted shell reflects the new blocked state and gate.
-- step: Render the dashboard shell update, then append a blocked-notification script whose body is the workflow name and the question prefix capped by the [question notification limit](groom-app-module.md#field-question-notify-limit).
-- step: Broadcast the concatenated fragment to the currently registered dashboard client queues.
+- step: Read the current workflow-registry snapshot after mutation so the projected state payload reflects the new blocked state and gate.
+- step: Broadcast that state payload to every registered dashboard client queue, then push this run's refreshed detail to the queues watching it.
+- step: Broadcast one further notify frame whose `message` is the workflow name and the question prefix capped by the [question notification limit](groom-app-module.md#field-question-notify-limit).
 
 ## Failure Semantics
 
-- Workflow-upsert, gate-record construction, renderer, or broadcast exceptions are not converted into a blocked-specific result; they propagate to the websocket session handler after any earlier registry mutation has already happened.
-- If shell rendering, notification rendering, or broadcasting fails after the workflow has been marked blocked and the gate has been stored, the in-memory workflow state remains updated while some or all connected browser clients may not receive the corresponding shell or blocked event.
+- Workflow-upsert, gate-record construction, projection, or broadcast exceptions are not converted into a blocked-specific result; they propagate to the websocket session handler after any earlier registry mutation has already happened.
+- If projection or broadcasting fails after the workflow has been marked blocked and the gate has been stored, the in-memory workflow state remains updated while some or all connected browser clients may not receive the state, detail, or notify frame. A tab that misses the state frame recovers it from the next clock tick or from an [HTTP resync](../http/groom.md#get-dashboard-state); a tab that misses the notify frame never learns of it, because the alert is an edge and is not replayed.
 - An empty normalized `file_path` is the only swallowed input condition; it returns without failure and without side effects.
 - A `file_path` value that string-normalizes to non-empty text is accepted regardless of whether it names a real gate context file; any stale, unsafe-looking, or non-workspace path text becomes only the in-memory gate key and rendered gate path until a later answer or discovery path handles it.

@@ -6,1208 +6,1186 @@ title: groom dashboard
 # groom dashboard
 
 - code: groom/groom/app.py::index
-- route: `/`; live-verified — selecting an inbox row, editing the answer textarea, and every activity-mode switch stay on this same landed path with no browser navigation.
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- verify: groom/tests/test_render.py::test_dynamic_regions_have_stable_ids_and_oob_flag
+- route: `/`; live-verified — selecting a run row, editing the answer textarea, and every activity-mode switch stay on this same landed path with no browser navigation.
+- requires: none — the root route is unauthenticated and unguarded; groom serves the shell to anyone who can reach the port.
+- params: none — the screen takes no path or query parameter. Everything it shows is chosen after load and held in the browser, never in the URL.
+- entry: opened directly at the groom server's root URL. It is the only screen groom serves, so it is entered from outside in-app navigation and never linked to from another screen.
+- verify: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible
+- verify: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
+- verify: groom/tests/test_dashboard_client.py::test_the_client_module_parses
+- verify: groom/tests/test_projection.py::test_state_message_is_json_serializable
 - vet: docs/specs/groom-dashboard/vet.md
 
-The `groom` dashboard is the browser screen served by the [root dashboard endpoint](../../http/groom.md#get-root-dashboard-html). It is the operator console for the [operator inbox](../../operator-inbox.md), repository file browser, working-tree diff view described by [changes view](../../changes-view.md), and manual reconciliation controls for the [worker tree](../../worker-tree.md). The screen opens a browser websocket to `/ws`, receives out-of-band updates for the inbox list and status bar, and fetches selected worker, repository, file, and diff details on demand so live broadcasts do not overwrite in-progress operator input.
+The `groom` dashboard is the browser screen served by the [root dashboard endpoint](../../http/groom.md#get-root-dashboard-html). It is the operator console for the [runs fleet view](../../runs-fleet-view.md), the repository file browser, the working-tree diff view described by [changes view](../../changes-view.md), fleet telemetry, and the manual reconciliation controls for the discovered [workflow containers](../../concepts/workflow-container.md).
 
-The visible shell has four activity modes selected by the left activity bar: inbox, files, diff, and settings. The app starts in inbox mode, holds the selected worker id, the selected `(container, repo)` pair, and transient overlay state for the repository picker and command palette in browser state, and keeps the source of truth for workflow rows and counts on the server. Selecting an inbox row follows [select inbox worker row](#select-inbox-worker-row), which marks one [inbox worker row](#inbox-worker-row) selected and loads [get worker detail](../../http/groom.md#get-worker-detail) into the detail pane without changing the active dashboard mode.
+Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — repositories, files, diffs, traces — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
+
+The visible shell has five activity modes selected by the left activity rail: runs, files, diff, telemetry, and settings. The app starts in **runs** mode. It holds the selected run id, the selected `(container, repo)` pair, per-pane loading state, and transient overlay state for the repository picker and command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
+
+Connection state is its own visible fact. The [connection chip](#connection-chip) reports `live`, `stale`, `reconnecting`, or `offline`, derived by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md) from **message recency, not `readyState`** — a half-open socket reads OPEN forever and would otherwise show a green dot over a frozen fleet. Anything but `live` starts the [dashboard resync poller](../../concepts/dashboard-resync-poller.md) against `GET /api/state`.
 
 ## Layout
 
-- app root: `.app[data-mode]`, connected to `WS /ws`; `data-mode` controls which pane is visible.
-- activity bar: left rail with inbox, files, diff, and settings mode controls; selecting the settings gear follows [select activity settings mode](#select-activity-settings-mode).
-- inbox pane: filter input, live inbox rows in `#inbox-list`, and selected worker detail in `#detail`.
-- files pane: repository picker, lazily loaded file tree, and selected file viewer.
+- app root: `.app[data-mode]`, connected to `WS /ws`; `data-mode` selects which pane is displayed. Inactive panes are `display:none`, so they are removed from the accessibility tree rather than merely hidden visually.
+- activity rail: a left `<nav aria-label="Panels">` landmark with runs, files, diff, telemetry, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
+- main region: a `<main id="main">` landmark holding all five panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
+- runs pane: filter input, the live run list in `#runs-list`, and the open run's detail in `#detail`.
+- files pane: repository picker, lazily loaded file tree, and selected-file viewer.
 - diff pane: repository picker, lazily loaded changed-file tree, and selected-file diff viewer.
+- telemetry pane: a four-field span filter and the fleet trace table with a per-run card strip above it.
 - settings pane: manual container rescan and browser notification permission controls.
-- status bar: live fleet counts, websocket liveness label, refresh control, and command-palette open button.
-- overlays: shared repository picker in `#repo-menu-wrap`, command palette in `#palette`, and toast stack in `#toasts`.
+- status bar: fleet counts, repo/worker totals, the connection chip, the refresh control, and the command-palette open button.
+- overlays: shared repository picker in `#repo-menu-wrap`, command palette in `#palette`, and the toast stack in `#toasts`.
 
 ## States
 
-- mode: `inbox` by default; `files`, `diff`, and `settings` are mutually exclusive alternatives.
-- selected worker: absent until an inbox row, palette result, or keyboard row movement writes [dashboard selected worker state](../../dashboard-selected-worker-state.md); selecting one refreshes `#detail` from `GET /worker/{container_id}`.
-- selected repository: absent until a repository menu item is chosen; choosing one writes the [dashboard selected repository state](../../dashboard-selected-repository-state.md), updates both repository picker labels, and loads the currently active files or diff pane.
-- repository menu: closed by default with `#repo-menu-wrap` lacking `open`; opening positions it below the active picker, fetches `GET /repos`, clears the menu search, and focuses `#repo-search`; closing removes only the `open` class and preserves menu contents, search text, picker labels, and selected repository state.
-- command palette: closed by default; `Ctrl+K` or `Meta+K` opens it, clears its input, renders current inbox rows as results, and focuses `#palette-input`.
-- live regions: `#inbox-list` and `#statusbar` are replaced by websocket out-of-band swaps; markdown questions are re-rendered after swaps through the escaped text-node to `marked` to DOMPurify path.
+- mode: `runs` by default; `files`, `diff`, `telemetry`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together.
+- selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../dashboard-selected-worker-state.md). Selecting one clears the detail pane, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once.
+- selected repository: absent until a repository menu item is chosen; choosing one writes [dashboard selected repository state](../../dashboard-selected-repository-state.md), updates both picker labels, and loads whichever of the files or diff panes is active.
+- repository menu: closed by default with `#repo-menu-wrap` lacking `open`; opening positions it under the invoking picker, fetches `GET /repos`, clears the menu search, and focuses `#repo-search`; closing removes the `open` class, drops `aria-activedescendant`, and returns focus to the invoking picker.
+- command palette: closed by default; `Ctrl+K` or `Meta+K` toggles it, and the status-bar button opens it. Opening clears its input, renders the current fleet from the store as results, and focuses `#palette-input`; while open, Tab is trapped on that input.
+- discovery: `scanning` is true until the [startup background discovery scan](../../concepts/startup-background-discovery-scan.md) finishes; an empty fleet renders as `Discovering containers…` while it is, and as `No workhorse runs — nothing is running.` after.
+- connection: `connecting` on load, then `live` while a frame has arrived within 15s, `stale` when the open socket has been silent longer, `reconnecting` for the first 60s after a close, and `offline` beyond that. Every phase but `live` polls `GET /api/state` on a 5s interval.
+- live regions: `#runs-list` (`role="log"`), `#statusbar` and the chip inside it, `#detail`'s run header, and `#toasts` are the announcing regions. Each is a static shell element that an island renders *into*, so the region itself never re-renders and assistive tech keeps tracking the same node. Markdown gate questions are rendered through `marked` and sanitized by DOMPurify before they reach `innerHTML`.
 
 ## Components
 
-### activity-inbox-mode
+### activity-rail
 
-- selector: `.act-btn[data-mode="inbox"]`
-- role: button; a native `<button type="button">` activity control.
-- name: `Inbox`, supplied by the `aria-label` attribute; the inline SVG icon is `aria-hidden="true"`.
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- selector: `#activitybar`
+- role: navigation
+- name: `Panels`
+- keyboard: not focusable itself; Tab moves through the five mode buttons it contains, in DOM order.
 - parent: [groom dashboard](#groom-dashboard)
-- states: inactive with `aria-pressed="false"`; active with the `active` class and `aria-pressed="true"` when the root `.app` has `data-mode="inbox"`.
-- code: groom/groom/templates/dashboard.html::setMode
-- screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-inbox-mode.png
+- states: static. It is shell markup, never re-rendered; only the `active` class and `aria-pressed` on its buttons change.
+- dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region.
+- code: groom/groom/templates/dashboard.html
+- verify: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-rail.png
+
+### main-region
+
+- selector: `#main`
+- role: main
+- name: none
+- keyboard: not focusable; a landmark, not a control.
+- parent: [groom dashboard](#groom-dashboard)
+- states: always present; its visible child is whichever pane `.app[data-mode]` selects.
+- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time.
+- code: groom/groom/templates/dashboard.html
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
+
+### page-heading
+
+- selector: `#main > h1.sr-only`
+- role: heading
+- name: `groom — workhorse fleet dashboard`
+- keyboard: not focusable.
+- parent: [main-region](#main-region)
+- states: static.
+- dom: visually hidden and always rendered. It is the page's one `h1`; without it the document outline would start at `h2` and a screen reader would have nothing to announce the page as.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-page-heading.png
+
+### activity-runs-mode
+
+- selector: `.act-btn[data-mode="runs"]`
+- role: button
+- name: `Runs`
+- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- parent: [activity-rail](#activity-rail)
+- states: active by default, with the `active` class and `aria-pressed="true"`; inactive with `aria-pressed="false"` in any other mode.
+- code: groom/groom/assets/dashboard.js::setMode
 - props:
-  - `data-mode`: literal `inbox`; required; used as the mode value passed to the shared mode-switch handler.
-  - `title`: literal `Inbox`; required; tooltip text only; the accessible name is supplied by `aria-label`.
-  - `aria-label`: literal `Inbox`; required; the durable accessible name for this icon-only button.
-  - `aria-pressed`: `true` or `false`; required; reflects whether inbox is the active mode and is recomputed by the shared mode-switch handler.
-  - `class`: includes `act-btn`; includes `active` exactly when inbox mode is selected.
-- dom: icon-only native `<button type="button">` inside the `role="toolbar"` `#activitybar`, rendered before files, diff, spacer, and settings controls; contains only an inline `aria-hidden` SVG inbox icon and no text node.
-- leads-to: [select activity inbox mode](#select-activity-inbox-mode), which shows the inbox pane in this screen, containing the [operator inbox](../../operator-inbox.md) row list and selected worker detail.
+  - `data-mode`: literal `runs`; required; the mode value the delegated rail handler passes to the mode switch.
+  - `title`: literal `Runs`; required; tooltip text only.
+  - `aria-label`: literal `Runs`; required; the durable accessible name for this icon-only button.
+  - `aria-pressed`: `true` or `false`; required; recomputed for every rail button on each mode switch.
+- dom: icon-only native `<button type="button">` inside the `#activitybar` nav, first of the five; contains only an inline `aria-hidden="true"` SVG and no text node.
+- leads-to: [select activity runs mode](#select-activity-runs-mode), which shows the runs pane containing the [runs live region](#runs-live-region) and the open run's detail.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-runs-mode.png
 
 ### activity-files-mode
 
 - selector: `.act-btn[data-mode="files"]`
-- role: button; a native `<button type="button">` activity control.
-- name: `Files`, supplied by the `aria-label` attribute; the inline SVG folder icon is `aria-hidden="true"`.
+- role: button
+- name: `Files`
 - keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
-- parent: [groom dashboard](#groom-dashboard)
-- states: inactive with `aria-pressed="false"` when the root `.app` is in inbox, diff, or settings mode; active when the root `.app` has `data-mode="files"` and this control has the `active` class and `aria-pressed="true"`.
-- code: groom/groom/templates/dashboard.html::setMode
+- parent: [activity-rail](#activity-rail)
+- states: inactive with `aria-pressed="false"` in runs, diff, telemetry, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="files"`.
+- code: groom/groom/assets/dashboard.js::setMode
+- dom: icon-only native `<button type="button">`, second in the rail; an inline `aria-hidden` folder SVG and no text node.
+- leads-to: [select activity files mode](#select-activity-files-mode), which shows the files pane containing the [files repository picker button](#files-repository-picker-button), `#files-tree`, and `#file-view`.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-files-mode.png
-- props:
-  - `data-mode`: literal `files`; required; used as the mode value passed to the shared mode-switch handler.
-  - `title`: literal `Files`; required; tooltip text only; the accessible name is supplied by `aria-label`.
-  - `aria-label`: literal `Files`; required; the durable accessible name for this icon-only button.
-  - `aria-pressed`: `true` or `false`; required; reflects whether files is the active mode and is recomputed by the shared mode-switch handler.
-  - `class`: includes `act-btn`; includes `active` exactly when files mode is selected.
-- dom: icon-only native `<button type="button">` inside the `role="toolbar"` `#activitybar`, rendered after inbox and before diff, spacer, and settings controls; contains only an inline `aria-hidden` SVG folder icon and no text node.
-- leads-to: files pane in this screen, containing the [files repository picker button](#files-repository-picker-button), `#files-tree`, and `#file-view`; when a repository is already selected, entering this mode reloads that repository's file tree.
 
 ### activity-diff-mode
 
 - selector: `.act-btn[data-mode="diff"]`
-- role: button; a native `<button type="button">` activity control.
-- name: `Diff`, supplied by the `aria-label` attribute; the inline SVG icon is `aria-hidden="true"`.
+- role: button
+- name: `Diff`
 - keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
-- parent: [groom dashboard](#groom-dashboard)
-- states: inactive with `aria-pressed="false"` when the root `.app` is in inbox, files, or settings mode; active when the root `.app` has `data-mode="diff"` and this control has the `active` class and `aria-pressed="true"`.
-- code: groom/groom/templates/dashboard.html::setMode
+- parent: [activity-rail](#activity-rail)
+- states: inactive with `aria-pressed="false"` in runs, files, telemetry, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="diff"`.
+- code: groom/groom/assets/dashboard.js::setMode
+- dom: icon-only native `<button type="button">`, third in the rail; an inline `aria-hidden` bidirectional-arrows SVG and no text node.
+- leads-to: [select activity diff mode](#select-activity-diff-mode), which shows the diff pane containing the [diff repository picker button](#diff-repository-picker-button), `#diff-tree`, and `#diff-view`.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-diff-mode.png
-- props:
-  - `data-mode`: literal `diff`; required; used as the mode value passed to the shared mode-switch handler.
-  - `title`: literal `Diff`; required; tooltip text only; the accessible name is supplied by `aria-label`.
-  - `aria-label`: literal `Diff`; required; the durable accessible name for this icon-only button.
-  - `aria-pressed`: `true` or `false`; required; reflects whether diff is the active mode and is recomputed by the shared mode-switch handler.
-  - `class`: includes `act-btn`; includes `active` exactly when diff mode is selected.
-- dom: icon-only native `<button type="button">` inside the `role="toolbar"` `#activitybar`, rendered after inbox and files and before spacer and settings controls; contains only an inline `aria-hidden` SVG bidirectional-arrows icon and no text node.
-- leads-to: diff pane in this screen, containing the [diff repository picker button](#diff-repository-picker-button), `#diff-tree`, and `#diff-view`; when a repository is already selected, entering this mode reloads that repository's working-tree diff described by [changes view](../../changes-view.md).
+
+### activity-telemetry-mode
+
+- selector: `.act-btn[data-mode="telemetry"]`
+- role: button
+- name: `Telemetry`
+- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- parent: [activity-rail](#activity-rail)
+- states: inactive with `aria-pressed="false"` in runs, files, diff, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="telemetry"`.
+- code: groom/groom/assets/dashboard.js::setMode
+- dom: icon-only native `<button type="button">`, fourth in the rail and the last before the spacer; an inline `aria-hidden` sparkline SVG and no text node.
+- leads-to: [select activity telemetry mode](#select-activity-telemetry-mode), which shows the telemetry pane containing the span filter and [telemetry traces table](#telemetry-traces-table).
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-telemetry-mode.png
 
 ### activity-settings-mode
 
 - selector: `.act-btn[data-mode="settings"]`
-- role: button; a native `<button type="button">` activity control.
-- name: `Settings`, supplied by the `aria-label` attribute; the inline SVG gear icon is `aria-hidden="true"`.
+- role: button
+- name: `Settings`
 - keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
-- parent: [groom dashboard](#groom-dashboard)
-- states: inactive with `aria-pressed="false"` when the root `.app` is in inbox, files, or diff mode; active when the root `.app` has `data-mode="settings"` and this control has the `active` class and `aria-pressed="true"`.
-- code: groom/groom/templates/dashboard.html::setMode
+- parent: [activity-rail](#activity-rail)
+- states: inactive with `aria-pressed="false"` in runs, files, diff, or telemetry mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
+- code: groom/groom/assets/dashboard.js::setMode
+- dom: icon-only native `<button type="button">` after the rail spacer, at the bottom of the rail; an inline `aria-hidden` gear SVG and no text node.
+- leads-to: [select activity settings mode](#select-activity-settings-mode), which shows the settings pane containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-settings-mode.png
-- props:
-  - `data-mode`: literal `settings`; required; used as the mode value passed to the shared mode-switch handler.
-  - `title`: literal `Settings`; required; tooltip text only; the accessible name is supplied by `aria-label`.
-  - `aria-label`: literal `Settings`; required; the durable accessible name for this icon-only button.
-  - `aria-pressed`: `true` or `false`; required; reflects whether settings is the active mode and is recomputed by the shared mode-switch handler.
-  - `class`: includes `act-btn`; includes `active` exactly when settings mode is selected.
-- dom: icon-only native `<button type="button">` inside the `role="toolbar"` `#activitybar`, rendered after the activity-bar spacer as the bottom rail control; contains only an inline `aria-hidden` SVG gear icon and no text node.
-- leads-to: settings pane in this screen, containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button); entering this mode does not reload data or request notification permission.
 
-### inbox-filter-input
+### runs-filter-input
 
-- selector: `input.filter[name="q"]`
-- role: searchbox.
-- name: `Filter incoming messages`.
-- keyboard: text entry; browser search-input clear/search behavior; each changed input value is debounced for 250 ms before filtering, and native search events filter immediately.
+- selector: `#runs .pane-head input.filter[name="q"]`
+- role: searchbox
+- name: `Filter runs`
+- keyboard: natively focusable with Tab; typing filters as you type; the browser's own search-input clear affordance is available.
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty query shows every workflow that has at least one open gate; non-empty query narrows the operator inbox by case-insensitive substring match; focused state accepts ordinary text editing and browser search-field controls.
-- code: groom/groom/templates/dashboard.html
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- screenshot: docs/specs/groom-dashboard/vet/post-discovery-inbox-filter-input.png
+- states: empty by default, showing the whole pushed fleet; non-empty, showing only rows whose haystack contains the query, case-insensitively.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::rowHaystack
 - props:
-  - `class`: literal `filter`; required; identifies the inbox-pane search field for styling and as the stable selector for this component.
-  - `type`: literal `search`; required; exposes native searchbox semantics and user-agent search-field behavior.
-  - `name`: literal `q`; required; serialized as the query parameter consumed by the search fragment endpoint.
-  - `aria-label`: literal `Filter incoming messages`; required; the durable accessible name.
-  - `placeholder`: literal `Filter messages…`; required visual hint, not the accessible name.
-  - `hx-get`: literal `/search`; required; destination for filter requests.
-  - `hx-trigger`: literal `input changed delay:250ms, search`; required; sends changed text-entry events after a 250 ms debounce and also sends native search events such as clearing the field.
-  - `hx-swap`: literal `none`; required; prevents direct replacement of the input or its container so the endpoint's out-of-band `#inbox-list` fragment is the only DOM update from the request.
-- dom: native search input in the inbox pane header, rendered after the visible `Inbox — needs you` heading text and before the live `#inbox-list` region.
-- leads-to: [GET /search](../../http/groom.md#get-search-fragment) on changed input values and search events; the response updates `#inbox-list` out of band while status counts remain fleet-wide.
+  - `type`: literal `search`; required; supplies the searchbox role.
+  - `name`: literal `q`; required; the field name, retained for form semantics though nothing submits it.
+  - `aria-label`: literal `Filter runs`; required; the accessible name — the pane header text is not associated with the input.
+  - `placeholder`: literal `Filter runs…`; presentation only.
+- dom: shell markup in the runs pane header, beside the `Runs — live & blocked` label. It is never re-rendered, so its value survives every 5s push.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-runs-filter-input.png
 
-### inbox-worker-row
+### runs-live-region
 
-- selector: `#inbox-list [data-worker-id]`
-- role: button; a native `<button type="button" class="row">` whose content is rendered in child `<span>` elements.
-- name: the row's visible text, combining repository label, short worker id, selected gate path or current node/exit hint, and an optional question preview.
-- keyboard: Tab and Shift+Tab reach each row button in document order and Enter or Space selects the focused row; global `j`/`k` still move selection across inbox rows when focus is not in an input or textarea.
+- selector: `#runs-list`
+- role: log
+- name: `Workhorse runs`
+- keyboard: not focusable itself; Tab reaches the run rows inside it, and `j`/`k` move the selection without focus leaving the document body.
 - parent: [groom dashboard](#groom-dashboard)
-- states: normal; selected when its `data-worker-id` equals the browser's selected worker id and the `selected` class plus `aria-current="true"` are applied; blocked when the workflow state is `blocked` and the `blocked` class plus question preview are present; gated non-blocked when a running, idle, or finished worker still has an open gate and therefore appears without the blocked class or question preview.
-- code: groom/groom/render.py::_inbox_row
-- verify: groom/tests/test_render.py::test_inbox_shows_only_workers_with_open_gates
-- verify: groom/tests/test_render.py::test_inbox_orders_gated_workers_by_state_then_name
-- verify: groom/tests/test_render.py::test_exit_code_hint_only_on_finished_with_code
+- states: `Discovering containers…` while the startup scan runs and nothing has been found; `No workhorse runs — nothing is running.` when the fleet is empty and the scan is done; otherwise one [run row](#run-row) per matching run.
+- code: groom/groom/assets/dashboard.js::Fleet
+- verify: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
+- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
+- dom: a shell `<div>` carrying `role="log"`, `aria-live="polite"`, and its label. The Preact island renders *into* it, so the region node itself is never replaced and assistive tech keeps tracking one region across every push.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-runs-live-region.png
+
+### run-row
+
+- selector: `#runs-list .row[data-worker-id]`
+- role: button
+- name: `{repo} #{short_handle} {liveness} {doing}`
+- keyboard: natively focusable with Tab; Enter or Space selects the run. `j` and `k` move the selection down and up from anywhere that is not a text field.
+- parent: [runs-live-region](#runs-live-region)
+- states: blocked rows carry the `blocked` class; the open row carries `selected` and `aria-current="true"`, and every other row omits `aria-current` entirely rather than setting it to `"false"`.
+- code: groom/groom/assets/dashboard.js::RunRow
+- verify: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
+- verify: groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message
 - props:
-  - source workflow: required [operator inbox](../../operator-inbox.md) worker that has at least one open gate; workers without open gates are not rendered as inbox rows.
-  - `data-worker-id`: required string; the escaped workflow container id; used by row click selection, palette result selection, keyboard row movement, and the `GET /worker/{container_id}` detail request.
-  - `data-state`: required enum string from the workflow state value; used by the command palette to render the row's state hint and dot.
-  - `class`: required; always includes `row`, adds `blocked` exactly when `data-state` is `blocked`, and may later gain `selected` in browser state.
-  - gate source: first open gate after sorting [gate info](../../concepts/gate-info.md) records by `file_path`; required by the inbox caller because only gated workflows become rows; supplies the displayed gate path and, when blocked, the question preview.
-  - tail text: required; the sorted gate file path when an open gate is present; otherwise the [operator inbox exit hint](../../operator-inbox.md#method-render-exit-hint) `exited {code}` when the workflow is finished and has an exit code; otherwise the workflow current node. The exit hint uses `exit-ok` for code `0`, `exit-err` for every other known integer, escapes the code text, and is serializer behavior not normally reached through the gated-only inbox list.
-  - repository branch label: required; produced by [method-render-repository-label](../../operator-inbox.md#method-render-repository-label) as `repo_name@repo_branch` when a branch exists, otherwise `repo_name`, otherwise an em dash placeholder.
-  - worker id label: required; `#` followed by the first four characters of `container_id`, or `#----` when the id is empty.
-  - state marker: required [workflow state dot renderer](../../concepts/workflow-state-dot-renderer.md) fragment; one empty visual dot whose classes are `dot` and the escaped workflow state value.
-  - type badge: optional [workflow type badge renderer](../../concepts/workflow-type-badge-renderer.md) fragment; omitted when `workflow_type` is empty; otherwise contains the escaped workflow type text, `data-type`, and a deterministic hue style derived from the type string.
-  - question preview: optional [inbox question preview](../../concepts/inbox-question-preview.md); present only for blocked workers with a gate, derived from the first non-empty question line after trimming leading markdown quote/list/code markers and capped at 140 characters.
-  - escaping: required through the [HTML escape helper](../../concepts/html-escape-helper.md) for container id, workflow state value, repository label parts, workflow type, short id text, gate file path, exit-code text, current node, and question preview before insertion into attributes or text nodes.
-- dom: `<button type="button" class="row..." data-worker-id data-state>` inside live region `#inbox-list` (`role="log"`, `aria-live="polite"`, `aria-label="Blocked workers inbox"`); child `.line1` contains the [workflow state dot renderer](../../concepts/workflow-state-dot-renderer.md) fragment, optional [workflow type badge renderer](../../concepts/workflow-type-badge-renderer.md) fragment, `.repo-branch`, `.wid` short id in `#abcd` form, and `.gate` tail text; blocked rows append one `.q` question-preview block below the first line.
-- leads-to: [GET /worker/{container_id}](../../http/groom.md#get-worker-detail) replacing selected worker detail in `#detail`; the browser URL and dashboard activity mode are not navigated by a pointer row click.
+  - `data-worker-id`: the [workflow container](../../concepts/workflow-container.md) id; required; read by the delegated click handler and by `j`/`k` row movement, which walks the rendered rows.
+  - `data-state`: one of `blocked`, `running`, `idle`, `finished`; required; styling and row-navigation metadata.
+  - `data-live`: the liveness class from the projection; required; may be the unknown value when no telemetry has arrived.
+  - `aria-current`: `true` on the open row only; absent otherwise.
+- dom: a native `<button type="button">`, keyed by run id so a push preserves focus and scroll. Two lines plus an optional question preview: line one is a state dot, a type badge, the repository label, the short handle, and an optional pulse label; line two is the activity text and an optional mini note; the third line, when present, is the [run question preview](../../concepts/run-question-preview.md).
+- leads-to: [select run row](#select-run-row), which opens that run in the detail pane without leaving this screen.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-run-row.png
+
+### detail-pane
+
+- selector: `#detail`
+- role: none
+- name: none
+- keyboard: not focusable itself; contains the answer form and the diff disclosure.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `Select a run to see its activity, answer its gate, and read its metrics and logs.` with nothing selected; `Loading…` between a selection and its first payload; `Run not found.` for an id the server does not know; otherwise the run header, gate blocks or a no-gate note, metrics, logs, and the diff disclosure.
+- code: groom/groom/assets/dashboard.js::Detail
+- verify: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
+- dom: a shell `<div>` the detail island renders into. It is refreshed by pushed `detail` frames for the watched run, not by re-fetching.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-detail-pane.png
+
+### detail-run-header
+
+- selector: `#detail .detail-head`
+- role: status
+- name: `Selected run`
+- keyboard: not focusable.
+- parent: [detail-pane](#detail-pane)
+- states: shows a state dot, type badge, repository label, an optional pulse label, the meta line (`#handle · state · node · pid`), an optional exit hint for a finished run, and an optional current-activity line.
+- code: groom/groom/assets/dashboard.js::RunHead
+- verify: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
+- dom: one of three `role="status"` regions on this page. Each carries its own `aria-label` — this one, the [status bar region](#statusbar-region), and the [connection chip](#connection-chip) — so a screen reader and `getByRole` can tell them apart.
+- screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-run-header.png
+
+### detail-gate-question
+
+- selector: `#detail .gate-block .question`
+- role: none
+- name: none
+- keyboard: not focusable; rendered prose.
+- parent: [detail-pane](#detail-pane)
+- states: one block per open gate, keyed by gate file path; absent for a run with no open gate, which instead renders a note naming the run's state and node.
+- code: groom/groom/assets/dashboard.js::GateBlock
+- code: groom/groom/assets/dashboard.js::Markdown
+- verify: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
+- dom: the gate's question travels as data, never as markup. The client renders it with `marked` and sanitizes the result with DOMPurify before it reaches `innerHTML`; the gate's file path is shown above it as a plain text node.
+- screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-gate-question.png
 
 ### detail-answer-textarea
 
-- selector: `#detail textarea[name="answer"]`
-- role: textbox.
-- name: `Your answer`, supplied by an explicit `aria-label` attribute — a durable label rather than a placeholder fallback; reachable as `getByRole("textbox", { name: "Your answer" })`.
-- keyboard: Tab and Shift+Tab use normal document focus traversal; ordinary textarea editing keys insert and edit multiline text; Enter inserts a newline rather than submitting; submission is performed by the sibling [detail send answer button](#detail-send-answer-button) or by browser form submission behavior outside the textarea editing keys.
-- parent: [groom dashboard](#groom-dashboard)
-- states: empty with no default value; focused for multiline editing; edited with an unsent browser-local value; serialized on form submission; replaced only when the selected worker detail pane is explicitly refetched after a successful answer for the same selected worker.
-- code: groom/groom/render.py::_answer_form
-- verify: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
-- props:
-  - source workflow: required [operator inbox](../../operator-inbox.md) workflow container selected in the detail pane; supplies the hidden `workflow_id` field in the enclosing form.
-  - source gate: required open gate file path; supplies the hidden `file_path` field in the enclosing form and scopes the answer when a workflow has multiple simultaneous gates.
-  - `name`: literal `answer`; required; serialized as the websocket JSON frame's `answer` field by the enclosing `ws-send` form.
-  - `aria-label`: literal `Your answer`; required; the durable accessible name, independent of the placeholder.
-  - `placeholder`: literal `Your answer…`; required visual hint only, not the accessible name.
-  - `rows`: literal `4`; required; gives the multiline field a four-row default height.
-  - value: string; optional; default empty string; user-authored operator answer text, preserved only in the browser DOM until the form is submitted or the detail pane is replaced.
-- dom: native `<textarea>` rendered after hidden `cmd`, `workflow_id`, and `file_path` inputs and before `.answer-actions`; the enclosing `<form class="answer" ws-send>` is inside one `.gate-block` for a single gate.
-- leads-to: [edit detail answer textarea](#edit-detail-answer-textarea) captures browser-local answer text; the submitted value becomes the `answer` field in a [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md) handled by [WS /ws](../../http/groom.md#websocket-dashboard).
+- selector: `#detail form[data-answer] textarea[name="answer"]`
+- role: textbox
+- name: `Your answer`
+- keyboard: natively focusable with Tab; multi-line text entry; Enter inserts a newline rather than submitting.
+- parent: [detail-pane](#detail-pane)
+- states: empty on render; cleared only after a successfully sent answer, so a rejected send leaves the text in the box.
+- code: groom/groom/assets/dashboard.js::AnswerForm
+- verify: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- dom: four rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every 5s push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives.
+- screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-answer-textarea.png
 
 ### detail-send-answer-button
 
-- selector: `#detail form.answer button[type="submit"]`
-- role: button.
-- name: `Send answer`.
-- keyboard: Tab and Shift+Tab reach the native button in document order; Enter or Space activates it when focused; browser form submission behavior can also submit the enclosing form from compatible form controls outside the multiline textarea editing path.
-- parent: [groom dashboard](#groom-dashboard)
-- states: enabled whenever an open gate answer form is rendered; activated while focused; removed when its gate block is replaced after the selected worker is refetched or the gate no longer exists.
-- code: groom/groom/render.py::_answer_form
-- verify: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
-- props:
-  - source workflow: required [operator inbox](../../operator-inbox.md) workflow container selected in the detail pane; supplies the hidden `workflow_id` value submitted by the enclosing form.
-  - source gate: required open gate file path in the selected workflow; supplies the hidden `file_path` value submitted by the enclosing form.
-  - `type`: literal `submit` by default browser semantics for a `<button>` without an explicit `type`; required so activation submits the enclosing form.
-  - `class`: literal `btn`; required visual button styling only.
-  - text content: literal `Send answer`; required visible label and accessible name.
-  - enclosing form `class`: literal `answer`; required stable scope for the gate-answer form.
-  - enclosing form `ws-send`: present boolean attribute; required so the htmx websocket extension serializes the form fields as a JSON websocket message instead of performing an HTTP form navigation.
-- dom: native submit `<button class="btn">Send answer</button>` inside `.answer-actions`, after the multiline answer textarea, inside one `<form class="answer" ws-send>` per open gate block in `#detail`.
-- leads-to: [send detail answer](#send-detail-answer), which serializes hidden `cmd=answer`, hidden `workflow_id`, hidden `file_path`, and textarea `answer` into a dashboard websocket frame handled by [WS /ws](../../http/groom.md#websocket-dashboard).
+- selector: `#detail form[data-answer] button[type="submit"]`
+- role: button
+- name: `Send answer`
+- keyboard: natively focusable with Tab; Enter or Space submits the form, as does Enter from any single-line field in it.
+- parent: [detail-pane](#detail-pane)
+- states: always enabled. The result is reported by a toast, not by a disabled state.
+- code: groom/groom/assets/dashboard.js::AnswerForm
+- leads-to: [send detail answer](#send-detail-answer), which serializes the form and sends it over the dashboard websocket.
+- screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-send-answer-button.png
 
 ### detail-working-tree-diff-toggle
 
-- selector: `#detail details[data-diff] > summary`
-- role: disclosure button; native `<summary>` control for a `<details>` disclosure.
-- name: `Working-tree diff`.
-- keyboard: Tab and Shift+Tab reach the native summary in document order when the selected worker detail contains open gates; Enter or Space toggles the native details disclosure between collapsed and expanded.
-- parent: [groom dashboard](#groom-dashboard)
-- states: collapsed before activation; expanded before the diff response arrives; expanded with diff loaded; expanded with `(no changes)` empty state; expanded with `failed to load diff` error text; collapsed after loading with the already-loaded diff retained in the disclosure body.
-- code: groom/groom/render.py::_diff_disclosure
-- verify: groom/tests/test_render.py::test_worker_detail_has_one_diff_disclosure
-- props:
-  - source workflow: required [operator inbox](../../operator-inbox.md) workflow container currently rendered in `#detail`; supplies the disclosure's worker container id.
-  - `data-diff`: required escaped workflow container id on the enclosing `<details>`; used only to identify the worker-scoped disclosure block.
-  - summary text: literal `Working-tree diff`; required visible label and accessible name.
-  - `data-diff-target`: required boolean marker on the disclosure body; selects the element that receives loading text, diff HTML, empty-state HTML, or failure text.
-  - `data-container`: required escaped workflow container id on the disclosure body; becomes the `container_id` path variable for the lazy `GET /diff/{container_id}` request.
-  - `data-loaded`: absent by default; set to `1` after the first successful HTTP response is rendered so later expansions reuse the loaded body instead of refetching.
-  - `class`: literal `disclosure` on the enclosing `<details>` and `diff-wrap` on the body; required for dashboard styling only.
-- dom: exactly one `<details class="disclosure" data-diff="{container_id}">` is rendered after all gate question/answer blocks for a selected worker that has at least one open gate; it contains `<summary>Working-tree diff</summary>` followed by `<div class="diff-wrap" data-diff-target data-container="{container_id}"></div>`.
-- leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), whose first expansion fetches [GET /diff/{container_id}](../../http/groom.md#get-workspace-diff) and renders the returned unified diff into the detail pane.
+- selector: `#detail details.disclosure > summary`
+- role: button
+- name: `Working-tree diff`
+- keyboard: natively focusable with Tab; Enter or Space toggles the disclosure.
+- parent: [detail-pane](#detail-pane)
+- states: collapsed on render; the first expansion fetches the diff and shows `Loading diff…`, then either the rendered diff, `(no changes)`, or `failed to load diff`. Re-collapsing and re-expanding does not re-fetch.
+- code: groom/groom/assets/dashboard.js::DiffDisclosure
+- dom: a native `<details>`/`<summary>` pair, keyed by run id so switching runs resets the disclosure rather than showing the previous run's diff.
+- leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), which lazily loads that run's [workspace diff data](../../workspace-diff-data.md).
+- screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-working-tree-diff-toggle.png
+
+### detail-metrics-grid
+
+- selector: `#detail .live-sec .metrics-grid`
+- role: none
+- name: none
+- keyboard: not focusable.
+- parent: [detail-pane](#detail-pane)
+- states: `No telemetry for this run — it is either pre-OTel or exporting to another collector.` when the run has none; otherwise a grid of key/value cells in the projection's order, followed by an optional footer of fired alert-rule chips and the run directory.
+- code: groom/groom/assets/dashboard.js::Metrics
+- verify: groom/tests/test_projection.py::test_run_metrics_cell_order_is_the_layout
+- verify: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
+
+### detail-log-trail
+
+- selector: `#detail .live-sec .log-line`
+- role: none
+- name: none
+- keyboard: not focusable.
+- parent: [detail-pane](#detail-pane)
+- states: `No log lines for this run (workhorse ships in-process script logs over OTLP).` when empty; otherwise capped, newest-first lines, each a timestamp, severity, node, and body.
+- code: groom/groom/assets/dashboard.js::LogTrail
+- verify: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
+- verify: groom/tests/test_projection.py::test_log_trail_is_capped
 
 ### files-repository-picker-button
 
-- selector: `.repo-picker[data-picker="files"]`
-- role: button.
-- name: `Select container / repo…` until a repository is selected, then the selected repository menu label shared by the files and diff pickers.
-- keyboard: Tab and Shift+Tab reach the native button when the files pane is active; Enter or Space activates it; Escape closes the repository menu after it opens through the document-level keyboard handler and returns focus to this picker button.
+- selector: `#files-pane .repo-picker[data-picker="files"]`
+- role: button
+- name: `Select container / repo…`
+- keyboard: natively focusable with Tab; Enter or Space toggles the shared repository menu.
 - parent: [groom dashboard](#groom-dashboard)
-- states: files pane inactive but still present in the DOM; files pane active with the repository menu closed; repository menu open and positioned below this button; repository selected with this button's label replaced by the selected workflow/repository label; repository selected while another activity mode is active, retaining the label for the next files-pane visit.
-- code: groom/groom/templates/dashboard.html::openRepoMenu
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- props:
-  - `class`: literal `repo-picker`; required; selects the shared repository-picker click wiring and dashboard styling.
-  - `type`: literal `button`; required; prevents form submission semantics and exposes native button activation behavior.
-  - `data-picker`: literal `files`; required; distinguishes this files-pane picker from the diff-pane picker for stable selection and styling, while the current handler treats both pickers with the same shared overlay behavior.
-  - label text: literal `Select container / repo…` before selection; required; visible text and accessible name supplied by `.repo-picker-label`.
-  - selected label text: required after a [repository menu option](#repository-menu-option) is selected; copied from the option's `data-label` to every `.repo-picker-label`, including this button.
-  - caret text: literal `▾`; required visual affordance only; not the accessible name.
-- dom: native `<button class="repo-picker" type="button" data-picker="files">` in the files pane picker bar, rendered before `#files-tree` and `#file-view`; it contains a `.repo-picker-label` text span followed by a `.caret` span.
-- leads-to: [open files repository picker](#open-files-repository-picker), which opens the shared repository menu overlay, loads [GET /repos](../../http/groom.md#get-repository-menu), and focuses [repository menu search input](#repository-menu-search-input); selecting a [repository menu option](#repository-menu-option) later loads the files pane for the selected container/repo pair.
+- exclusive-with: [diff-repository-picker-button](#diff-repository-picker-button)
+- states: label text is replaced on both pickers whenever a repository is chosen, so the two never disagree.
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::wireEvents
+- dom: the two pickers are identical controls in two panes. Only one pane is in the DOM's accessibility tree at a time — the inactive pane is `display:none` — which is why they can share a computed name without being ambiguous.
+- leads-to: [open files repository picker](#open-files-repository-picker), which opens the shared menu below this button.
+- screenshot: docs/specs/groom-dashboard/vet/files-files-repository-picker-button.png
 
 ### diff-repository-picker-button
 
-- selector: `.repo-picker[data-picker="diff"]`
-- role: button.
-- name: `Select container / repo…` until a repository is selected, then the selected repository menu label shared by the files and diff pickers.
-- keyboard: Tab and Shift+Tab reach the native button when the diff pane is active; Enter or Space activates it; Escape closes the repository menu after it opens through the document-level keyboard handler and returns focus to this picker button.
+- selector: `#diff-pane .repo-picker[data-picker="diff"]`
+- role: button
+- name: `Select container / repo…`
+- keyboard: natively focusable with Tab; Enter or Space toggles the shared repository menu.
 - parent: [groom dashboard](#groom-dashboard)
-- states: diff pane inactive but still present in the DOM; diff pane active with the repository menu closed; repository menu open and positioned below this button; repository selected with this button's label replaced by the selected workflow/repository label; repository selected while another activity mode is active, retaining the label for the next diff-pane visit.
-- code: groom/groom/templates/dashboard.html::openRepoMenu
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- props:
-  - `class`: literal `repo-picker`; required; selects the shared repository-picker click wiring and dashboard styling.
-  - `type`: literal `button`; required; prevents form submission semantics and exposes native button activation behavior.
-  - `data-picker`: literal `diff`; required; distinguishes this diff-pane picker from the files-pane picker for stable selection and styling, while the current handler treats both pickers with the same shared overlay behavior.
-  - label text: literal `Select container / repo…` before selection; required; visible text and accessible name supplied by `.repo-picker-label`.
-  - selected label text: required after a [repository menu option](#repository-menu-option) is selected; copied from the option's `data-label` to every `.repo-picker-label`, including this button.
-  - caret text: literal `▾`; required visual affordance only; not the accessible name.
-- dom: native `<button class="repo-picker" type="button" data-picker="diff">` in the diff pane picker bar, rendered before `#diff-tree` and `#diff-view`; it contains a `.repo-picker-label` text span followed by a `.caret` span.
-- leads-to: [open diff repository picker](#open-diff-repository-picker), which opens the shared repository menu overlay, loads [GET /repos](../../http/groom.md#get-repository-menu), and focuses [repository menu search input](#repository-menu-search-input); selecting a [repository menu option](#repository-menu-option) later loads the diff pane for the selected container/repo pair.
+- exclusive-with: [files-repository-picker-button](#files-repository-picker-button)
+- states: identical to the files picker; both labels are written together by the repository selector.
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::wireEvents
+- leads-to: [open diff repository picker](#open-diff-repository-picker), which opens the shared menu below this button.
+- screenshot: docs/specs/groom-dashboard/vet/diff-diff-repository-picker-button.png
 
 ### repository-menu-search-input
 
 - selector: `#repo-search`
-- role: combobox; explicit `role="combobox"` with `aria-expanded`, `aria-controls="repo-menu"`, and `aria-autocomplete="list"`.
-- name: `Search container / repo`.
-- keyboard: Tab and Shift+Tab use normal document focus traversal after a repository picker opens and focuses the field; ordinary text editing changes the filter query immediately; ArrowUp and ArrowDown move the active repository option through `aria-activedescendant` without moving DOM focus; Enter selects the active or first visible option; Escape closes the repository menu through the dashboard-level keydown handler and returns focus to the invoking picker button.
+- role: combobox
+- name: `Search container / repo`
+- keyboard: focused automatically when the menu opens; ArrowDown and ArrowUp move the active option, Enter chooses it, Escape closes the menu and returns focus to the invoking picker.
 - parent: [groom dashboard](#groom-dashboard)
-- states: hidden with the repository menu closed; focused after a files or diff repository picker opens the menu; empty query showing every currently loaded repository option; non-empty query hiding currently loaded options whose `data-label` does not contain the query case-insensitively; loading state when `#repo-menu` still contains `Loading…` and no `.repo-item` rows; stale non-empty query possible when text is entered before the `/repos` response arrives because the filter is not re-run after the response replaces `#repo-menu`.
-- code: groom/groom/templates/dashboard.html::filterRepoMenu
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
+- states: `aria-expanded` is `true` while the menu is open and `false` otherwise; `aria-activedescendant` points at the active option's id while one exists and is removed when the filtered list is empty or the menu closes. The value is cleared on every open.
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::closeRepoMenu
+- code: groom/groom/assets/dashboard.js::RepoMenu
 - props:
-  - `id`: literal `repo-search`; required; selects the field for repository-picker focus and input-event wiring.
-  - `type`: literal `text`; required; native single-line text entry underneath the ARIA combobox pattern.
-  - `role`: literal `combobox`; required; exposes the input/menu pair as a combobox controlling the `#repo-menu` listbox.
-  - `aria-expanded`: `true` while the repository menu is open and `false` while it is closed; required; toggled by the menu open and close helpers.
-  - `aria-controls`: literal `repo-menu`; required; links the combobox to its options listbox.
-  - `aria-autocomplete`: literal `list`; required; declares list-filtering autocomplete behavior.
-  - `aria-activedescendant`: optional; set to the active option's `repo-opt-{index}` id while one exists and removed when no option is active or the menu closes.
-  - `aria-label`: literal `Search container / repo`; required; supplies the accessible name because no visible `<label>` is rendered.
-  - `placeholder`: literal `Search container / repo…`; required visual hint only, not the accessible name.
-  - value: string; optional browser-local query; default empty whenever a repository picker opens because `openRepoMenu` clears it before fetching repository options.
-  - option source: currently loaded [repository menu option](#repository-menu-option) rows inside `#repo-menu`; required for filtering to affect visible menu contents.
-- dom: native single-line combobox input at the top of `.repo-menu-box` inside the shared `#repo-menu-wrap` overlay, rendered before the `role="listbox"` `#repo-menu` option container (`aria-label="Containers and repositories"`) and present in the DOM even when the overlay is closed.
-- leads-to: [filter repository menu options](#filter-repository-menu-options), which filters already-loaded [repository menu option](#repository-menu-option) rows by their `data-label` text without requesting new data or selecting a repository.
+  - `role`: literal `combobox`; required.
+  - `aria-controls`: literal `repo-menu`; required; associates the input with the listbox it drives.
+  - `aria-autocomplete`: literal `list`; required.
+  - `aria-expanded`: `true` or `false`; required; toggled by the open and close handlers.
+  - `aria-activedescendant`: `repo-opt-{index}`; present only while an active option exists. It is published by the menu island rather than by the keyboard handler, because that is the one place that knows which row ended up where.
+- screenshot: docs/specs/groom-dashboard/vet/repository-menu-repository-menu-search-input.png
+
+### repository-menu-listbox
+
+- selector: `#repo-menu`
+- role: listbox
+- name: `Containers and repositories`
+- keyboard: not focusable itself; driven entirely from the search input via `aria-activedescendant`.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `Loading…` while the fetch is in flight; `No repositories available.` when the response is empty or the search matches nothing; otherwise one option per repository, grouped per container by the server and flattened for the keyboard.
+- code: groom/groom/assets/dashboard.js::RepoMenu
+- dom: a shell `<div>` the menu island renders into, positioned under whichever picker invoked it.
+- screenshot: docs/specs/groom-dashboard/vet/repository-menu-repository-menu-listbox.png
 
 ### repository-menu-option
 
-- selector: `#repo-menu .repo-item`
-- role: option; explicit `role="option"` on each rendered row, owned by `#repo-menu`, which carries `role="listbox"` and `aria-label="Containers and repositories"`.
-- name: visible text from the optional workflow type badge followed by the repository option label generated from workflow/container name and checkout directory, for example `coder coder-001/acme` when a `coder` badge is rendered or `author-002` when no checkout directory and no badge are present.
-- keyboard: managed through `aria-activedescendant` on the `#repo-search` combobox rather than DOM focus; ArrowUp and ArrowDown move the active option among visible rows, Enter selects the active option, and Escape closes the menu and returns focus to the invoking repository picker button.
-- parent: [groom dashboard](#groom-dashboard)
-- states: visible after [GET /repos](../../http/groom.md#get-repository-menu) replaces the menu loading state; filtered out when [repository menu search input](#repository-menu-search-input) sets inline `display: none`; active with the `active` class and `aria-selected="true"` when it is the option referenced by the combobox's `aria-activedescendant`, while every other loaded option carries `aria-selected="false"`; absent when no eligible repository entries exist and the menu instead renders `No repositories available.`
-- code: groom/groom/render.py::render_repo_menu
-- verify: groom/tests/test_render.py::test_repo_menu_one_entry_per_container_repo
-- verify: groom/tests/test_render.py::test_repo_menu_empty_when_no_entries
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
+- selector: `#repo-menu .repo-item[role="option"]`
+- role: option
+- name: `{container} / {repo}`
+- keyboard: not individually focusable; reached with ArrowDown and ArrowUp from the search input and chosen with Enter. Pointer click selects it directly.
+- parent: [repository-menu-listbox](#repository-menu-listbox)
+- states: `aria-selected="true"` on the active option and `"false"` on the rest; the active option is scrolled into view on each render.
+- code: groom/groom/assets/dashboard.js::RepoMenu
+- code: groom/groom/assets/dashboard.js::repoItems
 - props:
-  - source entry: required tuple of one workflow container and one checkout directory from the repository menu endpoint; a workflow with no checkout directories contributes one volume-root option with an empty repository value.
-  - ordering: required; options are grouped by workflow after sorting workflows by dashboard state order and then workflow name, and checkout directories appear in the order supplied for that workflow without an additional row-level sort.
-  - row cardinality: one row per checkout directory when the source checkout list is non-empty; exactly one synthetic volume-root row when the source checkout list is empty; no option rows when the entire rendered entry list is empty.
-  - `class`: literal `repo-item`; required; selects the option for search filtering and delegated click selection.
-  - `role`: literal `option`; required on the row and owned by the `role="listbox"` `#repo-menu` container; after the menu loads, the dashboard assigns each option an `id` of `repo-opt-{index}` and an `aria-selected` state for `aria-activedescendant` tracking from `#repo-search`.
-  - `data-container`: required string; escaped workflow container id; becomes the selected container id used by later files and diff requests.
-  - `data-repo`: required string; escaped volume-relative checkout directory; empty string means the workflow workspace volume root.
-  - `data-label`: required string; escaped visible picker label; derived as `workflow.name/repo` for a checkout row and `workflow.name` for a synthetic volume-root row; copied into every `.repo-picker-label` after selection and used as the case-insensitive menu-search source.
-  - state dot: required; visual workflow state marker rendered before the label as an empty span, so the workflow state is not part of the option's accessible name and is not exposed as selected or status text.
-  - workflow type badge: optional [workflow type badge renderer](../../concepts/workflow-type-badge-renderer.md) fragment; rendered when the workflow has a workflow type, carries `data-type` plus type text, and contributes that visible type text to the option's accessible name before `.repo-item-label`.
-  - `.repo-item-label`: required span whose text is the same escaped label stored in `data-label`.
-- dom: one `<div class="repo-item" role="option" data-container data-repo data-label>` inside the `role="listbox"` `#repo-menu` per rendered repository-menu row, given `id="repo-opt-{index}"` and `aria-selected` after the menu loads; contains a [workflow state dot renderer](../../concepts/workflow-state-dot-renderer.md) fragment, optional [workflow type badge renderer](../../concepts/workflow-type-badge-renderer.md) fragment, and `.repo-item-label` text; when the endpoint has no rows, this component is absent and `#repo-menu` instead contains `<div class="repo-empty">No repositories available.</div>`.
-- leads-to: [select repository menu option](#select-repository-menu-option), which selects the container/repo pair, closes the menu, updates both picker labels, and loads the active files or diff pane.
+  - `id`: `repo-opt-{index}`; required; the target of the search input's `aria-activedescendant`.
+  - `data-container`: the container id; required.
+  - `data-repo`: the repository path, possibly empty for the container's own checkout; required.
+  - `data-label`: the display label; required.
+- dom: keyed by `container/repo`, so filtering re-uses rows rather than recreating them. Filtering is done by rebuilding the list, not by hiding rows with inline styles — a hidden row would still be in the accessibility tree.
+- leads-to: [select repository menu option](#select-repository-menu-option), which sets the selected repository and loads the active pane.
+- screenshot: docs/specs/groom-dashboard/vet/repository-menu-repository-menu-option.png
 
 ### files-directory-toggle
 
 - selector: `#files-tree .tree-dir-head`
-- role: button; a native `<button type="button">` disclosure header whose `aria-expanded` attribute exposes the expanded or collapsed state.
-- name: the directory basename; the `▾` chevron span is `aria-hidden="true"` and does not join the accessible name.
-- keyboard: Tab and Shift+Tab reach the native header button in document order; Enter or Space toggles the directory's collapsed state.
+- role: button
+- name: `{directory}`
+- keyboard: natively focusable with Tab; Enter or Space collapses and expands the directory.
 - parent: [groom dashboard](#groom-dashboard)
-- states: expanded by default with `aria-expanded="true"`; collapsed when the enclosing `.tree-dir` has the `collapsed` class and the header carries `aria-expanded="false"`.
-- code: groom/groom/templates/dashboard.html::renderPathTree
-- props:
-  - source directory: required node in the [dashboard files path tree](../../dashboard-files-path-tree.md) built from newline-separated repo-relative file paths returned by [GET /files/{container_id}](../../http/groom.md#get-workspace-file-list); one toggle is rendered for every directory segment with at least one child directory or file.
-  - directory name: required string; escaped before insertion and rendered as the visible label after the chevron; sorting is case-sensitive JavaScript object-key order after `Object.keys(...).sort()`.
-  - `class`: literal `tree-dir-head`; required; selects the clickable generated directory header for delegated files-tree click handling and dashboard styling.
-  - parent `class`: literal `tree-dir`; required; receives or loses `collapsed` when this header is activated.
-  - chevron text: literal `▾`; required visual expansion affordance in child `<span class="tchev" aria-hidden="true">`; disclosure state is exposed to assistive technology through the button's `aria-expanded` attribute instead.
-  - children container `class`: literal `tree-children`; required; contains recursively rendered child directories and file rows whose visibility is controlled by the parent `.tree-dir.collapsed` state.
-- dom: generated `<div class="tree-dir"><button type="button" class="tree-dir-head" aria-expanded="true"><span class="tchev" aria-hidden="true">▾</span>{directory}</button><div class="tree-children">...</div></div>` inside `#files-tree`; it appears only after a repository is selected and the files pane successfully renders a non-empty file list.
-- leads-to: [toggle files directory](#toggle-files-directory), which toggles visibility of this directory's child paths in the files tree without selecting a file or loading file contents.
+- exclusive-with: [diff-directory-toggle](#diff-directory-toggle)
+- states: expanded by default with `aria-expanded="true"`; collapsed with `aria-expanded="false"` and the `collapsed` class on its wrapper. The collapse state is component-local and survives a re-render because the node is keyed by name; it is deliberately not in the store, since nothing else reads it.
+- code: groom/groom/assets/dashboard.js::TreeDir
+- code: groom/groom/assets/dashboard.js::buildTree
+- dom: a native `<button type="button">` with an `aria-hidden` chevron; the nesting is a pure function of the flat path list the server sends, computed by the [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
+- leads-to: [toggle files directory](#toggle-files-directory).
+- screenshot: docs/specs/groom-dashboard/vet/files-files-directory-toggle.png
 
 ### files-file-row
 
-- selector: `#files-tree .tree-file[data-path]`
-- role: button; a native `<button type="button" class="tree-file">` row.
-- name: the file basename rendered in the child `.fname` span, exposed as the button's accessible name.
-- keyboard: Tab and Shift+Tab reach the native row button in document order; Enter or Space opens the focused file; no arrow-key tree navigation model is implemented.
+- selector: `#files-tree button.tree-file`
+- role: button
+- name: `{filename}`
+- keyboard: natively focusable with Tab; Enter or Space opens the file in the viewer.
 - parent: [groom dashboard](#groom-dashboard)
-- states: unselected after the files tree is rendered; active when this exact row has the `active` class and `aria-current="true"` after selection; inactive when any other file row in `#files-tree` is selected and the prior active class and `aria-current` attribute are removed; absent while no repository is selected, the files endpoint is loading, the selected repository has no files, or the files request failed.
-- code: groom/groom/templates/dashboard.html::openFile
-- props:
-  - source path: required repo-relative file path returned as one newline-delimited entry from [GET /files/{container_id}](../../http/groom.md#get-workspace-file-list) and retained in a [dashboard files path tree](../../dashboard-files-path-tree.md) file leaf; directory segments are used only to place the row under generated directory toggles, and the full path is retained on the row.
-  - file basename: required string; the last slash-delimited segment of the source path, sorted locale-aware against sibling files by basename and escaped before insertion.
-  - `class`: literal `tree-file`; required; gains `active` exactly for the currently selected file row in the files tree.
-  - `data-path`: required escaped repo-relative full file path; becomes the `path` query parameter for the file-content request.
-  - `.fname`: required child span containing the escaped file basename; it supplies the button's visible text and accessible name.
-- dom: generated `<button type="button" class="tree-file" data-path="{path}"><span class="fname">{basename}</span></button>` inside `#files-tree`, nested under zero or more `.tree-dir > .tree-children` containers after a repository selection successfully renders a non-empty path list.
-- leads-to: [select files file row](#select-files-file-row), which fetches [GET /file/{container_id}](../../http/groom.md#get-workspace-file-content) with the selected repository and file path, then renders the returned raw text in `#file-view`.
+- exclusive-with: [diff-file-row](#diff-file-row)
+- states: the open file's row carries the `active` class and `aria-current="true"`; every other row omits `aria-current`.
+- code: groom/groom/assets/dashboard.js::FilesTree
+- dom: a native `<button type="button">` keyed by full path, holding only the base name. The full path is closed over by the click handler rather than written to a data attribute.
+- leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../workspace-file-content-data.md).
+- screenshot: docs/specs/groom-dashboard/vet/files-files-file-row.png
+
+### file-view-region
+
+- selector: `#file-view`
+- role: none
+- name: none
+- keyboard: not focusable; the code block is selectable text.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `Select a file to view it.` when idle; `Loading…` in flight; `failed to load` on rejection; `(empty or binary file)` under the path header when the content is empty; otherwise the path header and the highlighted source.
+- code: groom/groom/assets/dashboard.js::FileView
+- code: groom/groom/assets/dashboard.js::highlight
+- dom: highlighting is applied by highlight.js, whose output is escaped HTML; when the library is absent or throws, the content is rendered as a plain text node instead. The language comes from the server so the extension table lives next to the rest of the presentation policy.
+- screenshot: docs/specs/groom-dashboard/vet/files-file-view-region.png
 
 ### diff-directory-toggle
 
 - selector: `#diff-tree .tree-dir-head`
-- role: button; a native `<button type="button">` disclosure header whose `aria-expanded` attribute exposes the expanded or collapsed state.
-- name: the directory basename; the `▾` chevron span is `aria-hidden="true"` and does not join the accessible name.
-- keyboard: Tab and Shift+Tab reach the native header button in document order; Enter or Space toggles the directory's collapsed state.
+- role: button
+- name: `{directory}`
+- keyboard: natively focusable with Tab; Enter or Space collapses and expands the directory.
 - parent: [groom dashboard](#groom-dashboard)
-- states: expanded by default after the diff tree renders, with `aria-expanded="true"`; collapsed when the enclosing `.tree-dir` has the `collapsed` class and the header carries `aria-expanded="false"`.
-- code: groom/groom/templates/dashboard.html::renderDiffTree
-- props:
-  - source directory: required node in the [dashboard diff file tree](../../dashboard-diff-file-tree.md) built from parsed unified diff file entries returned by [GET /diff/{container_id}](../../http/groom.md#get-workspace-diff); one toggle is rendered for every directory segment that contains at least one changed file or child directory.
-  - directory name: required string; derived from the selected diff file's new path unless that path is `/dev/null`, in which case the old path is used; escaped before insertion and rendered as the visible label after the chevron.
-  - ordering: required; sibling directories are rendered by JavaScript object-key sort order before sibling changed-file rows, and changed-file rows inside each directory are sorted by basename with `localeCompare`.
-  - `class`: literal `tree-dir-head`; required; selects the clickable generated directory header for delegated diff-tree click handling and dashboard styling.
-  - parent `class`: literal `tree-dir`; required; receives or loses `collapsed` when this header is activated.
-  - chevron text: literal `▾`; required visual expansion affordance in child `<span class="tchev" aria-hidden="true">`; disclosure state is exposed to assistive technology through the button's `aria-expanded` attribute instead.
-  - children container `class`: literal `tree-children`; required; contains recursively rendered child directories and changed-file rows whose visibility is controlled by the parent `.tree-dir.collapsed` state.
-- dom: generated `<div class="tree-dir"><button type="button" class="tree-dir-head" aria-expanded="true"><span class="tchev" aria-hidden="true">▾</span>{directory}</button><div class="tree-children">...</div></div>` inside `#diff-tree`; it appears only after a repository is selected, the diff endpoint returns non-empty unified diff text, Diff2Html parses at least one changed file, and at least one changed-file path contains a directory segment.
-- leads-to: [toggle diff directory](#toggle-diff-directory), which toggles visibility of this directory's child changed files in the diff tree without selecting a file or rendering a diff in `#diff-view`.
+- exclusive-with: [files-directory-toggle](#files-directory-toggle)
+- states: expanded by default with `aria-expanded="true"`; collapsed with `aria-expanded="false"`. Same component as the files tree uses, over the changed-file list put through the same [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
+- code: groom/groom/assets/dashboard.js::TreeDir
+- leads-to: [toggle diff directory](#toggle-diff-directory).
+- screenshot: docs/specs/groom-dashboard/vet/diff-diff-directory-toggle.png
 
 ### diff-file-row
 
-- selector: `#diff-tree .tree-file[data-file-idx]`
-- role: button; a native `<button type="button" class="tree-file">` row.
-- name: the file basename plus added/deleted line-count text, exposed as the button's accessible name from its visible span content.
-- keyboard: Tab and Shift+Tab reach the native row button in document order; Enter or Space opens the focused changed file; no arrow-key tree navigation model is implemented.
+- selector: `#diff-tree button.tree-file`
+- role: button
+- name: `{filename} +{added} -{deleted}`
+- keyboard: natively focusable with Tab; Enter or Space shows that file's diff.
 - parent: [groom dashboard](#groom-dashboard)
-- states: absent while no repository is selected, diff loading is in progress, the selected repository has no changes, the returned unified diff parses to no files, or the diff request fails; unselected after the diff tree renders; active when this exact row has the `active` class and `aria-current="true"` after selection; inactive when any other changed-file row in `#diff-tree` is selected and the prior active class and `aria-current` attribute are removed.
-- code: groom/groom/templates/dashboard.html::renderDiffTree
-- props:
-  - source file: required changed-file leaf from the [dashboard diff file tree](../../dashboard-diff-file-tree.md), produced from one parsed diff2html file entry in the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md); the row represents exactly one parsed changed file.
-  - file path source: required; uses the parsed file's `newName` unless it is `/dev/null`, otherwise uses `oldName`; only the slash-delimited basename is displayed in this row while the parsed file entry remains available for full diff rendering.
-  - ordering: required; sibling changed-file rows are sorted by displayed basename with `localeCompare`, after sibling directories are rendered by JavaScript object-key sort order.
-  - `class`: literal `tree-file`; required; gains `active` exactly for the currently selected changed-file row in the diff tree.
-  - `data-file-idx`: required zero-based integer string; indexes the parsed file entry in `#diff-tree._files` and is converted with unary `+` when the row is selected.
-  - `.fname`: required child span containing the escaped displayed basename; it supplies the leading part of the button's visible text and accessible name.
-  - `.fstat`: required child span containing the changed-line summary; wraps `.add` and `.del` spans.
-  - `.add`: required child span text in `+{addedLines}` form, where `addedLines` comes from the parsed file entry.
-  - `.del`: required child span text in `-{deletedLines}` form, where `deletedLines` comes from the parsed file entry.
-- dom: generated `<button type="button" class="tree-file" data-file-idx="{idx}"><span class="fname">{basename}</span><span class="fstat"><span class="add">+{addedLines}</span> <span class="del">-{deletedLines}</span></span></button>` inside `#diff-tree`, nested under zero or more generated `.tree-dir > .tree-children` containers after repository selection successfully renders a non-empty parsed diff tree.
-- leads-to: [select diff file row](#select-diff-file-row), which renders that cached parsed file entry into `#diff-view` without another network request.
+- exclusive-with: [files-file-row](#files-file-row)
+- states: the shown file's row carries the `active` class and `aria-current="true"`; every other row omits `aria-current`.
+- code: groom/groom/assets/dashboard.js::DiffTree
+- dom: keyed by its index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md); the index is closed over by the click handler rather than written to a data attribute. A file added or deleted in the diff is addressed by its non-`/dev/null` name.
+- leads-to: [select diff file row](#select-diff-file-row).
+- screenshot: docs/specs/groom-dashboard/vet/diff-diff-file-row.png
+
+### diff-view-region
+
+- selector: `#diff-view`
+- role: none
+- name: none
+- keyboard: not focusable; the rendered diff is selectable text.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `Select a changed file to see its diff.` until a changed file is chosen; otherwise that one file's rendered diff.
+- code: groom/groom/assets/dashboard.js::DiffView
+- code: groom/groom/assets/dashboard.js::diffMarkup
+- dom: diff2html both parses the unified text and renders it, and escapes what it emits — which is why the raw diff rides the wire unsplit rather than having half a parser reimplemented server-side.
+- screenshot: docs/specs/groom-dashboard/vet/diff-diff-view-region.png
+
+### telemetry-run-filter-input
+
+- selector: `#traces-filter input[name="run"]`
+- role: searchbox
+- name: `Filter by run id`
+- keyboard: natively focusable with Tab; typing re-queries.
+- parent: [groom dashboard](#groom-dashboard)
+- states: empty by default; any value narrows the query to matching run ids.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-run-filter-input.png
+
+### telemetry-node-filter-input
+
+- selector: `#traces-filter input[name="node"]`
+- role: searchbox
+- name: `Filter by node`
+- keyboard: natively focusable with Tab; typing re-queries.
+- parent: [groom dashboard](#groom-dashboard)
+- states: empty by default; any value narrows the query to matching workflow nodes.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-node-filter-input.png
+
+### telemetry-status-filter-select
+
+- selector: `#traces-filter select[name="status"]`
+- role: combobox
+- name: `Filter by span status`
+- keyboard: natively focusable with Tab; ArrowUp and ArrowDown or typing choose an option; changing the value re-queries.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `any status` by default, with an empty value; `ERROR`, `OK`, and `UNSET` are the alternatives.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- dom: a native single-select `<select>`, which computes to `combobox` — not `listbox` — because it is closed and shows one value at a time.
+- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-status-filter-select.png
+
+### telemetry-slower-than-input
+
+- selector: `#traces-filter input[name="slower_than"]`
+- role: searchbox
+- name: `Minimum duration in seconds`
+- keyboard: natively focusable with Tab; typing re-queries.
+- parent: [groom dashboard](#groom-dashboard)
+- states: empty by default; a numeric value drops spans faster than that many seconds.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-slower-than-input.png
+
+### telemetry-traces-table
+
+- selector: `#traces-list table.traces`
+- role: table
+- name: none
+- keyboard: not focusable; the cells are selectable text.
+- parent: [groom dashboard](#groom-dashboard)
+- states: `No telemetry yet.` before the first query; `failed to load` on rejection; a run-card strip with `No spans match — …` when runs are known but no span matches; otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
+- code: groom/groom/assets/dashboard.js::Traces
+- code: groom/groom/assets/dashboard.js::RunCard
+- dom: a real `<table>` with a `<thead>` row of `<th>` cells, so the columns are announced as headers rather than as a grid of unlabelled text. Rows with an `ERROR` status carry an extra class on the status cell only.
+- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-traces-table.png
 
 ### settings-rescan-button
 
 - selector: `#btn-refresh`
-- role: button.
-- name: `Rescan containers`.
-- keyboard: Tab and Shift+Tab reach the native button when the settings pane is active; Enter or Space activates it when focused.
+- role: button
+- name: `Rescan containers`
+- keyboard: natively focusable with Tab; Enter or Space triggers the rescan.
 - parent: [groom dashboard](#groom-dashboard)
-- states: settings pane inactive but present in the DOM; idle and activatable when settings mode is active; busy after activation with `data-busy="1"` and `spinning` class on this button; idle again after the refresh request settles whether it fulfilled or rejected.
-- code: groom/groom/templates/dashboard.html::doRefresh
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- props:
-  - `id`: literal `btn-refresh`; required; selects this settings-pane button in the shared refresh click delegation.
-  - `class`: literal `btn`; required visual button styling and the base class that receives transient `spinning` during a request.
-  - text content: literal `Rescan containers`; required visible label and accessible name.
-  - `type`: absent; the button is not inside a form, so activation has no form submission target and is owned by the dashboard click handler.
-  - `data-busy`: absent by default; set to string `1` only while the client-side refresh request is in flight, and used as the duplicate-activation guard.
-- dom: native `<button class="btn" id="btn-refresh">Rescan containers</button>` inside one `.row-set` in `#settings-pane .settings-panel`, rendered after the `Settings` heading and before the explanatory text `Re-run the docker discovery pass.`.
-- leads-to: [rescan containers from settings](#rescan-containers-from-settings), which posts to [POST /refresh](../../http/groom.md#post-refresh); websocket shell broadcasts deliver the scanning and refreshed fleet states.
+- states: idle; while a rescan is in flight it carries `data-busy` and the `spinning` class, and further activations are ignored until the request settles.
+- code: groom/groom/assets/dashboard.js::doRefresh
+- dom: a text button in the settings pane, beside the explanatory line `Re-run the docker discovery pass.`
+- leads-to: [rescan containers from settings](#rescan-containers-from-settings).
+- screenshot: docs/specs/groom-dashboard/vet/settings-settings-rescan-button.png
 
 ### settings-enable-notifications-button
 
 - selector: `#btn-notify`
-- role: button.
-- name: `Enable notifications`.
-- keyboard: Tab and Shift+Tab reach the native button while settings mode is active; Enter or Space activates it when focused.
+- role: button
+- name: `Enable notifications`
+- keyboard: natively focusable with Tab; Enter or Space requests the browser permission.
 - parent: [groom dashboard](#groom-dashboard)
-- states: absent only if the dashboard shell is not loaded; inactive but present when another activity mode is selected; idle and enabled when settings mode is active; remains enabled with no `disabled`, busy, pressed, granted, denied, or unavailable visual state regardless of the browser's current notification permission.
-- code: groom/groom/templates/dashboard.html::btn-notify
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
+- states: static — the label does not change with the permission state; the browser owns the prompt and the answer.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- dom: a ghost button in the settings pane, beside `Browser alerts when a worker blocks.`
+- leads-to: [enable browser notifications from settings](#enable-browser-notifications-from-settings), which asks for [browser notification permission](../../concepts/browser-notification-permission.md).
+- screenshot: docs/specs/groom-dashboard/vet/settings-settings-enable-notifications-button.png
+
+### statusbar-region
+
+- selector: `#statusbar`
+- role: status
+- name: `Fleet status`
+- keyboard: not focusable itself; contains the refresh and palette buttons.
+- parent: [groom dashboard](#groom-dashboard)
+- states: four state counts in the order blocked, running, idle, finished, then the repo and worker totals, the connection chip, the refresh control, and the palette button.
+- code: groom/groom/assets/dashboard.js::StatusBar
+- verify: groom/tests/test_projection.py::test_status_bar_counts_states
+- dom: a shell `<div>` with `role="status"`, `aria-live="polite"`, and its own `aria-label`. It is one of three `role="status"` regions on this page; each is named so they are distinguishable.
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-statusbar-region.png
+
+### connection-chip
+
+- selector: `#statusbar .stat.conn`
+- role: status
+- name: `Connection: ` followed by the current phase word — `live`, `stale`, `reconnecting`, or `offline`.
+- keyboard: not focusable; it is a report, not a control.
+- parent: [statusbar-region](#statusbar-region)
+- states: `live` while a frame has arrived within the last 15 seconds; `stale` when the socket is open but has been silent longer; `reconnecting` for the first 60 seconds after the socket closes, while backoff is in flight; `offline` beyond that. `connecting` is the value the store starts with, before the first evaluation.
+- code: groom/groom/assets/dashboard.js::ConnectionChip
+- code: groom/groom/assets/dashboard.js::deriveConnection
+- verify: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
+- verify: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
 - props:
-  - `id`: literal `btn-notify`; required; the delegated dashboard click handler matches this exact event target before requesting browser notification permission.
-  - `class`: literal `btn ghost`; required; provides button styling and secondary visual emphasis, with no state semantics.
-  - text content: literal `Enable notifications`; required visible label and accessible name.
-  - `type`: absent; the button is not inside a form, so activation has no form submission target and is owned by the dashboard click handler.
-- dom: native `<button class="btn ghost" id="btn-notify">Enable notifications</button>` inside one `.row-set` in `#settings-pane .settings-panel`, rendered after the [settings rescan button](#settings-rescan-button) row and before the explanatory text `Browser alerts when a worker blocks.`.
-- leads-to: [enable browser notifications from settings](#enable-browser-notifications-from-settings), which requests browser notification permission when the Notification API is available; later `groom:blocked` browser events may show system notifications only if the browser reports permission as `granted`.
+  - `data-conn`: the phase word; required; the only styling hook, so the four states differ visually as well as in their name.
+  - `role`: literal `status`; required; the phase changing is exactly the kind of thing that should be announced, and it changes independently of the counts beside it.
+  - `aria-label`: `Connection: {phase}`; required; the word is the accessible name and the dot is `aria-hidden`, so a degraded socket does not depend on colour to be legible.
+  - `title`: one of four sentences explaining the phase — that updates are live, that the socket has gone quiet and polling has taken over, that it dropped and is reconnecting, or that there is no socket at all.
+- dom: derived from message recency, **not** from `readyState`. A half-open TCP socket reads OPEN forever and will never deliver another frame; the server ticks every `GROOM_LIVE_TICK_S` whether or not anything changed, so silence is information. The phase is computed by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md), and every phase but `live` runs the [dashboard resync poller](../../concepts/dashboard-resync-poller.md).
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-connection-chip.png
 
 ### statusbar-refresh-button
 
 - selector: `#btn-refresh-bar`
-- role: button.
-- name: `Rescan containers`, supplied by the `aria-label` attribute; the `⟳` glyph is wrapped in an `aria-hidden="true"` span so it no longer competes for the accessible name, and the `title` attribute remains tooltip/description text only.
-- keyboard: Tab and Shift+Tab reach the native button in the always-visible status bar; Enter or Space activates it when focused.
-- parent: [groom dashboard](#groom-dashboard)
-- states: idle and activatable whenever the dashboard shell is loaded; busy after activation with `data-busy="1"` and `spinning` class on this status-bar button only; idle again after the refresh request settles whether it fulfilled or rejected; replaced back to server-rendered idle markup when an out-of-band status bar update arrives.
-- code: groom/groom/render.py::render_statusbar
-- verify: groom/tests/test_render.py::test_statusbar_has_refresh_button
+- role: button
+- name: `Rescan containers (reconcile + prune)`
+- keyboard: natively focusable with Tab; Enter or Space triggers the rescan.
+- parent: [statusbar-region](#statusbar-region)
+- states: idle; `data-busy` and the `spinning` class while a rescan is in flight, during which further activations are ignored.
+- code: groom/groom/assets/dashboard.js::doRefresh
+- dom: an icon-only button holding an `aria-hidden` glyph, named longer than the settings-pane control it duplicates so the two are distinguishable when settings mode puts both on screen at once.
+- leads-to: [rescan containers from statusbar](#rescan-containers-from-statusbar).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-statusbar-refresh-button.png
-- props:
-  - `id`: literal `btn-refresh-bar`; required; selects this status-bar button in the shared refresh click delegation alongside the settings-pane `#btn-refresh` button.
-  - `class`: literal `statusbar-refresh`; required for status-bar refresh styling and the base class that receives transient `spinning` during a request.
-  - `aria-label`: literal `Rescan containers`; required; the durable accessible name for this icon-only button.
-  - `title`: literal `Rescan containers (reconcile + prune)`; tooltip text and accessible-description only; the accessible name comes from `aria-label`.
-  - text content: literal `⟳` inside an `aria-hidden="true"` span; required visible icon glyph only, excluded from the accessible name.
-  - `type`: literal `button`; required; prevents form submission semantics and exposes native button activation behavior.
-  - `data-busy`: absent by default; set to string `1` only while this button's client-side refresh request is in flight, and used as the duplicate-activation guard for this button.
-- dom: native `<button type="button" id="btn-refresh-bar" class="statusbar-refresh" aria-label="Rescan containers" title="Rescan containers (reconcile + prune)"><span aria-hidden="true">⟳</span></button>` inside `#statusbar .status-right`, rendered after the websocket liveness label and before the `#btn-palette` palette-open button; the status bar itself is replaced out of band by websocket shell broadcasts.
-- leads-to: [rescan containers from statusbar](#rescan-containers-from-statusbar), which posts to [POST /refresh](../../http/groom.md#post-refresh); websocket shell broadcasts deliver the scanning and refreshed fleet states.
 
-### command-palette-shortcut
+### command-palette-open-button
 
-- selector: `document keydown Ctrl+K or Meta+K`
-- role: keyboard shortcut plus a real status-bar opener; the shortcut is a document-level keydown handler, and the visible status-bar affordance is a native `<button type="button" id="btn-palette" class="palette-open">`.
-- name: `Open command palette`, supplied by the status-bar button's `aria-label`; the button is reachable with `getByRole("button", { name: "Open command palette" })`, and its `⌘K` kbd glyph is `aria-hidden="true"`.
-- keyboard: `Ctrl+K` or `Meta+K` toggles the command palette from anywhere in the dashboard, including while focus is in a text input; Escape closes the palette through the same document-level keydown handler and returns focus to the invoker.
+- selector: `#btn-palette`
+- role: button
+- name: `Open command palette`
+- keyboard: natively focusable with Tab; Enter or Space opens the palette. `Ctrl+K` or `Meta+K` opens it from anywhere on the page.
+- parent: [statusbar-region](#statusbar-region)
+- states: static. Opening records the invoker so focus returns here on close.
+- code: groom/groom/assets/dashboard.js::openPalette
+- dom: shows the `⌘K` hint as an `aria-hidden` glyph beside the word `palette`; the accessible name comes from `aria-label` so the shortcut glyph is never read out as text.
+- leads-to: [toggle command palette shortcut](#toggle-command-palette-shortcut).
+- screenshot: docs/specs/groom-dashboard/vet/post-discovery-command-palette-open-button.png
+
+### command-palette-dialog
+
+- selector: `#palette`
+- role: dialog
+- name: `Command palette`
+- keyboard: Escape closes it; while it is open Tab is trapped on its input, which is its only focusable element.
 - parent: [groom dashboard](#groom-dashboard)
-- states: palette closed with `#palette` lacking `open`; palette open with `#palette.open`, empty [command palette input](#command-palette-input), refreshed [command palette result](#command-palette-result) rows, and focus moved to `#palette-input`; closed again after the same shortcut, Escape, clicking a result, or pressing Enter with a selectable result; closing returns focus to the recorded invoker when focus was still inside the palette.
-- code: groom/groom/templates/dashboard.html::openPalette
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- props:
-  - shortcut: required platform-neutral chord; `Ctrl+K` for control-key environments and `Meta+K` for command-key environments; checked case-insensitively with `e.key.toLowerCase() === "k"`.
-  - trigger scope: required document-wide keydown listener; it runs before Escape, palette Enter, and `j`/`k` inbox-row movement handling.
-  - opener button: required status-bar `<button type="button" id="btn-palette" class="palette-open" aria-label="Open command palette">` rendering the `aria-hidden` `⌘K` kbd glyph plus the text `palette`; clicking it opens the palette and records the button as the focus-return invoker.
-  - opened overlay: required `#palette` element with `role="dialog"`, `aria-modal="true"`, and `aria-label="Command palette"`; receives the `open` class when the palette opens and loses it when the palette closes.
-  - input reset: required; opening clears `#palette-input` to the empty string before results are rendered.
-  - result source: required current `#inbox-list .row` DOM collection; opening rebuilds palette results from currently rendered inbox rows and does not request fresh data.
-- dom: the persistent visual affordance is the native `#btn-palette` palette-open button inside `#statusbar .status-right`, and the overlay itself is `<div id="palette" role="dialog" aria-modal="true" aria-label="Command palette">` containing the [command palette input](#command-palette-input) and [command palette result](#command-palette-result) list.
-- leads-to: [toggle command palette shortcut](#toggle-command-palette-shortcut), which opens [command palette input](#command-palette-input) and [command palette result](#command-palette-result) overlay content in this screen; no browser route change occurs.
+- states: closed by default; `open` on the wrapper while shown. Closing returns focus to whatever opened it rather than dropping it to `<body>`.
+- code: groom/groom/assets/dashboard.js::openPalette
+- code: groom/groom/assets/dashboard.js::closePalette
+- dom: `aria-modal="true"`. The trap is one element wide on purpose — there is nothing else in the dialog to reach.
+- screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-dialog.png
 
 ### command-palette-input
 
 - selector: `#palette-input`
-- role: combobox; explicit `role="combobox"` with `aria-expanded`, `aria-controls="palette-results"`, and `aria-autocomplete="list"`.
-- name: `Jump to a worker or blocked gate`.
-- keyboard: ordinary single-line text editing filters palette results while focus remains in the input; ArrowUp and ArrowDown move the active result through `aria-activedescendant` without moving DOM focus; Enter selects the active or first result through the document-level palette key handler; Tab is trapped inside the open palette dialog and refocuses this input; Escape closes the palette through the document-level key handler and returns focus to the invoker.
-- parent: [groom dashboard](#groom-dashboard)
-- states: hidden but present in the DOM while `#palette` is closed; focused after `Ctrl+K` or `Meta+K` opens the palette; empty query showing all currently rendered inbox rows as results; non-empty query showing only palette results whose normalized row text contains the query case-insensitively; stale results possible when websocket out-of-band swaps replace `#inbox-list` while the palette remains open because results are rebuilt only on open or input events.
-- code: groom/groom/templates/dashboard.html
-- verify: groom/tests/test_a11y_lint.py::test_shipped_dashboard_is_clean
-- props:
-  - `id`: literal `palette-input`; required; selects the field for palette-open focus, input-event wiring, and the command-palette text value.
-  - `type`: literal `text`; required; native single-line text entry underneath the ARIA combobox pattern.
-  - `role`: literal `combobox`; required; exposes the input/results pair as a combobox controlling the `#palette-results` listbox.
-  - `aria-expanded`: `true` while the palette is open and `false` while it is closed; required; toggled by the palette open and close helpers.
-  - `aria-controls`: literal `palette-results`; required; links the combobox to its results listbox.
-  - `aria-autocomplete`: literal `list`; required; declares list-filtering autocomplete behavior.
-  - `aria-activedescendant`: optional; set to the active result's `presult-{index}` id while one exists and removed when no result is active or the palette closes.
-  - `aria-label`: literal `Jump to a worker or blocked gate`; required; supplies the durable accessible name because no visible label is rendered.
-  - `placeholder`: literal `Jump to a worker or blocked gate...`; required visual hint only, not the accessible name.
-  - value: string; optional browser-local query; default empty whenever the palette is opened because `openPalette` clears it before rebuilding results.
-  - result source: currently rendered `#inbox-list .row` elements; required for filtering and result generation, with each source row contributing `data-worker-id`, `data-state`, and normalized visible text.
-- dom: native `<input id="palette-input" type="text" aria-label="Jump to a worker or blocked gate" placeholder="Jump to a worker or blocked gate..." role="combobox" aria-expanded aria-controls="palette-results" aria-autocomplete="list">` as the first child of `.palette-box`, followed by the `role="listbox"` `#palette-results` (`aria-label="Workers"`); the enclosing `#palette` overlay is a modal dialog with `role="dialog"`, `aria-modal="true"`, and `aria-label="Command palette"`, and the input tracks the active generated result row through `aria-activedescendant`.
-- leads-to: [filter command palette results](#filter-command-palette-results), which filters rows currently present in `#inbox-list` into [command palette result](#command-palette-result) rows without requesting fresh server data.
+- role: combobox
+- name: `Jump to a worker or blocked gate`
+- keyboard: focused automatically on open; ArrowDown and ArrowUp move the active result, Enter chooses it, Escape closes the palette.
+- parent: [command-palette-dialog](#command-palette-dialog)
+- states: cleared on every open; `aria-expanded` tracks the palette's open state; `aria-activedescendant` points at the active result and is removed when nothing matches.
+- code: groom/groom/assets/dashboard.js::PaletteResults
+- code: groom/groom/assets/dashboard.js::movePaletteActive
+- screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-input.png
+
+### command-palette-results-listbox
+
+- selector: `#palette-results`
+- role: listbox
+- name: `Workers`
+- keyboard: not focusable itself; driven from the palette input via `aria-activedescendant`.
+- parent: [command-palette-dialog](#command-palette-dialog)
+- states: every run in the fleet when the query is empty; the matching subset otherwise; empty when nothing matches.
+- code: groom/groom/assets/dashboard.js::PaletteResults
+- screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-results-listbox.png
 
 ### command-palette-result
 
-- selector: `#palette-results .presult`
-- role: option; explicit `role="option"` with a generated `presult-{index}` id inside `#palette-results`, which carries `role="listbox"` and `aria-label="Workers"`.
-- name: the visible text mirroring the normalized inbox row plus the trailing state hint; the state dot span is `aria-hidden="true"` and does not join the accessible name.
-- keyboard: managed through `aria-activedescendant` on [command palette input](#command-palette-input) rather than DOM focus; ArrowUp and ArrowDown move the active result while focus stays on the input, and Enter selects the active or first generated result while the palette is open.
-- parent: [groom dashboard](#groom-dashboard)
-- states: absent while the palette has not been rendered, no inbox rows exist, or the current query filters out every inbox row; normal generated result with `aria-selected="false"`; active with the `active` class and `aria-selected="true"`, initially on the first result for the current render and then moved by ArrowUp/ArrowDown; selected only transiently during pointer click or palette Enter handling before the palette closes.
-- code: groom/groom/templates/dashboard.html::renderPalette
+- selector: `#palette-results .presult[role="option"]`
+- role: option
+- name: `{repo} #{short_handle} {doing} {hint}`
+- keyboard: not individually focusable; reached with ArrowDown and ArrowUp and chosen with Enter. Pointer click chooses it directly.
+- parent: [command-palette-results-listbox](#command-palette-results-listbox)
+- states: `aria-selected="true"` on the active result and `"false"` on the rest; the active result is scrolled into view on each render.
+- code: groom/groom/assets/dashboard.js::PaletteResults
+- code: groom/groom/assets/dashboard.js::paletteHits
 - props:
-  - source row: required currently rendered [inbox worker row](#inbox-worker-row) from `#inbox-list .row`; each source row contributes exactly one palette result when its normalized text matches the current palette query.
-  - source ordering: required DOM order of the current `#inbox-list .row` collection; filtering preserves this order and the first remaining row becomes the active result.
-  - `class`: literal `presult`; required; receives `active` for the current active result — initially the first generated result in a render, then moved by arrow-key navigation.
-  - `role`: literal `option`; required; owned by the `role="listbox"` `#palette-results` container.
-  - `id`: literal `presult-{index}`; required; referenced by the input's `aria-activedescendant` to expose the active result.
-  - `aria-selected`: `true` on the active result and `false` on every other result; required; kept in sync with the `active` class.
-  - `data-id`: required string copied from the source row's `data-worker-id`; becomes the selected worker id passed to the shared row-selection handler; the browser renderer inserts this DOM-derived value into an HTML string without an additional escaping pass.
-  - state dot class: required string copied from the source row's `data-state`; appended to the child `.dot` class list for visual state color only; the same value becomes the fallback hint when it is not `blocked`.
-  - row body text: required normalized source row `textContent`, with whitespace collapsed and ends trimmed; rendered inside child `.rb` and used as the query-match source.
-  - hint text: required; renders `gate` when source state is `blocked`, otherwise renders the source state string.
-- dom: generated `<div class="presult" role="option" id="presult-{index}" aria-selected data-id="{worker_id}">` row inside the `role="listbox"` `#palette-results`, with an additional `active` class on the active result; contains `<span class="dot {state}" aria-hidden="true"></span>`, `<span class="rb">{normalized row text}</span>`, and `<span class="hint">{gate_or_state}</span>`; all results are replaced as one `#palette-results.innerHTML` assignment on each palette render.
-- leads-to: [select command palette result](#select-command-palette-result), which switches to inbox mode, selects the result's worker, loads worker detail through [GET /worker/{container_id}](../../http/groom.md#get-worker-detail), and closes the palette without changing the browser route.
+  - `id`: `presult-{index}`; required; the target of the palette input's `aria-activedescendant`.
+- dom: keyed by run id. The hit list is computed from the fleet **in the store**, not from the rendered rows, so the palette finds a run the runs-pane filter is currently hiding.
+- leads-to: [select command palette result](#select-command-palette-result).
+- screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-result.png
+
+### toast-region
+
+- selector: `#toasts`
+- role: alert
+- name: none
+- keyboard: not focusable; toasts are not dismissible by hand and expire on their own.
+- parent: [groom dashboard](#groom-dashboard)
+- states: empty most of the time; one entry per blocked notification or answer confirmation, removed on its own timer — seven seconds for a block, three and a half for a confirmation.
+- code: groom/groom/assets/dashboard.js::pushToast
+- dom: `aria-live="assertive"`, because a worker blocking is the one thing on this page worth interrupting for. Titles and bodies are set as text nodes, never as markup.
 
 ## Interactions
 
-### select-activity-inbox-mode
+### select-activity-runs-mode
 
-- on: [activity-inbox-mode](#activity-inbox-mode)
-- trigger: pointer click, tap, Enter, or Space activation of the native `.act-btn[data-mode="inbox"]` button or its SVG descendants, captured by the delegated `#activitybar` click handler.
-- role: button; the triggering element is a native `<button type="button">`.
-- name: `Inbox`, supplied by the control's `aria-label`.
-- keyboard: Tab and Shift+Tab reach the native button; Enter or Space activates it when focused.
+- on: [activity-runs-mode](#activity-runs-mode)
+- trigger: pointer click, tap, Enter, or Space on the runs rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `Runs`
+- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
 - when:
-  - The dashboard shell is loaded and `#activitybar` contains the inbox activity control.
-  - The click event target or one of its ancestors matches `.act-btn`.
-  - The matched activity control has `data-mode="inbox"`; the prior dashboard mode may be inbox, files, diff, or settings.
+  - The shell is loaded and the rail contains the runs control.
+  - The click target or an ancestor matches `.act-btn`, and that control's `data-mode` is `runs`.
+  - The prior mode may be any of the five.
 - does:
-  - Calls `setMode("inbox")` with the mode value read from the activity control's `data-mode` attribute.
-  - Sets the root `.app` element's `data-mode` state to `inbox`, making the inbox pane the active dashboard pane and hiding the files, diff, and settings panes according to the screen mode contract.
-  - Recomputes the `active` class across every `.act-btn` control by comparing each control's `data-mode` value to `inbox`; the inbox control gains `active`, the files, diff, and settings controls lose `active` even if inbox was already the current mode, and each control's `aria-pressed` attribute is updated to match.
-  - Calls the repository-menu close layer, which unconditionally removes the `open` class from `#repo-menu-wrap`; the operation is idempotent when the menu is already closed.
-  - Leaves the repository menu DOM subtree, loaded option rows or loading/empty text, `.repo-menu-box` positioning styles, `#repo-search` value, selected repository browser state, and both repository picker labels unchanged.
-  - Skips the files-pane and diff-pane loader branches because the selected mode is neither `files` nor `diff`; cached files tree, file view, diff tree, parsed diff cache, and diff view DOM are left as-is for the next visit to those modes.
-  - Leaves the selected worker id, visible inbox rows, selected worker detail, command palette state, status bar, websocket connection, and server workflow state unchanged.
-  - Does not perform an HTTP request, websocket send, browser navigation, focus movement, or notification permission prompt.
-  - Calls no groom first-party symbol beyond this close layer; the layer bottoms out in browser DOM class-list mutation.
-- code: groom/groom/templates/dashboard.html::setMode
-- code: groom/groom/templates/dashboard.html::closeRepoMenu
+  - Writes `runs` to the root `.app` element's `data-mode`, showing the runs pane and removing the other four panes from the accessibility tree.
+  - Recomputes the `active` class and `aria-pressed` on every rail button by comparing its `data-mode` to `runs`.
+  - Writes the mode to the store, so components that branch on it agree with the DOM.
+  - Closes the repository menu, idempotently; menu contents, search text, picker labels, and the selected repository are all retained.
+  - Takes no loader branch: runs is neither `files`, `diff`, nor `telemetry`, so no request is issued and the cached files, diff, and traces state is left as-is.
+  - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, the socket, and all server state untouched.
+  - Performs no HTTP request, websocket send, navigation, focus move, or permission prompt.
+- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::closeRepoMenu
 
 ### select-activity-files-mode
 
 - on: [activity-files-mode](#activity-files-mode)
-- trigger: pointer click, tap, Enter, or Space activation of the native `.act-btn[data-mode="files"]` button or its SVG descendants, captured by the delegated `#activitybar` click handler.
-- role: button; the triggering element is a native `<button type="button">`.
-- name: `Files`, supplied by the control's `aria-label`.
-- keyboard: Tab and Shift+Tab reach the native button; Enter or Space activates it when focused.
+- trigger: pointer click, tap, Enter, or Space on the files rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `Files`
+- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
 - when:
-  - The dashboard shell is loaded and `#activitybar` contains the files activity control.
-  - The click event target or one of its ancestors matches `.act-btn`.
-  - The matched activity control has `data-mode="files"`; the prior dashboard mode may be inbox, files, diff, or settings.
-  - A selected repository may be absent, or may contain a container id plus an optional repository path in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - The click target or an ancestor matches `.act-btn` with `data-mode="files"`.
+  - A selected repository may be absent, or may hold a container id plus an optional repository path in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
 - does:
-  - Calls `setMode("files")` with the mode value read from the activity control's `data-mode` attribute.
-  - Sets the root `.app` element's `data-mode` state to `files`, making the files pane the active dashboard pane and hiding the inbox, diff, and settings panes according to the screen mode contract.
-  - Recomputes the `active` class across all `.act-btn` controls so the files control is active and the inbox, diff, and settings controls are inactive, updating each control's `aria-pressed` attribute to match.
-  - Calls the repository-menu close layer, which removes the `open` class from `#repo-menu-wrap`; selected repository browser state, repository search text, loaded menu rows, menu positioning styles, and both picker labels are retained.
-  - Enters the files-pane loader because the selected mode is `files`; this happens even when files mode was already active, so reselecting the Files activity control reloads the files pane.
-  - Reads `#files-tree` and `#file-view` as the two mutable Files pane regions.
-  - If no selected repository container is present in [dashboard selected repository state](../../dashboard-selected-repository-state.md), replaces `#files-tree` with the empty prompt `Pick a container / repo above.` and returns before changing `#file-view`, issuing a request, or rendering generated file rows.
-  - If a selected repository container is present, replaces `#files-tree` with the loading prompt `Loading files…` and resets `#file-view` to `Select a file to view it.` before requesting data, so any prior selected file body and active file row are cleared for the new load.
-  - Sends `GET /files/{container_id}?repo={repo}` to [get workspace file list](../../http/groom.md#get-workspace-file-list), URL-encoding the selected container id and selected repository path from browser state; an empty selected repository path is serialized as an empty `repo` query value.
-  - Treats any fulfilled fetch response as [workspace file list data](../../workspace-file-list-data.md) by reading the response body as text; HTTP error statuses are not specially branched by this layer.
-  - Normalizes the response text into candidate file paths by splitting on newline characters, trimming each line, and discarding empty strings.
-  - If no paths remain after normalization, replaces `#files-tree` with `(no files)` and leaves `#file-view` on the empty selection prompt set before the request.
-  - If one or more paths remain, calls the [dashboard files path tree builder](../../concepts/dashboard-files-path-tree-builder.md) to group the normalized repo-relative paths into a [dashboard files path tree](../../dashboard-files-path-tree.md) of nested directory nodes and file leaves.
-  - For each normalized path passed to the builder, splits the path on `/`, creates or reuses directory nodes for every segment before the final segment, and appends one file leaf containing the final segment as `name` and the original full path as `path`.
-  - Calls the files tree renderer with the built path tree to replace `#files-tree` with generated [files directory toggle](#files-directory-toggle) and [files file row](#files-file-row) components; directory names are sorted lexicographically, file leaves are sorted by display name, and rendered directory names, file paths, and file names are HTML-escaped before insertion.
-  - If the fetch rejects or response text reading rejects, replaces `#files-tree` with `failed to load` and leaves `#file-view` on the empty selection prompt set before the request.
-  - Leaves the selected worker id, visible inbox rows, selected worker detail, command palette state, status bar, websocket connection, and server workflow state unchanged.
-  - Does not send a websocket message, perform browser navigation, move focus, or request notification permission.
-- code: groom/groom/templates/dashboard.html::setMode
-- code: groom/groom/templates/dashboard.html::loadFiles
-- code: groom/groom/templates/dashboard.html::buildPathTree
-- code: groom/groom/templates/dashboard.html::renderPathTree
+  - Writes `files` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Enters the files loader — even when files mode was already active, so reselecting the control reloads the pane.
+  - Returns immediately without a request when no repository container is selected; the tree keeps its `Pick a container / repo above.` prompt.
+  - Otherwise resets the files slice to a loading state with an empty path list, no open path, and an idle viewer, so a previous repository's file and tree are cleared before the new load.
+  - Sends `GET /files/{container_id}?repo={repo}` to [get workspace file list](../../http/groom.md#get-workspace-file-list), URL-encoding both the container id and the repository path; an unset repository path is sent as an empty value.
+  - Parses the response as JSON [workspace file list data](../../workspace-file-list-data.md) and stores its path array, rendering `(no files)` when it is empty.
+  - Groups the flat repo-relative paths into a [dashboard path tree](../../dashboard-path-tree.md) at render time, sorting directories and then files by name; directories start expanded.
+  - Stores an error status on a rejected fetch, which the tree renders as `failed to load`.
+  - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, and the socket untouched.
+- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::loadFiles
+- code: groom/groom/assets/dashboard.js::FilesTree
+- code: groom/groom/assets/dashboard.js::buildTree
 
 ### select-activity-diff-mode
 
 - on: [activity-diff-mode](#activity-diff-mode)
-- trigger: pointer click, tap, Enter, or Space activation of the native `.act-btn[data-mode="diff"]` button or its SVG descendants, captured by the delegated `#activitybar` click handler.
-- role: button; the triggering element is a native `<button type="button">`.
-- name: `Diff`, supplied by the control's `aria-label`.
-- keyboard: Tab and Shift+Tab reach the native button; Enter or Space activates it when focused.
+- trigger: pointer click, tap, Enter, or Space on the diff rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `Diff`
+- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
 - when:
-  - The dashboard shell is loaded and `#activitybar` contains the diff activity control.
-  - The click event target or one of its ancestors matches `.act-btn`.
-  - The matched activity control has `data-mode="diff"`; the prior dashboard mode may be inbox, files, diff, or settings.
-  - A selected repository may be absent, or may contain a container id plus an optional repository path in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
-  - Reselecting the Diff activity control while already in diff mode is allowed and reloads the Diff pane from the current selected repository state.
+  - The click target or an ancestor matches `.act-btn` with `data-mode="diff"`.
+  - A selected repository may be absent or present.
 - does:
-  - Calls `setMode("diff")` with the mode value read from the activity control's `data-mode` attribute.
-  - Sets the root `.app` element's `data-mode` state to `diff`, making the diff pane the active dashboard pane and hiding the inbox, files, and settings panes according to the screen mode contract.
-  - Recomputes the `active` class across all `.act-btn` controls so the diff control is active and the inbox, files, and settings controls are inactive, updating each control's `aria-pressed` attribute to match.
-  - Calls the repository-menu close layer, which removes the `open` class from `#repo-menu-wrap`; selected repository browser state, repository search text, loaded menu rows, menu positioning styles, and both picker labels are retained.
-  - Enters the Diff pane loader because the selected mode is `diff`; this happens even when diff mode was already active, so reselecting the Diff activity control reloads the Diff pane.
-  - Reads `#diff-tree` and `#diff-view` as the two mutable Diff pane regions.
-  - If no selected repository container is present in [dashboard selected repository state](../../dashboard-selected-repository-state.md), replaces `#diff-tree` with the empty prompt `Pick a container / repo above.` and returns before changing `#diff-view`, issuing a request, parsing diff text, or rendering generated changed-file rows.
-  - If a selected repository container is present, replaces `#diff-tree` with the loading prompt `Loading changes…` and resets `#diff-view` to `Select a changed file to see its diff.` before requesting data, so any prior selected-file diff body and active changed-file row are cleared for the new load.
-  - Sends `GET /diff/{container_id}?repo={repo}` to [get workspace diff](../../http/groom.md#get-workspace-diff), URL-encoding the selected container id and selected repository path from browser state; an empty selected repository path is serialized as an empty `repo` query value.
-  - Treats any fulfilled fetch response as [workspace diff data](../../workspace-diff-data.md) by reading the response body as text; HTTP error statuses are not specially branched by this layer.
-  - If the response text is empty after whitespace trimming, replaces `#diff-tree` with `(no changes)`, leaves `#diff-view` on the empty selection prompt set before the request, and does not create a [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md).
-  - If the response text is non-empty, parses the raw unified diff text with the third-party Diff2Html parser into candidate parsed changed-file entries.
-  - If parsing yields no file entries, replaces `#diff-tree` with `(no changes)`, leaves `#diff-view` on the empty selection prompt set before the request, and does not create a parsed diff cache.
-  - If parsing yields one or more file entries, stores the parsed file array as [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) on `#diff-tree._files`, calls the [dashboard diff file tree builder](../../concepts/dashboard-diff-file-tree-builder.md) to group the entries into a [dashboard diff file tree](../../dashboard-diff-file-tree.md), and replaces `#diff-tree` with generated [diff directory toggle](#diff-directory-toggle) and [diff file row](#diff-file-row) components.
-  - For each parsed diff file entry passed to the builder, chooses `newName` unless it is missing or `/dev/null`, otherwise chooses `oldName`; coerces that chosen path to a string; splits it on `/`; creates or reuses directory nodes for every segment before the final segment; and appends one changed-file leaf with the final segment, original parsed-file index, added-line count, and deleted-line count.
-  - If the fetch rejects or response text reading rejects, replaces `#diff-tree` with `failed to load` and leaves `#diff-view` on the empty selection prompt set before the request.
-  - Leaves the selected worker id, visible inbox rows, selected worker detail, command palette state, status bar, websocket connection, and server workflow state unchanged.
-  - Does not send a websocket message, perform browser navigation, move focus, or request notification permission.
-- code: groom/groom/templates/dashboard.html::loadDiff
-- code: groom/groom/templates/dashboard.html::buildFileTree
-- code: groom/groom/templates/dashboard.html::renderDiffTree
-- code: groom/groom/templates/dashboard.html::setMode
+  - Writes `diff` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Enters the diff loader, unconditionally, so reselecting the control reloads the pane.
+  - Returns without a request when no repository container is selected.
+  - Otherwise resets the diff slice to a loading state with no parsed files and no selected index.
+  - Sends `GET /diff/{container_id}?repo={repo}` to [get working tree diff](../../http/groom.md#get-working-tree-diff) and reads the JSON body's raw unified diff.
+  - Parses that text into a [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) with diff2html, storing an empty list for an empty diff, and leaves the selected index unset so the viewer shows its prompt.
+  - Stores an error status on a rejected fetch, which the tree renders as `failed to load`.
+  - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, and the socket untouched.
+- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::loadDiff
+- code: groom/groom/assets/dashboard.js::DiffTree
+
+### select-activity-telemetry-mode
+
+- on: [activity-telemetry-mode](#activity-telemetry-mode)
+- trigger: pointer click, tap, Enter, or Space on the telemetry rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `Telemetry`
+- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
+- when:
+  - The click target or an ancestor matches `.act-btn` with `data-mode="telemetry"`.
+  - The four span-filter fields hold whatever the operator last typed; they are shell markup and are not cleared by a mode switch.
+- does:
+  - Writes `telemetry` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Enters the traces loader, unconditionally, so reselecting the control re-queries.
+  - Serializes the four filter fields into a query string and sends `GET /traces` with it.
+  - Stores the response's run cards and span rows, which the pane renders as the card strip and the traces table; an empty span list renders the no-match note under the strip.
+  - Stores an error status on a rejected fetch, which the pane renders as `failed to load`.
+  - Leaves the selected run, the fleet, the detail pane, the files and diff caches, the palette, and the socket untouched.
+- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::loadTraces
+- code: groom/groom/assets/dashboard.js::Traces
 
 ### select-activity-settings-mode
 
 - on: [activity-settings-mode](#activity-settings-mode)
-- trigger: pointer click, tap, Enter, or Space activation of the native `.act-btn[data-mode="settings"]` button or its SVG descendants, captured by the delegated `#activitybar` click handler.
-- role: button; the triggering element is a native `<button type="button">`.
-- name: `Settings`, supplied by the control's `aria-label`.
-- keyboard: Tab and Shift+Tab reach the native button; Enter or Space activates it when focused.
+- trigger: pointer click, tap, Enter, or Space on the settings rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `Settings`
+- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
 - when:
-  - The dashboard shell is loaded and `#activitybar` contains the settings activity control.
-  - The click event target or one of its ancestors matches `.act-btn`.
-  - The matched activity control has `data-mode="settings"`; the prior dashboard mode may be inbox, files, diff, or settings.
-  - A repository picker overlay may be open or closed, and a selected repository may be absent or already stored in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
-  - Reselecting the Settings activity control while already in settings mode is allowed and repeats the mode switch without fetching files, fetching diffs, or resetting settings controls.
+  - The click target or an ancestor matches `.act-btn` with `data-mode="settings"`.
 - does:
-  - Calls `setMode("settings")` with the mode value read from the activity control's `data-mode` attribute.
-  - Sets the root `.app` element's `data-mode` state to `settings`, making the settings pane the active dashboard pane and hiding the inbox, files, and diff panes according to the screen mode contract.
-  - Recomputes the `active` class across all `.act-btn` controls so the settings control is active and the inbox, files, and diff controls are inactive, updating each control's `aria-pressed` attribute to match.
-  - Calls the repository-menu close layer, which removes the `open` class from `#repo-menu-wrap`; selected repository browser state, repository search text, loaded menu rows, menu positioning styles, and both picker labels are retained.
-  - Skips the files-pane loader and diff-pane loader because the selected mode is neither `files` nor `diff`, so `#files-tree`, `#file-view`, `#diff-tree`, and `#diff-view` keep their current DOM contents.
-  - Shows the existing settings pane controls without changing [settings rescan button](#settings-rescan-button) idle or busy state and without invoking [settings enable notifications button](#settings-enable-notifications-button).
-  - Leaves the selected worker id, visible inbox rows, selected worker detail, selected repository state, command palette state, status bar, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not perform an HTTP request, send a websocket message, perform browser navigation, move focus, or request notification permission.
-- code: groom/groom/templates/dashboard.html::setMode
-- code: groom/groom/templates/dashboard.html::closeRepoMenu
+  - Writes `settings` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Takes no loader branch, issues no request, and prompts for no permission — entering settings mode is inert.
+  - Leaves every other piece of browser and server state untouched.
+- code: groom/groom/assets/dashboard.js::setMode
+- screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
+
+### filter-runs
+
+- on: [runs-filter-input](#runs-filter-input)
+- trigger: an `input` event on the runs filter field — typing, pasting, or using the search field's clear affordance.
+- role: searchbox
+- name: `Filter runs`
+- keyboard: Tab reaches the field; every keystroke fires the handler.
+- when:
+  - The runs pane is loaded; the fleet may be empty, mid-discovery, or populated.
+- does:
+  - Writes the field's raw value to the store's query, with no debounce — filtering happens on the client over a few dozen already-pushed rows, so there is nothing to wait for.
+  - Re-renders the run list to only those rows whose haystack — name, repository, type, node, activity, current doing line, question, and run id, lowercased and joined — contains the trimmed lowercased query.
+  - Renders `No workhorse runs — nothing is running.` when the query matches nothing, rather than the discovery message; the discovery message is shown only for an empty *unfiltered* fleet.
+  - Does not filter server-side. A server-filtered list would be clobbered by the next 5s push, which is the whole reason the fleet is sent whole.
+  - Leaves the selected run, the detail pane, and the command palette's own hit list untouched — the palette reads the fleet from the store, so it still finds a run this filter is hiding.
+  - Performs no HTTP request and no websocket send.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::Fleet
+- code: groom/groom/assets/dashboard.js::rowHaystack
+- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
+
+### select-run-row
+
+- on: [run-row](#run-row)
+- trigger: pointer click, tap, Enter, or Space anywhere in a run row, captured by the delegated body click handler that looks for the nearest `[data-worker-id]` ancestor.
+- role: button
+- name: `{repo} #{short_handle} {liveness} {doing}`
+- keyboard: Tab reaches the row; Enter or Space activates it.
+- when:
+  - The click did not originate inside a form, the repository menu, a repository picker, or a file tree — those have their own handlers.
+  - The nearest matching ancestor carries a `data-worker-id`.
+- does:
+  - Takes the next selection sequence number, so a slower reply for an older selection cannot land.
+  - Writes the run id and a null detail to the store in one update, so no render pairs the new selection with the previous run's pane; that pair is what the detail pane renders as `Loading…`.
+  - Sends this tab's watch subscription for the id over the dashboard websocket, replacing whatever it was watching. A tab watches at most one run, and a refused send is not retried because the next selection or reconnect re-sends it.
+  - Fetches [GET /worker/{container_id}](../../http/groom.md#get-run-detail) once and stores the parsed body — but only if this is still the newest selection *and* no pushed detail has landed meanwhile, since a `detail` frame that arrived first is the fresher truth.
+  - Swallows a rejected fetch; the pane stays in its loading state and is filled by the subscription's next push, so a transient failure costs a tick rather than an error message.
+  - Renders selection rather than applying it: the row emits `selected` and `aria-current="true"` from the store on every render, so a fleet push already agrees with the selection and nothing walks the document repainting rows.
+  - Does not move focus, change the active mode, or mutate any server state beyond the subscription.
+- code: groom/groom/assets/dashboard.js::select
+- code: groom/groom/assets/dashboard.js::onDetail
+- code: groom/groom/assets/dashboard.js::RunRow
+- verify: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
+- verify: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
+- screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-detail-selected.png
+
+### keyboard-select-run-row
+
+- on: [run-row](#run-row)
+- trigger: pressing `j` or `k` anywhere on the page while focus is not in an input or textarea.
+- role: button
+- name: `{repo} #{short_handle} {liveness} {doing}`
+- keyboard: `j` moves the selection one row down, `k` one row up; both clamp at the ends of the list rather than wrapping.
+- when:
+  - The command palette is closed — while it is open, the same keys type into its input.
+  - The active element is not an `INPUT` or `TEXTAREA`, so typing a `j` into the filter box never moves the selection.
+- does:
+  - Reads the currently rendered rows out of `#runs-list` and finds the index of the selected run by its `data-worker-id`; an unselected fleet starts from the first row.
+  - Clamps the neighbouring index into range and, if a row is there, switches to runs mode and selects that run through the same selector the click path uses.
+  - Moves through the *rendered* rows, so an active filter narrows what the keys traverse.
+  - Does nothing when the list is empty.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::select
+- code: groom/groom/assets/dashboard.js::setMode
 
 ### open-files-repository-picker
 
-- on: [files repository picker button](#files-repository-picker-button)
-- trigger: pointer click, tap, Enter, or Space activation of `.repo-picker[data-picker="files"]` or one of its child spans, handled by the per-button repository-picker click listener.
-- role: button.
-- name: `Select container / repo…` before repository selection, then the currently selected workflow/repository label.
-- keyboard: Tab or Shift+Tab reaches the native button while the files pane is active; Enter or Space activates the button; Escape closes the repository menu once it is open and returns focus to this picker button.
+- on: [files-repository-picker-button](#files-repository-picker-button)
+- trigger: pointer click, tap, Enter, or Space on the files pane's picker.
+- role: button
+- name: `Select container / repo…`
+- keyboard: Tab reaches the button; Enter or Space toggles the menu.
 - when:
-  - The groom dashboard shell is loaded and the files pane contains the native files repository picker button.
-  - The activating event reaches the button-specific repository-picker listener before the document-level body click handler.
-  - The shared `#repo-menu-wrap` overlay may be closed or already open; the selected repository browser state may be absent or already set.
-  - If the shared repository menu is already open, the activation is treated as a close request regardless of whether the open menu was positioned from the files picker or the diff picker.
+  - The files pane is the active pane; the menu may be open or closed.
 - does:
-  - Stops propagation of the activating click event so the document-level click handlers do not immediately close the shared repository menu or interpret the click as another dashboard action.
-  - If `#repo-menu-wrap` already has the `open` class, closes the repository menu by removing that class and leaves selected repository state, picker labels, files tree, file view, diff tree, and diff view unchanged.
-  - If the menu is closed, measures the activated files picker button and positions `.repo-menu-box` at the button's left edge, four pixels below the button, with a minimum width equal to the larger of the button width and 240 pixels.
-  - Opens the shared repository menu by adding the `open` class to `#repo-menu-wrap`, setting `aria-expanded="true"` on the `#repo-search` combobox, and recording the activated picker button as the focus-return invoker.
-  - Replaces `#repo-menu` with the loading state `Loading…` and clears the [repository menu search input](#repository-menu-search-input) value.
-  - Sends `GET /repos` to [get repository menu](../../http/groom.md#get-repository-menu) without a request body, query string, websocket message, or browser navigation.
-  - Moves focus immediately to [repository menu search input](#repository-menu-search-input), before the `/repos` response resolves, so typed input during loading stays in the filter field.
-  - When the response resolves, consumes the body as text regardless of HTTP status and replaces `#repo-menu` with the returned repository-option HTML derived from [repository menu data](../../repository-menu-data.md).
-  - After inserting the returned options, assigns each `.repo-item` an `id` of `repo-opt-{index}` and `aria-selected="false"`, then marks the first visible option active with `aria-selected="true"` and points the combobox's `aria-activedescendant` at it.
-  - When the resolved response body is empty, represents the empty result client-side as `No repositories available.` instead of inserting an empty menu.
-  - If the `/repos` request or response-text read rejects, leaves the menu open with `#repo-menu` still showing `Loading…`; no failure text, retry affordance, or console-visible recovery state is rendered by this handler.
-  - Leaves the root activity mode, selected worker id, selected repository value, selected file, selected diff file, inbox rows, selected worker detail, status bar, command palette, websocket connection, and server workflow state unchanged until an option is selected.
-  - Exposes the open state on the `#repo-search` combobox rather than on the picker button: `aria-expanded="true"` plus `aria-controls="repo-menu"` link it to the `role="listbox"` menu; the picker button itself carries no `aria-expanded`, and the loading/result change is not exposed through an `aria-live` region.
-- code: groom/groom/templates/dashboard.html::openRepoMenu
+  - Closes the menu and returns when it is already open, so the picker toggles rather than re-opening.
+  - Otherwise records this button as the invoker, positions the menu box under it at least as wide as the button, and adds `open` to the wrapper.
+  - Sets `aria-expanded="true"` on the menu search input and clears its value.
+  - Resets the repository slice to loading with no groups, no query, and the first row active.
+  - Fetches `GET /repos` from [get repository menu](../../http/groom.md#get-repository-menu) and stores the returned [repository menu data](../../repository-menu-data.md) groups; a rejection stores an empty list, which the menu renders as `No repositories available.`
+  - Focuses the menu search input.
+  - Leaves the previously selected repository, both picker labels, and the loaded files pane untouched until an option is chosen.
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::closeRepoMenu
+- code: groom/groom/assets/dashboard.js::wireEvents
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-repo-menu-open.png
 
 ### open-diff-repository-picker
 
-- on: [diff repository picker button](#diff-repository-picker-button)
-- trigger: pointer click, tap, Enter, or Space activation of `.repo-picker[data-picker="diff"]` or one of its child spans, handled by the per-button repository-picker click listener.
-- role: button.
-- name: `Select container / repo…` before repository selection, then the currently selected workflow/repository label.
-- keyboard: Tab or Shift+Tab reaches the native button while the diff pane is active; Enter or Space activates the button; Escape closes the repository menu once it is open and returns focus to this picker button.
+- on: [diff-repository-picker-button](#diff-repository-picker-button)
+- trigger: pointer click, tap, Enter, or Space on the diff pane's picker.
+- role: button
+- name: `Select container / repo…`
+- keyboard: Tab reaches the button; Enter or Space toggles the menu.
 - when:
-  - The groom dashboard shell is loaded and the diff pane contains the native diff repository picker button.
-  - The activating event reaches the button-specific repository-picker listener before the document-level body click handler.
-  - The shared `#repo-menu-wrap` overlay may be closed or already open; the selected repository browser state may be absent or already set.
-  - If the shared repository menu is already open, the activation is treated as a close request regardless of whether the open menu was positioned from the files picker or the diff picker.
+  - The diff pane is the active pane; the menu may be open or closed.
 - does:
-  - Stops propagation of the activating click event so the document-level click handlers do not immediately close the shared repository menu or interpret the click as another dashboard action.
-  - If `#repo-menu-wrap` already has the `open` class, closes the repository menu by removing that class and leaves selected repository state, picker labels, files tree, file view, diff tree, and diff view unchanged.
-  - If the menu is closed, measures the activated diff picker button and positions `.repo-menu-box` at the button's left edge, four pixels below the button, with a minimum width equal to the larger of the button width and 240 pixels.
-  - Opens the shared repository menu by adding the `open` class to `#repo-menu-wrap`, setting `aria-expanded="true"` on the `#repo-search` combobox, and recording the activated picker button as the focus-return invoker.
-  - Replaces `#repo-menu` with the loading state `Loading…` and clears the [repository menu search input](#repository-menu-search-input) value.
-  - Sends `GET /repos` to [get repository menu](../../http/groom.md#get-repository-menu) without a request body, query string, websocket message, or browser navigation.
-  - Moves focus immediately to [repository menu search input](#repository-menu-search-input), before the `/repos` response resolves, so typed input during loading stays in the filter field.
-  - When the response resolves, consumes the body as text regardless of HTTP status and replaces `#repo-menu` with the returned repository-option HTML derived from [repository menu data](../../repository-menu-data.md).
-  - After inserting the returned options, assigns each `.repo-item` an `id` of `repo-opt-{index}` and `aria-selected="false"`, then marks the first visible option active with `aria-selected="true"` and points the combobox's `aria-activedescendant` at it.
-  - When the resolved response body is empty, represents the empty result client-side as `No repositories available.` instead of inserting an empty menu.
-  - If the `/repos` request or response-text read rejects, leaves the menu open with `#repo-menu` still showing `Loading…`; no failure text, retry affordance, or console-visible recovery state is rendered by this handler.
-  - Leaves the root activity mode, selected worker id, selected repository value, selected file, selected diff file, inbox rows, selected worker detail, status bar, command palette, websocket connection, and server workflow state unchanged until an option is selected.
-  - Exposes the open state on the `#repo-search` combobox rather than on the picker button: `aria-expanded="true"` plus `aria-controls="repo-menu"` link it to the `role="listbox"` menu; the picker button itself carries no `aria-expanded`, and the loading/result change is not exposed through an `aria-live` region.
-- code: groom/groom/templates/dashboard.html::openRepoMenu
+  - Behaves identically to the files picker — the menu, its data, and its handlers are shared; only the recorded invoker differs, which is what decides where the box is positioned and where focus returns on close.
+  - Fetches `GET /repos` fresh on every open, so a container that appeared or vanished since the last open is reflected.
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::wireEvents
 
 ### filter-repository-menu-options
 
-- on: [repository menu search input](#repository-menu-search-input)
-- trigger: native `input` event after typing, paste, cut, undo, redo, clearing, or any other browser-supported value change in `#repo-search`.
-- role: combobox; the input carries `role="combobox"` with `aria-expanded`, `aria-controls="repo-menu"`, and `aria-autocomplete="list"`.
-- name: `Search container / repo`.
-- keyboard: ordinary single-line text editing changes the filter query immediately; ArrowUp and ArrowDown move the active option among visible rows through `aria-activedescendant`; Enter selects the active or first visible option; Tab and Shift+Tab leave the field through normal browser focus traversal; Escape closes the repository menu through the separate dashboard-level keydown handler, returns focus to the invoking picker button, and does not clear the query or select an option.
+- on: [repository-menu-search-input](#repository-menu-search-input)
+- trigger: an `input` event on the menu search field.
+- role: combobox
+- name: `Search container / repo`
+- keyboard: Tab is not needed — the field is focused on open; ArrowDown and ArrowUp move the active option and Enter chooses it.
 - when:
-  - The groom dashboard shell is loaded and the shared repository menu overlay has wired `#repo-search` to the filtering handler.
-  - The input event's target is the repository menu search field; the field is normally focused by [open files repository picker](#open-files-repository-picker) or [open diff repository picker](#open-diff-repository-picker).
-  - `#repo-menu` may contain loading text, an empty-state row, or zero or more [repository menu option](#repository-menu-option) rows returned by [GET /repos](../../http/groom.md#get-repository-menu).
+  - The repository menu is open; its groups may still be loading.
 - does:
-  - Reads the current search input value and passes it to `filterRepoMenu` without debouncing, form submission, websocket send, HTTP request, browser navigation, or URL mutation.
-  - Lowercases the query for case-insensitive matching.
-  - Iterates only the `.repo-item` rows currently present inside `#repo-menu`; loading and empty-state elements are ignored because they do not match `.repo-item`, and rows inserted later by the `/repos` response are outside this pass.
-  - For each option row, reads `data-label` as the searchable repository label from the [repository menu data](../../repository-menu-data.md) option-label contract, treats a missing label as an empty string, lowercases it, and checks whether it contains the query substring.
-  - Sets each matching row's inline `display` style to the empty string so it remains visible under stylesheet defaults.
-  - Sets each non-matching row's inline `display` style to `none`, hiding it visually and from normal pointer selection while leaving the row in the DOM.
-  - When the query is empty, clears the inline `display` override on every currently loaded option row so all repository options are visible again.
-  - When the query matches no loaded option rows, leaves every option row hidden and does not render a search-specific empty message, count, or recovery affordance.
-  - Recomputes the active option after every filter pass, marking the first still-visible option with the `active` class and `aria-selected="true"` and pointing the combobox's `aria-activedescendant` at it, or clearing `aria-activedescendant` when no option remains visible.
-  - Leaves selected repository state, files tree, diff tree, picker labels, activity mode, command palette state, selected worker detail, status bar, websocket connection, server workflow state, and keyboard focus unchanged.
-  - Does not re-run automatically after the asynchronous `/repos` response replaces `#repo-menu`; if the operator typed while the menu was still loading, the newly inserted option rows keep their default visibility until the next input event.
-- code: groom/groom/templates/dashboard.html::filterRepoMenu
+  - Writes the raw query to the repository slice and resets the active index to the first row, so the keyboard never points past the end of a shortened list.
+  - Re-flattens the server's per-container groups into a single ordered list, keeping only entries whose label contains the trimmed lowercased query — the list the keyboard actually moves through.
+  - Rebuilds the rendered options rather than hiding non-matching rows, so a filtered-out repository is out of the accessibility tree rather than merely invisible.
+  - Republishes `aria-activedescendant` on the search input to the surviving active option, or removes it when nothing matches, and scrolls that option into view.
+  - Issues no request; the groups were fetched once when the menu opened.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::repoItems
+- code: groom/groom/assets/dashboard.js::RepoMenu
+- code: groom/groom/assets/dashboard.js::moveRepoActive
 
 ### select-repository-menu-option
 
-- on: [repository menu option](#repository-menu-option)
-- trigger: pointer click or tap on `#repo-menu .repo-item` or any descendant of that row, captured by the delegated `#repo-menu` click listener; Enter in the `#repo-search` combobox selects the active or first visible option through the same selection path.
-- role: option; explicit `role="option"` on the rendered row, owned by the `role="listbox"` `#repo-menu`.
-- name: visible text from the optional workflow type badge followed by the repository option label generated from workflow/container name and checkout directory.
-- keyboard: ArrowUp and ArrowDown on the `#repo-search` combobox move the active option through `aria-activedescendant`; Enter selects the active or first visible option; the option rows themselves never take DOM focus.
+- on: [repository-menu-option](#repository-menu-option)
+- trigger: pointer click or tap on an option, or Enter from the menu search input with an active option.
+- role: option
+- name: `{container} / {repo}`
+- keyboard: ArrowDown and ArrowUp move the active option; Enter chooses it; Escape abandons the menu without choosing.
 - when:
-  - The groom dashboard shell is loaded and the shared repository menu has been populated by [GET /repos](../../http/groom.md#get-repository-menu).
-  - The click event target or one of its ancestors inside `#repo-menu` matches `.repo-item`; clicks on loading or empty-state rows do not match and have no effect.
-  - The matched option carries `data-container`, `data-repo`, and `data-label`; `data-repo` may be the empty string for the workflow workspace volume root.
-  - The active dashboard mode is normally files or diff because the menu is opened by a repository picker in one of those panes.
+  - The menu is open and the flattened option list is non-empty.
 - does:
-  - Reads the selected workflow container id, volume-relative repository path, and display label from the option's `data-container`, `data-repo`, and `data-label` attributes generated from [repository menu data](../../repository-menu-data.md).
-  - Stores the selected repository browser state as [dashboard selected repository state](../../dashboard-selected-repository-state.md), assigning `container` from `data-container`, assigning `label` from `data-label`, and normalizing a missing or empty `data-repo` value to the empty string.
-  - Replaces the text content of every `.repo-picker-label` in the dashboard with the selected label, so the files and diff picker buttons show the same selected repository.
-  - Calls the [dashboard active pane loader](../../concepts/dashboard-active-pane-loader.md), which reads the root `.app` element's `data-mode` value exactly once and dispatches only for repository-backed panes.
-  - If the active mode is files, the active-pane loader calls the Files pane load path: sets `#files-tree` to `Loading files...`, resets `#file-view` to `Select a file to view it.`, sends `GET /files/{container_id}?repo={repo}` to [get workspace file list](../../http/groom.md#get-workspace-file-list), and renders the returned path list as the files tree, `(no files)`, or `failed to load`.
-  - If the active mode is diff, the active-pane loader calls the Diff pane load path: sets `#diff-tree` to `Loading changes...`, resets `#diff-view` to `Select a changed file to see its diff.`, sends `GET /diff/{container_id}?repo={repo}` to [get workspace diff](../../http/groom.md#get-workspace-diff), parses the returned unified diff, and renders the changed-file tree, `(no changes)`, or `failed to load`.
-  - If the active mode is inbox, settings, missing, or any other value, the active-pane loader returns without calling a pane loader, so only the selected repository state and picker labels change; no files or diff request is sent.
-  - Leaves the dashboard activity mode, selected worker id, selected worker detail, inbox rows, status bar, command palette, websocket connection, browser URL, and server workflow state unchanged while dispatching the active-pane load.
-  - Closes the shared repository menu after selection by removing the `open` class from `#repo-menu-wrap`, setting `aria-expanded="false"` on the `#repo-search` combobox, clearing its `aria-activedescendant`, and returning focus to the invoking picker button when focus was still inside the menu.
-  - Does not announce loading or result states through an `aria-live` region, send a websocket message, or navigate away from the dashboard; the stored selected repository itself is not mirrored to ARIA after the menu closes.
-- code: groom/groom/templates/dashboard.html::selectRepo
+  - Writes the chosen container id, repository path, and label to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - Replaces the label text on *both* repository pickers, so the files and diff panes never disagree about what is selected.
+  - Loads whichever pane is active through the [dashboard active pane loader](../../concepts/dashboard-active-pane-loader.md) — the files tree in files mode, the diff tree in diff mode, and nothing at all in any other mode.
+  - Closes the menu: removes `open`, sets `aria-expanded="false"`, drops `aria-activedescendant`, and returns focus to the invoking picker rather than dropping it to `<body>`.
+  - Retains the loaded groups and the search text; the next open clears them itself.
+- code: groom/groom/assets/dashboard.js::selectRepo
+- code: groom/groom/assets/dashboard.js::loadActivePane
+- code: groom/groom/assets/dashboard.js::closeRepoMenu
 
 ### toggle-files-directory
 
-- on: [files directory toggle](#files-directory-toggle)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#files-tree .tree-dir-head` button or any descendant of that generated directory header, captured by the delegated `#files-tree` click listener.
-- role: button; the triggering element is a native `<button type="button">` disclosure header with `aria-expanded`.
-- name: the directory basename; the chevron span is `aria-hidden` and disclosure state is exposed through `aria-expanded` rather than the name.
-- keyboard: Tab and Shift+Tab reach the native header button; Enter or Space toggles the directory; no arrow-key tree navigation is implemented.
+- on: [files-directory-toggle](#files-directory-toggle)
+- trigger: pointer click, tap, Enter, or Space on a directory row in the files tree.
+- role: button
+- name: `{directory}`
+- keyboard: Tab reaches the row; Enter or Space toggles it.
 - when:
-  - The groom dashboard shell is loaded and `#files-tree` has its delegated click listener attached.
-  - A repository has been selected and [GET /files/{container_id}](../../http/groom.md#get-workspace-file-list) has returned at least one path containing a directory segment, so `renderPathTree` has generated one or more [files directory toggle](#files-directory-toggle) rows.
-  - The click event target or one of its ancestors inside `#files-tree` matches `.tree-dir-head`; clicks on file rows and empty/loading/error states do not satisfy this directory branch.
-  - The matched directory header is inside an enclosing `.tree-dir` whose `collapsed` class currently represents that directory's local expanded or collapsed state.
+  - The files tree has rendered at least one directory level.
 - does:
-  - Finds the nearest `.tree-dir-head` for the click target within the files tree.
-  - If no directory header matches, leaves the directory-toggle interaction with no collapse or expansion effect and lets the same delegated listener continue to the [files file row](#files-file-row) branch.
-  - Toggles the `collapsed` class on that header's parent `.tree-dir`, changing only that directory branch and not any sibling directory or ancestor directory.
-  - Sets the header button's `aria-expanded` to `false` when the directory collapses and `true` when it expands, keeping the disclosure state exposed to assistive technology.
-  - When `collapsed` is added, the parent `.tree-dir.collapsed > .tree-children` rule hides the direct child subtree with `display: none`, so all nested changed-file rows and nested directories under that directory are visually removed from the diff tree while remaining in the DOM.
-  - When `collapsed` is removed, the direct `.tree-children` subtree becomes visible again with its previously generated nested directory and changed-file rows intact; any `collapsed` classes already present on nested descendant directories continue to control their own subtrees.
-  - When collapsed, the parent `.tree-dir.collapsed > .tree-dir-head .tchev` rule rotates the visible `▾` chevron `-90deg`; when expanded, the chevron returns to its unrotated downward state.
-  - Returns immediately after toggling so the same click is not treated as a [files file row](#files-file-row) activation and does not call the file-opening path.
-  - Treats every directory's collapsed state as local DOM state on that directory's own `.tree-dir`; collapsing a parent hides its child subtree visually without changing any nested child directory's existing `collapsed` class.
-  - Re-expands a collapsed directory by removing the same class on a later activation of the same generated directory header; the handler does not persist expanded/collapsed state across file-tree reloads.
-  - Leaves selected repository state, selected worker id, selected file row styling, `#file-view` contents, inbox rows, selected worker detail, diff tree, diff view, status bar, command palette, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not send an HTTP request or websocket message, perform browser navigation, move focus, or announce the collapse/expand state through an `aria-live` region.
-- code: groom/groom/templates/dashboard.html::files-tree click listener
-
-### filter-inbox-messages
-
-- on: [inbox-filter-input](#inbox-filter-input)
-- trigger: changed text input after the configured 250 ms debounce, or native search event from the searchbox such as pressing Enter in the field or clearing the field through browser-provided search UI.
-- role: searchbox.
-- name: `Filter incoming messages`.
-- keyboard: text entry edits the query; Enter dispatches the browser search event for `type="search"`; Tab and Shift+Tab use normal document focus traversal.
-- when:
-  - The groom dashboard shell is loaded in any activity mode; the input remains in the inbox pane and can initiate requests even though the pane is only visible in inbox mode.
-  - The input value has changed since the last htmx request, or the browser dispatches a search event for the current value.
-  - The request carries the current input value as query parameter `q`; empty string means no text filter.
-- does:
-  - Sends `GET /search?q={current input value}` to the [search fragment endpoint](../../http/groom.md#get-search-fragment), with `q` serialized from the searchbox's `name` attribute; there is no request body and no browser navigation.
-  - The server reads the current in-memory workflow list, keeps only workflows that have at least one open gate, and applies a case-insensitive substring match across workflow identity, repository name, repository branch, workflow type, current node, and gate-file paths when `q` is non-empty.
-  - Receives one out-of-band HTML fragment whose root element is the replacement `<div class="inbox-list" id="inbox-list" hx-swap-oob="true">`; because the input uses `hx-swap="none"`, the triggering searchbox, selected worker detail, status bar, activity mode, repository picker, command palette, and browser URL are not directly replaced by the htmx request.
-  - Replaces the inbox row list with matching [inbox worker row](#inbox-worker-row) components sorted blocked first, then running, idle, and finished, with names ascending inside each state; each row includes a visual [workflow state dot renderer](../../concepts/workflow-state-dot-renderer.md) fragment whose state class matches the row's `data-state` value.
-  - If no rows match, renders the inbox empty state `No incoming messages — inbox zero.`; during discovery this search-triggered empty state remains empty rather than changing to the discovery spinner when `q` is non-empty.
-  - After the out-of-band replacement settles, rerenders markdown inside any swapped inbox question previews and uses the [dashboard inbox selection applier](../../concepts/dashboard-inbox-selection-applier.md) to reapply the browser-local selected-worker class to any newly rendered row whose `data-worker-id` still equals the selected worker id.
-  - Leaves fleet-wide status counts unchanged because they are not part of the search response.
-- code: groom/groom/templates/dashboard.html
-- verify: groom/tests/test_render.py::test_search_with_query_shows_empty_not_spinner_even_while_scanning
-
-### select-inbox-worker-row
-
-- on: [inbox-worker-row](#inbox-worker-row)
-- trigger: pointer click, tap, Enter, or Space activation of a native inbox row button or any descendant of that row, captured by the delegated `document.body` click handler.
-- role: button; the triggering element is a native `<button type="button" class="row">`.
-- name: the row's visible text (repository label, short worker id, gate path or hint, and optional question preview); selection is keyed by `data-worker-id`.
-- keyboard: Tab and Shift+Tab reach each native row button in document order and Enter or Space activates the focused row, while global `j`/`k` movement is handled separately by [keyboard select inbox worker row](#keyboard-select-inbox-worker-row).
-- when:
-  - The dashboard shell is loaded and the delegated body click listener is registered.
-  - The click is outside any form, so clicks inside gate answer forms are left to form controls and the websocket-send form behavior.
-  - The click is outside `#repo-menu-wrap`, outside a `.repo-picker`, and outside a `.fd-tree`, so repository menu, repository picker, files tree, and diff tree panel-local click handlers own their regions.
-  - The remaining click target or one of its ancestors matches `[data-worker-id]`; for server-rendered inbox rows this is the [workflow container](../../concepts/workflow-container.md) `container_id` emitted as the row's `data-worker-id`.
-  - The handler does not require the row to be in `#inbox-list`, does not check that the id is non-empty, and does not check that the id still exists in the server registry before issuing the detail request.
-- does:
-  - Finds the closest `[data-worker-id]` ancestor for the pointer event target and reads its `dataset.workerId` value exactly as provided by the DOM.
-  - Calls the shared `select(id)` handler with that value; the handler stores it as [dashboard selected worker state](../../dashboard-selected-worker-state.md) without trimming, normalizing, existence-checking, or rejecting empty strings.
-  - Recomputes selection styling through the [dashboard inbox selection applier](../../concepts/dashboard-inbox-selection-applier.md), which scans every `[data-worker-id]` element currently in the document and toggles the `selected` class and `aria-current="true"` on only where the element's `data-worker-id` equals the stored selected worker id.
-  - Sends `GET /worker/{encodeURIComponent(id)}` to [get worker detail](../../http/groom.md#get-worker-detail) through htmx with target `#detail` and `innerHTML` swap; the request has no query string, request body, history update, or browser navigation.
-  - When the endpoint returns, replaces only the selected worker detail pane with the returned [worker detail renderer](../../concepts/worker-detail-renderer.md) fragment; the inbox row list, status bar, activity mode, selected repository state, repository picker, command palette, toast stack, browser URL, and websocket connection remain unchanged by this interaction.
-  - Allows the normal htmx `afterSwap` lifecycle to run after the detail replacement, so dashboard-wide listeners render escaped gate markdown and wire the worker-detail diff disclosure for the newly selected detail fragment.
-  - Preserves [dashboard selected worker state](../../dashboard-selected-worker-state.md) for later row clicks, [keyboard select inbox worker row](#keyboard-select-inbox-worker-row), [select command palette result](#select-command-palette-result), and the `groom:answered` browser event refresh path.
-  - Returns from the body click handler after selecting the row, so the same click does not trigger status-bar refresh, settings notification permission, repository menu behavior, files/diff tree selection, answer submission, or any other body-click branch.
-  - Does not move focus, expose selection with `aria-selected`, send a websocket message, submit an answer form, answer a gate, compute a diff, mutate server state, refilter the inbox, change the active dashboard mode, or change the browser URL.
-- code: groom/groom/templates/dashboard.html::select
-
-### keyboard-select-inbox-worker-row
-
-- on: [inbox-worker-row](#inbox-worker-row)
-- trigger: document-level keydown for `j` or `k` after command-palette shortcuts, Escape handling, and palette Enter handling have had priority.
-- role: keyboard shortcut.
-- name: inbox row movement.
-- keyboard: `j` selects the next inbox row; `k` selects the previous inbox row; when no rendered row matches the current selected worker, either key selects the first rendered inbox row; the shortcut is disabled while an `INPUT` or `TEXTAREA` has focus.
-- when:
-  - The dashboard shell is loaded and the keydown was not consumed by the earlier Ctrl/Meta+K palette toggle, Escape close-all branch, or open-palette Enter selection branch.
-  - The active element's tag name is not `INPUT` or `TEXTAREA`, so text entry in the inbox searchbox, repository search field, command palette input, and gate answer textarea is not intercepted; other focus targets, including body and non-input controls, remain eligible for `j`/`k` movement.
-  - `#inbox-list` contains at least one `.row`; if it contains none, the keydown has no row-selection effect.
-- does:
-  - Reads the current ordered list of rendered inbox rows from `#inbox-list .row`; this order is the server-rendered inbox order: blocked first, then running, idle, and finished, with workflow names ascending inside each state.
-  - Finds the row whose `data-worker-id` equals the browser-local selected worker id; if none is found, clamps movement to the first row.
-  - Chooses the next row for `j` or previous row for `k`, clamped so movement at the first or last row stays on the boundary row.
-  - If there is no rendered row to choose after clamping, leaves activity mode, selected worker id, selected-row classes, worker detail, repository picker, command palette, browser URL, websocket connection, and server workflow state unchanged and sends no request.
-  - Calls `setMode("inbox")`, making the inbox pane active, marking the inbox activity control active, closing the repository picker overlay if open, and leaving files/diff data cached in browser state.
-  - Calls the shared row selection handler with the chosen row's `data-worker-id`, which writes [dashboard selected worker state](../../dashboard-selected-worker-state.md), updates selected-row classes through the [dashboard inbox selection applier](../../concepts/dashboard-inbox-selection-applier.md), and sends `GET /worker/{container_id}` to [get worker detail](../../http/groom.md#get-worker-detail) for the `#detail` pane.
-  - When an `INPUT` or `TEXTAREA` has focus, skips the row-navigation branch entirely: no inbox rows are queried, the active mode is not changed, selected-row classes are not recomputed, `#detail` is not fetched, and the key remains available to the focused text-entry control.
-  - Does not prevent the key event's default browser handling, stop event propagation, move DOM focus to the row, send a websocket message, submit an answer form, mutate server state, or change the browser URL.
-- code: groom/groom/templates/dashboard.html::keydown
-
-### toggle-command-palette-shortcut
-
-- on: [command palette shortcut](#command-palette-shortcut)
-- trigger: document-level keydown for `Ctrl+K` or `Meta+K`, checked before Escape, palette Enter, and inbox-row `j`/`k` keyboard handling; the status-bar `#btn-palette` button opens the palette through the delegated body click handler and records itself as the focus-return invoker.
-- role: keyboard shortcut.
-- name: `Open command palette` on the status-bar `#btn-palette` opener button; the shortcut itself carries no accessible name.
-- keyboard: `Ctrl+K` or `Meta+K` opens the command palette when closed and closes it when open; Escape closes the palette without toggling it.
-- when: dashboard shell has the document keydown listener and the event is `Ctrl+K` or `Meta+K`.
-  - The groom dashboard shell is loaded and the document-level keydown listener is registered.
-  - The key event has either `metaKey` or `ctrlKey` set and its key value lowercases to `k`.
-  - The event may originate while focus is inside a text input or textarea; this shortcut branch runs before the later text-entry guard used for `j`/`k` row movement.
-  - `#palette`, `#palette-input`, `#palette-results`, and the current `#inbox-list` DOM may be present with zero or more rendered inbox rows.
-- does: toggles `#palette.open`; opening clears and rebuilds results from current inbox rows, then focuses `#palette-input`.
-  - Prevents the browser's default handling for the `Ctrl+K` or `Meta+K` key event.
-  - If `#palette` already has the `open` class, removes that class and leaves the palette input value, rendered results, selected worker id, selected worker detail, activity mode, repository picker, status bar, websocket connection, browser URL, and server workflow state unchanged.
-  - If `#palette` is closed, adds the `open` class to `#palette`, making the command palette overlay visible.
-  - Clears `#palette-input` to the empty string.
-  - Rebuilds `#palette-results` from the currently rendered `#inbox-list .row` elements by normalizing each row's text, copying its `data-worker-id` into result `data-id`, copying its `data-state` into the result state dot and hint, filtering with the empty query, and marking the first rendered result `active`.
-  - Moves DOM focus to [command palette input](#command-palette-input) after opening, first recording the previously focused element (or the `#btn-palette` opener) as the invoker; closing by the same shortcut returns focus to that invoker when focus is still inside the palette.
-  - Returns from the keydown handler immediately after toggling, so Escape handling, palette Enter selection, and `j`/`k` inbox-row navigation do not also run for the same key event.
-  - Does not send an HTTP request, send a websocket message, mutate server state, change the selected worker id, change dashboard mode, close the repository menu, request notification permission, or navigate away from the dashboard.
-  - Exposes the palette as an ARIA modal dialog (`role="dialog"`, `aria-modal="true"`, `aria-label="Command palette"`), traps Tab inside the open dialog by refocusing `#palette-input`, and pairs the shortcut with the focusable `#btn-palette` opener in the status bar.
-- code: groom/groom/templates/dashboard.html::keydown
-
-### edit-detail-answer-textarea
-- on: [detail-answer-textarea](#detail-answer-textarea)
-- trigger: keyboard text entry, paste, cut, undo, redo, or other browser-supported editing action while focus is inside `#detail textarea[name="answer"]`; the value is sent only when the enclosing answer form is submitted.
-- role: textbox.
-- name: `Your answer`, supplied by the textarea's explicit `aria-label` per [detail-answer-textarea](#detail-answer-textarea); reachable as `getByRole("textbox", { name: "Your answer" })`.
-- keyboard: ordinary multiline textbox editing; Enter inserts a newline; Tab leaves the textarea according to normal browser focus traversal; global `j`/`k` inbox navigation is disabled while the textarea has focus.
-- when:
-  - The dashboard shell is loaded and connected to the browser websocket at [WS /ws](../../http/groom.md#websocket-dashboard).
-  - A worker is selected and `GET /worker/{container_id}` has rendered a detail pane containing at least one open gate block.
-  - The gate block's answer form contains hidden `cmd=answer`, hidden `workflow_id`, hidden `file_path`, this textarea's `answer` value field, and a submit button.
-  - No first-party `input`, `change`, or `keydown` handler owns the textarea's editing path; the only relevant dashboard keydown branch treats a focused `TEXTAREA` as text entry and skips inbox-row `j`/`k` selection.
-  - Focus is inside the textarea; if the selected worker is changed or the same selected worker is refetched, the textarea is replaced and any unsent browser-local value is lost.
-- does:
-  - Lets the browser's native multiline textbox model own caret position, selection, undo/redo history, paste/cut behavior, and the current form-control value.
-  - Updates only the textarea's browser-local `answer` form value; groom does not send a websocket frame, issue an HTTP request, or mutate server state on ordinary text input.
-  - Keeps the selected worker id, inbox rows, status bar, activity mode, repository picker, command palette, browser URL, and server workflow state unchanged while text is being edited.
-  - Leaves document-level `j` and `k` row-selection shortcuts inactive because the dashboard keydown handler treats `TEXTAREA` focus as text entry.
-  - Preserves the edited value across websocket out-of-band inbox/status broadcasts because those live swaps do not replace `#detail`; preserves it across command-palette, repository-picker, and activity-mode changes that leave the selected detail pane in place.
-  - Loses the edited value when `#detail` is replaced by selecting another worker, by refetching the selected worker detail, or by the successful-answer refresh path after the answered worker is still selected.
-  - On enclosing form submission, the htmx websocket extension serializes hidden `cmd=answer`, hidden `workflow_id`, hidden `file_path`, and this textarea's current `answer` value into one [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md) for [WS /ws](../../http/groom.md#websocket-dashboard); the textarea value is not trimmed by the client before serialization.
-  - The first first-party server layer reached by that submitted message is `groom/groom/app.py::_handle_command`, which ignores non-`answer` commands, string-normalizes the submitted `workflow_id`, `file_path`, and `answer`, looks up the selected workflow's workspace volume when the workflow is known, and delegates the gate write to the gate-answering layer.
-  - The gate-answering layer serializes concurrent submissions with a lock keyed by the submitted workflow id and gate file path, rereads the gate file from the workflow workspace volume, rejects the answer if the file is missing or no longer has `STATUS: AWAITING_OPERATOR`, writes `STATUS: ANSWERED` plus the stripped answer text when accepted, clears the matching in-memory gate, and starts the workflow container only when it is not already running.
-  - The server-side gate-answering call returns an [answer result](../../answer-result.md); every attempted answer builds an [answer log entry](../../answer-log-entry.md) with event `answer`, the normalized container id, gate file path, result success flag, and result message.
-  - The answer command then calls [record answer log entry](../../concepts/answer-event-log.md#method-record-answer-log-entry), which appends that dictionary exactly once to the bounded process-local [answer event log](../../concepts/answer-event-log.md), retains only the newest 200 events, emits no return value or client-facing acknowledgement, and calls no deeper first-party groom layer.
-  - A successful server-side answer broadcast calls the [groom answered browser event detail](../../groom-answered-browser-event-detail.md) renderer with the normalized workflow id and gate file path, then appends the returned `groom:answered` script after the out-of-band shell fragment.
-  - The answered-event renderer serializes exactly `{id: container_id, file_path}` as `CustomEvent.detail`, embeds it in an inline `<script>` dispatching `groom:answered` on `document.body`, and excludes the answer text, gate question, success flag, answer log entry, worker detail HTML, and websocket frame envelope.
-  - The answered-event renderer performs only string production and standard-library JSON serialization; it mutates no workflow state, gate files, browser DOM, websocket queues, answer logs, sidecar state, or Docker state and calls no deeper first-party groom layer.
-  - When the browser executes the successful answer script, the dashboard shows the success toast `answer sent` and, only when the answered worker is still selected, refetches that worker detail so the answered gate block is dismissed without clobbering another worker's half-typed answer.
-  - A failed server-side answer still broadcasts refreshed shell data but does not dispatch `groom:answered`, does not refetch selected detail through the success handler, and leaves the gate visible until a later state change.
-- code: groom/groom/render.py::_answer_form
-- code: groom/groom/templates/dashboard.html::keydown
-- code: groom/groom/app.py::_handle_command
-- verify: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
-
-### toggle-detail-working-tree-diff
-
-- on: [detail working tree diff toggle](#detail-working-tree-diff-toggle)
-- trigger: native `<details>` `toggle` event after pointer, tap, Enter, or Space activation changes the open state of the selected worker's `Working-tree diff` disclosure.
-- role: disclosure button; native `<summary>` control for a `<details>` disclosure.
-- name: `Working-tree diff`.
-- keyboard: Tab and Shift+Tab reach the summary in document order; Enter or Space toggles it; no custom shortcut is registered.
-- when:
-  - The dashboard shell is loaded and a selected worker detail fragment has been swapped into `#detail`.
-  - `wireDetail()` runs after htmx swaps, scans the current `#detail details[data-diff]` disclosures, marks each previously unwired disclosure with `data-wired="1"`, and attaches exactly one toggle listener to that disclosure.
-  - The disclosure belongs to a worker with at least one open gate; workers without gates do not render the working-tree diff disclosure.
-  - The toggle event fires on `#detail details[data-diff]`; closing the disclosure is allowed at any time and never fetches data.
-  - The disclosure body contains `[data-diff-target]` with `data-container` set to the selected worker container id.
-- does:
-  - Ignores any already-wired disclosure on later htmx swaps or detail refreshes, so an existing disclosure never accumulates duplicate toggle listeners; a replaced detail fragment receives fresh wiring because it is a new DOM node.
-  - If the disclosure is closing, returns immediately after the browser updates the native collapsed state; loaded diff content, empty-state content, or failure text remains in the disclosure body for a later expansion.
-  - If the disclosure is opening and the target already has `data-loaded`, returns without another HTTP request so repeated expansions reuse the existing rendered diff body.
-  - If the disclosure is opening for the first time, sets the target text to `Loading diff…` while the request is in flight.
-  - Sends `GET /diff/{container_id}` to [get workspace diff](../../http/groom.md#get-workspace-diff), where `container_id` is URL-encoded from the target's `data-container`; the detail disclosure does not include a `repo` query parameter, so the endpoint uses its default repository selection.
-  - Receives the response as plain text from [serve workspace diff](../../http/groom.md#serve-workspace-diff); the server may return raw unified diff text or an empty body, and endpoint-level unavailable-data cases still resolve as `200 OK` empty text.
-  - Treats any fulfilled HTTP response as renderable text without checking `response.ok`; framework-level non-OK responses are still read, marked loaded, and rendered or reduced to the empty-state branch according to their text body.
-  - On a fulfilled response, sets `data-loaded="1"` on the target before rendering the result, so any successful HTTP response is cached for future expansions even when rendering produces an empty-state body.
-  - When the fulfilled response has non-whitespace text after trimming, parses the raw unified diff text through the third-party Diff2Html renderer with file-list drawing enabled, line-matching mode, line-by-line output, and dark color scheme, then replaces the disclosure body with the generated diff HTML.
-  - When the fulfilled response is empty or whitespace-only after trimming, replaces the target contents with `<div class="detail-empty">(no changes)</div>`.
-  - On a network failure or response-body read rejection, replaces the target text with `failed to load diff` and does not set `data-loaded`, so a later expansion can retry the request.
-  - Leaves the selected worker id, gate answer form values, inbox rows, status bar, activity mode, repository picker, command palette, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not move focus deliberately, announce the loading/result state through an `aria-live` region, submit websocket messages, render server-provided HTML directly, or broadcast dashboard updates.
-- code: groom/groom/templates/dashboard.html::wireDetail
-
-### send-detail-answer
-
-- on: [detail send answer button](#detail-send-answer-button)
-- trigger: pointer click, tap, Enter, or Space activation of the native `Send answer` submit button in a gate answer form; equivalent browser form submission from the same form reaches the same websocket-send path.
-- role: button.
-- name: `Send answer`.
-- keyboard: Tab or Shift+Tab reaches the button; Enter or Space activates it when focused; Enter inside the multiline answer textarea inserts a newline and does not serve as the primary submit shortcut.
-- when:
-  - The dashboard shell is loaded and connected to [WS /ws](../../http/groom.md#websocket-dashboard).
-  - A worker is selected and `GET /worker/{container_id}` has rendered `#detail` with at least one open gate block.
-  - The activated button belongs to a `<form class="answer" ws-send>` containing hidden `cmd=answer`, hidden `workflow_id`, hidden `file_path`, and textarea `answer` fields.
-  - The submitted `workflow_id` is the selected worker container id rendered into the hidden field, and the submitted `file_path` is the exact open gate context-file path rendered for that gate block; this pair scopes the answer when a worker has multiple open gates.
-  - The submitted `answer` may be empty or whitespace-only; the client does not trim it, require non-blank text, disable the submit button, or block duplicate submissions while a prior answer is in flight.
-  - The websocket receive loop must deliver a decoded JSON object to `groom/groom/app.py::_handle_command`; command frames whose `cmd` is missing or not exactly `"answer"` are outside this interaction's handled path and are ignored by that handler.
-- does:
-  - Submits the enclosing answer form through the htmx websocket extension without changing the browser URL or issuing an HTTP form request.
-  - Serializes one JSON websocket frame containing `cmd: "answer"`, `workflow_id` from the selected workflow container id, `file_path` from the selected gate file, and `answer` from the textarea's current browser-local value.
-  - Sends the frame over the existing dashboard websocket to [WS /ws](../../http/groom.md#websocket-dashboard); the dashboard websocket receive loop waits for `groom/groom/app.py::_handle_command` to finish before it receives another frame from the same browser tab.
-  - `_handle_command` ignores any frame whose `cmd` is not exactly `"answer"`; for an answer command it converts missing or supplied `workflow_id`, `file_path`, and `answer` values with `str(...)`, defaulting each missing value to the empty string.
-  - `_handle_command` looks up the normalized `workflow_id` in the process-local workflow registry; when the workflow is unknown it passes an empty workspace volume to the gate-answering layer, and when the workflow is known it passes that workflow's current workspace volume.
-  - Calls the [gate-answering layer](../../concepts/gate-answering-layer.md) with `container_id`, `file_path`, `answer`, and `workspace_volume`; that layer rejects an unknown workspace volume before locking, serializes same-gate submissions with the per-gate lock, rereads the gate file under the lock, accepts only current `STATUS: AWAITING_OPERATOR`, writes `STATUS: ANSWERED` plus the stripped non-blank answer text, clears the matching in-memory gate after a successful write, and attempts the stopped-container restart fallback only after a successful write.
-  - Receives an [answer result](../../answer-result.md) from the gate-answering layer for expected domain outcomes, including duplicate or stale gate, missing gate file, missing workspace volume, failed write, successful write while running, successful write with restart, and successful write with restart failure.
-  - Builds one [answer log entry](../../answer-log-entry.md) with event `answer`, normalized container id, gate file path, result `ok` flag, and result message; the submitted answer text and gate question are not copied into the log entry.
-  - Calls [record answer log entry](../../concepts/answer-event-log.md#method-record-answer-log-entry) to append that dictionary exactly once to the bounded process-local [answer event log](../../concepts/answer-event-log.md), retaining only the newest 200 events and producing no response frame, UI fragment, acknowledgement, or additional first-party service call.
-  - If the answer result is successful, the workflow still exists, the gate clear leaves it with no remaining open gates, and its visible state is still blocked, changes that workflow's visible state to running before rendering the broadcast.
-  - Renders a fresh [dashboard shell fragment](../../dashboard-shell-fragment.md) after every expected answer result and broadcasts it through the dashboard client queues, so connected dashboard tabs receive out-of-band inbox and status-bar updates; selected worker detail, repository picker, files pane, diff pane, command palette, and browser URL are not part of this shell fragment.
-  - Sends no direct acknowledgement frame carrying the answer result; clients infer success only from the success-only script fragment and otherwise only observe the refreshed shell regions.
-  - On success only, appends a [groom answered script fragment](../../groom-answered-script-fragment.md) to the same websocket broadcast after the shell fragment; executing that script dispatches `groom:answered` with the answered workflow id and gate file path, shows the success toast `✓ answer sent`, and refetches the selected worker detail only in tabs where the answered workflow is still the selected worker.
-  - On expected failure, broadcasts shell data without `groom:answered`, leaves the visible gate and selected detail pane unchanged until a later state change or manual refetch, does not show the success toast, and does not invoke the selected-detail refetch handler.
-  - If the gate-answering call, log append, shell rendering, or broadcast queueing raises an unexpected exception instead of returning an answer result, the handler does not convert it to a failure result or acknowledgement frame; the exception propagates through the websocket receive loop and any already-completed side effects are not rolled back.
-  - Does not move focus deliberately, clear the textarea before the server response, change the selected worker id, alter repository picker or command palette state, request notification permission, or navigate away from the dashboard.
-- code: groom/groom/app.py::_handle_command
-- verify: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+  - Flips that directory node's local open state and its `aria-expanded`, adding or removing the `collapsed` class on its wrapper.
+  - Keeps the state component-local rather than in the store: it belongs to this directory in this tab and nothing else reads it, and it survives a re-render because the node is keyed by name.
+  - Leaves the open file, the viewer, and every other directory untouched, and issues no request.
+- code: groom/groom/assets/dashboard.js::TreeDir
 
 ### select-files-file-row
 
-- on: [files file row](#files-file-row)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#files-tree .tree-file` button or any descendant of that generated file row, captured by the delegated `#files-tree` click listener after the directory-toggle branch is skipped.
-- role: button; the triggering element is a native `<button type="button" class="tree-file">`.
-- name: the file basename in the child `.fname` span, exposed as the button's accessible name; selection is keyed by `data-path`.
-- keyboard: Tab and Shift+Tab reach each native file-row button; Enter or Space opens the focused file; no arrow-key file-tree selection model is implemented.
+- on: [files-file-row](#files-file-row)
+- trigger: pointer click, tap, Enter, or Space on a file row in the files tree.
+- role: button
+- name: `{filename}`
+- keyboard: Tab reaches the row; Enter or Space opens the file.
 - when:
-  - The groom dashboard shell is loaded and `#files-tree` has its delegated click listener attached.
-  - A repository has been selected through [repository menu option](#repository-menu-option), so browser state contains a selected workflow container id and volume-relative repository path.
-  - [GET /files/{container_id}](../../http/groom.md#get-workspace-file-list) has returned at least one file path, and `renderPathTree` has generated a [files file row](#files-file-row) with `data-path` for the selected file.
-  - The click target does not match `.tree-dir-head`; directory-toggle clicks return before the file-row branch.
-  - The matched file row's `data-path` is non-empty; an empty path still reaches the endpoint but is represented as empty content by the server.
+  - A repository is selected and the files tree has rendered at least one file.
 - does:
-  - Finds the nearest `.tree-file` for the click target within the files tree and returns with no effect when none is found.
-  - Removes the `active` class and `aria-current` attribute from every currently active file row in `#files-tree` before the file-content request starts.
-  - Adds the `active` class and `aria-current="true"` to the activated file row immediately, making it the single visibly selected file in the current files tree before the loading state or response body appears.
-  - Mirrors the active-row state to `aria-current="true"` on the selected row button while keeping it out of browser URL state, server state, and the selected repository object; it is cleared only by selecting another file row in the same rendered tree or by replacing the files tree after another repository/file-list load.
-  - Reads the repo-relative file path from the row's `data-path` attribute and passes it to the file-opening handler.
-  - Reads the selected workflow container id and selected volume-relative repository path from [dashboard selected repository state](../../dashboard-selected-repository-state.md); the handler assumes a prior repository selection has populated `container` and normalizes only through URL encoding.
-  - Replaces `#file-view` with the loading state `Loading...` while the file-content request is in flight.
-  - Sends `GET /file/{container_id}?repo={repo}&path={path}` to [get workspace file content](../../http/groom.md#get-workspace-file-content), URL-encoding the selected container id, selected repository path, and selected file path from browser state.
-  - Treats any fulfilled HTTP response as [workspace file content data](../../workspace-file-content-data.md) by reading the response body as raw text regardless of status; the server may return file text or an empty body for empty, binary, missing, unsafe, or unavailable content.
-  - Delegates the fulfilled body and the original selected path to the [dashboard file view renderer](../../concepts/dashboard-file-view-renderer.md), which replaces `#file-view` with a `.file-head` containing the escaped full file path and a `.file-body` containing either `(empty or binary file)` or a `<pre class="file-pre hljs"><code>...</code></pre>` block.
-  - If the fulfilled body is falsey, renders the `(empty or binary file)` state and returns without creating a code block, resolving a language, or invoking Highlight.js.
-  - If the fulfilled body is truthy, creates a fresh code block, assigns file content through `textContent`, wraps it in `.file-pre.hljs`, and appends it after the file header.
-  - Chooses a Highlight.js language from the file path extension when a mapping exists and Highlight.js recognizes it; otherwise the code block remains unclassified for plain rendering or library auto-detection.
-  - Attempts Highlight.js rendering inside a guarded block; any highlighter exception is swallowed and the plain text code block remains visible.
-  - Escapes the inserted path before placing it in the header HTML, and inserts file content as text rather than HTML.
-  - Has no request cancellation or selected-path freshness guard; if multiple file rows are selected quickly, each response or rejection may replace `#file-view` when it settles, so the last-settling request wins even if another row has become active meanwhile.
-  - On network failure or response-body read rejection, replaces `#file-view` with the `failed to load` empty-state text and does not alter whichever row is currently visually active.
-  - Leaves selected repository state, files tree contents, selected worker id, inbox rows, selected worker detail, diff tree, diff view, status bar, command palette, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not move focus, announce loading/result state through an `aria-live` region, send a websocket message, submit a form, mutate server state, or navigate away from the dashboard.
-- code: groom/groom/templates/dashboard.html::openFile
-- code: groom/groom/templates/dashboard.html::renderFile
+  - Records the clicked path as the open path and puts the viewer into its loading state under that path, so the previous file's body is gone before the new one arrives.
+  - Sends `GET /file/{container_id}?repo={repo}&path={path}` to [get workspace file content](../../http/groom.md#get-workspace-file-content), URL-encoding the container, repository, and path.
+  - Discards the reply — success or failure — when a later click has already changed the open path, so a slow response cannot overwrite a newer file.
+  - Stores the returned [workspace file content data](../../workspace-file-content-data.md): the resolved path, the content, and the server-decided language, whose extension table lives with the rest of the presentation policy.
+  - Renders `(empty or binary file)` under the path header for empty content.
+  - Highlights the content with highlight.js when it is available, falling back to a plain text node when the library is absent or throws — the highlighted output is escaped HTML, which is why it may be set as markup at all.
+  - Marks this row `active` with `aria-current="true"` and clears the marking from the previously open row.
+  - Stores an error status on rejection, rendered as `failed to load`.
+- code: groom/groom/assets/dashboard.js::openFile
+- code: groom/groom/assets/dashboard.js::FileView
+- code: groom/groom/assets/dashboard.js::highlight
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-file-loaded.png
 
 ### toggle-diff-directory
 
-- on: [diff directory toggle](#diff-directory-toggle)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#diff-tree .tree-dir-head` button or any descendant of that generated directory header, captured by the delegated `#diff-tree` click listener before the same listener considers [diff file row](#diff-file-row) activation.
-- role: button; the triggering element is a native `<button type="button">` disclosure header with `aria-expanded`.
-- name: the directory basename; the chevron span is `aria-hidden` and disclosure state is exposed through `aria-expanded` rather than the name.
-- keyboard: Tab and Shift+Tab reach the native header button; Enter or Space toggles the directory; no arrow-key tree navigation is implemented.
+- on: [diff-directory-toggle](#diff-directory-toggle)
+- trigger: pointer click, tap, Enter, or Space on a directory row in the diff tree.
+- role: button
+- name: `{directory}`
+- keyboard: Tab reaches the row; Enter or Space toggles it.
 - when:
-  - The groom dashboard shell is loaded and `#diff-tree` has its delegated click listener attached.
-  - A repository has been selected through [repository menu option](#repository-menu-option), so browser state contains a selected workflow container id and volume-relative repository path.
-  - [GET /diff/{container_id}](../../http/groom.md#get-workspace-diff) has returned non-empty unified diff text, Diff2Html has parsed at least one changed file, and `renderDiffTree` has generated one or more [diff directory toggle](#diff-directory-toggle) rows from changed-file paths with directory segments.
-  - The click event target or one of its ancestors inside `#diff-tree` matches `.tree-dir-head`; clicks on changed-file rows and empty/loading/error states do not satisfy this directory branch.
-  - The matched directory header is inside an enclosing `.tree-dir` whose `collapsed` class currently represents that directory's local expanded or collapsed state.
+  - The diff tree has rendered at least one directory level.
 - does:
-  - Receives every pointer click that bubbles to `#diff-tree`, including clicks on directory headers, changed-file rows, and empty/loading/error-state content.
-  - Finds the nearest `.tree-dir-head` for the original click target; because the listener is attached to `#diff-tree`, a match represents a generated diff-tree directory header or one of its descendants.
-  - When no `.tree-dir-head` is found, skips this interaction and lets the same listener continue to [select diff file row](#select-diff-file-row) or return with no effect for non-row content.
-  - Toggles the `collapsed` class on that header's parent `.tree-dir`, changing only the visibility state of that directory's `.tree-children` subtree.
-  - Sets the header button's `aria-expanded` to `false` when the directory collapses and `true` when it expands, keeping the disclosure state exposed to assistive technology.
-  - Returns immediately after toggling so the same click is not treated as a [diff file row](#diff-file-row) activation and does not render a changed-file diff.
-  - Leaves [dashboard selected repository state](../../dashboard-selected-repository-state.md), [workspace diff data](../../workspace-diff-data.md) already parsed and cached on `#diff-tree`, current changed-file active styling, `#diff-view` contents, selected worker id, inbox rows, selected worker detail, files tree, file view, status bar, command palette, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not send an HTTP request or websocket message, perform browser navigation, move focus, or announce the collapse/expand state through an `aria-live` region.
-- code: groom/groom/templates/dashboard.html::diff-tree click listener
+  - Flips that directory node's local open state and its `aria-expanded`, exactly as the files tree does — the two trees are one component over two entry lists.
+  - Leaves the shown diff, the parsed diff cache, and every other directory untouched, and issues no request.
+- code: groom/groom/assets/dashboard.js::TreeDir
 
 ### select-diff-file-row
 
-- on: [diff file row](#diff-file-row)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#diff-tree .tree-file` button or any descendant of that generated changed-file row, captured by the delegated `#diff-tree` click listener after the directory-toggle branch is skipped.
-- role: button; the triggering element is a native `<button type="button" class="tree-file">`.
-- name: the file basename plus added/deleted line-count text, exposed as the button's accessible name; selection is keyed by `data-file-idx`.
-- keyboard: Tab and Shift+Tab reach each native changed-file button; Enter or Space opens the focused changed file; no arrow-key diff-tree selection model is implemented.
+- on: [diff-file-row](#diff-file-row)
+- trigger: pointer click, tap, Enter, or Space on a changed-file row in the diff tree.
+- role: button
+- name: `{filename} +{added} -{deleted}`
+- keyboard: Tab reaches the row; Enter or Space shows that file's diff.
 - when:
-  - The groom dashboard shell is loaded and `#diff-tree` has its delegated click listener attached.
-  - A repository has been selected through [repository menu option](#repository-menu-option), so browser state contains a selected workflow container id and volume-relative repository path.
-  - [GET /diff/{container_id}](../../http/groom.md#get-workspace-diff) has returned non-empty unified diff text, Diff2Html has parsed at least one changed file, and `#diff-tree._files` holds the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md).
-  - `renderDiffTree` has generated a [diff file row](#diff-file-row) whose `data-file-idx` points to one entry in `#diff-tree._files`.
-  - The click target does not match `.tree-dir-head`; directory-toggle clicks return before the changed-file-row branch.
+  - A repository is selected and the parsed diff holds at least one changed file.
 - does:
-  - Finds the nearest `.tree-file` for the click target within the diff tree and returns with no effect when none is found.
-  - Removes the `active` class and `aria-current` attribute from every currently active changed-file row in `#diff-tree`.
-  - Adds the `active` class and `aria-current="true"` to the activated changed-file row, making it the single visibly selected changed file in the current diff tree.
-  - Mirrors the active-row state to `aria-current="true"` on the selected row button while keeping it out of browser URL state, server state, selected repository state, and the parsed diff cache; it is cleared only by selecting another changed-file row in the same rendered tree or by replacing the diff tree after another diff-pane load.
-  - Reads the parsed-file array index from the row's `data-file-idx` attribute, converts it to a number, and selects that file entry from `#diff-tree._files`.
-  - Performs no index, cache-presence, stale-selection, or bounds validation after reading `data-file-idx`; correctness depends on the generated row and current `#diff-tree._files` cache coming from the same successful diff-pane load.
-  - Replaces `#diff-view` with diff2html output for a one-file array containing the selected parsed file entry.
-  - Renders the selected file diff with `drawFileList: false`, `matching: "lines"`, `outputFormat: "line-by-line"`, and `colorScheme: "dark"`, so the right pane shows only the selected file's line-by-line dark diff rather than the full changed-file list.
-  - Uses the parsed diff file already cached on `#diff-tree`; does not send another HTTP request, reparse the raw unified diff text, rebuild the file tree, or read selected repository state after the changed-file tree has loaded.
-  - Overwrites the previous `#diff-view` contents synchronously with the third-party renderer output and shows no intermediate loading, empty, stale, or error state for this per-file render.
-  - If malformed DOM or stale cache state makes the selected cache entry unavailable, the handler has no recovery branch after marking the row active; any renderer exception bubbles through the event handler and the previous or partial `#diff-view` state is not intentionally restored.
-  - Leaves selected repository state, diff tree contents, other directory collapsed states, selected worker id, inbox rows, selected worker detail, files tree, file view, status bar, command palette, websocket connection, browser URL, and server workflow state unchanged.
-  - Does not move focus, announce loading/result state through an `aria-live` region, send a websocket message, submit a form, mutate server state, or navigate away from the dashboard.
-- code: groom/groom/templates/dashboard.html::diff-tree click listener
+  - Writes that file's index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) to the diff slice; nothing is fetched, because the whole diff was parsed when the pane loaded.
+  - Renders that one parsed file with diff2html into the viewer, line by line, in the dark colour scheme and with no file-list header.
+  - Marks this row `active` with `aria-current="true"` and clears the previous row's marking.
+  - Renders nothing but the selection prompt when the index points at no file.
+- code: groom/groom/assets/dashboard.js::DiffTree
+- code: groom/groom/assets/dashboard.js::DiffView
+- screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-file-selected.png
+
+### edit-detail-answer-textarea
+
+- on: [detail-answer-textarea](#detail-answer-textarea)
+- trigger: typing, pasting, or otherwise editing the answer field.
+- role: textbox
+- name: `Your answer`
+- keyboard: Tab reaches the field; Enter inserts a newline; Tab moves on to the send button.
+- when:
+  - The open run has at least one open gate, so the answer form is rendered.
+- does:
+  - Changes nothing but the field's own value — there is no input handler, no draft written to the store, and no request.
+  - Survives the fleet's 5-second push: the gate block is keyed by gate file path, so Preact reuses the same `<textarea>` DOM node across re-renders and neither the text nor the caret is lost.
+  - Survives a pushed `detail` frame for the same run for the same reason, including one carrying a newly opened gate for a different file.
+- code: groom/groom/assets/dashboard.js::AnswerForm
+- code: groom/groom/assets/dashboard.js::GateBlock
+- screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png
+
+### send-detail-answer
+
+- on: [detail-send-answer-button](#detail-send-answer-button)
+- trigger: submitting the answer form — clicking the button, or Enter from within it — captured by a delegated document-level submit handler.
+- role: button
+- name: `Send answer`
+- keyboard: Tab reaches the button; Enter or Space submits.
+- when:
+  - The submit target is inside a `form[data-answer]`.
+  - The websocket may be open or closed; the outcome differs and is reported either way.
+- does:
+  - Prevents the browser's own form submission, so the page never navigates.
+  - Serializes the form's fields into a [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md) — the `answer` command, the workflow id, the gate file path, and the typed answer — and sends it over the dashboard websocket. The client serializes the frame itself, which is what lets a failed send *say* it failed.
+  - Clears the textarea on a successful send and leaves it untouched otherwise, so a rejected answer is still in the box.
+  - Pushes the `✗ not sent` toast, naming the lost connection, when the send is refused.
+  - Does not re-fetch the pane. The server's [gate answering layer](../../concepts/gate-answering-layer.md) broadcasts a [dashboard answered message](../../dashboard-answered-message.md) to every tab, which only raises the `✓ answer sent` confirmation; the pane itself is refreshed by the `detail` push the same command triggers, which carries the gates — so no tab re-fetches and a half-typed answer against a different run is never touched.
+  - Delegates from the document rather than binding per form, because the form is re-rendered on every push and a delegated handler outlives every one of them.
+- code: groom/groom/assets/dashboard.js::wireAnswerForm
+- code: groom/groom/assets/dashboard.js::sendCommand
+- code: groom/groom/assets/dashboard.js::onAnswered
+- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
+- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+- verify: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-drafted.png
+
+### toggle-detail-working-tree-diff
+
+- on: [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle)
+- trigger: a `toggle` event on the detail pane's `<details>` disclosure, from a click, tap, Enter, or Space on its summary.
+- role: button
+- name: `Working-tree diff`
+- keyboard: Tab reaches the summary; Enter or Space expands and collapses it.
+- when:
+  - A run is open in the detail pane.
+  - The disclosure is being opened, and it has neither loaded nor failed before.
+- does:
+  - Returns immediately when the disclosure is closing, when the diff is already loaded, or when a previous attempt failed — so collapsing and re-expanding never re-fetches, and a failure is not retried on every toggle.
+  - Otherwise fetches `GET /diff/{container_id}` from [get working tree diff](../../http/groom.md#get-working-tree-diff) for the open run's container and stores the JSON body's raw unified diff, treating a missing field as empty.
+  - Shows `Loading diff…` until the reply lands, then the rendered diff, `(no changes)` for an empty or whitespace-only diff, or `failed to load diff` on rejection.
+  - Renders with diff2html, which parses the unified text and escapes what it emits.
+  - Resets when the open run changes, because the disclosure is keyed by run id — a newly opened run never shows the previous run's diff.
+- code: groom/groom/assets/dashboard.js::DiffDisclosure
+- code: groom/groom/assets/dashboard.js::diffMarkup
+- screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
 
 ### rescan-containers-from-settings
 
-- on: [settings rescan button](#settings-rescan-button)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#btn-refresh` button in the settings pane, captured by the delegated `document.body` click handler.
-- role: button.
-- name: `Rescan containers`.
-- keyboard: Tab or Shift+Tab reaches the button while settings mode is active; Enter or Space activates it when focused; there is no additional shortcut for rescan.
+- on: [settings-rescan-button](#settings-rescan-button)
+- trigger: pointer click, tap, Enter, or Space on the settings pane's rescan button, captured by the delegated body click handler.
+- role: button
+- name: `Rescan containers`
+- keyboard: Tab reaches the button; Enter or Space activates it.
 - when:
-  - The groom dashboard shell is loaded and the settings pane contains the native [settings rescan button](#settings-rescan-button).
-  - The click event target or one of its ancestors matches `#btn-refresh` and is not inside an answer form, repository menu, repository picker, or files/diff tree region that the body handler excludes first.
-  - The matched button may be idle or may already carry `data-busy`; repeat activations while that button's refresh request is in flight are accepted by the event handler but ignored by the refresh layer before another request is sent.
+  - Settings mode is active. A rescan may already be in flight.
 - does:
-  - Calls `doRefresh` with the matched settings rescan button.
-  - If that button already has `data-busy`, returns without changing DOM state, sending another request, cancelling the in-flight request, or affecting any other refresh control.
-  - Sets `data-busy="1"` on the button and adds its `spinning` class, making the in-flight state local to this control.
-  - Starts one browser fetch to [post refresh](../../http/groom.md#post-refresh) using method `POST`, with no query string, no handler-required headers, and no request body; the handler stores the returned promise only to attach its `finally` cleanup and does not return or await it for any later dashboard code.
-  - Relies on the refresh endpoint to set the [dashboard discovery scanning flag](../../concepts/dashboard-discovery-scanning-flag.md) true, render [dashboard shell fragment](../../dashboard-shell-fragment.md) with out-of-band swap markers, and broadcast that shell over [WS /ws](../../http/groom.md#websocket-dashboard) before Docker reconciliation starts.
-  - Causes every connected dashboard websocket client, including the tab that clicked this settings button when its websocket is connected, to receive the pre-scan shell broadcast as out-of-band replacements for `#inbox-list` and `#statusbar`; when the inbox list is otherwise empty and unfiltered, the scanning flag makes `#inbox-list` show the `Discovering containers...` loading state rather than the empty inbox message.
-  - Lets the refresh endpoint run one Docker reconciliation pass, upsert discovered workflows into the process-local registry, prune vanished workflows when Docker can report present container ids, retain the registry when Docker cannot report present ids, clear the scanning flag, and send a second websocket shell broadcast with refreshed inbox rows and status-bar counts.
-  - Does not directly process the websocket broadcasts in this handler; htmx's websocket extension applies the out-of-band swaps when frames arrive, and the settings pane, selected worker detail, repository menu, files pane, diff pane, command palette, browser URL, selected worker id, and selected repository state are not part of the refresh shell.
-  - Performs no direct htmx swap, DOM replacement, selected-worker change, repository-picker change, command-palette change, notification-permission request, websocket send, browser navigation, or focus movement from the click handler itself.
-  - When the fetch promise settles fulfilled or rejected, removes `data-busy` and removes the `spinning` class from this same button so the control can be activated again.
-  - Treats any fulfilled HTTP response, including non-`2xx` statuses, as enough to clear the busy state because no status code, response header, or body is inspected; the endpoint's JSON `ok` and `count` fields are not read by the browser.
-  - On client-side fetch rejection, still clears the busy state through the `finally` handler but renders no failure text, toast, retry affordance, or status-bar error; the returned rejected promise is not caught by this handler.
-  - Does not inspect the JSON response, surface refresh failures in the DOM, cancel an in-flight refresh, disable the sibling status-bar refresh button, synchronize busy state between the settings and status-bar refresh controls, or prevent a simultaneous refresh request started from the sibling control.
-- code: groom/groom/templates/dashboard.html::doRefresh
+  - Returns immediately when the button already carries `data-busy`, so a double click issues one request.
+  - Marks the button busy and spinning, then sends `POST /refresh` to [post refresh](../../http/groom.md#post-refresh).
+  - Clears the busy marking and the spinner when the request settles, on success or failure alike.
+  - Renders nothing from the reply. The server reconciles the fleet, prunes vanished containers, and broadcasts the resulting state on the socket, so the run list and status bar update through the same path as every other push.
+  - Leaves the selected run, the detail pane, the files and diff caches, and the palette untouched.
+- code: groom/groom/assets/dashboard.js::doRefresh
 - verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 - verify: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
 ### rescan-containers-from-statusbar
 
-- on: [statusbar refresh button](#statusbar-refresh-button)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#btn-refresh-bar` button in the status bar, captured by the delegated `document.body` click handler.
-- role: button.
-- name: `Rescan containers`, supplied by the button's `aria-label`; the `title` attribute `Rescan containers (reconcile + prune)` remains a tooltip/description only, and the `⟳` glyph is wrapped in an `aria-hidden` span.
-- keyboard: Tab or Shift+Tab reaches the always-visible status-bar button; Enter or Space activates it when focused; there is no additional shortcut for rescan.
+- on: [statusbar-refresh-button](#statusbar-refresh-button)
+- trigger: pointer click, tap, Enter, or Space on the status bar's refresh control, captured by the same delegated body click handler.
+- role: button
+- name: `Rescan containers (reconcile + prune)`
+- keyboard: Tab reaches the button; Enter or Space activates it.
 - when:
-  - The groom dashboard shell is loaded and the current `#statusbar` contains the native [statusbar refresh button](#statusbar-refresh-button).
-  - The click event target or one of its ancestors matches `#btn-refresh-bar` and is not inside an answer form, repository menu, repository picker, or files/diff tree region that the body handler excludes first.
-  - The matched status-bar button may be idle or may already carry `data-busy`; repeat activations while that same button's refresh request is in flight are accepted by the event handler but ignored by the refresh layer before another request is sent.
+  - Any mode is active — the status bar is outside the panes and always visible.
 - does:
-  - Calls `doRefresh` with the matched status-bar refresh button.
-  - If that button already has `data-busy`, returns without changing DOM state, sending another request, cancelling the in-flight request, or affecting any other refresh control.
-  - Sets `data-busy="1"` on the status-bar button and adds its `spinning` class, making the in-flight state local to this control.
-  - Starts one browser fetch to [post refresh](../../http/groom.md#post-refresh) using method `POST`, with no query string, no handler-required headers, and no request body; the handler stores the returned promise only to attach its `finally` cleanup and does not return or await it for any later dashboard code.
-  - Relies on the refresh endpoint to set the [dashboard discovery scanning flag](../../concepts/dashboard-discovery-scanning-flag.md) true, render [dashboard shell fragment](../../dashboard-shell-fragment.md) with out-of-band swap markers, and broadcast that shell over [WS /ws](../../http/groom.md#websocket-dashboard) before Docker reconciliation starts.
-  - Causes every connected dashboard websocket client, including the tab that clicked this status-bar button when its websocket is connected, to receive the pre-scan shell broadcast as out-of-band replacements for `#inbox-list` and `#statusbar`; when the inbox list is otherwise empty and unfiltered, the scanning flag makes `#inbox-list` show the `Discovering containers...` loading state rather than the empty inbox message.
-  - Lets the refresh endpoint run one Docker reconciliation pass, upsert discovered workflows into the process-local registry, prune vanished workflows when Docker can report present container ids, retain the registry when Docker cannot report present ids, clear the scanning flag, and send a second websocket shell broadcast with refreshed inbox rows and status-bar counts.
-  - Does not directly process the websocket broadcasts in this handler; htmx's websocket extension applies the out-of-band swaps when frames arrive, and the settings pane, selected worker detail, repository menu, files pane, diff pane, command palette, browser URL, selected worker id, and selected repository state are not part of the refresh shell.
-  - Performs no direct htmx swap, DOM replacement, selected-worker change, repository-picker change, command-palette change, notification-permission request, websocket send, browser navigation, or focus movement from the click handler itself.
-  - When the fetch promise settles fulfilled or rejected, removes `data-busy` and removes the `spinning` class from the original matched button object; if a websocket out-of-band status-bar replacement already removed that element from the visible DOM, the visible replacement is the server-rendered idle refresh button.
-  - Treats any fulfilled HTTP response, including non-`2xx` statuses, as enough to clear the busy state because no status code, response header, or body is inspected; the endpoint's JSON `ok` and `count` fields are not read by the browser.
-  - On client-side fetch rejection, still clears the busy state through the `finally` handler but renders no failure text, toast, retry affordance, or status-bar error; the returned rejected promise is not caught by this handler.
-  - Does not inspect the JSON response, surface refresh failures in the DOM, cancel an in-flight refresh, disable the sibling settings-pane refresh button, synchronize busy state between the settings and status-bar refresh controls, or prevent a simultaneous refresh request started from the sibling control.
-- code: groom/groom/templates/dashboard.html::doRefresh
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
-- verify: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
+  - Runs the identical rescan the settings control runs; the two share one handler and one busy guard per button.
+  - Spins its own icon while in flight, which is the only feedback until the resulting state broadcast arrives.
+  - Is named longer than the settings control on purpose: both are on screen together in settings mode, and two buttons computing to the same role and name would be indistinguishable to a screen reader and to `getByRole`.
+- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::StatusBar
+- screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-post-scan.png
 
 ### enable-browser-notifications-from-settings
-- on: [settings enable notifications button](#settings-enable-notifications-button)
-- trigger: pointer click, tap, Enter, or Space activation of the native `#btn-notify` button in the settings pane, captured by the delegated `document.body` click handler.
-- role: button.
-- name: `Enable notifications`.
-- keyboard: Tab or Shift+Tab reaches the button while settings mode is active; Enter or Space activates it when focused; there is no additional shortcut for requesting notification permission.
+
+- on: [settings-enable-notifications-button](#settings-enable-notifications-button)
+- trigger: pointer click, tap, Enter, or Space on the settings pane's notifications button.
+- role: button
+- name: `Enable notifications`
+- keyboard: Tab reaches the button; Enter or Space activates it.
 - when:
-  - The groom dashboard shell is loaded and the settings pane contains the native [settings enable notifications button](#settings-enable-notifications-button).
-  - The click event target is exactly the `#btn-notify` button; the handler checks `e.target.id` rather than walking descendants with `closest`, and the shipped button has only a text node.
-  - The event is not inside an answer form, repository menu, repository picker, or files/diff tree region that the delegated body click handler excludes before settings-button handling.
-  - The browser exposes `window.Notification`; without that API, activation falls through with no permission request and no user-visible error.
+  - The browser exposes the Notification API. Where it does not, the click is ignored entirely.
 - does:
-  - If the page loaded with `window.Notification` present and `Notification.permission === "default"`, the independently registered one-time body click listener may also run on this same activation before the delegated settings click branch, call `Notification.requestPermission()`, and remove itself from `document.body`; the delegated branch still makes its own permission request for the settings button.
-  - Skips worker-row selection, refresh-button handling, repository picker handling, files/diff tree handling, and answer-form interception because the click target is the notification button in the settings pane.
-  - Calls `Notification.requestPermission()` from the delegated settings click branch when the Notification API exists, handing the prompt, persistence, grant, denial, and repeat-request behavior to the browser-owned [browser notification permission](../../concepts/browser-notification-permission.md) state.
-  - Does not read the returned permission value, update the button label, disable the button, add busy state, show a toast, write to local storage, send an HTTP request, send a websocket message, navigate, or move focus after the browser permission flow resolves.
-  - Leaves the selected worker id, selected repository state, inbox rows, selected worker detail, files tree, diff tree, status bar, command palette, websocket connection, and server workflow state unchanged.
-  - Enables a later `groom:blocked` browser event caused by a [blocked push payload](../../blocked-push-payload.md) to create a system notification only when the browser subsequently reports `Notification.permission === "granted"`; denied, default, or unavailable permission still leaves in-page blocked toasts available.
-- code: groom/groom/templates/dashboard.html::document.body click settings buttons
+  - Requests [browser notification permission](../../concepts/browser-notification-permission.md), which shows the browser's own prompt when the permission is still at its default and resolves silently when it has already been granted or denied.
+  - Changes no dashboard state: the label does not change, nothing is stored, and no request is sent.
+  - Determines only what a later block does — with permission granted, a blocked-run notification raises a system notification alongside its toast; without it, only the toast.
+  - Is not the only path: the first click anywhere on the page also asks once, because an unprompted permission dialog is a dark pattern and browsers ignore one without a user gesture anyway.
+- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::onNotify
+
+### toggle-command-palette-shortcut
+
+- on: [command-palette-open-button](#command-palette-open-button)
+- trigger: `Ctrl+K` or `Meta+K` anywhere on the page, or pointer click, tap, Enter, or Space on the status bar's palette button.
+- role: button
+- name: `Open command palette`
+- keyboard: `Ctrl+K` and `Meta+K` toggle the palette from anywhere, including from inside a text field; Escape closes it.
+- when:
+  - The dashboard is loaded. The palette may be open or closed; the shortcut toggles, the button only opens.
+- does:
+  - Suppresses the browser's default for the shortcut, then closes the palette if it is open and opens it otherwise.
+  - On open: records the invoker — the button, or whatever had focus when the shortcut fired — adds `open`, sets `aria-expanded="true"`, clears the input, resets the query and active index in the store, and focuses the input.
+  - Renders the current fleet from the store as results, so the palette lists runs the runs-pane filter is hiding.
+  - Traps Tab on the input while open, since that input is the dialog's only focusable element.
+  - On close: removes `open`, sets `aria-expanded="false"`, drops `aria-activedescendant`, marks the palette closed in the store, and returns focus to the recorded invoker rather than to `<body>`.
+  - Sends no request and touches no server state.
+- code: groom/groom/assets/dashboard.js::openPalette
+- code: groom/groom/assets/dashboard.js::closePalette
+- code: groom/groom/assets/dashboard.js::wireEvents
 
 ### filter-command-palette-results
 
-- on: [command palette input](#command-palette-input)
-- trigger: native `input` event after typing, paste, cut, undo, redo, clearing, or any other browser-supported value change in `#palette-input`.
-- role: combobox; the input carries `role="combobox"` with `aria-expanded`, `aria-controls="palette-results"`, and `aria-autocomplete="list"`.
-- name: `Jump to a worker or blocked gate`.
-- keyboard: ordinary single-line text editing changes the filter query immediately; ArrowUp and ArrowDown move the active result through `aria-activedescendant`; Enter selects the active or first result through the separate document-level keydown branch; Escape closes the palette through the separate document-level keydown branch; `j` and `k` do not move the active palette result.
+- on: [command-palette-input](#command-palette-input)
+- trigger: an `input` event on the palette field, or ArrowDown/ArrowUp to move the active result.
+- role: combobox
+- name: `Jump to a worker or blocked gate`
+- keyboard: the field is focused on open; ArrowDown and ArrowUp move the active result and are prevented from scrolling the page; Enter chooses; Escape closes.
 - when:
-  - The groom dashboard shell is loaded and the palette input has its `input` listener registered.
-  - The command palette is normally open with focus on `#palette-input`, although the listener itself does not check the overlay's open state.
-  - `#inbox-list` may contain zero or more currently rendered `.row` elements from the server-rendered operator inbox; no fresh inbox data is requested before filtering.
+  - The palette is open. The fleet may be empty.
 - does:
-  - Reads the current input value from the event target and passes it to `renderPalette` without debouncing, form submission, websocket send, HTTP request, browser navigation, or URL mutation.
-  - Lowercases the query for case-insensitive substring matching.
-  - Reads the current ordered list of `#inbox-list .row` elements from the DOM at filter time.
-  - For each source row, normalizes `textContent` by collapsing whitespace and trimming ends, copies `data-worker-id` into the result id, and copies `data-state` into the result state.
-  - Builds palette result data entirely from currently rendered inbox-row DOM attributes and text; it does not re-run the server-side [operator inbox](../../operator-inbox.md) query matcher and does not consult workflow objects directly.
-  - Filters out source rows whose normalized text does not contain the lowercased query; an empty query keeps every current source row.
-  - Replaces `#palette-results` contents with one generated `.presult` row for each match, or an empty string when no rows match.
-  - Preserves the source row DOM order for every matching result, without sorting or grouping by state, gate, repository, worker id, or match position.
-  - Marks the first generated result active with the `active` class and `aria-selected="true"`, pointing the input's `aria-activedescendant` at its `presult-0` id; if there are no matches, no active result exists and `aria-activedescendant` is removed; later input events recompute the active result from scratch instead of preserving the previous active row.
-  - Renders each result with `role="option"`, a `presult-{index}` id, an `aria-selected` state, `data-id`, an `aria-hidden` state dot, normalized row text, and a trailing hint that is `gate` when the row state is `blocked` and otherwise the row state string.
-  - Assigns the generated result markup as HTML; the values are derived from the current DOM, and the layer performs no additional HTML escaping or sanitizer pass before replacing `#palette-results`.
-  - Leaves focus on the command palette input, and leaves the selected worker id, selected worker detail, activity mode, repository picker, status bar, websocket connection, browser URL, and server workflow state unchanged until Enter or result click selects a generated result.
-  - Does not make result rows DOM-focusable — the active option is exposed through `aria-activedescendant` while focus stays on the combobox input — and does not announce result-count changes through an `aria-live` region.
-  - Calls no groom first-party JavaScript or Python symbol beyond this layer; all helper calls are browser DOM APIs or JavaScript built-ins.
-- code: groom/groom/templates/dashboard.html::renderPalette
+  - Writes the raw query to the palette slice and resets the active index to the first hit.
+  - Computes hits from the fleet **in the store** — not from the rendered rows — filtering on the same haystack the runs filter uses, so a run hidden by that filter is still reachable here.
+  - Clamps the active index into the hit list on every move, so it never points past the end of a shortened list, and does nothing at all when there are no hits.
+  - Republishes `aria-activedescendant` on the input to the active result, or removes it when nothing matches, and scrolls that result into view.
+  - Sends no request; the fleet is already in the browser.
+- code: groom/groom/assets/dashboard.js::paletteHits
+- code: groom/groom/assets/dashboard.js::PaletteResults
+- code: groom/groom/assets/dashboard.js::movePaletteActive
 
 ### select-command-palette-result
 
-- on: [command palette result](#command-palette-result)
-- trigger: pointer click or tap on a generated `.presult` row or any descendant of that row, captured by the delegated `#palette-results` click listener; the same selection outcome is also available through the document-level Enter key branch while the palette is open.
-- role: option; the generated result carries `role="option"` inside the `role="listbox"` `#palette-results`; keyboard activation goes through the combobox's active option rather than DOM focus on an individual row.
-- name: the visible normalized row text plus hint text, exposed as the option's accessible name; selection is keyed by generated `data-id`.
-- keyboard: Enter selects `#palette-results .presult.active` while the palette is open, or the first `.presult` if none is active; ArrowUp and ArrowDown move the active option through `aria-activedescendant` while DOM focus stays on the palette input; individual rows never take DOM focus.
+- on: [command-palette-result](#command-palette-result)
+- trigger: pointer click or tap on a result, or Enter from the palette input with an active result.
+- role: option
+- name: `{repo} #{short_handle} {doing} {hint}`
+- keyboard: ArrowDown and ArrowUp move the active result; Enter chooses it; Escape abandons the palette.
 - when:
-  - The groom dashboard shell is loaded and the command palette has been opened by [command palette shortcut](#command-palette-shortcut), or otherwise contains generated palette results from [filter command palette results](#filter-command-palette-results).
-  - For pointer activation, the click event bubbles to `#palette-results`; the original target or one of its ancestors inside that result container may match `.presult`.
-  - Pointer clicks in empty result space, on `#palette-results` itself, or on descendants that are not inside a `.presult` have no palette-selection effect.
-  - For keyboard activation, `#palette` currently has the `open` class and the key event is `Enter`; this branch runs after the `Ctrl+K`/`Meta+K` toggle and Escape close branches, and before the later text-entry guard and `j`/`k` inbox-row movement branch.
-  - Keyboard activation chooses `#palette-results .presult.active` when present; otherwise it falls back to the first generated `.presult` row; if neither exists, Enter returns without changing selection or closing the palette.
-  - A selectable result normally has `data-id` copied from an [inbox worker row](#inbox-worker-row) `data-worker-id`; the handler does not validate that the value is non-empty, still exists in `#inbox-list`, or still exists in the server workflow registry before attempting selection.
+  - The palette is open and at least one result matches.
 - does:
-  - For pointer activation, resolves the actionable row by walking from the original event target to the nearest `.presult`; if no result row is found, returns without selecting a worker, changing mode, closing the palette, preventing default behavior, or stopping event propagation.
-  - For keyboard activation with no active or first result, returns from the Enter branch without preventing default behavior, changing dashboard mode, selecting a worker, fetching detail, closing the palette, or running `j`/`k` row movement for the same event.
-  - Reads the selected workflow container id from the clicked result's `data-id`, or from the active-or-first result's `data-id` for Enter activation, exactly as stored in the DOM.
-  - For a clicked result row or Enter activation with a selectable result, runs the dashboard-local operations in this order: switch to inbox mode, select the result's worker id, and close the command palette.
-  - Calls `setMode("inbox")`, which writes `data-mode="inbox"` to the root `.app`, makes the inbox pane the visible activity pane, recomputes the activity-bar `active` class so the inbox icon is active and files, diff, and settings are inactive, and closes the repository picker overlay if it is open.
-  - The inbox mode switch retains selected repository browser state, repository picker labels, existing files tree, file view, diff tree, parsed diff cache, diff view, visible inbox rows, selected worker detail, status bar, websocket connection, and browser URL; it does not load files or diff data because the selected mode is neither `files` nor `diff`.
-  - Calls the shared row selection handler with the result id, stores that id as the browser-local [dashboard selected worker state](../../dashboard-selected-worker-state.md), and performs no trimming, normalization, empty-string rejection, or existence check before persisting it.
-  - Recomputes `selected` class state through the [dashboard inbox selection applier](../../concepts/dashboard-inbox-selection-applier.md) across every `[data-worker-id]` element currently in the document, marking each element whose `data-worker-id` equals the selected id (`selected` class + `aria-current="true"`) and clearing both from every other worker-bearing element.
-  - Sends `GET /worker/{encodeURIComponent(id)}` to [get worker detail](../../http/groom.md#get-worker-detail) through htmx with target `#detail` and `innerHTML` swap; the request has no query string, request body, history update, or browser navigation.
-  - When the worker-detail response swaps into `#detail`, the normal htmx `afterSwap` listener rerenders escaped gate markdown and wires the worker-detail working-tree diff disclosure for the newly selected detail fragment.
-  - If the server no longer knows the selected worker id, the worker-detail endpoint supplies its not-found detail fragment; the client-side palette selection path does not special-case that response.
-  - Calls the command-palette close helper after issuing the detail request, before the asynchronous detail response settles.
-  - Removes the `open` class from `#palette`, sets `aria-expanded="false"` on the palette input, and clears its `aria-activedescendant`, closing the command palette overlay; the close helper returns early if the palette has already lost `open`.
-  - Leaves `#palette-input` value, `#palette-results` generated result markup, the result row `active` class, and the `#palette` DOM subtree in place until the next palette render or page teardown.
-  - Leaves repository selection, files tree, diff tree, status bar, toast stack, websocket connection, browser URL, and server workflow state unchanged by the client-side selection itself.
-  - Returns focus to the recorded palette invoker when focus was still inside the palette at close; does not clear palette contents, send a websocket message, submit an answer form, mutate server state, or announce the detail-load state through an `aria-live` region.
-- code: groom/groom/templates/dashboard.html::palRes click listener
-- code: groom/groom/templates/dashboard.html::keydown
-- code: groom/groom/templates/dashboard.html::setMode
-- code: groom/groom/templates/dashboard.html::select
-- code: groom/groom/templates/dashboard.html::closePalette
+  - Switches to runs mode first, so the row the operator just chose is on screen — the palette is reachable from files, diff, telemetry, and settings alike.
+  - Selects that run through the same selector the row click and the `j`/`k` keys use: store write, watch subscription, one detail fetch.
+  - Closes the palette and returns focus to whatever opened it.
+  - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
+- code: groom/groom/assets/dashboard.js::choosePaletteHit
+- code: groom/groom/assets/dashboard.js::select
+- code: groom/groom/assets/dashboard.js::setMode
+
+### filter-telemetry-spans
+
+- on: [telemetry-status-filter-select](#telemetry-status-filter-select)
+- trigger: an `input`, `change`, or `submit` event anywhere in the telemetry filter form — typing in any of the three text fields, changing the status select, or pressing Enter.
+- role: combobox
+- name: `Filter by span status`
+- keyboard: Tab reaches each field in turn; ArrowUp and ArrowDown change the select; Enter submits, which is intercepted rather than navigating.
+- when:
+  - Telemetry mode is active.
+- does:
+  - Prevents the form's default submission, so the page never navigates.
+  - Serializes all four fields — run id, node, span status, and minimum duration in seconds — into a query string and sends `GET /traces` with it. Empty fields are sent as empty values and ignored by the server.
+  - Stores the returned run cards and span rows, replacing the previous result wholesale.
+  - Renders the run-card strip above the table, and the no-match note beneath it when runs are known but no span survives the filter.
+  - Stores an error status on rejection, rendered as `failed to load`.
+  - Re-queries on every keystroke, without debounce; the query is served from groom's local span store rather than from a remote backend.
+  - Leaves the selected run, the fleet, and the detail pane untouched.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- code: groom/groom/assets/dashboard.js::Traces
+- code: groom/groom/assets/dashboard.js::RunCard

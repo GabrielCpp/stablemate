@@ -27,7 +27,8 @@ def _old_repo(root: Path) -> None:
     }))
     write(root / "docs/epics/epic-a/epic.md", "# Epic A\n\n## Goal\n\nbuild it\n")
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          "# Story: Foo\n\n## Implementation Status\n\n- **Status**: Not started\n\n"
+          "# Story: Foo\n\n## Context\n\nWhy Foo matters.\n\n"
+          "## Implementation Status\n\n- **Status**: Not started\n\n"
           "## Acceptance Criteria\n\n- works\n\nSee `docs/knowledge/area/rec.json`.\n")
     write(root / "docs/knowledge/area/rec.json", json.dumps({
         "surface": "area/rec", "route": "/rec",

@@ -6,16 +6,18 @@ convention" — where the work-list is the codebase itself, not a human-curated 
 Design rationale: `../../docs/survey-intake-design.md`.
 
 The surveyor is a nested flow inside the **author** workflow. It emits author's *existing*
-input contract, then the same author run continues through the epic pipeline with
-`coverage_mode: "full"` so author's own gates prove nothing was dropped:
+input contract, then the same author run continues through the epic pipeline unchanged.
+Exhaustiveness is proved **here**, by the chain below (`verify-records` →
+`validate-partition` → `emit-artifacts`) — not re-asserted at author's intake, where a gate
+would search a haystack containing the very backlog this flow just wrote:
 
 - **generated backlog bullets** — one `[survey-<cluster-id>]` bullet per finding cluster,
   written into a marker-fenced `## Survey findings` section of `docs/backlog.md`
   (everything outside the fence — a human backlog, coder's `## Filed by coder` section —
   is untouched, and re-emitting replaces the fenced section idempotently);
 - **the unit manifest** (`docs/survey/unit-manifest.json`) — the unit-level surface list
-  author's `verify-surface-coverage.py` consumes (the role `cfg.surface_manifest` plays),
-  each unit carrying the bullet ids that cover it.
+  author's per-story stages read for a unit's route/components (the role
+  `cfg.surface_manifest` plays), each unit carrying the bullet ids that cover it.
 
 Traceability chains end-to-end: **unit → finding record → backlog bullet → seed
 (`sourceBullet`) → story**.
@@ -106,9 +108,9 @@ AGENT_REPO_DIR="$PWD" timeout 7200 workhorse run author parity-surveyor --cli op
   --params '{"baseline_inventory":"docs/legacy/screens/inventory.json","target_features":"docs/features"}'
 ```
 
-The parent author run owns branching, final validation, commit, and PR. In survey mode,
-author automatically runs its surface-coverage gate in `full` mode against the emitted
-unit manifest.
+The parent author run owns branching, final validation, commit, and PR. In survey mode it
+continues straight into the epic pipeline on the emitted bullets — the emitted unit
+manifest is then read per story for a unit's route/components, not re-gated at intake.
 
 ## Initiative-level done-check
 

@@ -6,9 +6,7 @@ seed's ``sourceBullet`` at a backlog line and asserts that line is removed.
 """
 from __future__ import annotations
 
-from conftest import init_repo, requires_ostler, run_script, write_epic
-
-pytestmark = requires_ostler
+from conftest import init_repo, run_script, write_epic
 
 
 def _backlog(tmp_path, text):

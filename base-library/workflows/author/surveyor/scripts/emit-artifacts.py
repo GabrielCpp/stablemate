@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Emit the author workflow's input contract from the validated partition.
 
-The surveyor's whole output is author's *existing* input, so author runs unchanged
-(epic mode, ``coverage_mode: "full"``) and its own gates prove nothing was dropped.
+The surveyor's whole output is author's *existing* input, so author runs unchanged in
+epic mode. The exhaustiveness claim is proved HERE, upstream, by the surveyor's own
+chain — ``verify-records.py`` (every frozen unit accounted for, no silent shrinkage vs
+the committed baseline) → ``validate-partition.py`` (every ``assessed`` unit lands in
+≥ 1 cluster) → this script (one bullet per cluster). Author does not re-assert it at
+intake: a gate there would search a haystack containing the very backlog written below.
 Two artifacts:
 
 1. **Generated backlog bullets** — one ``[survey-<cluster-id>]`` bullet per cluster,
@@ -14,11 +18,10 @@ Two artifacts:
    **unit → finding → backlog bullet → seed → story**.
 
 2. **The unit-level manifest** — the role ``cfg.surface_manifest`` plays in author
-   today, with a survey-produced list instead of feature docs. Every unit carries the
-   bullet ids that cover it, so author's ``verify-surface-coverage.py`` (full mode)
-   can assert mechanical coverage: a unit with work is covered while its bullet (or
-   the seed that consumed it) is present; a ``clean``/accepted-``blocked`` unit
-   carries no bullets and demands no coverage.
+   today, with a survey-produced list instead of feature docs: author's per-story
+   stages read a unit's entry for its route and components. Every unit also carries
+   the bullet ids that cover it, which is what keeps the traceability chain readable
+   end-to-end (``clean``/accepted-``blocked`` units carry none, having no work).
 
 Runs after ``validate-partition.py`` passed, so the partition is trusted here.
 

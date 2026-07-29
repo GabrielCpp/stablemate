@@ -405,7 +405,8 @@ def _write_runbook_trio(repo: Path) -> None:
 def test_operational_types_registered():
     rb, env, step = (registry.ui_type("runbook"), registry.ui_type("environment"),
                      registry.ui_type("step"))
-    assert rb.kind == "file" and rb.required_sections == ("Steps",)
+    assert rb.kind == "file"
+    assert [s.heading for s in rb.required_sections] == ["Steps"]
     assert env.kind == "file"
     assert step.kind == "section" and step.heading == "Steps"
     # the defining bullets are required so `doctor` gates on them

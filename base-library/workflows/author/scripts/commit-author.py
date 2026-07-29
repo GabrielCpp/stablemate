@@ -28,6 +28,14 @@ def commit_in_repo(repo_path, message: str) -> bool:
 
 
 def build_message(mode: str, epic: str, bullet: str) -> str:
+    if mode == "incomplete":
+        # The failure edge of the final gate. The partial prose is worth keeping — it is what a
+        # rerun resumes from — but it must never look like a finished run, and the workflow ends
+        # red right after this so no PR is opened on it. The message is the marker a human (or a
+        # `git log` skim) needs to spot the branch as unfinished.
+        head = f"author: INCOMPLETE — unwritten stories, do not merge ({epic})" if epic else \
+            "author: INCOMPLETE — unwritten stories, do not merge"
+        return head
     if mode == "survey":
         return "author: survey intake and epic backlog authoring"
     if mode == "story" and epic:

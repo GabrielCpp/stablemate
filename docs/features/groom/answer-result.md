@@ -46,8 +46,8 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 - required: true
 - domain: first-party values are `true` or `false`.
 - producer-use: set by the gate-answering layer after the answer attempt reaches a terminal domain outcome.
-- consumer-use: copied into the [answer log entry](answer-log-entry.md), checked before appending the [groom answered script fragment](groom-answered-script-fragment.md), and checked before changing a blocked workflow with no remaining visible gates to running.
-- meaning: success flag consumed by the websocket handler to decide whether to emit the `groom:answered` event and whether a blocked, gate-less workflow should be shown as running immediately. `true` requires that the target gate file was rewritten to the answered state; `false` means no answer write was accepted.
+- consumer-use: copied into the [answer log entry](answer-log-entry.md), checked before sending the [dashboard answered message](dashboard-answered-message.md), and checked before changing a blocked workflow with no remaining visible gates to running.
+- meaning: success flag consumed by the websocket handler to decide whether to push the answered confirmation and whether a blocked, gate-less workflow should be shown as running immediately. `true` requires that the target gate file was rewritten to the answered state; `false` means no answer write was accepted.
 
 ### field-message
 

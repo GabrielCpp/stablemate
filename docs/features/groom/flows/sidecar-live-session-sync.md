@@ -80,7 +80,8 @@ and the visible workflow row state is stored as a [workflow container](../concep
      clears stale gates, rebuilds gates from non-empty `snapshot.gates[].file_path`
      entries, marks the workflow `finished` for a truthy terminal marker,
      otherwise marks it `blocked` when rebuilt gates exist or `running` when none
-     exist, and broadcasts a dashboard shell fragment.
+     exist, and broadcasts the [dashboard state payload](../dashboard-state-payload.md)
+     to every connected browser.
   8. After advertising, the sidecar session installs recursive watches below the
      workspace and runs mounts, starts the [sidecar outbound sender](../concepts/sidecar-outbound-sender.md),
      and continues consuming host frames. New watched directories only expand the
@@ -89,20 +90,23 @@ and the visible workflow row state is stored as a [workflow container](../concep
      frame carrying the latest current node. The host handles it through
      [sidecar progress applier](../concepts/sidecar-progress-applier.md), upserts
      the connected workflow as `running`, applies non-null current-node values,
-     preserves existing gates, and broadcasts the dashboard shell to browser
+     preserves existing gates, and broadcasts the
+     [dashboard state payload](../dashboard-state-payload.md) to browser
      websocket clients.
   10. When a watched workspace file is classified as an awaiting gate, the sidecar
       emits a `blocked` frame with workspace-relative `file_path` when possible
       and extracted question text. The host handles it through
       [sidecar blocked applier](../concepts/sidecar-blocked-applier.md), ignores
       empty paths, otherwise upserts the workflow as `blocked`, stores or replaces
-      one [gate info](../concepts/gate-info.md), broadcasts the dashboard shell,
-      and appends the blocked browser-notification script fragment.
+      one [gate info](../concepts/gate-info.md), broadcasts the
+      [dashboard state payload](../dashboard-state-payload.md), and sends one
+      [dashboard notify message](../dashboard-notify-message.md) so the operator
+      is interrupted rather than merely updated.
   11. When the dashboard Files or Diff path requests workspace data, the
       corresponding server invocation first uses the live connection instead of
       Docker fallback: [serve workspace file list](../http/groom.md#serve-workspace-file-list)
       sends `getTree`, [serve workspace file content](../http/groom.md#serve-workspace-file-content)
-      sends `getFile`, and [serve workspace diff](../http/groom.md#serve-workspace-diff)
+      sends `getFile`, and [serve workspace diff](../http/groom.md#serve-working-tree-diff)
       sends `getDiff` through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md).
       Each request becomes one host-to-sidecar `rpc` frame with a connection-local
       decimal correlation id and method-specific params.
@@ -118,17 +122,21 @@ and the visible workflow row state is stored as a [workflow container](../concep
       waiting HTTP handler; failed results deliver a [sidecar error](../concepts/sidecar-error.md);
       late, duplicate, unknown, or already-timed-out ids are ignored without
       mutating workflow state or broadcasting.
-  14. If a sidecar RPC succeeds, the HTTP handler serializes the returned sidecar
-      data directly as the endpoint response: newline-separated [workspace file
-      list data](../workspace-file-list-data.md), raw [workspace file content data](../workspace-file-content-data.md),
-      or raw [workspace diff data](../workspace-diff-data.md). The handler does
-      not consult Docker volumes on the successful sidecar path.
+  14. If a sidecar RPC succeeds, the HTTP handler wraps the returned sidecar data
+      in the endpoint's JSON body and returns it: [workspace file list data](../workspace-file-list-data.md)
+      as `{"paths": [...]}`, [workspace file content data](../workspace-file-content-data.md)
+      as `{"path", "content", "lang"}`, or [workspace diff data](../workspace-diff-data.md)
+      as `{"diff": "..."}`. The handler does not consult Docker volumes on the
+      successful sidecar path. The sidecar's own frames are unchanged by this —
+      the JSON body is the browser's contract, not the sidecar's.
   15. If no connection is registered, the socket send fails, the RPC times out,
       the sidecar replies with an error result, a reconnect supersedes the
       connection, or the socket closes, the RPC helper returns `None`. The file
       and diff invocations then use the already documented workspace-volume
-      fallback readers when the workflow has volume metadata, or return an empty
-      `200 OK` text response when no fallback data is available.
+      fallback readers when the workflow has volume metadata, or return the
+      endpoint's empty JSON body — `{"paths": []}`, empty `content`, empty
+      `diff` — when no fallback data is available. A missing sidecar is never an
+      error status; the pane renders an empty state.
   16. On an ordinary sidecar websocket disconnect, the host unregisters the
       connection only if it is still current for that container id, fails every
       pending RPC on that closing connection with `sidecar connection closed`, and
@@ -152,9 +160,9 @@ and the visible workflow row state is stored as a [workflow container](../concep
       lets the container entrypoint recopy edited sidecar code and relaunch the
       default `groom-sidecar` session.
 - end: while connected, each useful `hello`, `progress`, and non-empty-path
-  `blocked` frame converges the host workflow registry and dashboard shell toward
-  the sidecar's observed container state, and file/diff reads prefer the live
-  socket data plane. A dropped socket is not authoritative: it fails pending RPCs
+  `blocked` frame converges the host workflow registry — and the JSON state every
+  browser renders from — toward the sidecar's observed container state, and
+  file/diff reads prefer the live socket data plane. A dropped socket is not authoritative: it fails pending RPCs
   to the documented fallback readers and waits for reconnect rather than deleting
   workflow state. A reload request intentionally terminates only the sidecar
   process with exit code `3`; the workflow process's own status remains outside

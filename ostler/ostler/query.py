@@ -16,6 +16,12 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "type": "story", "slug": story.slug, "epic": epic.name, "title": story.title,
         "status": story.status, "covers": story.seed_items, "dependsOn": story.dependencies,
         "path": story.path,
+        # Whether the story says anything, and which required sections are still blank —
+        # so a caller never has to open story.md and decide for itself what "written" means.
+        # `hasStoryMd` separates the two ways a story can be unauthored: no file at all, or a
+        # file that is still the scaffold. They need different words in a report.
+        "authored": story.authored, "unwrittenSections": list(story.unwritten_sections),
+        "hasStoryMd": story.story_md is not None,
     }
 
 
@@ -123,8 +129,46 @@ def query(graph: Graph, name: str, arg: str) -> list[dict]:
         found = graph.find_story(arg)
         if not found:
             return []
-        return [{"path": ref} for ref in found[1].knowledge_refs]
+        return _surfaces_referenced(graph, found[1])
     return []
+
+
+def _surfaces_referenced(graph: Graph, story) -> list[dict]:
+    """Every surface a story points at: legacy knowledge records **and** OKF book nodes.
+
+    The book is the current channel — a story grounds itself by citing the ids of the
+    surface/component/interaction/flow nodes it works on, and a UI node's id is a
+    repo-relative path, so the citation is an ordinary markdown link. Rows are tagged with
+    ``kind`` so a caller can tell a resolved citation from one that points at nothing:
+    ``ui`` resolved to a node in the graph, ``file`` resolved to a document on disk that is
+    not a UI node (a feature doc, a sibling story), ``missing`` resolved to nothing at all.
+    A dangling citation is reported rather than dropped — silently omitting it would make a
+    typo'd node id indistinguishable from a story that never cited one.
+
+    An anchor **into a document that is itself a book node** is held to the same standard as
+    the path: ``settings.md#save-prophile`` names no section node, so it is ``missing`` rather
+    than ``file``. The file existing is not evidence the cited section does, and that is the
+    likelier typo of the two. An anchor into any other document stays ``file`` — ordinary
+    markdown deep-links into a spec or a sibling story are not node citations to begin with.
+    """
+    rows: list[dict] = [{"path": ref, "kind": "knowledge"} for ref in story.knowledge_refs]
+    seen = {r["path"] for r in rows}
+    for href in story.doc_refs:
+        ident = graph.resolve_doc_ref(href, origin=story.story_md)
+        if not ident or ident in seen:
+            continue
+        seen.add(ident)
+        node = graph.find_ui_node(ident)
+        path_part, _, anchor = ident.partition("#")
+        if node:
+            rows.append({"path": ident, "kind": "ui", "type": node.type, "title": node.title})
+        elif anchor and graph.find_ui_node(path_part):
+            rows.append({"path": ident, "kind": "missing"})
+        elif (graph.root / path_part).is_file():
+            rows.append({"path": ident, "kind": "file"})
+        else:
+            rows.append({"path": ident, "kind": "missing"})
+    return rows
 
 
 QUERIES = ("stories-covering-seed", "surfaces-referenced-by-story")

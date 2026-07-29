@@ -5,11 +5,16 @@ title: Workspace diff data
 ---
 # Workspace diff data
 
-Workspace diff data is the diff-viewer contract used by the [serve workspace diff](http/groom.md#serve-workspace-diff) invocation, the connected sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md), and the fallback [workspace volume diff reader](concepts/workspace-volume-diff-reader.md). It represents one selected workflow checkout's working-tree changes as raw unified diff text. On the sidecar websocket it is the successful `getDiff` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as `text/plain` for the [groom dashboard](gui/screens/groom-dashboard.md) Diff panel and worker-detail diff disclosure. The endpoint producer first asks the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) for the connected sidecar's result and falls back to the Docker-volume reader only when that helper returns no data. Sidecar diff defaulting discovers local checkout directories with [method-_find_repo_dirs](#method-_find_repo_dirs) before [method-_git_diff](#method-_git_diff) resolves the selected checkout with [method-_repo_base](#method-_repo_base) and runs git against it; fallback diff defaulting delegates empty repository selection to the [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md).
+Workspace diff data is the diff-viewer contract used by the [serve workspace diff](http/groom.md#serve-working-tree-diff) invocation, the connected sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md), and the fallback [workspace volume diff reader](concepts/workspace-volume-diff-reader.md). It represents one selected workflow checkout's working-tree changes as raw unified diff text. On the sidecar websocket it is the successful `getDiff` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as the JSON object `{"diff": "<unified diff text>"}` for two [groom dashboard](gui/screens/groom-dashboard.md) consumers: diff mode, described in [changes view](changes-view.md), and the run detail pane's collapsed working-tree disclosure. The endpoint producer first asks the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) for the connected sidecar's result and falls back to a volume reader — the local-filesystem one for a native run, the Docker-volume one otherwise — only when that helper returns no data.
+
+The raw unified text stays whole inside the `diff` member instead of being projected into per-file entries. `diff2html` parses it in the browser to build the file list and the coloring, so splitting it up on the server would mean reimplementing a parser that already runs on the other end. The JSON object exists to make the body self-describing and to leave room for a member that is not the diff; it is not an attempt to structure the diff itself. Sidecar diff defaulting discovers local checkout directories with [method-_find_repo_dirs](#method-_find_repo_dirs) before [method-_git_diff](#method-_git_diff) resolves the selected checkout with [method-_repo_base](#method-_repo_base) and runs git against it; fallback diff defaulting delegates empty repository selection to the [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md).
 
 - file: not an on-disk artifact; this is a websocket RPC data object, HTTP response body, and sidecar/fallback handoff shape.
 - code: groom/groom/app.py::diff
 - code: groom/groom/docker_io.py::git_diff
+- code: groom/groom/localfs.py::git_diff
+- code: groom/groom/assets/dashboard.js::loadDiff
+- code: groom/groom/assets/dashboard.js::DiffDisclosure
 - code: groom/groom/sidecar.py::_rpc_get_diff
 - code: groom/groom/sidecar.py::_git_diff
 - code: groom/groom/sidecar.py::_repo_base
@@ -23,21 +28,24 @@ Workspace diff data is the diff-viewer contract used by the [serve workspace dif
 
 ## Contract
 
-- endpoint producer: `GET /diff/{container_id}` returns [field-text-body](#field-text-body) as `text/plain`; it prefers sidecar RPC data and otherwise reads from the workflow container's known workspace volume when available.
+- endpoint producer: `GET /diff/{container_id}` returns [field-json-body](#field-json-body) as `application/json`; it prefers sidecar RPC data and otherwise reads from the workflow container's known workspace volume when available.
 - sidecar producer: a live sidecar handling `rpc` method `getDiff` returns `{"diff": text}` as the `data` object in a successful `rpc_result` frame after running a working-tree-versus-`HEAD` diff against its local `/workspace` checkout.
-- fallback producer: the Docker-volume fallback runs a read-only throwaway git container against one checkout in the selected workflow's workspace volume and returns its stdout as the same raw diff text.
+- fallback producer: the Docker-volume fallback runs a read-only throwaway git container against one checkout in the selected workflow's workspace volume and returns its stdout as the same raw diff text; a native workflow instead runs git locally against the checkout root through the local-filesystem reader. Both return the same shape, so the endpoint's caller cannot tell which ran.
 - sidecar request: the sidecar data-plane request uses [sidecar websocket frame](sidecar-websocket-frame.md) method `getDiff` with `params.repo` as the only meaningful parameter; missing `repo` defaults to `""`.
 - endpoint request: the `/diff/{container_id}` endpoint path supplies [field-container-id](#field-container-id); the optional `repo` query parameter is passed unchanged to both the sidecar RPC and the fallback volume reader.
 - websocket consumer: the host-side sidecar RPC resolver delivers the successful `data` object unchanged to the `/diff/{container_id}` endpoint.
-- HTTP consumer: dashboard JavaScript reads the plain-text response, parses it as unified diff text, stores non-empty parse results as [dashboard parsed diff file cache](dashboard-parsed-diff-file-cache.md), and renders changed-file summaries plus per-file diff HTML in the browser.
+- HTTP consumer — diff pane: the diff pane's loader parses the JSON body, reads its `diff` member, hands the raw text to `Diff2Html.parse`, and stores the parse result as [dashboard parsed diff file cache](dashboard-parsed-diff-file-cache.md); the changed-file tree renders from that cache and per-file diff markup is generated only when a file is clicked.
+- HTTP consumer — detail disclosure: the run detail pane also carries a collapsed diff disclosure that requests the same endpoint the first time it is expanded, sends no `repo` so the producer's own default checkout selection applies, and renders the whole `diff` member as one diff2html block. It shares the endpoint but not the pane's cache, so an operator can glance at one run's changes without disturbing whatever the diff mode is currently showing, and a run whose diff is never expanded costs no git invocation.
+- disclosure states: untouched, `Loading diff…`, `(no changes)` for a blank or whitespace-only diff, and `failed to load diff` for a rejected fetch — four states, so an unexpanded disclosure never reads as an empty one.
 - repository scope: `repo` selects a volume-relative checkout directory from the repository picker. An empty `repo` lets the sidecar producer choose the first immediate git checkout under `/workspace` and lets the fallback reader choose the first checkout returned by the Docker-volume repository-directory reader.
 - sidecar repository default: when `repo` is empty, the sidecar chooses the first discovered git checkout under `/workspace`; discovery includes `/workspace` itself when it is a git checkout and immediate child directories that contain `.git`, then sorts the volume-relative choices before selecting the first. The workspace root checkout is represented as `""`; child checkouts are represented by child directory name only. When no checkout is found, it returns an empty `diff` value.
 - fallback repository default: when `repo` is empty, the fallback reader asks the workspace volume repository-directory reader for sorted checkout paths under the Docker volume and uses the first returned value as the resolved `repo_dir`; when discovery returns no paths, or when the first sorted value is `""` for a volume-root checkout, the diff reader treats the resolved value as no checkout and returns empty text without starting a git diff container.
 - sidecar diff command: sidecar diff text is the stdout of `git -c safe.directory=* -C <selected checkout> diff HEAD`, with a 20-second timeout.
 - fallback diff command: fallback diff text is the stdout of a read-only `alpine/git:2.43.0` container running `git -c safe.directory=* -C /vol/{repo_dir} diff HEAD` against the mounted workspace volume, with the shared Docker I/O timeout.
-- empty-state: an empty `diff` value or response body means the sidecar returned no diff, no fallback checkout was available, the git/Docker process failed, the diff subprocess timed out, or the selected checkout had no working-tree changes; clients treat it as a diff empty state rather than as a transport error.
+- empty-state: an empty `diff` value means the sidecar returned no diff, no fallback checkout was available, the git/Docker process failed, the diff subprocess timed out, or the selected checkout had no working-tree changes; the pane renders `(no changes)` rather than reporting a transport error. A rejected fetch is the client's only error signal, and it renders `failed to load`.
 - error behavior: unavailable repositories, process launch failures, subprocess failures, timeouts, and non-zero diff command statuses become empty diff text for successful producers; unexpected malformed RPC parameters can fail the sidecar RPC and return an error frame under the [sidecar websocket frame](sidecar-websocket-frame.md) contract. An unavailable sidecar connection or sidecar RPC error becomes fallback to the volume reader.
-- media: HTTP serialization is `text/plain`; the server does not wrap, escape, colorize, or annotate the returned diff text.
+- media: HTTP serialization is `application/json` with one member. The server does not escape, colorize, split, or annotate the diff text; JSON string encoding is the only transformation it undergoes.
+- push exclusion: this shape is never broadcast. It is fetched on selection and nothing else, so a fleet tick cannot re-render the pane out from under a reading operator.
 
 ## Fields
 
@@ -64,7 +72,7 @@ Workspace diff data is the diff-viewer contract used by the [serve workspace dif
 - default: `""`
 - required: false
 - wire-location: server-side [workflow container](concepts/workflow-container.md) state, not an HTTP or sidecar frame field.
-- meaning: Docker workspace volume name used only by the fallback producer when sidecar RPC data is unavailable. Unknown workflow ids, missing workflow records, and empty workspace-volume values produce an empty text response instead of starting a fallback diff read.
+- meaning: workspace volume name — or, for a native run, the checkout root path — used only by the fallback producer when sidecar RPC data is unavailable. Unknown workflow ids, missing workflow records, and empty values produce an empty `diff` member instead of starting a fallback diff read.
 
 ### field-sidecar-result
 
@@ -81,39 +89,41 @@ Workspace diff data is the diff-viewer contract used by the [serve workspace dif
 - default: `""`
 - required: true
 - wire-key: `diff`
-- wire-location: `rpc_result.data.diff` for sidecar `getDiff`; HTTP response body after plain-text serialization.
+- wire-location: `rpc_result.data.diff` for sidecar `getDiff`; the `diff` member of the HTTP response body. The two are the same key on purpose — the endpoint passes the sidecar's object shape through rather than renaming into it.
 - meaning: raw unified working-tree-versus-`HEAD` diff text for the selected checkout. Missing, falsey, unavailable, timed-out, or non-zero-exit producers become an empty string rather than an endpoint-specific error response.
 - item contract: the value is literal unified diff text, not HTML, markdown, JSON, base64, or a pre-rendered file tree; callers must parse or render it as unified diff text.
 - ordering: line and hunk order are the order produced by the underlying git diff command; the producer does not post-process, sort, filter, redact, or annotate the stdout.
 
-### field-text-body
+### field-json-body
 
-- type: `str`
-- default: `""`
+- type: `{ "diff": str }`
+- default: `{"diff": ""}`
 - required: true
-- meaning: HTTP response body for the endpoint; it is the same raw unified diff text as `diff`, emitted with `text/plain` media type and no extra envelope, status marker, repository label, or rendered markup.
+- wire-location: body of `GET /diff/{container_id}` with media type `application/json`.
+- meaning: the whole HTTP response body. It is the same object shape the sidecar returns under `rpc_result.data`, so the socket path and the volume path hand the endpoint the same thing.
+- member rule: exactly one member, `diff`. No status marker, repository label, container id, changed-file count, adds/dels totals, or rendered markup — the browser derives all of those from the text.
 
 ## Methods
 
 ### method-diff
 
-- sig: `async diff(container_id: str, repo: str = "") -> Response`
+- sig: `async diff(container_id: str, repo: str = "") -> dict`
 - abstract: false
 - raises: no endpoint-specific exception for unknown workflow id, missing workspace volume, unavailable sidecar connection, sidecar RPC error, falsey sidecar diff, missing checkout, non-zero fallback git exit, or empty diff output; unexpected sidecar-registry, Docker subprocess launch/timeout, or response-construction failures can propagate.
 - code: groom/groom/app.py::diff
 - verify: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - verify: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
 - input: `container_id` is the required HTTP path variable; `repo` is the optional query value forwarded unchanged to both producers.
-- output: one `text/plain` HTTP response whose body is [field-text-body](#field-text-body).
-- effects: performs a read-only sidecar RPC attempt or read-only fallback Docker-volume diff; it does not mutate workflow state, broadcast dashboard fragments, render diff HTML, validate repository existence, or write workspace files.
-- calls: [sidecar RPC helper](concepts/sidecar-rpc-helper.md) with method `getDiff`, then [workspace volume diff reader](concepts/workspace-volume-diff-reader.md#git-diff) only when no sidecar data is returned and the workflow has a known workspace volume.
+- output: one JSON object, [field-json-body](#field-json-body).
+- effects: performs a read-only sidecar RPC attempt or read-only fallback volume diff; it does not mutate workflow state, broadcast dashboard messages, render diff markup, validate repository existence, or write workspace files.
+- calls: [sidecar RPC helper](concepts/sidecar-rpc-helper.md) with method `getDiff`, then [workspace volume diff reader](concepts/workspace-volume-diff-reader.md#git-diff) or its native equivalent, only when no sidecar data is returned and the workflow has a known workspace volume.
 - algorithm:
   1. Request `getDiff` over the connected sidecar data plane with `{"repo": repo}`.
-  2. If the sidecar call returns any data object, return `data.get("diff") or ""` as `text/plain` without consulting the fallback reader.
+  2. If the sidecar call returns any data object, return `{"diff": data.get("diff") or ""}` without consulting the fallback reader.
   3. Look up the workflow container by `container_id` in the in-memory workflow registry.
-  4. If the workflow is unknown or has no workspace volume, return an empty `text/plain` response.
-  5. Ask the fallback workspace-volume diff reader for the selected volume and `repo` value.
-  6. Return the fallback text unchanged as `text/plain`.
+  4. If the workflow is unknown or has no workspace volume, return `{"diff": ""}`.
+  5. Choose the native or Docker differ by the workflow's native flag and run it on a worker thread for the selected volume and `repo` value.
+  6. Return the fallback text unchanged under the `diff` member, or `""` when it is falsey.
 
 ### method-_rpc_get_diff
 
@@ -178,6 +188,19 @@ Workspace diff data is the diff-viewer contract used by the [serve workspace dif
   3. Run the throwaway read-only git container against `/vol/{repo_dir}`.
   4. If the command returns non-zero, return `""`.
   5. Return stdout unchanged.
+
+### method-git-diff-native
+
+- sig: `git_diff(base: str, repo_dir: str = "") -> str`
+- abstract: false
+- raises: none intentionally; process-launch failures, subprocess errors, and the shared timeout are all caught and become `""`.
+- code: groom/groom/localfs.py::git_diff
+- input: `base` is the native run's checkout root on the groom host; `repo_dir` is the optional base-relative checkout directory from the repository picker.
+- output: raw unified working-tree-versus-`HEAD` diff stdout for the selected checkout, or `""` when no checkout resolves or git exits non-zero.
+- repository selection: resolves `base/repo_dir` first; when that does not resolve and no `repo_dir` was supplied, asks the base's first-checkout lookup and resolves again. An unresolvable base returns `""` without running git.
+- command: runs host-local `git -c safe.directory=* -C <selected checkout> diff HEAD` with captured text output and the shared Docker I/O timeout, so a wedged git cannot pin the thread pool.
+- effects: reads the host filesystem and launches one read-only git subprocess; it does not mutate files, touch Docker, send sidecar frames, or update workflow/dashboard state.
+- parity: returns the same string the Docker-volume reader would for the same checkout, which is what lets the endpoint pick between them by a boolean and return one shape.
 
 ### method-_repo_base
 

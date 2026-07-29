@@ -30,18 +30,21 @@ install: ## Create/sync the workspace venv from the root uv.lock
 HOST ?= 0.0.0.0
 PORT ?= 8787
 
+# Generous because one file in the suite boots a real groom and drives Chromium
+# through five panes; the rest finish in seconds.
+TEST_TIMEOUT ?= 300
+
 .PHONY: run
 run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 0.0.0.0:8787)
 	uv run groom serve --host $(HOST) --port $(PORT)
 
 .PHONY: lint
-lint: ## Lint: ruff + the dependency-free HTML accessibility check on the templates
+lint: ## Lint: ruff
 	uv run ruff check .
-	uv run python -m groom.a11y_lint
 
 .PHONY: test
 test: ## Run the standalone test suite
-	@for t in tests/test_*.py; do echo ">> $$t"; timeout 60 uv run python $$t || exit 1; done
+	@for t in tests/test_*.py; do echo ">> $$t"; timeout $(TEST_TIMEOUT) uv run python $$t || exit 1; done
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

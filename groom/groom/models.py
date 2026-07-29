@@ -51,7 +51,9 @@ class WorkflowContainer:
     # than a docker scan/sidecar. It shares groom's host, so Files/Diff/gate reads go
     # through the local filesystem (groom.localfs) instead of docker_io, and it is
     # keyed by ``run_id`` (a host has no per-run container id). Kept out of the docker
-    # prune sweep; retired when its run's root span reports terminal.
+    # prune sweep; its state is re-derived from telemetry recency (projection.is_live)
+    # rather than latched, so a run that stops emitting stops reading as running and a
+    # resumed one comes back.
     native: bool = False
     # "What the run is doing right now" — the workflow's per-node ``wf.activity``
     # label, shown as the row subtitle. Empty until the run stamps one.
@@ -73,6 +75,10 @@ class RunTelemetry:
     ended" is signalled by the root ``run:*`` span arriving (``terminal``), and
     "the run started" is approximated by the first span/metric seen
     (``first_seen_ts``) — good enough for the BUDGET clock.
+
+    There is no "has finished" bit here that outlives the process: the only
+    liveness question groom answers is *is it emitting right now*, and the answer
+    is recomputed from these timestamps every render (``projection.is_live``).
     """
 
     run_id: str
@@ -105,7 +111,13 @@ class RunTelemetry:
     # Seconds since the streaming agent last wrote a line. Small = streaming and
     # healthy however long the turn runs; climbing = wedged.
     turn_idle_s: float = 0.0
-    terminal: str = ""  # root span's terminal status; "" while the run is live
+    # The root span's terminal status, and the timestamp it reported. "" while the
+    # run is live. Both are scoped to ONE session: a run_id is derived from the run
+    # dir, so ``--resume-run`` reuses it, and an earlier session's root span must
+    # not keep the new process marked dead. Any signal stamped after ``terminal_ts``
+    # clears the verdict (see ``alerts._clear_stale_terminal``).
+    terminal: str = ""
+    terminal_ts: float = 0.0
     # Node-span repeats since the last gas refuel — the churn signal. A refuel
     # (forward progress) resets it; the same node re-completing N times on one
     # tank is a loop that will burn gas for hours before the tank trips.

@@ -17,9 +17,9 @@ Everything else in `cfg` is a path convention under `survey_dir`:
   - inventory      : the materialized unit list — durable, committed, FROZEN once built
   - findings_dir   : one finding record per unit (markdown + YAML front-matter)
   - partition      : the epic/story cluster file the partitioner writes
-  - unit_manifest  : the emitted unit-level manifest the author workflow's
-                     `coverage_mode: "full"` gate consumes (the role
-                     `cfg.surface_manifest` plays in author)
+  - unit_manifest  : the emitted unit-level manifest the author workflow reads for a
+                     unit's route/components (the role `cfg.surface_manifest` plays in
+                     author)
   - context        : the shared operator context.md for blocked gates
 
 Stdlib-only: scripts run under the system ``python3``, not the uv venv.

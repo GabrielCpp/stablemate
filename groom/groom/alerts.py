@@ -105,6 +105,26 @@ def _run(run_id: str, now: float) -> RunTelemetry:
     return run
 
 
+def _clear_stale_terminal(run: RunTelemetry, ts: float) -> None:
+    """Drop a terminal verdict that a newer signal has outlived.
+
+    ``run_id`` is derived from the run dir, so ``--resume-run`` reuses it and the
+    root span of an EARLIER session arrives under the same key. Nothing else ever
+    unsets ``terminal`` — the engine has no "a new session started" signal, because
+    a root span only exports when it *ends* — so without this a resumed run stayed
+    marked dead for the life of the groom process: rendered finished on the
+    dashboard while it was actively emitting, and eventually evicted from the fleet.
+
+    Any span or metric stamped after the root span's own end proves a live process,
+    which is the only thing "running right now" means. The fired-rule set goes with
+    it: this is a new session, and it deserves its own pages.
+    """
+    if run.terminal and ts > run.terminal_ts:
+        run.terminal = ""
+        run.terminal_ts = 0.0
+        run.fired.clear()
+
+
 def _fire(run: RunTelemetry, rule: str, message: str, alerts: list[Alert]) -> None:
     if rule in run.fired:
         return
@@ -131,6 +151,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         if span.get("pid") is not None:
             run.pid = span.get("pid")
         run.last_span_ts = now
+        _clear_stale_terminal(run, float(span.get("end_ts") or 0.0))
         attrs = span.get("attrs") or {}
         if attrs.get("wf.activity"):
             run.activity = str(attrs["wf.activity"])
@@ -139,8 +160,11 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
 
         if span.get("name", "").startswith("run:"):
             # The root span only exports when the run ENDS — its arrival is the
-            # "run over" signal that retires this run from STALL/BUDGET watch.
+            # "run over" signal that retires this run from STALL/BUDGET watch. It
+            # retires only the session it closed: a later resume under the same
+            # run_id clears it again via ``_clear_stale_terminal``.
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
+            run.terminal_ts = float(span.get("end_ts") or now)
             continue
 
         if "watchdog_kill" in events:
@@ -213,6 +237,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         run.workspace = point.get("workspace") or run.workspace
         if point.get("pid") is not None:
             run.pid = point.get("pid")
+        _clear_stale_terminal(run, float(point.get("ts") or 0.0))
         name = point.get("name") or ""
         attrs = point.get("attrs") or {}
         node = str(attrs.get("node", ""))

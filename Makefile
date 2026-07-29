@@ -22,9 +22,18 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
 	$(MAKE) -C workflows test
+	$(MAKE) -C ostler test
 	$(MAKE) -C farrier test
+	$(MAKE) -C groom test
 	$(MAKE) test-workflows
+	$(MAKE) test-bench
 	$(MAKE) check-public
+
+.PHONY: test-bench
+test-bench: ## Run the benchmark harness's own tests (its scoring must be trustworthy)
+	# A benchmark whose scoring is wrong is worse than no benchmark: it reports a number
+	# that nobody re-derives. These cover the properties that number rests on.
+	uv run pytest benchmarks/tests -q
 
 .PHONY: test-workflows
 test-workflows: ## Run each workflow's own test suite (the base library is data; its workflows are tested)

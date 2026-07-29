@@ -508,6 +508,14 @@ This is what lets an unattended run survive a crash or reboot: relaunching the
 same workflow continues where it left off. To start over, delete the run dir. To
 keep independent runs of the same workflow side by side, pass distinct run ids.
 
+**Ctrl-C is recorded, not silent.** An interrupt pauses the run the same way a crash
+does — `terminal` stays `null` so the next launch resumes in place — but it also
+stamps `run.json` with `interrupted_at`/`error` and appends an `error` event for the
+node that was in flight. Without that, a stopped run and a run wedged in a node are
+byte-identical on disk: the node's `enter` event has no `done` either way, and the
+only record that a human hit Ctrl-C lives in the agent CLI's session transcript. The
+stamp is cleared by the resume that follows it.
+
 Controller flags (passed to `workhorse`; `--resume-*` are manual overrides
 of the auto behavior above):
 
@@ -528,7 +536,7 @@ Each workflow execution writes a timestamped directory:
 ```
 runs/
 └── <workflow-name>-<timestamp>-<id>/
-    ├── run.json                  # start/end time, terminal state
+    ├── run.json                  # start/end time, terminal state, interrupt stamp
     ├── context.json              # final context snapshot
     ├── sessions.jsonl            # {node, session_id} per agent turn — map a node to its CLI session
     ├── <step-id>/

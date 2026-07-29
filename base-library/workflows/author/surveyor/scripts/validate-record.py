@@ -10,7 +10,7 @@ records. Concern-neutral by design: nothing stack-shaped, nothing concern-shaped
 normalized during partitioning), so the schema stays closed while the taxonomy stays
 open.
 
-Record shape (markdown + YAML front-matter, mirroring author's knowledge records)::
+Record shape (markdown + YAML front-matter)::
 
     ---
     type: survey-finding
@@ -30,8 +30,7 @@ Record shape (markdown + YAML front-matter, mirroring author's knowledge records
 Checks: the file parses, ``unit`` matches the inventory id it was selected for,
 ``status`` is one of the three, an ``assessed`` record carries at least one complete
 finding, a ``clean`` record carries none (a clean unit with findings is a
-contradiction), and a ``blocked`` record names its gap in ``openGaps`` (mirrors
-``openGaps`` in knowledge records — never a bare shrug).
+contradiction), and a ``blocked`` record names its gap in ``openGaps`` — never a bare shrug.
 
 Stdlib + PyYAML (available in the system interpreter).
 

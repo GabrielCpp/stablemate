@@ -63,55 +63,83 @@ manually stopped, or predates this design). **There is no compose/label-based re
 
 ## Notifications
 
-Client-side only: a `blocked` push triggers a websocket OOB swap carrying a `<script>` that
-dispatches a `groom:blocked` `CustomEvent`; the dashboard's own JS turns that into a browser
-`Notification` (permission requested once on page load). There is no server-side `notify-send` —
-paging requires a dashboard tab open with notification permission granted.
+Client-side only: a `blocked` push broadcasts a `{"type": "notify", "message": ...}` JSON frame
+down the websocket; the dashboard's frame dispatcher raises an in-page toast and, when permission
+has already been granted, a browser `Notification` (permission is requested from a user gesture on
+page load, never from an incoming frame). No code is ever sent over the socket. There is no
+server-side `notify-send` — paging requires a dashboard tab open with notification permission
+granted.
 
 ## Stack constraints (don't violate these when touching `groom`)
 
 - Python only — no Node/npm/bundler, including at packaging time.
-- No runtime CDN — every asset (htmx, htmx-ext-ws, diff2html, marked, DOMPurify, Pico classless
-  CSS) is vendored under `groom/assets/` and served via `create_static_files_router`.
+- No runtime CDN — every asset (the `htm/preact` standalone ESM build, diff2html, marked,
+  DOMPurify, highlight.js, Pico classless CSS, `dashboard.js`) is vendored under `groom/assets/`
+  and served via `create_static_files_router`.
 - Single-process, shared in-memory state — `state.py`'s `WORKFLOWS`/`LOG`/`CLIENTS`/`_gate_locks`
   are plain module-level objects, not Litestar `app.state`, not Redis/a broker.
-- Litestar + htmx/htmx-ext-ws: server pushes `hx-swap-oob` HTML fragments over one websocket;
-  controls are `ws-send` forms. `_handle_command` recognizes only `cmd == "answer"`.
-- Agent-authored content (gate questions, diffs) is rendered client-side from escaped text nodes
-  (`marked`+`DOMPurify`, `diff2html`) — never raw server-rendered HTML, to keep an XSS-safe
-  boundary (`tests/test_render.py` is the contract to preserve).
+- **Everything on the wire is JSON.** The server never emits markup: `projection.py` builds the
+  payloads, and the *same* shapes go out over `/ws` and over HTTP (`/api/state` and friends), so a
+  tab whose socket went quiet resyncs rather than going stale. One state shape, one render path.
+  `_handle_command` recognizes `cmd == "answer"` and `cmd == "watch"`.
+- The browser renders with Preact + htm, mounted as islands into ids the static shell already
+  ships. **No build step, no `package.json`, no `node_modules`** — the vendored standalone build is
+  an ESM module loaded directly. Keep it that way; the Python-only constraint above is why.
+- Connection state is derived from **message recency, not `readyState`** (a half-open socket reads
+  open forever): live / stale / reconnecting / offline, with HTTP resync polling once stale.
+- Agent-authored content (gate questions, diffs) is rendered client-side from JSON string members
+  (`marked`+`DOMPurify`, `diff2html`) — the server emits no markup at all, which is what keeps the
+  XSS boundary in one place (`tests/test_dashboard_client.py` is the contract to preserve).
 - `groom serve` refuses a non-loopback `--host` without `--allow-non-loopback`.
 
 ## Accessibility (the dashboard is a real UI — it owes the contract)
 
-groom's stack is exactly the one [`{{ instruction_file("python-htmx-accessibility") }}`]({{ instruction_file("python-htmx-accessibility") }})
-governs — server-rendered `templates/dashboard.html` + HTMX/`hx-ext="ws"` + vanilla JS, no bundler
-— which in turn realizes the universal
-[`{{ instruction_file("ui-accessibility") }}`]({{ instruction_file("ui-accessibility") }}) contract. Load
-both when touching the template or `assets/*.js`. Concrete gaps in the dashboard as built (fix these
-to the contract, don't add more like them):
+The universal [`{{ instruction_file("ui-accessibility") }}`]({{ instruction_file("ui-accessibility") }})
+contract applies and is the skill to load. There is **no per-stack skill for groom's stack** — it is
+a hand-authored HTML shell plus Preact islands with no router and no bundler, so the framework
+mechanics the stack skills exist to supply (HTMX swap/focus rules, React Router announcements)
+don't apply.
 
-- `#palette` is a role-less `<div>` overlay — it must be `role="dialog"` + `aria-modal`, trap focus,
-  move focus to `#palette-input` on open, and Escape-restore focus to the trigger; `#palette-results`
-  must be a `role="listbox"` with `role="option"` rows driven by `aria-activedescendant`.
-- `#palette-input` and the `.filter` input have only a `placeholder` — each needs a real (optionally
-  sr-only) `<label>` or `aria-label`.
-- The websocket OOB targets (worker cards, the log, the blocked-gate banner) must be stable
-  `aria-live` regions — `role="status"`/`"log"` for progress, `aria-live="assertive"` for a new
-  blocked gate — or a screen-reader operator never hears a container went blocked.
-- The `.ws-dot` "live" indicator conveys state by color alone — pair it with text/an icon.
+> **Ignore `stablemate-python-htmx-accessibility` when you are in `groom/`.** It is still installed
+> — the universal contract skill routes to it, and farrier follows that link — and its `applyTo`
+> glob matches `groom/templates/**` and `groom/assets/**/*.js`. It describes a stack groom left:
+> there is no `hx-swap` here, no out-of-band push, no server-rendered fragment. Following it means
+> rebuilding machinery that was deliberately removed.
 
-The `marked`+`DOMPurify` markdown path already preserves the XSS boundary
-(`tests/test_render.py`); keep it also preserving headings/lists so gate questions stay perceivable.
+The mechanics that do apply are small enough to state here:
+
+- **The live regions are in the shell, not in the islands.** `#runs-list` (`role="log"`),
+  `#statusbar` and the detail head (`role="status"`), and `#toasts` (`role="alert"`,
+  `aria-live="assertive"`) are static elements the islands render *into*. Keep it that way: a live
+  region that is itself re-created by a render is never announced. Adding a fourth `role="status"`
+  to this page needs a distinguishing `aria-label` — the ambiguity is real and `ostler locators`
+  will catch it.
+- **Every island's roots and names are the accessibility contract.** Rows are keyed so Preact
+  reconciles rather than replaces; a key change that swaps a row's DOM node moves focus off it.
+- **State is never colour alone.** The connection chip and `.ws-dot` pair the dot
+  (`aria-hidden="true"`) with the phase word; run status pairs its colour with text.
+- **The command palette is a modal:** `role="dialog"` + `aria-modal`, focus moved to
+  `#palette-input` on open and restored to the trigger on Escape, with the input as a `combobox`
+  driving `aria-activedescendant` over a `role="listbox"`. The repo search box follows the same
+  pattern. Both are built; don't regress them.
+
+**Accessibility here is tested dynamically, not statically.** `tests/test_a11y_dynamic.py` drives
+a live groom with Playwright and runs vendored axe-core over each pane. Adding a pane means adding
+its axe pass — a static template linter cannot see markup the browser builds.
+
+The `marked`+`DOMPurify` markdown path preserves the XSS boundary
+(`tests/test_dashboard_client.py`); keep it also preserving headings/lists so gate questions stay
+perceivable.
 
 ## Package layout (orientation, not exhaustive — see groom.md for the full tree)
 
 `models.py` (dataclasses) · `state.py` (in-memory store + broadcast) · `gates.py` (STATUS
 parsing + `answer_gate`) · `docker_io.py` (purpose-built throwaway-container helpers:
 `read_file`/`write_file`/`grep_awaiting_files`/`docker_start`/`is_running`/`git_diff`/...) ·
-`discovery.py` (one-shot reconciliation) · `render.py` (HTML fragments) · `app.py` (Litestar
-routes + `/ws`) · `sidecar.py` (in-container `groom-sidecar`) · `cli.py` (`groom`/`groom-sidecar`
-entry points).
+`discovery.py` (one-shot reconciliation) · `projection.py` (registry → the JSON payloads both
+transports send) · `app.py` (Litestar routes + `/ws`) · `assets/dashboard.js` (the Preact
+islands) · `sidecar.py` (in-container `groom-sidecar`) · `cli.py` (`groom`/`groom-sidecar` entry
+points).
 
 ## Network path
 

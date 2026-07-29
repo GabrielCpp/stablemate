@@ -34,7 +34,7 @@ Groom gates module is the code boundary that owns Groom's shared operator-gate s
 - concurrency boundary: answering is scoped to one `(container_id, file_path)` pair; this module does not assume a workflow container has only one live gate.
 - failure model: pure string helpers intentionally return fallback values rather than domain failures; [answer-gate](#answer-gate) returns `AnswerResult(ok=False, message=...)` for expected domain rejections and propagates unexpected Docker helper, path-safety, subprocess, and lock/runtime exceptions.
 - external boundary: the standard-library regular expression runtime and asyncio thread offloading are below this module; the Docker and state helpers it calls are Groom concepts documented separately and are not re-specified here.
-- non-effect: does not render dashboard fragments, broadcast websocket messages, validate websocket command frames, discover workflow containers, or persist any database record.
+- non-effect: does not project dashboard payloads, broadcast websocket messages, validate websocket command frames, discover workflow containers, or persist any database record.
 
 ## Fields
 

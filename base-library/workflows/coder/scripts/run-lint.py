@@ -30,6 +30,11 @@ from pathlib import Path
 
 from workhorse.scriptutil import find_repo_root
 
+try:
+    import yaml
+except ImportError:  # pragma: no cover - PyYAML ships with the system interpreter here
+    yaml = None
+
 # Cap the captured output threaded into the fix agent's context — the tail carries the
 # findings; the head is usually the command echo.
 MAX_OUTPUT = 4000
@@ -45,11 +50,7 @@ def emit(**kwargs: str) -> None:
 
 def _agents_yml_override(service: str, cwd: Path) -> str:
     """An explicit lint command for this service from the orchestrating repo's agents.yml."""
-    if not service:
-        return ""
-    try:
-        import yaml  # lazy: only when a lookup is actually needed
-    except ImportError:
+    if not service or yaml is None:
         return ""
     cfg_path = find_repo_root() / "agents.yml"
     if not cfg_path.exists():

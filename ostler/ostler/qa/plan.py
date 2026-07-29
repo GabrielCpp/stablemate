@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -336,7 +337,6 @@ def check_runtime_requirements(document: PlanDocument) -> list[str]:
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
     for name, declaration in document.data.get("secrets", {}).items():
-        import os
 
         env_name = declaration.get("from_env", "")
         if env_name not in os.environ:

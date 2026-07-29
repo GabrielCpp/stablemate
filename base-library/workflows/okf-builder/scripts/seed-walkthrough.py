@@ -30,6 +30,8 @@ import logging
 import sys
 from pathlib import Path
 
+from ostler import Ostler, graph as graph_mod
+
 # The bullet that proves a screen was visually registered against a running app. Its absence is
 # what makes a screen unconfirmed — `screenshot:` alone is a picture, not a registration.
 #
@@ -58,12 +60,12 @@ def _screen_of(node_id: str, by_id: dict) -> str | None:
 
 
 def _book(repo_root: str, service: str, logger: logging.Logger) -> dict | None:
-    """The service's graph, in-process. A graph that will not load seeds nothing, loudly."""
-    try:
-        from ostler import Ostler, graph as graph_mod
-    except ImportError as exc:
-        logger.warning("ostler is not importable — the walk cannot be seeded: %s", exc)
-        return None
+    """The service's graph, in-process. A graph that will not load seeds nothing, loudly.
+
+    Only the *graph* is fallible here: an interpreter that cannot import ostler never
+    reaches this node, because the workflow declares ``dist: ostler`` in ``requires:``
+    and workhorse refuses to start the run.
+    """
     try:
         return graph_mod.build(Ostler(repo_root).graph, surface=service or None)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:

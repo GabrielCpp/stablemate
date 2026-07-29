@@ -17,6 +17,13 @@ before [volume reconstruction](../concepts/workflow-state.md#transition-volume-r
 and file/diff endpoints prefer live sidecar RPC before the workspace-volume
 fallback readers.
 
+Every one of these paths ends in JSON. The push endpoints broadcast a
+[dashboard state payload](../dashboard-state-payload.md) — the same frame the live
+clock pushes — rather than any per-producer markup, and the file/diff endpoints
+return the same JSON bodies whether a live sidecar RPC or a workspace-volume read
+answered. That is what makes the fallback invisible to the browser: it renders one
+shape, and nothing in it records which side of the fallback produced it.
+
 - start: the host `groom` process is running or starting with access to Docker;
   one or more workhorse workflow containers may be running, stopped, legacy, or
   already connected over the primary [sidecar live session](../flows/sidecar-live-session-sync.md);
@@ -98,8 +105,10 @@ fallback readers.
       invocation normalizes the container id, rejects an empty id with `ok:
       false`, resolves Docker volume metadata when possible, upserts the workflow
       as finished, records a numeric exit code when the payload supplies one,
-      clears every open gate for that workflow, broadcasts the dashboard shell,
-      and returns `ok: true` after broadcast succeeds.
+      clears every open gate for that workflow, broadcasts a [dashboard state
+      payload](../dashboard-state-payload.md) to every tab plus that run's
+      refreshed detail to the tabs watching it, and returns `ok: true` after
+      broadcast succeeds.
   11. Residual progress and blocked HTTP producers use the same helper. A legacy
       or test-only event path classifies watched run writes as progress and
       awaiting workspace files as blocked, then calls `push_progress(current_node)`
@@ -110,17 +119,24 @@ fallback readers.
       endpoint rejects missing container ids without mutation; otherwise it
       ensures volume metadata when possible, upserts the workflow as running,
       applies optional identity and current-node fields, preserves existing gates,
-      broadcasts the dashboard shell, and returns `ok: true`.
+      broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus
+      that run's refreshed detail to its watchers, and returns `ok: true`.
   13. The host [receive blocked push](../http/groom.md#receive-blocked-push)
       endpoint rejects missing container ids or empty gate paths without mutation;
       otherwise it ensures volume metadata when possible, upserts the workflow as
-      blocked, stores or replaces the gate record for the supplied path, renders a
-      dashboard shell plus [blocked notification script fragment](../blocked-notification-script-fragment.md),
-      broadcasts the combined fragment, and returns `ok: true`.
+      blocked, stores or replaces the gate record for the supplied path,
+      broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus
+      that run's refreshed detail to its watchers, and then broadcasts a separate
+      one-shot `notify` frame carrying the workflow name and the question truncated
+      to the [question notification limit](../concepts/groom-app-module.md#field-question-notify-limit),
+      before returning `ok: true`. The alert is its own frame rather than a field on
+      the state payload precisely so it accompanies an actual new block instead of
+      every reconciliation re-push; each tab hands it to the
+      [dashboard toast pusher](../concepts/dashboard-toast-pusher.md#method-on-notify).
   14. For dashboard Files and Diff reads, the host uses a separate fallback path:
       [serve workspace file list](../http/groom.md#serve-workspace-file-list),
       [serve workspace file content](../http/groom.md#serve-workspace-file-content),
-      and [serve workspace diff](../http/groom.md#serve-workspace-diff) first ask
+      and [serve workspace diff](../http/groom.md#serve-working-tree-diff) first ask
       the live sidecar data plane through `_sidecar_rpc`. If no connection exists,
       the socket closes, a reconnect supersedes the connection, the RPC times out,
       or the sidecar returns an error result, `_sidecar_rpc` returns `None`.
@@ -130,8 +146,12 @@ fallback readers.
       with the combined repo/path guarded against traversal, and the diff endpoint
       uses the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md).
       Missing workflow ids, missing volume metadata, unsafe paths, non-zero
-      reader processes, and absent content become empty `200 OK` text responses
-      or fallback data rather than endpoint-specific JSON errors.
+      reader processes, and absent content become empty-but-well-formed `200 OK`
+      JSON — `{"paths": []}`, an empty `content` alongside the `lang` the path
+      already determined, `{"diff": ""}` — rather than endpoint-specific error
+      bodies. The browser therefore takes the same parse path for a failed read as
+      for a successful one, and renders `(no files)` or `(no changes)` from the
+      data itself.
 - end: discovery has a resolved workflow record from either a running-container
   query snapshot or volume reconstruction; residual exited/progress/blocked pushes
   either update and broadcast host workflow state or fail silently at the producer

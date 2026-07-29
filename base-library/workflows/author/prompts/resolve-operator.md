@@ -13,7 +13,7 @@ limit — take the time you need), with full tool access (read, edit, run comman
 
 ## The block
 
-- Stage: **{{ block_stage }}** (surface-coverage, epic-split, write-epic, story-split, write-story, coverage review, or reconciliation).
+- Stage: **{{ block_stage }}** (epic-split, write-epic, story-split, write-story, coverage review, or reconciliation).
 - Epic dir: `{{ epic_dir }}`
 - The blocking question / notes from the producer:
 

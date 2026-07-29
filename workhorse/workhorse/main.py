@@ -280,6 +280,7 @@ def run(
         )
     except KeyboardInterrupt:
         agent_runner.terminate_active()
+        _record_interrupt(writer)
         print("\n[workhorse] interrupted — run paused.", file=sys.stderr)
         print(
             f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
@@ -693,6 +694,18 @@ def _enter(
     return current_id, ctx, True
 
 
+def _record_interrupt(writer: ArtifactWriter, error: str = "KeyboardInterrupt") -> None:
+    """Stamp an operator interrupt onto ``writer``'s run, attributed to whichever
+    node was in flight (the checkpoint's ``current_id`` — written immediately before
+    that node runs). Best-effort like every other instrumentation write: this runs on
+    the way out of a Ctrl-C, where a second traceback would bury the resume hint."""
+    try:
+        checkpoint = writer.read_checkpoint()
+    except (OSError, json.JSONDecodeError):
+        checkpoint = None
+    writer.record_interrupt((checkpoint or {}).get("current_id") or "<run>", error)
+
+
 def _run_flow(
     node: FlowNode,
     graph: Graph,
@@ -733,21 +746,27 @@ def _run_flow(
     current_id, child_ctx, resume_interrupted_node = _enter(
         child_writer, flow, manifest, initial
     )
-    term = _step_loop(
-        flow,
-        child_writer,
-        child_ctx,
-        current_id,
-        resume_interrupted_node,
-        manifest=manifest,
-        workflow_dir=workflow_dir,
-        session_id_path=child_writer.run_dir / ".session_id",
-        tank=tank,
-        config=config,
-        depth=depth + 1,
-        deadline=deadline,
-        inherited_labels=labels,
-    )
+    try:
+        term = _step_loop(
+            flow,
+            child_writer,
+            child_ctx,
+            current_id,
+            resume_interrupted_node,
+            manifest=manifest,
+            workflow_dir=workflow_dir,
+            session_id_path=child_writer.run_dir / ".session_id",
+            tank=tank,
+            config=config,
+            depth=depth + 1,
+            deadline=deadline,
+            inherited_labels=labels,
+        )
+    except KeyboardInterrupt:
+        # Same gap one scope down: the flow's own events.jsonl would otherwise end on
+        # a dangling `enter`. Stamp the child, then let the parent handle its own.
+        _record_interrupt(child_writer)
+        raise
     child_writer.write_final_context(child_ctx.as_dict())
     child_writer.finish(terminal=term)
 

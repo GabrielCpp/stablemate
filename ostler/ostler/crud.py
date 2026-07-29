@@ -7,22 +7,13 @@ layout (``SPEC.md`` / ``registry.py``) stay correct. Writers apply immediately a
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
-from pathlib import Path
+import shutil
 
 import yaml
 
-from ostler import ids, markdown, registry
+from ostler import ids, markdown, model, registry, todo as todo_mod
 from ostler.model import Graph
-
-
-@dataclass
-class Result:
-    ok: bool
-    message: str
-    paths: list[Path] = field(default_factory=list)
-    entity_id: str = ""   # the allocated id, for create commands (consumed via --json)
+from ostler.result import Result   # re-exported: `from ostler.crud import Result` still works
 
 
 # ---------------------------------------------------------------------------
@@ -82,14 +73,11 @@ def delete_epic(graph: Graph, name: str) -> Result:
     edir = graph.doc_roots["epics"] / name
     if not (edir / "epic.md").exists():
         return Result(False, f"no epic '{name}'")
-    import shutil
     shutil.rmtree(edir)
     todo = graph.doc_roots["epics"] / "index.md"
     removed = ""
-    if todo.exists():
-        from ostler import todo as todo_mod
-        if todo_mod.prune(graph, name).ok:
-            removed = " (removed from epics index)"
+    if todo.exists() and todo_mod.prune(graph, name).ok:
+        removed = " (removed from epics index)"
     return Result(True, f"deleted epic '{name}'{removed}", [edir])
 
 
@@ -106,6 +94,22 @@ def _story_block(slug: str, title: str, sid: str,
         f"- depends on: {', '.join(depends) if depends else '(none)'}",
         "",
     ]
+
+
+def _story_body(title: str) -> str:
+    """The story.md skeleton, generated from ``registry.STORY_SECTIONS``.
+
+    Scaffolding from the same table the checks read is the point: a hardcoded skeleton drifts
+    into satisfying its own validators, which is how a repo full of empty stories reported
+    itself authored. Only the status section gets a stub line — the `filled` ones are left
+    deliberately blank so they read as unwritten until an author writes them.
+    """
+    lines = [f"# Story: {title}", ""]
+    for spec in registry.STORY_SECTIONS:
+        lines += [f"## {spec.heading}", ""]
+        if spec.heading == registry.STORY_STATUS_HEADING:
+            lines += [f"- **{registry.STORY_STATUS_LABEL}**: {registry.DEFAULT_STORY_STATUS}", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def create_story(graph: Graph, epic_name: str, slug: str, title: str,
@@ -135,9 +139,8 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     # there is no way to name the story from the file itself; you have to go back to the
     # parent epic and match on slug. Ids are ostler-minted and repo-prefixed (`TODO-15`), so
     # carrying it here is what makes the story addressable in the graph.
-    fm = {"type": "story", "id": sid, "slug": slug, "status": "Not started"}
-    body = (f"# Story: {title}\n\n## Context\n\n## Acceptance Criteria\n\n"
-            f"## Implementation Status\n\n- **Status**: Not started\n")
+    fm = {"type": "story", "id": sid, "slug": slug, "status": registry.DEFAULT_STORY_STATUS}
+    body = _story_body(title)
     story_md.parent.mkdir(parents=True, exist_ok=True)
     story_md.write_text(f"---\n{dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
     return Result(True, f"created story '{slug}' ({sid}) in epic '{epic_name}'",
@@ -154,7 +157,6 @@ def delete_story(graph: Graph, slug: str) -> Result:
     _remove_subsection(doc, registry.STORIES_HEADING, slug)
     epic_md.write_text(doc.render(), encoding="utf-8")
     if story.story_md and story.story_md.exists():
-        import shutil
         shutil.rmtree(story.story_md.parent)
     return Result(True, f"deleted story '{slug}' from epic '{epic.name}'", [epic_md])
 
@@ -168,8 +170,16 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
     fm = doc.frontmatter or {"type": "story", "slug": slug}
     fm["status"] = status
     doc.raw_frontmatter = dump_frontmatter(fm)
-    doc.body = re.sub(r"(\*\*Status\*\*:\s*).*", lambda m: m.group(1) + status,
-                      doc.body, count=1)
+    # Rewrite the body's `- **Status**:` bullet in place, located through the parsed tree rather
+    # than by matching the rendered text: only the real field is touched, and its indentation,
+    # list marker and emphasis survive verbatim.
+    bullet = model.status_bullet(doc)
+    if bullet is not None:
+        lines = doc.body.split("\n")
+        head, sep, _ = lines[bullet.line_start].partition(":")
+        if sep:
+            lines[bullet.line_start] = f"{head}: {status}"
+            doc.replace_body(lines)
     path.write_text(doc.render(), encoding="utf-8")
     return Result(True, f"status of '{slug}' → {status}", [path])
 

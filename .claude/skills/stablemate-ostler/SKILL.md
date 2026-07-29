@@ -385,7 +385,7 @@ UI-node bodies; `ostler trace <id|slug|anchor>` walks a node's outbound links (w
 - Any node that needs to resolve a slug to a filesystem path (spec dir, story.md, branch name) →
   `ostler path`, not string-concatenation in a script.
 - Any gate that checks graph health before letting a workflow proceed (e.g. author's
-  `verify-surface-coverage.py`/`reconcile-artifacts.py`/an `ostler doctor` check) → shell out to
+  `reconcile-artifacts.py`/`check-story-grounding.py`/an `ostler doctor` check) → shell out to
   `ostler doctor`/`ostler query` and branch on exit code or `--json` output, never re-implement
   referential-integrity checks by hand.
 - Any resolver prompt that fixes a graph problem (dangling owner, orphan seed, cross-epic

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import logging
 import re
 import shutil
 import subprocess
 import sys
-from importlib.metadata import PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, packages_distributions
 from importlib.metadata import version as _dist_version
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -38,8 +39,9 @@ class Requirement(BaseModel):
     presence on ``PATH`` proves nothing here -- a pipx-isolated install gives a
     working ``ostler`` shim whose package is invisible to ``import ostler``. Keyed by
     DISTRIBUTION name, which may differ from the import name (``workhorse-agent`` vs
-    ``workhorse``); dist metadata resolving in this interpreter is what implies the
-    import will.
+    ``workhorse``); the metadata is how the import names are discovered, and the
+    check then performs the import itself (``_import_problem``) rather than inferring
+    it -- see there for why implying is not enough.
 
     ``cmd:`` an executable that must be on ``PATH``, invoked as a subprocess.
 
@@ -101,6 +103,54 @@ def _probe_cmd_version(cmd: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _import_names(dist: str) -> list[str]:
+    """The top-level modules an installed distribution provides.
+
+    Read from the installed metadata rather than guessed from the distribution name: the
+    two differ often enough (``workhorse-agent`` -> ``workhorse``) that guessing would
+    probe a module that was never meant to exist and call a healthy install broken. The
+    normalized name is the fallback for a dist whose metadata lists no module at all --
+    one probe that may be wrong beats no probe.
+    """
+    canonical = dist.replace("-", "_").lower()
+    try:
+        provided = [
+            mod
+            for mod, dists in packages_distributions().items()
+            if any(d.replace("-", "_").lower() == canonical for d in dists)
+        ]
+    except (OSError, ValueError):
+        provided = []
+    return sorted(provided) or [canonical]
+
+
+def _import_problem(dist: str) -> str | None:
+    """Actually import the distribution here, in the interpreter that runs script nodes.
+
+    Metadata resolving only proves a *record* of the install is on this path; it says
+    nothing about whether the package's own code loads. A half-written install, one whose
+    own dependencies are absent, a compiled extension built for another interpreter --
+    each resolves by metadata and then raises on the first ``import`` a script node does,
+    which is six nodes into an unattended run rather than before the first one. Script
+    nodes import their tools in-process, so the preflight performs the very same import:
+    what it proves is exactly what they will do.
+
+    The cost is that the module is loaded (and stays loaded) in the engine process. That is
+    not a side effect worth avoiding -- the run is about to import it anyway.
+    """
+    problem: str | None = None
+    for name in _import_names(dist):
+        try:
+            importlib.import_module(name)
+            return None
+        except Exception as exc:  # deliberately broad: a module body can raise anything
+            problem = f"import {name}: {type(exc).__name__}: {exc}"
+    return (
+        f"{dist} is installed but does not import in the interpreter that runs script "
+        f"nodes ({sys.executable}) -- {problem}"
+    )
+
+
 def _check_one(req: Requirement) -> str | None:
     """Return a human-readable problem with this requirement, or None if satisfied."""
     if req.dist:
@@ -115,6 +165,9 @@ def _check_one(req: Requirement) -> str | None:
                 f"nodes. Install it there:\n"
                 f"    {sys.executable} -m pip install {req.dist}{req.version or ''}"
             )
+        broken = _import_problem(req.dist)
+        if broken:
+            return broken
     else:
         assert req.cmd is not None
         if shutil.which(req.cmd) is None:

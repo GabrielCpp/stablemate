@@ -26,9 +26,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
 
-from groom import alerts, discovery, notify, otlp, state, store
+from groom import alerts, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
-from groom import render
 
 _SPAN_IDS = iter(f"{i:016x}" for i in range(1, 10_000))
 
@@ -67,10 +66,12 @@ def _metrics_request(
     *,
     node: str | None = None,
     gauge: bool = False,
+    ts: float = 2000.0,
 ) -> bytes:
     """One metric point. ``gauge=True`` emits a double gauge (node.active,
     node.elapsed_s, turn.idle_s); the default is an int sum (the heartbeat and
-    refuel counters)."""
+    refuel counters). ``ts`` stamps the point, which is what decides whether it
+    is newer than a run's recorded terminal."""
     request = ExportMetricsServiceRequest()
     resource_metrics = request.resource_metrics.add()
     kv = resource_metrics.resource.attributes.add()
@@ -86,7 +87,7 @@ def _metrics_request(
     if node is not None:
         kv = point.attributes.add()
         kv.key, kv.value.string_value = "node", node
-    point.time_unix_nano = int(2000 * 1e9)
+    point.time_unix_nano = int(ts * 1e9)
     return request.SerializeToString()
 
 
@@ -187,7 +188,7 @@ def test_store_roundtrip_and_query_filters():
         assert len(store.query_spans(node="plan")) == 1
 
 
-def test_run_summaries_flag_finished_and_errors():
+def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
     with _TelemetryEnv():
         store.insert_spans(
             otlp.parse_traces(
@@ -203,7 +204,10 @@ def test_run_summaries_flag_finished_and_errors():
         # bound in run_summaries includes them rather than filtering to wall-clock.
         summary = store.run_summaries(now=200.0)[0]
         assert summary["run_id"] == "run-1"
-        assert summary["error_count"] == 1 and summary["finished"] == 1
+        assert summary["error_count"] == 1 and summary["span_count"] == 2
+        # A root span is history, not a liveness verdict: a resumed run reuses its
+        # run_id, so "a run:* span exists" would mark it dead forever.
+        assert "finished" not in summary
 
 
 def test_prune_drops_only_old_rows():
@@ -426,6 +430,18 @@ def test_live_status_marks_a_run_dead_once_the_heartbeat_stops():
         assert rows[0]["node"] == "investigate"
 
 
+def test_live_run_ids_are_the_ones_beating_now():
+    """The durable answer to the only liveness question groom asks. It comes from
+    the store, not the hot cache, so a groom that just restarted does not report
+    every live run as stopped until each one's next export lands."""
+    with _TelemetryEnv():
+        store.insert_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl"))
+        )
+        assert store.live_run_ids(now=2000.0) == {"run-1"}
+        assert store.live_run_ids(now=2000.0 + store.LIVE_AFTER_S + 60) == set()
+
+
 def test_live_status_uses_only_the_newest_point_per_metric():
     with _TelemetryEnv():
         for ts_node in ("prepare", "select_item"):
@@ -473,6 +489,43 @@ def test_budget_fires_past_max_hours_and_terminal_retires_the_run():
         )
         alerts.ingest_spans(root, now=1.0)
         assert alerts.check_time_rules(now=48 * 3600) == []
+
+
+def test_a_resumed_run_clears_the_previous_sessions_terminal():
+    """``--resume-run`` reuses the run_id, and a root span only exports when it
+    ENDS — so there is no "new session started" event. The newer signal itself is
+    the evidence, and it has to undo the verdict or the run stays dead forever."""
+    with _TelemetryEnv():
+        root = otlp.parse_traces(
+            _trace_request([{"name": "run:coder", "terminal": "interrupted", "end": 100.0}])
+        )
+        alerts.ingest_spans(root, now=100.0)
+        run = state.RUNS["run-1"]
+        assert (run.terminal, run.terminal_ts) == ("interrupted", 100.0)
+        run.fired.add("STALL")
+
+        # A single beat from the resumed process, stamped after that root span.
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)),
+            now=200.0,
+        )
+        assert (run.terminal, run.terminal_ts) == ("", 0.0)
+        assert run.fired == set()  # a new session re-arms every rule
+
+
+def test_a_signal_older_than_the_terminal_does_not_revive_the_run():
+    """The inverse guard: telemetry that predates the root span is the same
+    session's backlog, not a resume, and must leave the verdict standing."""
+    with _TelemetryEnv():
+        root = otlp.parse_traces(
+            _trace_request([{"name": "run:coder", "terminal": "terminal", "end": 100.0}])
+        )
+        alerts.ingest_spans(root, now=100.0)
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=50.0)),
+            now=100.0,
+        )
+        assert state.RUNS["run-1"].terminal == "terminal"
 
 
 # --------------------------------------------------------------------------- #
@@ -560,7 +613,7 @@ def test_v1_traces_rejects_garbage_with_400():
         assert resp.status_code == 400
 
 
-def test_traces_search_endpoint_renders_fragment():
+def test_traces_search_endpoint_returns_json_rows():
     import time as _time
 
     now = _time.time()
@@ -582,13 +635,20 @@ def test_traces_search_endpoint_renders_fragment():
             resp = client.get("/traces", params={"status": "ERROR"})
         finally:
             client.__exit__(None, None, None)
-        body = resp.text
-        assert 'class="traces"' in body and "<td>build</td>" in body
-        assert "<td>plan</td>" not in body  # the status filter applied
+        body = resp.json()
+        nodes = [row["node"] for row in body["spans"]]
+        assert nodes == ["build"]  # the status filter applied; "plan" was OK
+        assert body["spans"][0]["status"] == "ERROR"
+        # The summary strip rides along with the spans, so the pane needs one fetch.
+        assert [run["run_id"] for run in body["runs"]] == ["run-1"]
 
 
-def test_render_traces_escapes_untrusted_values():
-    fragment = render.render_traces(
+def test_traces_view_carries_untrusted_values_verbatim():
+    # No escaping here any more, and that is the point: the pane is JSON the
+    # browser renders as text nodes, so a run id that looks like markup stays a
+    # run id that looks like markup instead of being mangled on the way out. The
+    # escaping this replaced existed because the value was concatenated into HTML.
+    view = projection.traces_view(
         [],
         [
             {
@@ -602,7 +662,8 @@ def test_render_traces_escapes_untrusted_values():
         ],
         {},
     )
-    assert "<script>alert" not in fragment and "&lt;script&gt;" in fragment
+    assert view["spans"][0]["run_id"] == "<img src=x>"
+    assert view["spans"][0]["node"] == "<script>alert(1)</script>"
 
 
 # ── Logs (/v1/logs) ────────────────────────────────────────────────────────────

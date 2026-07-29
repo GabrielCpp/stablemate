@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import json
+import os
 import socket
 import tempfile
 from pathlib import Path
@@ -213,6 +214,48 @@ def test_probe_treats_a_malformed_endpoint_as_no_collector():
     # Never raises out of start_run's gate, whatever the endpoint says.
     assert otel._collector_reachable("not-a-url") is False
     assert otel._collector_reachable("") is False
+
+
+@contextlib.contextmanager
+def _env(**pairs):
+    saved = {k: os.environ.get(k) for k in pairs}
+    try:
+        for k, v in pairs.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def test_metric_export_defaults_to_the_heartbeat_interval():
+    # The export interval, not the heartbeat, is what bounds a collector's freshness:
+    # beats recorded every 10s but shipped on the SDK's 60s default leave a dead run
+    # looking alive for the better part of a minute. Default them to the same clock.
+    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S=None, OTEL_METRIC_EXPORT_INTERVAL=None):
+        assert otel._metric_export_every_s() == otel._HEARTBEAT_EVERY_S
+
+
+def test_metric_export_honors_both_knobs_ours_first():
+    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S=None, OTEL_METRIC_EXPORT_INTERVAL="15000"):
+        assert otel._metric_export_every_s() == 15.0  # the SDK's own knob still wins
+    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="3", OTEL_METRIC_EXPORT_INTERVAL="15000"):
+        assert otel._metric_export_every_s() == 3.0  # ...but ours is more specific
+
+
+def test_metric_export_falls_through_garbage_rather_than_raising():
+    # This runs on the start-up path of every telemetry-enabled run, so a typo in the
+    # environment must cost a default, never the run.
+    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="soon", OTEL_METRIC_EXPORT_INTERVAL="15000"):
+        assert otel._metric_export_every_s() == 15.0
+    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="0", OTEL_METRIC_EXPORT_INTERVAL=""):
+        assert otel._metric_export_every_s() == otel._HEARTBEAT_EVERY_S
 
 
 def test_append_event_unchanged_with_noop_telemetry():

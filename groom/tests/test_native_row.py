@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
 from pathlib import Path
 
-from groom import alerts, app as groom_app, gates, localfs, state
+from groom import alerts, app as groom_app, gates, localfs, state, store
 from groom.models import WorkflowState
 
 
@@ -90,6 +91,50 @@ def test_terminal_span_finishes_and_clears_gates(tmp_path):
     wf = state.WORKFLOWS["R2"]
     assert wf.state == WorkflowState.FINISHED
     assert wf.gates == {}
+
+
+def test_resumed_run_under_the_same_run_id_goes_back_to_running(tmp_path):
+    """``--resume-run`` reuses the run_id (it comes from the run dir), so the
+    previous session's root span arrives under the same key as the new session's
+    telemetry. The row must follow the live process, not the dead one."""
+    _reset()
+    run_dir = tmp_path / "author-rerun1"
+    run_dir.mkdir()
+    alerts.ingest_spans([{
+        "run_id": "rerun1", "name": "run:author", "workflow": "author",
+        "run_dir": str(run_dir), "end_ts": 100.0,
+        "attrs": {"workhorse.terminal": "interrupted"},
+    }])
+    groom_app._sync_native_row(state.RUNS["rerun1"])
+    assert state.WORKFLOWS["rerun1"].state == WorkflowState.FINISHED
+
+    # The resumed session beats. One point stamped after that root span is all the
+    # evidence there is that a process is alive — and it has to be enough.
+    beat = _metric("rerun1", "workhorse.run.heartbeat", 1,
+                   run_dir=str(run_dir), node="write_story")
+    beat["ts"] = 200.0
+    alerts.ingest_metrics([beat])
+    run = state.RUNS["rerun1"]
+    assert run.terminal == ""
+    groom_app._sync_native_row(run)
+    assert state.WORKFLOWS["rerun1"].state == WorkflowState.RUNNING
+
+
+def test_a_run_that_goes_silent_stops_reading_as_running(tmp_path):
+    """The other half: nothing arrives to mark a run stopped — silence is an
+    absence — so the row's state has to be re-derived from the clock."""
+    _reset()
+    run_dir = tmp_path / "r"
+    run_dir.mkdir()
+    alerts.ingest_metrics([_metric("R5", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir))])
+    groom_app._sync_native_row(state.RUNS["R5"])
+    assert state.WORKFLOWS["R5"].state == WorkflowState.RUNNING
+    stale = time.time() - 10 * store.LIVE_AFTER_S
+    run = state.RUNS["R5"]
+    run.last_heartbeat_ts = run.first_seen_ts = run.last_span_ts = stale
+    groom_app._sync_native_row(run)
+    assert state.WORKFLOWS["R5"].state == WorkflowState.FINISHED
 
 
 def test_native_rows_survive_the_docker_prune(tmp_path):

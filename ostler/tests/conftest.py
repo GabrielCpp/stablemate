@@ -39,8 +39,12 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
 
 def story_md(slug: str, title: str, status: str,
              knowledge_ref: str | None = None) -> str:
+    # A written story: every `filled` section of registry.STORY_SECTIONS carries prose, so the
+    # fixture repo is authored and `doctor` stays green. Leave one blank and it reports
+    # `unwritten-story` — which is the point of the check.
     body = ["---", "type: story", f"slug: {slug}", f"status: {status}", "---",
-            f"# Story: {title}", "", "## Implementation Status", "",
+            f"# Story: {title}", "", "## Context", "",
+            f"Why {title} matters.", "", "## Implementation Status", "",
             f"- **Status**: {status}", "", "## Acceptance Criteria", ""]
     body.append("- The thing works.")
     if knowledge_ref:

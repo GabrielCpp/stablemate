@@ -353,7 +353,8 @@ artifacts section), so it survives even with telemetry off.
 | `WORKHORSE_OTEL` | _unset_ | Tri-state override. Unset = auto (probe the endpoint); truthy forces telemetry on without probing; `0`/`false`/`no` forces it off |
 | `WORKHORSE_OTEL_PROBE_S` | 0.25 | Seconds the auto-mode probe waits for the collector to accept a connection. Only a remote or firewalled endpoint ever pays it in full, once per run |
 | `WORKHORSE_OTEL_HEARTBEAT_S` | 10 | Seconds between liveness ticks (run + agent turn) |
-| `OTEL_METRIC_EXPORT_INTERVAL` | 60000 | SDK knob: ms between metric exports. This — not the heartbeat interval — bounds how fresh a collector's view is; lower it (e.g. `15000`) when actively debugging a stall |
+| `WORKHORSE_OTEL_METRIC_EXPORT_S` | = `WORKHORSE_OTEL_HEARTBEAT_S` (10) | Seconds between metric **exports**. Recording a beat is not sending one, and this is the interval that actually bounds a collector's freshness — so it defaults to the heartbeat rather than to the SDK's 60s, which would have meant beating six times per shipment |
+| `OTEL_METRIC_EXPORT_INTERVAL` | _unset_ | The SDK's own knob (milliseconds). Still honored, and still overridden by the workhorse-specific one above; set it to widen the interval on a collector you'd rather not talk to every 10s |
 
 ## Usage Examples
 
