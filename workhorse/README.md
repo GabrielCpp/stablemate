@@ -127,6 +127,18 @@ node runs — see [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/bl
 Script nodes run under workhorse's own interpreter, so a tool they import must live in
 *that* environment (`pipx inject workhorse-agent ostler`), not merely on `PATH`.
 
+The skill and prompt references its prompts make are checked in the same breath. A
+`{{ instruction_ref("story-docs") }}` that resolves against nothing does not fail — it
+renders the sentence `generated story-docs instruction file when installed` into a live
+agent prompt, and the agent is left to find the skill itself. Before the first node,
+workhorse parses the workflow's `prompts/**/*.md`, resolves every constant reference
+against the loaded context manifest, and prints the ones that will not resolve, with the
+fix (add them to the repo's `agents.yml` selection and re-run `make agent-install`). It is
+a warning, not an error: the run is degraded, not impossible. A run carrying **no**
+manifest at all (`hello-world`, most tests) is skipped — there, unresolved is the normal
+state. References built from a computed argument can't be seen statically; those log a
+`[template] ⚠` line when they render instead.
+
 ### Per-workflow commands (`workhorse-<name>`)
 
 A distribution may also install one console script per workflow, alongside the entry

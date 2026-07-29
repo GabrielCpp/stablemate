@@ -33,6 +33,7 @@ from workhorse.graph.loader import load_workflow
 from workhorse.requirements import UnmetRequirementsError, check_requirements
 from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
 from workhorse.packaged import PackagedWorkflow, PackagedWorkflowError, find_packaged_workflow
+from workhorse.references import format_missing, missing_references
 from workhorse.runner import agent as agent_runner
 from workhorse.runner import branch as branch_runner
 from workhorse.runner import call as call_runner
@@ -163,6 +164,16 @@ def run(
     # the farrier template helpers (instruction_ref/isUsingInstruction/template.*)
     # resolve at render time. See workhorse/templates.py.
     manifest = context_manifest or {}
+
+    # Preflight the skill/prompt references those helpers will have to resolve. An
+    # unresolved one does not fail the render — it renders as prose into a live agent
+    # prompt — so the only way it ever becomes visible is by being said out loud, and
+    # the only useful moment to say it is before the first node instead of six hours
+    # in. Warned, not raised: the run is degraded, not impossible, and this engine
+    # fails soft. `--dry-run` is where the same list becomes an error.
+    unresolved_refs = missing_references(workflow_dir, manifest)
+    if unresolved_refs:
+        print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}", file=sys.stderr)
 
     # Default (auto): one stable run dir per (workflow, program) that we resume in
     # place. The run *is* the research session — its full context (counters, gate

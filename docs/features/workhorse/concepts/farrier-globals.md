@@ -58,18 +58,23 @@ Returns `context["_skill_dir"]` if set (the repo-root-relative skills directory 
 workflow's own directory, used as a sane default for a manifest-free run (e.g. `hello-world`).
 
 ### `instruction_ref(name="")` (aliased as `instruction_file`, `skill_file`)
-Returns `instructions.get(name, f"generated {name} instruction file when installed")` —
-`instructions` being `context["_instructions"]`, the selected-skill-id → installed-path map from
-the [context manifest](../context-manifest.md#instructions). A name absent from the map (skill not
-selected, or manifest empty) degrades to the placeholder string rather than erroring, so a prompt
-authored against a skill that a given repo didn't install still renders (just names the skill
-generically instead of linking its real path). All three names are the *same function object* —
-kept as aliases for prompts written against any of the historical names.
+Resolves `name` against `context["_instructions"]`, the selected-skill-id → installed-path map from
+the [context manifest](../context-manifest.md#instructions), via the shared
+`references.resolve_instruction` (exact match, then a unique suffix match so a pack's namespaced
+`process-story-docs` still answers a prompt asking for `story-docs` — see [reference
+preflight](reference-preflight.md#resolution-rule)). A name that resolves to nothing degrades to
+`f"generated {name} instruction file when installed"` rather than erroring, so a prompt authored
+against a skill that a given repo didn't install still renders (just names the skill generically
+instead of linking its real path) — but it now also logs a `[template] ⚠` line, since that string
+otherwise reaches a live agent prompt silently. The warning is suppressed for a **manifest-free**
+context (nothing was ever expected to resolve) and under `quiet=True`. All three names are the
+*same function object* — kept as aliases for prompts written against any of the historical names.
 
 ### `prompt_ref(name="")` (aliased as `prompt_file`)
-Same shape as [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file) but
-reads `context["_prompts"]` (the [context manifest](../context-manifest.md#prompts) prompt-id →
-path map) and its placeholder reads `f"generated {name} prompt when installed"`.
+Same shape as [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file),
+including the unresolved-reference warning, but reads `context["_prompts"]` (the [context
+manifest](../context-manifest.md#prompts) prompt-id → path map) with a plain exact-match lookup,
+and its placeholder reads `f"generated {name} prompt when installed"`.
 
 ### `is_using_instruction(name="", *_args, **_kwargs)` (Jinja name `isUsingInstruction`)
 Returns `name in used_skills`, `used_skills` being `set(context["_used_skills"] or [])` — the
