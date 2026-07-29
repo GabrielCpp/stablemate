@@ -43,6 +43,14 @@ subcommand, a bare `workhorse [--workflow …]` is treated as `run`.
   - `--cli <name>` — pick the agent harness for the run: selects an [AgentBackend](concepts/agent-backend.md) implementation via [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`.
   - `--runs-dir <dir>` — where run artifacts are written (default `<workflow-dir>/runs`).
   - `--run-id <id>` — name the stable run dir (`<workflow>-<id>`, default `default`); distinct ids keep parallel runs side by side.
+  - `--dry-run` — check the workflow without running a node, then exit (`0` clean, `1` on the
+    first problem). For a YAML workflow this turns the [reference
+    preflight](concepts/reference-preflight.md)'s warning into an exit code and prints the node
+    list. For a Python state machine it runs the [static
+    preflight](concepts/pyflow-state-graph.md) — every prompt path, every unreachable state, a
+    machine that cannot terminate — and then drives the machine for real with `self.call` /
+    `self.agent` stubbed out, so imports, `setup()` and the transitions along one path are
+    exercised too. The failure this catches is a typo found at hour 30 of an unattended run.
   - `--resume-run <path-or-id>` / `--resume-latest` / `--no-cache` — mutually exclusive with each
     other. `--resume-run`/`--resume-latest` resume a checkpointed run instead of the default
     auto-resume-in-place. `--no-cache` deletes the stable run dir before starting (forcing a clean
@@ -160,10 +168,12 @@ against an isolated sandbox — `workhorse test <workflow_dir>` is how a workflo
 that suite without hand-rolling the pytest invocation.
 
 ### dot
-- usage: `workhorse dot --workflow <path> [--pin K=V] [--leaf NODE] [--name ID] [-o out.dot]`
+- usage: `workhorse dot <workflow> [--pin K=V] [--leaf NODE] [--name ID] [-o out.dot]`
 - flags:
-  - `--workflow <path>` — type `str` (path), **required**. The [workflow](concepts/workflow.md)
-    `workflow.yaml` to render.
+  - `--workflow <path-or-name>` — type `str`, default: none. The [workflow](concepts/workflow.md)
+    to render: a `workflow.yaml` path, or a bare NAME resolved exactly the way `run` resolves one.
+    Equivalent to the positional form (`workhorse dot <name-or-path>`); supplying both a
+    `--workflow` and a positional is a hard error, as is supplying neither.
   - `--pin <K=V>` — type `str`, repeatable (`action=append`), default: none. Pins a branch
     variable so any [branch node](concepts/workflow.md) whose `path` equals `K` collapses to its
     single edge for value `V`; the now-unreachable side of the branch is pruned by the renderer's
@@ -176,7 +186,17 @@ that suite without hand-rolling the pytest invocation.
   - `-o, --output <path>` — type `str` (path), default: none (write to stdout). Writes the DOT
     text to `<path>` instead.
 - does:
-  - run: resolve `--workflow` to an absolute path; if it doesn't exist, print
+  - run: resolve the workflow spec from `--workflow` or the single positional (`_dot_spec`); a
+    second positional prints `error: unexpected argument '<arg>'` and neither form given prints
+    `error: dot needs a workflow (name or path to workflow.yaml)`, both to stderr, exit `1`
+  - run: decide the engine the same way `run` does — a bare name that resolves to an installed
+    package exposing a `Registry` is a **Python state machine** and is rendered from its states
+    (one `subgraph cluster_*` per flow, live names only) by the [state
+    graph](concepts/pyflow-state-graph.md); `--pin`/`--leaf` are *declined* there rather than
+    ignored, with `error: --pin/--leaf apply to YAML branch nodes; …` and exit `1`, because they
+    collapse a declared branch and a Python workflow's branches are code. Anything else falls
+    through to the YAML path below
+  - run: resolve the spec to an absolute path; if it doesn't exist, print
     `error: workflow file not found: <path>` to stderr and exit `1`
   - run: parse it into a [workflow](concepts/workflow.md) `Graph` via
     [load_workflow](concepts/load-workflow.md); on a `ValueError` (malformed YAML/schema), print
@@ -190,7 +210,8 @@ that suite without hand-rolling the pytest invocation.
   - run: if `--output` is given, write the DOT text to that path and print
     `[workhorse] wrote <path>` to stderr; otherwise write the DOT text to stdout
 - code: `workhorse/workhorse/main.py::_run_dot`
-- verify: `workhorse/tests/test_dot.py::test_name_override`
+- verify: `workhorse/tests/test_dot.py::test_name_override`,
+  `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
 
 ### config
 - usage: `workhorse config <show|get|list|set-library|set-stablemate> [args]`

@@ -278,6 +278,7 @@ def _capture_run_call(argv: list[str], *, workflow: str | None, layer: Path) -> 
         no_cache=False,
         *,
         config=None,
+        dry_run=False,
     ):
         seen.update(
             workflow_path=Path(workflow_path),
@@ -285,6 +286,7 @@ def _capture_run_call(argv: list[str], *, workflow: str | None, layer: Path) -> 
             params=params,
             flow=flow,
             no_cache=no_cache,
+            dry_run=dry_run,
         )
         return 0
 
@@ -304,12 +306,12 @@ def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
     params = json.dumps({"story": "AUTH-12"})
 
     through_workhorse = _capture_run_call(
-        ["run", "demo", "qa", "--run-id=test123", "--params", params],
+        ["run", "demo", "qa", "--run-id=test123", "--params", params, "--dry-run"],
         workflow=None,
         layer=layer,
     )
     through_script = _capture_run_call(
-        ["run", "qa", "--run-id=test123", "--params", params],
+        ["run", "qa", "--run-id=test123", "--params", params, "--dry-run"],
         workflow="demo",
         layer=layer,
     )
@@ -318,6 +320,9 @@ def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
     assert through_script["flow"] == "qa"
     assert through_script["run_id"] == "test123"
     assert through_script["params"] == {"story": "AUTH-12"}
+    # Every flag the parser grows has to reach the engine through both doors, or the
+    # bound form quietly becomes a second, poorer CLI — which is the whole point here.
+    assert through_script["dry_run"] is True
 
 
 def test_the_console_script_binds_the_name_and_nothing_else(tmp_path: Path) -> None:

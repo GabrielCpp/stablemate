@@ -116,6 +116,7 @@ def run(
     no_cache: bool = False,
     *,
     config: RunConfig | None = None,
+    dry_run: bool = False,
 ) -> int:
     cfg = config or RunConfig.from_env()
     graph = load_workflow(workflow_path)
@@ -181,6 +182,18 @@ def run(
     unresolved_refs = missing_references(workflow_dir, manifest)
     if unresolved_refs:
         print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}", file=sys.stderr)
+
+    # `--dry-run` stops here, before any run directory exists: everything checkable
+    # without running has been checked, and the reference list that only warns above
+    # is what this mode exists to turn into an exit code a CI job can read.
+    if dry_run:
+        if unresolved_refs:
+            print(f"[workhorse] ERROR: {format_missing(unresolved_refs)}", file=sys.stderr)
+            return 1
+        nodes = ", ".join(graph.nodes) or "(none)"
+        print(f"[workhorse] dry-run ok: '{graph.name}' starts at '{graph.start}'")
+        print(f"[workhorse] {len(graph.nodes)} nodes: {nodes}")
+        return 0
 
     # Default (auto): one stable run dir per (workflow, program) that we resume in
     # place. The run *is* the research session — its full context (counters, gate
@@ -1017,6 +1030,14 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         "not per-node. To run on an OpenRouter model, use an OpenRouter-native "
         "backend (aider/opencode) and give nodes an 'openrouter/<slug>' model.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check the workflow without running it, and exit non-zero if anything "
+        "is wrong. Every prompt path must resolve, every state name must bind and "
+        "no state may be unreachable; nodes and agent turns are stubbed. The "
+        "failure this catches is a typo found at hour 30 of an unattended run.",
+    )
     resume_group = parser.add_mutually_exclusive_group()
     resume_group.add_argument(
         "--resume-run",
@@ -1315,6 +1336,7 @@ def _run_run(args: argparse.Namespace) -> None:
                 run_id=args.run_id,
                 params=params,
                 no_cache=getattr(args, "no_cache", False),
+                dry_run=getattr(args, "dry_run", False),
             )
         )
 
@@ -1330,6 +1352,7 @@ def _run_run(args: argparse.Namespace) -> None:
             context_manifest=context_manifest,
             flow=flow,
             no_cache=getattr(args, "no_cache", False),
+            dry_run=getattr(args, "dry_run", False),
         )
     except UnmetRequirementsError as e:
         # Raised before the run dir exists, so there is nothing to finalize — just
@@ -1383,7 +1406,18 @@ def _run_test(args: argparse.Namespace) -> None:
 
 
 def _add_dot_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--workflow", required=True, help="Path to workflow.yaml")
+    parser.add_argument(
+        "--workflow",
+        default=None,
+        help="Path to a workflow.yaml, OR a bare workflow NAME resolved the same way "
+        "`run` resolves one. A name registering a Python state machine is rendered "
+        "from its states; anything else is rendered from its YAML graph.",
+    )
+    parser.add_argument(
+        "positional",
+        nargs="*",
+        help="Positional form of --workflow: `workhorse dot <name-or-path>`.",
+    )
     parser.add_argument(
         "--pin",
         action="append",
@@ -1429,10 +1463,54 @@ def _parse_pins(raw: list[str] | None) -> dict[str, str]:
     return pins
 
 
+def _dot_spec(args: argparse.Namespace) -> str:
+    """The workflow `dot` was asked for, from --workflow or the positional form."""
+    positional = list(getattr(args, "positional", None) or [])
+    spec = args.workflow or (positional.pop(0) if positional else None)
+    if positional:
+        print(f"error: unexpected argument '{positional[0]}'", file=sys.stderr)
+        sys.exit(1)
+    if not spec:
+        print("error: dot needs a workflow (name or path to workflow.yaml)", file=sys.stderr)
+        sys.exit(1)
+    return spec
+
+
 def _run_dot(args: argparse.Namespace) -> None:
+    spec = _dot_spec(args)
+    registry = getattr(args, "registry", None) or _packaged_registry(spec)
+    dot = _pyflow_dot(args, registry) if registry is not None else _yaml_dot(args, spec)
+
+    if args.output:
+        Path(args.output).write_text(dot)
+        print(f"[workhorse] wrote {args.output}", file=sys.stderr)
+    else:
+        sys.stdout.write(dot)
+
+
+def _pyflow_dot(args: argparse.Namespace, registry: Registry) -> str:
+    """Render a Python state machine, one cluster per flow.
+
+    `--pin`/`--leaf` are declined rather than ignored: they collapse a *declared*
+    branch, and a Python workflow's branches are code — there is nothing to pin.
+    """
+    from workhorse.pyflow.dot import to_dot
+    from workhorse.pyflow.graph import registry_graphs
+
+    if args.pin or args.leaf:
+        print(
+            "error: --pin/--leaf apply to YAML branch nodes; "
+            f"'{registry.name}' is a Python state machine, whose branches are code",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return to_dot(registry_graphs(registry), name=args.name or registry.name)
+
+
+def _yaml_dot(args: argparse.Namespace, spec: str) -> str:
     from workhorse.graph.dot import to_dot
 
-    workflow_path = Path(args.workflow).resolve()
+    workflow_path = _resolve_workflow_path(spec)
     if not workflow_path.exists():
         print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
         sys.exit(1)
@@ -1444,13 +1522,7 @@ def _run_dot(args: argparse.Namespace) -> None:
 
     pins = _parse_pins(args.pin)
     leaves = set(args.leaf or [])
-    dot = to_dot(graph, pins=pins, name=args.name, leaves=leaves)
-
-    if args.output:
-        Path(args.output).write_text(dot)
-        print(f"[workhorse] wrote {args.output}", file=sys.stderr)
-    else:
-        sys.stdout.write(dot)
+    return to_dot(graph, pins=pins, name=args.name, leaves=leaves)
 
 
 def _build_parser(prog: str = "workhorse") -> argparse.ArgumentParser:

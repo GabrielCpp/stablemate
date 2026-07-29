@@ -152,7 +152,22 @@ def test_main_is_auto_by_default_no_flag():
     resolved inside run())."""
     captured = {}
 
-    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True, run_id=None, params=None, context_manifest=None, flow=None, no_cache=False):
+    # Mirrors run()'s real signature so a new engine argument shows up here as a
+    # TypeError rather than silently going unpassed.
+    def fake_run(
+        workflow_path,
+        runs_dir,
+        resume_run_dir=None,
+        auto=True,
+        run_id=None,
+        params=None,
+        context_manifest=None,
+        flow=None,
+        no_cache=False,
+        *,
+        config=None,
+        dry_run=False,
+    ):
         captured.update(resume_run_dir=resume_run_dir, auto=auto)
         return 0
 
