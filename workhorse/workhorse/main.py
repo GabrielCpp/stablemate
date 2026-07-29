@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 from collections import Counter, deque
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from workhorse.graph.context import WorkflowContext
 from workhorse.graph.loader import load_workflow
 from workhorse.requirements import UnmetRequirementsError, check_requirements
 from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
+from workhorse.packaged import PackagedWorkflow, PackagedWorkflowError, find_packaged_workflow
 from workhorse.runner import agent as agent_runner
 from workhorse.runner import branch as branch_runner
 from workhorse.runner import call as call_runner
@@ -991,12 +993,13 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workflow",
         default=None,
-        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'coder') "
-        "resolved from the configured prompt library as "
-        "<library_dir>/workflows/<name>/workflow.yaml. The library dir comes from "
-        "$WORKHORSE_LIBRARY_DIR or library_dir in ~/.config/farrier/config.toml. "
-        "May also be given as the first positional argument: "
-        "`workhorse run coder` or `workhorse run coder qa`.",
+        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'coder'). A name "
+        "resolves first to an installed package registering it in the "
+        "'workhorse.workflows' entry-point group, then to the configured prompt "
+        "library as <library_dir>/workflows/<name>/workflow.yaml. The library dir "
+        "comes from $WORKHORSE_LIBRARY_DIR or library_dir in "
+        "~/.config/farrier/config.toml. May also be given as the first positional "
+        "argument: `workhorse run coder` or `workhorse run coder qa`.",
     )
     parser.add_argument(
         "positional",
@@ -1106,13 +1109,22 @@ def _resolve_library_dir() -> Path | None:
 
 
 def _resolve_workflow_path(spec: str) -> Path:
-    """Resolve ``--workflow`` as either an explicit path or a bare library name.
+    """Resolve ``--workflow`` as an explicit path, an installed package, or a library name.
 
     A value that looks like a path — contains a separator, ends in ``.yaml``/
     ``.yml``, or names an existing filesystem entry — is used verbatim. Otherwise it is
-    a bare workflow NAME, resolved as ``<layer>/workflows/<name>/workflow.yaml`` against
-    each library layer in turn (overlay, then the base library wheel), so
-    ``--workflow author`` runs the author workflow wherever it lives."""
+    a bare workflow NAME, and the two name-resolving mechanisms are tried in order:
+
+    1. An installed distribution registering the name in the ``workhorse.workflows``
+       entry-point group.
+    2. ``<layer>/workflows/<name>/workflow.yaml`` against each library layer in turn
+       (overlay, then the base library wheel).
+
+    Installed packages win because installing one is a deliberate act aimed at a
+    specific name, while a library layer is the content store a name falls back to —
+    and because a workflow that has been packaged is the packaged one's successor, not
+    its sibling. A YAML copy that survives the move stays reachable by path. When both
+    exist, say so on stderr: silent shadowing is the one way this ordering hurts."""
     looks_like_path = (
         os.sep in spec
         or (os.altsep is not None and os.altsep in spec)
@@ -1121,6 +1133,14 @@ def _resolve_workflow_path(spec: str) -> Path:
     )
     if looks_like_path:
         return Path(spec).resolve()
+
+    try:
+        packaged = find_packaged_workflow(spec)
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if packaged is not None:
+        return _packaged_workflow_path(packaged)
 
     layers = _library_layers()
     if not layers:
@@ -1143,14 +1163,57 @@ def _resolve_workflow_path(spec: str) -> Path:
         )
         sys.exit(1)
 
-    for layer in layers:
-        candidate = layer / "workflows" / spec / "workflow.yaml"
-        if candidate.is_file():
-            return candidate.resolve()
+    found = _library_workflow_path(spec, layers)
+    if found is not None:
+        return found
 
     searched = "\n".join(f"  - {layer}" for layer in layers)
     print(
         f"error: no workflow named '{spec}' in any library layer.\nSearched:\n{searched}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _library_workflow_path(spec: str, layers: list[Path]) -> Path | None:
+    """``<layer>/workflows/<spec>/workflow.yaml`` from the first layer that has it."""
+    for layer in layers:
+        candidate = layer / "workflows" / spec / "workflow.yaml"
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def _packaged_workflow_path(packaged: PackagedWorkflow) -> Path:
+    """The ``workflow.yaml`` inside an installed workflow package.
+
+    The package directory is resolved here rather than at render time so a package
+    that cannot be a directory (a zip import) fails at the seam, with an explanation,
+    instead of as a missing Jinja template mid-run."""
+    try:
+        root = packaged.workflow_dir()
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    shadowed = _library_workflow_path(packaged.name, _library_layers())
+    if shadowed is not None:
+        print(
+            f"note: workflow '{packaged.name}' is installed as {packaged.origin} and "
+            f"also present in a library layer ({shadowed}). Running the installed one; "
+            "pass the path to run the other.",
+            file=sys.stderr,
+        )
+
+    candidate = root / "workflow.yaml"
+    if candidate.is_file():
+        return candidate.resolve()
+
+    print(
+        f"error: workflow '{packaged.name}' resolves to {packaged.origin}, whose "
+        f"package directory ({root}) ships no workflow.yaml.\n"
+        "This workhorse runs YAML workflows; a package exposing only a Python "
+        "Workflow object needs a newer workhorse to drive it.",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -1377,9 +1440,9 @@ def _run_dot(args: argparse.Namespace) -> None:
         sys.stdout.write(dot)
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser(prog: str = "workhorse") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="workhorse",
+        prog=prog,
         description="Fail-soft runner for YAML-defined agent workflows.",
     )
     sub = parser.add_subparsers(dest="command")
@@ -1447,20 +1510,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    argv = sys.argv[1:]
-    parser = _build_parser()
+_SUBCOMMANDS = frozenset({"run", "test", "dot", "config", "version"})
+
+
+def main(argv: list[str] | None = None, *, workflow: str | None = None) -> None:
+    """The whole CLI, for every front door there is.
+
+    ``argv`` defaults to the process arguments, so the ``workhorse`` console script
+    calls this with none. ``workflow`` names the workflow up front, which is what a
+    per-workflow ``workhorse-<name>`` script binds — the *only* difference between the
+    two commands. There is deliberately no second parser: a per-workflow script that
+    grew its own argument definitions would drift from ``workhorse run`` silently, and
+    the drift would only show up as two tools that disagree about a flag."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _build_parser("workhorse" if workflow is None else f"workhorse-{workflow}")
 
     # Keep `workhorse --workflow ...` working: if no recognised subcommand is
     # given, inject `run` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"run", "test", "dot", "config", "version"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
         argv = ["run"] + list(argv)
 
     args = parser.parse_args(argv)
+    if workflow is not None:
+        _bind_workflow_name(parser, args, workflow)
 
     if args.command == "version":
         print(importlib.metadata.version("workhorse-agent"))
@@ -1479,6 +1554,49 @@ def main() -> None:
         return
 
     _run_run(args)
+
+
+def _bind_workflow_name(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, name: str
+) -> None:
+    """Fill in the workflow a per-workflow console script already knows.
+
+    Parsing has happened by now: this only writes the name into the slot
+    ``--workflow`` would have filled, and rejects the two ways the caller can
+    contradict it."""
+    command = getattr(args, "command", None)
+    if command not in (None, "run"):
+        parser.error(
+            f"'{command}' is not available here — this command runs the '{name}' "
+            f"workflow. Use `workhorse {command} ...` instead."
+        )
+    if getattr(args, "workflow", None) is not None:
+        parser.error(
+            f"--workflow is not accepted here: this command always runs '{name}'."
+        )
+    positional = getattr(args, "positional", None) or []
+    if len(positional) > 1:
+        extra = " ".join(positional[1:])
+        parser.error(
+            f"unexpected arguments: {extra} — usage: {parser.prog} run [<flow>] [options]"
+        )
+    args.workflow = name
+
+
+def console_script(name: str) -> Callable[..., None]:
+    """Build the callable a ``workhorse-<name>`` console script points at.
+
+    ``[project.scripts]`` targets are *called* after import, so this returns the entry
+    function rather than running anything — a module-level call would fire on import
+    and could not be a script target at all."""
+
+    def entry(argv: list[str] | None = None) -> None:
+        main(argv, workflow=name)
+
+    entry.__name__ = f"workhorse_{name.replace('-', '_')}"
+    entry.__qualname__ = entry.__name__
+    entry.__doc__ = f"Console-script entry point for the '{name}' workflow."
+    return entry
 
 
 def _run_config(args: argparse.Namespace) -> None:

@@ -1,3 +1,3 @@
-from workhorse.main import main
+from workhorse.main import console_script, main
 
-__all__ = ["main"]
+__all__ = ["console_script", "main"]

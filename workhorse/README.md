@@ -93,8 +93,27 @@ workhorse config set-stablemate ~/path/to/stablemate        # optional: sets COD
 `--workflow` and the `run` positional form are equivalent — use whichever fits the
 context. The overlay library path can also be set via `WORKHORSE_LIBRARY_DIR`.
 
-A named workflow resolves across two layers: the configured overlay (above) and the
-**base library** beneath it. You do not install the base — it is content, and workhorse
+A name resolves through two mechanisms, in order: an **installed workflow package**,
+then the **library layers**.
+
+A distribution ships workflows by advertising them in the `workhorse.workflows`
+entry-point group, and `workhorse run <name>` resolves the package that claims the name:
+
+```toml
+[project.entry-points."workhorse.workflows"]
+research = "myworkflows.research.workflow:workflow"
+```
+
+An installed package wins over a library layer of the same name — installing one is a
+deliberate act aimed at that name, while a library layer is the content store a name
+falls back to. When both exist, workhorse says so on stderr and the library copy stays
+reachable by path. The package must be installed **unpacked** (any pip/uv wheel is): the
+prompt renderer is a filesystem template loader rooted at the workflow's own directory,
+so a zip-imported package is refused at resolution rather than failing later as a
+missing template.
+
+Failing that, a named workflow resolves across two layers: the configured overlay
+(above) and the **base library** beneath it. You do not install the base — it is content, and workhorse
 fetches it into `~/.cache/stablemate` the first time it needs one, then leaves it frozen
 (delete the cache to upgrade). It finds a base via, in order: `$STABLEMATE_BASE_DIR` →
 the `base_dir` config key (`workhorse config set-base <path>`) → an import of the
@@ -107,6 +126,25 @@ A workflow declares the tools it uses in a `requires:` block, checked before the
 node runs — see [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md#11-requires--declaring-the-tools-a-workflow-uses).
 Script nodes run under workhorse's own interpreter, so a tool they import must live in
 *that* environment (`pipx inject workhorse-agent ostler`), not merely on `PATH`.
+
+### Per-workflow commands (`workhorse-<name>`)
+
+A distribution may also install one console script per workflow, alongside the entry
+point:
+
+```toml
+[project.scripts]
+workhorse-research = "myworkflows.research.workflow:main"
+```
+
+```bash
+workhorse run research qa --run-id=r1 --params '{"k":"v"}'
+workhorse-research  run qa --run-id=r1 --params '{"k":"v"}'   # identical
+```
+
+The two are the same command: one parser, with the workflow name already bound in the
+second. `workhorse-<name>` therefore accepts exactly what `workhorse run` accepts and
+nothing more — for `dot`, `test` or `config`, use `workhorse`.
 
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
