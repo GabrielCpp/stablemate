@@ -9,7 +9,9 @@ Walks a directed graph of nodes defined by a [workflow](concepts/workflow.md) â€
 [workflow file format](workflow-format.md) â€” checkpointing after each node so a run resumes
 exactly where it stopped, built to run unattended for days. The agent harness that drives a
 run is an [AgentBackend](concepts/agent-backend.md), chosen per run via
-[get_backend](concepts/get-backend.md) from the `--cli` flag. A workflow's own `tests/` suite is
+[get_backend](concepts/get-backend.md) from the `--cli` flag. A workflow may equivalently be
+written as a Python state machine and walked by [drive](concepts/pyflow-driver.md), which shares
+this runner's artifacts, backends and resilience but keeps its control flow in Python. A workflow's own `tests/` suite is
 run via `workhorse test` and authored against [`workhorse.testing`](concepts/testing.md).
 
 - binary: `workhorse`
