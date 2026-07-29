@@ -50,7 +50,8 @@ three-tier state rule hold at size.
 | 6 | `53dc4ba` | State graph read off the source, for `--dry-run` and `dot` |
 | — | `5d3f89d` | `research/models.py` → `schemas.py`; `self.agent(power=, timeout=)` reaches the turn |
 | 2 | `772b5d0` | The scriptutil split — `workhorse_workflows.kit.{git,github,workspace}`; scriptutil 1000 → 154 lines |
-| 7 | _this commit_ | The `research` port — 30 YAML nodes → 12 states, both pyproject tables, 8 end-to-end tests |
+| 7 | `2ea582a` | The `research` port — 30 YAML nodes → 12 states, both pyproject tables, 8 end-to-end tests |
+| — | _this commit_ | `--dry-run` reports a fail terminal instead of failing on it (the open question below, answered) |
 
 ## What is next
 
@@ -59,21 +60,10 @@ three-tier state rule hold at size.
    `workflows/pyproject.toml`, and end-to-end tests in `workflows/tests/`. Take the test file
    `workflows/tests/test_research_workflow.py` as the pattern — real nodes against a temp git
    repo, only the agent turn scripted — because it is what made the port's claims checkable.
-2. **Decide the `--dry-run` question below before the second port**, since it is the same
-   question for every workflow with a fail terminal, and `author`/`coder` have several.
 
 ## Open questions
 
-- **`--dry-run` cannot pass on any workflow with a reachable fail terminal.** Under `--dry-run`
-  every agent reply is a blank stand-in, so `research` walks `start → goal_review → halt` and
-  `halt` does what it is written to do: `raise WorkflowFailed`. `run.py`'s ladder catches
-  `PyflowError` *before* the dry-run-tolerant `except Exception`, and its comment names "an
-  explicit `raise WorkflowFailed`" as belonging there deliberately — so `workhorse run research
-  --dry-run` exits 1 even though the static preflight passed and nothing is wrong. The two
-  readings: a fail terminal reached on stand-in values is an artifact of the stand-ins (report
-  it, exit 0, same reasoning the `except Exception` branch already uses), or a dry run that ends
-  red is telling the truth and the exit code should stay 1. This is a driver decision, not an
-  oversight, so it is the user's to make. Nothing else in the port depends on it.
+None.
 
 ## Decisions re-confirmed
 
@@ -88,6 +78,15 @@ that settled it is named so the next reader can go straight there.
   fields are also the output keys the resilience ladder nulls out), node return types, and
   `Program`, the `setup()` residue. Kept, renamed `schemas.py`, docstring rewritten so it no longer
   claims to be payloads between states. Do not re-litigate; the name now carries the decision.
+- **A fail terminal under `--dry-run` is an artifact of the stand-ins** *(raised by the port,
+  answered by the user)*. Stubbed nodes return blank models, so the machine takes whichever
+  branch a blank selects — `research` walked `start → goal_review → halt` and exited 1 on a
+  clean preflight, and no workflow with a reachable fail terminal could have dry-run green.
+  `run.py` now prints the halted state and exits 0 for `WorkflowFailed` **under `--dry-run`
+  only**; the run dir is still marked `fail`, and every other `PyflowError` still exits 1. Note
+  the shape: it is a branch *inside* `except PyflowError`, not a handler before it — a
+  `raise` from a sibling `except` arm escapes the whole `try` rather than falling through to
+  the next one, which is what the first attempt got wrong.
 - **The `kit` package forwards through `__getattr__`; it does not re-export** *(step 2, found while
   building)*. workhorse re-executes a script module on **every** node run, so a script's
   `from workhorse_workflows.kit import github_client` re-reads that attribute each time — which is

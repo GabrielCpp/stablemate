@@ -121,6 +121,23 @@ def run_pyflow(
             # — lands here. The run dir is left resumable on purpose: these are the
             # failures an operator fixes and continues from.
             agent_runner.terminate_active()
+            if dry_run and isinstance(exc, WorkflowFailed):
+                # …with one exception. A fail terminal reached under `--dry-run` is an
+                # artifact of the stand-in values, not a verdict on the workflow: every
+                # agent reply is a blank model, so the machine takes whichever branch a
+                # blank selects, and any workflow with a reachable fail terminal can be
+                # walked into one. Report which state halted and exit 0 — the same
+                # reasoning the branch below already uses to decline reading a real
+                # failure into a stand-in. The run dir is still marked `fail`, because
+                # the machine really did end there; it is the *check* that passed.
+                print(
+                    f"[workhorse] dry-run reached the fail terminal in "
+                    f"'{_state_of(writer)}': {exc}"
+                )
+                print("[workhorse] (nodes return stand-in values under --dry-run)")
+                writer.finish(terminal="fail")
+                otel.end_run("terminal")
+                return 0
             print(f"[workhorse] ERROR: {exc}")
             writer.finish(terminal="fail")
             otel.end_run("fail", error=str(exc))

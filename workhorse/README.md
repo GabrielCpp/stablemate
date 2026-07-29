@@ -186,6 +186,14 @@ name something that is not a state. Then it **drives the machine for real** with
 `setup()`, and the transitions actually bound along one path. The static half is the
 one that carries the weight: it sees the branches this run would never take.
 
+The one failure a dry run declines to report is a **fail terminal**. Stubbed nodes
+return blank stand-ins, so the machine takes whichever branch a blank selects — and
+for any workflow with a reachable `raise WorkflowFailed` that can be the failing one,
+which would mean no such workflow could ever dry-run green. It prints which state
+halted and why, marks the run dir `fail`, and still exits `0`. Every other
+deliberate failure (a dead state, a bad checkpoint parameter, an exhausted transition
+budget) exits `1` as always.
+
 A dry run writes its artifacts to a run dir named `dry-run` and clears it first, so
 it can never resume — or overwrite — the checkpoint of a real week-long run.
 
