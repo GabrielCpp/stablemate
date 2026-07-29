@@ -1,0 +1,236 @@
+"""What the research workflow validates: agent replies, and node return values.
+
+These are **not** payloads at state boundaries — that shape is rejected (see the plan's
+"Rejected along the way"). A transition carries keyword arguments bound against the next
+state's own signature, so a state's parameters are its schema and there is no model in
+between. What is left needs a model for a different reason: the two places where a value
+arrives from outside Python and has to be checked on the way in.
+
+* **Agent replies.** `self.agent(prompt, returns=T)` validates a model out of whatever
+  the turn produced, and the engine reads `T`'s fields to build the output keys it asks
+  for. The model is the seam's argument; without it there is nothing to ask for.
+* **Node returns.** A node is a plain function returning a plain typed value; `Program`
+  is additionally the one `setup()` hands back as `self.ctx`.
+
+Two rules shape all of them, and both come from how workhorse fails rather than from
+how it succeeds:
+
+* **Every field has a default.** After the resilience ladder's last rung, a node that
+  could not be answered emits its declared output keys as `null` and the run advances
+  (docs/GUARDRAILS.md, "Default to the next node"). Those nulls are then validated into
+  the model, so a required field would turn a soft failure into a hard one — exactly
+  the crash the ladder exists to prevent.
+* **Unknown keys are ignored, nulls are dropped.** `_drop_nulls` lets each field's own
+  default stand in for a missing answer, and `extra="ignore"` means an agent that
+  wraps its reply in the old YAML-era envelope degrades to all-defaults instead of
+  raising.
+
+A defaulted `status`/`verdict` is `""`, which matches no branch — so a state that
+cannot get an answer falls through to its else arm, and the else arms here are the
+conservative ones (rework rather than approve, halt rather than extend).
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class ResearchResult(BaseModel):
+    """Base for every agent reply and node return in this workflow."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_nulls(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v is not None}
+        return data
+
+
+# ── node returns ────────────────────────────────────────────────────────────
+
+
+class RepoSetup(ResearchResult):
+    """What `clone_repo` decided the working tree is."""
+
+    repo_dir: str = ""
+
+
+class Program(ResearchResult):
+    """The run's whole configuration, and therefore `self.ctx`.
+
+    Decided once at the top of the run by `load_program` and read at the bottom by
+    `publish_results` — the residue `setup()` exists for.
+    """
+
+    repo_dir: str = ""
+    program: str = ""
+    program_dir: str = ""
+    progress_path: str = ""
+    code_root: str = ""
+    result_branch: str = ""
+    #: Empty on purpose: the leads then read the README's "North star" section.
+    goal: str = ""
+
+
+class PublishResult(ResearchResult):
+    published: bool = False
+    result_branch: str = ""
+    status: str = ""
+
+
+# ── agent replies ───────────────────────────────────────────────────────────
+
+
+class GateSelection(ResearchResult):
+    """`prompts/select-next-gate.md` — which gate to attempt, or that the program died.
+
+    `gate_id == "none"` means the ladder is exhausted; `program_killed` means a kill
+    criterion tripped, and then `gate_id` still names the gate that tripped it.
+    """
+
+    gate_id: str = ""
+    gate_doc_path: str = ""
+    depends_on_satisfied: bool = False
+    program_killed: bool = False
+    rationale: str = ""
+
+
+class ImplResult(ResearchResult):
+    """`prompts/implement-experiment.md` and `prompts/rework-experiment.md`."""
+
+    status: str = ""
+    spec_files: list[str] = Field(default_factory=list)
+    code_files: list[str] = Field(default_factory=list)
+    test_files: list[str] = Field(default_factory=list)
+    commands_run: list[str] = Field(default_factory=list)
+    metrics: dict[str, str] = Field(default_factory=dict)
+    notes: str = ""
+
+
+class FailedCriterion(ResearchResult):
+    criterion: str = ""
+    expected: str = ""
+    observed: str = ""
+    severity: str = ""
+
+
+class AntiShortcutFlags(ResearchResult):
+    lookup_flag: bool = False
+    oracle_route_flag: bool = False
+    repair_flag: bool = False
+    leak_flag: bool = False
+
+
+class GateCheck(ResearchResult):
+    """`prompts/gate-check.md` — the verdict the whole loop branches on.
+
+    `status` is `approved` (PASS/WEAK_PASS), `killed` (a FAIL that trips a program kill
+    criterion), or `needs_rework` (any other FAIL).
+    """
+
+    status: str = ""
+    verdict: str = ""
+    failed_criteria: list[FailedCriterion] = Field(default_factory=list)
+    anti_shortcut_flags: AntiShortcutFlags = Field(default_factory=AntiShortcutFlags)
+    zero_weights_changes_output: bool = False
+    notes: str = ""
+
+
+class RecordResult(ResearchResult):
+    """`prompts/record-result.md` — the write to PROGRESS.md and the gate doc."""
+
+    status: str = ""
+    outcome: str = ""
+    progress_updated: bool = False
+    result_slot_updated: bool = False
+    finding_path: str = ""
+
+
+class LeadReview(ResearchResult):
+    """`prompts/research-lead-review.md` — was the kill real?
+
+    `verdict` is `revive` or `new_direction`.
+    """
+
+    verdict: str = ""
+    kill_was_correct: bool = False
+    reason_class: str = ""
+    evidence: str = ""
+    apparatus_fix: str = ""
+    next_direction_hint: str = ""
+    confidence: str = ""
+
+
+class ReviveResult(ResearchResult):
+    """`prompts/revive-gate.md`."""
+
+    status: str = ""
+    gate_id: str = ""
+    finding_path: str = ""
+    progress_updated: bool = False
+    gate_doc_rescoped: bool = False
+
+
+class NewDirectionResult(ResearchResult):
+    """`prompts/define-new-direction.md`."""
+
+    status: str = ""
+    supersedes_gate: str = ""
+    direction_name: str = ""
+    core_question: str = ""
+    ruled_out: list[str] = Field(default_factory=list)
+    new_gates: list[str] = Field(default_factory=list)
+    readme_path: str = ""
+    progress_reset: bool = False
+
+
+class GoalReview(ResearchResult):
+    """`prompts/lead-goal-review.md` — the ladder is exhausted; now what?
+
+    `verdict` is `reached`, `impossible`, or `extend`.
+    """
+
+    verdict: str = ""
+    north_star_gap: str = ""
+    evidence_or_deadends: str = ""
+    next_gate_title: str = ""
+    next_gate_question: str = ""
+    next_gate_cheapest_kill: str = ""
+    next_gate_controls: list[str] = Field(default_factory=list)
+    why_closer: str = ""
+    confidence: str = ""
+
+
+class ExtendResult(ResearchResult):
+    """`prompts/extend-program.md`."""
+
+    status: str = ""
+    new_gate_id: str = ""
+    new_gate_title: str = ""
+    depends_on: str = ""
+    gate_doc_path: str = ""
+    readme_updated: bool = False
+    progress_updated: bool = False
+    moves_closer: str = ""
+
+
+__all__ = [
+    "AntiShortcutFlags",
+    "ExtendResult",
+    "FailedCriterion",
+    "GateCheck",
+    "GateSelection",
+    "GoalReview",
+    "ImplResult",
+    "LeadReview",
+    "NewDirectionResult",
+    "Program",
+    "PublishResult",
+    "RecordResult",
+    "RepoSetup",
+    "ResearchResult",
+    "ReviveResult",
+]

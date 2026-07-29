@@ -180,7 +180,15 @@ class Engine:
 
     # --- self.agent ---------------------------------------------------------
 
-    def agent(self, prompt: str, *, returns: type, args: dict[str, Any]) -> Any:
+    def agent(
+        self,
+        prompt: str,
+        *,
+        returns: type,
+        args: dict[str, Any],
+        power: str | None = None,
+        timeout: float | None = None,
+    ) -> Any:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
         writer.record_node(node_id, "enter", prompt=prompt)
@@ -191,6 +199,13 @@ class Engine:
             self.env.log.info("[workhorse] agent  → %s (dry-run)", node_id)
             return value
 
+        # Left out entirely when the state said nothing, so the node model's own
+        # defaults keep applying rather than being overwritten with None.
+        budget: dict[str, Any] = {}
+        if power is not None:
+            budget["power"] = power
+        if timeout is not None:
+            budget["timeout"] = timeout
         node = AgentNode(
             type="agent",
             id=node_id,
@@ -201,6 +216,7 @@ class Engine:
             args={},
             outputs=_outputs_for(returns),
             next=None,
+            **budget,
         )
         self.env.log.info("[workhorse] agent  → %s", node_id)
         config = self.env.config

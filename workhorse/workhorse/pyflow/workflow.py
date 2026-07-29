@@ -204,14 +204,27 @@ class Workflow(BaseModel):
         return self._require_engine().call(node, args, kwargs)
 
     def agent(
-        self, prompt: str, *, returns: type[T], args: dict[str, Any] | None = None
+        self,
+        prompt: str,
+        *,
+        returns: type[T],
+        args: dict[str, Any] | None = None,
+        power: str | None = None,
+        timeout: float | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
         The one surviving `dict[str, Any]`: a prompt genuinely has no signature to
         check arguments against.
+
+        `power` is the abstract tier ("low"/"medium"/"high") the operator's config maps
+        to a concrete model per backend; `timeout` is this turn's wall-clock budget in
+        seconds. Both default to None = whatever the engine defaults to, so a state
+        that says nothing behaves exactly as before.
         """
-        return self._require_engine().agent(prompt, returns=returns, args=args or {})
+        return self._require_engine().agent(
+            prompt, returns=returns, args=args or {}, power=power, timeout=timeout
+        )
 
     def handoff(self, wf: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> Any:
         """Drive another workflow to completion in a sub-scope; return its result.
