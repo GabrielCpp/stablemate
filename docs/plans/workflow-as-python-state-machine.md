@@ -1136,13 +1136,47 @@ literal sense, but its purpose here is proof: an unproven driver is not a finish
 cheapest honest test of "the machinery is done" is one real workflow running on it. Move it into
 loop 2 if you would rather loop 1 end on unexercised code.
 
+### Context discipline, which each prompt repeats
+
+Loop 1's first run compacted itself to a standstill, and the cause was in the prompt rather than in
+the work. Three lines drove it, and every prompt below carries the fix:
+
+- **"Read the plan first"** pointed at this file — ~1,350 lines, ~25k tokens, re-read every
+  iteration on top of a 1,500-word instruction block. Each prompt now names the *sections* it needs
+  instead, and forbids reading the whole thing.
+- **Nothing recorded progress.** With no ledger, an iteration that woke up after a compaction
+  rebuilt its state by re-reading the plan, re-reading the engine, and re-running the suites — and
+  that rediscovery is precisely what filled the context that triggered the next compaction.
+  [`workflow-as-python-state-machine-progress.md`](workflow-as-python-state-machine-progress.md) is
+  now the ledger, and writing it is part of every commit.
+- **Iterations ended with a dirty tree**, so `git log` could not answer "what is done" either. The
+  commit is no longer the iteration's reward; it is its terminator.
+
+A fourth cost was self-inflicted: `make test` runs six subproject suites plus the workflow suites,
+bench, and `check-public`, and every passing line of that was read into the context. Redirect it and
+read only the tail on failure. The green bar does not move — only what is paid to observe it.
+
+The failure this prevents is not slowness. Loop 1's post-compaction iterations re-derived
+`research/models.py` as 224 lines of typed payload models passed between states — the shape this
+document lists under "Rejected along the way". A loop that has lost its decisions does not stall
+visibly; it rebuilds what was already rejected, confidently.
+
 ### Loop 1 — build the machinery, keep the YAML engine green
 
 ```
 /loop Work docs/plans/workflow-as-python-state-machine.md to the point where the new
-machinery is built and proven, WITHOUT starting the migration. Read the plan first; it is
-the spec, and its "Packaging and distribution", "farrier keeps no workflow knowledge" and
-"Suggested first step" sections are decisions, not suggestions.
+machinery is built and proven, WITHOUT starting the migration.
+
+START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger. It
+records what has landed, what is next, and which decisions were re-confirmed; it is the
+only file you should need to reconstruct where this loop is.
+
+Then read ONLY these sections of the plan: "The shape to build", "Packaging and
+distribution", "farrier keeps no workflow knowledge", "Suggested first step", "Decided
+(2026-07-29)" and "Rejected along the way". Those are decisions, not suggestions. Do NOT
+read the file end to end — it is ~1,350 lines, and re-reading it every iteration is what
+drove the first run of this loop into repeated autocompaction. Open another section only
+when the step you are on names it.
 
 Deliver, in dependency order — one focused commit per iteration:
 
@@ -1191,10 +1225,19 @@ Deliver, in dependency order — one focused commit per iteration:
 7. Port `research/workflow.yaml` (508 lines) as the proof, and show the counter machinery
    it deletes as a concrete before/after.
 
-Each iteration ends green: `ruff check .` from the repo root (zero findings, fix rather
-than noqa), `make test`, `make check-public`. Tests dependency-free and standalone per
+Each iteration ends green AND ends committed. `ruff check .` from the repo root (zero
+findings, fix rather than noqa), then `make test && make check-public
+>/tmp/wf-loop1-test.log 2>&1 || tail -80 /tmp/wf-loop1-test.log` — redirect it and read
+the tail only on failure, because six subproject suites of passing output is a large share
+of the context this loop needs to keep. Tests dependency-free and standalone per
 workhorse/CLAUDE.md. The YAML engine keeps working the whole way — if a step cannot land
 without breaking it, that step belongs in loop 2; say so and move on.
+
+Then commit, and update the ledger in that SAME commit: what landed, what is next, and any
+decision you had to go back to the plan to re-confirm. Never end an iteration with a dirty
+tree — uncommitted work stops `git log` from answering "what is done", so the next
+iteration re-derives it from source, and that rediscovery is what fills the context. If
+you cannot get to a committable state, stop and say why rather than carrying WIP forward.
 
 STOP and ask me if a driver decision makes `author`'s nine states awkward — check against
 docs/plans/author-workflow-python/, which outranks whatever `research` liked. Nothing else
@@ -1212,12 +1255,75 @@ End the loop when research runs end-to-end on the new driver with the YAML engin
 green, and report what is left for loop 2.
 ```
 
+#### Resuming loop 1 mid-flight
+
+The first run landed steps 1, 3, 4, 5 and 6 — `740a6ef`, `7cae8d1`, `5bb7e29`, `ea47ff7`,
+`53dc4ba`, or 2,350 lines under `workhorse/workhorse/pyflow/` — then stalled inside step 7 with
+**step 2 never done**. That skip is itself a symptom: `research/nodes.py` now imports `checkout`,
+`clone`, `commit_all` and `fetch_reset` from `workhorse.scriptutil`, which is exactly the module
+step 2 empties, so the port is being written against a seam that is scheduled to move.
+
+Do **not** re-fire the prompt above to finish this. Most of it specifies committed work, and
+re-reading a spec for finished work is the cost that stalled the run. Use this instead:
+
+```
+/loop Close out loop 1 of docs/plans/workflow-as-python-state-machine.md. Two steps
+remain: step 2 (the scriptutil split), which was skipped, and step 7 (port `research` as
+the driver's proof), which is in flight. Steps 1, 3, 4, 5 and 6 are committed — the driver
+is 2,350 lines in workhorse/workhorse/pyflow/ and is not being redesigned here.
+
+Read docs/plans/workflow-as-python-state-machine-progress.md first — the ledger — then the
+driver source. From the plan read ONLY "The shape to build", "The `scriptutil` split",
+"Decided (2026-07-29)" and "Rejected along the way". Do NOT read it end to end: it is
+~1,350 lines and re-reading it each iteration is what stalled the first run.
+
+FIRST, settle the in-flight work rather than building on it.
+workflows/src/workhorse_workflows/research/models.py is 224 lines of typed models
+declared as "every typed value the research workflow moves between its states" — which is
+what "Rejected along the way" rejects and what the 2026-07-29 revision says was removed.
+Decide whether these are the rejected thing (typed payloads at state boundaries, which go)
+or merely agent-reply validation (which may stay, under a name that does not claim
+otherwise). Say which, and do not port further until it is settled.
+
+Then, in this order, one commit each:
+
+1. Step 2, BEFORE finishing the port, because the port already imports four of the
+   helpers it moves — doing it after means rewriting nodes.py. Domain half to
+   workhorse_workflows/kit/, engine-side seams stay, ALL pure-git helpers leave.
+   Acceptance: gitpython and PyGithub leave workhorse-agent's required dependencies and
+   no module under workhorse/workhorse/ imports git — including the lazy function-level
+   `from git import Repo` in scriptutil, which returns to module scope in its new home.
+2. Step 7: finish the port and make it run end-to-end. Show as a concrete before/after
+   the counter machinery it deletes — init_lead_counter, init_extend_counter,
+   reset_rework, guard_rework, and the max_reworks constant kept in sync by comment.
+
+Each iteration ends green and ends COMMITTED: `ruff check .` from the repo root, then
+`make test && make check-public >/tmp/wf-loop1-test.log 2>&1 || tail -80
+/tmp/wf-loop1-test.log`. Update the ledger in the same commit. Never carry a dirty tree
+into the next iteration.
+
+STOP and ask me if the port makes a driver decision look wrong — the driver is proven by
+this port, not renegotiated by it.
+
+End the loop when research runs end-to-end on the driver with the YAML engine still green,
+and write loop 2's starting state into the ledger.
+```
+
 ### Loop 2 — migrate the remaining workflows, then delete the old front-end
 
 ```
 /loop Execute the migration half of docs/plans/workflow-as-python-state-machine.md: port
 the remaining workflows to the Python driver, then delete the YAML front-end. Loop 1 built
-and proved the machinery on `research`; read the plan and loop 1's final report first.
+and proved the machinery on `research`.
+
+START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger loop
+1 left behind. It carries loop 1's final report, what is next, and the decisions already
+settled; keep writing it here. Then read the ported `research` workflow, which is the
+worked example every other port follows, and ONLY these sections of the plan: "The shape to
+build", "Resume", "Packaging and distribution", "Decided (2026-07-29)" and "Rejected along
+the way". Do NOT read the plan end to end — it is ~1,350 lines, and re-reading it each
+iteration is what drove loop 1 into repeated autocompaction. A port question is answered by
+`research` and the driver source first, by the plan only when neither settles it.
 
 Port in this order, one workflow per iteration, each landing green before the next:
 
@@ -1255,9 +1361,15 @@ Only after all four run on the driver, delete — in this order, each its own co
   committed file is actively false at the moment the deletion lands; the full documentation
   pass is loop 3's, and doing it here means writing it mid-port.
 
-Each iteration ends green: `ruff check .` from the repo root, `make test`,
-`make check-public`. Keep workhorse/README.md and workhorse/docs/GUARDRAILS.md current as
-behavior changes — they are the operator contract.
+Each iteration ends green AND ends committed. `ruff check .` from the repo root, then
+`make test && make check-public >/tmp/wf-loop2-test.log 2>&1 || tail -80
+/tmp/wf-loop2-test.log` — redirect it and read the tail only on failure; passing suite
+output is context you will need for the port. Commit, and update the ledger in that same
+commit: the workflow ported, its parity evidence, what is next. Never end an iteration with
+a dirty tree — a half-ported workflow that is not committed leaves the next iteration
+unable to tell "ported" from "in progress", and it will re-derive from source to find out.
+Keep workhorse/README.md and workhorse/docs/GUARDRAILS.md current as behavior changes —
+they are the operator contract.
 
 STOP and ask me before: deleting anything not on the list above, and any moment a port
 suggests the driver API itself is wrong. A driver change mid-migration invalidates the
@@ -1284,9 +1396,16 @@ merely misleads a human, who can look at the source; a stale skill actively manu
 ```
 /loop Bring the repository's documentation, examples and skills in line with the Python
 workflow design in docs/plans/workflow-as-python-state-machine.md, to a standard fit for a
-public repository. Loops 1 and 2 shipped the code; read the plan and loop 2's final report
-first. This loop changes NO behavior — if a doc can only be made true by changing code,
-that is a finding to report, not a change to make.
+public repository. Loops 1 and 2 shipped the code. This loop changes NO behavior — if a doc
+can only be made true by changing code, that is a finding to report, not a change to make.
+
+START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger,
+carrying loop 2's final report and what each port actually settled. Then work from the
+SHIPPED CODE: what the docs must now describe is what loops 1 and 2 built, and where the
+plan and the code disagree the code wins and the disagreement is worth a line in the
+ledger. Read the plan only to recover intent behind something the source leaves ambiguous,
+and then only the section that covers it — never the whole file, which is ~1,350 lines and
+whose repeated re-reading drove loop 1 into autocompaction.
 
 Work in this order — one focused commit per iteration:
 
@@ -1344,7 +1463,12 @@ Work in this order — one focused commit per iteration:
    with a pointer to the shipped docs, or delete them. A plan still written in future tense
    about work that has shipped misleads every reader who finds it first.
 
-Each iteration ends green: `ruff check .` from the repo root, `make test`, `make check-public`.
+Each iteration ends green AND ends committed. `ruff check .` from the repo root, then
+`make test && make check-public >/tmp/wf-loop3-test.log 2>&1 || tail -80
+/tmp/wf-loop3-test.log` — redirect it, read the tail only on failure. Commit, and update
+the ledger in that same commit with what was corrected and what was found untrue. A docs
+pass touches many files at once, so a dirty tree here is especially expensive: the next
+iteration cannot tell a rewritten doc from an abandoned one without re-reading both.
 
 STOP and ask me before: adding engine capability to make a doc claim true (that is loop 2
 reopened, and it is my call), and before deleting any doc whose subject survives under a new
