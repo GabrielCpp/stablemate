@@ -71,6 +71,7 @@ Key flags (run `workhorse --help` for the full list):
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
 | `--params '<json>'` / `--params-file <path>` | Override workflow `vars` on a fresh start |
+| `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
 
 ### Named workflows (`workhorse run`)
@@ -163,23 +164,57 @@ nothing more — for `dot`, `test` or `config`, use `workhorse`.
 > and persistent volumes. It is *not* part of the PyPI package — see
 > [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
+## Checking a workflow before you run it (`--dry-run`)
+
+`--dry-run` checks a workflow and exits without running a node — `0` when it is
+clean, `1` on the first problem, so CI can read it. The failure it exists to catch
+is a typo found at hour 30 of an unattended run.
+
+```bash
+workhorse run coder --dry-run
+```
+
+For a YAML workflow it loads the graph and turns the skill/prompt reference warning
+described above into an exit code, then prints the node list.
+
+For a workflow written as a Python state machine it does two complementary things.
+First a **static pass** over the states' own source (the same reading `dot` uses):
+every prompt path a state renders must exist, every state must be reachable from the
+start state, at least one state must be able to return `Done`, and no transition may
+name something that is not a state. Then it **drives the machine for real** with
+`self.call`/`self.agent` stubbed out, which covers what only running can — imports,
+`setup()`, and the transitions actually bound along one path. The static half is the
+one that carries the weight: it sees the branches this run would never take.
+
+A dry run writes its artifacts to a run dir named `dry-run` and clears it first, so
+it can never resume — or overwrite — the checkpoint of a real week-long run.
+
 ## Diagramming a workflow (`workhorse dot`)
 
 `workhorse dot` renders a workflow graph to [Graphviz](https://graphviz.org) DOT
-straight from its `workflow.yaml`, so the diagram never drifts from the workflow.
-Styling is type-based: branch nodes are salmon diamonds, terminals green, `fail`
-nodes coral, agent/script nodes plain boxes; branch edges are labeled with their
-case / numeric-condition / `default`.
+straight from the workflow, so the diagram never drifts from it. For a YAML
+workflow, styling is type-based: branch nodes are salmon diamonds, terminals green,
+`fail` nodes coral, agent/script nodes plain boxes; branch edges are labeled with
+their case / numeric-condition / `default`.
 
 ```bash
-workhorse dot --workflow ./wf/workflow.yaml            # DOT to stdout
-workhorse dot --workflow ./wf/workflow.yaml -o wf.dot  # ...or to a file
-dot -Tsvg wf.dot -o wf.svg                             # render (needs graphviz)
+workhorse dot ./wf/workflow.yaml            # DOT to stdout
+workhorse dot coder -o wf.dot               # ...by name, to a file
+dot -Tsvg wf.dot -o wf.svg                  # render (needs graphviz)
 ```
+
+A name that resolves to a **Python state machine** is rendered from its states
+instead: one cluster per flow, a `box3d` green node for every state that can return
+`Done`, dashed orange edges for an `Await`, coral for a state nothing reaches, and
+edge labels naming the parameters each transition binds. The graph is read off the
+states' source, so both arms of an `if` appear (it over-approximates) and it cannot
+drift from the code. Aliases are never drawn as a second state. `--pin`/`--leaf` are
+declined there rather than ignored — they collapse a *declared* branch, and a Python
+workflow's branches are code.
 
 | Flag | Purpose |
 |---|---|
-| `--workflow <path>` | Path to the `workflow.yaml` to render (required) |
+| `--workflow <path-or-name>` | The workflow to render; equivalent to the positional form |
 | `--pin KEY=VALUE` | Pin a branch variable; matching branches collapse to their single resolved edge and the now-unreachable subgraph is pruned. Repeatable. |
 | `--leaf NODE` | Render `NODE` as a dead-end (suppress its out-edges) to cut a cross-view bridge not gated by a pinned branch. Repeatable. |
 | `--name <id>` | Override the `digraph` identifier (default: sanitized workflow name) |
