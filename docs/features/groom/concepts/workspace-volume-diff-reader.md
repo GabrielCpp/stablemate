@@ -5,7 +5,7 @@ title: Workspace volume diff reader
 ---
 # Workspace volume diff reader
 
-Workspace volume diff reader is the fallback implementation used by the [serve workspace diff](../http/groom.md#serve-workspace-diff) invocation when the connected sidecar cannot provide [workspace diff data](../workspace-diff-data.md). It reads one checkout inside a known workspace Docker volume through a throwaway read-only git container, delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), and returns raw unified working-tree diff text without mutating the workflow container, repository, sidecar registry, or dashboard clients. When no checkout is supplied, it depends on the [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md) to choose the first discovered checkout.
+Workspace volume diff reader is the fallback implementation used by the [serve workspace diff](../http/groom.md#serve-working-tree-diff) invocation when the connected sidecar cannot provide [workspace diff data](../workspace-diff-data.md). It reads one checkout inside a known workspace Docker volume through a throwaway read-only git container, delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), and returns raw unified working-tree diff text without mutating the workflow container, repository, sidecar registry, or dashboard clients. When no checkout is supplied, it depends on the [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md) to choose the first discovered checkout.
 
 - code: groom/groom/docker_io.py::git_diff
 - verify: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,

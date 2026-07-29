@@ -9,12 +9,26 @@ agents:
 packs:
   - python-workflow
   - stablemate
+  - testing
 
-# groom's web UI is HTMX + server-rendered HTML — select its a11y skills
-# directly (only this repo needs them; packs are for bundles reused by ≥2 repos).
+# groom's web UI owes the accessibility contract, so select the universal skill
+# directly (only this repo needs it; packs are for bundles reused by ≥2 repos).
+#
+# `stacks/python/python-htmx-accessibility` is deliberately no longer selected
+# here: groom's dashboard does not use HTMX any more. The server sends JSON and
+# the browser renders it with Preact islands, so that skill's mechanics -- focus
+# across `hx-swap`, aria-live for out-of-band pushes, HTMX attributes on real
+# controls -- describe machinery this repo does not have, and an agent that
+# loads it will confidently rebuild it. The skill is not wrong; it is just for a
+# stack we left. groom's own stack mechanics live in `stablemate-groom` instead.
+#
+# It still installs regardless, because `ui/ui-accessibility` routes to it via
+# `instruction_file()` and farrier follows that as a dependency edge. Dropping it
+# for real means changing that router line in the shared agent library, which is
+# not this repo's call to make unilaterally -- so `stablemate-groom` says
+# out loud that the stack skill does not apply here.
 skills:
   - ui/ui-accessibility
-  - stacks/python/python-htmx-accessibility
 
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back

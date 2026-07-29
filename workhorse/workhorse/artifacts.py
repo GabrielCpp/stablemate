@@ -238,6 +238,28 @@ class ArtifactWriter:
         )
         self._write_done(node_id, next_node)
 
+    def record_interrupt(self, node_id: str, error: str) -> None:
+        """Record that an operator interrupt (Ctrl-C) stopped the run while
+        ``node_id`` was in flight.
+
+        Without this an interrupted run is indistinguishable on disk from a wedged
+        one: the node's ``enter`` event never gets its matching ``done``, and
+        ``run.json`` stays exactly as it looks mid-node. Reading a multi-hour gap in
+        ``events.jsonl`` then means going to the backend CLI's own session transcript
+        to find out whether a human stopped it — the one place the fact was recorded.
+        So the stop is written where the run's own history is: an ``error`` phase
+        event closing that node's window, plus ``interrupted_at``/``error`` on
+        ``run.json``.
+
+        Deliberately NOT ``finish()``: a non-null ``terminal`` means "this run is
+        over" to ``_auto_resolve``/``_find_latest_resumable``, and an interrupted run
+        is precisely the one that must still auto-resume in place. ``resume()``
+        rewrites ``run.json`` without the stamp, so it clears itself when the run
+        picks back up.
+        """
+        self._append_event(node_id=node_id, phase="error", error=error)
+        self._write_run_json(terminal=None, error=error)
+
     def finish(self, terminal: str) -> None:
         (self.run_dir / "context.json").write_text("{}")  # overwritten by controller
         self._write_run_json(terminal=terminal)
@@ -246,13 +268,20 @@ class ArtifactWriter:
     def write_final_context(self, context: dict[str, Any]) -> None:
         (self.run_dir / "context.json").write_text(json.dumps(context, indent=2))
 
-    def _write_run_json(self, terminal: str | None) -> None:
+    def _write_run_json(self, terminal: str | None, error: str | None = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
         data: dict[str, Any] = {
             "workflow": self._workflow_name,
             "run_id": self._run_id,
             "started_at": self._started_at,
-            "ended_at": datetime.now(timezone.utc).isoformat() if terminal else None,
+            "ended_at": now if terminal else None,
             "terminal": terminal,
+            # Set only by record_interrupt, and cleared by the next write (a resume,
+            # or the run finishing) — so "terminal null AND interrupted_at set" reads
+            # as stopped-by-an-operator, distinct from "terminal null, no stamp",
+            # which is a run still in flight (or wedged in one).
+            "interrupted_at": now if error and not terminal else None,
+            "error": error,
             # The pid is advertised on telemetry too (otel resource attr); recorded
             # here as well so it survives with telemetry off.
             "pid": os.getpid(),

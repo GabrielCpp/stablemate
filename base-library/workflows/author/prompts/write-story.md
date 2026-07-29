@@ -21,14 +21,15 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - Epic: `{{ workhorse_var('epic') }}`
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
-- Knowledge record (if present): `{{ workhorse_var('knowledge_record') }}` — read it for context only.
 - Operator answers: `{{ workhorse_var('story_dir') }}/context.md` when present.
 {%- if workhorse_var('mockup_path') %}
 - Design mockup (new screen): `{{ workhorse_var('mockup_path') }}` — a generated visual reference in the
   app's style; link it from Context as the source of truth the criteria are judged against.
 {%- endif %}
 {%- if workhorse_var('features_dir') %}
-- Feature-doc root: `{{ workhorse_var('features_dir') }}` — read this surface's feature doc / user journeys; the Acceptance Criteria must reflect the documented use cases.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built
+  from the code by the okf-builder. **Read it; never write to it.** This is where the story's
+  grounding comes from — see *Ground the story in the book* below.
 {%- endif %}
 
 ## Required reading
@@ -38,12 +39,43 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
   right scope.
 - `{{ instruction_ref('story-docs') }}` — the story file layout.
 
+{%- if workhorse_var('features_dir') %}
+
+## Ground the story in the book (cite node ids)
+
+The OKF book under `{{ workhorse_var('features_dir') }}` already describes every surface the code
+has — screens, components, interactions, flows, endpoints, commands. **That gathering is done; do
+not redo it and do not add to it.** Your job is to find the handful of nodes this story touches and
+*cite* them.
+
+A node's id **is** its location: a repo-relative path for a whole document (`docs/okf/web/settings.md`),
+and `path#anchor` for a section inside one (`docs/okf/web/settings.md#profile-form`). So a citation is
+an ordinary markdown link — write the id verbatim as the href:
+
+```markdown
+Covers the profile form on [the settings screen](docs/okf/web/settings.md), specifically
+[Save profile](docs/okf/web/settings.md#save-profile).
+```
+
+Rules:
+
+- Cite from `## Context`, **at least one** node, and only nodes the story actually works on.
+- Copy ids **exactly** as the book spells them. A link that resolves to no node fails the grounding
+  gate — which is the point: a mistyped id must not read as grounding.
+- Cite the *narrowest* node that is true — the component/interaction section over the whole screen —
+  and add the screen only for orientation.
+- A citation is a pointer, not a paste. Do not copy the node's contents into the story.
+- If this story's surface genuinely has no node yet (a new screen), there is nothing to cite from the
+  book — link the design mockup instead and say in one clause that the surface is new.
+{%- endif %}
+
 {% block repo_authoring_rules %}{% endblock %}
 
 ## Context (what & why — short)
 
 A few sentences in the user's terms: what surface or behaviour this story is about, where it lives,
-and what "done" means at a high level (e.g. "at parity with the legacy X editor"). Link the
+and what "done" means at a high level (e.g. "at parity with the legacy X editor"). Name the surface
+by **linking its OKF node ids** (above) so the scope is grounded rather than asserted. Link the
 **visual reference** the criteria are judged against: a running legacy surface (rewrite projects),
 or — when there is no live reference — the **design mockup** for this surface (the `mockup_path` input
 above if set, else the manifest entry's `mockup` image under the repo's mockup dir). A spec, legacy
@@ -63,18 +95,19 @@ person *using the app* would see or do — never as DOM selectors or implementat
 - The states the goal implies: happy path **plus** empty / loading / error / reachability where they
   matter.
 
-When the knowledge record carries them (it does when a feature-doc root is configured), the
-criteria MUST also cover — grounded in the record, never invented:
+{%- if workhorse_var('features_dir') %}
+The criteria MUST also cover what the nodes you cited say — read from the book, never invented:
 
-- **The documented user journey(s)** (`journeys[]`): at least one AC that a user can complete the
-  typical end-to-end use case for this surface (e.g. "a signed-in user can open the editor, change
-  a value, save, and see it persisted on reload").
-- **Context-conditional chrome** (any component with `chromeContext`): an AC for its presence
-  *and* absence in each context the story touches (e.g. "the project picker is shown on the
-  projects list but hidden inside an open project").
-- **Transient feedback** (any component/gap with `feedbackKind: "transient"`): an AC that the
-  feedback **appears then clears** (e.g. "saving shows a confirmation flash that then disappears"),
-  not merely that a control exists.
+- **The documented user journey(s)** — the `flow` nodes the cited surface takes part in: at least
+  one AC that a user can complete the typical end-to-end use case (e.g. "a signed-in user can open
+  the editor, change a value, save, and see it persisted on reload").
+- **Context-conditional chrome** — a component the book says appears only in some contexts: an AC
+  for its presence *and* absence in each context the story touches (e.g. "the project picker is
+  shown on the projects list but hidden inside an open project").
+- **Transient feedback** — an interaction whose outcome the book describes as a flash/toast/
+  confirmation: an AC that the feedback **appears then clears** (e.g. "saving shows a confirmation
+  that then disappears"), not merely that a control exists.
+{%- endif %}
 
 One check per item, each independently verifiable by **looking at or using the running app**. These
 criteria are the contract the coder's QA verifies against the source of truth, so make them about

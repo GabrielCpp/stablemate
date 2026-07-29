@@ -7,7 +7,7 @@ story (dependencies satisfied, not yet done) in dependency order.
 
 from __future__ import annotations
 
-from ostler import todo
+from ostler import registry, todo
 from ostler.model import Epic, Graph, Story
 
 _DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
@@ -24,6 +24,46 @@ def _epic_by_name(graph: Graph, name: str) -> Epic | None:
 
 def epic_done(epic: Epic) -> bool:
     return bool(epic.stories) and all(is_done(s.status) for s in epic.stories)
+
+
+def epic_authored(epic: Epic) -> bool:
+    """Whether every story in the epic has a written story.md — the *authoring* completion rule.
+
+    Distinct from :func:`epic_done`, which is about building. An epic whose stories are all
+    bare scaffolds is not authored, however many story.md files exist on disk: file presence
+    was the test that let an author rerun skip nine epics of empty stories and report success.
+    """
+    return (epic.epic_md is not None and bool(epic.stories)
+            and all(s.authored for s in epic.stories))
+
+
+def dag_order(epic: Epic) -> list[Story]:
+    """The epic's stories in dependency order (a dependency precedes its dependents).
+
+    Ties and cycles keep declaration order, so a malformed DAG degrades to the file's own
+    sequence rather than dropping stories. This is the order the coder builds in, so it is the
+    order the author writes in.
+    """
+    by_slug = {s.slug: s for s in epic.stories if s.slug}
+    order: list[Story] = []
+    seen: set[str] = set()
+    walking: set[str] = set()
+
+    def visit(slug: str) -> None:
+        if slug in seen or slug in walking:
+            return
+        walking.add(slug)
+        for dep in by_slug[slug].dependencies:
+            if dep in by_slug:
+                visit(dep)
+        walking.discard(slug)
+        seen.add(slug)
+        order.append(by_slug[slug])
+
+    for story in epic.stories:
+        if story.slug:
+            visit(story.slug)
+    return order
 
 
 def next_epic(graph: Graph) -> dict | None:
@@ -48,11 +88,38 @@ def _runnable(epic: Epic, story: Story, done: set[str], skip: frozenset[str]) ->
 def _story_dict(epic: Epic, story: Story) -> dict:
     return {"slug": story.slug, "epic": epic.name, "title": story.title,
             "status": story.status, "path": story.path,
-            "covers": story.seed_items, "dependsOn": story.dependencies}
+            "covers": story.seed_items, "dependsOn": story.dependencies,
+            "authored": story.authored, "unwrittenSections": list(story.unwritten_sections)}
+
+
+def _author_report(epic: Epic) -> dict:
+    """``need="author"`` — the first story in DAG order that still has no written story.md.
+
+    Dependencies order the work but do not gate it: an unauthored dependency is a reason to
+    write it *first*, not a reason to stall, so unlike the build path there is no ``blocked``
+    state. Stories already authored are counted, not re-selected, which is what lets a rerun
+    resume mid-epic instead of starting over or (as it did) skipping the epic entirely.
+    """
+    ordered = dag_order(epic)
+    authored = [s.slug for s in ordered if s.authored]
+    report = {"state": "", "story": None, "epic": epic.name, "total": len(ordered),
+              "done": len(authored), "remaining": [s.slug for s in ordered if not s.authored],
+              "skipped": [], "waiting_on": {}, "detail": ""}
+    for story in ordered:
+        if not story.authored:
+            report["state"] = "ready"
+            report["story"] = _story_dict(epic, story)
+            empty = ", ".join(story.unwritten_sections) or "no story.md"
+            report["detail"] = f"{story.slug} is unwritten ({empty})"
+            return report
+    report["state"] = "done"
+    report["detail"] = f"all {len(ordered)} stories in '{epic.name}' are authored"
+    return report
 
 
 def next_story_report(graph: Graph, epic_name: str,
-                      skip: frozenset[str] | set[str] | None = None) -> dict:
+                      skip: frozenset[str] | set[str] | None = None,
+                      need: str = "build") -> dict:
     """Why there is (or is not) a next story in ``epic_name`` — not just whether there is one.
 
     ``next_story`` answers with a story or ``None``, and that ``None`` covers four different
@@ -69,9 +136,10 @@ def next_story_report(graph: Graph, epic_name: str,
     ``done``        every story in the epic is done. The only state that means "prune it".
     ``blocked``     stories remain but none is runnable: each is either in ``skip`` or waiting
                     on an unmet dependency (``waiting_on`` names which). Not finished.
-    ``no-stories``  the epic exists but has no authored stories. Deliberately NOT ``done`` —
+    ``no-stories``  the epic exists but lists no stories at all. Deliberately NOT ``done`` —
                     an empty epic is unwritten scope, and treating it as complete drops it
-                    from the queue silently.
+                    from the queue silently. Distinct from stories that exist and are
+                    unauthored, which is what ``Story.authored`` reports.
     ``no-epic``     no epic by that name in the graph.
 
     ``skip`` is a set of story slugs to treat as ineligible without treating them as *done*:
@@ -82,12 +150,23 @@ def next_story_report(graph: Graph, epic_name: str,
     stories unbuilt after one story gave up on QA.) A skipped story is NOT added to ``done``,
     so its dependents stay blocked — you don't build on unverified work — but every story that
     does not depend on it remains selectable.
+
+    ``need`` picks which question is being asked. ``"build"`` (the default, everything above)
+    is the coder's: which story can be implemented next. ``"author"`` is the author's: which
+    story still has no written story.md — ``done`` means every story is *authored*, and the
+    ``skip``/dependency machinery does not apply (see :func:`_author_report`). The two are
+    separate axes and a story is routinely finished on one and untouched on the other, so a
+    caller must say which it means; the shape of the report is identical either way.
     """
     epic = _epic_by_name(graph, epic_name)
     if epic is None:
         return {"state": "no-epic", "story": None, "epic": epic_name, "total": 0, "done": 0,
                 "remaining": [], "skipped": [], "waiting_on": {},
                 "detail": f"no epic named '{epic_name}' in the graph"}
+    if need not in ("build", "author"):
+        raise ValueError(f"unknown need '{need}' (expected 'build' or 'author')")
+    if need == "author" and epic.stories:
+        return _author_report(epic)
 
     skip = frozenset(skip or ())
     done = {s.slug for s in epic.stories if is_done(s.status)}
@@ -97,7 +176,7 @@ def next_story_report(graph: Graph, epic_name: str,
 
     if not epic.stories:
         report["state"] = "no-stories"
-        report["detail"] = f"epic '{epic.name}' has no authored stories"
+        report["detail"] = f"epic '{epic.name}' lists no stories in `## {registry.STORIES_HEADING}`"
         return report
 
     # dependency order: a story is eligible once its deps are done; iterate to a fixpoint pick
@@ -139,11 +218,12 @@ def next_story_report(graph: Graph, epic_name: str,
 
 
 def next_story(graph: Graph, epic_name: str,
-               skip: frozenset[str] | set[str] | None = None) -> dict | None:
+               skip: frozenset[str] | set[str] | None = None,
+               need: str = "build") -> dict | None:
     """The next runnable story in ``epic_name`` — not done, not skipped, all deps done.
 
     Thin wrapper over :func:`next_story_report` for callers that only need the story (the
     ``ostler next-story`` CLI). Anything that decides what to do when there *is* no story
     should call the report instead — see its docstring for why ``None`` is not enough.
     """
-    return next_story_report(graph, epic_name, skip=skip)["story"]
+    return next_story_report(graph, epic_name, skip=skip, need=need)["story"]

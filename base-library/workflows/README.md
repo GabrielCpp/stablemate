@@ -163,6 +163,14 @@ plain Python objects (`okf.todo()`, `okf.list("story", epic=…)`, `okf.create_s
 `stablemate-workhorse-scripting` skill (git/GitHub/ostler seams + testing) and
 `stablemate-ostler` (the full verb→method table).
 
+**Imports go at the top of the file, and a declared dependency has no fallback.** The
+workflow declares what its scripts import in `requires:` (`dist: ostler`), and workhorse
+performs a *real* import of each one before the first node — so an interpreter that cannot
+import it never reaches node one. Consequently no script may `import` inside a `def`, and
+none may carry a `try: import X / except ImportError:` branch that emits a verdict anyway.
+A gate that answers "I couldn't load the graph, so — pass" is the failure mode this
+contract exists to make impossible.
+
 ### `rules/`
 
 Static configuration consumed by scripts. Typically JSON files describing patterns to detect, globs to scan, or thresholds to enforce. Scripts receive the path as an `args` entry.
@@ -278,7 +286,7 @@ Passing a `template.*` value through `cfg` into a prompt is fine (it's just plum
 
 The gap-prevention defenses are **generic principles** in the base, parameterized so a greenfield repo benefits without a legacy mirror:
 
-- **Deferral ownership** (author) — a `deferred` knowledge-record gap must name a resolvable `owner`; `validate-epic-coverage.py` fails an orphaned deferral. Generic; no oracle needed.
+- **Cited grounding** (author) — a story names the surface it works on by linking the ids of the OKF nodes the okf-builder derived from the code; `check-story-grounding.py` fails a story that cites none, or that cites an id resolving to no node. Generic; no oracle needed — and inert until the repo's book actually holds nodes.
 - **Verification setup** (author) — every story carries a `## Verification setup` section (the data/fixture/stack to render the surface) via the `repo_verification_setup` block; the coder builds those preconditions rather than QA'ing an empty surface.
 - **Independent oracle at QA** (coder) — a contract-consuming surface is verified against a *real* producer, not its own fixtures. The *principle* is generic prose in `qa-story`; the concrete oracle (rewrite → legacy mirror; greenfield → a deployed/staging env; or none) is supplied per-repo, never baked in.
 - **Coder→backlog edge** (coder) — separate-scope discoveries are filed to the repo backlog (`append-backlog-item.py`) so the author authors them next run; in-scope preconditions are built, not filed.

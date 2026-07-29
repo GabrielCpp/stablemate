@@ -25,10 +25,12 @@ is the next stage.
 > structure from `{{ instruction_ref('story-docs') }}`, not from them.
 {% block repo_epic_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` when present — operator answers to earlier questions.
-- Any existing **surface knowledge records** under `{{ workhorse_var('knowledge_dir') }}` for the
-  surfaces this epic touches — they are accumulated, grounded old↔new facts (components, data
-  sources, gaps) from earlier runs. Reuse them as research input; do not re-derive what they
-  already establish.
+{%- if workhorse_var('features_dir') %}
+- The **OKF book** under `{{ workhorse_var('features_dir') }}` for the surfaces this epic touches —
+  the surface documentation built from the code itself (screens, components, interactions, flows).
+  Read it as research input and do not re-derive what it already establishes. **Never write to it**:
+  the book is built from code that exists, and an epic is work that does not exist yet.
+{%- endif %}
 - The codebase areas this epic touches — enough to enumerate its in-scope items accurately.
 {%- if isUsingInstruction('react-router') %}
 - The relevant web skills: `{{ instruction_ref('react-router') }}`, `{{ instruction_ref('react-router-architecture') }}`, `{{ instruction_ref('web-api') }}`.

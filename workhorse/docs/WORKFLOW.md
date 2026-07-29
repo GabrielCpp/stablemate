@@ -69,7 +69,7 @@ requires:
 
 | Field | Meaning |
 |-------|---------|
-| `dist` | Python **distribution** name. Verified with `importlib.metadata` in the interpreter that runs script nodes. Mutually exclusive with `cmd`. |
+| `dist` | Python **distribution** name. Located with `importlib.metadata` and then **actually imported** in the interpreter that runs script nodes. Mutually exclusive with `cmd`. |
 | `cmd` | Executable name. Verified with `PATH` lookup + a `--version` probe. Mutually exclusive with `dist`. |
 | `version` | Optional [PEP 440](https://peps.python.org/pep-0440/) specifier (`>=1.2`, `>=1.0,<2.0`). Omit to check only for presence. |
 | `optional` | If true, an unmet entry logs a warning instead of blocking the run. Default false. |
@@ -78,7 +78,20 @@ requires:
 and import their tools in-process, so presence on `PATH` proves nothing about
 importability: a pipx-isolated install gives a perfectly working `ostler` command whose
 package `import ostler` cannot see. Use `dist:` for anything a script imports. Note the
-distribution name may differ from the import name (`workhorse-agent` vs `workhorse`).
+distribution name may differ from the import name (`workhorse-agent` vs `workhorse`), so
+the import names come from the installed metadata rather than from the declared name.
+
+**A `dist:` entry is checked by importing it, not by believing its metadata.** Metadata
+resolving only proves a *record* of the install is on this path — a half-written install,
+one whose own dependencies are absent, or a compiled extension built for another
+interpreter all resolve and then raise on the first `import` a script node does. The
+preflight therefore performs that import itself, in the engine process, and reports the
+underlying exception. A workflow whose scripts are written against a library (the OKF
+workflows against `ostler`) is thereby *unable to start* in an environment where that
+library will not load — which is the point: the alternative is a run that starts, degrades
+around the missing library node by node, and reports success over work it never did.
+Consequently those scripts import their library at module scope and carry no
+"if it isn't importable" branch; the condition is settled before the graph is entered.
 
 **Declare only what the workflow uses *directly*.** Not a transitive closure, and not
 the target repo's toolchain — workhorse is repo-agnostic, so whether a run needs `go`

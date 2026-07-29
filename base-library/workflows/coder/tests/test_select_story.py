@@ -93,6 +93,50 @@ def test_progress_fields_are_empty_when_the_report_cannot_say():
     assert mod._progress_fields({"state": "no-epic"})["progress"] == "0/0"
 
 
+def test_qa_passed_in_prose_is_not_a_done_status(tmp_path):
+    """"QA passed" written *about* a story does not make the story done.
+
+    ``_is_done`` used to be ``"QA passed" in <whole story.md>``, so a Context paragraph saying
+    the legacy behaviour "QA passed last release", or an acceptance criterion naming the phrase,
+    silently marked the story built: it was skipped, and its dependents unblocked on work that
+    never happened. The status is now read as the *field* (frontmatter, else the parsed
+    ``- **Status**:`` bullet) and judged by ``ostler.select.is_done``.
+    """
+    mod = _load_select_story()
+    story_md = tmp_path / "story.md"
+    story_md.write_text(
+        "# Story: s-1\n\n"
+        "## Context\n\n- the legacy report QA passed in the 4.2 release; keep that behaviour\n\n"
+        "## Implementation Status\n\n- **Status**: In progress\n",
+        encoding="utf-8",
+    )
+    assert mod._is_done(story_md) is False
+
+    story_md.write_text(
+        "# Story: s-1\n\n## Implementation Status\n\n- **Status**: QA passed (2026-01-01).\n",
+        encoding="utf-8",
+    )
+    assert mod._is_done(story_md) is True
+
+
+def test_prose_mentioning_qa_passed_is_still_selected(tmp_path):
+    """The same fact through the node: such a story is offered as work, not skipped."""
+    make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "In progress"}])
+    make_queue(tmp_path, ["epic-1"])
+    story_md = tmp_path / "docs/epics/epic-1/stories/s-1/story.md"
+    story_md.write_text(
+        "# Story: s-1\n\n"
+        "## Context\n\n- the report QA passed before the rewrite; parity is the bar\n\n"
+        "## Implementation Status\n\n- **Status**: In progress\n",
+        encoding="utf-8",
+    )
+
+    out = run_select_story(tmp_path, "epic-1")
+
+    assert out["has_story"] == "yes"
+    assert out["story_slug"] == "s-1"
+
+
 def test_selects_first_incomplete_story(tmp_path):
     """A queue with one incomplete story → has_story=yes, slug and epic set."""
     make_epic(tmp_path, "epic-1", [{"slug": "s-1", "status": "In progress"}])

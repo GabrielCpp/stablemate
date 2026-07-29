@@ -6,14 +6,13 @@ build the markdown graph via the conftest builders and exercise board.py's real 
 """
 from __future__ import annotations
 
-from conftest import init_repo, requires_ostler, run_script, write_backlog, write_epic, write_queue
+from conftest import init_repo, run_script, write_backlog, write_epic, write_queue
 
 
 def board(repo):
     return run_script("board.py", "--json", repo=repo)
 
 
-@requires_ostler
 def test_counts_by_status_and_not_authored_epic(tmp_path):
     write_epic(tmp_path, "e1", seeds=[{"id": "s1"}], stories=[
         {"slug": "a", "covers": ["s1"], "status": "QA passed"},
@@ -31,7 +30,6 @@ def test_counts_by_status_and_not_authored_epic(tmp_path):
     assert e2["authored"] is False
 
 
-@requires_ostler
 def test_qa_give_up_marker_counts_as_done(tmp_path):
     write_epic(tmp_path, "e1", seeds=[{"id": "s1"}], stories=[
         {"slug": "a", "covers": ["s1"],
@@ -41,7 +39,6 @@ def test_qa_give_up_marker_counts_as_done(tmp_path):
     assert out["totals"]["done"] == 1
 
 
-@requires_ostler
 def test_empty_repo_is_clean(tmp_path):
     init_repo(tmp_path)
     out = board(tmp_path)

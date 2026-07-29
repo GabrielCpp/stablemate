@@ -19,8 +19,8 @@ coder workflow's mode dispatch):
   the nested `surveyor` flow first to generate backlog bullets plus `docs/survey/unit-manifest.json`,
   then continues through the normal epic pipeline with the coverage gate forced to `full`.
 - **`story`** — turn **one bullet** into a single coder-ready story appended to an **existing
-  epic of your choice**, then stop. It runs the same per-story pipeline (gather knowledge →
-  validate → write → validate) but skips epic decomposition, epic write, story split, and
+  epic of your choice**, then stop. It runs the same per-story pipeline (mockup → write →
+  validate → ground → audit) but skips epic decomposition, epic write, story split, and
   whole-epic coverage. `story_setup` (`scripts/seed-story.py`) appends one `## Seeds` item +
   one `## Stories` entry to `epic.md` (the same contract `split-stories` emits) surgically — it
   never re-runs the split, so sibling stories are untouched. It is idempotent (a rerun reuses the
@@ -52,12 +52,12 @@ consumed bullets are pruned from the backlog by `prune-backlog.py` (matched via 
 `sourceBullet`), so the file shrinks to the outstanding scope — the same idea as coder pruning
 finished epics from the queue in `docs/epics/index.md`.
 
-`load-config.py` reads `agents.yml` `template.*` for path conventions (`knowledge_dir`,
-`features_dir`, `surface_manifest`, `mockup_dir`). The source of truth is always the **OKF graph
-via ostler**: every surface is grounded against the ostler-managed planning docs (feature docs,
-knowledge records, epics/stories), and ostler owns id allocation (the prefix is derived from the
-repo name). Any repo-specific grounding aid beyond that lives in the repo's author *flavor*
-prompts, never baked into this shared library.
+`load-config.py` reads `agents.yml` `template.*` for path conventions (`features_dir`,
+`surface_manifest`, `mockup_dir`). The source of truth is always the **OKF graph via ostler**:
+every surface is grounded against the ostler-managed docs (the OKF book under `features_dir`,
+epics/stories), and ostler owns id allocation (the prefix is derived from the repo name). Any
+repo-specific grounding aid beyond that lives in the repo's author *flavor* prompts, never baked
+into this shared library.
 
 **Repo prompt flavors.** Any base prompt can be extended by the launching repo without forking the
 shared workflow: drop a same-named override at `<repo>/.agents/flavors/<workflow>/<node>.md` that
@@ -98,10 +98,6 @@ picks the default `WF` as the **alphabetically first** registered workflow — s
 ```
 load_config
   └─ SURVEY INTAKE     [survey] generate backlog bullets + unit manifest, then continue as epic
-  └─ INTAKE            build_inventory  count the feature Concepts under docs/features (no file built)  [epic]
-  └─ SURFACE COVERAGE  verify_surface_coverage  grounding(default): claims ⊆ feature set
-                          ↑ or full (coverage_mode=full): backlog covers every in-scope surface
-                          ↑ fail → operator gate (add a feature doc / bullet, or mark out of scope)  [epic]
   └─ EPIC SPLIT        decompose_epics → review_epics ──(approved)─┐
                           ↑ needs_rework→rework  ↑ blocked→await    │
   ┌──────────────────────────────────────────────────────────────┘
@@ -111,10 +107,10 @@ load_config
      ├─ 2b split_stories         epic.md ## Stories skeleton (sized from the seed research)
      ├─ 2c PER STORY: select_story ──(no)→ 2d
      │        │ (yes)
-     │        ├─ gather_knowledge research surface; read feature-doc journeys; record chrome/transient
-     │        ├─ write_story      ACs incl. journey + context-conditional chrome + transient feedback
+     │        ├─ design_mockup    greenfield only: a visual reference for a screen the book lacks
+     │        ├─ write_story      cites the OKF nodes it works on; ACs incl. journey/chrome/transient
      │        ├─ validate_story   HARD structural: shape + status line + no open decisions
-     │        ├─ check_story_grounding  gate: seedItems valid + knowledge record + journey recorded
+     │        ├─ check_story_grounding  gate: seedItems valid + cites ≥1 OKF node, none dangling
      │        └─ audit_story      adversarial: refute coder-readiness ──pass→ next story / fail→ rework
      │                              (rework reads the attempts ledger — don't repeat failed approaches)
      └─ 2d validate_coverage      HARD: seed coverage + acyclic + slug==folder
@@ -155,46 +151,46 @@ An LLM reviewer adds the judgment a script can't:
 
 ## Authoring-quality gates (the author analog of the coder's QA gate + auditor)
 
-Three more layers harden authoring at full-site scale — each mirrors the coder QA stage's
-"deterministic gate → adversarial auditor → bounded loop" pattern:
+Two more layers harden authoring at full-site scale — each mirrors the coder QA stage's
+"deterministic gate → adversarial auditor → bounded loop" pattern. Both rest on the same
+ownership rule:
 
-- **The feature set is the human source; the manifest is derived.** A human writes one prose
-  feature doc per screen under `template.features_dir` (default `docs/features`) — a `##
-  Title (route: …, area: …)` heading plus behavior bullets; `(out-of-scope)` marks a screen as
-  not-in-scope. **`build-inventory.py`** (epic mode, intake) compiles those docs into
-  `template.surface_manifest` (default `docs/features/inventory.json`) so nobody hand-writes the
-  JSON. Non-lossy merge: undeclared fields a manifest already carries (`mockup`, `role`) are
-  preserved. Opt-in by presence: no feature docs ⇒ **skip** (existing manifest untouched). The
-  feature set is *living* — `gather_knowledge` may append a newly-discovered journey/behavior to a
-  documented screen's doc (additive, marked), and the next intake picks it up; it never invents a
-  doc for an undocumented screen (that's an `openGaps[]` operator decision).
-- **`verify-surface-coverage.py`** (epic mode, after intake) relates the authored work to the
-  feature set in one of two modes, because the backlog is not always a full rewrite:
-  - **grounding** (default, always-on): every surface the work *claims to touch* (a seed's
-    `legacySurface`, a knowledge record's `surface`/`route`) must exist in the feature set —
-    catches **phantom scope** without ever flagging an untouched screen, so an incremental backlog
-    is not forced to re-cover the whole app.
-  - **full** (opt-in, `--params '{"coverage_mode":"full"}'`): the **migration / greenfield-buildout**
-    assertion — every in-scope manifest surface must be covered by some backlog bullet/epic/story/
-    knowledge record. This is the mode for a "migrate the whole app" backlog.
-
-  Opt-in by file presence: no manifest on disk ⇒ a clean **skip**. A surface marked
-  `capture:false` / `optional:true` is out of scope. A failure routes to the operator gate.
-- **Feature-doc / user-journey grounding** (`gather-surface-knowledge.md` + `write-story.md`) —
-  when `template.features_dir` (default `docs/features`) exists, `gather_knowledge` reads the
-  surface's feature doc and records its **user journeys** (`journeys[]`) plus **context-conditional
-  chrome** (`chromeContext`) and **transient feedback** (`feedbackKind`). `write_story` then must
-  include a journey-level AC, a presence/absence AC per context-conditional element, and an
-  appear-then-disappear AC for transient feedback — so e.g. a picker that differs inside vs. outside
-  a project becomes a *planned* check, not luck at QA. **Greenfield reference:** for a genuinely
-  new screen, the visual reference is the **design mockup** from the manifest entry's
-  `mockup` field (under `template.mockup_dir`, default `docs/design`).
+- **The book is read, never written, by the author.** Under the OKF model everything under
+  `template.features_dir` (default `docs/features`) is typed Concepts — `feature` docs and the UI
+  nodes (screen/component/interaction/flow/…) parsed out of them — and the author reads them
+  straight from the graph (`Ostler.list("feature")`, `Ostler.query("surfaces-referenced-by-story", …)`).
+  It **never creates or edits one**: there is no surface-gathering node and no per-story
+  documentation node. The book is written by the **coder's** hard-gated `docs` flow
+  (`document_story`), which runs after implement and before QA so every node it writes is grounded
+  in code that exists, and backfilled from existing code by `okf-builder`. That gathering being
+  already done is exactly why the author can cite it instead of redoing it. There is likewise **no
+  intake-time surface-coverage gate**: it sat upstream of the very seeds that would have been its
+  input, so it could only ever grade the previous run — and in survey mode it searched a haystack
+  containing the backlog the surveyor had just written. Coverage is proved where the facts are: the
+  surveyor's own
+  `verify-records → validate-partition → emit-artifacts` chain, `reconcile-artifacts.py` (scope
+  dropped vs. the committed baseline), `check-story-grounding.py` (a story covering a seed that
+  does not exist) and `validate-epic-coverage.py`.
+- **Citation grounding** (`write-story.md`) — a UI node's identity **is** a repo-relative path
+  (optionally `path#anchor`), so a story cites a node by writing an ordinary markdown link to its id
+  from `## Context`. That makes "stories reference the book" a real, machine-checkable edge rather
+  than a habit: `References.doc_hrefs` picks the citations out of the markdown, `Graph.resolve_doc_ref`
+  turns an href into a node identity (origin-relative or repo-relative, whichever lands on a file),
+  and `ostler query surfaces-referenced-by-story` returns one row per citation tagged `ui` /
+  `file` / `missing`. `write_story` then must include a journey-level AC (the book's `flow` nodes),
+  a presence/absence AC per context-conditional element, and an appear-then-disappear AC for
+  transient feedback — so e.g. a picker that differs inside vs. outside a project becomes a
+  *planned* check, not luck at QA. **Greenfield reference:** for a genuinely new screen — one the
+  book has no `screen` node for — there is nothing to cite, and the visual reference is the
+  **design mockup** `design_mockup` produces under `template.mockup_dir` (default `docs/design`).
 - **`check-story-grounding.py`** (gate) + **`audit-story.md`** (adversarial) — after the structural
-  `validate_story` passes, a thin deterministic gate confirms the story *can* be grounded
-  (its `seedItems` exist; a knowledge record covers the surface; and, when feature docs are
-  configured, a journey was actually recorded), then a skeptical auditor tries to **refute
-  coder-readiness** (each AC observable+verifiable+grounded, no hidden decisions, journey-complete).
-  Either failing re-enters the **existing** bounded story rework loop (no new counter/gate).
+  `validate_story` passes, a thin deterministic gate confirms the story *can* be grounded (its
+  `seedItems` exist; and, **iff the graph actually holds UI nodes**, that it cites at least one and
+  that none of its citations dangle), then a skeptical auditor tries to **refute coder-readiness**
+  (each AC observable+verifiable+grounded, no hidden decisions, journey-complete). Either failing
+  re-enters the **existing** bounded story rework loop (no new counter/gate). The gate arms itself
+  on the *nodes*, not on a configured path, so a greenfield repo whose book has not been built yet
+  is never asked to cite what does not exist.
 
 ## Attempts ledger (Arbor-inspired negative-constraint memory)
 
@@ -248,8 +244,6 @@ validator so no scope item is silently dropped.
 | `select-epic.py` | next epic needing authoring |
 | `select-story.py` | within an epic, next story whose `story.md` is missing/placeholder |
 | `validate-story.py` | hard per-story structural validator |
-| `build-inventory.py` | compile human feature docs (`docs/features/*.md`) → derived `inventory.json` |
-| `verify-surface-coverage.py` | grounding(default) / full(opt-in) site-surface gate (opt-in by manifest presence) |
 | `check-story-grounding.py` | thin grounding pre-gate before the story auditor |
 | `validate-epic-coverage.py` | hard per-epic coverage + graph validator |
 | `validate-artifacts.py` | final global coder-consumability check |
@@ -260,8 +254,9 @@ validator so no scope item is silently dropped.
 | `check_feedback.py` | non-blocking per-story feedback poll (`feedback.md`; never halts) |
 
 `load-config.py` ships these convention defaults (a repo overrides via `agents.yml` `template.*`):
-`surface_manifest` (`docs/features/inventory.json`), `features_dir` (`docs/features`), `mockup_dir`
-(`docs/design`). Each stays inert until the referenced file exists on disk.
+`surface_manifest` (`docs/features/inventory.json`, or a surveyor-produced
+`docs/survey/unit-manifest.json` when one is on disk), `features_dir` (`docs/features`),
+`mockup_dir` (`docs/design`). Each stays inert until the referenced file exists on disk.
 
 ## File-native tooling (no service, no DB)
 

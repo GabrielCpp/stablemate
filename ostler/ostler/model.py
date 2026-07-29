@@ -8,6 +8,7 @@ epic's seeds and story dependency-DAG are folded into its ``epic.md`` body (``##
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,6 +48,25 @@ class Story:
     story_md: Path | None = None
     status: str = ""
     knowledge_refs: list[str] = field(default_factory=list)
+    # Every in-repo document this story links to, verbatim as written (relative to story.md
+    # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
+    # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
+    # Resolution to a node is `Graph.resolve_doc_ref` + `Graph.find_ui_node`, not done here —
+    # the raw href is kept so a *dangling* citation stays visible instead of vanishing.
+    doc_refs: list[str] = field(default_factory=list)
+    # Headings from `registry.STORY_SECTIONS` the story.md is missing or leaves empty. A freshly
+    # scaffolded story has every `filled` one here — which is what distinguishes "the file exists"
+    # from "somebody wrote the story".
+    unwritten_sections: list[str] = field(default_factory=list)
+
+    @property
+    def authored(self) -> bool:
+        """Whether the story says anything: it has a story.md and honors the body contract.
+
+        Orthogonal to :attr:`status` — that tracks *build* progress (Not started → QA passed),
+        this tracks whether there is a spec to build from at all.
+        """
+        return self.story_md is not None and not self.unwritten_sections
 
 
 @dataclass
@@ -133,6 +153,37 @@ class Graph:
                 return n
         return None
 
+    def resolve_doc_ref(self, href: str, *, origin: Path | None = None) -> str:
+        """Normalize a document link into a node identity (``<repo-rel-path>[#anchor]``).
+
+        A UI node's identity is always repo-relative, but a link inside a doc is written
+        however is convenient — relative to the citing file (``../../okf/web/login.md#submit``),
+        root-anchored (``/docs/okf/web/login.md``), or the node id copied verbatim out of the
+        book (``docs/okf/web/login.md``). All three name the same node, so all three resolve
+        here: the origin-relative and repo-relative readings are both tried and whichever lands
+        on a real file wins, with the origin-relative one preferred when both do (that is what
+        the link syntax means) and used as the answer when neither does — a citation that
+        resolves to nothing is *returned*, not dropped, so the caller can report it as dangling
+        instead of confusing a typo'd node id with a document that was never cited.
+        """
+        raw = href.split("?", 1)[0]
+        path_part, _, anchor = raw.partition("#")
+        if not path_part:
+            return ""
+
+        candidates: list[str] = []
+        if not path_part.startswith("/") and origin is not None:
+            try:
+                candidates.append(
+                    (origin.parent / path_part).resolve()
+                    .relative_to(self.root.resolve()).as_posix())
+            except ValueError:  # escapes the repo — not a document in this repo
+                pass
+        candidates.append(path_part.lstrip("/"))
+
+        rel = next((c for c in candidates if (self.root / c).is_file()), candidates[0])
+        return f"{rel}#{anchor}" if anchor else rel
+
     # ---- indexes -------------------------------------------------------------
     def epic_of_seed(self, seed_id: str) -> Epic | None:
         for e in self.epics:
@@ -160,6 +211,51 @@ class Graph:
 # ---------------------------------------------------------------------------
 # epic.md body parsing  (## Seeds / ## Stories → SeedItem / Story)
 # ---------------------------------------------------------------------------
+def section_gaps(doc: markdown.MarkdownDoc,
+                 specs: tuple[registry.SectionSpec, ...]) -> list[tuple[registry.SectionSpec, str]]:
+    """``(spec, "missing"|"empty")`` for every required section the body does not honor.
+
+    The one implementation of the required-section rule: the story contract
+    (``registry.STORY_SECTIONS``) and the UI profile's ``required_sections`` both check here,
+    so a scaffolded heading can never satisfy a check that meant "written".
+    """
+    gaps: list[tuple[registry.SectionSpec, str]] = []
+    for spec in specs:
+        section = doc.find_section(spec.heading)
+        if section is None:
+            gaps.append((spec, "missing"))
+        elif spec.filled and section.is_empty:
+            gaps.append((spec, "empty"))
+    return gaps
+
+
+def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
+    """The ``- **Status**:`` field of a parsed story doc, or ``None``.
+
+    Scoped to ``## Implementation Status`` when that heading exists, so the word "Status" in a
+    story's own prose is never mistaken for the field.
+    """
+    section = doc.find_section(registry.STORY_STATUS_HEADING)
+    if section is not None:
+        return section.labelled(registry.STORY_STATUS_LABEL)
+    return doc.find_bullet(registry.STORY_STATUS_LABEL)
+
+
+def story_status(doc: markdown.MarkdownDoc) -> str:
+    """A story's status: frontmatter ``status:`` first, else the parsed bullet (``""`` if neither).
+
+    The one place that answers "what does this story.md say its status is" — the graph loader,
+    ``crud.set_status`` and the workflow scripts all read it here, so a substring of the prose can
+    never stand in for the field.
+    """
+    fm = doc.frontmatter or {}
+    status = fm.get("status")
+    if not status:
+        bullet = status_bullet(doc)
+        status = bullet.value if bullet else ""
+    return str(status or "")
+
+
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
@@ -323,7 +419,6 @@ def load(cwd: Path | None = None) -> Graph:
 
 
 def _load_ids(graph: Graph) -> None:
-    import json
     p = graph.root / ".agents" / "ids.json"
     if p.exists():
         try:
@@ -522,12 +617,8 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             doc = markdown.split(c.read_text(encoding="utf-8"))
             refs = doc.refs
             story.knowledge_refs = refs.knowledge_paths
-            fm = doc.frontmatter or {}
-            status = fm.get("status")
-            if not status:
-                sec = doc.find_section("Implementation Status")
-                m = re.search(r"\*\*Status\*\*:\s*(.+)", sec.text if sec else doc.body)
-                if m:
-                    status = m.group(1).strip()
-            story.status = str(status or "")
+            story.doc_refs = refs.doc_hrefs
+            story.status = story_status(doc)
+            story.unwritten_sections = [s.heading for s, _ in
+                                        section_gaps(doc, registry.STORY_SECTIONS)]
             return

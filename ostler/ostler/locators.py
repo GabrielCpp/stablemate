@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 
+from ostler import graph as graph_mod
 from ostler.model import Graph
 from ostler.reach import NONE_TOKENS, _screen_of
 
@@ -243,8 +244,6 @@ def screen_locators(data: dict, screen: str | None = None) -> list[dict]:
 
 
 def build(graph: Graph, *, surface: str | None = None, screen: str | None = None) -> dict:
-    from ostler import graph as graph_mod
-
     data = graph_mod.build(graph, surface=surface)
     screens = screen_locators(data, screen)
     flat = [locator for entry in screens for locator in entry["locators"]]

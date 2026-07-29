@@ -5,9 +5,23 @@
 :root {
   --bg-0:#16181d; --bg-1:#1b1e24; --bg-2:#21252d; --bg-3:#2a2f39;
   --border:#2e333d; --border-2:#3a4150;
-  --text-0:#e6e8ec; --text-1:#a7adb8; --text-2:#6b7280;
+  /* text-2 is the dim tier — timestamps, ids, column heads, empty states. It was
+     #6b7280, which is 3.7:1 on --bg-0 and worse on a selected row's --bg-3: below
+     the 4.5:1 floor everywhere it appears. Lightened until it clears 4.5 against
+     the *lightest* surface it lands on, and still reads dimmer than --text-1. */
+  --text-0:#e6e8ec; --text-1:#a7adb8; --text-2:#94a3b8;
   --accent:#4c8bf5;
-  --blocked:#f0483e; --running:#38b26b; --idle:#c8873a; --finished:#6b7280;
+  /* White on --accent is 3.3:1. Near-black is 5.8:1 — and unlike white it gets
+     *better* when :hover brightens the background. Same ink the badges use. */
+  --on-accent:#0c0f14;
+  /* --finished is a dot *and* the "done" liveness chip's ink; at #6b7280 the text
+     side was 2.8:1 on a selected row. Neutral grey rather than --text-2's slate, so
+     the two dim chips stay tellable apart. */
+  --blocked:#f0483e; --running:#38b26b; --idle:#c8873a; --finished:#9ca3af;
+  /* diff2html colours its hunk headers from this variable — #6e7681 on its own
+     info background is 3.7:1. Overriding the variable catches every diff2html
+     surface at once, wherever the markup happens to be mounted. */
+  --d2h-dark-dim-color:#94a3b8;
   --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
@@ -28,6 +42,11 @@ body {
 
 /* keyboard users get a visible focus ring everywhere (a11y contract: never bare) */
 :focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
+/* Present to assistive tech, absent to the eye. `display:none` would drop it from
+   the accessibility tree too, which is the opposite of the point. */
+.sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0; }
 
 /* ---- activity bar ---- */
 #activitybar { grid-area:act; background:var(--bg-0); border-right:1px solid var(--border);
@@ -57,7 +76,7 @@ body {
 @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(240,72,62,.55)} 70%{box-shadow:0 0 0 5px rgba(240,72,62,0)} 100%{box-shadow:0 0 0 0 rgba(240,72,62,0)} }
 @media (prefers-reduced-motion:reduce){ .dot.blocked{animation:none} }
 .badge { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em;
-  padding:1px 5px; border-radius:3px; color:#0c0f14; font-weight:600;
+  padding:1px 5px; border-radius:3px; color:var(--on-accent); font-weight:600;
   background:hsl(var(--type-hue,210),45%,58%); }
 .badge[data-type="coder"] { background:#2f9e8f; }
 .badge[data-type="author"] { background:#8a6ff0; }
@@ -65,11 +84,11 @@ body {
 /* ---- main: one panel at a time (see mode visibility below) ---- */
 #main { grid-area:main; position:relative; overflow:hidden; }
 .pane { display:none; height:100%; overflow:hidden; }
-#inbox { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+#runs { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 .pane-head { padding:6px 10px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;
   font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2); }
 .pane-head .filter { margin-left:auto; text-transform:none; letter-spacing:0; max-width:160px; }
-.inbox-list { overflow-y:auto; flex:1; }
+.runs-list { overflow-y:auto; flex:1; }
 .row { padding:6px 10px; cursor:pointer; background:none; font:inherit; color:inherit;
   text-align:left; width:100%; border:0; border-bottom:1px solid var(--border);
   border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px; }
@@ -77,18 +96,36 @@ body {
 .row.selected { background:var(--bg-3); border-left-color:var(--accent); }
 .row.blocked { border-left-color:var(--blocked); }
 .row .line1 { display:flex; align-items:center; gap:7px; }
+.row .line2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .row .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-1); }
 .row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2); }
-.row .gate { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+.row .doing { font-family:var(--mono); font-size:10.5px; color:var(--text-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.row .mini { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; flex:none; }
 .row .q { display:block; font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* liveness chip: whether the process behind the row is still breathing.
+   `unknown` is deliberately distinct from `dead` — nothing was ever observed. */
+.pulse { margin-left:auto; font-family:var(--mono); font-size:9.5px; text-transform:uppercase;
+  letter-spacing:.05em; padding:0 5px; border-radius:3px; border:1px solid var(--border-2);
+  color:var(--text-2); white-space:nowrap; flex:none; }
+.pulse.live { color:var(--running); border-color:var(--running); }
+.pulse.dead { color:var(--blocked); border-color:var(--blocked); }
+.pulse.done { color:var(--finished); }
+.pulse.unknown { color:var(--text-2); }
 
 /* ---- detail ---- */
 #detail { display:flex; flex-direction:column; overflow:hidden; background:var(--bg-1); }
 .detail-head { padding:8px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .detail-head .repo-branch { font-family:var(--mono); font-size:12px; color:var(--text-0); }
 .detail-head .meta { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+/* the activity line owns the full width under the head's chips */
+.detail-head .doing-line { flex-basis:100%; font-family:var(--mono); font-size:11.5px; color:var(--text-1);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .detail-body { overflow-y:auto; padding:12px; flex:1; }
+.no-gate { color:var(--text-2); font-size:12px; background:var(--bg-2); border:1px solid var(--border);
+  border-radius:5px; padding:8px 12px; }
+.no-gate code { font-family:var(--mono); color:var(--text-1); }
 .gate-block { margin-bottom:18px; }
 .gate-path { font-family:var(--mono); font-size:11px; color:var(--text-2); margin-bottom:8px; }
 .question { background:var(--bg-2); border:1px solid var(--border); border-radius:5px; padding:10px 12px; }
@@ -101,7 +138,7 @@ body {
   border-radius:5px; color:var(--text-0); font-family:var(--sans); font-size:13px; padding:8px 10px; outline:none; resize:vertical; }
 .answer textarea:focus { border-color:var(--accent); }
 .answer-actions { margin-top:8px; display:flex; align-items:center; gap:8px; }
-.btn { background:var(--accent); color:#fff; border:none; border-radius:4px; padding:5px 14px; font-size:12px; cursor:pointer; font-family:var(--sans); }
+.btn { background:var(--accent); color:var(--on-accent); border:none; border-radius:4px; padding:5px 14px; font-size:12px; cursor:pointer; font-family:var(--sans); }
 .btn:hover { filter:brightness(1.08); }
 .btn.ghost { background:transparent; color:var(--text-1); border:1px solid var(--border-2); }
 .disclosure { margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
@@ -111,6 +148,30 @@ body {
 .disclosure[open] summary::before { content:"▾ "; }
 .diff-wrap { margin-top:8px; font-size:12px; }
 .detail-empty { color:var(--text-2); padding:24px 12px; text-align:center; }
+
+/* ---- run detail: live sections (metrics + log trail), refreshed on a timer ---- */
+.live-sec { margin-top:16px; }
+.live-sec-head { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2);
+  border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:8px; }
+.metrics-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:6px; }
+.metric { background:var(--bg-2); border:1px solid var(--border); border-radius:5px; padding:5px 9px;
+  display:flex; flex-direction:column; gap:2px; min-width:0; }
+.metric .m-k { font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-2); }
+.metric .m-v { font-family:var(--mono); font-size:12.5px; color:var(--text-0);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.metric.bad .m-v { color:var(--blocked); }
+.metrics-foot { margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
+.metrics-foot code { font-family:var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.log-trail { background:var(--bg-0); border:1px solid var(--border); border-radius:5px;
+  max-height:340px; overflow:auto; font-family:var(--mono); font-size:11.5px; }
+.log-line { display:grid; grid-template-columns:64px 42px 130px 1fr; gap:8px; padding:2px 8px;
+  border-bottom:1px solid var(--bg-2); color:var(--text-1); }
+.log-line:last-child { border-bottom:0; }
+.log-line .lt-ts, .log-line .lt-lvl, .log-line .lt-node { color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.log-line .lt-body { white-space:pre-wrap; overflow-wrap:anywhere; }
+.log-line.warn .lt-lvl { color:var(--idle); }
+.log-line.bad .lt-lvl, .log-line.bad .lt-body { color:var(--blocked); }
 .settings-panel { padding:16px; }
 .settings-panel h2 { font-size:13px; margin:0 0 10px; }
 .settings-panel .row-set { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--text-1); font-size:12.5px; }
@@ -136,7 +197,10 @@ body {
 #repo-menu { max-height:min(360px,60vh); overflow-y:auto; padding:4px 0; }
 .repo-item { padding:6px 12px; display:flex; align-items:center; gap:8px; cursor:pointer;
   font-family:var(--mono); font-size:12px; color:var(--text-1); white-space:nowrap; }
-.repo-item:hover { background:var(--bg-3); }
+/* .active is the keyboard cursor, the one the combobox's aria-activedescendant
+   points at. Without a visible rule it moves silently and arrow-key users have
+   no idea what Enter will pick — same treatment the palette's cursor gets. */
+.repo-item:hover, .repo-item.active { background:var(--bg-3); }
 .repo-item .repo-item-label { overflow:hidden; text-overflow:ellipsis; }
 .repo-empty { color:var(--text-2); font-size:12px; padding:12px; }
 
@@ -175,7 +239,7 @@ body {
 .diff-wrap a { text-decoration:none; color:inherit; }
 
 /* ---- mode visibility (activity bar): show one panel at a time ---- */
-.app[data-mode="inbox"]     #inbox-pane     { display:grid; grid-template-columns:1.1fr 1.4fr; }
+.app[data-mode="runs"]      #runs-pane      { display:grid; grid-template-columns:1.1fr 1.4fr; }
 .app[data-mode="files"]     #files-pane     { display:flex; flex-direction:column; }
 .app[data-mode="diff"]      #diff-pane      { display:flex; flex-direction:column; }
 .app[data-mode="settings"]  #settings-pane  { display:block; overflow:auto; }
@@ -213,6 +277,16 @@ table.traces .tr-status.tr-error { color:var(--blocked); font-weight:600; }
 .stat .n { color:var(--text-0); }
 .status-right { margin-left:auto; display:flex; align-items:center; gap:14px; color:var(--text-2); }
 .ws-dot { width:7px; height:7px; border-radius:50%; background:var(--running); }
+/* Connection chip. The dot is decoration; the word beside it is the accessible
+   name, so a degraded socket is legible without relying on color. `stale` and
+   `reconnecting` pulse because they are transient and self-healing; `offline` is
+   flat red because it is not. */
+.conn { gap:5px; }
+.conn[data-conn="stale"] .ws-dot { background:var(--blocked); animation:conn-pulse 1.4s ease-in-out infinite; }
+.conn[data-conn="reconnecting"] .ws-dot { background:var(--idle); animation:conn-pulse 1.4s ease-in-out infinite; }
+.conn[data-conn="offline"] .ws-dot { background:var(--blocked); }
+.conn[data-conn="stale"], .conn[data-conn="offline"] { color:var(--blocked); }
+@keyframes conn-pulse { 50% { opacity:.25; } }
 .kbd { font-family:var(--mono); font-size:10.5px; color:var(--text-2); border:1px solid var(--border-2); border-radius:3px; padding:0 4px; }
 .statusbar-refresh { background:transparent; border:none; color:var(--text-2); cursor:pointer; font-size:13px; line-height:1; padding:2px 4px; border-radius:3px; }
 .palette-open { background:none; border:0; font:inherit; color:var(--text-2); cursor:pointer;

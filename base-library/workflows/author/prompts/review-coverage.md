@@ -19,6 +19,22 @@ are they **too few / too coarse** to be implemented and assessed?
 - `{{ epic_dir }}/epic.md` — including its `## Seeds` and `## Stories` (the dependency-DAG) sections.
 - Each `story.md` under `{{ epic_dir }}/stories/`.
 
+## What stage this is — story bodies are empty by design here
+
+The stage before you **splits** the epic: it decides the set of stories and records each one's
+title, `covers` and `depends on` under `## Stories`, and scaffolds a `story.md` per story. It does
+not write story bodies — the per-story authoring stage does that *after* coverage is settled.
+
+So at this point every `story.md` is expected to be a scaffold with empty `## Context` and
+`## Acceptance Criteria`. **That is the correct state, not a defect.** Do not return `gaps` for a
+blank story body, an absent QA method, or missing acceptance text; the split stage is structurally
+unable to fix them, so such a verdict only sends the graph around a lap that changes nothing.
+
+Judge coverage against `epic.md` — its `## Seeds` (with their researched `surface`, `backing`,
+`prerequisites`) and the `## Stories` DAG (each story's title, `covers` and `depends on`). Read the
+`story.md` files for whatever they *do* carry (a title, an existing body on a re-run), and let their
+scaffolded sections pass without comment.
+
 ## Checks
 
 1. **Completeness** — every part of the epic's stated scope/acceptance is reflected in some
@@ -30,14 +46,17 @@ are they **too few / too coarse** to be implemented and assessed?
      is purely "verify already-built X matches" with nothing it changes or creates. That belongs
      as acceptance/QA on the story that builds X, not as a standalone story. Recommend folding it
      in (return `gaps` naming the merge).
-3. **Assessability** — each story has concrete acceptance + an assessable QA method. Flag any that
-   read as untestable.
+3. **Assessability** — each story is *scoped* so that acceptance and a QA method can be written for
+   it: it names a concrete deliverable on a nameable surface. Judge the scope (title + the seeds it
+   `covers`), **not** the body — a story whose acceptance section is still empty is on schedule, but
+   one scoped as "improve the experience" is untestable no matter what gets written into it later.
 4. **Ordering** — dependencies reflect real prerequisites.
-5. **Deferral ownership** — every gap a story defers (`disposition: "deferred"` in the knowledge
-   record) names an `owner` that exists (a sibling story or an open backlog item). The deterministic
-   gate already enforces this; here, catch the subtler version — a surface the stories collectively
-   *describe as out of scope* but that no story or backlog item actually owns. An orphaned surface
-   is the blank-screen failure; name it in `gaps` so the split/rework stage gives it an owner.
+5. **Deferral ownership** — nothing this epic's stories put out of scope is left unowned. The
+   deterministic gate can only see edges that exist (an orphan seed, a dangling dependency); what it
+   cannot see is scope the stories collectively *describe* as somebody else's — "the export flow is
+   handled elsewhere", "auth is out of scope here" — with no sibling story and no open backlog item
+   that actually owns it. An orphaned surface is the blank-screen failure; name it in `gaps` so the
+   split/rework stage gives it an owner.
 {% block repo_review_rules %}{% endblock %}
 
 ## Final response (REQUIRED, exact shape)

@@ -53,7 +53,7 @@ Sidecar connection registry is the process-local map of normalized workflow cont
   - When the current entry is a different [sidecar connection](sidecar-connection.md), calls that connection's [fail-all](sidecar-connection.md#method-fail-all) method with message `superseded by a new sidecar connection` before changing the registry entry, making any waiting RPC observe [sidecar error](sidecar-error.md).
   - When the current entry is absent or is the same connection object, performs no prior-connection failure.
   - Stores `conn` as the current registry value for `conn.container_id`, replacing any previous value for that key.
-  - Does not apply the `hello` frame, mutate workflow state, broadcast dashboard fragments, or send a websocket frame; those effects belong to the endpoint after registration succeeds.
+  - Does not apply the `hello` frame, mutate workflow state, broadcast dashboard messages, or send a websocket frame; those effects belong to the endpoint after registration succeeds.
 - calls: [sidecar connection fail-all](sidecar-connection.md#method-fail-all) only when a different current connection is displaced; otherwise no groom-owned symbol is called.
 - algorithm:
   1. Read the map value currently stored under `conn.container_id`.

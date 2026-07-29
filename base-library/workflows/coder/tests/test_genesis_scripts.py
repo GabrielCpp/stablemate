@@ -225,6 +225,43 @@ def test_agents_yml_preserves_comments_and_flow_style(tmp_path):
     assert _agents(target)["workspace"]["service_roots"] == ["api", "web", "docs-api"]
 
 
+def test_agents_yml_keeps_the_files_own_block_sequence_indent(tmp_path):
+    """Round-trip mode remembers comments and quoting but not sequence indent, so a file
+    whose lists are indented under their key came back flush-left — a diff touching every
+    list in the config to change two lines."""
+    target = tmp_path / "monorepo"
+    target.mkdir()
+    (target / "agents.yml").write_text(
+        "packs:\n"
+        "  - handwritten   # keep me indented\n"
+        "workflows:\n"
+        "  - coder\n",
+        encoding="utf-8")
+
+    _run("write-genesis-agents-yml.py",
+         [str(target), "docs", "go", "docs-api", "go.mod", "coder", "", "claude"], tmp_path)
+
+    text = (target / "agents.yml").read_text(encoding="utf-8")
+    assert "  - handwritten" in text, "an indented sequence must stay indented"
+    assert "  - go\n" in text, "and the appended entry joins it at the same indent"
+    assert "\n- " not in text
+
+
+def test_agents_yml_keeps_a_flush_left_block_sequence_flush_left(tmp_path):
+    """The mirror case: inferring the indent must not impose the other convention either."""
+    target = tmp_path / "monorepo"
+    target.mkdir()
+    (target / "agents.yml").write_text("packs:\n- handwritten\n", encoding="utf-8")
+
+    _run("write-genesis-agents-yml.py",
+         [str(target), "docs", "go", "docs-api", "go.mod", "coder", "", "claude"], tmp_path)
+
+    text = (target / "agents.yml").read_text(encoding="utf-8")
+    assert "packs:\n- handwritten\n- go\n" in text, (
+        "a top-level list must not gain an indent it never had")
+    assert "  service_roots:\n  - docs-api" in text, "and a nested one still nests one deeper"
+
+
 def test_agents_yml_is_left_untouched_when_the_merge_changes_nothing(tmp_path):
     """The re-run that adds nothing must not rewrite the file at all — rewriting it churns
     mtime and risks reformatting for no gain."""

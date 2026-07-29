@@ -28,6 +28,9 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+from ostler import Ostler, graph as graph_mod
+from ostler.coverage import is_complete, render
+from workhorse.scriptutil import short_sha
 
 # The coverage re-scan counter, incremented once per run of this node — the only node that
 # sits on the re-scan loop and nowhere else. It is a module global so that EVERY exit path,
@@ -66,8 +69,6 @@ def _relative_source(source_root: str, repo_root: str) -> str:
 
 def _screen_count(okf, service: str) -> int:
     """Screens the book documents. The second axis of §9's verdict starts its life here."""
-    from ostler import graph as graph_mod
-
     data = graph_mod.build(okf.graph, etype="screen", surface=service or None)
     return len(data["nodes"])
 
@@ -86,15 +87,6 @@ def main(logger: logging.Logger) -> None:
         _RESCAN_ROUND = 0
     _RESCAN_ROUND += 1
     logger.info("coverage re-scan %d", _RESCAN_ROUND)
-
-    # Imported inside main() so an ostler that will not import emits a "no" verdict with its
-    # reason, rather than dying at module scope before this script can say anything at all.
-    try:
-        from ostler import Ostler
-        from ostler.coverage import is_complete, render
-    except ImportError as exc:
-        logger.warning("ostler is not importable — verdict is 'no', not a pass: %s", exc)
-        emit(coverage_error=f"ostler is not importable by this interpreter: {exc}")
 
     if not inventory_path:
         logger.warning("no source inventory path — nothing to join against, verdict is 'no'")
@@ -125,11 +117,9 @@ def main(logger: logging.Logger) -> None:
 
     coverage_path = ""
     if features_root:
-        anchor = ""
         try:
-            from workhorse.scriptutil import short_sha
             anchor = short_sha(repo_root)
-        except (OSError, ValueError, RuntimeError, ImportError):
+        except (OSError, ValueError, RuntimeError):
             anchor = ""  # not a git checkout, or no HEAD yet: the anchor is absent, not faked
         book = Path(features_root)
         if book.is_dir():

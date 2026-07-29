@@ -34,7 +34,7 @@ For stopped or legacy containers, the scan's current-run-state method selects th
 - empty fleet: returns an empty list when Docker reports no container entries with an `ID` field or the Docker listing helper reports no entries.
 - filtering: ignores Docker entries without an `ID` and omits any candidate whose per-container resolver returns `None`, including unrelated containers and failed inspections.
 - state source: delegates all per-container state decisions to the [per-container discovery resolver](#method-resolve-container), which prefers a running container sidecar snapshot and falls back to volume reconstruction when needed.
-- persistence: does not mutate the [workflow registry](workflow-registry.md), write files, broadcast dashboard fragments, start or stop containers, answer gates, or persist any scan result outside the returned list.
+- persistence: does not mutate the [workflow registry](workflow-registry.md), write files, broadcast dashboard messages, start or stop containers, answer gates, or persist any scan result outside the returned list.
 
 ## Fields
 

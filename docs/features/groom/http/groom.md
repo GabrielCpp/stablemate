@@ -8,9 +8,11 @@ title: groom server
 - code: groom/groom/app.py::create_app
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
-The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves the dashboard shell for the [groom dashboard service](../groom.md), fragments for the [operator inbox](../operator-inbox.md), [worker tree](../worker-tree.md), and file/diff panels, receives residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md), and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member: one dashboard HTML entry point, five read endpoints for fragments or workspace data, four mutation/push endpoints, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`: the only startup hook is [schedule startup discovery scan](#schedule-startup-discovery-scan), which schedules the initial discovery scan after the server application is constructed.
+The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member: one dashboard HTML entry point, six JSON read endpoints, four mutation/push endpoints, three OTLP ingest routes and one telemetry query route, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers three startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, and the [live clock](#schedule-live-clock) — and cancels the latter two on shutdown.
 
-The server is single-process and stateful in memory. Startup schedules a background discovery scan without blocking the server bind; live updates are pushed as HTML fragments over the browser websocket and as RPC/messages over sidecar websockets. No route on this surface provides authentication, and the app-level OpenAPI schema intentionally excludes these routes.
+The server is single-process and stateful in memory. Startup schedules a background discovery scan without blocking the server bind; live updates are pushed as JSON messages over the browser websocket and as RPC/messages over sidecar websockets. No route on this surface provides authentication, and the app-level OpenAPI schema intentionally excludes these routes.
+
+Nothing on this surface renders HTML on the browser's behalf. The single shape a dashboard tab consumes is the state payload, and it arrives by two interchangeable paths — pushed on the websocket, or fetched from [GET /api/state](#get-dashboard-state) when the socket has gone quiet. They are the same bytes by construction, which is what keeps recovery from a dead socket out of being a second rendering path that can rot unobserved.
 
 ## Endpoints
 
@@ -18,7 +20,8 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 
 - does:
   - Serves the browser entry document for the [groom dashboard](../gui/screens/groom-dashboard.md).
-  - Returns the preloaded dashboard template bytes unchanged for the browser to bootstrap htmx, the websocket extension, vendored assets, and dashboard JavaScript; the template is read into `_DASHBOARD_HTML` when `groom/groom/app.py` is imported, not read from disk for each request.
+  - Returns the preloaded dashboard template bytes unchanged for the browser to bootstrap the vendored assets and the dashboard ES module, which then opens the websocket and renders every panel from JSON; the template is read into `_DASHBOARD_HTML` when `groom/groom/app.py` is imported, not read from disk for each request.
+  - Ships no fleet data in the document. The shell carries the landmarks, the static pane scaffolding, the pickers, the palette, and the module `<script>` tag — but not one run, gate, repository, or count — so the first paint and every later one come from the same state payload rather than from a server-rendered snapshot the client would have to reconcile against.
   - Does not read query parameters, request body, cookies, in-memory workflow state, or Docker state.
   - Does not mutate server state, schedule discovery, or push websocket updates.
 - code: groom/groom/app.py::index
@@ -38,36 +41,44 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: exact bytes of the packaged dashboard HTML shell from `groom/groom/templates/dashboard.html`.
   - errors: none intentionally emitted by this handler; ordinary framework/static-template import failures are process-level failures, not endpoint error responses.
 
-### get-search-fragment
+### get-dashboard-state
 
 - does:
-  - Reads the current in-memory workflow list from the groom process.
-  - Filters the [operator inbox](../operator-inbox.md) message list to workflows that have at least one open gate and, when `q` is non-empty, contain the query in workflow name, repository name, repository branch, workflow type, current node, or gate-file path text.
-  - Renders only the inbox/message-list fragment through `render.render_inbox` with `hx-swap-oob`; status-bar fleet counts remain global and are not part of this response, and container ids and gate question text are not search haystacks.
-- code: groom/groom/app.py::search
-- route: `GET /search`
+  - Returns the whole fleet as one [dashboard state payload](../dashboard-state-payload.md) — **byte-for-byte the same body the dashboard websocket pushes**, built by the same [groom projection module](../concepts/groom-projection-module.md) member.
+  - Serves the resync path. A tab whose socket has gone silent, or that is reading `live` off a half-open connection that will never deliver another frame, polls this and feeds the parsed body through the same client `applyState` a pushed frame goes through.
+  - Filters the run list by `q` the way the pushed frame does not, because typing in the search box is a property of one tab rather than of the fleet.
+  - Keeps the status-bar counts fleet-wide regardless of `q`: the status bar is a dashboard, not a result count.
+  - Reports whether the startup discovery scan is still running, so a resync during startup lands on the loading state rather than on a spuriously empty fleet.
+  - Does not mutate workflow state, start discovery, contact Docker or sidecars, or broadcast anything to other tabs.
+- code: groom/groom/app.py::api_state
+- route: `GET /api/state`
 - parent: [groom server](#groom-server)
-- invocation: [serve-search-fragment](#serve-search-fragment)
+- invocation: [serve-dashboard-state](#serve-dashboard-state)
 - request:
   - method: `GET`
-  - path: none
-  - query: `q` string, optional, default `""`; passed unchanged to inbox rendering, where an empty value means no text filter and a non-empty value becomes a case-insensitive substring filter for inbox rows without trimming, tokenizing, or regex matching.
+  - path: `/api/state`
+  - path variables: none
+  - query: `q` string, optional, default `""`; case-insensitive substring filter over workflow name, repository name, repository branch, workflow type, and current node. Empty means no filter. Not trimmed, tokenized, or matched as a regex.
   - headers: none required by the handler.
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: one `<div class="inbox-list" id="inbox-list" hx-swap-oob="true">…</div>` fragment. Rows are sorted blocked first, then running, idle, and finished, with names ascending inside each state. No rows returns the inbox empty state; no rows during discovery returns the loading state only when `q` is empty. Dynamic row text is escaped by the renderer before it enters the fragment.
+  - media: `application/json`
+  - body: `{"type": "state", "ts": float, "scanning": bool, "runs": [run row, …], "status": {"counts": {state: int, …}, "repos": int, "workers": int}}`. Rows are sorted blocked first, then live, then dead, then finished, with names ascending inside each rank, so the list does not shuffle on a tick. `scanning` is true while startup discovery is still running.
   - errors: none intentionally emitted by this handler; request parsing failures are framework-level failures, not endpoint-specific responses.
+- verify: groom/tests/test_app.py::test_api_state_is_the_resync_payload,
+  groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload,
+  groom/tests/test_projection.py::test_state_message_is_json_serializable,
+  groom/tests/test_projection.py::test_query_filters_the_fleet
 
 ### get-repository-menu
 
 - does:
   - Reads the current in-memory workflow list and keeps only workflows whose workspace volume is known.
   - Lists checkout directories for each eligible workflow concurrently through the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md).
-  - Returns the shared repository picker menu used by the dashboard files and diff panes, with [repository menu data](../repository-menu-data.md) rendered as one selectable [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option) per `(workflow container, checkout directory)` pair.
-  - Excludes this route from the application OpenAPI schema; it is an internal dashboard fragment endpoint rather than a public API contract.
-  - Does not accept a repository search query; the dashboard filters returned option rows client-side after the fragment is loaded.
+  - Returns [repository menu data](../repository-menu-data.md) as JSON — one group per workflow container, each carrying one entry per checkout directory — which the browser renders as the shared repository picker used by the dashboard Files and Changes panes.
+  - Excludes this route from the application OpenAPI schema; it is an internal dashboard data endpoint rather than a public API contract.
+  - Does not accept a repository search query; the dashboard filters the returned entries client-side after the menu data is loaded.
 - code: groom/groom/app.py::repos
 - route: `GET /repos`
 - parent: [groom server](#groom-server)
@@ -81,8 +92,8 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: zero or more repository picker option fragments derived from [repository menu data](../repository-menu-data.md). Each option has `role="option"`, `data-container` set to the workflow container id, `data-repo` set to the volume-relative checkout directory, `data-label` set to the visible `workflow/repo` label, a workflow state dot, an optional workflow type badge, and a visible label. Options are grouped by workflow after sorting workflows by dashboard state order and then workflow name; each workflow's checkout directories are already sorted by checkout discovery. A workflow whose volume contains no checkout contributes one volume-root option labelled with the workflow name only; no eligible workflows returns the non-interactive `No repositories available.` empty-state fragment.
+  - media: `application/json`
+  - body: a JSON array of [repository menu data](../repository-menu-data.md) groups, `[{"container": str, "name": str, "state": str, "type": str, "type_hue": int, "repos": [{"repo": str, "label": str}, …]}, …]`. `repo` is the volume-relative checkout directory and `label` is the visible `workflow/repo` text, or the workflow name alone for a volume-root entry. Groups are sorted by dashboard state order and then workflow name; each group's checkout directories are already sorted by checkout discovery. A workflow whose volume contains no checkout contributes one group with a single empty-`repo` entry; no eligible workflows returns `[]`, which the browser renders as the non-interactive `No repositories available.` empty state.
   - errors: none intentionally emitted by this handler; Docker discovery failures for an individual volume are represented as an empty checkout list for that workflow, and request parsing failures are framework-level failures.
 - verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
 
@@ -91,10 +102,10 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Files panel with the selected checkout's file inventory for one workflow container.
   - Produces [workspace file list data](../workspace-file-list-data.md) for the selected workflow checkout.
-  - Prefers the live sidecar data plane from [sidecar live sessions](../sidecar-live-sessions.md): sends `getTree` with the selected `repo` and, when the RPC returns data, joins the returned `paths` array with newline separators.
-  - Falls back to the workflow's known workspace volume when the sidecar is absent, times out, closes, or reports an error.
-  - Reads the fallback file list through the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md) as repo-relative paths within the selected checkout and returns them sorted by the fallback reader.
-  - Returns an empty `text/plain` body when the workflow id is unknown, the workflow has no workspace volume, the fallback Docker reader process exits non-zero, the selected checkout has no retained file names, or neither path can provide file names.
+  - Prefers the live sidecar data plane from [sidecar live sessions](../sidecar-live-sessions.md): sends `getTree` with the selected `repo` and, when the RPC returns data, passes the returned `paths` array straight through.
+  - Falls back to the workflow's known workspace volume when the sidecar is absent, times out, closes, or reports an error — through the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md) for a Docker run and through local-disk listing for a native one.
+  - Reads the fallback file list as repo-relative paths within the selected checkout and returns them sorted by the fallback reader.
+  - Returns an empty `paths` array when the workflow id is unknown, the workflow has no workspace volume, the fallback reader process exits non-zero, the selected checkout has no retained file names, or neither path can provide file names.
   - Does not mutate workflow state, start discovery, broadcast dashboard updates, read file contents, compute diffs, or validate that `repo` is a git checkout.
 - code: groom/groom/app.py::files
 - route: `GET /files/{container_id}`
@@ -109,10 +120,10 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: zero or more repo-relative file paths joined by `\n`. There is no trailing newline requirement; clients must treat an empty body as "no file tree available".
-  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, and a non-zero Docker fallback process all resolve to `200` with an empty body or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions are framework-level failures rather than endpoint-specific error bodies.
-- verify: groom/tests/test_app.py::test_files_endpoint_returns_newline_separated_paths,
+  - media: `application/json`
+  - body: `{"paths": [str, …]}` — zero or more repo-relative file paths. Clients must treat an empty array as "no file tree available" rather than as a transport failure.
+  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, and a non-zero Docker fallback process all resolve to `200` with an empty array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions are framework-level failures rather than endpoint-specific error bodies.
+- verify: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 
@@ -124,8 +135,9 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Prefers the connected sidecar data plane from [sidecar live sessions](../sidecar-live-sessions.md): sends `getFile` with the selected `repo` and `path`, then returns the RPC result's `content` value when the sidecar path succeeds.
   - Falls back to the workflow's known workspace volume when the sidecar is absent, times out, closes, or reports an error.
   - Joins `repo` and `path` into one volume-relative fallback path, preserving an empty `repo` as a root-relative file path and stripping only a leading slash from the combined path.
-  - Converts an unknown workflow id, missing workspace volume, empty resolved path, traversal-guard failure, missing file, unreadable file, or falsey returned content into a `200 OK` empty `text/plain` response.
-  - Does not mutate workflow state, start discovery, broadcast dashboard updates, render syntax highlighting, compute diffs, list directories, or raise endpoint-specific error responses for unavailable file content.
+  - Names the highlighting language from the requested path's extension or bare filename before either read is attempted, so the browser gets the same `lang` whether the content came from the sidecar, from the volume, or not at all.
+  - Converts an unknown workflow id, missing workspace volume, empty resolved path, traversal-guard failure, missing file, unreadable file, or falsey returned content into a `200 OK` body with an empty `content` string.
+  - Does not mutate workflow state, start discovery, broadcast dashboard updates, apply syntax highlighting, compute diffs, list directories, or raise endpoint-specific error responses for unavailable file content.
 - code: groom/groom/app.py::file_content
 - route: `GET /file/{container_id}`
 - parent: [groom server](#groom-server)
@@ -140,26 +152,26 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: raw file text exactly as returned by the sidecar `content` value or fallback volume reader, or an empty string when no content is available. Clients must treat an empty body as "no file content available" rather than as a transport failure.
-  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty path, unsafe path, missing files, and fallback read failures all resolve to `200` with an empty body or fallback data. Request parsing failures are framework-level failures.
+  - media: `application/json`
+  - body: `{"path": str, "content": str, "lang": str}`. `path` echoes the requested repo-relative path, `content` is the raw file text exactly as returned by the sidecar or the fallback reader (empty when no content is available), and `lang` is the highlighting language derived from the path — `""` meaning "let the browser's highlighter auto-detect". Clients must treat an empty `content` as "no file content available" rather than as a transport failure.
+  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty path, unsafe path, missing files, and fallback read failures all resolve to `200` with an empty `content` or fallback data. Request parsing failures are framework-level failures.
 - verify: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
   groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
 
-### get-workspace-diff
+### get-working-tree-diff
 
 - does:
-  - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Diff panel or worker-detail working-tree disclosure with the selected checkout's [workspace diff data](../workspace-diff-data.md).
+  - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Changes panel and the run-detail working-tree disclosure with the selected checkout's [workspace diff data](../workspace-diff-data.md).
   - Prefers the connected sidecar data plane from [sidecar live sessions](../sidecar-live-sessions.md): sends `getDiff` with the selected `repo` and, when the RPC returns data, returns the RPC result's `diff` value.
   - Falls back to the workflow's known workspace volume when the sidecar is absent, times out, closes, or reports an error.
   - Runs the fallback diff for the selected checkout through the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md), passing the `repo` query value unchanged.
-  - Returns an empty `text/plain` body when the workflow id is unknown, the workflow has no workspace volume, the sidecar response omits or falseys `diff`, or fallback diff collection returns no text.
-  - Does not mutate workflow state, start discovery, broadcast dashboard updates, render diff HTML, list files, read individual files, or validate that `repo` is a git checkout.
+  - Returns an empty `diff` string when the workflow id is unknown, the workflow has no workspace volume, the sidecar response omits or falseys `diff`, or fallback diff collection returns no text.
+  - Does not mutate workflow state, start discovery, broadcast dashboard updates, render diff markup, list files, read individual files, or validate that `repo` is a git checkout. Turning the unified diff into per-file markup is the browser's job.
 - code: groom/groom/app.py::diff
 - route: `GET /diff/{container_id}`
 - parent: [groom server](#groom-server)
-- invocation: [serve-workspace-diff](#serve-workspace-diff)
+- invocation: [serve-working-tree-diff](#serve-working-tree-diff)
 - request:
   - method: `GET`
   - path: `/diff/{container_id}`
@@ -169,24 +181,25 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: [workspace diff data](../workspace-diff-data.md), serialized as raw unified git diff text exactly as returned by the sidecar `diff` value or fallback volume reader, or an empty string when no diff is available. Clients must treat an empty body as "no diff available" rather than as a transport failure.
-  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty sidecar diff, empty fallback output, and fallback git failures all resolve to `200` with an empty body or fallback data. Request parsing failures are framework-level failures.
+  - media: `application/json`
+  - body: `{"diff": str}` carrying [workspace diff data](../workspace-diff-data.md) as raw unified git diff text exactly as returned by the sidecar `diff` value or fallback volume reader, or an empty string when no diff is available. Clients must treat an empty string as "no diff available" rather than as a transport failure.
+  - errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty sidecar diff, empty fallback output, and fallback git failures all resolve to `200` with an empty `diff` or fallback data. Request parsing failures are framework-level failures.
 - verify: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
 
-### get-worker-detail
+### get-run-detail
 
 - does:
-  - Looks up the requested workflow container id in the groom process's in-memory workflow registry, yielding either one [workflow container](../concepts/workflow-container.md) or no worker state.
-  - Renders only the selected worker detail pane for the [groom dashboard](../gui/screens/groom-dashboard.md), so live shell broadcasts never overwrite a half-typed answer in the browser.
-  - Represents an unknown worker as the detail empty state, a known worker without open gates as a read-only status detail, and a known worker with gates as sorted gate blocks plus one shared working-tree diff disclosure.
-  - Delegates all fragment markup decisions to the worker-detail renderer; this route only supplies the optional workflow record and wraps the returned fragment in the HTTP response.
-  - Does not mutate workflow state, run discovery, contact Docker, contact sidecars, broadcast websocket updates, answer gate files, compute diffs, or render client-side markdown.
+  - Looks up the requested workflow container id in the groom process's in-memory workflow registry, yielding either one [workflow container](../concepts/workflow-container.md) or no run state.
+  - Returns one run's detail slices as JSON: identity and current node, the open gates, and the time-derived head, metrics, and log trail read from the hot telemetry cache and the durable store.
+  - Fills the detail pane *now*. The same payload arrives later — and keeps arriving — as the `detail` frames pushed to whichever tabs registered for this run in the [run watch registry](../concepts/run-watch-registry.md); this endpoint exists so the pane is not blank until the run next changes, which for an idle run could be never.
+  - Represents an unknown id as `{"found": false, "id": …}` rather than as a `404`, because a selection that outlived its run is an ordinary dashboard state and not a request error.
+  - Carries gate question text as data, never as markup: the browser renders the markdown, so nothing about this response depends on the server having escaped it.
+  - Does not mutate workflow state, run discovery, contact Docker, contact sidecars, broadcast websocket updates, answer gate files, or compute diffs.
 - code: groom/groom/app.py::worker_detail
 - route: `GET /worker/{container_id}`
 - parent: [groom server](#groom-server)
-- invocation: [serve-worker-detail](#serve-worker-detail)
+- invocation: [serve-run-detail](#serve-run-detail)
 - request:
   - method: `GET`
   - path: `/worker/{container_id}`
@@ -196,13 +209,13 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: one `<div id="detail">…</div>` fragment for replacing the selected worker detail pane. Unknown ids return `Worker not found.`; known ids with no gates return the workflow header and `No open gate` status text; known ids with gates return the workflow header, one gate block per open gate sorted by gate file path, escaped gate question markdown in a `data-md` text node, a websocket answer form for each gate, and one `Working-tree diff` disclosure for the worker.
-  - errors: none intentionally emitted by this handler; an unknown workflow id is a `200 OK` empty-state fragment, and request parsing failures are framework-level failures.
-- verify: groom/tests/test_render.py::test_gate_question_rendered_as_escaped_data_md_text_node,
-  groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form,
-  groom/tests/test_render.py::test_worker_detail_has_one_diff_disclosure,
-  groom/tests/test_render.py::test_worker_detail_not_found_and_no_gate_states
+  - media: `application/json`
+  - body: for a known id, `{"found": true, "id": str, "run_id": str, "state": str, "node": str, "gates": [{…}, …], "head": {…}, "metrics": [{…}, …], "logs": [{…}, …]}`. Gates are sorted by gate file path and carry the question as text. For an unknown id, `{"found": false, "id": str}` and nothing else. The `detail` websocket frame wraps this same object under a `detail` key.
+  - errors: none intentionally emitted by this handler; an unknown workflow id is a `200 OK` not-found body, and request parsing failures are framework-level failures.
+- verify: groom/tests/test_app.py::test_worker_detail_and_pushed_slices,
+  groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs,
+  groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail,
+  groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 
 ### post-refresh
 
@@ -274,7 +287,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Ensures Docker volume metadata has been resolved for the workflow when possible before updating the visible fleet row.
   - Upserts the workflow as `BLOCKED`, applying non-null identity fields from the payload while preserving fields the payload omits.
   - Stores one open [gate info](../concepts/gate-info.md) record keyed by the normalized gate file path, with `workflow_id` equal to the normalized container id, `file_path` equal to the payload path, `question` equal to the string-normalized payload question or `""`, and status left at the gate model default `AWAITING_OPERATOR`.
-  - Broadcasts an out-of-band dashboard shell update plus a [blocked notification script fragment](../blocked-notification-script-fragment.md) whose message is the workflow display name, a colon separator, and the first 200 characters of the gate question.
+  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) to every connected tab, plus a one-shot `{"type": "notify", "message": …}` frame whose message is the workflow display name, a colon separator, and the first 200 characters of the gate question. The notify frame is separate from the state frame precisely so it accompanies an actual new block rather than every reconciliation re-push.
 - code: groom/groom/app.py::push_blocked
 - route: `POST /push/blocked`
 - parent: [groom server](#groom-server)
@@ -337,16 +350,20 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 ### websocket-dashboard
 
 - does:
-  - Provides the [groom dashboard](../gui/screens/groom-dashboard.md) browser websocket used for live out-of-band shell updates and answer-form submissions.
-  - Accepts the websocket upgrade, creates one unbounded process-local outbound queue for the connected browser tab, registers that queue before the initial snapshot is sent, and unregisters it in the session cleanup path.
-  - Sends an initial out-of-band shell snapshot immediately after registration so a newly opened tab receives the current workflow fleet without waiting for the next server-side push.
-  - Runs one outbound loop that waits for queued broadcast HTML fragments and sends each fragment as a websocket text frame; each frame is intended for htmx websocket out-of-band swaps or a small dashboard event script.
-  - Runs one inbound [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) that receives JSON messages from browser `ws-send` answer forms and delegates every decoded frame to the command handler; only [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects whose `cmd` field is `answer` produce command-handler effects, while other commands are ignored with no response frame, state mutation, gate write, log entry, or broadcast.
-  - Ends the websocket session when either the outbound send loop or inbound receive loop completes, then cancels the still-pending loop, propagates non-disconnect exceptions from the completed loop, and removes the client queue even when startup, rendering, sending, receiving, or command handling fails.
+  - Provides the [groom dashboard](../gui/screens/groom-dashboard.md) browser websocket, carrying JSON in both directions: fleet-wide `state`, `notify`, and `answered` frames plus this tab's own `detail` frames down, and `watch`/`answer` commands up.
+  - Accepts the websocket upgrade, creates one unbounded process-local outbound queue for the connected browser tab, registers that queue in the [dashboard client queue set](../concepts/dashboard-client-queue-set.md) before the initial snapshot is sent, and unregisters it in the session cleanup path — which also drops the tab's watch subscription.
+  - Sends an initial [dashboard state payload](../dashboard-state-payload.md) immediately after registration — **byte-identical to what [GET /api/state](#get-dashboard-state) would have returned** — so a freshly opened tab and a tab that just resynced after a dead socket converge through the same client code.
+  - Runs one [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) that waits for queued messages and JSON-encodes each into a websocket text frame.
+  - Runs one inbound [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) that decodes each browser text frame as JSON and delegates it to the command handler. Only `watch` and `answer` produce effects; any other `cmd` is ignored with no response frame, state mutation, gate write, log entry, or broadcast.
+  - Answers a `watch` command by recording this tab against that run id in the [run watch registry](../concepts/run-watch-registry.md) and immediately pushing that run's `detail` frame back, which is what makes a reconnect self-healing: the tab re-sends `watch` on every socket open and gets its slices without an HTTP fetch.
+  - Emits a heartbeat by construction. The [live clock](#schedule-live-clock) re-pushes `state` every tick whether or not anything changed, so a browser can read silence as a dead connection rather than as a quiet fleet — which is the whole basis of the [dashboard connection state machine](../concepts/dashboard-connection-state-machine.md).
+  - Ends the websocket session when either loop completes, then cancels the still-pending loop, propagates non-disconnect exceptions from the completed loop, and removes the client queue even when startup, sending, receiving, or command handling fails.
 - code: groom/groom/app.py::dashboard_ws
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script,
+- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
-  groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
+  groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately,
+  groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run,
+  groom/tests/test_app.py::test_a_closed_tab_stops_being_a_watcher
 - route: `WS /ws`
 - parent: [groom server](#groom-server)
 - invocation: [run-dashboard-websocket-session](#run-dashboard-websocket-session)
@@ -356,13 +373,15 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - query: none
   - headers: no endpoint-specific headers beyond the websocket upgrade handshake.
   - body: none before the websocket is accepted.
-  - inbound-frame: JSON object messages decoded from browser text frames; answer submissions use [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md).
+  - inbound-frame: JSON object messages decoded from browser text frames, discriminated by `cmd`. Answer submissions use [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md); subscriptions use `{"cmd": "watch", "run_id": str}`, where an empty `run_id` clears the subscription.
 - response:
   - status: accepted websocket connection when the route handler starts normally.
-  - media: websocket text frames.
-  - initial-frame: one HTML fragment from `render.render_shell_data(..., oob=True)` representing the current dashboard shell state.
-  - broadcast-frame: zero or more later HTML fragments received from the registered process-local client queue.
-  - command-response: no per-message acknowledgement frame; answer success or failure is reflected through the next broadcast shell, and successful answers additionally include a `groom:answered` dashboard script.
+  - media: websocket JSON text frames.
+  - initial-frame: one [dashboard state payload](../dashboard-state-payload.md) from `projection.state_message`, the same object `GET /api/state` returns for an empty query.
+  - broadcast-frame: zero or more later JSON messages received from the registered process-local client queue — `state` on every fleet change and on every clock tick, and `notify` when a run newly blocks or an alert rule fires.
+  - detail-frame: `{"type": "detail", "ts": float, "id": str, "detail": {…}}` carrying the same object [GET /worker/{container_id}](#get-run-detail) returns. This is the one downstream frame that is not fleet-wide: it goes only to the tabs that sent `watch` for that run, because which run is open is a property of the tab and not of the fleet.
+  - answered-frame: [dashboard answered message](../dashboard-answered-message.md) after a gate answer is written, so every tab with that run open can clear its form.
+  - command-response: no per-message acknowledgement frame. An answer's success or failure is reflected through the next `state` and `detail` push, and a successful one additionally through the `answered` frame.
   - errors: unknown `cmd` values are ignored; malformed websocket frames, send failures, and non-disconnect receive errors end the session through the framework rather than producing an endpoint-specific error payload.
 
 ### websocket-sidecar
@@ -460,7 +479,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Serves vendored dashboard assets from the package asset directory mounted at `/assets` by `create_app`.
   - Resolves every requested asset path relative to the [Groom app module](../concepts/groom-app-module.md#field-assets-dir) package path `groom/groom/assets`, not the process working directory.
   - Exists because `create_app` includes one static-files router in the application route handlers alongside the first-party HTTP and websocket handlers.
-  - Keeps the dashboard independent of runtime CDN access for htmx, the htmx websocket extension, diff2html, marked, DOMPurify, highlight.js, diff CSS, highlight CSS, and dashboard CSS.
+  - Keeps the dashboard independent of runtime CDN access for the Preact + htm rendering runtime, the dashboard ES module, diff2html, marked, DOMPurify, highlight.js, diff CSS, highlight CSS, and dashboard CSS. Nothing on this page is fetched from a third-party host at runtime; there is no build step and no `node_modules`.
   - Runs no first-party per-request handler for an individual asset request; after route matching, validation, lookup, response metadata, and not-found handling belong to the mounted static-file router.
   - Does not read query parameters, request body, cookies, workflow state, Docker state, or sidecar connection state.
   - Does not mutate server state, schedule discovery, broadcast websocket updates, or proxy asset requests to any remote host.
@@ -472,14 +491,14 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - method: `GET`
   - path: `/assets/{path...}`
   - path variable: `path` string, required, no default; interpreted by the mounted static-file router as a path below `groom/groom/assets`.
-  - examples: `htmx.min.js`, `htmx-ext-ws.min.js`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, `hljs-github-dark.min.css`, and `dashboard.css`.
+  - examples: `htm-preact.js`, `dashboard.js`, `dashboard.css`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, and `hljs-github-dark.min.css`.
   - query: none consumed by groom; query strings, when present, do not select workflow, sidecar, or dashboard state.
   - headers: none required by groom; cache and conditional request handling, when present, is framework static-file behavior.
   - body: none
 - response:
   - status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
   - media: derived from the requested asset type by the static-file response.
-  - body: bytes of the matched packaged asset; no application JSON or HTML fragment envelope is added by groom.
+  - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
   - errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
 
 ## Invocations
@@ -490,17 +509,17 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`.
 - when:
   - The groom process has constructed the Litestar application and the event loop is running startup lifecycle hooks.
-  - `create_app` registered `_spawn_scan` as the only first-party startup hook in `on_startup`.
+  - `create_app` registered `_spawn_scan` first in `on_startup`, ahead of the alert-rule ticker and the [live clock](#schedule-live-clock).
   - `state.SCANNING` already starts true from module initialization, so this hook does not need to set the discovery-loading flag before scheduling work.
   - No request, connected dashboard websocket, sidecar websocket, Docker availability, workflow registry entry, or operator action is required.
 - does:
   - Enters `groom/groom/app.py::_spawn_scan` as an async startup hook with no parameters.
   - Creates one background task for `groom/groom/app.py::_background_scan()` on the current event loop, so the initial Docker discovery pass can run after startup begins without blocking the server application on the whole scan.
   - Stores the created task in the module-level `_scan_task` slot, keeping a strong reference to the scheduled background work while it runs; later startups in the same process would replace that slot with the latest task handle.
-  - Returns `None` immediately after task creation; it does not await the discovery pass, inspect Docker containers, mutate the workflow registry, clear `state.SCANNING`, render dashboard HTML, broadcast websocket updates, or handle scan failures in the startup hook itself.
+  - Returns `None` immediately after task creation; it does not await the discovery pass, inspect Docker containers, mutate the workflow registry, clear `state.SCANNING`, broadcast websocket updates, or handle scan failures in the startup hook itself.
   - The scheduled [startup background discovery scan](../concepts/startup-background-discovery-scan.md) then runs one [reconcile workflow fleet](../concepts/workflow-registry.md#method-reconcile-workflow-fleet) pass, allowing discovered workflow containers to replace registry entries and allowing vanished containers to be pruned when Docker presence can be read.
   - The scheduled scan always clears the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md) after the reconciliation attempt exits, so successful scans and reconciliation errors both stop advertising startup discovery as in flight.
-  - After clearing the scanning flag, the scheduled scan calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) so connected dashboard websocket clients receive an out-of-band shell fragment for the current workflow registry and non-loading discovery state.
+  - After clearing the scanning flag, the scheduled scan calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) so connected dashboard websocket clients receive a [dashboard state payload](../dashboard-state-payload.md) carrying the current workflow registry and a false `scanning` flag, which is what swaps the spinner for real rows.
   - If reconciliation or completion broadcast raises, the exception belongs to the background task rather than the startup hook; the startup hook has already returned after scheduling the task.
 - emits: one scheduled in-process background task for the startup discovery scan; no HTTP response, websocket frame, sidecar frame, browser event, log entry, or persisted artifact.
 - consumes: the current asyncio event loop, the startup lifecycle call from the Litestar application, the first-party [startup background discovery scan](../concepts/startup-background-discovery-scan.md) coroutine, the [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md).
@@ -519,6 +538,72 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
   - errors: task creation failures propagate out of the startup hook; reconciliation or completion-broadcast failures raised later by the background task do not change the startup hook's already-returned result.
 
+### schedule-live-clock
+
+- on: [groom server](#groom-server)
+- trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`; the matching shutdown hook cancels the task.
+- when:
+  - The groom process has constructed the Litestar application and the event loop is running startup lifecycle hooks.
+  - `create_app` registered `_spawn_live` in `on_startup` after the discovery scan and the alert-rule ticker, and `_stop_live` in `on_shutdown`.
+  - No request, connected dashboard websocket, sidecar websocket, Docker availability, or workflow registry entry is required.
+- does:
+  - Enters `groom/groom/app.py::_spawn_live` as an async startup hook, creates the `_live_loop()` task on the current event loop, keeps a strong reference in the module-level `_live_task` slot, and returns without awaiting a tick.
+  - The loop sleeps `LIVE_TICK_S` seconds — `GROOM_LIVE_TICK_S`, default `5` — then, if any dashboard client is connected, broadcasts the [dashboard state payload](../dashboard-state-payload.md) and pushes each watched run's detail to the tabs watching it.
+  - Skips the whole tick when no client is connected, so an idle server does no projection work.
+  - Runs the clock because parts of a row are derived from `now` rather than from an event: elapsed time in the current node, and liveness computed from the last telemetry timestamp. Between edges those freeze — a run that has since died goes on claiming it is alive, and the event that would correct it is an *absence*, which cannot be pushed. The clock is the mechanism, not a fallback.
+  - Serves as the socket's heartbeat as a second consequence: the tick fires whether or not anything changed, which is what lets the [dashboard connection state machine](../concepts/dashboard-connection-state-machine.md) read silence as a dead connection rather than as a quiet fleet.
+  - Wraps each tick in a bare `except` so one failing broadcast cannot kill the loop and strand every open tab on a socket that is technically alive and permanently silent.
+  - Does not run discovery, inspect Docker, mutate workflow records, write gate files, prune the durable store, or send to sidecar sockets.
+- emits: one [dashboard state payload](../dashboard-state-payload.md) broadcast plus zero or more per-run `detail` pushes every `LIVE_TICK_S` seconds while at least one tab is connected.
+- consumes: the current asyncio event loop, the process-local workflow registry, the durable store's per-run facts read for each watched run, the [dashboard client queue set](../concepts/dashboard-client-queue-set.md), and the [run watch registry](../concepts/run-watch-registry.md).
+- code: groom/groom/app.py::_spawn_live
+- verify: groom/tests/test_app.py::test_live_loop_repushes_the_run_list_to_connected_clients,
+  groom/tests/test_app.py::test_live_loop_skips_the_render_when_nobody_is_watching,
+  groom/tests/test_app.py::test_live_loop_survives_a_failing_tick,
+  groom/tests/test_app.py::test_the_clock_refreshes_every_open_pane_alongside_the_fleet
+- request:
+  - method: none; this is a server startup lifecycle invocation, not an HTTP route or websocket message.
+  - path: none
+  - path variables: none
+  - query: none
+  - headers: none
+  - body: none
+- response:
+  - status: none; successful completion means the startup hook coroutine returned after scheduling the task.
+  - media: none
+  - body: none
+  - errors: task creation failures propagate out of the startup hook; per-tick failures are swallowed inside the loop by design, so a failing broadcast costs one tick rather than the clock.
+
+### schedule-alert-rule-ticker
+
+- on: [groom server](#groom-server)
+- trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`; the matching shutdown hook cancels the task.
+- when:
+  - The groom process has constructed the Litestar application and the event loop is running startup lifecycle hooks.
+  - `create_app` registered `_spawn_rules` in `on_startup` between the discovery scan and the [live clock](#schedule-live-clock), and `_stop_rules` in `on_shutdown`.
+  - No request, connected websocket, Docker availability, or configured alert rule is required; a server with no rules still runs the loop and its housekeeping passes.
+- does:
+  - Enters `groom/groom/app.py::_spawn_rules` as an async startup hook, prunes the durable store once so a long-lived database is bounded from the first tick rather than after the first hour, then creates the `_rules_loop()` task and keeps a strong reference in the module-level `_rules_task` slot.
+  - The loop sleeps `RULES_TICK_S` seconds — `GROOM_RULES_TICK_S`, default `60` — then evaluates the time-based alert rules and dispatches whatever fired.
+  - Evicts finished and dead runs from the hot cache on the same tick, and re-prunes the durable store on its own slower clock of `PRUNE_EVERY_S` seconds (`GROOM_PRUNE_EVERY_S`, default `3600`), running that prune on a worker thread so the event loop is not blocked by SQLite.
+  - Wraps each tick so one bad evaluation, or an unreachable notifier, cannot kill the loop — the stall watch itself must not be able to stall.
+  - Does not push to dashboard tabs directly, run discovery, inspect Docker, or answer gates; a fired rule reaches operators through the alert dispatcher.
+- emits: alert dispatches for rules that fired; no HTTP response, websocket frame from the hook itself, or persisted artifact beyond the store prune.
+- consumes: the current asyncio event loop, the alert-rule set, the process-local workflow registry and its hot telemetry cache, and the durable store.
+- code: groom/groom/app.py::_spawn_rules
+- request:
+  - method: none; this is a server startup lifecycle invocation, not an HTTP route or websocket message.
+  - path: none
+  - path variables: none
+  - query: none
+  - headers: none
+  - body: none
+- response:
+  - status: none; successful completion means the startup hook coroutine returned after the first prune and the task creation.
+  - media: none
+  - body: none
+  - errors: the startup prune and task creation propagate their failures out of the startup hook; per-tick failures are swallowed inside the loop by design.
+
 ### serve-root-dashboard-html
 
 - on: [get-root-dashboard-html](#get-root-dashboard-html)
@@ -532,8 +617,8 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Reads no request-derived inputs; path matching is complete before this handler runs, and there are no handler parameters for path variables, query values, headers, cookies, or request body data.
   - Builds a `200 OK` HTML response whose content is the module-level `_DASHBOARD_HTML` byte string loaded from `groom/groom/templates/dashboard.html` when `groom/groom/app.py` was imported.
   - Sets the response media type to `text/html` through Litestar's HTML media type, so the client receives the packaged dashboard shell as an HTML document rather than as an HTML fragment or JSON payload.
-  - Leaves the returned HTML document unchanged: no workflow rows, status counts, gate details, repository options, file data, diff data, websocket messages, or sidecar state are rendered by this invocation.
-  - Leaves dashboard liveness, workflow discovery state, websocket registration, and dynamic inbox/status rendering to later dashboard requests and websocket connections.
+  - Leaves the returned HTML document unchanged: no workflow rows, status counts, gate details, repository options, file data, diff data, websocket messages, or sidecar state appear in it. The shell is landmarks and a module `<script>` tag, so the first paint comes from the same state payload every later one does.
+  - Leaves dashboard liveness, workflow discovery state, websocket registration, and all run/status rendering to the dashboard module once it loads.
   - Calls no first-party helper function and reads no mutable first-party state during the request; the only first-party artifact consumed by this layer is the already documented dashboard template.
 - emits: exactly one HTTP response; this invocation does not broadcast websocket frames, enqueue sidecar messages, dispatch browser events, or write logs.
 - consumes: the route match for `GET /` and packaged [groom dashboard](../gui/screens/groom-dashboard.md) HTML bytes from `groom/groom/templates/dashboard.html` via [field-dashboard-html](../concepts/groom-app-module.md#field-dashboard-html).
@@ -551,40 +636,41 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: exact static dashboard shell bytes from `groom/groom/templates/dashboard.html`; clients interpret this as the [groom dashboard](../gui/screens/groom-dashboard.md) screen and then load its linked vendored assets from the static asset mount.
   - errors: none intentionally emitted by this handler; route matching, response construction, or import-time template-read failures are framework/process-level failures rather than endpoint-specific error responses.
 
-### serve-search-fragment
+### serve-dashboard-state
 
-- on: [get-search-fragment](#get-search-fragment)
-- trigger: a dashboard search request or other HTTP client requests `GET /search`, optionally with a `q` query string.
+- on: [get-dashboard-state](#get-dashboard-state)
+- trigger: a dashboard tab whose socket is stale or offline polls `GET /api/state`, optionally with a `q` query string; the [dashboard resync poller](../concepts/dashboard-resync-poller.md) is the only first-party caller.
 - when:
-  - The groom process has started successfully and the Litestar route table includes the search route.
-  - The in-memory workflow registry may be empty, partially discovered, or populated; no Docker or sidecar availability is required.
+  - The groom process has started successfully and the Litestar route table includes the state route.
+  - The in-memory workflow registry may be empty, partially discovered, or populated; no Docker, sidecar, or websocket availability is required.
   - The request body is ignored and no headers, cookies, or path variables are required.
 - does:
-  - Enters `groom/groom/app.py::search` for the search route and receives `q` as a string with default `""`.
+  - Enters `groom/groom/app.py::api_state` for the state route and receives `q` as a string with default `""`.
   - Reads a new membership snapshot of all current [workflow containers](../concepts/workflow-container.md) from the [workflow registry](../concepts/workflow-registry.md) through the [all workflows snapshot](../concepts/workflow-registry.md#method-all-workflows-snapshot) helper; the helper returns the current registry values as a list without sorting, filtering, cloning, or mutating them.
-  - Calls `render.render_inbox(workflows, q, oob=True)` to produce the filtered [operator inbox](../operator-inbox.md) fragment, passing the query string unchanged and requiring an out-of-band `#inbox-list` replacement root.
-  - Includes only workflows with open gates in the fragment; non-gated running, idle, or finished workers remain outside the operator inbox.
-  - Applies a case-insensitive substring query over workflow name, repository name, repository branch, workflow type, current node, and each open gate file path; workflow container ids and gate question text are not searched.
-  - Sorts matching gated workflows by dashboard state priority, with blocked before running before idle before finished, and then by workflow name inside a state.
-  - Emits the in-flight discovery loading state only when the result set is empty, process discovery is currently scanning, and `q` is empty; an empty non-empty-query result always emits the normal inbox empty state.
-  - Preserves the dashboard-wide status counts by omitting the status bar from the response; this request never recomputes or scopes fleet totals to `q`.
-  - Returns `200 OK` with HTML media type and the out-of-band `#inbox-list` replacement fragment; the response body is exactly the renderer output and contains no status-bar fragment, worker detail fragment, answer form, websocket script, or sidecar data.
+  - Calls the [groom projection module](../concepts/groom-projection-module.md#method-state-message) with that snapshot and the query, which is the same call the websocket broadcaster makes — so this response and a pushed frame are the same object built by the same code, not two renderings that happen to agree today.
+  - Applies a case-insensitive substring query over workflow name, repository name, repository branch, workflow type, and current node; workflow container ids are not searched.
+  - Sorts rows by dashboard rank — blocked, then live, then dead, then finished — and by workflow name inside a rank, so a resync lands rows in the same order a push would.
+  - Computes the status-bar counts over the unfiltered fleet, so typing in the search box narrows the list without making the dashboard's totals lie.
+  - Reports the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md) as `scanning`, so a resync issued during startup renders the loading state instead of an empty fleet.
+  - Returns `200 OK` with JSON media type; Litestar serializes the returned mapping and no first-party code touches the bytes.
   - Does not mutate workflow state, trigger discovery, query Docker, contact sidecars, broadcast websocket updates, or write gate files.
-- emits: one `text/html` HTTP response containing the [operator inbox](../operator-inbox.md) root fragment; no websocket frame, sidecar frame, browser event script, Docker request, answer write, log entry, or persisted artifact is emitted.
-- consumes: the `GET /search` route match, the optional `q` query string, the current in-memory [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md) when an empty unfiltered inbox must choose loading vs empty state, and the [operator inbox](../operator-inbox.md) rendering contract.
-- code: groom/groom/app.py::search
+- emits: one `application/json` HTTP response carrying the [dashboard state payload](../dashboard-state-payload.md); no websocket frame, sidecar frame, Docker request, answer write, log entry, or persisted artifact is emitted.
+- consumes: the `GET /api/state` route match, the optional `q` query string, the current in-memory [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [groom projection module](../concepts/groom-projection-module.md).
+- code: groom/groom/app.py::api_state
+- verify: groom/tests/test_app.py::test_api_state_is_the_resync_payload,
+  groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload
 - request:
   - method: `GET`
-  - path: `/search`
+  - path: `/api/state`
   - path variables: none
-  - query: `q` string, optional, default `""`; empty disables filtering, non-empty filters visible inbox rows.
+  - query: `q` string, optional, default `""`; empty disables filtering, non-empty filters the run list only.
   - headers: none required by the handler.
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: exactly one `<div class="inbox-list" id="inbox-list" hx-swap-oob="true">…</div>` HTML fragment suitable for htmx replacement in the [groom dashboard](../gui/screens/groom-dashboard.md); the inner content is zero or more inbox rows, the normal empty-state message, or the discovery loading message when scanning and unfiltered.
-  - errors: none intentionally emitted by this handler; request parsing failures and renderer failures are framework-level failures rather than endpoint-specific response bodies.
+  - media: `application/json`
+  - body: the [dashboard state payload](../dashboard-state-payload.md) — `{"type": "state", "ts", "scanning", "runs", "status"}` — identical to the frame the websocket pushes for the same query and the same fleet.
+  - errors: none intentionally emitted by this handler; request parsing failures and serialization failures are framework-level failures rather than endpoint-specific response bodies.
 
 ### serve-repository-menu
 
@@ -605,12 +691,12 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Skips checkout discovery entirely when no workflows are eligible and passes an empty entry list directly to the renderer.
   - Treats an empty checkout list as a browsable volume-root entry for that workflow, while Docker errors inside checkout discovery surface as that same empty checkout list.
   - Assembles [repository menu data](../repository-menu-data.md) as `(workflow, repo_dirs)` tuples, preserving one tuple per eligible workflow.
-  - Calls the [groom render module](../concepts/groom-render-module.md#method-render-repo-menu) to produce the HTML fragment consumed by the [groom dashboard](../gui/screens/groom-dashboard.md) repository overlay.
-  - Orders rendered options by workflow state order, then workflow name, then the sorted checkout directory list for each workflow; each rendered checkout becomes a [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option) with `role="option"`, `data-container`, `data-repo`, `data-label`, a workflow state dot, an optional workflow type badge, and a visible label.
-  - Emits the non-interactive `No repositories available.` empty-state fragment when no eligible workflows exist, and emits one volume-root option for any eligible workflow whose checkout-discovery list is empty.
-  - Returns `200 OK` with HTML media type and no out-of-band swap wrapper; the dashboard is responsible for inserting the fragment into the already-open repository overlay and filtering option rows client-side.
+  - Calls the [groom projection module](../concepts/groom-projection-module.md#method-repo-entries) to turn those tuples into the JSON group list consumed by the [groom dashboard](../gui/screens/groom-dashboard.md) repository overlay.
+  - Orders groups by workflow state order, then workflow name, and keeps each workflow's checkout directories in the order discovery sorted them; each checkout becomes one entry the browser renders as a [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option).
+  - Returns `[]` when no eligible workflows exist — which the browser renders as the non-interactive `No repositories available.` empty state — and emits one empty-`repo` entry for any eligible workflow whose checkout-discovery list is empty.
+  - Returns `200 OK` with JSON media type; the dashboard is responsible for rendering the entries into the already-open repository overlay and filtering them client-side.
   - Does not mutate workflow state, trigger discovery, contact sidecar sockets, broadcast websocket updates, read file contents, compute diffs, accept repository search input, or validate a chosen repository path.
-- emits: one `text/html` HTTP response containing zero or more [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option) rows, or the non-interactive repository-menu empty state; no websocket frame, sidecar frame, browser event script, Docker mutation, workflow-state mutation, persisted artifact, or out-of-band htmx fragment is emitted.
+- emits: one `application/json` HTTP response containing zero or more repository menu groups; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, or persisted artifact is emitted.
 - consumes: the `GET /repos` route match, the current in-memory [workflow registry](../concepts/workflow-registry.md), each eligible workflow's `workspace_volume` field from [workflow container](../concepts/workflow-container.md), checkout directory lists from the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md), and the [repository menu data](../repository-menu-data.md) rendering contract.
 - code: groom/groom/app.py::repos
 - verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
@@ -623,8 +709,8 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: concatenated repository picker option HTML derived from [repository menu data](../repository-menu-data.md), or `<div class="repo-empty">No repositories available.</div>` when no eligible workflow entries exist. Each option row is `<div class="repo-item" role="option" data-container="..." data-repo="..." data-label="...">…</div>` with dynamic attribute and label values HTML-escaped by the renderer.
+  - media: `application/json`
+  - body: a JSON array of [repository menu data](../repository-menu-data.md) groups, or `[]` when no eligible workflow entries exist. Each group carries `container`, `name`, `state`, `type`, `type_hue`, and a `repos` array of `{"repo", "label"}` pairs. No escaping is applied or needed; the values travel as data and the browser sets them as text.
   - errors: none intentionally emitted by this invocation; request parsing failures are framework-level failures, checkout discovery failures for a volume collapse to an empty checkout list for that workflow, and unexpected Docker process-launch or timeout exceptions from checkout discovery propagate as framework-level failures rather than endpoint-specific response bodies.
 
 ### serve-workspace-file-list
@@ -642,19 +728,19 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - The [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) looks up the current [sidecar connection](../concepts/sidecar-connection.md) for `container_id`; when none is registered it returns `None` immediately without mutating state or attempting any Docker fallback itself.
   - When a connection is registered, the helper sends exactly one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) with method `getTree` and params `{"repo": repo}` through the connection's RPC method, then returns the sidecar result unchanged on success.
   - If that sidecar RPC fails through timeout, socket send failure, sidecar error result, sidecar disconnect, or registry displacement reported as `SidecarError`, the helper converts the failure to `None`; this invocation treats that the same as an absent sidecar and continues to the volume-read fallback.
-  - If the sidecar RPC returns a dictionary, reads its `paths` value, treats a missing or falsey `paths` value as an empty list, joins the paths with newline separators, and returns `200 OK` with `text/plain` media type without reading `state.WORKFLOWS` or consulting Docker volumes.
+  - If the sidecar RPC returns a dictionary, reads its `paths` value, treats a missing or falsey `paths` value as an empty list, and returns `200 OK` with JSON media type without reading `state.WORKFLOWS` or consulting Docker volumes.
   - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the [workflow container](../concepts/workflow-container.md) is known.
-  - If no workflow or workspace volume is known, returns `200 OK` with `text/plain` media type and an empty body.
-  - If a workspace volume is known, calls `docker_io.list_files(workspace_volume, repo)` on a worker thread to read the selected checkout through the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md).
+  - If no workflow or workspace volume is known, returns `200 OK` with an empty `paths` array.
+  - If a workspace volume is known, reads the selected checkout on a worker thread — through local-disk listing for a native run, or through the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md) for a Docker one.
   - The fallback reader mounts the workflow volume read-only at `/vol`, searches `/vol/{repo}` when `repo` is non-empty or `/vol` when it is empty, prunes `.git`, `node_modules`, `__pycache__`, and `.venv` directories, and returns only regular-file paths relative to the selected checkout root.
   - If the fallback Docker process exits non-zero, the reader returns an empty list; subprocess launch or timeout exceptions are not caught by this handler and therefore become framework-level failures rather than endpoint-specific empty responses.
-  - Joins the fallback path list with newline separators in the reader's sorted order and returns `200 OK` with `text/plain` media type as [workspace file list data](../workspace-file-list-data.md).
+  - Returns the fallback path list in the reader's sorted order as `200 OK` [workspace file list data](../workspace-file-list-data.md).
   - Leaves panel rendering, directory expansion, file-row activation, and empty-state presentation to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data only.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket fragments, run discovery, read individual file content, compute diffs, or raise endpoint-specific error responses for unavailable data.
-- emits: one `text/plain` HTTP response; no websocket frame, sidecar frame, browser event script, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
+  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, read individual file content, compute diffs, or raise endpoint-specific error responses for unavailable data.
+- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
 - consumes: optional sidecar RPC result shaped as `{paths: list[str]}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md), or fallback [workspace file list data](../workspace-file-list-data.md) from the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md).
 - code: groom/groom/app.py::files
-- verify: groom/tests/test_app.py::test_files_endpoint_returns_newline_separated_paths,
+- verify: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 - request:
@@ -666,9 +752,9 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: newline-separated repo-relative paths matching [workspace file list data](../workspace-file-list-data.md), joined without adding a required trailing newline, or an empty string when no sidecar or fallback data is available.
-  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, sidecar RPC failure, and fallback reader non-zero exit are represented as an empty `200 OK` text response or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions propagate as framework-level failures.
+  - media: `application/json`
+  - body: `{"paths": [str, …]}` matching [workspace file list data](../workspace-file-list-data.md), or `{"paths": []}` when no sidecar or fallback data is available.
+  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, sidecar RPC failure, and fallback reader non-zero exit are represented as an empty `paths` array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions propagate as framework-level failures.
 
 ### serve-workspace-file-content
 
@@ -682,18 +768,19 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - No request headers, cookies, or body data are required.
 - does:
   - Enters `groom/groom/app.py::file_content` for the file-content route and receives `container_id`, `repo`, and `path` with string defaults of `""` for the query values.
+  - Names the highlighting language from `path` through the [groom projection module](../concepts/groom-projection-module.md#method-file-lang) *before* attempting any read, matching `dockerfile` and `makefile` on the whole basename and everything else on the extension, so `lang` does not depend on which read path won or on whether either did.
   - Calls `_sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})` to ask the connected sidecar, if any, for the selected file content.
-  - If the sidecar RPC returns a dictionary, reads its `content` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with `text/plain` media type without consulting Docker volumes.
+  - If the sidecar RPC returns a dictionary, reads its `content` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with JSON media type without consulting Docker volumes.
   - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the workflow is known.
   - Builds the fallback relative path as `f"{repo}/{path}".lstrip("/")` when `repo` is non-empty, otherwise uses `path` unchanged.
-  - If no workspace volume is known or the fallback relative path is empty, returns `200 OK` with `text/plain` media type and an empty body.
+  - If no workspace volume is known or the fallback relative path is empty, returns `200 OK` with an empty `content` string.
   - If a workspace volume and non-empty relative path are known, calls the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md) on a worker thread to validate the volume-relative path, mount the workflow volume read-only at `/vol`, and read `/vol/{repo/path}` through a throwaway Alpine `cat` process.
-  - If the fallback reader rejects the relative path with `ValueError`, returns `200 OK` with `text/plain` media type and an empty body; no fallback Docker process is started for rejected paths.
-  - If the fallback Docker read process exits non-zero because the file is missing, unreadable, or otherwise unavailable, treats the reader's `None` result as an empty body with the same `200 OK` text response contract.
-  - Returns the fallback reader's raw stdout when it is truthy; otherwise returns an empty body with the same `200 OK` text response contract, so empty files and unavailable files are indistinguishable to the HTTP client.
-  - Leaves syntax highlighting, filename display, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data only.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket fragments, run discovery, list directory contents, compute diffs, or emit endpoint-specific error responses for unavailable data.
-- emits: one `text/plain` HTTP response; no websocket frame, sidecar frame, browser event script, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
+  - If the fallback reader rejects the relative path with `ValueError`, returns `200 OK` with an empty `content` string; no fallback Docker process is started for rejected paths.
+  - If the fallback Docker read process exits non-zero because the file is missing, unreadable, or otherwise unavailable, treats the reader's `None` result as an empty `content` under the same `200 OK` contract.
+  - Returns the fallback reader's raw stdout as `content` when it is truthy; otherwise returns an empty `content`, so empty files and unavailable files are indistinguishable to the HTTP client.
+  - Leaves syntax highlighting, filename display, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data and the language name to highlight it with, and nothing else.
+  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, list directory contents, compute diffs, or emit endpoint-specific error responses for unavailable data.
+- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
 - consumes: the selected `container_id`, `repo`, and `path` request values; optional sidecar RPC result shaped as `{content: str}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md); and, when the sidecar path is unavailable, the [workflow registry](../concepts/workflow-registry.md) workspace-volume value plus fallback [workspace file content data](../workspace-file-content-data.md) from the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md).
 - code: groom/groom/app.py::file_content
 - verify: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
@@ -709,14 +796,14 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: [workspace file content data](../workspace-file-content-data.md), serialized as raw file text from the selected checkout or an empty string when the sidecar and fallback paths cannot supply file content.
-  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, empty selected paths, traversal-guard failures, missing files, unreadable files, and empty reader output are represented as an empty `200 OK` text response or sidecar/fallback data. Request parsing failures and unexpected reader exceptions other than traversal rejection propagate as framework-level failures.
+  - media: `application/json`
+  - body: [workspace file content data](../workspace-file-content-data.md) as `{"path", "content", "lang"}`, where `content` is raw file text from the selected checkout or an empty string when the sidecar and fallback paths cannot supply it, and `lang` is derived from the requested path regardless.
+  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, empty selected paths, traversal-guard failures, missing files, unreadable files, and empty reader output are all represented as an empty `content` or sidecar/fallback data. Request parsing failures and unexpected reader exceptions other than traversal rejection propagate as framework-level failures.
 
-### serve-workspace-diff
+### serve-working-tree-diff
 
-- on: [get-workspace-diff](#get-workspace-diff)
-- trigger: the dashboard Diff panel, the selected worker's working-tree diff disclosure, or another HTTP client requests `GET /diff/{container_id}` with an optional `repo` query string.
+- on: [get-working-tree-diff](#get-working-tree-diff)
+- trigger: the dashboard Changes panel, the open run's working-tree diff disclosure, or another HTTP client requests `GET /diff/{container_id}` with an optional `repo` query string.
 - when:
   - The groom process has started successfully and the Litestar route table includes the workspace-diff route.
   - `container_id` is supplied as a path variable; it may or may not correspond to a known workflow or connected sidecar.
@@ -725,15 +812,15 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Enters `groom/groom/app.py::diff` for the workspace-diff route and receives `container_id` plus `repo` with default `""`.
   - Calls `_sidecar_rpc(container_id, "getDiff", {"repo": repo})` to ask the connected sidecar, if any, for the selected checkout's [workspace diff data](../workspace-diff-data.md).
-  - If the sidecar RPC returns a dictionary, reads its `diff` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with `text/plain` media type without consulting Docker volumes.
+  - If the sidecar RPC returns a dictionary, reads its `diff` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with JSON media type without consulting Docker volumes.
   - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the workflow is known.
-  - If no workspace volume is known, returns `200 OK` with `text/plain` media type and an empty body.
-  - If a workspace volume is known, calls the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md) on a worker thread to collect the selected checkout's raw unified diff through a throwaway read-only git container.
+  - If no workspace volume is known, returns `200 OK` with an empty `diff` string.
+  - If a workspace volume is known, collects the selected checkout's raw unified diff on a worker thread — from local disk for a native run, or through the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md)'s throwaway read-only git container for a Docker one.
   - Passes the `repo` query value unchanged to the fallback reader; an empty `repo` asks the reader to choose the first discovered checkout, while a non-empty value is treated as the volume-relative checkout path.
-  - Returns the fallback diff text as-is with `text/plain` media type; no discovered checkout, a non-zero git/Docker exit, or no working-tree changes remain an empty `200 OK` response.
-  - Leaves diff2html rendering, file-list presentation, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data only.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket fragments, run discovery, list files, read individual file contents, or emit endpoint-specific error responses for unavailable diff data.
-- emits: one `text/plain` HTTP response; no websocket frame, sidecar frame, browser event script, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
+  - Returns the fallback diff text as-is; no discovered checkout, a non-zero git/Docker exit, or no working-tree changes all remain an empty `diff` under a `200 OK`.
+  - Leaves per-file diff markup, file-list presentation, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns the unified diff text and nothing else.
+  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, list files, read individual file contents, or emit endpoint-specific error responses for unavailable diff data.
+- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
 - consumes: optional sidecar RPC result shaped as `{diff: str}` from [sidecar live sessions](../sidecar-live-sessions.md), or fallback [workspace diff data](../workspace-diff-data.md) from the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md).
 - code: groom/groom/app.py::diff
 - verify: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
@@ -747,35 +834,34 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/plain`
-  - body: [workspace diff data](../workspace-diff-data.md), serialized as raw unified git diff text from the selected checkout or an empty string when the sidecar path has no diff, no workspace volume is known, no fallback checkout is discovered, the fallback git/Docker process exits non-zero, or the selected checkout has no working-tree diff.
-  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, no discovered fallback checkout, non-zero fallback git/Docker completion, and empty diff output are represented as an empty `200 OK` text response or sidecar/fallback data. Request parsing failures and unexpected sidecar-registry, Docker process-launch, Docker timeout, or response-construction exceptions propagate as framework-level failures.
+  - media: `application/json`
+  - body: [workspace diff data](../workspace-diff-data.md) as `{"diff": str}`, whose value is the raw unified git diff text from the selected checkout, or `""` when the sidecar path has no diff, no workspace volume is known, no fallback checkout is discovered, the fallback git/Docker process exits non-zero, or the selected checkout has no working-tree diff.
+  - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, no discovered fallback checkout, non-zero fallback git/Docker completion, and empty diff output are all represented as an empty `diff` under a `200 OK`. Request parsing failures and unexpected sidecar-registry, Docker process-launch, Docker timeout, or response-construction exceptions propagate as framework-level failures.
 
-### serve-worker-detail
+### serve-run-detail
 
-- on: [get-worker-detail](#get-worker-detail)
-- trigger: the dashboard inbox row activation or another HTTP client requests `GET /worker/{container_id}` for one workflow container.
+- on: [get-run-detail](#get-run-detail)
+- trigger: the [dashboard run selector](../concepts/dashboard-run-selector.md) opens a run, or another HTTP client requests `GET /worker/{container_id}` for one workflow container.
 - when:
-  - The groom process has started successfully and the Litestar route table includes the worker-detail route.
+  - The groom process has started successfully and the Litestar route table includes the run-detail route.
   - `container_id` is supplied as a path variable; it may correspond to a known workflow in memory or to no current workflow.
   - No query string, request headers, cookies, or request body are required.
 - does:
-  - Enters `groom/groom/app.py::worker_detail` for the worker-detail route and receives `container_id` as a string path parameter.
+  - Enters `groom/groom/app.py::worker_detail` for the run-detail route and receives `container_id` as a string path parameter.
   - Reads `state.WORKFLOWS.get(container_id)` once to obtain the current in-memory [workflow container](../concepts/workflow-container.md), or `None` when the id is unknown.
-  - Calls the [worker detail renderer](../concepts/worker-detail-renderer.md) with that value to build the dashboard detail-pane HTML fragment.
-  - For an unknown worker, returns a `#detail` fragment containing the `Worker not found.` empty state.
-  - For a known worker with no open gates, returns the worker header and a `No open gate` message that includes the workflow state and current node when present.
-  - For a known worker with open gates, returns the worker header, gate blocks sorted by gate file path, escaped gate-question markdown for client-side sanitized rendering, websocket answer forms scoped by hidden `workflow_id` and `file_path` fields, and exactly one working-tree diff disclosure carrying the worker container id.
-  - Ensures every dynamic detail-fragment value produced by the renderer path is HTML-escaped before it enters text nodes or attributes; gate questions remain escaped text in `data-md` nodes for the dashboard's client-side markdown sanitizer.
-  - Builds a `200 OK` HTML response and leaves client-side markdown rendering, answer submission, diff fetching, and detail-pane replacement to the [groom dashboard](../gui/screens/groom-dashboard.md).
-  - Does not mutate `state.WORKFLOWS`, register sidecars, start discovery, query Docker, broadcast websocket fragments, write gate files, or compute workspace diffs.
-- emits: one `text/html` HTTP response; no websocket frame, sidecar frame, browser event script, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
-- consumes: optional in-memory [workflow container](../concepts/workflow-container.md) state from `state.WORKFLOWS`, including workflow identity, state, current node, open gates, and gate questions; the [worker detail renderer](../concepts/worker-detail-renderer.md) consumes that record as its only input.
+  - Calls the [groom projection module](../concepts/groom-projection-module.md#method-run-detail) with that value to build the [run detail payload](#get-run-detail) — the same projection the websocket broadcaster pushes to a subscribed tab, so a fetched pane and a pushed pane cannot drift.
+  - For an unknown run, returns `{"found": false, "id": …}` rather than a `404`; the browser renders that as its own empty state, and a missing run is an ordinary fleet outcome rather than a request error.
+  - For a known run, returns its identity, state, current node, open gates sorted by gate file path, head-commit facts, telemetry cells, and the recent log trail.
+  - Carries each gate's question as its raw markdown source in a data field. Nothing is escaped here and nothing is rendered here; the browser sanitizes and renders it.
+  - Leaves markdown rendering, answer submission, working-tree diff fetching, and pane placement to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - Does not mutate `state.WORKFLOWS`, register sidecars, start discovery, query Docker, broadcast websocket messages, write gate files, or compute workspace diffs.
+- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
+- consumes: optional in-memory [workflow container](../concepts/workflow-container.md) state from `state.WORKFLOWS`, including workflow identity, state, current node, open gates, gate questions, head-commit facts, and buffered telemetry; the projection consumes that record plus the durable store's facts for the same run.
 - code: groom/groom/app.py::worker_detail
-- verify: groom/tests/test_render.py::test_gate_question_rendered_as_escaped_data_md_text_node,
-  groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form,
-  groom/tests/test_render.py::test_worker_detail_has_one_diff_disclosure,
-  groom/tests/test_render.py::test_worker_detail_not_found_and_no_gate_states
+- verify: groom/tests/test_app.py::test_worker_detail_and_pushed_slices,
+  groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs,
+  groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail,
+  groom/tests/test_projection.py::test_detail_of_a_finished_run_has_no_gates_but_keeps_its_node
 - request:
   - method: `GET`
   - path: `/worker/{container_id}`
@@ -785,9 +871,9 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: none
 - response:
   - status: `200`
-  - media: `text/html`
-  - body: selected worker detail-pane fragment for the dashboard `#detail` region; the outer element is always `<div id="detail">`, with the unknown-worker empty state, no-open-gate status state, or open-gate gate-list state selected by the renderer.
-  - errors: none intentionally emitted by this handler; an unknown workflow id is a successful empty-state fragment, and request parsing or renderer failures are framework-level failures rather than endpoint-specific error bodies.
+  - media: `application/json`
+  - body: the run detail payload documented under [get-run-detail](#get-run-detail) — `{"found": false, "id": …}` for an unknown id, otherwise `found: true` with the run's identity, state, node, gates, head, metrics, and logs.
+  - errors: none intentionally emitted by this handler; an unknown workflow id is a successful `found: false` body, and request parsing or projection failures are framework-level failures rather than endpoint-specific error bodies.
 
 ### refresh-workflow-fleet
 
@@ -801,8 +887,8 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Enters `groom/groom/app.py::refresh` for the refresh route.
   - Sets `state.SCANNING` to `True` before any Docker discovery work starts.
-  - Calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) once immediately after setting `SCANNING`; if this pre-scan broadcast succeeds, connected dashboard websocket clients are offered an out-of-band shell update that can display the scanning state.
-  - The pre-scan broadcaster call snapshots `state.WORKFLOWS`, renders the inbox/list region plus status bar as out-of-band shell HTML, and queues that same fragment for every browser dashboard websocket client registered at that moment; it does not send to sidecar sockets, mutate workflow records, or append notification scripts.
+  - Calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) once immediately after setting `SCANNING`; if this pre-scan broadcast succeeds, connected dashboard websocket clients receive a state payload whose `scanning` flag is true, which is how every open tab shows the scan as it starts rather than only once it ends.
+  - The pre-scan broadcaster call snapshots `state.WORKFLOWS`, projects it into a [dashboard state payload](../dashboard-state-payload.md), and queues that same object for every browser dashboard websocket client registered at that moment; it does not send to sidecar sockets, mutate workflow records, or emit a notification frame.
   - Calls the [reconcile workflow fleet](../concepts/workflow-registry.md#method-reconcile-workflow-fleet) registry method only after the pre-scan broadcast succeeds.
   - During reconciliation, collects discoverable [workflow containers](../concepts/workflow-container.md) from one Docker discovery scan and assigns each returned record into `state.WORKFLOWS` by `container_id`, replacing any older in-memory record for the same container id.
   - After discovered records have been installed, queries the current Docker container-id set and prunes vanished workflow entries only when that present-id query returns a set.
@@ -810,7 +896,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Receives the reconciliation count as the number of workflow containers returned by the scan before pruning, not the final registry size and not the number of upserts or removals.
   - Sets `state.SCANNING` to `False` in a `finally` block around the reconciliation call, so successful reconciliation and raised reconciliation errors both clear the process-level scanning state.
   - On successful reconciliation, calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) a second time so connected dashboard tabs are offered the refreshed fleet state after upserts and safe pruning.
-  - The post-scan broadcaster call repeats the current-registry snapshot/render/queue sequence after `state.SCANNING` has been cleared; if rendering or queueing raises, reconciliation has already completed and the endpoint fails before returning its success JSON.
+  - The post-scan broadcaster call repeats the current-registry snapshot/project/queue sequence after `state.SCANNING` has been cleared; if projection or queueing raises, reconciliation has already completed and the endpoint fails before returning its success JSON.
   - Returns a JSON object with `ok` set to `true` and `count` set to the number of workflow containers returned by the scan only after the post-scan broadcast succeeds.
   - If the pre-scan `_broadcast_shell()` raises, does not call `_reconcile()`, does not clear `state.SCANNING`, does not send the post-scan broadcast, and does not return an endpoint-specific error body.
   - If `_reconcile()` raises, clears `state.SCANNING`, skips the post-scan broadcast, and lets the framework produce the error response.
@@ -847,7 +933,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Enters `groom/groom/app.py::push_progress` with the parsed request body as `data`.
   - Reads `data["container_id"]`, substitutes an empty string when absent, converts the value to `str`, and truncates the normalized id to 12 characters.
-  - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, or broadcasting dashboard HTML.
+  - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, or broadcasting dashboard state.
   - Calls the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md) for a non-empty id before applying progress fields.
   - The resolver reads the current registry entry for the id; when the entry already has `workspace_volume`, it skips Docker inspection and makes no metadata changes.
   - When the entry is absent or lacks `workspace_volume`, the resolver inspects the Docker container on a worker thread, converts the inspection result into a workflow-container view, and upserts only `workspace_volume`, `runs_volume`, and `workflow_type` from that view.
@@ -856,10 +942,10 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Passes `state=WorkflowState.RUNNING` and optional payload fields for `name`, `repo_name`, `repo_branch`, and `current_node`; the upsert applies only values that are not `None` and ignores any field name outside the workflow-container contract.
   - When no workflow row exists yet, the upsert creates a [workflow container](../concepts/workflow-container.md) keyed by the normalized id and chooses its initial display name from the non-null payload `name`, or from the first 12 characters of the normalized id when no name is supplied.
   - Leaves existing gates, exit code, workflow type, run id, workspace volume, and runs volume unchanged unless `_ensure_volumes` or the upsert call has a non-null replacement for those fields.
-  - Calls `_broadcast_shell()` after the upsert, causing connected dashboard websocket clients to receive a fresh out-of-band shell fragment for the current workflow fleet; if rendering or queueing that fragment raises, the workflow mutation has already happened and the handler does not return its success body.
+  - Calls `_broadcast_shell()` after the upsert, causing connected dashboard websocket clients to receive a fresh [dashboard state payload](../dashboard-state-payload.md) for the current workflow fleet; if projecting or queueing that payload raises, the workflow mutation has already happened and the handler does not return its success body.
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
-  - Does not append to the event log, emit a browser notification script, clear operator gates, record terminal state, answer gate files, prune workflows, or run fleet discovery.
-- emits: one dashboard shell websocket broadcast on the success path; no broadcast on missing/empty container id.
+  - Does not append to the event log, emit a notification frame, clear operator gates, record terminal state, answer gate files, prune workflows, or run fleet discovery.
+- emits: one dashboard state payload broadcast on the success path; no broadcast on missing/empty container id.
 - consumes: [progress push payload](../progress-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata resolved by the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md), and the current connected dashboard websocket client set.
 - code: groom/groom/app.py::push_progress
 - request:
@@ -880,7 +966,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - media: `application/json`
   - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means the workflow state was updated and the shell broadcast completed.
   - field: `ok`; type boolean; required; default none; `false` only on the missing-or-empty normalized container-id path before any mutation or broadcast, and `true` only after Docker metadata resolution, workflow upsert, shell rendering, and broadcast queueing complete.
-  - errors: no endpoint-specific error body is produced; Docker metadata lookup, registry upsert, shell rendering, broadcast queueing, or response construction failures propagate as framework errors.
+  - errors: no endpoint-specific error body is produced; Docker metadata lookup, registry upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### receive-blocked-push
 
@@ -894,23 +980,22 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Enters `groom/groom/app.py::push_blocked` with the parsed request body as `data`.
   - Reads `data["container_id"]`, substitutes an empty string when absent, converts the value to `str`, and truncates the normalized id to 12 characters.
   - Reads `data["file_path"]`, substitutes an empty string when absent, and converts the value to `str`.
-  - If the normalized id or normalized file path is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, recording a gate, rendering fragments, or broadcasting dashboard HTML.
+  - If the normalized id or normalized file path is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, recording a gate, projecting the fleet, or broadcasting dashboard state.
   - Calls `_ensure_volumes(container_id)` for a valid id and path, so a push-first workflow can gain workspace and runs volume metadata from Docker inspection when that metadata is not already known.
   - Reads `data["question"]`, substitutes an empty string when absent, and converts the value to `str` for the stored gate question.
   - Calls `state.upsert_workflow` for the normalized id, creating a new workflow row when absent or updating the existing row when present.
   - Sets the workflow state to `BLOCKED` and applies non-null `name`, `repo_name`, and `repo_branch` payload values; omitted or null optional fields do not overwrite existing workflow fields.
   - Leaves current node, exit code, workflow type, run id, workspace volume, and runs volume unchanged unless `_ensure_volumes` or the upsert call has a non-null replacement for those fields.
   - Inserts or replaces `wf.gates[file_path]` with a [gate info](../concepts/gate-info.md) record carrying the normalized container id, normalized gate file path, normalized question, and default awaiting-operator status.
-  - Calls the [dashboard shell renderer](../concepts/dashboard-shell-renderer.md) with the current `state.WORKFLOWS` snapshot and out-of-band mode enabled, producing a [dashboard shell fragment](../dashboard-shell-fragment.md) for the same fleet state that now includes the blocked workflow and stored gate.
-  - The shell fragment contains the [operator inbox](../operator-inbox.md) live region followed by the status-bar live region; it does not include the selected worker detail pane, repository menu, Files panel, Diff panel, or browser notification script.
-  - Calls the [blocked notification script renderer](../concepts/blocked-notification-script-renderer.md) with message text formed from the workflow name, a colon separator, and the first 200 characters of the question.
-  - Appends the returned [blocked notification script fragment](../blocked-notification-script-fragment.md) after the shell fragment; when the dashboard executes it, it dispatches `groom:blocked` on `document.body` with the message as the CustomEvent `detail` string.
-  - Calls the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-broadcast-dashboard-fragment) with the combined shell-plus-notification fragment.
-  - The broadcaster snapshots the currently registered dashboard client queues before queueing, awaits one enqueue per snapshot queue, and does not send to sidecar websockets, create clients, retry failed queues, or persist the fragment.
-  - If queueing fails or is cancelled partway through, earlier queues in the snapshot may already contain the fragment; the exception propagates before this invocation returns its success body.
+  - Calls the [groom projection module](../concepts/groom-projection-module.md#method-state-message) with the current `state.WORKFLOWS` snapshot, producing a [dashboard state payload](../dashboard-state-payload.md) for the same fleet state that now includes the blocked workflow and stored gate.
+  - That payload carries the [runs fleet view](../runs-fleet-view.md) rows and the status-bar counts; it does not carry the open run's detail, the repository menu, the Files panel, the Changes panel, or any notification text.
+  - Builds a separate one-shot `{"type": "notify", "message": …}` frame whose message is the workflow name, a colon separator, and the first 200 characters of the question. It is a distinct frame, not a field of the state payload, precisely so it accompanies an actual new block rather than every reconciliation re-push.
+  - Calls the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-broadcast-dashboard-message) once with the state payload and once with the notify frame.
+  - The broadcaster snapshots the currently registered dashboard client queues before queueing, awaits one enqueue per snapshot queue, and does not send to sidecar websockets, create clients, retry failed queues, or persist the payload.
+  - If queueing fails or is cancelled partway through, earlier queues in the snapshot may already hold the payload; the exception propagates before this invocation returns its success body.
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
   - Does not append to the event log, answer or write gate files, clear other open gates, record terminal state, prune workflows, contact the sidecar data-plane socket, run fleet discovery, or retry notification delivery.
-- emits: one dashboard shell websocket broadcast plus one [blocked notification script fragment](../blocked-notification-script-fragment.md) on the success path; no broadcast on missing/empty container id or missing/empty gate file path.
+- emits: one [dashboard state payload](../dashboard-state-payload.md) broadcast plus one `notify` frame on the success path; no broadcast on missing/empty container id or missing/empty gate file path.
 - consumes: [blocked push payload](../blocked-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata, and the current [dashboard client queue set](../concepts/dashboard-client-queue-set.md).
 - code: groom/groom/app.py::push_blocked
 - request:
@@ -930,9 +1015,9 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - response:
   - status: `200` on normal handler return.
   - media: `application/json`
-  - body: object with `ok: bool`; `false` means the request lacked a usable container id or gate file path, and `true` means the workflow state was marked blocked, the gate was stored, and the shell-plus-notification broadcast completed.
-  - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after the dashboard broadcast has accepted the shell-plus-notification fragment.
-  - errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, shell rendering, notification rendering, broadcast queueing, or response construction failures propagate as framework errors.
+  - body: object with `ok: bool`; `false` means the request lacked a usable container id or gate file path, and `true` means the workflow state was marked blocked, the gate was stored, and the state-plus-notify broadcast completed.
+  - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after the dashboard broadcast has accepted both the state payload and the notify frame.
+  - errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### receive-exited-push
 
@@ -945,17 +1030,17 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Enters `groom/groom/app.py::push_exited` with the parsed request body as `data`.
   - Reads `data["container_id"]`, substitutes an empty string when absent, converts the value to `str`, and truncates the normalized id to 12 characters.
-  - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, clearing gates, rendering fragments, or broadcasting dashboard HTML.
+  - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, clearing gates, projecting the fleet, or broadcasting dashboard state.
   - Calls `_ensure_volumes(container_id)` for a non-empty id, so a push-first workflow can gain workspace and runs volume metadata from Docker inspection when that metadata is not already known.
   - Reads `data["exit_code"]` without a default; when the value is an `int` or `str` whose string form is decimal digits with an optional leading `-`, converts it to `int`, otherwise uses `None`.
   - Calls `state.upsert_workflow` for the normalized id, creating a new workflow row when absent or updating the existing row when present.
   - Sets the workflow state to [workflow state](../concepts/workflow-state.md) `FINISHED`, stores the parsed exit code when numeric, and applies non-null `name`, `repo_name`, and `repo_branch` payload values; omitted, null, or non-numeric optional fields do not overwrite existing workflow fields.
   - Leaves current node, existing exit code when no numeric exit code is supplied, workflow type, run id, workspace volume, and runs volume unchanged unless `_ensure_volumes` or the upsert call has a non-null replacement for those fields.
   - Clears the workflow's `gates` mapping completely, removing every pending operator gate for the exited container.
-  - Calls `_broadcast_shell()` after the update, causing connected dashboard websocket clients to receive a fresh out-of-band shell fragment for the current workflow fleet.
+  - Calls `_broadcast_shell()` after the update, causing connected dashboard websocket clients to receive a fresh [dashboard state payload](../dashboard-state-payload.md) for the current workflow fleet.
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
-  - Does not append to the event log, emit a browser notification script, answer or write gate files, prune workflows, contact the sidecar data-plane socket, run fleet discovery, or retry broadcast delivery.
-- emits: one dashboard shell websocket broadcast on the success path; no broadcast on missing/empty container id.
+  - Does not append to the event log, emit a notification frame, answer or write gate files, prune workflows, contact the sidecar data-plane socket, run fleet discovery, or retry broadcast delivery.
+- emits: one dashboard state payload broadcast on the success path; no broadcast on missing/empty container id.
 - consumes: [exited push payload](../exited-push-payload.md) JSON from the container entrypoint sidecar path, process-local workflow state, optional Docker inspection metadata, and the current connected dashboard websocket client set.
 - code: groom/groom/app.py::push_exited
 - verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code,
@@ -978,7 +1063,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - media: `application/json`
   - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means the workflow state was marked finished, open gates were cleared, and the shell broadcast completed.
   - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after `_ensure_volumes`, `state.upsert_workflow`, gate clearing, and `_broadcast_shell` complete.
-  - errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, shell rendering, broadcast queueing, or response construction failures propagate as framework errors.
+  - errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### reload-sidecars
 
@@ -998,7 +1083,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - Increments `reloaded` after a target connection accepts the reload command.
   - Swallows exceptions from a target send so a dead socket prevents only that target's count increment, leaves registry cleanup to the websocket session lifecycle, does not fail the HTTP request, and does not stop later targets.
   - Returns `200 OK` with JSON `{"ok": true, "reloaded": reloaded}` after every target has been attempted.
-  - Does not mutate workflow state, clear gates, broadcast dashboard shell fragments, inspect Docker, read workspace files, schedule discovery, wait for sidecars to disconnect, wait for sidecars to reconnect, or verify that the container actually restarted.
+  - Does not mutate workflow state, clear gates, broadcast dashboard state payloads, inspect Docker, read workspace files, schedule discovery, wait for sidecars to disconnect, wait for sidecars to reconnect, or verify that the container actually restarted.
 - emits: zero or more sidecar websocket reload frames, one per targeted live connection whose send succeeds; no browser websocket broadcast and no process-local workflow state change.
 - consumes: the process-local sidecar connection registry and the optional `container_id` query string.
 - code: groom/groom/app.py::reload
@@ -1031,14 +1116,14 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 - does:
   - Enters the route table that `groom/groom/app.py::create_app` built for `/assets`.
   - Uses the static-files router that `create_app` constructed with `path="/assets"` and the package asset directory [field-assets-dir](../concepts/groom-app-module.md#field-assets-dir).
-  - Exposes only the packaged dashboard asset files present under `groom/groom/assets`: `htmx.min.js`, `htmx-ext-ws.min.js`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, `hljs-github-dark.min.css`, and `dashboard.css`.
+  - Exposes only the packaged dashboard asset files present under `groom/groom/assets`: `htm-preact.js`, `dashboard.js`, `dashboard.css`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, and `hljs-github-dark.min.css`.
   - Delegates per-request path validation, file lookup, conditional request handling, media-type selection, and static response construction to the mounted framework static-file router; no first-party route handler function runs for an individual asset request.
   - Returns the matched packaged asset bytes when the requested asset exists.
   - Lets the static-file router produce missing-file, unsupported-method, and conditional-request responses for paths it cannot serve as a normal asset body.
   - Leaves process-local workflow state, sidecar registrations, dashboard websocket clients, discovery scans, and event logs unchanged.
-  - Does not fetch third-party CDN resources, transform asset bytes, render templates, or emit websocket/browser-push updates.
+  - Does not fetch third-party CDN resources, transform asset bytes, run a build step, or emit websocket/browser-push updates. Every dependency the dashboard has is a file in this directory, checked in; there is no `node_modules` and nothing is resolved at runtime.
 - emits: one HTTP static-file response only; no browser websocket broadcast and no sidecar websocket frame.
-- consumes: the package asset directory rooted at `groom/groom/assets` through `ASSETS_DIR`, including the vendored JavaScript, CSS, diff-rendering, markdown, sanitization, syntax-highlight, and dashboard stylesheet assets used by the dashboard shell; no workflow, sidecar, Docker, or request-body data.
+- consumes: the package asset directory rooted at `groom/groom/assets` through `ASSETS_DIR`, including the vendored rendering runtime, the dashboard ES module, and the diff-rendering, markdown, sanitization, syntax-highlight, and stylesheet assets it imports; no workflow, sidecar, Docker, or request-body data.
 - code: groom/groom/app.py::create_app
 - request:
   - method: `GET`
@@ -1056,34 +1141,37 @@ The server is single-process and stateful in memory. Startup schedules a backgro
 ### run-dashboard-websocket-session
 
 - on: [websocket-dashboard](#websocket-dashboard)
-- trigger: a browser tab running the [groom dashboard](../gui/screens/groom-dashboard.md) opens the htmx websocket extension connection to `WS /ws`, or submits a dashboard `ws-send` answer form over that open connection.
+- trigger: a browser tab running the [groom dashboard](../gui/screens/groom-dashboard.md) opens its websocket connection to `WS /ws`, declares which run it has open, or submits an answer over that open connection.
 - when:
   - The groom process has started successfully and the Litestar route table includes the `/ws` websocket route.
   - The dashboard client can complete a websocket upgrade to the same origin serving the dashboard shell.
   - The process-local workflow registry may be empty, scanning, running, blocked, or finished; no Docker or sidecar availability is required to open the socket.
-  - Answer-command handling requires a JSON frame with `cmd` equal to `"answer"`; missing or unknown commands are ignored.
+  - Command handling requires a JSON frame whose `cmd` is `"watch"` or `"answer"`; missing or unknown commands are ignored.
 - does:
   - Enters `groom/groom/app.py::dashboard_ws` with the accepted browser websocket object.
-  - Accepts the websocket and creates one unbounded in-process queue for outbound dashboard fragments for this client.
-  - Registers the queue through the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-register-dashboard-client) before rendering the initial frame; registration inserts that exact queue object into the process-local client set, is idempotent for the same queue object, and makes subsequent `state.broadcast(...)` calls target this tab.
-  - Reads the current workflow registry through `_all_workflows()` and immediately sends `render.render_shell_data(workflows, oob=True)` as an HTML text frame; this initial send is direct to the accepted socket and does not pass through the per-client queue.
-  - Starts the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) as the outbound loop for this tab; it waits indefinitely on this tab's registered queue, preserves queue order, and sends each queued HTML/script fragment as one websocket text frame without rendering, validation, acknowledgement, retry, or additional broadcast.
-  - Starts the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) as the inbound loop for this tab; it waits indefinitely for decoded JSON frames from the accepted browser websocket and passes each frame unchanged to `_handle_command`.
+  - Accepts the websocket and creates one unbounded in-process queue for outbound dashboard messages for this client.
+  - Registers the queue through the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-register-dashboard-client) before sending the initial frame; registration inserts that exact queue object into the process-local client set, is idempotent for the same queue object, and makes subsequent `state.broadcast(...)` calls target this tab.
+  - Reads the current workflow registry through `_all_workflows()`, projects it with the [groom projection module](../concepts/groom-projection-module.md#method-state-message), and immediately sends that [dashboard state payload](../dashboard-state-payload.md) as one JSON text frame — the same object [GET /api/state](#get-dashboard-state) would have returned, so a freshly opened tab and a tab resyncing after a dead socket converge through one code path. This initial send is direct to the accepted socket and does not pass through the per-client queue.
+  - Starts the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) as the outbound loop for this tab; it waits indefinitely on this tab's registered queue, preserves queue order, and serializes each queued message to JSON as one websocket text frame without projecting, validating, acknowledging, retrying, or re-broadcasting.
+  - Starts the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) as the inbound loop for this tab; it waits indefinitely for decoded JSON frames from the accepted browser websocket and passes each frame — together with this tab's queue, which is how a per-tab command is attributed to a tab — unchanged to `_handle_command`.
   - The receive loop serializes inbound handling per websocket session by awaiting `_handle_command` before receiving the next frame; it performs no command filtering, field normalization, schema validation, logging, state mutation, response-frame send, or dashboard broadcast itself.
-  - For an inbound object whose `cmd` is not `"answer"`, `_handle_command` returns without changing workflow state, writing gate files, recording log entries, or broadcasting.
-  - For an answer command, `_handle_command` consumes a [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), string-normalizes `workflow_id`, `file_path`, and `answer`, looks up the workflow's current workspace volume when known, and calls `answer_gate(container_id, file_path, answer, workspace_volume=...)`.
+  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without changing workflow state, writing gate files, recording log entries, or broadcasting.
+  - For a watch command, records this tab's subscription in the [run watch registry](../concepts/run-watch-registry.md) — replacing whatever it was watching, since a tab has one pane open — and, when the run id is non-empty and known, sends that run's detail message straight back to this tab's queue. The immediate push is what makes a reconnect self-healing: the tab re-sends `watch` on every socket open and gets the current pane without an HTTP fetch.
+  - For an answer command, `_handle_command` consumes a [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), string-normalizes `workflow_id`, `file_path`, and `answer`, looks up the workflow's current workspace volume when known, and calls `answer_gate(container_id, file_path, answer, workspace_volume=..., native=...)`.
   - Receives an [answer result](../answer-result.md) from the gate-answering layer and records one [answer log entry](../answer-log-entry.md) for every attempted answer with event `answer`, the container id, gate file path, result `ok` flag, and result message.
   - When the answer succeeds and the workflow has no remaining gates while its visible state is `BLOCKED`, changes that workflow state to `RUNNING` immediately.
-  - Broadcasts a fresh out-of-band dashboard shell after every attempted answer so all connected tabs converge on the current fleet and gate state.
-  - Adds a `groom:answered` dashboard script to the broadcast only when `answer_gate` reports success; failures broadcast the shell without the answered event.
+  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) after every attempted answer, and pushes the answered run's detail to the tabs watching it, so all connected tabs converge on the current fleet and gate state.
+  - Broadcasts a `{"type": "answered", "id": …, "file_path": …}` frame only when `answer_gate` reports success; a failure broadcasts the state payload without it. The frame carries a confirmation and nothing more — the detail push above already re-sent the pane, gates included, to whoever had that run open.
   - Waits until either send or receive loop completes, cancels the still-pending loop, treats a `WebSocketDisconnect` exception from the completed loop as normal session termination, and propagates any other completed-loop exception.
-  - Always removes the queue from the global client set through [unregister dashboard client](../concepts/dashboard-client-queue-set.md#method-unregister-dashboard-client) in the cleanup path, including failures during initial rendering/sending, loop startup, loop execution, answer handling, or exception propagation. Removal discards only this tab's queue, tolerates an already-absent queue, leaves any queued fragments and websocket transport cleanup to the session tasks/framework, and prevents later broadcast snapshots from targeting this queue.
-- emits: an initial dashboard shell websocket text frame for the connecting tab; later dashboard shell broadcasts and optional `groom:answered` scripts to connected dashboard tabs after answer attempts.
+  - Always removes the queue from the global client set through [unregister dashboard client](../concepts/dashboard-client-queue-set.md#method-unregister-dashboard-client) in the cleanup path, including failures during the initial send, loop startup, loop execution, command handling, or exception propagation. Removal discards this tab's queue and its watch subscription together, tolerates an already-absent queue, leaves any queued messages and websocket transport cleanup to the session tasks/framework, and prevents later broadcast snapshots from targeting this queue.
+- emits: an initial `state` websocket text frame for the connecting tab; a `detail` frame back to this tab on every watch command for a known run; later `state` broadcasts, per-run `detail` pushes to watching tabs, `notify` frames, and `answered` frames to connected dashboard tabs.
 - consumes: process-local workflow state, process-local dashboard client queues consumed by the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md), inbound frames consumed by the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) messages, and [answer result](../answer-result.md) values from the gate-answering layer.
 - code: groom/groom/app.py::dashboard_ws
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script,
+- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
-  groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
+  groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately,
+  groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run,
+  groom/tests/test_app.py::test_a_closed_tab_stops_being_a_watcher
 - request:
   - method: websocket upgrade
   - path: `/ws`
@@ -1091,18 +1179,21 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - query: none
   - headers: no endpoint-specific headers beyond the websocket upgrade handshake.
   - body: none before websocket accept; after accept, browser text frames are decoded as JSON and passed to the receive loop.
-  - inbound-frame: [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) JSON object for answer submissions; other decoded JSON values may arrive but only object frames with command fields used by `_handle_command` can produce effects.
-  - field: `cmd`; type string; required for action; default absent; only `"answer"` triggers answer handling, and every other value is ignored.
+  - inbound-frame: a JSON object carrying `cmd` — either a watch subscription or a [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md); other decoded JSON values may arrive but only object frames with command fields used by `_handle_command` can produce effects.
+  - field: `cmd`; type string; required for action; default absent; only `"watch"` and `"answer"` trigger handling, and every other value is ignored.
+  - field: `run_id`; type string-convertible value; watch command only; default `""`; normalized with `str(...)` and stored as this tab's subscription. An empty value unsubscribes the tab without pushing anything.
   - field: `workflow_id`; type string-convertible value; required for a meaningful answer attempt; default `""`; normalized with `str(...)` before workflow lookup and gate answering.
   - field: `file_path`; type string-convertible value; required for a meaningful answer attempt; default `""`; normalized with `str(...)` and used as the gate-file key.
   - field: `answer`; type string-convertible value; optional; default `""`; normalized with `str(...)` and passed as the operator answer text.
 - response:
   - status: accepted websocket connection on normal route start.
-  - media: websocket text frames containing HTML fragments or dashboard event scripts.
-  - initial-frame: one out-of-band [dashboard shell fragment](../dashboard-shell-fragment.md) rendered from the current process-local workflow registry and sent directly to the connecting tab immediately after registration.
-  - queued-frame: zero or more later text frames, each exactly one HTML/script fragment dequeued from this tab's registered dashboard client queue by the send loop.
-  - command-response: no per-command acknowledgement frame; answer attempts are reflected by a broadcast shell update to all currently registered dashboard clients, with a `groom:answered` script appended only for successful answers.
-  - errors: ordinary websocket disconnect from the completed send or receive loop ends the session normally; non-disconnect loop exceptions, initial-render failures, send failures, malformed receive frames, and answer-handler failures propagate through the framework after cleanup rather than producing an endpoint-specific error payload.
+  - media: websocket text frames containing JSON objects, each tagged by a `type` field.
+  - initial-frame: one [dashboard state payload](../dashboard-state-payload.md) projected from the current process-local workflow registry and sent directly to the connecting tab immediately after registration.
+  - queued-frame: zero or more later text frames, each exactly one JSON message dequeued from this tab's registered dashboard client queue by the send loop.
+  - detail-frame: `{"type": "detail", …}` carrying one run's pane, delivered only to the tabs subscribed to that run — the sole downstream frame that is not fleet-wide, because which run is open is a property of the tab rather than of the fleet.
+  - answered-frame: `{"type": "answered", "id": str, "file_path": str}` broadcast to every tab after a successful answer.
+  - command-response: no per-command acknowledgement frame. A watch command is answered by the detail frame it triggers; an answer attempt is reflected by the state broadcast, the detail push to watching tabs, and — on success only — the `answered` frame.
+  - errors: ordinary websocket disconnect from the completed send or receive loop ends the session normally; non-disconnect loop exceptions, initial-projection failures, send failures, malformed receive frames, and command-handler failures propagate through the framework after cleanup rather than producing an endpoint-specific error payload.
 
 ### run-sidecar-websocket-session
 
@@ -1126,21 +1217,21 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - The applier preserves an existing current node unless `snapshot.current_node` is truthy, then clears the workflow's current gate map before applying the hello snapshot.
   - For each `snapshot.gates[]` entry with a non-empty string-normalized `file_path`, the applier creates one [gate info](../concepts/gate-info.md) record keyed by that file path, with the connected container id as `workflow_id` and the string-normalized `question` value as operator prompt text.
   - The applier marks truthy `snapshot.terminal` values as `FINISHED`; when not terminal, it marks the workflow `BLOCKED` if rebuilt gates exist or `RUNNING` if none do.
-  - The applier broadcasts the dashboard shell after mutation and emits no per-hello acknowledgement frame, blocked-notification script, gate-file write, RPC resolution, or sidecar reload frame.
+  - The applier broadcasts the [dashboard state payload](../dashboard-state-payload.md) after mutation and emits no per-hello acknowledgement frame, `notify` frame, gate-file write, RPC resolution, or sidecar reload frame.
   - Ignores all non-hello frames until the connection object exists, so unauthenticated deltas cannot create workflow state without a sidecar identity.
   - For `rpc_result`, calls [resolve](../concepts/sidecar-connection.md#method-resolve) on the registered connection using string-normalized `id`, boolean-normalized `ok`, raw `data`, and string-normalized `error`; successful results complete the waiting caller with `data`, failed results complete it with [sidecar error](../concepts/sidecar-error.md), and unknown, late, duplicate, or already-completed ids are ignored by the connection.
   - For `progress`, delegates to the [sidecar progress applier](../concepts/sidecar-progress-applier.md) with the connected container id and decoded frame.
-  - The progress applier upserts the connected workflow as `RUNNING`, creates a placeholder workflow named from the normalized id if the entry is somehow absent after hello establishment, applies any non-`None` `current_node` value from the frame, preserves the existing current node when the frame omits `current_node` or supplies `null`, preserves existing gate records, and broadcasts the dashboard shell after the registry update.
+  - The progress applier upserts the connected workflow as `RUNNING`, creates a placeholder workflow named from the normalized id if the entry is somehow absent after hello establishment, applies any non-`None` `current_node` value from the frame, preserves the existing current node when the frame omits `current_node` or supplies `null`, preserves existing gate records, and broadcasts the [dashboard state payload](../dashboard-state-payload.md) after the registry update.
   - For `blocked`, delegates to the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md) with the connected container id and decoded frame.
-  - The blocked applier reads and string-normalizes `file_path`; an empty path returns without mutating workflow state, creating a gate, rendering, broadcasting, or notifying.
-  - For a non-empty blocked path, the applier upserts the workflow as `BLOCKED`, stores or replaces one [gate info](../concepts/gate-info.md) record with the connected container id, normalized file path, and normalized question string, preserves other open gates, renders the dashboard shell, appends the blocked notification script whose text is the workflow display name plus the first 200 characters of the question, and broadcasts the combined HTML payload to dashboard browser clients.
+  - The blocked applier reads and string-normalizes `file_path`; an empty path returns without mutating workflow state, creating a gate, projecting, broadcasting, or notifying.
+  - For a non-empty blocked path, the applier upserts the workflow as `BLOCKED`, stores or replaces one [gate info](../concepts/gate-info.md) record with the connected container id, normalized file path, and normalized question string, preserves other open gates, broadcasts the [dashboard state payload](../dashboard-state-payload.md), and broadcasts a separate `notify` frame whose message is the workflow display name plus the first 200 characters of the question.
   - Ignores any other `type` value after connection establishment without mutating workflow state, resolving RPCs, registering connections, or broadcasting.
   - Treats an ordinary websocket disconnect as a normal end-of-session condition; non-disconnect exceptions still run cleanup and then propagate through the framework.
   - In cleanup, when a sidecar connection was established, calls [unregister](../concepts/sidecar-connection-registry.md#method-unregister) on that connection.
   - Unregistering reads the current registry entry for the connection's container id, removes the entry only when it is still the same connection object, and leaves a newer reconnect registered when this cleanup belongs to a superseded socket.
   - Unregistering then fails every unresolved RPC future still pending on the closing connection with `sidecar connection closed`, even when the registry removal branch did not remove anything, so HTTP file/diff callers can fall back instead of waiting for their RPC timeout.
   - Does not authenticate sidecars, answer gate files, clear gates on disconnect, delete workflow rows when a socket closes, run fleet discovery, read workspace files itself, compute diffs itself, or send per-delta acknowledgement frames.
-- emits: one dashboard shell websocket broadcast for every useful `hello`, `progress`, and non-empty-path `blocked` frame; a blocked notification script for every non-empty-path `blocked` frame; host-to-sidecar RPC and reload frames only when other server handlers use the registered connection.
+- emits: one dashboard state broadcast for every useful `hello`, `progress`, and non-empty-path `blocked` frame, plus a `detail` push to the tabs watching that run; one `notify` frame for every non-empty-path `blocked` frame; host-to-sidecar RPC and reload frames only when other server handlers use the registered connection.
 - consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON messages for `hello`, `rpc_result`, `progress`, and `blocked`; process-local workflow state; optional Docker inspection metadata resolved by `_ensure_volumes`; the process-local [sidecar connection registry](../concepts/sidecar-connection-registry.md); the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md); and the current connected dashboard websocket client set.
 - code: groom/groom/app.py::dashboard_sidecar
 - verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,
@@ -1185,7 +1276,7 @@ The server is single-process and stateful in memory. Startup schedules a backgro
   - body: no HTTP response body after the websocket upgrade; session effects are represented as websocket frames, dashboard broadcasts, and pending in-process RPC future resolution.
   - outbound-frame: `{"type":"rpc","id":string,"method":"getTree","params":{"repo":string}}` may be sent later by the [get-workspace-file-list](#get-workspace-file-list) invocation through the registered [sidecar connection](../concepts/sidecar-connection.md) for this container.
   - outbound-frame: `{"type":"rpc","id":string,"method":"getFile","params":{"repo":string,"path":string}}` may be sent later by the [get-workspace-file-content](#get-workspace-file-content) invocation through the registered sidecar connection for this container.
-  - outbound-frame: `{"type":"rpc","id":string,"method":"getDiff","params":{"repo":string}}` may be sent later by the [get-workspace-diff](#get-workspace-diff) invocation through the registered sidecar connection for this container.
+  - outbound-frame: `{"type":"rpc","id":string,"method":"getDiff","params":{"repo":string}}` may be sent later by the [get-workspace-diff](#get-working-tree-diff) invocation through the registered sidecar connection for this container.
   - outbound-frame: `{"type":"reload"}` may be sent later by the [reload-sidecars](#reload-sidecars) invocation through the registered sidecar connection for this container.
   - command-response: no acknowledgement frame is sent for `hello`, `progress`, or `blocked`; successful effects are visible only through browser dashboard websocket broadcasts.
   - rpc-result-response: no websocket reply is sent for `rpc_result`; a matching pending in-process future is resolved or failed, and unknown, late, duplicate, or already-completed ids are ignored.

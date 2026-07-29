@@ -5,7 +5,8 @@ machine-checkable proof in <spec_dir>/qa-evidence.json is missing, malformed, re
 evidence files, or is internally inconsistent (a parity criterion with a divergent element, a
 data-entry criterion whose value did not persist, an overall Pass with a failing criterion).
 
-Run with the system python3 (stdlib only), like the script itself.
+The gate is spawned under ``sys.executable`` — the same interpreter the tests run in — because
+it imports ``ostler`` at module scope, exactly as a script node does under workhorse.
 """
 
 from __future__ import annotations

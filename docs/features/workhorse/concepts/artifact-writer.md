@@ -105,6 +105,20 @@ Writes the artifact for a `branch` node — routing only, no prompt/output/conte
 2. Write `branch.json` = `{path, value, next: next_node}`.
 3. `_write_done(node_id, next_node)`.
 
+### `record_interrupt(node_id, error)`
+Records that an operator interrupt (Ctrl-C) stopped the run while `node_id` was in flight.
+1. `_append_event(node_id=node_id, phase="error", error=error)` — closes that node's `enter`
+   window, which otherwise dangles exactly as a wedged node's does.
+2. `_write_run_json(terminal=None, error=error)` — stamps `interrupted_at`/`error`.
+
+Deliberately **not** `finish()`: a non-null `terminal` reads as "this run is over" to
+`_auto_resolve`/`_find_latest_resumable`, and an interrupted run is precisely the one that must
+still auto-resume in place (see [crash and resume](../flows/workhorse-crash-resume.md)). The stamp
+clears itself on the next `_write_run_json` — a `resume`, or the run finishing.
+
+Called by `run`'s `KeyboardInterrupt` handler (via `main._record_interrupt`, which supplies the
+node id from the checkpoint's `current_id`) and by `_run_flow`'s, for the flow's nested scope.
+
 ### `finish(terminal)`
 Ends the run.
 1. Write `context.json` = `"{}"` — a placeholder immediately overwritten by the caller's
@@ -121,7 +135,8 @@ called right before `finish()`.
 Appends one line to `EVENTS_FILE`: `{ts: <now>, seq: _seq, node: node_id, phase, **fields}` as
 JSON followed by `\n`. Best-effort — any `OSError` is swallowed, since instrumentation must never
 crash a run. Called by `write_checkpoint` (`phase="enter"`), `_write_done` (`phase="done"`, adding
-`next`), and `finish` (`phase="terminal"`, adding `terminal`).
+`next`), `finish` (`phase="terminal"`, adding `terminal`), and `record_interrupt` (`phase="error"`,
+adding `error`).
 
 ### `_write_done(node_id, next_node)` — private
 Marks `node_id` complete under the current checkpoint `_seq`. `mkdir(run_dir / node_id,
@@ -131,10 +146,12 @@ exist_ok=True)`; write `<node_id>/done.json` = `{seq: _seq, next: next_node}`; t
 finished under the current checkpoint" (fast-forward past it) from "stale artifact from an earlier
 loop visit" (must re-run) — see [workflow execution](workflow.md#execution).
 
-### `_write_run_json(terminal)` — private
+### `_write_run_json(terminal, error=None)` — private
 Writes `run.json` = `{workflow: _workflow_name, run_id: _run_id, started_at: _started_at, ended_at:
-<now if terminal else null>, terminal}`. Called by every constructor (`terminal=None`) and by
-`finish` (`terminal=<the terminal node's type>`).
+<now if terminal else null>, terminal, interrupted_at: <now if error and not terminal else null>,
+error}`. Called by every constructor (`terminal=None`), by `finish` (`terminal=<the terminal node's
+type>`), and by `record_interrupt` (`terminal=None`, `error=<the exception name>`). Every call
+rewrites the whole file, so `interrupted_at`/`error` survive only until the run resumes or ends.
 
 ## Reads
 

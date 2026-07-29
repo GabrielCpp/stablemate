@@ -7,9 +7,9 @@ verifies the backlog markdown file the run was pointed at actually exists — fa
 fast with a clear message rather than letting downstream agents hallucinate scope
 from an empty file.
 
-The optional ``template.knowledge_dir`` value is passed through verbatim into ``cfg``
-so prompts — and especially a repo's author *flavor* overrides — can read it. The base
-workflow does NOT branch on it: any repo-specific behavior lives in that repo's
+Path values from ``template.*`` are passed through verbatim into ``cfg`` so prompts —
+and especially a repo's author *flavor* overrides — can read them. The base workflow
+does NOT branch on them: any repo-specific behavior lives in that repo's
 ``.agents/flavors/author/`` prompts, not here. Grounding is always against the OKF
 graph via ostler, and ostler owns id allocation (prefix derived from the repo name).
 
@@ -19,7 +19,7 @@ Args:
     argv[1]  backlog   : repo-relative path to the markdown backlog (REQUIRED)
     argv[2]  epics_dir : epics root (default docs/epics)
 
-Outputs JSON: {"cfg": {repo_root, backlog_path, epics_dir, knowledge_dir,
+Outputs JSON: {"cfg": {repo_root, backlog_path, epics_dir,
                        surface_manifest, features_dir, mockup_dir, layers}}
 """
 from __future__ import annotations
@@ -29,6 +29,11 @@ import logging
 import os
 import sys
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - PyYAML ships with the local-worker runtime
+    yaml = None
 
 
 def find_repo_root() -> Path:
@@ -46,15 +51,11 @@ def find_repo_root() -> Path:
 
 def load_template(root: Path) -> dict:
     cfg_path = root / "agents.yml"
-    if not cfg_path.is_file():
-        return {}
-    try:
-        import yaml  # available in the local-worker runtime
-    except Exception:
+    if not cfg_path.is_file() or yaml is None:
         return {}
     try:
         data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-    except Exception:
+    except (OSError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -77,23 +78,20 @@ def main(logger: logging.Logger) -> None:
     data = load_template(root)
     template = data.get("template") or {}
 
-    # Where the accumulating surface-knowledge records live (the derived, machine-built
-    # source of truth — distinct from the hand-curated, read-only `features/`). Repo can
-    # override via template.knowledge_dir; defaults beside the epics under docs/knowledge.
-    knowledge_dir = template.get("knowledge_dir") or "docs/knowledge"
-
     # Convention defaults (shipped library-wide, a repo may override in agents.yml). These
     # are plain path defaults — the features the gates drive stay inert until the referenced
     # file actually exists on disk, so a greenfield repo that hasn't authored them is unaffected.
-    #   - surface_manifest: machine-readable inventory of the site's surfaces; the
-    #     backlog-coverage gate (verify-surface-coverage.py) checks every in-scope surface is
-    #     covered by some backlog/epic/story. Absent file ⇒ gate skips. Two producers share
-    #     the contract: the legacy feature inventory, and the surveyor workflow's unit
-    #     manifest (docs/survey/unit-manifest.json) — when the template does not pin a path
-    #     and a survey manifest exists on disk, it is picked up by presence, so a surveyed
-    #     repo flows into `coverage_mode: "full"` with zero config.
-    #   - features_dir: human-curated feature/journey docs the author grounds ACs in. Absent
-    #     dir ⇒ feature-doc grounding stays inert.
+    #   - surface_manifest: machine-readable inventory of the site's surfaces; the per-story
+    #     stages read a surface's entry for its route/components and its mockup reference.
+    #     Absent file ⇒ those stages fall back to the seed items and the epic narrative. Two
+    #     producers share the contract: the legacy feature inventory, and the surveyor
+    #     workflow's unit manifest (docs/survey/unit-manifest.json) — when the template does
+    #     not pin a path and a survey manifest exists on disk, it is picked up by presence.
+    #   - features_dir: the OKF book root — the surface documentation (screens, components,
+    #     interactions, flows) the okf-builder derives from the code. The author only ever
+    #     READS it: a story grounds itself by citing node ids from it, and a node id is a
+    #     repo-relative path. Absent dir ⇒ that grounding stays inert (a greenfield repo whose
+    #     book has not been built yet is not asked to cite what does not exist).
     #   - mockup_dir: greenfield visual reference — for a genuinely new screen, the reference
     #     image is a design mockup under this dir, resolved per surface from the manifest
     #     entry's `mockup` field.
@@ -117,14 +115,13 @@ def main(logger: logging.Logger) -> None:
         "repo_root": str(root),
         "backlog_path": backlog,
         "epics_dir": epics_dir,
-        "knowledge_dir": str(knowledge_dir),
         "surface_manifest": str(surface_manifest),
         "features_dir": str(features_dir),
         "mockup_dir": str(mockup_dir),
         "layers": layers,
     }
-    logger.info("loaded config for %s (knowledge_dir=%s, features_dir=%s, %d layer(s))",
-                root, knowledge_dir, features_dir, len(layers))
+    logger.info("loaded config for %s (features_dir=%s, %d layer(s))",
+                root, features_dir, len(layers))
     print(json.dumps({"cfg": cfg}))
 
 

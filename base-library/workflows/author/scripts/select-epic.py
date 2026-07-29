@@ -2,18 +2,24 @@
 """Select the next epic that still needs authoring (the per-epic loop driver) — ostler-backed.
 
 Walks the epics queue (``docs/epics/index.md``, owned by ostler) in order and returns the first
-epic whose authoring is not yet complete. "Complete" means the epic has ``epic.md`` AND lists at
-least one story (in ``## Stories``) AND every listed story has a ``story.md`` on disk. There is no
-``seed.json`` / ``dependencies.json`` / ``epics-todo.json`` — seeds and the story DAG live in
-``epic.md`` and ostler reads them back.
+epic whose authoring is not yet complete. **ostler owns that verdict** — ``Ostler.epic_authored``:
+the epic has ``epic.md``, lists at least one story (in ``## Stories``), and every listed story has a
+*written* ``story.md`` (its required sections carry prose, per ``registry.STORY_SECTIONS``). This
+script does not open a story file or define "authored" for itself; a story.md that merely exists is
+a scaffold, not authoring. There is no ``seed.json`` / ``dependencies.json`` / ``epics-todo.json`` —
+seeds and the story DAG live in ``epic.md`` and ostler reads them back.
 
 Commands the OKF graph through the in-process ``ostler`` Python API (the library
-face of the CLI) instead of shelling out.
+face of the CLI) instead of shelling out. Selection runs through the shared
+``workhorse.worklist`` primitive: the queue is a worklist whose *done* epics are the
+ones ostler reports authored, so ``select_next`` returns the first not-done epic — the old
+front-not-complete rule — and its ``snapshot`` gives the dashboard epic progress.
 
 Args:
     argv[1]  epics_dir : epics root (default docs/epics)
 
-Outputs JSON: {"has_epic": "yes"|"no", "epic": "...", "epic_dir": "...", "reason": "..."}
+Outputs JSON: {"has_epic": "yes"|"no", "epic": "...", "epic_dir": "...", "reason": "...",
+               "progress": "..."}
 """
 from __future__ import annotations
 
@@ -25,6 +31,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from ostler import Ostler
+from workhorse import worklist as wl
 
 
 def find_repo_root() -> Path:
@@ -39,7 +46,7 @@ def find_repo_root() -> Path:
 
 
 def emit(**kwargs: str) -> NoReturn:
-    payload = {"has_epic": "no", "epic": "", "epic_dir": "", "reason": ""}
+    payload = {"has_epic": "no", "epic": "", "epic_dir": "", "reason": "", "progress": ""}
     payload.update(kwargs)
     print(json.dumps(payload))
     sys.exit(0)
@@ -51,39 +58,42 @@ def main(logger: logging.Logger) -> None:
 
     try:
         queue = okf.todo()
-        stories = okf.list("story")
     except (OSError, ValueError, RuntimeError):
         logger.warning("could not read the epics queue via `ostler todo list`")
         emit(reason="could not read the epics queue via `ostler todo list`")
-    root = okf.root
 
     if not queue:
         # no index yet → the epic-split stage must create epics (and queue them)
         logger.info("epics queue is empty — the epic-split stage must create + queue epics")
         emit(reason="epics queue is empty — the epic-split stage must create + queue epics")
 
-    by_epic: dict[str, list[dict]] = {}
-    for s in stories:
-        by_epic.setdefault(s.get("epic", ""), []).append(s)
+    # The queue is a worklist: an epic is *done* once ostler says it is authored — epic.md
+    # present, ≥1 story, and every story.md actually written. That verdict is ostler's alone
+    # (`Story.authored` over `registry.STORY_SECTIONS`); this script must not re-derive it from
+    # the filesystem. It used to, by testing that each story.md *existed*, which a bare
+    # scaffold satisfies — so an epic of 44 empty stories read as fully authored and a rerun
+    # ended immediately with `has_epic=no` instead of going back to finish the work.
+    # Items stay in queue order (no `order` key → sequence order preserved), so select_next
+    # returns the front not-done epic and the snapshot counts authored epics for the dashboard.
+    items = [{"id": str(epic),
+              "status": "done" if okf.epic_authored(str(epic)) else "pending"}
+             for epic in queue]
 
-    for epic in queue:
-        epic = str(epic)
-        epic_dir = root / epics_dir_rel / epic
-        epic_stories = by_epic.get(epic, [])
-        complete = (epic_dir / "epic.md").is_file() and bool(epic_stories) and all(
-            st.get("path") and (root / st["path"]).is_file() for st in epic_stories
-        )
-        if not complete:
-            logger.info("selected epic '%s' — missing epic.md, has no stories, or a story.md is absent", epic)
-            emit(
-                has_epic="yes",
-                epic=epic,
-                epic_dir=f"{epics_dir_rel}/{epic}",
-                reason="epic missing epic.md, has no stories, or a story.md is absent",
-            )
+    snap = wl.snapshot(items)
+    pick = wl.select_next(items)
+    if pick is None:
+        logger.info("every epic in the queue is fully authored")
+        emit(reason="every epic in the queue is fully authored", progress=snap["progress"])
 
-    logger.info("every epic in the queue is fully authored")
-    emit(reason="every epic in the queue is fully authored")
+    epic = str(pick["id"])
+    logger.info("selected epic '%s' — missing epic.md, has no stories, or a story is unwritten", epic)
+    emit(
+        has_epic="yes",
+        epic=epic,
+        epic_dir=f"{epics_dir_rel}/{epic}",
+        reason="epic missing epic.md, has no stories, or a story is still unwritten",
+        progress=snap["progress"],
+    )
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-import sys
 import types
 from pathlib import Path
 
@@ -52,13 +51,13 @@ def _run(tmp_path, report, monkeypatch, capsys):
     backlog: list = []
     fake = FakeOstler(report, backlog)
     fake.backlog = backlog                    # expose for assertions
-    mod = types.ModuleType("ostler")
-    mod.Ostler = lambda root: fake            # from ostler import Ostler → this
+    # The script imports ostler at module scope (a workflow that cannot import it never
+    # reaches node one — `requires: dist: ostler`), so the seam is the loaded script's own
+    # attributes. Patching sys.modules here would be too late: the names are already bound.
     backlog_mod = types.ModuleType("ostler.backlog")
     backlog_mod.add = lambda graph, item_id, text, section="": backlog.append((item_id, text, section))
-    mod.backlog = backlog_mod                 # from ostler import backlog → this
-    monkeypatch.setitem(sys.modules, "ostler", mod)
-    monkeypatch.setitem(sys.modules, "ostler.backlog", backlog_mod)
+    monkeypatch.setattr(aw, "Ostler", lambda root: fake)
+    monkeypatch.setattr(aw, "backlog_mod", backlog_mod)
     features = tmp_path / "docs/features/web"
     monkeypatch.setattr("sys.argv", ["auto-waive.py", str(tmp_path), str(features), "web"])
     with pytest.raises(SystemExit):

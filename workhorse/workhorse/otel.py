@@ -92,6 +92,33 @@ _PROBE_TIMEOUT_S = float(os.environ.get("WORKHORSE_OTEL_PROBE_S", "0.25"))
 # stream nothing a per-line heartbeat could hook, and a wedged one would otherwise be
 # indistinguishable from a fast one until it returned.
 _HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
+# How often recorded metrics are actually shipped. This — not the heartbeat above —
+# is what bounds a collector's freshness, and the SDK's own default is 60s, so
+# unset it meant beating every 10s and *telling anyone* once a minute: a run that
+# died could still look alive for the better part of a minute, and a consumer
+# deriving liveness from beat recency had to keep a minute-wide tolerance to avoid
+# false alarms. Match the heartbeat instead, so one beat is one export and silence
+# is detectable within a couple of ticks. The SDK's own `OTEL_METRIC_EXPORT_INTERVAL`
+# (milliseconds) still wins when set explicitly — that knob is documented and
+# predates this default.
+def _metric_export_every_s() -> float:
+    """Seconds between metric exports: our knob, then the SDK's, then the heartbeat.
+
+    Parsing is tolerant — a malformed value falls through to the next source rather
+    than raising, since this runs on the start-up path of every telemetry-enabled run.
+    """
+    for name, scale in (("WORKHORSE_OTEL_METRIC_EXPORT_S", 1.0),
+                        ("OTEL_METRIC_EXPORT_INTERVAL", 0.001)):
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        try:
+            value = float(raw) * scale
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return _HEARTBEAT_EVERY_S
 
 # The active per-run telemetry, or None (the no-op default). Set by start_run()
 # when enabled, cleared by end_run(). Module-level because there is one run per
@@ -344,10 +371,14 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
             # native run shares the collector's host, so advertising it lets a
             # consumer (groom) correlate the run to its process and, later, signal it.
             "process.pid": os.getpid(),
-            # The repo working-tree root, forwarded from an env var like repo/branch
-            # above so the engine learns no workflow's schema. A same-host consumer
-            # reads Files/Diff for the run straight from this path.
-            "workspace": os.environ.get("GROOM_WORKSPACE_DIR", ""),
+            # The run's working directory — where a same-host consumer reads
+            # Files/Diff from. Defaults to the process cwd; a workflow (or its
+            # harness) that operates on a checkout elsewhere overrides it by setting
+            # AGENT_REPO_DIR, the same working-tree env the script utilities already
+            # resolve from (see scriptutil.find_repo_root). The engine learns no
+            # workflow's schema and no consumer's name — it forwards a value it is
+            # handed, exactly like repo/branch above.
+            "workspace": os.environ.get("AGENT_REPO_DIR") or os.getcwd(),
         }
     )
     tracer_provider = TracerProvider(resource=resource)
@@ -355,7 +386,8 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/traces"))
     )
     reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/metrics")
+        OTLPMetricExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/metrics"),
+        export_interval_millis=_metric_export_every_s() * 1000.0,
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
     logger_provider = _build_logs(resource)

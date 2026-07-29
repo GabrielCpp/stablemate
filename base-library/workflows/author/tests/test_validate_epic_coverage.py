@@ -1,17 +1,12 @@
-"""Tests for validate-epic-coverage.py — seed coverage + graph validity + deferral ownership.
+"""Tests for validate-epic-coverage.py — seed coverage + graph validity.
 
 The structural checks (every active seed covered, no dangling seed/dependency references, etc.)
 are computed by ``ostler doctor --epic <epic>`` and surfaced when the finding code is one of the
-coverage codes. On top of that the gate enforces the deferral-ownership invariant: every knowledge
-gap marked ``disposition: deferred`` must name an owner that resolves to a real story slug, seed
-id, or open backlog item. Only ``argv[1]`` (the epic dir) is read; backlog/knowledge come from
-ostler.
+coverage codes. Only ``argv[1]`` (the epic dir) is read; everything else comes from ostler.
 """
 from __future__ import annotations
 
-from conftest import requires_ostler, run_script, write_epic
-
-pytestmark = requires_ostler
+from conftest import run_script, write_epic
 
 
 def cov(repo, epic_dir="docs/epics/e1"):
@@ -52,9 +47,6 @@ def test_dangling_dependency_fails(tmp_path):
     out = cov(tmp_path)
     assert out["coverage_ok"] == "no"
     assert "nope" in out["coverage_errors"]
-
-
-# ── deferral ownership ────────────────────────────────────────────────────────
 
 
 # ── C.3 probe: is there a real vacuity window on a greenfield repo? ────────────

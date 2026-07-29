@@ -38,6 +38,35 @@ STORY_META_KEYS = (STORY_COVERS_KEY, STORY_DEPENDS_KEY, "title", "id", "phase", 
 # A metadata value meaning "empty list" in covers/depends.
 EMPTY_TOKENS = {"", "(none)", "none", "-", "—"}
 
+
+# ---------------------------------------------------------------------------
+# Document-body section contracts
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class SectionSpec:
+    """One required ``## Heading`` in a document body.
+
+    *filled* separates the two questions a scaffolded document makes distinct: the heading
+    exists (the scaffolder wrote it) versus somebody has since written under it. Only the
+    second one means the document says anything.
+    """
+    heading: str
+    filled: bool = False       # True → the heading must carry prose, not merely exist
+
+
+# story.md's body contract. `crud.create_story` scaffolds *from this table* and `model` /
+# `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers —
+# the exact failure that let 44 empty stories read as authored.
+STORY_SECTIONS: tuple[SectionSpec, ...] = (
+    SectionSpec("Context", filled=True),
+    SectionSpec("Acceptance Criteria", filled=True),
+    SectionSpec("Implementation Status", filled=False),   # scaffolded: holds the Status bullet
+)
+
+STORY_STATUS_HEADING = "Implementation Status"
+STORY_STATUS_LABEL = "Status"          # `- **Status**: <value>` under the heading above
+DEFAULT_STORY_STATUS = "Not started"
+
 # OKF reserved per-bundle filenames.
 RESERVED_FILES = {"index.md", "log.md"}
 
@@ -121,7 +150,7 @@ class UINodeType:
     kind: str                                   # "file" | "section"
     heading: str = ""                           # section types: parent ``## Heading`` (e.g. "Interactions")
     context: str = ""                           # file types: context folder for scaffold placement
-    required_sections: tuple[str, ...] = ()     # file types: headings that must be present
+    required_sections: tuple[SectionSpec, ...] = ()   # file types: headings the body must carry
     bullet_keys: tuple[BulletKey, ...] = ()     # recognized keys, in canonical order
     body_template: str = ""                     # optional explicit skeleton override (scaffold)
     literal_id: bool = False                    # section types: `### id` is a code identifier
@@ -162,12 +191,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
     ),
     UINodeType(
         name="cli", kind="file", context="",
-        required_sections=("Commands",),
+        required_sections=(SectionSpec("Commands"),),
         bullet_keys=(BulletKey("binary"), BulletKey("code", link=True)),
     ),
     UINodeType(
         name="server", kind="file", context="http",
-        required_sections=("Endpoints",),
+        required_sections=(SectionSpec("Endpoints"),),
         bullet_keys=(BulletKey("code", link=True), BulletKey("openapi", link=True)),
     ),
     UINodeType(
@@ -190,7 +219,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     # ---- operational surface: how the system is run/observed (docs/okf-runbook.md) ----
     UINodeType(
         name="runbook", kind="file", context="ops",
-        required_sections=("Steps",),
+        required_sections=(SectionSpec("Steps"),),
         bullet_keys=(
             BulletKey("driver", required=True),   # web|mobile|http|cli|artifact|iac|none (§4.1)
             BulletKey("environment", link=True),  # the `environment` node this boots (default local)

@@ -5,7 +5,7 @@ The ``author`` workflow's story mode authors a single story against an epic the 
 instead of decomposing a whole backlog. This script is the setup node: it adds one seed to the
 epic's ``epic.md`` (``Ostler.add_seed``) and one story to its ``## Stories`` (``Ostler.create_story``,
 which scaffolds the ``story.md`` and allocates the id) — so the existing per-story
-pipeline (gather → write → validate) runs unchanged. It does NOT re-run story-split, so sibling
+pipeline (write → validate → ground → audit) runs unchanged. It does NOT re-run story-split, so sibling
 stories are untouched. There is no ``seed.json`` / ``dependencies.json`` — seeds and the story DAG
 fold into ``epic.md`` and ostler owns the mutation + id allocation.
 
@@ -25,8 +25,7 @@ Args:
     argv[1]  epic          : target epic slug (required)
     argv[2]  epics_dir      : repo-relative epics root (default docs/epics)
     argv[3]  bullet         : a backlog `[id]` or literal bullet text (required)
-    argv[4]  knowledge_dir  : repo-relative knowledge root (reserved; unused)
-    argv[5]  backlog        : repo-relative backlog markdown (default docs/backlog.md)
+    argv[4]  backlog        : repo-relative backlog markdown (default docs/backlog.md)
 
 Outputs JSON: {"epic_dir": "...", "story_slug": "...", "story_dir": "...",
                "story_path": "...", "bullet_id": "...", "from_backlog": "yes"|"no",
@@ -117,7 +116,7 @@ def main(logger: logging.Logger) -> None:
     epic = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else ""
     epics_dir_rel = (sys.argv[2].strip() if len(sys.argv) > 2 and sys.argv[2] else "") or "docs/epics"
     bullet = sys.argv[3].strip() if len(sys.argv) > 3 and sys.argv[3] else ""
-    backlog_rel = (sys.argv[5].strip() if len(sys.argv) > 5 and sys.argv[5] else "") or "docs/backlog.md"
+    backlog_rel = (sys.argv[4].strip() if len(sys.argv) > 4 and sys.argv[4] else "") or "docs/backlog.md"
 
     if not epic:
         die("no epic supplied — story mode needs the target epic slug "

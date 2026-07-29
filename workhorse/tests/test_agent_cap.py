@@ -53,7 +53,7 @@ def test_classification():
 # provider error. This is a scheduled-reset cap, NOT a content failure — it must be
 # waited out, never reframed/defaulted through (which would advance past a gate).
 KEY_LIMIT_MSG = (
-    "opencode CLI exited with code 1 for node 'resolve_surface_coverage': "
+    "opencode CLI exited with code 1 for node 'resolve_epics': "
     "Key limit exceeded (daily limit). Manage it using "
     "https://openrouter.ai/workspaces/default/keys/7a2ee3c"
 )
@@ -150,7 +150,7 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
          patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("p", "resolve_surface_coverage", None)
+        out = agent._invoke_claude("p", "resolve_epics", None)
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should re-run the same node after the daily-limit wait"

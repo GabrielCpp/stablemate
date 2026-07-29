@@ -15,7 +15,12 @@ and continues from exactly where it stopped, per
 - start: an in-progress `workhorse run <workflow> [<flow>]` invocation dies after at least one
   [`write_checkpoint`](../concepts/artifact-writer.md#write_checkpointcurrent_id-context) call for
   its stable run dir `<runs-dir>/<workflow-name>-<run-id>`, before the run reached a
-  `terminal`/`fail` node — so `run.json`'s `terminal` key is still `null`.
+  `terminal`/`fail` node — so `run.json`'s `terminal` key is still `null`. An operator Ctrl-C
+  qualifies and resumes identically: `run()`'s `KeyboardInterrupt` handler records the stop via
+  [`record_interrupt`](../concepts/artifact-writer.md#record_interruptnode_id-error) —
+  `interrupted_at`/`error` on [`run.json`](../run-artifacts.md#runjson) plus an `error` event
+  closing the in-flight node's window — and deliberately leaves `terminal` `null` so step 2 below
+  still sees an unfinished run.
 - steps:
   1. [`workhorse run <workflow> [<flow>]`](../workhorse.md#run) — re-run the exact same command
      (same workflow/path, same `--run-id` or default, same `--runs-dir`), with none of

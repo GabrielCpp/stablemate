@@ -22,10 +22,14 @@ from pathlib import Path
 
 from ostler import Ostler
 
-# error finding codes from `ostler doctor` that mean the epic's coverage/graph is broken
+# error finding codes from `ostler doctor` that mean the epic's coverage/graph is broken.
+# `unwritten-story` belongs here for the same reason `missing-story-file` does: an epic whose
+# stories are bare scaffolds covers nothing, and the deterministic gate should say so without
+# waiting for the LLM reviewer to notice.
 _COVERAGE_CODES = {
     "orphan-seed", "dangling-seed", "cross-epic-seed",
     "dangling-dependency", "cross-epic-dependency", "missing-story-file",
+    "unwritten-story",
 }
 
 

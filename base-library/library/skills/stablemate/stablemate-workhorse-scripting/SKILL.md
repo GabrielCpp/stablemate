@@ -178,6 +178,60 @@ current_index = int(sys.argv[2]) if len(sys.argv) > 2 else -1
 
 Use `raise SystemExit(code)` — never `sys.exit()` in library code.
 
+## Failure routing — commit the evidence, exit red, never publish
+
+A gate that fails must leave the broken work somewhere obvious and stop the run. It must
+never fall through to a publishing step (open a PR, merge, deploy, mark an epic done).
+The shape:
+
+- route the failing branch to its **own** commit node with an unmistakable message
+  (`"author: INCOMPLETE — unwritten stories, do not merge"`), then to a `type: fail`
+  terminal — the partial work stays on the branch, findable, and the run exits non-zero;
+- keep the publishing node reachable **only** from the passing edge, `default:` included.
+  A `default:` pointing at the happy path turns every unanticipated value into a green run;
+- name the offenders in the gate's own output (`*_errors`) and, when the doc graph owns
+  the fact, as a `doctor` finding too, so the failure is visible from outside the run.
+
+Deleting the partial artifact is the wrong instinct: work that vanishes on failure is
+indistinguishable from work never attempted.
+
+## Dependencies — declare in `requires:`, import at the top, never degrade
+
+A workflow declares what its scripts need in `workflow.yaml`'s `requires:` block —
+`dist:` for a Python distribution a script `import`s, `cmd:` for a PATH executable:
+
+```yaml
+requires:
+  - dist: ostler
+    version: ">=0.1.0"
+  - cmd: uv
+```
+
+Workhorse checks `requires:` **before the first node**, deliberately outside the
+retry → reframe → default ladder, and a `dist:` check is a real `importlib.import_module`,
+not a metadata lookup. A distribution that is installed but unimportable fails the run
+before any work starts — the common case, not a corner one: a working `ostler` shim on
+PATH and an interpreter that cannot `import ostler` are routinely the same machine (pipx
+isolation), and script nodes run in-process under `sys.executable`, never under the shim.
+
+Two rules follow, and they are the whole point of the mechanism:
+
+- **Import at module scope.** No `import` inside a `def`. A declared dependency is
+  guaranteed importable by the time node one runs, so the import cannot fail there.
+- **No degradation branch.** Never write `try: import X / except ImportError:` followed
+  by emitting a verdict anyway. A script that answers "is this story authored?" with
+  "I couldn't load the graph, so — yes" is worse than one that crashes; that shape is
+  what lets a run produce empty artifacts and report success.
+
+Catch narrowly around the *work*, not around the import: `except (OSError, ValueError,
+RuntimeError, KeyError)` around a graph load that can legitimately fail, with the failure
+emitted as a **negative** verdict plus its reason. A verdict that could not be computed
+is never a pass.
+
+The one accepted `try/except ImportError` is a genuinely optional dependency (PyYAML) —
+still at module scope, binding the name to `None`, with every user returning early on
+`yaml is None` so a later `yaml.YAMLError` reference cannot raise `NameError`.
+
 ## Git operations — `workhorse.scriptutil`, never `git` subprocess
 
 Don't shell out to `git`. Use the `workhorse.scriptutil` helpers — they wrap
@@ -342,3 +396,23 @@ and `ostler` runs **in-process as a library** — fake it by patching `Ostler`'s
 methods (queue/path methods *raising* so a script takes its JSON-sidecar fallback;
 QA nodes via the `qa_cli` seam), not `scriptutil.run_tool`. `scriptutil.run_tool`
 remains the seam for any *other* genuine external CLI.
+
+**Patch the name the script actually bound.** Because scripts import at module scope, a
+script that did `from ostler import Ostler` resolved that name when the module was
+loaded — `monkeypatch.setitem(sys.modules, "ostler", fake)` is too late and the test
+silently exercises the real tool while appearing to fake it. Patch the attribute on the
+loaded script module (or the class's methods, which is the same object):
+
+```python
+spec = importlib.util.spec_from_file_location("auto_waive", SCRIPT)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+monkeypatch.setattr(mod, "Ostler", lambda root: FakeOstler(...))
+monkeypatch.setattr(mod, "backlog_mod", fake_backlog)
+```
+
+**Never skip a suite on a missing tool.** `pytest.mark.skipif(shutil.which("ostler") is
+None, …)` gates on the CLI shim while the script needs the *import*, and a suite that
+skips itself reports green having exercised none of the workflow's logic — the same
+silent degradation the `requires:` contract exists to remove. The dependency is declared;
+let the tests fail loudly with the `ModuleNotFoundError`.

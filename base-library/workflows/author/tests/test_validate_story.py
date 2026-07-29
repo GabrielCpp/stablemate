@@ -1,10 +1,14 @@
 """Tests for validate-story.py — the bare-minimum per-story contract gate.
 
-This validator is unchanged by the OKF migration: it only reads ``story.md`` (stdlib only, no
-ostler). A story is intentionally lean — Context + Acceptance Criteria (plus the
-``- **Status**:`` line the coder selector parses), and no open questions. The validator enforces
-only that; depth lives in the coder workflow, and any repo-specific rule lives in that repo's
-author flavor, not in this shared script.
+A story is intentionally lean — Context + Acceptance Criteria (plus the ``- **Status**:`` line
+the coder selector parses), and no open questions. The validator enforces only that; depth lives
+in the coder workflow, and any repo-specific rule lives in that repo's author flavor, not in this
+shared script.
+
+These tests were written against the script's own hand-rolled section/heading parsing and are
+deliberately unchanged now that it reads the contract from ``ostler.registry`` and parses with
+ostler's markdown parser: passing untouched is what shows the move to ostler kept the same
+verdicts, rather than quietly redefining them.
 """
 from __future__ import annotations
 

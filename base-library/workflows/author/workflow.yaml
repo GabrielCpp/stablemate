@@ -6,6 +6,17 @@ requires:
   - dist: ostler
     version: ">=0.1.0"
 
+# Telemetry dimensions stamped as `wf.*` on every span, re-rendered before each node, so the
+# dashboard reads what the run is authoring rather than a bare node id. `work_id` is the
+# current story (or epic before stories exist); `progress` is select_story's worklist
+# snapshot ("3/12" stories authored in this epic). Empty renders are dropped, so nodes before
+# the first pick carry none. The surveyor/parity-surveyor flows declare their own. See
+# workhorse/docs/WORKFLOW.md §1.2.
+labels:
+  work_id: "{{ get_node_output('select_story', 'story_slug') or get_node_output('select_epic', 'epic') or epic }}"
+  epic: "{{ get_node_output('select_epic', 'epic') or epic }}"
+  progress: "{{ get_node_output('select_story', 'progress') }}"
+
 # The `author` workflow turns a high-level feature backlog into coder-ready epics and
 # stories. It is the producer counterpart to the `coder` workflow (the consumer): it emits
 # exactly the artifact contract coder's select-next-story.py + the story-docs skill require —
@@ -60,7 +71,6 @@ vars:
   # Max auto-operator resolve attempts per gate before forcing human escalation. Enforced
   # as literals in the corresponding guard_*_resolve branches below (branch condition
   # values can't be Jinja) — keep these comments in sync with those literals.
-  max_surface_coverage_resolves: "2" # guard_surface_coverage_resolve
   max_reconcile_resolves: "2" # guard_reconcile_resolve
   max_integrity_resolves: "2" # guard_integrity_resolve
   max_epics_resolves: "2" # guard_epics_resolve
@@ -75,14 +85,7 @@ vars:
   # behaviour — every block halts and waits for a person. Override per run with
   # --params '{"operator_mode":"human"}'.
   operator_mode: "auto"
-  # Surface-coverage gate mode (epic/survey modes). "grounding" (default, always-on): every
-  # surface the authored work claims to touch must exist in the feature set — catches phantom
-  # scope without flagging untouched screens, so an incremental backlog is not forced to
-  # re-cover the whole app. "full": the migration / greenfield-buildout assertion — every
-  # in-scope feature-set surface must be covered by the backlog. Override per run with
-  # --params '{"coverage_mode":"full"}'.
-  coverage_mode: "grounding"
-  cfg: "" # set by load_config (repo_root, knowledge_dir, features_dir, layers, …)
+  cfg: "" # set by load_config (repo_root, features_dir, layers, …)
 
 start: load_config
 
@@ -120,15 +123,27 @@ nodes:
   # codebase survey, then enters Stage 1; "story" jumps to story_setup, which registers
   # ONE bullet into the epic named by `epic` and then runs the shared per-story pipeline
   # once (no epic split, epic write, story split, or whole-epic coverage).
+  #
+  # Every mode enters Stage 1 directly: there is no intake-time surface-coverage gate. The
+  # one that used to sit here could not assert what it claimed. Its "claims" were the seed
+  # `legacySurface` fields — written DOWNSTREAM of intake, so a first pass had nothing to
+  # check and it only ever graded the previous run.
+  # In survey mode its `full` assertion was near-circular: emit-artifacts writes the
+  # generated bullets into the backlog and stamps their ids into the unit manifest, and the
+  # gate then searched a haystack that folded that same backlog back in. What it was meant
+  # to catch is covered where the facts actually are: the surveyor's own verify-records →
+  # validate-partition → emit-artifacts chain (unit → cluster → bullet, exhaustively),
+  # reconcile-artifacts (scope dropped vs the committed baseline), check-story-grounding
+  # (a story covering a seed item that does not exist), and validate-epic-coverage.
   - id: decide_mode
     type: branch
     path: mode
     cases:
-      epic: build_inventory
+      epic: reset_epics_rework
       survey: survey_intake
       parity-survey: parity_survey_intake
       story: story_setup
-    default: build_inventory
+    default: reset_epics_rework
 
   # ── Survey intake: exhaustive discovery for complex/cross-cutting bullets ─────────
   # Surveyor is intentionally an author subflow, not a sibling workflow: it emits the
@@ -147,7 +162,7 @@ nodes:
       - key: emit_errors
       - key: bullet_count
       - key: emit_note
-    next: build_inventory
+    next: reset_epics_rework
 
   - id: parity_survey_intake
     type: flow
@@ -168,145 +183,6 @@ nodes:
   - id: parity_survey_done
     type: terminal
 
-  # ── Intake: report the feature set the coverage gate will check against ──────────
-  # The human source of truth is plain-markdown feature docs (one per screen) under
-  # cfg.features_dir; under the OKF model those docs ARE the typed feature Concepts ostler reads.
-  # Nothing is regenerated: there is no derived inventory.json under the OKF model, so this
-  # node only *counts* what the graph holds (plus any surveyor unit manifest) and emits a note.
-  # Opt-in by presence: with no feature Concepts and no manifest it reports a clean skip.
-  # Always flows on — an unreadable graph degrades to zero, never blocks.
-  - id: build_inventory
-    type: script
-    script: scripts/build-inventory.py
-    args:
-      - "{{ cfg.features_dir }}"
-      - "{{ cfg.surface_manifest }}"
-    outputs:
-      - key: inventory_built
-      - key: inventory_path
-      - key: surface_count
-      - key: inventory_note
-    next: reset_surface_coverage_resolve
-
-  # Seed the resolver-retry budget once per stage entry (mirrors reset_*_rework).
-  # Bounds how many times auto-mode's resolver gets to fix-and-recheck before this
-  # gate gives up and escalates to a human, instead of trusting a single unverified
-  # resolver pass or looping on a non-converging resolver forever.
-  - id: reset_surface_coverage_resolve
-    type: script
-    script: scripts/init_counter.py
-    args:
-      - "surface_coverage_resolve_count"
-    outputs:
-      - key: surface_coverage_resolve_count
-    next: verify_surface_coverage
-
-  # ── Site-surface coverage / grounding gate (epic mode only) ───────────────────────
-  # Relate the authored work to the feature set (the surface manifest). Default mode
-  # "grounding": every surface the work claims to touch must exist in the feature set —
-  # catches phantom scope without flagging untouched screens, so an incremental backlog is
-  # NOT forced to re-cover the whole app. Mode "full" (coverage_mode=full): the migration /
-  # greenfield-buildout assertion — every in-scope surface must be covered by the backlog.
-  # Opt-in by file presence: with no manifest on disk the gate is a clean skip (greenfield).
-  # A failure routes to the same operator gate as the other stages, not a hard fail.
-  - id: verify_surface_coverage
-    type: script
-    script: scripts/verify-surface-coverage.py
-    args:
-      - "{{ cfg.surface_manifest }}"
-      - "{{ epics_dir }}"
-      - "{{ backlog }}"
-      - "{{ cfg.knowledge_dir }}"
-      - "{{ 'full' if mode == 'survey' else coverage_mode }}"
-    outputs:
-      - key: surface_coverage_ok
-      - key: surface_coverage_errors
-    next: decide_surface_coverage
-
-  - id: decide_surface_coverage
-    type: branch
-    path: surface_coverage_ok
-    cases:
-      "no": gate_surface_coverage
-    default: reset_epics_rework # "yes" or "skip" → proceed into Stage 1
-
-  - id: gate_surface_coverage
-    type: branch
-    path: operator_mode
-    cases:
-      human: await_surface_coverage
-      auto: guard_surface_coverage_resolve
-    default: guard_surface_coverage_resolve
-
-  # Bounded retry: once the resolver has already had max_surface_coverage_resolves
-  # (== 2) attempts at fixing-and-rechecking this gate without converging, stop
-  # trusting it further and force human escalation instead of looping forever.
-  - id: guard_surface_coverage_resolve
-    type: branch
-    path: surface_coverage_resolve_count.value
-    conditions:
-      - op: ">="
-        value: "2" # == vars.max_surface_coverage_resolves; literal so no Jinja in branch
-        next: await_surface_coverage
-    default: resolve_surface_coverage
-
-  # Auto-operator for the surface-coverage block. Records the uncovered surfaces in
-  # <epics_dir>/_author-context.md and either answers (add the bullets / declare out of
-  # scope) or escalates to a human, then flows into decide_surface_coverage_resolve,
-  # which re-verifies the fix via verify_surface_coverage rather than trusting the
-  # resolver's own say-so.
-  - id: resolve_surface_coverage
-    type: agent
-    cwd: "{{ cfg.repo_root }}"
-    power: high
-    # Unbounded: the resolver does open-ended unblocking work and must not be cut off
-    # mid-resolution. Change to a finite number of seconds (e.g. 5000) to cap it.
-    timeout: infinity
-    prompt: prompts/resolve-operator.md
-    args:
-      context_path: "{{ epics_dir }}/_author-context.md"
-      epic_dir: "{{ epics_dir }}"
-      block_stage: "surface-coverage"
-      block_notes: "{{ surface_coverage_errors }}"
-    outputs:
-      - key: resolve_status
-        default: { decision: "answered" }
-    next: decide_surface_coverage_resolve
-
-  # An "escalated" resolver decision means the resolver itself gave up on this pass
-  # (it could not supply an answer) — skip the recheck and go straight to the human
-  # gate rather than re-running verify_surface_coverage on an unchanged state.
-  - id: decide_surface_coverage_resolve
-    type: branch
-    path: resolve_status.decision
-    cases:
-      escalated: await_surface_coverage
-    default: incr_surface_coverage_resolve
-
-  - id: incr_surface_coverage_resolve
-    type: script
-    script: scripts/incr_counter.py
-    args:
-      - "surface_coverage_resolve_count"
-      - "{{ surface_coverage_resolve_count.value }}"
-    outputs:
-      - key: surface_coverage_resolve_count
-    next: verify_surface_coverage # loop back to the SAME deterministic check
-
-  # On-demand operator gate for the surface-coverage stage. Records the uncovered surfaces
-  # in <epics_dir>/_author-context.md, halts, and on resume (operator added the bullets or
-  # marked them out of scope) proceeds into Stage 1 — decompose_epics re-reads the updated
-  # backlog. One-shot: it does not loop back to re-verify (the operator is trusted).
-  - id: await_surface_coverage
-    type: script
-    script: scripts/await-operator.py
-    args:
-      - "{{ epics_dir }}/_author-context.md"
-      - "{{ surface_coverage_errors }}"
-    outputs:
-      - key: operator_input
-    next: reset_epics_rework
-
   # ── Story mode setup: append one bullet to an existing epic ───────────────────────
   # Adds one seed to the epic's ## Seeds (ostler seed add) + one story to its ## Stories
   # (ostler create story — the same contract split-stories emits) and scaffolds the story
@@ -320,7 +196,6 @@ nodes:
       - "{{ epic }}"
       - "{{ epics_dir }}"
       - "{{ bullet }}"
-      - "{{ cfg.knowledge_dir }}"
       # The run's backlog, not the default — story mode resolves `bullet` against THIS file, and
       # a miss returns from_backlog=no, which makes the `story_prune` tail skip the bullet and
       # the next run re-author it.
@@ -502,6 +377,8 @@ nodes:
       - key: epic
       - key: epic_dir
       - key: reason
+      # Epic-queue progress ("2/5" fully authored) from the worklist snapshot.
+      - key: progress
     next: decide_epic
 
   - id: decide_epic
@@ -530,11 +407,12 @@ nodes:
     cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/write-epic.md
+    activity: "authoring epic {{ epic }}{% set p = get_node_output('select_epic', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       epic: "{{ epic }}"
       epic_dir: "{{ epic_dir }}"
       backlog: "{{ backlog }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
+      features_dir: "{{ cfg.features_dir }}"
     outputs:
       - key: write_epic_result
     next: decide_write_epic
@@ -634,6 +512,22 @@ nodes:
     args:
       epic: "{{ epic }}"
       epic_dir: "{{ epic_dir }}"
+      # The coverage-loop rework worklist: the adequacy reviewer's gaps, else the
+      # deterministic validator's errors (same fall-back idiom as await_coverage and
+      # resolve_coverage.block_notes). Without this the guard_coverage → incr_cov → here
+      # edge re-ran this node on byte-identical inputs, so the splitter re-derived "already
+      # complete, no changes made" and the reviewer re-derived the same gaps until the
+      # rework budget ran out — three high-power laps that could not converge.
+      #
+      # Gated on the counter because this node is also the loop's *entry*
+      # (reset_split_resolve → here with the counter at 0), where coverage_result still
+      # holds the PREVIOUS epic's verdict: rendering it unconditionally would hand a fresh
+      # epic another epic's review notes. cov_rework_count is exactly the "came from a
+      # rework" signal — reset to 0 per epic and by await_coverage on operator proceed
+      # (there the answer arrives via context.md, which the prompt already reads).
+      rework_notes:
+        "{% if (cov_rework_count.value or 0) | int > 0 %}{{ coverage_result.notes or
+        coverage_errors }}{% endif %}"
     outputs:
       - key: split_result
     next: decide_split
@@ -644,6 +538,11 @@ nodes:
     cases:
       complete: select_story
       blocked: gate_split
+      # The splitter was handed rework_notes and judged that no change is warranted.
+      # Nothing about its inputs changes on another lap, so spending the rest of the
+      # rework budget re-deriving the same refusal is pure churn — escalate the
+      # disagreement to the coverage gate now, where the resolver sees both sides.
+      standoff: gate_coverage
     default: select_story
 
   - id: gate_split
@@ -716,6 +615,9 @@ nodes:
       - key: story_slug
       - key: story_dir
       - key: reason
+      # Per-epic story progress ("3/12" authored) from the worklist snapshot → labels + activity.
+      - key: progress
+      - key: remaining_count
     next: decide_story
 
   - id: decide_story
@@ -745,107 +647,14 @@ nodes:
       - "write_story_resolve_count"
     outputs:
       - key: write_story_resolve_count
-    next: gather_knowledge
-
-  # ── Gather surface knowledge (the durable, accumulating source of derived truth) ──
-  # Before writing the story, observe the surface by interaction + code (NOT screenshots)
-  # and write/enrich its two-sided old↔new record under cfg.knowledge_dir, describing the
-  # surface the story works on. Idempotent + resumable. Advisory in the graph: it
-  # always flows on to write_story (a genuinely unreachable surface is recorded via openGaps
-  # and escalated by write_story's own `blocked` path, not here).
-  - id: gather_knowledge
-    type: agent
-    cwd: "{{ cfg.repo_root }}"
-    power: high
-    prompt: prompts/gather-surface-knowledge.md
-    args:
-      epic: "{{ epic }}"
-      story_path: "{{ story_path }}"
-      story_slug: "{{ story_slug }}"
-      story_dir: "{{ story_dir }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
-      features_dir: "{{ cfg.features_dir }}"
-      surface_manifest: "{{ cfg.surface_manifest }}"
-      mockup_dir: "{{ cfg.mockup_dir }}"
-    outputs:
-      - key: gather_result
-    next: reset_knowledge_fix
-
-  # Reset the bounded YAML-repair budget before validating, so a malformed record gets a
-  # small, finite number of fix attempts (knowledge_fix below) and never loops forever.
-  - id: reset_knowledge_fix
-    type: script
-    script: scripts/init_counter.py
-    args:
-      - "knowledge_fix_count"
-    outputs:
-      - key: knowledge_fix_count
-    next: validate_knowledge
-
-  - id: validate_knowledge
-    type: script
-    script: scripts/validate-knowledge.py
-    args:
-      - "{{ gather_result.record }}"
-    outputs:
-      - key: knowledge_ok
-      - key: knowledge_errors
-    next: decide_knowledge
-
-  # Advisory gate: a structurally-valid record proceeds; an invalid one (the common case being a
-  # malformed YAML front-matter that the gather agent wrote) is routed to a bounded repair loop
-  # instead of being ignored — or, before the script fix below, crashing the whole run. "skip"
-  # (no record produced) and "yes" both flow straight on; only "no" attempts a fix.
-  - id: decide_knowledge
-    type: branch
-    path: knowledge_ok
-    cases:
-      "no": guard_knowledge_fix
-    default: design_mockup # "yes" or "skip" → proceed
-
-  # Bound the repair loop. A YAML/structural fix is mechanical and should converge in one or two
-  # passes; if it still does not validate after the budget is spent, proceed anyway (this stage is
-  # advisory — write_story reads the record as text and the operator gates downstream still apply).
-  - id: guard_knowledge_fix
-    type: branch
-    path: knowledge_fix_count.value
-    conditions:
-      - op: ">="
-        value: "2" # small dedicated cap; a syntax repair should not need more
-        next: design_mockup
-    default: fix_knowledge
-
-  # Ask a model to repair the knowledge record so it parses + validates, preserving all content.
-  - id: fix_knowledge
-    type: agent
-    cwd: "{{ cfg.repo_root }}"
-    power: high
-    prompt: prompts/fix-knowledge.md
-    args:
-      record_path: "{{ gather_result.record }}"
-      knowledge_errors: "{{ knowledge_errors }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
-    outputs:
-      - key: fix_knowledge_result
-        default: { status: "fixed" }
-    next: incr_knowledge_fix
-
-  - id: incr_knowledge_fix
-    type: script
-    script: scripts/incr_counter.py
-    args:
-      - "knowledge_fix_count"
-      - "{{ knowledge_fix_count.value }}"
-    outputs:
-      - key: knowledge_fix_count
-    next: validate_knowledge
+    next: design_mockup
 
   # ── Design a mockup for a genuinely new screen (greenfield only) ───────────────────
-  # When the gathered record marks a new surface (a missing/new component for which no
-  # built screen exists), produce a visual reference in the app's style using the
-  # superdesign skill (HTML written under cfg.mockup_dir), and return its path so
-  # write_story can link it. For a story on an EXISTING surface (an already-built screen)
-  # this is a pass-through no-op. Advisory: always flows on to write_story — a
+  # When the story's surface does not exist in the OKF book yet (no `screen` node, no
+  # feature doc), produce a visual reference in the app's style using the superdesign
+  # skill (HTML written under cfg.mockup_dir), and return its path so write_story can
+  # link it. For a story on an EXISTING surface (an already-built screen the book already
+  # describes) this is a pass-through no-op. Advisory: always flows on to write_story — a
   # missing/failed mockup must not block authoring (write_story falls back to the
   # feature doc).
   - id: design_mockup
@@ -857,7 +666,6 @@ nodes:
       epic: "{{ epic }}"
       story_slug: "{{ story_slug }}"
       story_dir: "{{ story_dir }}"
-      knowledge_record: "{{ gather_result.record }}"
       features_dir: "{{ cfg.features_dir }}"
       surface_manifest: "{{ cfg.surface_manifest }}"
       mockup_dir: "{{ cfg.mockup_dir }}"
@@ -870,13 +678,12 @@ nodes:
     cwd: "{{ cfg.repo_root }}"
     power: high
     prompt: prompts/write-story.md
+    activity: "authoring {{ story_slug }}{% set p = get_node_output('select_story', 'progress') %}{% if p %} · {{ p }}{% endif %}"
     args:
       epic: "{{ epic }}"
       story_path: "{{ story_path }}"
       story_slug: "{{ story_slug }}"
       story_dir: "{{ story_dir }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
-      knowledge_record: "{{ gather_result.record }}"
       features_dir: "{{ cfg.features_dir }}"
       mockup_dir: "{{ cfg.mockup_dir }}"
       mockup_path: "{{ mockup_result.mockup }}"
@@ -995,7 +802,6 @@ nodes:
     args:
       - "{{ story_dir }}"
       - "{{ epic_dir }}"
-      - "{{ cfg.knowledge_dir }}"
       - "{{ cfg.features_dir }}"
     outputs:
       - key: story_grounding_ok
@@ -1020,7 +826,6 @@ nodes:
       story_path: "{{ story_path }}"
       story_slug: "{{ story_slug }}"
       story_dir: "{{ story_dir }}"
-      knowledge_record: "{{ gather_result.record }}"
       features_dir: "{{ cfg.features_dir }}"
     outputs:
       - key: audit_result
@@ -1070,8 +875,6 @@ nodes:
       story_path: "{{ story_path }}"
       story_slug: "{{ story_slug }}"
       story_dir: "{{ story_dir }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
-      knowledge_record: "{{ gather_result.record }}"
       features_dir: "{{ cfg.features_dir }}"
       mockup_dir: "{{ cfg.mockup_dir }}"
       # The rework worklist: validator errors, else the story auditor's refutations, else
@@ -1114,50 +917,15 @@ nodes:
     path: feedback.present
     cases:
       "yes": apply_story_feedback # operator left feedback — rework once, then re-validate
-      "no": detect_okf # no feedback — emit the OKF surface skeleton (if any), then advance
-    default: detect_okf
-
-  # ── Document the surface (OKF UI profile, design time) ────────────────────────────
-  # The story is approved. If it describes a user-facing surface/concept, emit or refresh
-  # its OKF UI-profile skeleton from the story's intent (Playbook A) so the coder inherits
-  # a target graph. Gated by detect_okf so it only fires where docs are ostler-managed;
-  # fail-soft everywhere else (author runs on many non-OKF repos). Never halts.
-  - id: detect_okf
-    type: script
-    script: scripts/detect-okf-docs.py
-    args:
-      - "{{ cfg.repo_root }}"
-      - "{{ cfg.features_dir }}"
-    outputs:
-      - key: has_okf
-      - key: features_root
-    next: decide_okf
-
-  - id: decide_okf
-    type: branch
-    path: has_okf
-    cases:
-      "yes": document_surface
-      "no": decide_story_loop
+      "no": decide_story_loop # no feedback — advance
     default: decide_story_loop
 
-  - id: document_surface
-    type: agent
-    cwd: "{{ cfg.repo_root }}"
-    # medium: skeleton authoring from intent — no code to ground yet, lighter than write_story.
-    power: medium
-    prompt: prompts/document-surface.md
-    args:
-      epic: "{{ epic }}"
-      story_path: "{{ story_path }}"
-      story_dir: "{{ story_dir }}"
-      story_slug: "{{ story_slug }}"
-      features_root: "{{ features_root }}"
-      mockup_dir: "{{ cfg.mockup_dir }}"
-    outputs:
-      - key: doc_status
-        default: skipped
-    next: decide_story_loop
+  # The author does NOT write the OKF surface docs. Documenting a surface is the coder's
+  # hard-gated `docs` flow (document_story), which runs after implement and before QA, so
+  # every node it writes is grounded in code that exists — and `ostler qa context` maps the
+  # diff onto that graph regardless of what design time guessed. An intent-only skeleton
+  # authored here would be speculation the coder has to reconcile, on an advisory node that
+  # fails silently. Existing code is backfilled by the okf-builder workflow instead.
 
   # The story passed and has no pending feedback. In epic mode, advance to the next
   # story in the epic (today's behaviour). In story mode, this was the one story we
@@ -1193,8 +961,6 @@ nodes:
       story_path: "{{ story_path }}"
       story_slug: "{{ story_slug }}"
       story_dir: "{{ story_dir }}"
-      knowledge_dir: "{{ cfg.knowledge_dir }}"
-      knowledge_record: "{{ gather_result.record }}"
       features_dir: "{{ cfg.features_dir }}"
       mockup_dir: "{{ cfg.mockup_dir }}"
       validation_errors: "" # none — the operator feedback is the work
@@ -1212,7 +978,6 @@ nodes:
     script: scripts/validate-epic-coverage.py
     args:
       - "{{ epic_dir }}"
-      - "{{ cfg.knowledge_dir }}"
       - "{{ backlog }}"
     outputs:
       - key: coverage_ok
@@ -1301,7 +1066,13 @@ nodes:
       context_path: "{{ epic_dir }}/context.md"
       epic_dir: "{{ epic_dir }}"
       block_stage: "coverage"
-      block_notes: "{{ coverage_result.notes or coverage_errors }}"
+      # On the standoff entry path the block is a *disagreement*, not a bare gap list —
+      # carry the splitter's rebuttal too so the resolver decides between two positions
+      # rather than rubber-stamping the reviewer's.
+      block_notes:
+        "{{ coverage_result.notes or coverage_errors }}{% if split_result.status ==
+        'standoff' %}\n\nStory-split stage declined this rework: {{ split_result.notes
+        }}{% endif %}"
     outputs:
       - key: resolve_status
         default: { decision: "answered" }
@@ -1314,8 +1085,12 @@ nodes:
       - "{{ epic_dir }}/context.md"
       # The blocking question comes from the review agent (coverage_result.notes);
       # fall back to the deterministic validator's errors for the guard-after-reworks
-      # entry path, where the review may not have run this iteration.
-      - "{{ coverage_result.notes or coverage_errors }}"
+      # entry path, where the review may not have run this iteration. On the standoff
+      # path append the splitter's rebuttal, so the human is asked to settle a
+      # disagreement rather than to re-read the reviewer alone.
+      - "{{ coverage_result.notes or coverage_errors }}{% if split_result.status ==
+        'standoff' %}\n\nStory-split stage declined this rework: {{ split_result.notes
+        }}{% endif %}"
       - "cov_rework_count"
     outputs:
       - key: operator_input
@@ -1428,12 +1203,12 @@ nodes:
 
   # ── 4. REFERENTIAL-INTEGRITY GATE (ostler doctor) ─────────────────────────────────
   # Mechanical cross-run drift check over the whole planning-doc graph: cross-epic
-  # seed/dependency refs, orphan seeds, dangling knowledge paths — the
+  # seed/dependency refs, orphan seeds, dangling doc refs — the
   # "AI forgot what it created itself" class the coverage gates don't catch. Error-level
   # findings block and route to the operator/resolver, which reconciles via `ostler edit`
   # (set-owner / relink / rename) and is forbidden from deleting refs to go green;
   # warnings never block. Skips cleanly if ostler isn't installed (opt-in by presence).
-  # One-shot operator (like the surface-coverage gate): the resolver self-verifies with
+  # One-shot operator (like the reconciliation gate): the resolver self-verifies with
   # `ostler doctor` before finishing, then the run proceeds to final artifact validation.
   - id: reset_integrity_resolve
     type: script
@@ -1554,8 +1329,22 @@ nodes:
     path: artifacts_ok
     cases:
       "yes": commit_author
-      "no": author_failed
-    default: author_failed
+      "no": commit_incomplete
+    default: commit_incomplete
+
+  # Broken work does not vanish and does not get a PR. The partial docs are committed under an
+  # unmistakable message (a rerun resumes from them; `ostler doctor` names every unwritten
+  # story), and the run then ends red — `open_author_pr` is unreachable from here.
+  - id: commit_incomplete
+    type: script
+    script: scripts/commit-author.py
+    args:
+      - "incomplete"
+      - "{{ epic }}"
+      - "{{ bullet }}"
+    outputs:
+      - key: committed
+    next: author_failed
 
   # ── 6. GIT: commit the authored docs and open a PR ────────────────────────────────
   # A successful, validated run always ends in an open PR instead of leaving the
@@ -1595,11 +1384,15 @@ nodes:
 flows:
   # ── parity-surveyor: baseline inventory vs current OKF book ───────────────────────
   # Reuses surveyor's frozen inventory and one-unit-at-a-time assessment mechanics, but emits
-  # one backlog bullet per uncovered baseline surface instead of creating knowledge nodes or
-  # clustering several surfaces into one synthetic finding.
+  # one backlog bullet per uncovered baseline surface instead of clustering several surfaces
+  # into one synthetic finding.
   parity-surveyor:
     name: parity-surveyor
     start: parity_load_config
+    # Same telemetry dimensions as the surveyor flow, over the parity inventory.
+    labels:
+      work_id: "{{ get_node_output('parity_select_unit', 'unit_id') }}"
+      progress: "{{ get_node_output('parity_select_unit', 'progress') }}"
     vars:
       baseline_inventory: null
       target_features: "docs/features"
@@ -1653,6 +1446,8 @@ flows:
           - key: unit_kind
           - key: record_path
           - key: reason
+          - key: progress
+          - key: kinds
         refuel: unit_id
         next: parity_decide_unit
 
@@ -1669,6 +1464,7 @@ flows:
         cwd: "{{ cfg.repo_root }}"
         power: medium
         prompt: surveyor/prompts/assess-parity-unit.md
+        activity: "assessing parity {{ unit_kind }} {{ unit_id }}{% set p = get_node_output('parity_select_unit', 'progress') %}{% if p %} · {{ p }}{% endif %}"
         args:
           unit_id: "{{ unit_id }}"
           unit_path: "{{ unit_path }}"
@@ -1759,10 +1555,18 @@ flows:
   # ── surveyor: exhaustive discovery intake for complex authoring bullets ─────────
   # This flow lives under author because its output is not a separate deliverable. It
   # emits author's existing input contract: generated backlog bullets plus a unit
-  # manifest consumed by verify_surface_coverage in full mode.
+  # manifest (read downstream for a unit's route/components, not re-gated at intake —
+  # the surveyor's own verify-records → validate-partition chain is the coverage proof).
   surveyor:
     name: surveyor
     start: load_config
+    # Telemetry dimensions for the survey drain (`wf.*`, re-rendered per node). `work_id` is
+    # the unit under assessment; `progress`/`kinds` come from select-next-unit's worklist
+    # snapshot ("12/40" + "30 file · 10 folder"). Empty renders are dropped, so nodes before
+    # the first pick carry none. See workhorse/docs/WORKFLOW.md §1.2.
+    labels:
+      work_id: "{{ get_node_output('select_unit', 'unit_id') }}"
+      progress: "{{ get_node_output('select_unit', 'progress') }}"
     vars:
       rubric: "docs/survey/rubric.md"
       survey_dir: "docs/survey"
@@ -1936,6 +1740,10 @@ flows:
           - key: unit_kind
           - key: record_path
           - key: reason
+          # Worklist snapshot of the whole inventory for the dashboard: "12/40" assessed +
+          # the "30 file · 10 folder" kinds composition. Fed into labels + activity.
+          - key: progress
+          - key: kinds
         refuel: unit_id
         next: decide_unit
 
@@ -1961,6 +1769,7 @@ flows:
         cwd: "{{ cfg.repo_root }}"
         power: medium
         prompt: surveyor/prompts/assess-unit.md
+        activity: "assessing {{ unit_kind }} {{ unit_id }}{% set p = get_node_output('select_unit', 'progress') %}{% if p %} · {{ p }}{% endif %}"
         args:
           unit_id: "{{ unit_id }}"
           unit_path: "{{ unit_path }}"

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler import backlog, crud, query, select, todo
 from ostler.model import load
 
@@ -177,7 +179,7 @@ def test_report_separates_done_from_blocked(tmp_path: Path):
 
 
 def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Path):
-    """An epic with no authored stories is ``no-stories``, never ``done``.
+    """An epic that lists no stories at all is ``no-stories``, never ``done``.
 
     Zero stories done out of zero is arithmetically "all done", and calling it that drops
     unwritten scope out of the queue silently. Absent epics get their own state too, so a
@@ -193,3 +195,134 @@ def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Pa
     missing = select.next_story_report(load(tmp_path), "nope")
     assert missing["state"] == "no-epic"
     assert missing["story"] is None
+
+
+# --------------------------------------------------------------------------- #
+# next_story_report(need="author")                                            #
+# --------------------------------------------------------------------------- #
+#
+# The author workflow's selection question — "which story still has nothing in it?" — answered
+# by the same DAG walk the coder builds with, instead of by a script scanning for the presence
+# of a file. Presence was the whole defect: every scaffold existed, so every epic read as
+# finished and the author run wrote nothing and said it was done.
+
+def _authored(root: Path, slug: str) -> None:
+    """Fill a scaffold's required sections, the way a write_story node does."""
+    story_md = load(root).find_story(slug)[1].story_md
+    story_md.write_text(
+        story_md.read_text(encoding="utf-8")
+        .replace("## Context\n", "## Context\n\n- why this matters\n")
+        .replace("## Acceptance Criteria\n", "## Acceptance Criteria\n\n- The thing works.\n"),
+        encoding="utf-8",
+    )
+
+
+def _epic_of_scaffolds(root: Path, stories: list[tuple[str, list[str]]]) -> None:
+    crud.create_epic(load(root), "e", "E", prefix="x")
+    for slug, depends in stories:
+        crud.create_story(load(root), "e", slug, slug.upper(), depends=depends)
+
+
+def test_author_report_selects_the_first_unwritten_story_in_dag_order(tmp_path: Path):
+    """Declaration order does not decide; dependency order does — the order coder will build in.
+
+    Writing a dependent before its dependency is how a story ends up specified against
+    requirements that do not exist yet, so the author walks the DAG even though, unlike the
+    build path, nothing here is *blocked* by an unwritten dependency.
+    """
+    _epic_of_scaffolds(tmp_path, [("b", ["a"]), ("a", [])])
+
+    report = select.next_story_report(load(tmp_path), "e", need="author")
+
+    assert report["state"] == "ready"
+    assert report["story"]["slug"] == "a"
+    assert report["story"]["authored"] is False
+    assert report["story"]["unwrittenSections"] == ["Context", "Acceptance Criteria"]
+    assert "a is unwritten" in report["detail"]
+
+
+def test_author_report_counts_authored_stories_and_resumes_at_the_first_gap(tmp_path: Path):
+    """A rerun picks up where the last one stopped: written stories are counted, not rewritten.
+
+    This is the self-correction property. The failed run left every story a stub; with
+    presence-based selection a rerun had nothing to select and ended immediately, so there was
+    no way to make the workflow finish its own work short of deleting the stubs by hand.
+    """
+    _epic_of_scaffolds(tmp_path, [("a", []), ("b", ["a"]), ("c", ["b"])])
+    _authored(tmp_path, "a")
+
+    report = select.next_story_report(load(tmp_path), "e", need="author")
+
+    assert report["state"] == "ready"
+    assert report["story"]["slug"] == "b"
+    assert (report["done"], report["total"]) == (1, 3)   # the "1/3" the run's progress reads
+    assert report["remaining"] == ["b", "c"]
+
+
+def test_author_report_is_done_only_when_every_story_is_written(tmp_path: Path):
+    _epic_of_scaffolds(tmp_path, [("a", []), ("b", ["a"])])
+    _authored(tmp_path, "a")
+    assert select.next_story_report(load(tmp_path), "e", need="author")["state"] == "ready"
+
+    _authored(tmp_path, "b")
+    report = select.next_story_report(load(tmp_path), "e", need="author")
+
+    assert report["state"] == "done"
+    assert report["story"] is None
+    assert report["done"] == report["total"] == 2
+    assert report["remaining"] == []
+
+
+def test_author_and_build_are_separate_axes(tmp_path: Path):
+    """A story can be unwritten and "not done", or written and done — the two never substitute.
+
+    ``need`` exists because the same epic answers both questions differently, and a caller that
+    read the wrong one either rewrites finished stories or plans against empty ones.
+    """
+    _epic_of_scaffolds(tmp_path, [("a", [])])
+    _authored(tmp_path, "a")
+    crud.set_status(load(tmp_path), "a", "QA passed")
+
+    g = load(tmp_path)
+    assert select.next_story_report(g, "e", need="author")["state"] == "done"
+    assert select.next_story_report(g, "e", need="build")["state"] == "done"
+
+    # Now the reverse: written, but nowhere near built.
+    crud.set_status(load(tmp_path), "a", "In progress")
+    g = load(tmp_path)
+    assert select.next_story_report(g, "e", need="author")["state"] == "done"
+    assert select.next_story_report(g, "e", need="build")["state"] == "ready"
+
+
+def test_epic_authored_needs_stories_a_doc_and_content(tmp_path: Path):
+    """``epic_authored`` is the fact ``select-epic.py`` got wrong — pin all three of its parts."""
+    _epic_of_scaffolds(tmp_path, [("a", []), ("b", [])])
+    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    assert not select.epic_authored(epic), "an epic of bare scaffolds is not authored"
+
+    _authored(tmp_path, "a")
+    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    assert not select.epic_authored(epic), "one written story does not finish the epic"
+
+    _authored(tmp_path, "b")
+    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    assert select.epic_authored(epic)
+
+
+def test_epic_with_no_stories_is_not_authored(tmp_path: Path):
+    # Zero of zero is arithmetically "all", and calling it authored drops unwritten scope out
+    # of the queue silently — the same trap `no-stories` exists to keep out of `done`.
+    crud.create_epic(load(tmp_path), "empty", "Empty", prefix="x")
+    epic = next(e for e in load(tmp_path).epics if e.name == "empty")
+    assert not select.epic_authored(epic)
+
+
+def test_an_unknown_need_is_rejected(tmp_path: Path):
+    """A typo'd ``need`` must not silently fall through to the build answer.
+
+    The two axes disagree constantly, so a caller that meant "author" and got "build" would
+    read an epic of empty stories as ready to select — the original failure, reintroduced.
+    """
+    _epic_of_scaffolds(tmp_path, [("a", [])])
+    with pytest.raises(ValueError, match="unknown need"):
+        select.next_story_report(load(tmp_path), "e", need="authored")

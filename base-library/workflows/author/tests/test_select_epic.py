@@ -1,9 +1,13 @@
 """Tests for select-epic.py — the per-epic loop driver (OKF / ostler model)."""
 from __future__ import annotations
 
-from conftest import init_repo, requires_ostler, run_script, write_epic
-
-pytestmark = requires_ostler
+from conftest import (
+    init_repo,
+    run_script,
+    scaffold_story_body,
+    write_epic,
+    write_story,
+)
 
 
 def test_empty_queue_returns_no(tmp_path):
@@ -30,6 +34,23 @@ def test_all_authored_returns_no(tmp_path):
 
     out = run_script("select-epic.py", "docs/epics", repo=tmp_path)
     assert out["has_epic"] == "no"
+
+
+def test_epic_of_bare_scaffolds_is_pending(tmp_path):
+    """A rerun must resume an epic whose stories are all `ostler create story` scaffolds.
+
+    This is what made the failed run unrecoverable: every story.md existed, so the epic read as
+    complete and a rerun ended immediately with `has_epic == "no"` — there was no way to make
+    the workflow finish its own work short of deleting the stubs by hand.
+    """
+    write_epic(tmp_path, "e1", seeds=[{"id": "i1"}, {"id": "i2"}],
+               stories=[{"slug": "s1", "covers": ["i1"]}, {"slug": "s2", "covers": ["i2"]}])
+    write_story(tmp_path, "e1", "s1", body=scaffold_story_body("s1"))
+    write_story(tmp_path, "e1", "s2", body=scaffold_story_body("s2"))
+
+    out = run_script("select-epic.py", "docs/epics", repo=tmp_path)
+    assert out["has_epic"] == "yes"
+    assert out["epic"] == "e1"
 
 
 def test_epic_with_no_stories_is_incomplete(tmp_path):

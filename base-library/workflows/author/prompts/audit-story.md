@@ -21,43 +21,45 @@ coder could actually build and a QA could actually verify, grounded in the resea
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-- Knowledge record: `{{ workhorse_var('knowledge_record') }}` — the grounding source of truth.
 {%- if workhorse_var('features_dir') %}
-- Feature-doc root: `{{ workhorse_var('features_dir') }}` — the documented user journeys.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, and the
+  grounding source of truth. Read it; never write to it.
 {%- endif %}
 
 ## Read
 
 - the story file — its **Context** and **Acceptance Criteria** are what you judge
-- the surface **knowledge record** (components, gaps, `journeys[]`, `chromeContext`, `feedbackKind`)
+{%- if workhorse_var('features_dir') %}
+- **the OKF nodes the story cites** — its `## Context` links them by id (a node id is a
+  repo-relative path, optionally `path#anchor`). These are the surface's documented components,
+  interactions, and flows: what the story claims to work on, in the book's own words.
+{%- endif %}
 - the epic's `## Seeds` and `## Stories` sections in `epic.md` — the scope this story claims (the
   seeds it covers and its dependency edges)
-{%- if workhorse_var('features_dir') %}
-- this surface's feature doc / journey under `{{ workhorse_var('features_dir') }}`
-{%- endif %}
 
 ## How to audit — try to refute on each axis
 
 1. **Observable + verifiable.** Each AC must be a thing a person *using the running app* could see
    or do — not a DOM selector, not an implementation detail, and not vague ("works correctly",
    "looks right", "is performant"). An un-observable or untestable AC → **refuted**.
-2. **Grounded.** Each AC must trace to a component/gap in the knowledge record (or cited evidence).
-   An AC asserting behaviour the record does not establish — invented scope — → **refuted**.
+2. **Grounded.** Each AC must trace to a cited OKF node (or other cited evidence — a design mockup,
+   a spec, a legacy surface). An AC asserting behaviour nothing cited establishes — invented scope —
+   → **refuted**. A citation that resolves to no node is not grounding either; the deterministic gate
+   catches the dangling id, you catch the AC that leans on it.
 
    **When the surface does not exist yet**, grounding still applies but its evidence differs. On a
-   screen being built for the first time the record's built/`new[]` side is legitimately empty and
-   every AC describes something not yet on disk — that is the normal state, not invented scope. An
-   AC is grounded here if it traces to an **intended** component or an identified gap (an entry
-   under `old[]`, or one with `kind: "missing"`), or to the design/spec reference the record cites.
-   Refute what traces to *nothing* — an AC grounded in neither an intended component, a gap, nor a
-   cited reference is still invented scope, and "the surface is new" is not itself a warrant.
+   screen being built for the first time the book has no node for it and every AC describes
+   something not yet on disk — that is the normal state, not invented scope. An AC is grounded here
+   if it traces to the design mockup, spec, or reference surface the story cites. Refute what traces
+   to *nothing* — and "the surface is new" is not itself a warrant.
 3. **No hidden decisions.** Catch the semantic open-endedness the structural phrase-list misses:
    "match the legacy behaviour" without saying *what* behaviour, "reasonable defaults", "the usual
    states". If the coder still has a product/UX decision to make, the story isn't ready → **refuted**.
-4. **Journey-complete for the surface.** The documented user journey(s) in the record's `journeys[]`
-   must each be covered by an AC; every component with `chromeContext` must have a presence/absence
-   AC for each context; every `feedbackKind: "transient"` must have an appear-then-disappear AC. A
-   missing journey / chrome / transient criterion → **refuted** (this is the exact "caught by luck
+4. **Journey-complete for the surface.** The documented user journeys — the book's `flow` nodes the
+   cited surface takes part in — must each be covered by an AC; a component the book says appears
+   only in certain contexts must have a presence/absence AC for each context the story touches; an
+   interaction whose documented outcome is transient feedback must have an appear-then-disappear AC.
+   A missing journey / chrome / transient criterion → **refuted** (this is the exact "caught by luck
    at QA" failure the grounding exists to prevent).
 
 When uncertain whether a weakness is real, **lean toward refuted** — the cost of a wrong refute is

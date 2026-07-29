@@ -56,17 +56,41 @@ from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
 
 
-def _yaml() -> YAML:
+def _yaml(source: str = "") -> YAML:
     """Round-trip loader/dumper: comments, key order and flow style survive the merge.
 
     ``width`` is set far above any real line because ruamel wraps long scalars at 80 by
-    default — which would reflow a hand-written value the merge never touched.
+    default — which would reflow a hand-written value the merge never touched. The cost is
+    the mirror case: a *plain* scalar the author wrapped by hand comes back on one long
+    line, because plain multi-line scalars fold to a single string at parse time and their
+    break positions are simply not in the loaded document. A block scalar (``>-``) is
+    round-tripped byte-for-byte, so that is the shape to reach for when the wrapping of a
+    long prose value matters.
+
+    ``source`` is the existing file's text, read for the one thing round-trip mode does
+    *not* remember: how far its block sequences are indented. Left at ruamel's default,
+    every hand-written ``  - go`` comes back as ``- go`` — a diff touching every list in
+    the file, which buries the two lines the merge actually changed.
     """
     y = YAML()  # round-trip mode
     y.preserve_quotes = True
     y.default_flow_style = False
     y.width = 4096
+    seq = _sequence_indent(source)
+    y.indent(mapping=2, sequence=seq + 2, offset=seq)
     return y
+
+
+def _sequence_indent(source: str, default: int = 2) -> int:
+    """How far ``source`` indents a top-level block-sequence item, or ``default``.
+
+    The shallowest ``- `` in the file is the top-level one; anything deeper is nested and
+    would over-indent the whole document if taken as the baseline. A file with no block
+    sequence at all (or no file yet) gets ``default``, matching the scaffolded configs.
+    """
+    indents = [len(line) - len(line.lstrip(" ")) for line in source.splitlines()
+               if line.lstrip(" ").startswith("- ") or line.strip() == "-"]
+    return min(indents) if indents else default
 
 
 def _assign_seq(mapping: dict, key: str, merged: list) -> None:
@@ -136,11 +160,15 @@ def main(logger: logging.Logger) -> None:
     repo_name = target.name
     path = target / "agents.yml"
 
-    yml = _yaml()
+    try:
+        source = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except OSError as exc:
+        emit(agents_yml_note=f"existing agents.yml is unreadable ({exc}); refusing to clobber it")
+    yml = _yaml(source)
     existing: dict = {}
     if path.is_file():
         try:
-            existing = yml.load(path.read_text(encoding="utf-8")) or {}
+            existing = yml.load(source) or {}
         except (YAMLError, OSError) as exc:
             emit(agents_yml_note=f"existing agents.yml is unreadable ({exc}); refusing to clobber it")
         if not isinstance(existing, dict):

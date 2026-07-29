@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ostler import Ostler
+
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
 
@@ -140,6 +142,55 @@ def test_seed_fix_story_creates_fixes_epic_and_story(tmp_path):
     # The fixes bucket is never registered in the epics queue that select_epic /
     # prune_epic manage — it must not collide with epic-mode story selection.
     assert not (tmp_path / "docs" / "epics" / "epics-todo.json").is_file()
+
+
+def test_seeded_fix_story_is_authored_by_ostlers_own_verdict(tmp_path):
+    """A seeded fix story must be *written*, not a scaffold — the gate downstream refuses one.
+
+    `ostler create story` leaves every required section empty, and an empty section is an
+    unwritten story: `prepare-story.py` exits 2 rather than let a planner invent acceptance
+    criteria for a blank file. The fix loop has no author node to fill them in afterwards, so
+    the seeding script is the story's author and must leave `Story.authored` true. Asserted
+    through ostler rather than by reading the file, because ostler owns what "authored" means.
+    """
+    (tmp_path / "docs" / "epics").mkdir(parents=True)
+    result = _run(
+        "seed-fix-story.py",
+        ["bug-a", "Fix the sentinel gate flake", "", "", str(tmp_path)],
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    slug = json.loads(result.stdout)["story_slug"]
+
+    found = Ostler(tmp_path).graph.find_story(slug)
+    assert found is not None
+    story = found[1]
+    assert story.unwritten_sections == []
+    assert story.authored is True
+    # And the Context earns its place: it says where the fix came from.
+    body = (tmp_path / "docs/epics/fixes/stories" / slug / "story.md").read_text(encoding="utf-8")
+    assert "bug-a" in body.split("## Acceptance Criteria")[0]
+
+
+def test_seed_fix_story_never_overwrites_a_written_section(tmp_path):
+    """Resumability: a rerun re-authors nothing a human (or an earlier run) already wrote."""
+    (tmp_path / "docs" / "epics").mkdir(parents=True)
+    first = _run("seed-fix-story.py", ["bug-a", "Fix the flake", "", "", str(tmp_path)], tmp_path)
+    slug = json.loads(first.stdout)["story_slug"]
+    story_md = tmp_path / "docs/epics/fixes/stories" / slug / "story.md"
+    story_md.write_text(
+        story_md.read_text(encoding="utf-8").replace(
+            "- Scope is that single item", "- Hand-added: the flake only shows up under load.\n"
+            "- Scope is that single item"),
+        encoding="utf-8")
+
+    second = _run("seed-fix-story.py", ["bug-a", "Fix the flake", "", "", str(tmp_path)], tmp_path)
+
+    assert second.returncode == 0, second.stderr
+    body = story_md.read_text(encoding="utf-8")
+    assert "Hand-added: the flake only shows up under load." in body
+    assert body.count("- Fix the flake") == 1, "the AC line must not be appended twice"
+    assert Ostler(tmp_path).graph.find_story(slug)[1].authored is True
 
 
 def test_seed_fix_story_is_idempotent(tmp_path):

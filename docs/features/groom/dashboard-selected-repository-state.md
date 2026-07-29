@@ -5,23 +5,31 @@ title: Dashboard selected repository state
 ---
 # Dashboard selected repository state
 
-Dashboard selected repository state is the browser-local selection object written by [select repository menu option](gui/screens/groom-dashboard.md#select-repository-menu-option) after an operator chooses a [repository menu option](gui/screens/groom-dashboard.md#repository-menu-option) rendered from [repository menu data](repository-menu-data.md). It carries the selected workflow container id, volume-relative checkout directory, and display label read by the [dashboard active pane loader](concepts/dashboard-active-pane-loader.md), Files pane, file opener, and Diff pane to request [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), and [workspace diff data](workspace-diff-data.md) without changing the dashboard route or server-side workflow state.
+Dashboard selected repository state is the `repo` slice of the [dashboard client store](concepts/dashboard-client-store.md): the container/checkout pair the operator picked, plus the menu's own open-time state. It is written when a [repository menu data](repository-menu-data.md) entry is selected, and read by the files and diff panes to scope every `GET /files`, `GET /file`, and `GET /diff` request. It changes no route and no server-side state.
 
-- file: not an on-disk artifact; this is a browser-local JavaScript object retained for the lifetime of the loaded dashboard page.
-- code: groom/groom/templates/dashboard.html::sel
+Selection and menu contents live in one slice rather than two because they are read together on every render of the picker — the menu needs the entry list *and* the active index, and the picker button needs the label. Splitting them would mean two subscriptions to keep in step for a component that is one dropdown.
+
+- file: not an on-disk artifact; this is a slice of the browser-local store, retained for the lifetime of the loaded dashboard page.
+- code: groom/groom/assets/dashboard.js::selectRepo
+- code: groom/groom/assets/dashboard.js::openRepoMenu
+- code: groom/groom/assets/dashboard.js::repoItems
+- refs: [dashboard client store](concepts/dashboard-client-store.md), [repository menu data](repository-menu-data.md), [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), [workspace diff data](workspace-diff-data.md)
 
 ## Contract
 
-- producer: [select repository menu option](gui/screens/groom-dashboard.md#select-repository-menu-option) creates the selected value from one clicked repository-menu option's `data-container`, `data-repo`, and `data-label` attributes.
-- consumers: the [dashboard active pane loader](concepts/dashboard-active-pane-loader.md) dispatches after every selection; the active Files pane loader reads `container` and `repo` to request the selected checkout's file tree; the file-row opener reads them again with a selected path to request file content; the active Diff pane loader reads them to request the selected checkout's working-tree diff; both repository picker labels read `label` for visible selection text.
-- lifetime: initialized when the dashboard script loads, retained across activity-mode switches, repository-menu open/close cycles, inbox/detail refreshes, statusbar updates, and command-palette use, and replaced wholesale by the next repository-menu option selection.
-- absent state: before the first repository option selection, `container` is `null`, `repo` is `""`, and `label` is `null`; entering Files or Diff mode in this state renders the appropriate picker prompt instead of sending repository-backed HTTP requests.
-- selected state: after selection, `container` and `label` are copied exactly from the option dataset, while `repo` is copied from the option dataset or normalized to `""` when missing or empty; no trimming, case normalization, existence check, or registry validation occurs in browser state.
-- stale state: if the selected workflow or checkout disappears after selection, the object remains unchanged until another menu option is selected or the page unloads; later Files, file-content, or Diff requests use the stale values and surface endpoint empty/error behavior in their target panes.
-- write rule: selection assigns the three fields synchronously before closing the menu and before the active-pane loader issues any Files or Diff request, so the immediate load reads the new container/repository pair.
-- read rule: every read is synchronous and in-memory from the loaded dashboard page; first-party code does not serialize this object to local storage, session storage, cookies, query parameters, websocket frames, or hidden inputs.
-- server effect: none directly; the state only scopes later HTTP GET requests and never mutates workflow records, sidecar sessions, gates, or websocket state.
-- accessibility effect: the state is reflected only by replacing visible picker-label text and by loading pane content; it does not set focus, `aria-selected`, `aria-expanded`, `aria-current`, live-region announcements, browser history, or route state.
+- producer — selection: `selectRepo` copies `container`, `repo`, and `label` off one chosen [repository menu data](repository-menu-data.md) entry into `container`, `dir`, and `label`.
+- producer — menu lifecycle: `openRepoMenu` resets `loading`, `groups`, `query`, and `active` before fetching `/repos`, and writes the fetched groups back when the response lands.
+- consumers: the files pane reads `container` and `dir` to request the file tree; the file opener reads them again with a selected path to request file content; the diff pane reads them to request the working-tree diff; the picker buttons read `label`; the menu component reads `groups`, `query`, and `active`.
+- lifetime: initialized when the dashboard module loads, retained across mode switches, fleet ticks, resyncs, connection-state changes, and command-palette use; the selection fields are replaced only by another selection.
+- absent state: before the first selection, `container` is `null`, `dir` is `""`, and `label` is `null`. Files and diff mode render `Pick a container / repo above.` in that state and send no repository-scoped request.
+- selected state: `container` and `label` are copied exactly from the entry; `dir` is the entry's `repo` or `""`. No trimming, case normalization, existence check, or registry validation happens in the browser.
+- stale state: if the selected workflow or checkout disappears after selection, the slice is unchanged until another entry is picked. Later requests use the stale pair and surface the panes' own empty or failure states rather than clearing the selection.
+- write ordering: selection assigns the three fields, updates the picker labels, and dispatches the active-pane load synchronously, before the menu closes — so the load already sees the new pair.
+- menu freshness: `groups` is discarded and re-fetched every time the menu opens rather than cached, because checkout discovery is a per-container process and a cached list would show checkouts that no longer exist without any signal that it was stale.
+- not persisted: the slice is never serialized to local storage, session storage, cookies, query parameters, the URL, hidden inputs, or any websocket frame. A reload starts with nothing selected.
+- not pushed: no server message writes this slice. The socket carries fleet state; the selection is the tab's own.
+- server effect: none. It only scopes later HTTP GETs, and mutates no workflow record, sidecar session, gate, or socket state.
+- accessibility effect: selection replaces visible picker-label text and loads pane content. The menu's `active` index is separately published to the combobox as `aria-activedescendant` by the menu component, which is the one place that knows which entry ended up at which index after filtering.
 
 ## Fields
 
@@ -29,29 +37,68 @@ Dashboard selected repository state is the browser-local selection object writte
 
 - type: `str | null`
 - default: `null`
-- required: false before selection; true for Files, file-content, and Diff requests after selection.
-- meaning: workflow container id copied from the selected option's `data-container`; it becomes the `{container_id}` route value for later file and diff HTTP requests.
-- source: [repository menu data](repository-menu-data.md#field-option-container) rendered as the selected row's `data-container` attribute, then read as `dataset.container` during pointer selection.
-- normalization: copied exactly as supplied by the row dataset; no empty-string guard runs at selection time, but Files and Diff pane loaders treat falsey values as absent and render `Pick a container / repo above.` instead of requesting data.
-- consumers: `loadFiles` and `loadDiff` URL-encode the value as the path segment in `GET /files/{container_id}` and `GET /diff/{container_id}`; `openFile` URL-encodes it as the path segment in `GET /file/{container_id}`.
+- required: false before selection; required by every repository-scoped request after it.
+- meaning: the workflow container id from the selected entry; it becomes the `{container_id}` route segment of the files, file-content, and diff requests.
+- source: [repository menu data](repository-menu-data.md#field-group-container).
+- normalization: copied exactly. No empty-string guard runs at selection time; the panes treat a falsey value as *nothing selected* and render the picker prompt instead of requesting data.
 
-### field-repo
+### field-dir
 
 - type: `str`
 - default: `""`
 - required: true
-- meaning: volume-relative checkout directory copied from the selected option's `data-repo`; an empty string selects the workflow workspace volume root for file-list/file-content requests and the default checkout for diff requests.
-- source: [repository menu data](repository-menu-data.md#field-option-repo) rendered as the selected row's `data-repo` attribute, then read as `dataset.repo` during pointer selection.
-- normalization: selection applies JavaScript `repo || ""`, so missing, empty, or other falsey dataset values become the empty string; non-empty strings are preserved exactly.
-- consumers: `loadFiles`, `openFile`, and `loadDiff` URL-encode the value as the `repo` query parameter for workspace file-list, file-content, and diff requests.
-- scope: the value is repository-directory scope only; selected files, changed-file indexes, directory collapsed classes, and parsed diff cache entries are separate pane-local state and are rebuilt or reset by later loads.
+- meaning: the volume-relative checkout directory, sent as the `repo` query parameter. `""` selects the workspace root for file requests and the first discovered checkout for diff requests.
+- source: [repository menu data](repository-menu-data.md#field-entry-repo).
+- normalization: `item.repo || ""`, so a missing or falsey entry value becomes the empty string; a non-empty string is preserved exactly.
+- name: the store calls it `dir` rather than `repo` because the enclosing slice is already `repo`; the wire name on every request remains `repo`.
+- scope: repository-directory scope only. The selected file path, the changed-file index, collapsed directory state, and the parsed diff cache are separate pane-local state, rebuilt or reset by the load that selection triggers.
 
 ### field-label
 
 - type: `str | null`
 - default: `null`
-- required: false before selection; true immediately after a repository-menu option is selected.
-- meaning: visible picker label copied from the selected option's `data-label`; after selection it replaces the text content of every `.repo-picker-label` span in both Files and Diff picker buttons.
-- source: [repository menu data](repository-menu-data.md#field-option-label) rendered as the selected row's `data-label` attribute, then read as `dataset.label` during pointer selection.
-- normalization: copied exactly as supplied by the row dataset; if missing, the browser assigns `undefined` as text content, so correctness depends on rendered repository options carrying `data-label`.
-- consumers: both native repository picker buttons expose this value as their visible label and accessible button name after selection; the search field and option filtering do not read this stored `label` value after selection.
+- required: false before selection.
+- meaning: the visible picker text; after selection it replaces the text of every `.repo-picker-label` in the files and diff picker buttons, which is also those buttons' accessible name.
+- source: [repository menu data](repository-menu-data.md#field-entry-label).
+- normalization: copied exactly. It is composed server-side, so the client never joins a container name and a checkout path itself.
+
+### field-loading
+
+- type: `bool`
+- default: `false`
+- required: true
+- meaning: whether the `/repos` fetch is in flight. The menu renders `Loading…` for `true` and `No repositories available.` for `false` with no entries — two states, so an empty fleet never reads as a slow one.
+
+### field-groups
+
+- type: `list` of [repository menu data](repository-menu-data.md#field-groups) group objects
+- default: `[]`
+- required: true
+- meaning: the menu's contents as fetched, held in the server's grouping and order.
+- normalization: a rejected fetch and a missing body both become `[]`, which renders the same empty state as a genuinely empty fleet. The menu has no error state of its own.
+
+### field-query
+
+- type: `str`
+- default: `""`
+- required: true
+- meaning: the picker's search text. Filtering is client-side and case-insensitive over each entry's `label`; it never re-requests `/repos`, because the whole menu is already in the tab.
+- reset: cleared every time the menu opens.
+
+### field-active
+
+- type: `int`
+- default: `0`
+- required: true
+- meaning: the keyboard-highlighted row's index **into the filtered entry list**, not into `groups`. It is clamped to the filtered list's bounds at render time, so narrowing the query can never leave the pointer past the end.
+- reset: set to `0` on menu open and on every fetch resolution.
+
+## Algorithms
+
+### algorithm-select-a-checkout
+
+- step: Opening the picker clears the slice's menu fields, marks it loading, and fetches [repository menu data](repository-menu-data.md).
+- step: The menu component flattens `groups` into rows, applies `query`, and clamps `active` to the result.
+- step: Choosing a row writes `container`, `dir`, and `label`, updates both picker buttons' visible text, and calls the active-pane loader.
+- step: The loader requests the files tree or the working-tree diff for the new pair, depending on the current mode; every other mode is a no-op.
+- step: The menu closes, returning focus to the button that opened it.

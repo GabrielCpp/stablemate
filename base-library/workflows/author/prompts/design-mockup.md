@@ -16,12 +16,10 @@ cannot produce one, say so and return cleanly; the writer falls back to the feat
 
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-- Knowledge record: `{{ workhorse_var('knowledge_record') }}` — read it; its `gaps[]` / `new[]` tell you
-  whether this surface is new (a `missing`/`unreachable` screen with no built `new[]` component) and
-  what the screen must contain.
 {%- if workhorse_var('features_dir') %}
-- Feature-doc root: `{{ workhorse_var('features_dir') }}` — this surface's feature doc / journeys are
-  the content the mockup must depict.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation built from the
+  code. **Read it; never write to it.** It is both the test for "is this screen new?" (below) and,
+  when the screen exists in part, the content the mockup must depict.
 {%- endif %}
 {%- if workhorse_var('surface_manifest') %}
 - Surface manifest: `{{ workhorse_var('surface_manifest') }}` — set this surface's `mockup` field to the
@@ -31,12 +29,16 @@ cannot produce one, say so and return cleanly; the writer falls back to the feat
 
 ## Decide first: is this a new screen?
 
+The book is the test: the okf-builder documents what the code actually has, so a screen the book
+already carries is a screen that already exists.
+
 Pass-through (return `status: "skipped"`) when **any** holds:
-- the record's `new[]` already has a built component for this screen (it's an edit, not a new screen);
+- the book has a `screen` node for this surface (it's an edit of a built screen, not a new one);
 - the story only changes/relocates existing UI (a section added to an existing screen is borderline —
   only mock it if the *screen itself* is new).
 
-Otherwise treat it as a new screen and produce a mockup.
+Otherwise — no node for the surface, and no feature doc describing it — treat it as new and produce
+a mockup.
 
 ## Produce the mockup (in the app's style)
 
@@ -54,11 +56,12 @@ Otherwise treat it as a new screen and produce a mockup.
      a single self-contained HTML file (inline `<style>`, no external assets) that renders the screen
      in the app's style, grounded in the design tokens and exemplars above. This path needs no network,
      login, or API key — use it whenever the CLI path is unavailable rather than blocking.
-3. **Depict the real screen, all states.** Cover the documented user journey(s) and the states the goal
-   implies — happy path **plus** empty / loading / error — using the content from the feature doc and the
-   record's gaps, not lorem-ipsum.
+3. **Depict the real screen, all states.** Cover the documented user journey(s) — the book's `flow`
+   nodes this screen takes part in — and the states the goal implies (happy path **plus** empty /
+   loading / error), using the content from the book and the story's seeds, not lorem-ipsum.
 4. **Write and register it.**
-   - Save to `<mockup_dir>/local/<surface-key>.html` (derive `<surface-key>` from the record's `surface`).
+   - Save to `<mockup_dir>/local/<surface-key>.html` (derive `<surface-key>` from the surface's route
+     or its intended node path — the same key the book would use).
    - If an `index.html` / `README.md` mockup gallery exists in that dir, add an entry for the new file.
    - If a `surface_manifest` is configured, set this surface's `mockup` field to the new file's repo path
      (create the surface entry if absent), so `write_story` links it.

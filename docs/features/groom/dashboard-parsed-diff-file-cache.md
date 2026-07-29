@@ -5,94 +5,96 @@ title: Dashboard parsed diff file cache
 ---
 # Dashboard parsed diff file cache
 
-Dashboard parsed diff file cache is the browser-local parsed changed-file array created by [select activity diff mode](gui/screens/groom-dashboard.md#select-activity-diff-mode) and [select repository menu option](gui/screens/groom-dashboard.md#select-repository-menu-option) when the Diff pane loads non-empty [workspace diff data](workspace-diff-data.md). It feeds the [dashboard diff file tree builder](concepts/dashboard-diff-file-tree-builder.md), [diff file row](gui/screens/groom-dashboard.md#diff-file-row), and [select diff file row](gui/screens/groom-dashboard.md#select-diff-file-row) so the dashboard can render a changed-file tree first and later render one selected file's diff without another HTTP request.
+Dashboard parsed diff file cache is the parsed changed-file array the Diff pane
+holds in the [dashboard client store](concepts/dashboard-client-store.md) as the
+`diff` slice's `files` member. It is created once per Diff pane load, when
+[workspace diff data](workspace-diff-data.md) comes back with non-whitespace unified
+diff text and the third-party diff2html parser turns it into file entries. It feeds
+the [dashboard tree builder](concepts/dashboard-tree-builder.md) — which is what puts
+[diff file row](gui/screens/groom-dashboard.md#diff-file-row) entries on the page —
+and it is what makes [select diff file row](gui/screens/groom-dashboard.md#select-diff-file-row)
+free: the whole diff was parsed when the pane loaded, so choosing a file renders one
+already-parsed entry rather than issuing another request.
 
-- file: not an on-disk artifact; this is a transient browser property on the `#diff-tree` element.
-- code: groom/groom/templates/dashboard.html::loadDiff
+It used to live on the DOM, assigned as a `_files` property on the `#diff-tree`
+element and read back out by a click handler through a `data-file-idx` attribute.
+Both of those are gone. The array is store state now and the selected index is store
+state beside it, which removes the whole class of bug where a stale property outlived
+the rows that indexed into it — there is no longer a way for the rows on screen and
+the array they address to come from different loads, because one render derives both.
+
+- file: not an on-disk artifact; this is a transient in-memory slice of one tab's client store.
+- code: groom/groom/assets/dashboard.js::loadDiff
+- code: groom/groom/assets/dashboard.js::DiffTree
+- code: groom/groom/assets/dashboard.js::DiffView
+- refs: [workspace diff data](workspace-diff-data.md), [dashboard path tree](dashboard-path-tree.md)
 
 ## Contract
 
-- producer: the Diff pane loader creates this cache only after `GET /diff/{container_id}?repo={repo}` returns non-whitespace text and the third-party Diff2Html parser returns at least one parsed file entry.
-- parser input: the producer parses the raw [workspace diff data](workspace-diff-data.md) response body exactly as returned by the endpoint; it does not pre-split, filter, normalize paths, redact content, or check the HTTP status before parsing fulfilled responses.
-- storage: the producer assigns the parsed array directly to the `#diff-tree` DOM element as property `_files`; the cache is not serialized into markup, browser storage, URL state, server state, or websocket state.
-- consumer: the [dashboard diff file tree builder](concepts/dashboard-diff-file-tree-builder.md) reads the parsed entries to create [dashboard diff file tree](dashboard-diff-file-tree.md) directory nodes and changed-file leaves; the diff-file-row interaction later reads one cached entry by array index and passes that full entry to Diff2Html's HTML renderer.
-- scope: one loaded dashboard page and one currently rendered `#diff-tree`; reloading the Diff pane for the same or another selected repository replaces the cache when parsing succeeds.
-- absent states: no cache is created for no selected repository, whitespace-only diff text, parser output with zero file entries, fetch rejection, or response-body read rejection.
-- stale-property rule: an empty, zero-entry, or failed reload replaces the visible diff tree with a prompt but does not explicitly delete a prior `_files` property; with no generated `.tree-file[data-file-idx]` rows remaining, ordinary row activation has no usable index into that stale array.
-- ordering: array indexes are assigned by the Diff2Html parser order and preserved in generated `data-file-idx` row attributes even though sibling rows are visually sorted by directory and basename.
-- selection invariant: every selectable diff-file row must carry a `data-file-idx` value that points to the same parsed array instance currently stored on `#diff-tree._files`; selecting a row renders only that one cached parsed file entry and never performs another diff fetch.
-- third-party boundary: the dashboard treats each parsed file entry as an opaque Diff2Html payload for final HTML rendering, while directly consuming only path and line-count members for the tree labels.
+- producer: the Diff pane loader, after `GET /diff/{container_id}?repo={repo}` returns JSON whose `diff` member holds non-whitespace text and diff2html is present to parse it.
+- parser input: the loader hands the raw diff text to the parser exactly as the endpoint returned it. It does not pre-split, filter, normalize paths, redact content, or inspect the HTTP status of a fulfilled response.
+- storage: the parsed array is written to the client store's `diff` slice as `files`, alongside the selected index `idx` and a `status`. It is not serialized into markup, browser storage, URL state, server state, or any websocket frame.
+- consumer: the Diff tree island maps each entry to a `{path, idx, add, del}` builder entry and renders the resulting [dashboard path tree](dashboard-path-tree.md); the viewer island reads `files[idx]` and passes that one entry to diff2html's renderer.
+- scope: one tab, one loaded pane, one container/repository selection. Loading the pane again — for the same repository or another — replaces the slice wholesale.
+- absent states: an empty array is stored, rather than the slice left untouched, for whitespace-only diff text and for a parse that yields no files. The two are indistinguishable by design and both render `(no changes)`. A rejected fetch or unparseable body sets `status: "error"` with an empty array.
+- reset rule: every load begins by writing `{status: "loading", files: [], idx: -1}`, so a failed or empty reload cannot leave the previous load's entries addressable. This is what the DOM-property version could not guarantee.
+- selection invariant: `idx` is a position in the array stored in the same slice, and both are written by the same store update. There is no path by which a row's index and the array it indexes come from different loads, and no bounds check is needed beyond the viewer's `files[idx]` returning undefined for the initial `-1`.
+- ordering: array positions are parser order and are never reordered. The visible tree sorts a copy per level, so a row's position on screen says nothing about its index.
+- third-party boundary: each entry is an opaque diff2html payload for final rendering. First-party code reads only `newName`, `oldName`, `addedLines` and `deletedLines`, and retains the whole object for the viewer.
+- escaping: diff2html escapes what it emits, which is why the raw diff crosses the wire unsplit rather than having half a parser reimplemented server-side. Nothing in this cache is interpolated into markup by first-party code.
 
 ## Fields
 
-### field-cache-property
+### field-files
 
-- type: `Array<Diff2HtmlParsedFile>` stored as `#diff-tree._files`
-- default: absent
-- required: true after a successful non-empty Diff pane load; initially absent, and not assigned by no-selected-repository, empty-diff, zero-entry, or failed loads.
-- meaning: ordered parsed-file array for the currently loaded repository diff; generated diff-file rows point back into this array by zero-based index.
-- write rule: assigned exactly once per successful Diff pane load, before the diff tree HTML is generated for that same parsed array.
-- mutation rule: first-party dashboard code does not mutate the parsed array or its entries after storing it; later rendering reads entries by index.
+- type: `Array<Diff2HtmlParsedFile>`
+- default: `[]`
+- required: true
+- wire-key: `files`, within the store's `diff` slice
+- meaning: the ordered parsed changed-file entries for the currently loaded repository diff.
+- write rule: written exactly twice per load — emptied when the load starts, replaced when it settles.
 
-### field-entry-count
-
-- type: `int`
-- default: `0` when parsing yields no entries; otherwise parser supplied through `Array.length`.
-- required: true for producer branching.
-- meaning: number of parsed changed-file entries returned from Diff2Html parsing; the cache is assigned only when this value is greater than zero.
-
-### field-file-index
+### field-idx
 
 - type: `int`
-- default: none
-- required: true for every generated diff-file row backed by this cache.
-- meaning: zero-based position of one parsed file entry in `#diff-tree._files`; serialized onto the generated row as `data-file-idx` and converted back to a number when a changed file is selected.
-- source: original array position before directory and filename sorting are applied to the rendered tree.
-- failure behavior: no bounds check is performed by the row-selection interaction; correctness depends on generated rows preserving indexes from the same cached array.
-
-### field-entry
-
-- type: `Diff2HtmlParsedFile`
-- default: parser supplied
-- required: true for every item in `#diff-tree._files`.
-- meaning: one parser-produced changed-file payload representing a single file-level diff; first-party code reads the fields documented below for tree construction and retains the full object for selected-file rendering.
+- default: `-1`
+- required: true
+- wire-key: `idx`, within the store's `diff` slice
+- meaning: the position in `files` of the changed file whose diff the viewer is showing. `-1` means none, which renders the viewer's prompt.
+- source: written by the diff-file row's click handler, which closes over the index rather than reading it back off a data attribute.
 
 ### field-new-name
 
 - type: `str | null`
 - default: parser supplied
 - required: false
-- meaning: changed file path after the diff when the parsed entry has a new path; the dashboard uses it as the display/grouping path unless it is `/dev/null`.
-- fallback rule: a falsey value or the literal `/dev/null` makes the dashboard use `oldName` as the grouping/display path.
+- meaning: the changed file's path after the diff. The tree uses it as the grouping and display path unless it is missing or `/dev/null`.
 
 ### field-old-name
 
 - type: `str | null`
 - default: parser supplied
 - required: false
-- meaning: changed file path before the diff; the dashboard uses it as the display/grouping path when `newName` is missing or equals `/dev/null`.
-- fallback rule: when this field is used, it is string-coerced before slash splitting; the builder does not reject missing, empty, duplicate, or traversal-looking values.
+- meaning: the changed file's path before the diff. Used as the grouping and display path when `newName` is missing or `/dev/null` — the deleted-file case.
 
 ### field-added-lines
 
 - type: `int`
 - default: parser supplied
-- required: true for rendered diff-file rows.
-- meaning: added-line count displayed in the generated row as `+{addedLines}`.
-- consumer field: copied into the [dashboard diff file tree](dashboard-diff-file-tree.md) file leaf as `add` before rendering.
+- required: true for rendered rows
+- meaning: the added-line count, carried onto the builder entry as `add` and shown in the row as `+N`.
 
 ### field-deleted-lines
 
 - type: `int`
 - default: parser supplied
-- required: true for rendered diff-file rows.
-- meaning: deleted-line count displayed in the generated row as `-{deletedLines}`.
-- consumer field: copied into the [dashboard diff file tree](dashboard-diff-file-tree.md) file leaf as `del` before rendering.
+- required: true for rendered rows
+- meaning: the deleted-line count, carried onto the builder entry as `del` and shown in the row as `-N`.
 
 ### field-render-payload
 
 - type: `Diff2HtmlParsedFile`
 - default: parser supplied
-- required: true for selecting a diff-file row.
-- meaning: the complete parsed file object retained from the parser result; it is passed as the single element of an array to the Diff2Html HTML renderer for the selected-file diff view.
-- render options: selected-file rendering uses `drawFileList: false`, `matching: "lines"`, `outputFormat: "line-by-line"`, and `colorScheme: "dark"`.
+- required: true to render a selected row
+- meaning: the complete parsed entry, passed as the single element of an array to diff2html's HTML renderer.
+- render options: `drawFileList: false`, `matching: "lines"`, `outputFormat: "line-by-line"`, `colorScheme: "dark"`.

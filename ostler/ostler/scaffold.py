@@ -34,8 +34,8 @@ def _file_body(uitype: registry.UINodeType, title: str) -> str:
     stubs = _bullet_stubs(uitype)
     if stubs:
         lines += [*stubs, ""]
-    for heading in uitype.required_sections:
-        lines += [f"## {heading}", ""]
+    for spec in uitype.required_sections:
+        lines += [f"## {spec.heading}", ""]
     return "\n".join(lines) + "\n"
 
 

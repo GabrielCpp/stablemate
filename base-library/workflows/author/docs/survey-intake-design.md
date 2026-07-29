@@ -1,9 +1,23 @@
 # Design: Survey intake — exhaustive discovery for large cross-cutting initiatives
 
 **Status:** Implemented as the author workflow's nested `surveyor` flow — see
-`workflows/author/surveyor/docs/WORKFLOW.md`; the author-side changes landed in
-`load-config.py` / `build-inventory.py` / `verify-surface-coverage.py` (unit-manifest
-source, opt-in by presence).
+`workflows/author/surveyor/docs/WORKFLOW.md`. The author-side change landed in
+`load-config.py` (the unit manifest becomes `cfg.surface_manifest` by presence).
+**Superseded in one place:** §5's plan to reuse author's intake-time surface-coverage gate.
+That gate has since been removed — it ran *upstream* of the seeds that were its own input, so it
+could only grade the previous run, and in survey mode its "full" assertion searched a haystack
+containing the backlog `emit-artifacts.py` had just written. Exhaustiveness is proved inside the
+surveyor instead (`verify-records` → `validate-partition` → `emit-artifacts`), and downstream by
+`reconcile-artifacts.py`, `check-story-grounding.py` and `validate-epic-coverage.py`. Read §5 as
+history.
+
+**Also superseded:** author's per-story *surface knowledge record* (`gather_knowledge` and its
+validate/fix loop), referenced below as the per-unit "note it" idiom, is gone as well. The
+okf-builder now derives that surface documentation from the code into the OKF book, so a story
+grounds itself by **citing** book node ids rather than by re-gathering the surface. The surveyor's
+own finding records — a separate type with their own `openGaps` — are unaffected. Where the text
+below leans on knowledge records, read it as the design-time state of the art, not current
+machinery.
 **Scope:** an author intake flow that emits generated backlog bullets + inventory manifest,
 then continues through the normal author epic pipeline.
 **Motivating scenario:** "bring accessibility to every UI component of a large codebase" —
@@ -24,8 +38,9 @@ agent discretion in two places — both of which are the wrong altitude:
   component" it would have to enumerate hundreds of files inside a single context. Agents
   are unreliable at looking at each file of a large ensemble: they sample, generalize,
   and silently drop the tail.
-- `gather_knowledge` is per-story and runs *after* stories exist. It deepens known scope;
-  it can never expand it. Work no story points at is never discovered.
+- Per-story surface gathering (`gather_knowledge`, since removed) ran *after* stories exist. It
+  deepened known scope; it could never expand it. Work no story points at is never discovered —
+  and that is just as true of today's replacement, where the story cites the OKF book.
 
 The result is **discretionary discovery**: the exhaustiveness of the authored plan rests
 on an agent's recall instead of on a mechanical fact.
@@ -43,12 +58,12 @@ of existing idioms, not new machinery:
 
 | Existing mechanism | Role it plays in this design |
 |---|---|
-| `build_inventory` + `verify_surface_coverage` (`coverage_mode: "full"`) | mechanically-built inventory + deterministic "everything is covered" gate — the exact shape needed, currently limited to human-authored feature docs |
+| `cfg.surface_manifest` (the machine-readable surface inventory author's per-story stages read) | the "one entry per unit of work" artifact shape — at the time limited to human-authored feature docs |
 | `select_epic` / `select_story` loop pattern (deterministic select-next script → bounded agent → durable file record → loop, `refuel:` on the unit key) | the resumable "for each X, do Y" engine |
-| knowledge records under `cfg.knowledge_dir` | the idiom for durable, accumulating, per-surface derived truth — the per-unit "note it" file |
+| knowledge records under `cfg.knowledge_dir` *(the idiom at design time; since removed in favour of the okf-builder's book)* | durable, accumulating, per-surface derived truth — the per-unit "note it" file |
 | operator gates + bounded rework/resolve counters | escalation for units that cannot be assessed |
 | `reconcile-artifacts.py` (scope-drop vs git baseline) | the pattern for detecting silent shrinkage of a frozen list |
-| farrier-installed skills (universal contract skill + per-stack skill, e.g. `stablemate-accessibility` + `stablemate-htmx-accessibility`) | the channel through which stack-specific mechanics reach generic prompts |
+| farrier-installed skills (universal contract skill + per-stack skill, e.g. `stablemate-ui-accessibility` + a per-stack a11y skill) | the channel through which stack-specific mechanics reach generic prompts |
 | `sourceBullet` traceability (seed → backlog line) | the chain that will extend down to unit → finding |
 
 ---
@@ -71,7 +86,8 @@ of existing idioms, not new machinery:
   hundred structured findings do.
 - **Author stays the owner.** The surveyor emits author's *existing* input contract (a
   generated backlog + an inventory manifest). Author then runs its normal epic pipeline
-  with `coverage_mode: "full"`, and its existing gate proves nothing was dropped.
+  unchanged; the "nothing was dropped" proof lives in the surveyor's own
+  `verify-records` → `validate-partition` → `emit-artifacts` chain.
 
 ---
 
@@ -123,10 +139,9 @@ drop (reconcile-style gate), not silent shrinkage.
 - **Self-healing granularity** — two escape statuses instead of global re-planning:
   - `split`: a script replaces a too-big folder entry with its children (inventory grows,
     loop continues);
-  - `blocked`: recorded as an open gap and routed to the standard operator gate
-    (mirrors `openGaps` in knowledge records).
-- `validate_record` (script) + bounded fix loop (mirrors
-  `validate_knowledge` → `fix_knowledge`).
+  - `blocked`: recorded as an open gap (`openGaps`) and routed to the standard operator gate —
+    never a bare shrug.
+- `validate_record` (script) + bounded fix loop (mirrors `validate_story` → `rework_story`).
 - `mark_done` (script) flips the inventory entry's status. `refuel:` on the unit id so
   gas replenishes on genuine forward progress. Fully resumable across runs.
 
@@ -163,7 +178,7 @@ non-clean record maps into ≥1 cluster.
 - generated inventory manifest (unit-level), taking the role `cfg.surface_manifest`
   plays today.
 
-Then **author continues** through the epic pipeline with `coverage_mode: "full"`. The existing
+Then **author continues** through the epic pipeline unchanged. The existing
 `sourceBullet` chain yields end-to-end traceability:
 **unit → finding → backlog bullet → seed → story**.
 
@@ -171,15 +186,20 @@ Then **author continues** through the epic pipeline with `coverage_mode: "full"`
 
 ## 5. Changes required in author (small, additive)
 
-1. **Generalize the manifest source.** `build_inventory` / `verify_surface_coverage`
-   currently assume feature docs (screens). They must accept a survey-produced unit
-   manifest as an alternative source — same contract, different producer. Opt-in by
-   presence, as today.
+1. **Generalize the manifest source.** `cfg.surface_manifest` currently assumes feature
+   docs (screens). It must accept a survey-produced unit manifest as an alternative source
+   — same contract, different producer. Opt-in by presence, as today. *(Landed in
+   `load-config.py`.)*
 2. **Nothing else.** The epic split, story split, per-story research, validation,
-   grounding, audit, reconcile, integrity, and operator machinery all apply as-is. The
-   `coverage_mode: "full"` design comment ("the migration / greenfield-buildout
-   assertion") already anticipated exactly this use — it only ever lacked a code-derived
-   inventory to run against.
+   grounding, audit, reconcile, integrity, and operator machinery all apply as-is.
+
+> **Superseded.** This section originally also proposed running author's intake-time
+> surface-coverage gate in `coverage_mode: "full"` over the emitted manifest. That gate is
+> gone (see the Status note at the top): it sat upstream of its own inputs, and over a
+> survey it would have checked the backlog against the backlog. The exhaustiveness proof
+> belongs upstream, in §4's `verify-records` → `validate-partition` → `emit-artifacts`
+> chain, which asserts it against the *frozen inventory* rather than against author's
+> output.
 
 ---
 

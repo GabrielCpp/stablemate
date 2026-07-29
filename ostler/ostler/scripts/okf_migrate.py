@@ -11,6 +11,7 @@ Run:  ``python -m ostler.scripts.okf_migrate [REPO_ROOT]``
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -144,7 +145,6 @@ def _stamp_stories(edir: Path) -> int:
         status = fm.get("status")
         if not status:
             sec = doc.find_section("Implementation Status")
-            import re
             m = re.search(r"\*\*Status\*\*:\s*(.+)", sec.text if sec else doc.body)
             status = m.group(1).strip() if m else "Not started"
         fm = {"type": "story", "slug": slug, "status": status, **fm}
@@ -271,7 +271,6 @@ def _migrate_todo(eroot: Path) -> bool:
 def _rewrite_knowledge_refs(docs: Path) -> None:
     """Story/epic prose that links ``docs/knowledge/…​.json`` must follow the ``.json`` → ``.md``
     conversion."""
-    import re
     pat = re.compile(r"(docs/knowledge/[^\s)\]'\"`]+)\.json")
     for path in docs.rglob("*.md"):
         text = path.read_text(encoding="utf-8")

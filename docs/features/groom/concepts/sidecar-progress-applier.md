@@ -59,7 +59,7 @@ The sidecar progress applier is the groom server layer that folds a connected si
 
 ### field: dashboard-shell-broadcast
 
-- type: [dashboard shell fragment](../dashboard-shell-fragment.md) side effect
+- type: [dashboard state payload](../dashboard-state-payload.md) side effect
 - default: none
 - required: true on successful completion after registry mutation
 - sink: [dashboard shell broadcaster](dashboard-shell-broadcaster.md)

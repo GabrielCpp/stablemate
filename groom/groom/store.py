@@ -295,23 +295,37 @@ def query_spans(
     return [dict(row) for row in rows]
 
 
-def run_summaries(limit: int = 50, now: float | None = None) -> list[dict[str, Any]]:
-    """One row per run for the fleet/telemetry view: workflow, span window,
-    span/error counts, and whether a root (run:*) span has landed (= the run
-    ended; open runs have only node spans so far).
+def run_summaries(
+    limit: int = 50, now: float | None = None, run: str = ""
+) -> list[dict[str, Any]]:
+    """One row per run for the fleet/telemetry view: workflow, span window, and
+    span/error counts. ``run`` narrows it to a single run — the detail pane's
+    question, answered by the same aggregate.
+
+    Deliberately says nothing about whether the run is *running*. It used to,
+    via ``MAX(name LIKE 'run:%') AS finished``, which is a claim history cannot
+    support: a root span proves some session of this run_id ended, and since
+    ``--resume-run`` reuses the run_id (it comes from the run dir), that stayed
+    true forever — a resumed run read as finished while it was mid-node. Liveness
+    is a recency question and only :func:`live_run_ids` answers it.
 
     Bounded to the last ``ACTIVE_WINDOW_S`` so the GROUP BY scans recent history
     rather than the whole retained table; older runs stay queryable via raw SQL."""
     cutoff = (now if now is not None else time.time()) - ACTIVE_WINDOW_S
+    params: list[Any] = [cutoff]
+    run_clause = ""
+    if run:
+        run_clause = "AND run_id = ?"
+        params.append(run)
+    params.append(max(1, min(int(limit), 500)))
     rows = _connection().execute(
         "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
         " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
         " COUNT(*) AS span_count,"
-        " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS error_count,"
-        " MAX(CASE WHEN name LIKE 'run:%' THEN 1 ELSE 0 END) AS finished"
-        " FROM spans WHERE run_id != '' AND end_ts >= ? GROUP BY run_id"
+        " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS error_count"
+        f" FROM spans WHERE run_id != '' AND end_ts >= ? {run_clause} GROUP BY run_id"  # noqa: S608 - literal clause, bound values
         " ORDER BY last_ts DESC LIMIT ?",
-        (cutoff, max(1, min(int(limit), 500))),
+        params,
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -409,6 +423,19 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
             entry["workflow"] = span["workflow"]
             entry["run_dir"] = span["run_dir"]
     return sorted(runs.values(), key=lambda e: e["last_beat_ts"], reverse=True)
+
+
+def live_run_ids(now: float | None = None) -> set[str]:
+    """The run ids beating *right now* — the durable answer to the only liveness
+    question that means anything.
+
+    Read from the store rather than the in-memory hot cache on purpose: a groom
+    that just restarted has an empty ``state.RUNS`` and would otherwise report
+    every live run as not-running until each one's next export lands.
+    """
+    return {
+        entry["run_id"] for entry in live_status(now=now) if entry.get("alive")
+    }
 
 
 def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:

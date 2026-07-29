@@ -11,11 +11,16 @@ Twin of `author/scripts/seed-story.py`, adapted for the coder fix loop:
   never collides with or gets picked up by epic-mode story selection.
 - The bullet id/text are handed in directly by `select-next-fix-item.py`'s output (it already did
   the backlog scan), so there's no `resolve_bullet()` re-parse step here.
-- `okf.create_story` scaffolds an empty `## Acceptance Criteria` section; this script fills it
-  with the bullet text as the SINGLE AC line — the literal enactment of "1 fix = 1 AC."
+- `okf.create_story` scaffolds story.md's required sections *empty*, and an empty section is an
+  unwritten story: `Story.authored` is false, `ostler doctor` files `unwritten-story`, and
+  `prepare-story.py` refuses to plan against it. This script is the story's author, so it writes
+  both — `## Acceptance Criteria` gets the bullet text as the SINGLE AC line (the literal
+  enactment of "1 fix = 1 AC"), and `## Context` gets where the bullet came from, which is the
+  whole of what is known about a filed fix. A seeded fix story is therefore authored the moment
+  it exists; nothing downstream has to special-case it.
 
 Idempotent / resumable: if a story already covers the bullet id, that story is reused rather than
-created again (and its AC section is left alone if already populated).
+created again, and an already-written section is never overwritten.
 
 Mutates the doc graph through the in-process `ostler` Python API (`from ostler import Ostler`).
 
@@ -38,7 +43,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from ostler import Ostler
+from ostler import Ostler, markdown
 
 from workhorse import scriptutil
 
@@ -77,29 +82,49 @@ def ensure_fixes_epic(okf: Ostler, epics_dir_rel: str, epic: str) -> None:
     die(f"could not self-create the '{epic}' epic bucket: {res.message}")
 
 
-def inject_ac_line(story_path: Path, bullet_text: str) -> None:
-    """Fill the freshly-scaffolded empty `## Acceptance Criteria` section with the bullet text
-    as the single AC line — a no-op if the section already has content (idempotent re-run)."""
+def fill_empty_section(story_path: Path, heading: str, lines: list[str]) -> bool:
+    """Write `lines` under `## <heading>`, but only if that section is still empty.
+
+    Located through ostler's markdown parser (`Section.is_empty` — the same predicate
+    `Story.authored` and `doctor` use), never by scanning the rendered text: a section is
+    empty when it carries no prose of its own or in its sub-sections, which is exactly the
+    question "has anybody written this yet?". A section somebody has already written is left
+    byte-identical, so a resumed run neither duplicates nor clobbers.
+    """
     try:
         text = story_path.read_text(encoding="utf-8")
     except OSError:
-        return
-    heading = "## Acceptance Criteria"
-    idx = text.find(heading)
-    if idx == -1:
-        return
-    after = idx + len(heading)
-    rest = text[after:]
-    next_heading = re.search(r"\n## ", rest)
-    section_body = rest[:next_heading.start()] if next_heading else rest
-    if section_body.strip():
-        return  # already populated — leave it alone
-    replacement = f"\n\n- {bullet_text}\n"
-    if next_heading:
-        new_rest = replacement + "\n" + rest[next_heading.start() + 1:]
-    else:
-        new_rest = replacement
-    story_path.write_text(text[:after] + new_rest, encoding="utf-8")
+        return False
+    doc = markdown.split(text)
+    section = doc.find_section(heading)
+    if section is None or not section.is_empty:
+        return False
+    body = doc.body.split("\n")
+    body[section.line_start + 1:section.line_end] = ["", *lines, ""]
+    doc.replace_body(body)
+    story_path.write_text(doc.render(), encoding="utf-8")
+    return True
+
+
+def author_story_body(story_path: Path, bullet_id: str, bullet_text: str, logger: logging.Logger,
+                      *, backlog_rel: str = "docs/backlog.md") -> None:
+    """Write the story's required sections — the seeding script *is* this story's author.
+
+    A fix story has no discovery phase behind it: everything known about it is the one backlog
+    bullet the coder filed, so Context says where the bullet came from and Acceptance Criteria
+    is the bullet itself. That is thin on purpose, and it is still a written story rather than
+    a scaffold — the distinction the fail-closed gate in `prepare-story.py` turns on.
+    """
+    wrote = fill_empty_section(story_path, "Acceptance Criteria", [f"- {bullet_text}"])
+    wrote |= fill_empty_section(story_path, "Context", [
+        f"- Filed by the coder workflow as backlog item `{bullet_id}` in "
+        f"`{backlog_rel}` under `## Filed by coder`: a defect or gap found while working on "
+        f"another story and deferred rather than fixed in place.",
+        "- Scope is that single item and nothing else — one fix, one acceptance criterion.",
+    ])
+    if wrote:
+        logger.info("wrote the story body for '%s' from backlog item '%s'",
+                    story_path.parent.name, bullet_id)
 
 
 def main(logger: logging.Logger) -> None:
@@ -129,7 +154,7 @@ def main(logger: logging.Logger) -> None:
             slug = str(s.get("slug", ""))
             path = str(s.get("path", "")) or f"{epic_dir_rel}/stories/{slug}/story.md"
             story_path = root / path
-            inject_ac_line(story_path, bullet_text)
+            author_story_body(story_path, bullet_id, bullet_text, logger)
             logger.info("story '%s' already covers '%s' — reusing", slug, bullet_id)
             emit(epic=epic, epic_dir=epic_dir_rel, story_slug=slug,
                  story_dir=str(Path(path).parent), story_path=path, bullet_id=bullet_id,
@@ -145,13 +170,13 @@ def main(logger: logging.Logger) -> None:
 
     story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
     story_path_rel = f"{story_dir_rel}/story.md"
-    inject_ac_line(root / story_path_rel, bullet_text)
+    author_story_body(root / story_path_rel, bullet_id, bullet_text, logger)
 
     logger.info("registered fix story '%s' covering '%s' in '%s'", slug, bullet_id, epic)
     emit(epic=epic, epic_dir=epic_dir_rel, story_slug=slug, story_dir=story_dir_rel,
          story_path=story_path_rel, bullet_id=bullet_id,
          reason=f"registered fix story '{slug}' ({res.entity_id or '?'}) covering '{bullet_id}' "
-                f"in '{epic}' with a single injected AC line")
+                f"in '{epic}', authored with a single AC line and its filing context")
 
 
 if __name__ == "__main__":

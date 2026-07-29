@@ -66,13 +66,57 @@ def test_dist_on_path_but_not_importable_still_fails(monkeypatch):
 
 def test_dist_version_satisfied(monkeypatch):
     monkeypatch.setattr(rq, "_dist_version", lambda n: "0.2.0")
+    monkeypatch.setattr(rq, "_import_problem", lambda d: None)
     assert rq.check_requirements([_req(dist="ostler", version=">=0.1.0")], "wf") == []
 
 
 def test_dist_version_too_old(monkeypatch):
     monkeypatch.setattr(rq, "_dist_version", lambda n: "0.0.9")
+    monkeypatch.setattr(rq, "_import_problem", lambda d: None)
     problems = rq.check_requirements([_req(dist="ostler", version=">=0.1.0")], "wf")
     assert "0.0.9" in problems[0] and ">=0.1.0" in problems[0]
+
+
+def test_installed_but_unimportable_dist_blocks_the_run(monkeypatch):
+    """Metadata resolving is not the claim; the import is.
+
+    A dist whose own dependency is missing (or whose extension was built for another
+    interpreter) resolves by metadata and raises on the first `import` a script node
+    does. That must fail here, before node one, not six nodes into an unattended run.
+    """
+    monkeypatch.setattr(rq, "_dist_version", lambda n: "0.2.0")
+    monkeypatch.setattr(rq, "_import_names", lambda d: ["ostler"])
+
+    def boom(name):
+        raise ModuleNotFoundError("No module named 'yaml'")
+
+    monkeypatch.setattr(rq.importlib, "import_module", boom)
+    problems = rq.check_requirements([_req(dist="ostler", version=">=0.1.0")], "wf")
+    assert len(problems) == 1
+    assert "does not import" in problems[0]
+    assert "yaml" in problems[0] and sys.executable in problems[0]
+
+
+def test_import_probe_uses_the_metadata_name_not_the_dist_name(monkeypatch):
+    """`workhorse-agent` imports as `workhorse`; probing the dist name would be a false alarm."""
+    monkeypatch.setattr(
+        rq, "packages_distributions", lambda: {"workhorse": ["workhorse-agent"]}
+    )
+    assert rq._import_names("workhorse-agent") == ["workhorse"]
+    # ...and a dist whose metadata lists no module still gets probed under its own name.
+    assert rq._import_names("ostler") == ["ostler"]
+
+
+def test_a_module_body_that_raises_anything_is_reported_not_propagated(monkeypatch):
+    """An import can raise whatever the module body raises — the preflight must survive it."""
+    monkeypatch.setattr(rq, "_import_names", lambda d: ["explodes"])
+
+    def boom(name):
+        raise RuntimeError("config file is corrupt")
+
+    monkeypatch.setattr(rq.importlib, "import_module", boom)
+    problem = rq._import_problem("explodes")
+    assert "RuntimeError" in problem and "config file is corrupt" in problem
 
 
 # --- cmd: PATH ---------------------------------------------------------------

@@ -9,7 +9,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 
 - code: groom/groom/app.py
 - verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
-  groom/tests/test_app.py::test_files_endpoint_returns_newline_separated_paths,
+  groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
   groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
@@ -96,11 +96,11 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - abstract: false
 - raises: propagates renderer failures.
 - code: groom/groom/app.py::search
-- endpoint: [get search fragment](../http/groom.md#get-search-fragment)
-- invocation: [serve search fragment](../http/groom.md#serve-search-fragment)
+- endpoint: [get search fragment](../http/groom.md#get-dashboard-state)
+- invocation: [serve search fragment](../http/groom.md#serve-dashboard-state)
 - does:
   - Reads a [workflow registry](workflow-registry.md) snapshot.
-  - Renders the [operator inbox](../operator-inbox.md) message-list fragment for query `q` with out-of-band swap markup.
+  - Renders the [runs fleet view](../runs-fleet-view.md) message-list fragment for query `q` with out-of-band swap markup.
   - Does not mutate workflow state, run discovery, or scope dashboard status counts to the search query.
 
 ### method-repos
@@ -123,7 +123,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::files
-- verify: groom/tests/test_app.py::test_files_endpoint_returns_newline_separated_paths,
+- verify: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 - endpoint: [get workspace file list](../http/groom.md#get-workspace-file-list)
@@ -153,14 +153,14 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 
 - sig: `async worker_detail(container_id: str) -> Response`
 - abstract: false
-- raises: propagates worker-detail renderer or response-construction failures.
+- raises: propagates registry-lookup or response-construction failures.
 - code: groom/groom/app.py::worker_detail
-- endpoint: [get worker detail](../http/groom.md#get-worker-detail)
-- invocation: [serve worker detail](../http/groom.md#serve-worker-detail)
+- endpoint: [get worker detail](../http/groom.md#get-run-detail)
+- invocation: [serve worker detail](../http/groom.md#serve-run-detail)
 - does:
   - Looks up the selected [workflow container](workflow-container.md) by id in the [workflow registry](workflow-registry.md).
-  - Renders the selected worker detail pane through the [worker detail renderer](worker-detail-renderer.md).
-  - Does not broadcast shell updates or overwrite typed answer text through live shell pushes.
+  - Projects that run's detail through [detail message](groom-projection-module.md#method-detail-message) and returns it as JSON.
+  - Does not broadcast, mutate registry state, or overwrite typed answer text; it is a read of one run, addressed to the one tab that asked.
 
 ### method-diff
 
@@ -170,8 +170,8 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - code: groom/groom/app.py::diff
 - verify: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_app.py::test_diff_prefers_sidecar_socket
-- endpoint: [get workspace diff](../http/groom.md#get-workspace-diff)
-- invocation: [serve workspace diff](../http/groom.md#serve-workspace-diff)
+- endpoint: [get workspace diff](../http/groom.md#get-working-tree-diff)
+- invocation: [serve workspace diff](../http/groom.md#serve-working-tree-diff)
 - does:
   - Requests `getDiff` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository.
   - Falls back to the [workspace volume diff reader](workspace-volume-diff-reader.md) when the sidecar cannot serve the diff and the workflow has a known workspace volume.
@@ -217,7 +217,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - does:
   - Consumes [blocked push payload](../blocked-push-payload.md), requiring a non-empty normalized container id and gate file path.
   - Upserts the workflow as blocked and stores one [gate info](gate-info.md) record for the supplied gate path.
-  - Broadcasts the shell plus a [blocked notification script fragment](../blocked-notification-script-fragment.md) whose visible notification text truncates the question to [field-question-notify-limit](#field-question-notify-limit).
+  - Broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus that run's refreshed detail to its watchers, then one separate [dashboard notify message](../dashboard-notify-message.md) whose text truncates the question to [field-question-notify-limit](#field-question-notify-limit).
 
 ### method-push-exited
 
@@ -334,7 +334,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
   - Reads `workflow_id`, `file_path`, and `answer` from the frame, supplies the selected workflow's workspace volume when available, and calls the [gate answering layer](gate-answering-layer.md).
   - Records one [answer log entry](../answer-log-entry.md) for every answer attempt.
   - When the answer succeeds and clears the last gate from a blocked workflow, moves the workflow to the running state before broadcasting.
-  - Broadcasts a dashboard shell fragment after every answer attempt and appends a [groom answered script fragment](../groom-answered-script-fragment.md) only for successful answers.
+  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) after every answer attempt, pushes the run's detail to the tabs watching it, and sends a [dashboard answered message](../dashboard-answered-message.md) only for successful answers.
 
 ### method-send-loop
 
@@ -402,7 +402,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - step: Importing the module resolves [field-assets-dir](#field-assets-dir), reads [field-dashboard-html](#field-dashboard-html), and leaves mutable state in sibling state modules.
 - step: A caller invokes [create app](#method-create-app) to construct the [groom server](../http/groom.md) route table and register the startup hook.
 - step: Litestar startup calls [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan), which stores a background task in [field-scan-task](#field-scan-task) and returns before Docker discovery completes.
-- step: The background scan reconciles the [workflow registry](workflow-registry.md), clears the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), and broadcasts the [dashboard shell fragment](../dashboard-shell-fragment.md) to connected dashboard clients.
+- step: The background scan reconciles the [workflow registry](workflow-registry.md), clears the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), and broadcasts the [dashboard state payload](../dashboard-state-payload.md) to connected dashboard clients.
 
 ### algorithm-live-update-convergence
 

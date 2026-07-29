@@ -12,7 +12,10 @@ The per-story validator rejected this story. Fix exactly what it flagged, then r
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-- Knowledge record: `{{ workhorse_var('knowledge_record') }}` (the gathered intended↔current gaps for this surface)
+{%- if workhorse_var('features_dir') %}
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation the story
+  cites by node id from its `## Context`. Read it; never write to it.
+{%- endif %}
 - Deterministic validation errors to fix: `{{ workhorse_var('validation_errors') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`
 {%- if workhorse_var('prior_attempts') %}

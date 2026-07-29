@@ -21,7 +21,7 @@ Docker all-container listing reader is Groom's raw Docker fleet enumerator and a
 - validation boundary: does not require the parsed value to be a dictionary and does not require any specific Docker field; callers that need `ID`, mount metadata, state, or labels must validate those fields themselves.
 - failure: returns `[]` when the Docker command exits non-zero, treating an unreachable Docker daemon or failed listing as an empty best-effort discovery input.
 - failure boundary: process launch failures and subprocess timeout errors from the shared runner are not converted by this layer.
-- side effects: performs only the Docker listing read; it does not inspect containers, start or stop containers, read mounted volumes, mutate the workflow registry, broadcast dashboard fragments, answer gates, or persist data.
+- side effects: performs only the Docker listing read; it does not inspect containers, start or stop containers, read mounted volumes, mutate the workflow registry, broadcast dashboard messages, answer gates, or persist data.
 
 ## Fields
 

@@ -99,24 +99,36 @@ class Ostler:
         return select.next_epic(self.graph)
 
     def next_story(self, epic: str,
-                   skip: frozenset[str] | set[str] | None = None) -> dict | None:
+                   skip: frozenset[str] | set[str] | None = None,
+                   need: str = "build") -> dict | None:
         """The next runnable story in ``epic``, or ``None`` (``ostler next-story``).
 
         ``skip`` — slugs given up this run — are excluded without counting as done, so one
         story failing QA does not strand the rest of the epic. See ``select.next_story``.
+        ``need="author"`` asks the other question: which story still needs writing.
         """
-        return select.next_story(self.graph, epic, skip=skip)
+        return select.next_story(self.graph, epic, skip=skip, need=need)
 
     def next_story_report(self, epic: str,
-                          skip: frozenset[str] | set[str] | None = None) -> dict:
+                          skip: frozenset[str] | set[str] | None = None,
+                          need: str = "build") -> dict:
         """Why there is (or is not) a next story in ``epic`` — a ``state``, not an absence.
 
         ``next_story``'s ``None`` conflates "the epic is finished" with "its remaining stories
         are blocked or were given up on". A caller that acts on that absence — the coder
         workflow prunes and merges the epic — must call this instead. See
-        ``select.next_story_report`` for the states.
+        ``select.next_story_report`` for the states and for ``need``.
         """
-        return select.next_story_report(self.graph, epic, skip=skip)
+        return select.next_story_report(self.graph, epic, skip=skip, need=need)
+
+    def epic_authored(self, epic: str) -> bool:
+        """Whether every story in ``epic`` has a written story.md (not merely a scaffolded one).
+
+        The authoring counterpart to ``next_epic``'s done-ness: this is what tells an author
+        rerun that an epic still needs work. Unknown epics are not authored.
+        """
+        found = next((e for e in self.graph.epics if e.name == epic), None)
+        return found is not None and select.epic_authored(found)
 
     def todo(self) -> list[str]:
         """The epics queue, front-first (``ostler todo list``)."""

@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Gabriel Côté" }]
-keywords = ["agent", "workflow", "claude", "dashboard", "operator", "litestar", "htmx"]
+keywords = ["agent", "workflow", "claude", "dashboard", "operator", "litestar", "preact"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -36,7 +36,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+# playwright drives a real Chromium against a booted groom for the accessibility
+# suite (tests/test_a11y_dynamic.py); the browser itself is a separate download,
+# `uv run playwright install chromium`. Absent either, that file skips loudly.
+test = ["pytest>=8.0", "playwright>=1.44"]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/groom"

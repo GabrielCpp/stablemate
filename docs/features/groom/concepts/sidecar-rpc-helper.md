@@ -53,7 +53,7 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
   - Sends at most one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md) when present, carrying the method and params unchanged and relying on the connection's default RPC timeout.
   - Returns the connection RPC result unchanged on success so endpoint handlers can interpret method-specific keys such as `paths`, `content`, or `diff`.
   - Converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` instead of an endpoint error so callers can use their Docker-volume fallback readers.
-  - Does not inspect workflow containers, select fallback volumes, read workspace files, catch path-safety errors from fallback readers, mutate registry entries, broadcast dashboard fragments, or shape HTTP response bodies.
+  - Does not inspect workflow containers, select fallback volumes, read workspace files, catch path-safety errors from fallback readers, mutate registry entries, broadcast dashboard messages, or shape HTTP response bodies.
 - calls: [method-get](sidecar-connection-registry.md#method-get), [method-rpc](sidecar-connection.md#method-rpc), and [sidecar error](sidecar-error.md) handling.
 - algorithm:
   1. Look up the current sidecar connection for the supplied container id.

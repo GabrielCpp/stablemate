@@ -5,10 +5,10 @@ title: Groom state module
 ---
 # Groom state module
 
-The Groom state module is groom's process-local mutable-state boundary: it owns the in-memory [workflow registry](workflow-registry.md), [answer event log](answer-event-log.md), [dashboard client queue set](dashboard-client-queue-set.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), [per-gate answer lock](per-gate-answer-lock.md) registry, and [workflow gate clearer](workflow-gate-clearer.md) operations used by the [groom server](../http/groom.md). It imports the [workflow container](workflow-container.md) model and exposes only in-memory helpers; route handlers, websocket handlers, discovery, renderers, Docker helpers, sidecar sessions, and gate-answering code own all external I/O and call these helpers to mutate or observe shared process state.
+The Groom state module is groom's process-local mutable-state boundary: it owns the in-memory [workflow registry](workflow-registry.md), [answer event log](answer-event-log.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), [per-gate answer lock](per-gate-answer-lock.md) registry, and [workflow gate clearer](workflow-gate-clearer.md) operations used by the [groom server](../http/groom.md). It imports the [workflow container](workflow-container.md) model and exposes only in-memory helpers; route handlers, websocket handlers, discovery, the [groom projection module](groom-projection-module.md), Docker helpers, sidecar sessions, and gate-answering code own all external I/O and projection and call these helpers to mutate or observe shared process state.
 
 - code: groom/groom/state.py
-- refs: [workflow registry](workflow-registry.md), [answer event log](answer-event-log.md), [dashboard client queue set](dashboard-client-queue-set.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), [per-gate answer lock](per-gate-answer-lock.md), [workflow gate clearer](workflow-gate-clearer.md), [workflow container](workflow-container.md)
+- refs: [workflow registry](workflow-registry.md), [answer event log](answer-event-log.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), [per-gate answer lock](per-gate-answer-lock.md), [workflow gate clearer](workflow-gate-clearer.md), [workflow container](workflow-container.md)
 - verify: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
 - verify: groom/tests/test_state.py::test_prune_empty_present_removes_everything
 - verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
@@ -17,9 +17,9 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 ## Contract
 
 - purpose: provide the complete first-party module for groom state that is shared across the single running web process.
-- import behavior: importing the module allocates empty in-memory containers for workflows, answer logs, dashboard clients, and gate locks, sets discovery scanning to true, and binds helper functions; it does not inspect Docker, read or write files, open sockets, render HTML, create background tasks, or start the web server.
-- public data members: the public mutable containers are exactly `WORKFLOWS`, `LOG`, `CLIENTS`, and `SCANNING`.
-- public function members: the public helper functions are exactly `gate_lock`, `upsert_workflow`, `clear_gate`, `prune_workflows`, `record_log`, `add_client`, `remove_client`, and `broadcast`.
+- import behavior: importing the module allocates empty in-memory containers for workflows, answer logs, dashboard clients, run-watch subscriptions, telemetry, and gate locks, sets discovery scanning to true, and binds helper functions; it does not inspect Docker, read or write files, open sockets, project payloads, create background tasks, or start the web server.
+- public data members: the public mutable containers are exactly `WORKFLOWS`, `LOG`, `CLIENTS`, `WATCHING`, `RUNS`, and `SCANNING`.
+- public function members: the public helper functions are exactly `gate_lock`, `upsert_workflow`, `clear_gate`, `prune_workflows`, `evict_runs`, `record_log`, `add_client`, `remove_client`, `watch`, `watchers_of`, `watched_ids`, `send`, and `broadcast`.
 - private storage: `_gate_locks` is private module state but part of the documented per-gate lock contract because public `gate_lock` creates entries and public `prune_workflows` deletes entries for vanished workflows.
 - process scope: every value in this module is local to one Python process and one event loop; no Redis, database, broker, filesystem persistence, cross-process lock, or framework `app.state` participates.
 - mutation boundary: callers own validation, normalization, I/O, rendering, websocket acceptance/sending, sidecar communication, and durable gate-file writes before or after calling these helpers.
@@ -54,6 +54,23 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - code: groom/groom/state.py::CLIENTS
 - detail: [dashboard client queue set](dashboard-client-queue-set.md)
 - meaning: registered outbound queues for accepted browser dashboard websocket sessions.
+
+### field-watching
+
+- type: `dict[asyncio.Queue, str]`
+- default: empty dictionary at module import
+- required: true
+- code: groom/groom/state.py::WATCHING
+- detail: [run watch registry](run-watch-registry.md)
+- meaning: which run's detail pane each connected tab currently has open, keyed by that tab's outbound queue — the addressing map for pushes that are a consequence of one operator's selection rather than a fleet-wide fact.
+
+### field-runs
+
+- type: `dict[str, RunTelemetry]`
+- default: empty dictionary at module import
+- required: true
+- code: groom/groom/state.py::RUNS
+- meaning: the telemetry hot cache, keyed by run id and updated on every OTLP ingest; the durable copy lives in groom's SQLite store, and this map only carries what the alert rules need between ingests.
 
 ### field-scanning
 
@@ -138,7 +155,7 @@ Appends one caller-built answer event dictionary to the bounded in-memory answer
 - code: groom/groom/state.py::add_client
 - detail: [dashboard client queue set](dashboard-client-queue-set.md#method-register-dashboard-client)
 
-Registers one dashboard websocket outbound queue in the process-local client set for future fragment broadcasts.
+Registers one dashboard websocket outbound queue in the process-local client set for future message broadcasts.
 
 ### method-remove-client
 
@@ -148,30 +165,78 @@ Registers one dashboard websocket outbound queue in the process-local client set
 - code: groom/groom/state.py::remove_client
 - detail: [dashboard client queue set](dashboard-client-queue-set.md#method-unregister-dashboard-client)
 
-Unregisters one dashboard websocket outbound queue from future fragment broadcasts, tolerating an absent queue.
+Unregisters one dashboard websocket outbound queue from future message broadcasts, tolerating an absent queue. Removal also drops that queue's [run watch registry](run-watch-registry.md) entry, so a disconnect cannot leave a subscription pointing at a queue nobody reads.
+
+### method-watch
+
+- sig: `watch(queue: asyncio.Queue, run_id: str) -> None`
+- abstract: false
+- raises: none intentionally raised.
+- code: groom/groom/state.py::watch
+- detail: [run watch registry](run-watch-registry.md#method-record-watch)
+
+Records which run one tab has open, or forgets its subscription when the id is empty.
+
+### method-watchers-of
+
+- sig: `watchers_of(run_id: str) -> list[asyncio.Queue]`
+- abstract: false
+- raises: none intentionally raised.
+- code: groom/groom/state.py::watchers_of
+- detail: [run watch registry](run-watch-registry.md#method-watchers-of-run)
+
+Returns the outbound queues of every tab currently watching one run, so a detail push can be addressed rather than broadcast.
+
+### method-watched-ids
+
+- sig: `watched_ids() -> set[str]`
+- abstract: false
+- raises: none intentionally raised.
+- code: groom/groom/state.py::watched_ids
+- detail: [run watch registry](run-watch-registry.md#method-watched-run-ids)
+
+Returns every run some tab currently has open — what the live clock has to refresh, which is proportional to what operators are actually looking at rather than to the size of the fleet.
+
+### method-send
+
+- sig: `async send(queue: asyncio.Queue, message: dict) -> None`
+- abstract: false
+- raises: propagates cancellation or an exception from the queue's awaitable `put`.
+- code: groom/groom/state.py::send
+
+Enqueues one already-projected JSON message object on exactly one client queue — the addressed counterpart to `broadcast`.
+
+### method-evict-runs
+
+- sig: `evict_runs(run_ids: list[str]) -> None`
+- abstract: false
+- raises: none intentionally raised.
+- code: groom/groom/state.py::evict_runs
+
+Drops the named runs from the telemetry hot cache.
 
 ### method-broadcast
 
-- sig: `async broadcast(html_fragment: str) -> None`
+- sig: `async broadcast(message: dict) -> None`
 - abstract: false
 - raises: propagates cancellation or the first exception raised by a target queue's awaitable `put` operation.
 - code: groom/groom/state.py::broadcast
-- detail: [dashboard client queue set](dashboard-client-queue-set.md#method-broadcast-dashboard-fragment)
+- detail: [dashboard client queue set](dashboard-client-queue-set.md#method-broadcast-dashboard-message)
 
-Enqueues one already-rendered HTML fragment to every dashboard client queue present in a snapshot of the client set at the start of the broadcast pass.
+Enqueues one already-projected JSON message object to every dashboard client queue present in a snapshot of the client set at the start of the broadcast pass. Messages are dicts, not strings: the socket and `GET /api/state` deliver the same shapes, and serialization happens at the socket edge.
 
 ## Algorithms
 
 ### algorithm-module-initialization
 
 - step: Importing the module imports standard-library async and bounded-sequence helpers and the first-party [workflow container](workflow-container.md) model type.
-- step: The module creates an empty workflow registry, empty bounded answer log, empty dashboard client set, true scanning flag, and empty private gate-lock registry.
+- step: The module creates an empty workflow registry, empty bounded answer log, empty dashboard client set, empty run-watch map, empty telemetry hot cache, true scanning flag, and empty private gate-lock registry.
 - step: The module exposes helper functions that mutate only those in-memory objects and the workflow containers stored inside them.
-- step: The import completes without starting discovery, accepting clients, loading templates, inspecting containers, reading gate files, or broadcasting dashboard fragments.
+- step: The import completes without starting discovery, accepting clients, loading templates, inspecting containers, reading gate files, or broadcasting dashboard messages.
 
 ### algorithm-state-helper-boundaries
 
-- step: External callers decide which workflow id, gate path, queue object, log event, or HTML fragment should be passed to the state module.
+- step: External callers decide which workflow id, gate path, queue object, log event, or projected JSON message should be passed to the state module.
 - step: The state module performs only the local lookup, insertion, deletion, append, or queue-put operation documented by the selected helper.
 - step: The state module returns the stored workflow, removed id list, lock object, or `None` according to the helper contract.
 - step: External callers retain responsibility for rendering, persistence, Docker and sidecar I/O, websocket frame transmission, user-visible errors, and any post-mutation broadcasts.

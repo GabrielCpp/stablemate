@@ -24,7 +24,7 @@ Docker container-id listing reader is Groom's current-container existence lookup
 - normalization: stores ids in a set, so duplicate lines collapse to one normalized id and result ordering is not part of the contract.
 - validation boundary: does not inspect containers, verify that an id belongs to a workhorse workflow container, or validate Docker's id characters beyond ignoring blank lines.
 - failure boundary: process launch failures and subprocess timeout errors from the shared runner are not converted to `None` by this layer.
-- side effects: performs only the Docker listing read; it does not mutate the workflow registry, start or stop containers, read mounted volumes, broadcast dashboard fragments, answer gates, or persist data.
+- side effects: performs only the Docker listing read; it does not mutate the workflow registry, start or stop containers, read mounted volumes, broadcast dashboard messages, answer gates, or persist data.
 
 ## Effects
 

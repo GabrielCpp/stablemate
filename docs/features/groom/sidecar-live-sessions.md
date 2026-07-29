@@ -117,7 +117,8 @@ container is connected. The `safe_relpath` traversal guard moves into the sideca
   `/workflow` bind is unchanged (changing the graph is a different operation that
   may not resume).
 - **No host groom self-restart.** groom runs in the operator's terminal;
-  restarting it is a manual `Ctrl-C` + rerun. Browser tabs (htmx-ext-ws) and
+  restarting it is a manual `Ctrl-C` + rerun. Browser tabs (their own backoff
+  reconnect, driven by how recently a frame arrived rather than by `readyState`) and
   sidecars (reconnect loop) re-dial and re-advertise, and the startup reconcile
   scan repopulates `WORKFLOWS`, so a host restart is near-invisible and needs no
   graceful self-exec.

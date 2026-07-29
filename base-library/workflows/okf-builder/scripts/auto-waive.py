@@ -27,6 +27,8 @@ import logging
 import sys
 from pathlib import Path
 
+from ostler import Ostler, backlog as backlog_mod
+
 # Doctor codes whose ONLY real remedy is a source change. Deliberately narrow: a code a doc edit
 # could fix must keep failing until it is actually fixed, never be auto-accepted.
 AUTO_WAIVABLE = frozenset({"ambiguous-locator", "unnamed-interactive"})
@@ -64,12 +66,6 @@ def main(logger: logging.Logger) -> None:
     repo_root = sys.argv[1] if len(sys.argv) > 1 else "."
     features = sys.argv[2] if len(sys.argv) > 2 else ""
     service = sys.argv[3] if len(sys.argv) > 3 else ""
-
-    try:
-        from ostler import Ostler, backlog as backlog_mod
-    except ImportError as exc:  # ostler must be importable in workhorse's env to waive
-        logger.error("ostler unavailable — cannot waive: %s", exc)
-        emit(has_unwaivable="yes", note=f"ostler import failed: {exc}")
 
     okf = Ostler(repo_root)
     findings = _scoped_error_findings(okf.doctor(), repo_root, features)

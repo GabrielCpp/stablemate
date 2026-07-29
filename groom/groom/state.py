@@ -13,6 +13,15 @@ WORKFLOWS: dict[str, WorkflowContainer] = {}
 LOG: deque[dict] = deque(maxlen=200)
 CLIENTS: set[asyncio.Queue] = set()
 
+# queue → the id of the run whose detail pane that tab currently has open.
+#
+# The fleet is a fleet-wide fact and goes to every tab; a detail slice is a
+# consequence of one tab's selection and goes only to the tabs that asked for it.
+# Without this map the choice is between broadcasting every open run's detail to
+# everyone (bandwidth proportional to tabs × runs, and each tab discarding almost
+# all of it) or having each tab poll for its own — which is what this replaces.
+WATCHING: dict[asyncio.Queue, str] = {}
+
 # Telemetry hot cache: run_id → alert-rule state, updated on every OTLP ingest
 # (groom.alerts). The durable copy is groom.store's SQLite file; this map only
 # carries what the rules need between ingests. Single event loop ⇒ no locks.
@@ -65,7 +74,8 @@ def prune_workflows(present_ids: set[str]) -> list[str]:
     unbounded across a long-lived groom process.
     """
     # Native rows have no container, so the docker present-set says nothing about
-    # them — they are retired by their own run's terminal telemetry, not here.
+    # them — their state follows their own telemetry (running while it beats, not
+    # running once it stops), and they leave for good via ``evict_runs``.
     removed = [
         cid
         for cid, wf in WORKFLOWS.items()
@@ -104,8 +114,39 @@ def add_client(queue: asyncio.Queue) -> None:
 
 def remove_client(queue: asyncio.Queue) -> None:
     CLIENTS.discard(queue)
+    # A closed tab watches nothing. Forgotten here rather than by the caller so a
+    # disconnect can never leave a subscription pointing at a queue nobody reads,
+    # which would grow WATCHING for the life of the process.
+    WATCHING.pop(queue, None)
 
 
-async def broadcast(html_fragment: str) -> None:
+def watch(queue: asyncio.Queue, run_id: str) -> None:
+    """Record which run one tab has open (empty id = watching nothing)."""
+    if run_id:
+        WATCHING[queue] = run_id
+    else:
+        WATCHING.pop(queue, None)
+
+
+def watchers_of(run_id: str) -> list[asyncio.Queue]:
+    return [queue for queue, watched in WATCHING.items() if watched == run_id]
+
+
+def watched_ids() -> set[str]:
+    """Every run some tab currently has open — what the live clock has to refresh."""
+    return set(WATCHING.values())
+
+
+async def send(queue: asyncio.Queue, message: dict) -> None:
+    await queue.put(message)
+
+
+async def broadcast(message: dict) -> None:
+    """Fan one JSON message out to every open dashboard tab.
+
+    Messages are dicts, not strings: the socket and ``GET /api/state`` deliver
+    the same shapes (see :mod:`groom.projection`) and the browser owns rendering,
+    so nothing here knows what a tab will do with a ``state`` frame.
+    """
     for queue in list(CLIENTS):
-        await queue.put(html_fragment)
+        await queue.put(message)

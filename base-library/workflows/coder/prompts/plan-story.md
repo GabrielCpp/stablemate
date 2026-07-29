@@ -33,11 +33,12 @@ Rules:
 
 ### Story Analysis
 
-1. Read the story description, acceptance criteria, and linked documents. **If the story links a
-   surface knowledge record** (the gathered, two-sided old↔new record under the knowledge tree),
-   read it and treat it as authoritative grounding: its `gaps[]` are the work to do, and each
-   component's `dataSource` (endpoint/field/template) is where the data actually comes from — do
-   not re-derive or guess these. Plan to close the gap ids the story scopes.
+1. Read the story description, acceptance criteria, and linked documents. **The story's `## Context`
+   cites the OKF nodes it works on** — a node id is a repo-relative path, optionally `path#anchor`,
+   so each citation is an ordinary link. Read those nodes and treat them as authoritative grounding
+   for how the surface is built today: its components, their interactions, and where their data
+   comes from — do not re-derive or guess what the book already records. The Acceptance Criteria,
+   not the docs, define the work.
 2. Identify scope: API, database, business logic, UI, code generation (protobuf, openapi, mocks, etc.).
 3. Check dependencies: prerequisite stories, related work, external dependencies.
 4. Review existing code: search for and understand current implementation patterns.

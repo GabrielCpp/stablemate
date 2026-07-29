@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+from ostler.model import find_root
 from service_contract import service_problems
 
 
@@ -63,10 +64,6 @@ def _arg(idx: int, default: str = "") -> str:
 
 def ostler_root(target: Path) -> Path | None:
     """Where ostler *actually* binds when run from ``target`` — not where we hope it does."""
-    try:
-        from ostler.model import find_root
-    except ImportError:
-        return None
     try:
         return Path(find_root(target)).resolve()
     except (OSError, ValueError, RuntimeError):

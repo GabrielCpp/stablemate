@@ -4119,6 +4119,11 @@ flows:
       workflows: "coder"    # workflows to register in agents.yml
       assistants: "claude"  # agent backends to enable; farrier install requires >= 1
       max_genesis_reworks: "2"
+      # Seeded, not left to incr_genesis: guard_genesis reads `.value` on the FIRST
+      # validation failure, before the counter node has ever run. Undefined there costs a
+      # `'genesis_rework_count' is undefined` template warning on every repair loop's first
+      # pass and feeds incr an empty string. Same shape as the qa flow's counters.
+      genesis_rework_count: { value: 0 }
     nodes:
       # Classify before mutating. This is what makes genesis safe to re-run during setup
       # iteration: an already-initialised repo refreshes config only and is never

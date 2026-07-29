@@ -49,6 +49,25 @@ class References:
     knowledge_paths: list[str] = field(default_factory=list)
     links: list[tuple[str, str]] = field(default_factory=list)  # (text, href)
 
+    @property
+    def doc_hrefs(self) -> list[str]:
+        """Link targets that address a document in *this* repo — the citation channel.
+
+        A story cites an OKF node by linking its id, and a UI node's id **is** a
+        repo-relative path (optionally ``path#anchor``), so every such citation arrives here
+        as an ordinary markdown link. External URLs and bare in-page anchors are not
+        citations of a document and are dropped; everything else is left verbatim for the
+        caller to resolve against the citing file (see ``Graph.resolve_doc_ref``).
+        """
+        out: list[str] = []
+        for _text, href in self.links:
+            h = href.strip()
+            if not h or h.startswith("#") or "://" in h or h.startswith("mailto:"):
+                continue
+            if h not in out:
+                out.append(h)
+        return out
+
 
 def extract_refs(text: str) -> References:
     return References(
@@ -57,12 +76,31 @@ def extract_refs(text: str) -> References:
     )
 
 
+_EMPHASIS = "*_` "  # inline formatting around a bullet's key — decoration, not part of the key
+
+
 @dataclass
 class Bullet:
     text: str
     line_start: int          # 0-indexed, body-relative
     line_end: int            # exclusive
     children: list["Bullet"] = field(default_factory=list)
+
+    @property
+    def label(self) -> str:
+        """Key of a ``- key: value`` bullet, lowercased with emphasis markers stripped ("" if none).
+
+        ``- **Status**: Done`` and ``- status: Done`` are the same field wearing different
+        formatting. The parser is the right place to know that, so a caller can ask for a
+        labelled bullet instead of pattern-matching the rendered line.
+        """
+        key, sep, _ = self.text.partition(":")
+        return key.strip().strip(_EMPHASIS).lower() if sep else ""
+
+    @property
+    def value(self) -> str:
+        """Everything after the first ``:`` of a ``- key: value`` bullet."""
+        return self.text.partition(":")[2].strip()
 
     @property
     def refs(self) -> References:
@@ -89,8 +127,47 @@ class Section:
         return "\n".join(self.body_lines[self.line_start:self.line_end])
 
     @property
+    def body(self) -> str:
+        """The section's text **without its own heading line** (the preamble has none).
+
+        ``text`` includes the heading, which makes "does this section say anything?"
+        unanswerable without re-splitting the string — the gap that had every caller
+        writing its own scan.
+        """
+        return "\n".join(self.body_lines[self._content_start:self.line_end])
+
+    @property
+    def is_empty(self) -> bool:
+        """True when the section carries no prose of its own **or in its sub-sections**.
+
+        Sub-section heading lines are not content: a ``## Context`` whose only body is an
+        empty ``### Background`` is still unwritten, and a scaffold that is nothing but
+        headings must not read as filled.
+        """
+        heading_lines = {s.line_start for s in self.walk() if s.level}
+        end = min(self.line_end, len(self.body_lines))
+        return not any(self.body_lines[i].strip()
+                       for i in range(self._content_start, end)
+                       if i not in heading_lines)
+
+    @property
+    def _content_start(self) -> int:
+        """First body-relative line after the heading (level 0 = preamble: no heading)."""
+        return self.line_start + (1 if self.level else 0)
+
+    @property
     def refs(self) -> References:
         return extract_refs(self.text)
+
+    def labelled(self, label: str) -> "Bullet | None":
+        """The first ``- **Label**: value`` bullet in this section or its sub-sections."""
+        want = label.strip().lower()
+        for section in self.walk():
+            for top in section.bullets:
+                for bullet in top.walk():
+                    if bullet.label == want:
+                        return bullet
+        return None
 
     def find(self, title: str, *, recursive: bool = True) -> "Section | None":
         for s in self.children:
@@ -151,6 +228,18 @@ class MarkdownDoc:
             if hit := root.find(title):
                 return hit
         return None
+
+    def find_bullet(self, label: str) -> Bullet | None:
+        """The first ``- **Label**: value`` bullet anywhere in the body."""
+        for root in self.sections:
+            if hit := root.labelled(label):
+                return hit
+        return None
+
+    def replace_body(self, lines: list[str]) -> None:
+        """Swap in a new body, dropping the cached section parse the new text invalidates."""
+        self.body = "\n".join(lines)
+        self._sections = None
 
     @property
     def refs(self) -> References:

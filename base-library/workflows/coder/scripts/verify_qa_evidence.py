@@ -30,7 +30,9 @@ If the claimed status is not ``passed``, the gate preserves all four statuses. I
 on a runner pass, it emits ``invalid`` so routing returns to planning/context repair. An auditor
 never gets an opportunity to upgrade invalid deterministic evidence.
 
-Stdlib-only (runs under the system `python3`, like the other gate scripts).
+Stdlib plus the in-process ``ostler`` API — never the `ostler` CLI. The workflow declares
+``dist: ostler`` in its ``requires:`` block, so an interpreter that cannot import it never
+reaches node one and this gate has no "ostler is missing" branch to get wrong.
 
 Usage: verify_qa_evidence.py <spec_dir> <claimed_status> [claimed_notes]
 Outputs JSON captured under the node's `qa_result` key:
@@ -44,6 +46,8 @@ import logging
 import os
 import sys
 from pathlib import Path
+
+from ostler import Ostler
 
 EVIDENCE_FILE = "qa-evidence.json"
 
@@ -225,31 +229,12 @@ def main(logger: logging.Logger) -> None:
 
     # Apply Ostler's runner-aware artifact contract as a mandatory deterministic
     # check. It validates hashes, exact manifest paths, terminal ledger records,
-    # and passing assertion refs. Missing/broken Ostler cannot validate a pass.
+    # and passing assertion refs. A contract that cannot be evaluated cannot
+    # validate a pass, so a failure here is itself a problem.
     try:
-        import subprocess
-
-        ostler_out = subprocess.run(
-            [
-                "ostler",
-                "artifact",
-                "vet",
-                "qa-evidence",
-                "--spec",
-                spec_dir_arg,
-                "--json",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(root),
-        )
-        if ostler_out.stdout.strip():
-            parsed = json.loads(ostler_out.stdout)
-            problems.extend(f"[ostler] {p}" for p in parsed.get("problems", []))
-        else:
-            problems.append("[ostler] qa-evidence validation returned no JSON output.")
-    except Exception as exc:  # noqa: BLE001 - any validator failure invalidates proof
+        vetted = Ostler(root).artifact_vet("qa-evidence", spec_dir_arg)
+        problems.extend(f"[ostler] {p}" for p in vetted.get("problems", []))
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
         problems.append(f"[ostler] qa-evidence validation could not run ({exc}).")
 
     overall = str(data.get("overall", "")).strip().lower()

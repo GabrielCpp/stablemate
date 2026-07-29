@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -576,7 +579,6 @@ def _expand(
     story: str = "",
 ) -> str:
     """Expand ``{{key}}`` and ``{{env.name}}`` substitutions in a command string."""
-    import re
 
     def _sub(m: re.Match) -> str:
         token = m.group(1).strip()
@@ -655,8 +657,6 @@ def _kill_pid(pid: int) -> int:
 
 def _poll_ready(url: str, timeout: int = 30) -> None:
     """Poll *url* until HTTP 200 or *timeout* seconds elapse."""
-    import urllib.error
-    import urllib.request
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -771,8 +771,6 @@ def _check_cloudwatch(params: dict, env: dict[str, str]) -> tuple[bool, dict]:
 def _check_event_present(params: dict, captures: dict[str, str]) -> tuple[bool, dict]:
     url = _expand(params.get("url", ""), captures, {})
     timeout = int(params.get("timeout_seconds", 10))
-    import urllib.error
-    import urllib.request
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -809,8 +807,6 @@ def _check_http_status(params: dict, captures: dict[str, str]) -> tuple[bool, di
 
 def _check_no_duplicate(params: dict, captures: dict[str, str]) -> tuple[bool, dict]:
     url = _expand(params.get("url", ""), captures, {})
-    import urllib.error
-    import urllib.request
 
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310

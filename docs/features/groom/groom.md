@@ -6,8 +6,8 @@ status: implemented
 ---
 # `groom` — operator-gate dashboard and push notifications
 
-> **Surfaces (per-surface Concepts):** [operator-inbox](operator-inbox.md) ·
-> [worker-tree](worker-tree.md) · [changes-view](changes-view.md) ·
+> **Surfaces (per-surface Concepts):** [runs-fleet-view](runs-fleet-view.md) ·
+> [changes-view](changes-view.md) ·
 > [groom](groom-cli.md) · [groom-sidecar](groom-sidecar.md) ·
 > [sidecar-protocol](sidecar-protocol.md) ·
 > [sidecar-autostart](sidecar-autostart.md). This doc is the architecture
@@ -15,7 +15,7 @@ status: implemented
 > volume and container access is centralized by the [Groom Docker I/O module](concepts/groom-docker-io-module.md).
 
 Status: **implemented** (2026-07-06) — `stablemate/groom/` (Litestar app, in-container sidecar,
-vendored htmx/diff2html UI, `tests/test_*.py`); wired into `farrier`'s generated compose template
+vendored Preact/htm/diff2html UI, `tests/test_*.py`); wired into `farrier`'s generated compose template
 (`extra_hosts: host.docker.internal`) and into `vigilant-octo/agents`' shared `await_operator.py`
 scripts (backstop push). This doc originally shipped as a pre-implementation design brief; it has
 since been rewritten to describe the architecture as built, most notably around the answer/restart
@@ -62,22 +62,26 @@ per-story `context.md`, per-epic `ci-operator-context.md`, etc.).
 ## Stack constraints (load-bearing)
 
 - **Python only.** No Node.js, npm, or bundler anywhere, including at packaging time.
-- **No runtime CDN dependency.** All front-end assets (htmx, `htmx-ext-ws`, diff2html, marked,
-  DOMPurify, Pico's classless CSS, `dashboard.css`) are vendored as static files inside the
-  `groom` package (`groom/assets/`) and served locally.
+- **No runtime CDN dependency.** All front-end assets (the `htm/preact` standalone build,
+  diff2html, marked, DOMPurify, highlight.js, Pico's classless CSS, `dashboard.css`,
+  `dashboard.js`) are vendored as static files inside the `groom` package (`groom/assets/`)
+  and served locally.
 - **Single-process, shared in-memory state.** No Redis, no broker. `state.py` holds
   `WORKFLOWS: dict[str, WorkflowContainer]`, `LOG: deque[dict]` (`maxlen=200`),
   `CLIENTS: set[asyncio.Queue]` (one queue per open websocket), and a lazily-created
   `_gate_locks: dict[str, asyncio.Lock]` keyed by `f"{container_id}::{file_path}"` — all plain
   module-level objects, not Litestar `app.state`.
 - **Litestar** is the web framework (native websocket support, `create_static_files_router` for
-  vendored assets). **htmx + htmx-ext-ws** drive reactivity: the server pushes HTML fragments with
-  `hx-swap-oob` over one bidirectional websocket; the answer control is a `ws-send` form
-  serialized to JSON.
+  vendored assets). **Everything on the wire is JSON.** The server projects state and pushes it
+  over one bidirectional websocket; the same shapes are also fetchable over HTTP, so a tab whose
+  socket has gone quiet resyncs rather than going stale. The browser renders with **Preact + htm**
+  — the single-file `htm/preact/standalone` ESM build, mounted as islands into the ids the static
+  shell ships. No build step, no `package.json`, no `node_modules`.
 - **Drop-in widgets only.** The answer textarea is a plain `<textarea>`. Gate questions and diffs
   are rendered client-side (`marked` + `DOMPurify` for markdown, `diff2html` for the working-tree
-  panel) from escaped text nodes the server emits — never raw server-rendered HTML for
-  agent-authored content, to keep an XSS-safe boundary (see `tests/test_render.py`).
+  panel, highlight.js for file views) from JSON string members — the server emits no markup at
+  all, which is what keeps the XSS boundary in one place
+  (see `tests/test_dashboard_client.py`).
 - Assets are served from the package's own `assets/` directory via `create_static_files_router`,
   so serving is working-directory independent.
 
@@ -151,19 +155,22 @@ stablemate/groom/
                            # grep_awaiting_files, list_run_dirs, find_repo_dir, git_diff,
                            # read_file, write_file (each a purpose-built throwaway-container helper)
         discovery.py      # scan(): startup/on-demand reconciliation only, no answer/restart role
-        render.py         # hx-swap-oob tbody fragments, diff toggle/panel, notify <script>, XSS-safe
-        app.py            # Litestar app: routes + /ws, on_startup=[_startup_scan]
+        projection.py     # registry -> the JSON payloads; the one shape both /ws and /api/state send
+        app.py            # Litestar app: routes + /ws, on_startup=[_spawn_scan, _spawn_rules, _spawn_live]
         sidecar.py         # groom-sidecar: inotify loop over /workspace + /runs -> push to host groom
         cli.py               # serve(), main(), sidecar_main() entry points
-        assets/                # vendored: htmx.min.js, htmx-ext-ws.min.js, pico.classless.min.css,
-                                # diff2html.min.{js,css}, marked.min.js, purify.min.js, dashboard.css
+        assets/                # dashboard.js (the Preact islands) + vendored: preact.standalone.js,
+                                # pico.classless.min.css, diff2html.min.{js,css}, marked.min.js,
+                                # purify.min.js, highlight.min.js, dashboard.css
         templates/
             dashboard.html
     tests/
         test_gates.py       # STATUS parsing + answer_gate orchestration (mocked docker_io)
         test_discovery.py   # mount/env parsing against fixture docker-inspect JSON
         test_sidecar.py      # inotify-triggered event construction, fire-and-forget behavior
-        test_render.py        # hx-swap-oob shape, XSS-safety of question/diff rendering
+        test_projection.py    # the JSON payload shapes both transports send
+        test_dashboard_client.py # dashboard.js parses; every endpoint read as JSON; htmx really gone
+        test_a11y_dynamic.py  # Playwright + axe-core against a live groom, per pane
         test_docker_io.py       # throwaway-container helper argument shapes
 ```
 
@@ -212,10 +219,12 @@ notification permission granted.
 
 **UI**: one table, one row per workflow (idle/running/blocked/finished), with blocked rows showing
 an expandable question banner (rendered client-side from markdown, sanitized with DOMPurify) and
-an answer textarea + submit (`ws-send`). Search is htmx active-search
-(`hx-get="/search"`, `hx-trigger="input changed delay:250ms"`) against plain Python string
-filtering — no client-side search widget. Each row has a collapsible working-tree diff panel,
-lazily fetched from `/diff/{container_id}` and rendered with the vendored `diff2html`.
+an answer textarea + submit (a JSON frame up the websocket). Search filters the run list the
+browser already holds, so it costs no request. Each row has a collapsible working-tree diff panel,
+lazily fetched from `/diff/{container_id}` and rendered with the vendored `diff2html`. A
+connection chip reports whether the socket is live, stale, reconnecting, or offline — derived
+from how recently a *frame* arrived, not from `readyState`, because a half-open socket reads
+open forever.
 
 ## Non-goals / known gaps (carried by design, not bugs)
 
@@ -251,9 +260,10 @@ lazily fetched from `/diff/{container_id}` and rendered with the vendored `diff2
 Automated: `make test` (from `stablemate/groom/`) runs `tests/test_*.py` directly under `uv run
 python` — covers STATUS parsing/`answer_gate` orchestration (`test_gates.py`, mocked `docker_io`),
 mount/env parsing against a fixture `docker inspect` blob (`test_discovery.py`), inotify-triggered
-event construction and fire-and-forget behavior (`test_sidecar.py`), the `hx-swap-oob`
-fragment shape and XSS-safety of question/diff rendering (`test_render.py`), and the
-throwaway-container helper argument shapes (`test_docker_io.py`).
+event construction and fire-and-forget behavior (`test_sidecar.py`), the JSON payload shapes
+both transports send (`test_projection.py`), the shipped client module (`test_dashboard_client.py`),
+accessibility against a live browser (`test_a11y_dynamic.py`), and the throwaway-container helper
+argument shapes (`test_docker_io.py`).
 
 Manual: run `uv run groom serve` from `stablemate/groom` with no workflow containers running
 (empty table, no crash). Start a workflow and confirm a `progress` push from `groom-sidecar`
