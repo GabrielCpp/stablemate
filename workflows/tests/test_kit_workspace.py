@@ -1,4 +1,4 @@
-"""Tests for scriptutil.resolve_workspace's CWD-fallback branch.
+"""Tests for kit.workspace.resolve_workspace's CWD-fallback branch.
 
 Covers the mono-repo case: no workspace-file env var set, so resolve_workspace
 must key the single-folder workspace off the actual repo root, not the cwd of
@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.scriptutil import _git_network_command, resolve_workspace
+from workhorse_workflows.kit.workspace import _git_network_command, resolve_workspace
 
 
 def test_resolve_workspace_uses_agent_repo_dir_over_cwd():
@@ -25,7 +25,7 @@ def test_resolve_workspace_uses_agent_repo_dir_over_cwd():
         env.pop("CODER_WORKSPACE", None)
         env["AGENT_REPO_DIR"] = repo_dir
         with patch.dict(os.environ, env, clear=True):
-            with patch("workhorse.scriptutil.Path.cwd", return_value=Path(workflow_dir)):
+            with patch("workhorse_workflows.kit.workspace.Path.cwd", return_value=Path(workflow_dir)):
                 repos = resolve_workspace("CODER_WORKSPACE")
 
         assert "acme" in repos
@@ -40,7 +40,7 @@ def test_resolve_workspace_falls_back_to_cwd_without_agent_repo_dir():
         env.pop("CODER_WORKSPACE", None)
         env.pop("AGENT_REPO_DIR", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("workhorse.scriptutil.Path.cwd", return_value=Path(repo_dir)):
+            with patch("workhorse_workflows.kit.workspace.Path.cwd", return_value=Path(repo_dir)):
                 repos = resolve_workspace("CODER_WORKSPACE")
 
         assert "acme" in repos

@@ -24,7 +24,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workhorse.scriptutil import active_branch, checkout, find_repo_root, local_branch_exists
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import active_branch, checkout, local_branch_exists
 
 
 def resolve_base_branch(author_branch: str, cwd: Path) -> str:

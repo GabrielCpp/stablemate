@@ -2045,13 +2045,11 @@ name = "workhorse-agent"
 version = "0.8.0"
 source = { editable = "workhorse" }
 dependencies = [
-    { name = "gitpython" },
     { name = "jinja2" },
     { name = "json-repair" },
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "pydantic" },
-    { name = "pygithub" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
     { name = "stablemate-core" },
@@ -2069,7 +2067,6 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gitpython", specifier = ">=3.1" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "json-repair", specifier = ">=0.30" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.25" },
@@ -2077,7 +2074,6 @@ requires-dist = [
     { name = "packaging", specifier = ">=23.0" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
-    { name = "pygithub", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.0" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -2091,6 +2087,8 @@ name = "workhorse-workflows"
 version = "0.1.0"
 source = { editable = "workflows" }
 dependencies = [
+    { name = "gitpython" },
+    { name = "pygithub" },
     { name = "workhorse-agent" },
 ]
 
@@ -2101,6 +2099,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gitpython", specifier = ">=3.1" },
+    { name = "pygithub", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "workhorse-agent", editable = "workhorse" },
 ]

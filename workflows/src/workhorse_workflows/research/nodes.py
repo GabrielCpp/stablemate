@@ -25,15 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from workhorse.pyflow import Blueprint, WorkflowFailed
-from workhorse.scriptutil import (
-    allow_all_directories,
-    checkout,
-    clone,
-    commit_all,
-    fetch_reset,
-    push_to_origin,
-    set_identity,
-)
+from workhorse_workflows.kit import allow_all_directories, checkout, clone, commit_all, fetch_reset, push_to_origin, set_identity
 from workhorse_workflows.research.schemas import Program, PublishResult, RepoSetup
 
 blueprint = Blueprint("research")

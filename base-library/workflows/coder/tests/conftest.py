@@ -5,9 +5,9 @@ directory to sys.path during collection).  Pytest fixtures are auto-discovered.
 
 The engine runs **in-process** (see ``workhorse.testing``): script nodes run via
 ``runpy`` in the current process, so external services are intercepted by
-monkeypatching the ``workhorse.scriptutil`` seams the scripts call —
-``scriptutil.run_tool`` for the ``ostler`` CLI and ``scriptutil.github_client``
-for the GitHub API. Local ``git`` runs for REAL against a throwaway repo seeded by
+monkeypatching the seams the scripts call — the ``Ostler`` facade's methods for the
+doc graph and ``workhorse_workflows.kit.github.github_client`` for the GitHub API.
+Local ``git`` runs for REAL against a throwaway repo seeded by
 :func:`seed_git_repo` (there is nothing to mock). Because ``monkeypatch`` is
 function-scoped, the ostler/github helpers below take the ``monkeypatch`` fixture.
 """
@@ -39,8 +39,9 @@ if "TERMINFO" not in os.environ and "TERMINFO_DIRS" not in os.environ:
 from unittest.mock import MagicMock
 
 import pytest
-from workhorse import scriptutil
 from workhorse.testing import WorkflowRun, make_git_repo
+from workhorse_workflows.kit import git as git_kit
+from workhorse_workflows.kit import github as github_kit
 
 # ---------------------------------------------------------------------------
 # Workflow path
@@ -495,10 +496,10 @@ def mock_qa_control_plane(
 
 
 # ---------------------------------------------------------------------------
-# GitHub API mock (via the scriptutil.github_client seam)
+# GitHub API mock (via the kit.github.github_client seam)
 # ---------------------------------------------------------------------------
 #
-# Scripts reach GitHub only through ``scriptutil.github_client(token)`` (PyGithub),
+# Scripts reach GitHub only through ``kit.github.github_client(token)`` (PyGithub),
 # never the ``gh`` CLI. ``mock_github`` monkeypatches that seam to return a
 # MagicMock-based fake ``Github`` whose get_repo/get_pulls/get_pull/create_pull/merge
 # return canned PR state, head SHA, CI outcome, and merge method values.
@@ -572,21 +573,27 @@ def make_fake_github(
 
 
 def mock_github(monkeypatch, fake: MagicMock | None = None, **kwargs) -> MagicMock:
-    """Monkeypatch ``scriptutil.github_client`` to return a fake ``Github``.
+    """Monkeypatch ``kit.github.github_client`` to return a fake ``Github``.
 
     Pass a pre-built ``fake`` (from :func:`make_fake_github`) or keyword arguments
     forwarded to it. Returns the installed fake so a test can assert on its calls
     (e.g. ``fake.get_repo.return_value.create_pull.assert_called_once()``).
+
+    Each name is patched on the module that *defines* it, which is what reaches both
+    kinds of caller: ``kit.github``'s own internal uses (``resolve_repo`` looking up
+    ``origin_url``) and the scripts that imported the name flat off
+    ``workhorse_workflows.kit``, since that package forwards through ``__getattr__``
+    instead of binding a copy at import.
     """
     gh = fake if fake is not None else make_fake_github(**kwargs)
-    monkeypatch.setattr(scriptutil, "github_client", lambda *a, **k: gh)
+    monkeypatch.setattr(github_kit, "github_client", lambda *a, **k: gh)
     monkeypatch.setattr(
-        scriptutil,
+        git_kit,
         "origin_url",
         lambda root: "https://github.com/example-org/repo.git",
     )
-    monkeypatch.setattr(scriptutil, "push_branch", lambda *a, **k: True)
-    monkeypatch.setattr(scriptutil, "sync_to_origin", lambda *a, **k: "abc123sha")
+    monkeypatch.setattr(github_kit, "push_branch", lambda *a, **k: True)
+    monkeypatch.setattr(github_kit, "sync_to_origin", lambda *a, **k: "abc123sha")
     return gh
 
 
@@ -604,7 +611,7 @@ def mock_all_agents_happy(
     """Mock every agent node with a minimal happy-path response.
 
     ``monkeypatch`` is required so the ostler QA/queue backing can be installed on
-    the ``scriptutil.run_tool`` seam.
+    the ``Ostler`` facade.
 
     In story mode the qa mock needs no side effects (the workflow exits after qa
     passes without looping back to select_story).  In epic mode the qa agent is

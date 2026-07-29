@@ -8,7 +8,7 @@ moving on to the next epic with a broken PR behind it.
 Args: <epic> <attempts> <last_summary>. Prints JSON: {"ci_flagged": "yes|no"}.
 PR-comment auth reuses the GitHub token env var configured in agents.yml
 (workflow.githubTokenEnv), then GH_TOKEN, then GITHUB_TOKEN — resolved by
-workhorse.scriptutil.resolve_github_token.
+kit.github.resolve_github_token.
 Exits 0 (the *halt* is the `fail` terminal the workflow routes to next, not a
 non-zero exit here — a non-zero exit would be reported as a script crash).
 """
@@ -18,7 +18,8 @@ import json
 import logging
 import sys
 
-from workhorse.scriptutil import find_open_pr, find_repo_root, resolve_github_token, resolve_repo
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_open_pr, resolve_github_token, resolve_repo
 
 
 def main(logger: logging.Logger) -> None:

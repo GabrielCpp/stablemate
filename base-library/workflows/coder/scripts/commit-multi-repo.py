@@ -16,13 +16,8 @@ import os
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import (
-    commit_all,
-    find_repo_root,
-    get_affected_repos,
-    load_json,
-    resolve_workspace,
-)
+from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import commit_all, get_affected_repos, resolve_workspace
 
 logger = logging.getLogger(__name__)
 

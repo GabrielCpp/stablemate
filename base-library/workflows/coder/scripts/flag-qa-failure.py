@@ -15,7 +15,7 @@ Args: <epic> <story_slug> <attempts> [<story_path>] [<run_dir>].
                this run (belt-and-suspenders over the status marking below).
 Prints JSON: {"qa_flagged": "yes"|"no"}.
 PR-comment auth uses the configured GitHub token (see
-workhorse.scriptutil.resolve_github_token / agents.yml).
+kit.github.resolve_github_token / agents.yml).
 All git/GitHub chatter goes to stderr so stdout stays valid JSON.
 """
 from __future__ import annotations
@@ -25,7 +25,8 @@ import logging
 import sys
 from pathlib import Path
 
-from workhorse import scriptutil
+from workhorse_workflows.kit import git as git_kit
+from workhorse_workflows.kit import github as github_kit
 from workhorse.scriptutil import find_repo_root, fresh_import
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ def main(logger: logging.Logger) -> None:
     # and an operator resets by clearing it.
     record_skip(run_dir_arg, slug)
 
-    if scriptutil.commit_all(root, f"{epic}: {slug} {marker}"):
+    if git_kit.commit_all(root, f"{epic}: {slug} {marker}"):
         committed = "yes"
     else:
         logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
@@ -90,10 +91,10 @@ def main(logger: logging.Logger) -> None:
     # Best-effort PR comment: only lands if the epic PR is already open (e.g. on
     # a resume after the PR exists). Otherwise the marker commit carries the flag.
     br = f"feat/{epic}"
-    token = scriptutil.resolve_github_token(root)
+    token = github_kit.resolve_github_token(root)
     if token:
-        repo, _ = scriptutil.resolve_repo(root, token)
-        pr = scriptutil.find_open_pr(repo, br) if repo is not None else None
+        repo, _ = github_kit.resolve_repo(root, token)
+        pr = github_kit.find_open_pr(repo, br) if repo is not None else None
         if pr is not None:
             try:
                 pr.create_issue_comment(

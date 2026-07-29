@@ -22,7 +22,7 @@ gh-open-pr.py calls this best-effort and ignores the exit code (offline
 PR-open must not halt); the CI fix loop branches on it.
 
 Auth: the GitHub token env var configured in agents.yml (workflow.githubTokenEnv),
-else GH_TOKEN, else GITHUB_TOKEN — resolved by workhorse.scriptutil.resolve_github_token. The token is
+else GH_TOKEN, else GITHUB_TOKEN — resolved by kit.github.resolve_github_token. The token is
 supplied to `git push` via an inline credential helper that reads it from the
 environment — it is never written into a remote URL, git config, or the
 logs. Shared by gh-open-pr.py (initial PR push) and the CI fix loop
@@ -33,14 +33,8 @@ from __future__ import annotations
 import logging
 import sys
 
-from workhorse.scriptutil import (
-    branch_exists,
-    find_repo_root,
-    origin_url,
-    push_branch,
-    repo_full_name_from_url,
-    resolve_github_token,
-)
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import branch_exists, origin_url, push_branch, repo_full_name_from_url, resolve_github_token
 
 UNAVAILABLE = 10
 FAILED = 20

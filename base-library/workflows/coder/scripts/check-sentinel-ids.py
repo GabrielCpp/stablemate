@@ -14,7 +14,7 @@ excluding test files (*_test.go, *.spec.ts, *.spec.tsx, *.test.ts, *_test.ts) an
 pure-comment lines. Outputs in the same `qa_result` format as verify_qa_evidence.py
 so it can slot into the same workflow gate infrastructure.
 
-Git access goes through workhorse.scriptutil (GitPython), so this runs under the
+Git access goes through workhorse_workflows.kit (GitPython), so this runs under the
 workhorse venv like the other script nodes.
 
 Usage: check-sentinel-ids.py [story_slug]
@@ -30,7 +30,7 @@ import re
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import diff_text, merge_base
+from workhorse_workflows.kit import diff_text, merge_base
 
 # Patterns that flag an added line as a sentinel (applied to the content after the '+' prefix).
 # Each entry: (pattern, description)

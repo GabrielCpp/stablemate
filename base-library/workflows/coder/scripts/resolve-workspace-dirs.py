@@ -15,7 +15,8 @@ import logging
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import find_docs_root, resolve_workspace
+from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import resolve_workspace
 
 
 def main(logger: logging.Logger) -> None:

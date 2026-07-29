@@ -30,7 +30,7 @@ from typing import NoReturn
 
 from ostler import Ostler, graph as graph_mod
 from ostler.coverage import is_complete, render
-from workhorse.scriptutil import short_sha
+from workhorse_workflows.kit import short_sha
 
 # The coverage re-scan counter, incremented once per run of this node — the only node that
 # sits on the re-scan loop and nowhere else. It is a module global so that EVERY exit path,

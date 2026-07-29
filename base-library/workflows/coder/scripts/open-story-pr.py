@@ -27,21 +27,8 @@ from pathlib import Path
 
 from github import GithubException
 
-from workhorse.scriptutil import (
-    branch_exists,
-    checkout,
-    commit_all,
-    current_branch,
-    find_open_pr,
-    find_repo_root,
-    get_affected_repos,
-    get_repo_config,
-    load_json,
-    push_branch,
-    resolve_github_token,
-    resolve_repo,
-    resolve_workspace,
-)
+from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import branch_exists, checkout, commit_all, current_branch, find_open_pr, get_affected_repos, get_repo_config, push_branch, resolve_github_token, resolve_repo, resolve_workspace
 
 logger = logging.getLogger(__name__)
 

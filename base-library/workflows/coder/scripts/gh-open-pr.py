@@ -15,15 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import (
-    branch_exists,
-    commit_paths,
-    find_open_pr,
-    find_repo_root,
-    origin_url,
-    resolve_github_token,
-    resolve_repo,
-)
+from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import branch_exists, commit_paths, find_open_pr, origin_url, resolve_github_token, resolve_repo
 
 QUEUE_PATH = "docs/epics/index.md"
 

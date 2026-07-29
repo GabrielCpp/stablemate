@@ -9,8 +9,8 @@ exit would halt the whole run, but a red CI is a normal, handled state here
 (it drives the fix loop).
 
 Auth: the GitHub token env var configured in agents.yml (workflow.githubTokenEnv),
-else GH_TOKEN, else GITHUB_TOKEN — resolved by workhorse.scriptutil.resolve_github_token,
-then handed to the PyGithub client (workhorse.scriptutil.github_client). All chatter goes to stderr
+else GH_TOKEN, else GITHUB_TOKEN — resolved by kit.github.resolve_github_token,
+then handed to the PyGithub client (kit.github.github_client). All chatter goes to stderr
 so stdout stays valid JSON.
 
 CI state is read from the GitHub Actions runs API (repo.get_workflow_runs),
@@ -46,7 +46,7 @@ from pathlib import Path
 
 from github import GithubException
 
-from workhorse.scriptutil import find_open_pr, origin_url, resolve_github_token, resolve_repo
+from workhorse_workflows.kit import find_open_pr, origin_url, resolve_github_token, resolve_repo
 
 FAIL_CONCLUSIONS = frozenset(
     {"failure", "timed_out", "cancelled", "startup_failure", "action_required", "stale"}

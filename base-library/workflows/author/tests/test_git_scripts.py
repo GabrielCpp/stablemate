@@ -283,10 +283,10 @@ def test_open_author_pr_resolves_local_clone_source_origin(tmp_path):
 
 
 def test_remote_urls_reads_origin_via_safe_directory(tmp_path):
-    """scriptutil.remote_urls (which open-author-pr now uses) reads a repo's origin
+    """kit.git.remote_urls (which open-author-pr now uses) reads a repo's origin
     through git with a per-call safe.directory trust, so a host-owned bind-mount
     source resolves rather than being refused for 'dubious ownership'."""
-    from workhorse import scriptutil
+    from workhorse_workflows.kit import git as git_kit
 
     repo = _init_git_repo(tmp_path / "source")
     subprocess.run(
@@ -294,7 +294,7 @@ def test_remote_urls_reads_origin_via_safe_directory(tmp_path):
         cwd=str(repo), check=True, capture_output=True, timeout=10,
     )
 
-    assert scriptutil.remote_urls(repo) == ["git@github.com:example/docs.git"]
+    assert git_kit.remote_urls(repo) == ["git@github.com:example/docs.git"]
 
 
 # ---------------------------------------------------------------------------

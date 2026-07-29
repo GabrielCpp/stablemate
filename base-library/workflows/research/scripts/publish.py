@@ -16,7 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
-from workhorse.scriptutil import checkout, commit_all, push_to_origin, set_identity
+from workhorse_workflows.kit import checkout, commit_all, push_to_origin, set_identity
 
 
 def _emit(pushed: bool, branch: str, status: str = "ok") -> None:
