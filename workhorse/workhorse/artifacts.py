@@ -134,6 +134,82 @@ class ArtifactWriter:
         # Mirror the node-entry to the append-only event log (history-preserving).
         self._append_event(node_id=current_id, phase="enter")
 
+    def write_state_checkpoint(
+        self,
+        state: str,
+        params: dict[str, Any],
+        *,
+        inputs: dict[str, Any],
+        flow: str | None = None,
+        ctx: Any = None,
+        waiting_on: str | None = None,
+    ) -> None:
+        """Checkpoint a Python state machine: the state to (re-)enter and its arguments.
+
+        The YAML engine's checkpoint is ``(current_id, context)`` — a node plus the
+        whole ambient bag. This one is ``(state, params)``, which is the point: a flat
+        dict of the next state's own named arguments, small enough to read and edit by
+        hand at hour 30 of a stuck run.
+
+        ``inputs`` and ``ctx`` ride along because resume must reconstruct the instance
+        without re-running ``setup()`` — the tier table says ``self.ctx`` is written
+        once, and a resume that called ``setup()`` again would be writing it twice.
+        ``flow`` names the workflow *class*, so a bare ``--resume-latest`` re-enters the
+        flow that wrote the checkpoint rather than the distribution's default one.
+
+        ``waiting_on`` is what an ``Await`` is blocked on, written **before** the wait
+        begins so "blocked on a human at <path>" is on disk whether or not this process
+        survives the wait.
+
+        ``engine: "pyflow"`` is a fail-closed discriminator: the two engines share a
+        runs directory and a ``--resume-latest``, and neither can make sense of the
+        other's checkpoint. Better to refuse than to misread.
+        """
+        self._seq += 1
+        data = {
+            "engine": "pyflow",
+            "workflow": self._workflow_name,
+            "run_id": self._run_id,
+            "flow": flow,
+            "state": state,
+            "params": params,
+            "waiting_on": waiting_on,
+            "inputs": inputs,
+            "ctx": ctx,
+            "seq": self._seq,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        path = self.run_dir / self.CHECKPOINT_FILE
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.replace(path)
+        self._append_event(node_id=state, phase="enter", waiting_on=waiting_on)
+
+    def record_node(self, node_id: str, phase: str, **fields: Any) -> None:
+        """Public entry to the append-only event log.
+
+        The YAML engine only ever appends via ``write_checkpoint``/``_write_done``,
+        because a node visit there is always bracketed by both. A Python state machine
+        checkpoints per *state* and runs several nodes inside one, so its node entries
+        need a way in that is not a checkpoint write.
+        """
+        self._append_event(node_id=node_id, phase=phase, **fields)
+
+    def read_output(self, node_id: str) -> dict[str, Any] | None:
+        """A node's recorded ``output.json``, or None when it has not run.
+
+        Distinguishing "absent" from "empty" is the caller's job and matters: the
+        template helper this replaces returned ``""`` for both.
+        """
+        path = self.run_dir / node_id / "output.json"
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return None
+        return data if isinstance(data, dict) else {"value": data}
+
     def _append_event(self, node_id: str, phase: str, **fields: Any) -> None:
         """Append one timestamped line to the per-node event log. Best-effort:
         instrumentation must never crash a run, so I/O errors are swallowed.

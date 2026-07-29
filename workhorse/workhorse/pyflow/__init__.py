@@ -1,0 +1,60 @@
+"""Workflows written as Python state machines.
+
+The public surface a workflow module imports:
+
+```python
+from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
+
+blueprint = Blueprint("acme")
+
+
+class Build(Workflow):
+    story: str
+
+    def start(self) -> Continue | Done:
+        return Continue(self.review, notes="")
+
+
+workflow = Registry("acme").add_blueprints(blueprint)
+main = workflow.main(Build)
+```
+
+`run` is deliberately NOT re-exported here: it imports the artifact writer, the agent
+runner and the config, so pulling it in would make every `import workhorse.pyflow`
+drag the whole engine along — a workflow module must stay cheap to import, because
+resolving a workflow *name* imports it.
+"""
+from __future__ import annotations
+
+from workhorse.pyflow.blueprint import Blueprint, NodeSpec
+from workhorse.pyflow.errors import (
+    NodeNotRunError,
+    PyflowError,
+    UnknownNodeError,
+    UnknownStateError,
+    WorkflowDefinitionError,
+    WorkflowFailed,
+    WorkflowFrozenError,
+)
+from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.transitions import Await, Continue, Done
+from workhorse.pyflow.workflow import StateSpec, Workflow, state
+
+__all__ = [
+    "Await",
+    "Blueprint",
+    "Continue",
+    "Done",
+    "NodeNotRunError",
+    "NodeSpec",
+    "PyflowError",
+    "Registry",
+    "StateSpec",
+    "UnknownNodeError",
+    "UnknownStateError",
+    "Workflow",
+    "WorkflowDefinitionError",
+    "WorkflowFailed",
+    "WorkflowFrozenError",
+    "state",
+]

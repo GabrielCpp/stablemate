@@ -1,6 +1,5 @@
 from __future__ import annotations
 import argparse
-import hashlib
 import importlib.metadata
 import json
 import logging
@@ -10,7 +9,6 @@ import sys
 import time
 from collections import Counter, deque
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +31,16 @@ from workhorse.graph.loader import load_workflow
 from workhorse.requirements import UnmetRequirementsError, check_requirements
 from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
 from workhorse.packaged import PackagedWorkflow, PackagedWorkflowError, find_packaged_workflow
+from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.run import run_pyflow
 from workhorse.references import format_missing, missing_references
+# Re-imported under their historical private names: the run-identity rules moved to
+# `rundir` so the Python driver could obey the same ones without importing main (main
+# imports it, not the other way round), and both engines resolve a run dir identically.
+from workhorse.rundir import auto_resolve as _auto_resolve
+from workhorse.rundir import derive_run_id as _derive_run_id
+from workhorse.rundir import find_latest_resumable as _find_latest_resumable
+from workhorse.rundir import runtime_deadline as _runtime_deadline
 from workhorse.runner import agent as agent_runner
 from workhorse.runner import branch as branch_runner
 from workhorse.runner import call as call_runner
@@ -215,6 +222,18 @@ def run(
                 file=sys.stderr,
             )
             return 1
+        # The reciprocal of `pyflow.driver.read_resume`'s guard. Both engines share a
+        # runs directory and one `--resume-latest`, so each has to recognise the
+        # other's checkpoint and say so — a state name is not a node id, and the worst
+        # outcome is not the KeyError but a name that collides by coincidence.
+        if checkpoint.get("engine") == "pyflow":
+            print(
+                f"error: {resume_run_dir} holds a checkpoint from the Python state-machine "
+                f"engine (state '{checkpoint.get('state')}'), not a YAML graph. Resume it "
+                "with the workflow that wrote it.",
+                file=sys.stderr,
+            )
+            return 1
         current_id = checkpoint["current_id"]
         if current_id not in graph.nodes:
             print(
@@ -380,20 +399,6 @@ class RunBudgetExceeded(RuntimeError):
     from the run's ORIGINAL start (writer.started_at), so it survives --resume.
     Unset/0 disables it (the default — most runs are bounded by their graph).
     """
-
-
-def _runtime_deadline(started_at_iso: str, budget_s: float) -> float | None:
-    """Absolute unix-epoch deadline for this run, or None when no budget is set.
-    Anchored to the writer's original ISO start time so a resumed run keeps the
-    same deadline instead of restarting the clock. ``budget_s`` is the configured
-    wall-clock ceiling (RunConfig.max_runtime_s); <= 0 means unbounded."""
-    if budget_s <= 0:
-        return None
-    try:
-        started = datetime.fromisoformat(started_at_iso)
-    except ValueError:
-        started = datetime.now(timezone.utc)
-    return started.timestamp() + budget_s
 
 
 class _GasTank:
@@ -800,59 +805,6 @@ def _should_fast_forward(done: dict | None, checkpoint: dict) -> bool:
     )
 
 
-def _derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None:
-    """Resolve the effective run id when ``--run-id`` was not given explicitly.
-
-    An explicit ``--run-id`` always wins. Otherwise, when the run carries
-    ``--params``, the id is a short deterministic digest of those params, so:
-
-    - distinct param sets (``service=report`` vs ``service=api``) get distinct run
-      dirs and never collide on a single ``default`` — the footgun where a second
-      target silently resumes the first and its ``--params`` are ignored;
-    - the SAME params re-resolve to the SAME id, so auto-resume-in-place is intact:
-      a crash, reboot, or plain re-run of the same command still lands on the
-      existing checkpoint (this is why it is a digest, not a random UUID — a UUID
-      would orphan every unfinished run on the next launch).
-
-    With no params it stays ``None`` → the caller's ``"default"`` (so a params-less
-    workflow keeps its one stable dir, and the Docker harness — which pins no
-    ``--run-id`` — still resumes across reboots exactly as before).
-    """
-    if run_id is not None:
-        return run_id
-    if not params:
-        return None
-    canon = json.dumps(params, sort_keys=True, separators=(",", ":"))
-    return "p" + hashlib.sha1(canon.encode()).hexdigest()[:8]
-
-
-def _auto_resolve(
-    runs_dir: Path, workflow_name: str, run_id: str | None = None
-) -> tuple[str, Path | None]:
-    """Resolve --auto's single stable run dir for this run id.
-
-    The run id here is already resolved by ``_derive_run_id`` (explicit ``--run-id``,
-    else a params digest, else None); a None id falls back to "default", giving one
-    fixed dir (e.g. ``research-default``). Returns ``(run_id, resume_dir)`` where
-    ``resume_dir`` is that dir when it already holds a checkpoint to continue, else
-    None (caller starts fresh).
-
-    A run that already reached a terminal node is NOT resumed — re-running means a
-    new run, not a no-op replay of the finished one (mirrors ``_find_latest_resumable``,
-    which skips terminal runs). The fresh start reuses the same stable dir."""
-    rid = run_id or "default"
-    stable = runs_dir / f"{workflow_name}-{rid}"
-    if not (stable / ArtifactWriter.CHECKPOINT_FILE).exists():
-        return rid, None
-    try:
-        meta = json.loads((stable / "run.json").read_text())
-    except (OSError, json.JSONDecodeError):
-        meta = {}
-    if meta.get("terminal") is not None:  # already finished — start a new run
-        return rid, None
-    return rid, stable
-
-
 def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:
     """Merge workflow params from --params-file then --params (inline wins).
 
@@ -883,25 +835,6 @@ def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:
             sys.exit(1)
         params.update(parsed)
     return params
-
-
-def _find_latest_resumable(runs_dir: Path) -> Path | None:
-    """Newest run dir that crashed mid-flight (has a checkpoint, never finished)."""
-    if not runs_dir.exists():
-        return None
-    candidates: list[tuple[float, Path]] = []
-    for d in runs_dir.iterdir():
-        if not d.is_dir() or not (d / ArtifactWriter.CHECKPOINT_FILE).exists():
-            continue
-        try:
-            meta = json.loads((d / "run.json").read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            continue
-        if meta.get("terminal") is None:  # never reached a terminal node
-            candidates.append(((d / ArtifactWriter.CHECKPOINT_FILE).stat().st_mtime, d))
-    if not candidates:
-        return None
-    return max(candidates)[1]
 
 
 def _render_labels(labels: dict[str, str], ctx: dict[str, Any]) -> dict[str, str]:
@@ -1138,6 +1071,36 @@ def _resolve_library_dir() -> Path | None:
     return layers[0] if layers else None
 
 
+def _looks_like_path(spec: str) -> bool:
+    """Whether a ``--workflow`` value is a path rather than a bare workflow name."""
+    return (
+        os.sep in spec
+        or (os.altsep is not None and os.altsep in spec)
+        or spec.endswith((".yaml", ".yml"))
+        or Path(spec).exists()
+    )
+
+
+def _packaged_registry(spec: str) -> Registry | None:
+    """The installed Python :class:`Registry` a bare workflow name resolves to, if any.
+
+    The same entry point serves both engines — it names the object a workflow module
+    exposes, and *what that object is* decides which engine runs. A ``Registry`` is a
+    Python state machine and is driven here; anything else falls through to the YAML
+    resolution below, so a package shipping a ``workflow.yaml`` is unaffected."""
+    if _looks_like_path(spec):
+        return None
+    try:
+        packaged = find_packaged_workflow(spec)
+        if packaged is None:
+            return None
+        target = packaged.load()
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    return target if isinstance(target, Registry) else None
+
+
 def _resolve_workflow_path(spec: str) -> Path:
     """Resolve ``--workflow`` as an explicit path, an installed package, or a library name.
 
@@ -1155,13 +1118,7 @@ def _resolve_workflow_path(spec: str) -> Path:
     and because a workflow that has been packaged is the packaged one's successor, not
     its sibling. A YAML copy that survives the move stays reachable by path. When both
     exist, say so on stderr: silent shadowing is the one way this ordering hurts."""
-    looks_like_path = (
-        os.sep in spec
-        or (os.altsep is not None and os.altsep in spec)
-        or spec.endswith((".yaml", ".yml"))
-        or Path(spec).exists()
-    )
-    if looks_like_path:
+    if _looks_like_path(spec):
         return Path(spec).resolve()
 
     try:
@@ -1242,8 +1199,9 @@ def _packaged_workflow_path(packaged: PackagedWorkflow) -> Path:
     print(
         f"error: workflow '{packaged.name}' resolves to {packaged.origin}, whose "
         f"package directory ({root}) ships no workflow.yaml.\n"
-        "This workhorse runs YAML workflows; a package exposing only a Python "
-        "Workflow object needs a newer workhorse to drive it.",
+        "A packaged workflow is either a workflow.yaml in that directory or a "
+        "`Registry` object at the entry point; this one is neither. Check what "
+        f"'{packaged.value}' actually points at.",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -1279,10 +1237,21 @@ def _run_run(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
 
-    workflow_path = _resolve_workflow_path(workflow_spec)
-    if not workflow_path.exists():
-        print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
-        sys.exit(1)
+    # Which engine runs is decided here and nowhere else. A `workhorse-<name>` console
+    # script already holds its Registry (it never went through discovery), so it hands
+    # it in; a bare name resolves one from the entry point. Everything after this point
+    # — the repo dir, the backend, the runs dir, params, the resume flags — is resolved
+    # identically for both, because it is the CLI's contract, not an engine's.
+    registry: Registry | None = getattr(args, "registry", None)
+    if registry is None:
+        registry = _packaged_registry(workflow_spec)
+
+    workflow_path: Path | None = None
+    if registry is None:
+        workflow_path = _resolve_workflow_path(workflow_spec)
+        if not workflow_path.exists():
+            print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
+            sys.exit(1)
 
     # The consuming repo is the directory workhorse is launched in — same <cwd>
     # rule as the runs-dir default below. Library scripts (load-config,
@@ -1336,6 +1305,20 @@ def _run_run(args: argparse.Namespace) -> None:
     # if absent. The explicit --resume-run/--resume-latest flags above are manual
     # overrides that target a specific dir instead. auto stays on either way — when
     # resume_run_dir is set, run() uses it directly and skips auto resolution.
+    if registry is not None:
+        sys.exit(
+            run_pyflow(
+                registry,
+                flow,
+                runs_dir=runs_dir,
+                resume_run_dir=resume_run_dir,
+                run_id=args.run_id,
+                params=params,
+                no_cache=getattr(args, "no_cache", False),
+            )
+        )
+
+    assert workflow_path is not None  # set together with `registry is None` above
     try:
         code = run(
             workflow_path,
@@ -1543,7 +1526,12 @@ def _build_parser(prog: str = "workhorse") -> argparse.ArgumentParser:
 _SUBCOMMANDS = frozenset({"run", "test", "dot", "config", "version"})
 
 
-def main(argv: list[str] | None = None, *, workflow: str | None = None) -> None:
+def main(
+    argv: list[str] | None = None,
+    *,
+    workflow: str | None = None,
+    registry: Registry | None = None,
+) -> None:
     """The whole CLI, for every front door there is.
 
     ``argv`` defaults to the process arguments, so the ``workhorse`` console script
@@ -1551,7 +1539,12 @@ def main(argv: list[str] | None = None, *, workflow: str | None = None) -> None:
     per-workflow ``workhorse-<name>`` script binds — the *only* difference between the
     two commands. There is deliberately no second parser: a per-workflow script that
     grew its own argument definitions would drift from ``workhorse run`` silently, and
-    the drift would only show up as two tools that disagree about a flag."""
+    the drift would only show up as two tools that disagree about a flag.
+
+    ``registry`` is the Python workflow the caller already holds. A
+    ``Registry.main(...)`` console script is inside the distribution and so has the
+    object in hand; passing it skips entry-point discovery, which means the script
+    still works when the package is on ``sys.path`` without being installed."""
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser("workhorse" if workflow is None else f"workhorse-{workflow}")
 
@@ -1564,6 +1557,7 @@ def main(argv: list[str] | None = None, *, workflow: str | None = None) -> None:
         argv = ["run"] + list(argv)
 
     args = parser.parse_args(argv)
+    args.registry = registry
     if workflow is not None:
         _bind_workflow_name(parser, args, workflow)
 

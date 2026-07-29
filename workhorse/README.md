@@ -773,6 +773,111 @@ lands on a safe route). An output with no `default` is emitted as `null`. To
 disable defaulting entirely and hard-fail instead, set
 `AGENT_USE_DEFAULT_OUTPUTS=false`.
 
+## Writing a workflow in Python (`workhorse.pyflow`)
+
+A workflow may also be written as a **Python state machine** instead of a YAML graph.
+The two engines share the runs directory, the artifact layout, the agent backends, the
+telemetry and the resilience ladder; what differs is where control flow lives. YAML puts
+it in `branch` nodes and context keys; `pyflow` puts it in ordinary Python — `if`,
+`for`, a counter that is just a counter.
+
+```python
+from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
+
+blueprint = Blueprint("acme")
+
+
+@blueprint.node
+def measure(logger, subject: str) -> Reading:      # a node is a plain function
+    return Reading(kind=subject, count=len(subject))
+
+
+class Build(Workflow):
+    subject: str                                   # inputs — filled from --params
+
+    def setup(self) -> Settings:                   # runs once; its return becomes self.ctx
+        return Settings.load(self.subject)
+
+    def start(self):
+        reading = self.call(measure, self.subject)
+        return Continue(None, self.review, count=reading.count)
+
+    def review(self, count: int):                  # state parameters — one hop only
+        verdict = self.agent("prompts/review.md", returns=Verdict, args={"n": count})
+        if verdict.ok:
+            return Done(verdict)
+        return Continue(None, self.review, count=count + 1)
+
+
+workflow = Registry("acme").add_blueprints(blueprint)
+main = workflow.main(Build)                        # the console script; see above
+```
+
+### The three tiers of state, and no fourth
+
+| Tier | Written by | Lives for | Reached as |
+|---|---|---|---|
+| Inputs | the CLI (`--params`) | the whole run | `self.<field>` |
+| `self.ctx` | `setup()`, once | the whole run | `self.ctx` |
+| State parameters | the previous state | one hop | the state's own arguments |
+
+The rule that keeps a run resumable: **if a state writes it, it is a parameter of the
+next state.** Nothing else is carried, and the instance *freezes* once `setup()` returns
+— assigning to `self.subject` from inside a state raises rather than producing a value
+that survives in memory but not in the checkpoint.
+
+`self.output(node)` is a read, not a fourth tier: it re-reads the node's recorded
+`output.json` (the latest invocation, validated back into the node's declared return
+type) and raises when the node has not run.
+
+### Transitions
+
+A state returns one of three things, or raises:
+
+| Return | Meaning |
+|---|---|
+| `Continue(result, self.next_state, **params)` | go to `next_state` with those parameters |
+| `Done(result)` | the flow is finished; `result` is what a `handoff` caller receives |
+| `Await(path, questions, self.next_state, **params)` | write `questions` to `path`, checkpoint, and wait for a human to touch the file |
+| `raise WorkflowFailed(reason)` | end the run as failed |
+
+The target is positional, and its keyword arguments are bound against its signature *at
+transition time* — a typo in a parameter name fails on the transition that made it, not
+three states later as a missing key.
+
+`Await` is a portable polling loop (`WORKHORSE_AWAIT_POLL_S`, default 15s), not an
+inotify watch, so it behaves the same in a container, over NFS, and on a laptop that
+sleeps. The checkpoint is written **before** the wait begins, so a machine rebooted
+during a two-day wait resumes into the waiting state rather than re-asking.
+
+### Checkpoints and renaming
+
+The checkpoint is `(state, params)` plus the frozen inputs and `ctx`, tagged
+`"engine": "pyflow"`. Resume is deliberately **coarse**: it re-enters the checkpointed
+state from the top, with no intra-state memo and no per-callsite fingerprinting. That
+makes idempotency — not merely determinism — the contract a state body owes. A state
+that appends a row should check first; a state that commits should be a no-op on a
+clean tree.
+
+Because a checkpoint names a state, renaming one strands every run checkpointed on the
+old name. Both decorators take `aliases=[…]` for exactly that:
+
+```python
+@workflow.state(aliases=["qa_gate"])
+def qa(self, story: str): ...
+```
+
+A checkpoint naming an unknown state **fails loudly** rather than silently starting the
+run over; declaring the old name as an alias resumes it; an alias that collides with a
+live name raises at import; and `dot` / `--dry-run` render live names only, so an alias
+never shows up as a second state in a diagram. `@blueprint.node` takes `aliases=[…]` for
+the same reason — `self.output(node)` resolves against a run directory named after the
+node.
+
+The two engines recognize each other's checkpoints and refuse them by name, in both
+directions: they share one runs directory and one `--resume-latest`, and a state name
+that happens to match a node id would otherwise resume the wrong thing.
+
 ## Development
 
 This section is for working on the **controller itself** (the Python that runs
@@ -795,6 +900,14 @@ agents/local-worker/          # source repo dir for the workhorse controller
 │   │   ├── loader.py          # Parse + validate workflow.yaml into a Graph
 │   │   ├── context.py         # WorkflowContext: the key→value bag + dot-path lookup for branches
 │   │   └── dot.py             # Render a Graph to Graphviz DOT (the `workhorse dot` subcommand)
+│   ├── pyflow/                # The Python state-machine engine (the YAML engine's sibling)
+│   │   ├── workflow.py        # The `Workflow` base class: state discovery, freezing, self.ctx
+│   │   ├── transitions.py     # Continue / Done / Await + transition-time signature binding
+│   │   ├── blueprint.py       # `Blueprint`: node libraries a workflow composes
+│   │   ├── registry.py        # What an entry point / console script points at
+│   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
+│   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
+│   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
 │       ├── agent.py           # Invoke Claude CLI; the retry → reframe → default resilience ladder
 │       ├── script.py          # Run a ScriptNode, capture JSON stdout
