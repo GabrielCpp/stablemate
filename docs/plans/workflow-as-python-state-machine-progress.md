@@ -30,9 +30,14 @@ entry is longer than a few lines it belongs in the plan or in the commit message
 
 ## Current position
 
-**Loop 1, closing out.** Steps 1–6 are committed. Only **step 7** — the `research` port — is
-left. Resume with the prompt under "Resuming loop 1 mid-flight" in the plan — not the full
-loop 1 prompt, which specifies mostly-finished work.
+**Loop 1 is done.** All seven steps are committed. `research` runs end-to-end on the driver
+and the YAML engine is still green (`make test && make check-public`).
+
+Loop 2 starts from: **the second port**. The driver has one workflow proving it; the shapes it
+has *not* met yet are `Await` (nothing in `research` waits on a human), `handoff` (no sub-flow),
+and a workflow whose states outnumber `research`'s twelve. `author` and `coder` are both, which
+is why they are next — and `coder` is the one that will say whether `self.output(node)` and the
+three-tier state rule hold at size.
 
 ## What landed
 
@@ -44,20 +49,31 @@ loop 1 prompt, which specifies mostly-finished work.
 | 5 | `ea47ff7` | The Python state-machine driver — `workhorse/workhorse/pyflow/`, 2,350 lines |
 | 6 | `53dc4ba` | State graph read off the source, for `--dry-run` and `dot` |
 | — | `5d3f89d` | `research/models.py` → `schemas.py`; `self.agent(power=, timeout=)` reaches the turn |
-| 2 | _this commit_ | The scriptutil split — `workhorse_workflows.kit.{git,github,workspace}`; scriptutil 1000 → 154 lines |
+| 2 | `772b5d0` | The scriptutil split — `workhorse_workflows.kit.{git,github,workspace}`; scriptutil 1000 → 154 lines |
+| 7 | _this commit_ | The `research` port — 30 YAML nodes → 12 states, both pyproject tables, 8 end-to-end tests |
 
 ## What is next
 
-1. **Step 7 — the `research` port.** `research/nodes.py` and `schemas.py` exist; what is missing is
-   `research/workflow.py` (the `Workflow` subclass, its `Registry`, and `main`), the two now-empty
-   tables in `workflows/pyproject.toml` (`[project.entry-points."workhorse.workflows"]` and
-   `[project.scripts]`), and one end-to-end run. The deliverable includes a concrete before/after
-   of the counter machinery the port deletes: `init_lead_counter`, `init_extend_counter`,
-   `reset_rework`, `guard_rework`, and the `max_reworks` constant kept in sync by comment.
+1. **Port `author` (then `coder`).** Same shape as `research`: `nodes.py` + `schemas.py` +
+   `workflow.py`, one entry-point line and one console script per workflow in
+   `workflows/pyproject.toml`, and end-to-end tests in `workflows/tests/`. Take the test file
+   `workflows/tests/test_research_workflow.py` as the pattern — real nodes against a temp git
+   repo, only the agent turn scripted — because it is what made the port's claims checkable.
+2. **Decide the `--dry-run` question below before the second port**, since it is the same
+   question for every workflow with a fail terminal, and `author`/`coder` have several.
 
 ## Open questions
 
-None.
+- **`--dry-run` cannot pass on any workflow with a reachable fail terminal.** Under `--dry-run`
+  every agent reply is a blank stand-in, so `research` walks `start → goal_review → halt` and
+  `halt` does what it is written to do: `raise WorkflowFailed`. `run.py`'s ladder catches
+  `PyflowError` *before* the dry-run-tolerant `except Exception`, and its comment names "an
+  explicit `raise WorkflowFailed`" as belonging there deliberately — so `workhorse run research
+  --dry-run` exits 1 even though the static preflight passed and nothing is wrong. The two
+  readings: a fail terminal reached on stand-in values is an artifact of the stand-ins (report
+  it, exit 0, same reasoning the `except Exception` branch already uses), or a dry run that ends
+  red is telling the truth and the exit code should stay 1. This is a driver decision, not an
+  oversight, so it is the user's to make. Nothing else in the port depends on it.
 
 ## Decisions re-confirmed
 
