@@ -2,8 +2,12 @@
 
 The seams exist so that a node gets three things a direct function call cannot: its
 own event in `events.jsonl`, a recorded `output.json` that `self.output(...)` can read
-back, and a no-op under `--dry-run` that records the call instead of making it — which
-is what lets a graph be enumerated without executing anything.
+back, and — the payoff — resolution through the run's node index rather than through
+the function object the callsite happened to hold.
+
+That last one is why `--dry-run` is not an `if` in here. A dry run is the same code
+path with a substituted index (see `stub_nodes`), which is also what a test supplies
+instead of patching module attributes. One mechanism, exercised by both.
 
 This module deliberately does not import the driver. `handoff` needs to drive a
 sub-workflow, so the driver hands itself in via `RunEnv.driver`; the dependency points
@@ -25,7 +29,9 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.graph.context import WorkflowContext
 from workhorse.graph.nodes import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
-from workhorse.pyflow.errors import NodeNotRunError, WorkflowFailed
+from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
+from workhorse.pyflow.names import NameIndex
+from workhorse.pyflow.registry import registry_of
 from workhorse.runner import agent as agent_runner
 
 logger = logging.getLogger("workhorse.engine")
@@ -35,26 +41,26 @@ logger = logging.getLogger("workhorse.engine")
 SCALAR_KEY = "value"
 
 
-def _jsonable(value: Any) -> Any:
+def jsonable(value: Any) -> Any:
     """Best-effort JSON projection. Never raises: a recorded artifact must not be
     able to fail the node that produced it."""
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return _jsonable(dataclasses.asdict(value))
+        return jsonable(dataclasses.asdict(value))
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
-        return {str(k): _jsonable(v) for k, v in value.items()}
+        return {str(k): jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
-        return [_jsonable(v) for v in value]
+        return [jsonable(v) for v in value]
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return repr(value)
 
 
 def _payload(value: Any) -> dict[str, Any]:
-    projected = _jsonable(value)
+    projected = jsonable(value)
     return projected if isinstance(projected, dict) else {SCALAR_KEY: projected}
 
 
@@ -82,6 +88,40 @@ def _blank(returns: Any) -> Any:
     return None
 
 
+def _stubbed(spec: NodeSpec) -> NodeSpec:
+    """The same node with its body replaced by its stand-in.
+
+    Retries go to 0 along with it: a stand-in that raised would raise identically the
+    second time, and a dry run waiting out a retry ladder is a dry run nobody runs.
+    """
+    stub = spec.stub or (lambda _logger, *a, **kw: _blank(spec.returns))
+    return dataclasses.replace(spec, fn=stub, retries=0)
+
+
+def _stand_in(dry_run: bool, declared: bool) -> dict[str, str]:
+    """The event-log marker for a seam a dry run answered instead of running.
+
+    `events.jsonl` is the durable record of a run, and under `--dry-run` the fact that
+    a node was *entered* is only half of what the reader needs — the other half is
+    whether a real stand-in answered it or the seam fell back to a blank model, which
+    is what makes the branch it took arbitrary. Empty on a real run, so nothing is
+    stamped where there is nothing to say.
+    """
+    if not dry_run:
+        return {}
+    return {"stub": "declared" if declared else "blank"}
+
+
+def stub_nodes(index: NameIndex[NodeSpec]) -> NameIndex[NodeSpec]:
+    """The `--dry-run` node index: every node replaced by its stand-in.
+
+    Lives here rather than in `blueprint.py` because `_blank` does, and `blueprint.py`
+    keeps its zero engine imports — a node library must be importable without the
+    runner behind it.
+    """
+    return index.replacing({name: _stubbed(spec) for name, spec in index.items()})
+
+
 @dataclass
 class RunEnv:
     """Everything a run needs that is not the workflow itself."""
@@ -100,6 +140,18 @@ class RunEnv:
     deadline: float | None = None
     #: Rendered telemetry labels for the state currently running.
     labels: dict[str, str] = field(default_factory=dict)
+    #: The run's node implementations, by registered name — `registry.nodes`, or a
+    #: substituted copy of it. `self.call` reads the *name* off the function it was
+    #: handed and the implementation from here, which is what makes a stand-in a
+    #: substitution rather than a patch. None = trust the stamp on the function, the
+    #: path a hand-built env (the engine's own tests) takes.
+    nodes: NameIndex[NodeSpec] | None = None
+    #: Canned agent replies for `--dry-run`, keyed by prompt stem. A value, or a
+    #: callable taking the render args. Unlisted stems fall back to a blank model.
+    agent_stubs: dict[str, Any] | None = None
+    #: The agent backend. None = the real `agent_runner.run_agent`, looked up at call
+    #: time so the default can never be a stale binding.
+    run_agent: Callable[..., Any] | None = None
 
     @property
     def run_dir(self) -> Path:
@@ -135,21 +187,47 @@ class Engine:
     def call(
         self, node: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> Any:
-        spec = node_spec(node)
+        spec = self._resolve(node)
         writer = self.env.writer
         rendered = _describe(spec, args, kwargs)
-        writer.record_node(spec.name, "enter", blueprint=spec.blueprint)
-
-        if self.env.dry_run:
-            value = _blank(spec.returns)
-            writer.write_step(spec.name, rendered, _payload(value), {}, next_node=None)
-            self.env.log.info("[workhorse] call   → %s (dry-run)", spec.name)
-            return value
-
-        self.env.log.info("[workhorse] call   → %s", spec.name)
+        writer.record_node(
+            spec.name,
+            "enter",
+            blueprint=spec.blueprint,
+            **_stand_in(self.env.dry_run, spec.stub is not None),
+        )
+        self.env.log.info(
+            "[workhorse] call   → %s%s", spec.name, " (dry-run)" if self.env.dry_run else ""
+        )
         value = self._invoke(spec, args, kwargs)
         writer.write_step(spec.name, rendered, _payload(value), {}, next_node=None)
         return value
+
+    def _resolve(self, node: Callable[..., Any]) -> NodeSpec:
+        """The spec this run will actually call for `node`.
+
+        The function is read for its *name*; the run's index supplies the body. A name
+        the index does not carry is an error rather than a fallback to the stamp —
+        otherwise the seam would be advisory, holding or not depending on whether the
+        node's blueprint had been registered, which is the bug it exists to remove.
+        """
+        spec = node_spec(node)
+        index = self.env.nodes
+        if index is None:
+            # No index was supplied, so the stamp is the only registration there is.
+            # A dry run still needs a stand-in; substitute one here rather than
+            # branching further down.
+            return _stubbed(spec) if self.env.dry_run else spec
+        found = index.get(spec.name)
+        if found is None:
+            known = ", ".join(sorted(index.live_names())) or "(none)"
+            raise UnknownNodeError(
+                f"node '{spec.name}' (blueprint {spec.blueprint!r}) is not in this "
+                f"run's node index, so calling it would bypass every seam that index "
+                f"is for. Fold its blueprint in with add_blueprints(...). Registered "
+                f"nodes: {known}."
+            )
+        return found
 
     def _invoke(
         self, spec: NodeSpec, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -188,13 +266,18 @@ class Engine:
         args: dict[str, Any],
         power: str | None = None,
         timeout: float | None = None,
+        cwd: str | Path | None = None,
+        add_dirs: list[str | Path] | None = None,
     ) -> Any:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
-        writer.record_node(node_id, "enter", prompt=prompt)
+        declared = node_id in (self.env.agent_stubs or {})
+        writer.record_node(
+            node_id, "enter", prompt=prompt, **_stand_in(self.env.dry_run, declared)
+        )
 
         if self.env.dry_run:
-            value = _blank(returns)
+            value = self._agent_stub(node_id, returns, args)
             writer.write_step(node_id, f"(dry-run) {prompt}", _payload(value), {})
             self.env.log.info("[workhorse] agent  → %s (dry-run)", node_id)
             return value
@@ -206,6 +289,13 @@ class Engine:
             budget["power"] = power
         if timeout is not None:
             budget["timeout"] = timeout
+        # `cwd`/`add_dirs` are the same fields the YAML node carries, and the runner
+        # Jinja-renders them — a literal path is a no-op render, so real values pass
+        # through unchanged and the cwd de-dupe and `--add-dir` flags come for free.
+        if cwd is not None:
+            budget["cwd"] = str(cwd)
+        if add_dirs is not None:
+            budget["add_dirs"] = [str(d) for d in add_dirs]
         node = AgentNode(
             type="agent",
             id=node_id,
@@ -220,9 +310,10 @@ class Engine:
         )
         self.env.log.info("[workhorse] agent  → %s", node_id)
         config = self.env.config
-        rendered, raw = agent_runner.run_agent(
+        run_agent = self.env.run_agent or agent_runner.run_agent
+        rendered, raw = run_agent(
             node,
-            WorkflowContext(_jsonable(args)),
+            WorkflowContext(jsonable(args)),
             self.env.workflow_dir,
             self.env.session_id_path,
             max_output_retries=config.resilience.max_output_retries,
@@ -235,6 +326,22 @@ class Engine:
         )
         writer.write_step(node_id, rendered, raw, {}, next_node=None)
         return _coerce(raw, returns, node_id)
+
+    def _agent_stub(self, node_id: str, returns: type, args: dict[str, Any]) -> Any:
+        """The reply a dry run uses for one prompt.
+
+        Keyed by prompt *stem*, because that is what a workflow author names. A stem
+        the registry said nothing about gets a blank model — honest about knowing
+        nothing, and the reason an unstubbed dry run's branches are arbitrary.
+        """
+        reply = (self.env.agent_stubs or {}).get(node_id)
+        if reply is None:
+            return _blank(returns)
+        if callable(reply):
+            reply = reply(args)
+        if isinstance(reply, dict):
+            return _coerce(reply, returns, node_id)
+        return reply
 
     # --- self.handoff -------------------------------------------------------
 
@@ -251,7 +358,9 @@ class Engine:
         writer.record_node(node_id, "enter", flow=type(child).__name__)
         self.env.log.info("[workhorse] flow   → %s", node_id)
         sub_writer = writer.subscope(node_id, type(child).__name__)
-        sub_env = dataclasses.replace(self.env, writer=sub_writer)
+        sub_env = dataclasses.replace(
+            self.env, writer=sub_writer, **_sub_scope(type(child), self.env)
+        )
         result = self.env.driver(child, sub_env)
         writer.write_step(node_id, f"handoff → {type(child).__name__}", _payload(result), {})
         return result
@@ -259,7 +368,9 @@ class Engine:
     # --- self.output --------------------------------------------------------
 
     def output(self, node: Callable[..., Any]) -> Any:
-        spec = node_spec(node)
+        # Through the index, like `call`, so an overridden node's `dir_names` and
+        # `returns` are the ones the run recorded under.
+        spec = self._resolve(node)
         for name in spec.dir_names:
             payload = self.env.writer.read_output(name)
             if payload is not None:
@@ -278,9 +389,31 @@ def _describe(spec: NodeSpec, args: tuple[Any, ...], kwargs: dict[str, Any]) -> 
     A script node's artifact was its command line; this is the equivalent, and it is
     what makes a run directory readable without the source beside it.
     """
-    parts = [json.dumps(_jsonable(a)) for a in args]
-    parts += [f"{k}={json.dumps(_jsonable(v))}" for k, v in kwargs.items()]
+    parts = [json.dumps(jsonable(a)) for a in args]
+    parts += [f"{k}={json.dumps(jsonable(v))}" for k, v in kwargs.items()]
     return f"{spec.blueprint}.{spec.name}({', '.join(parts)})\n"
+
+
+def _sub_scope(cls: type, env: RunEnv) -> dict[str, Any]:
+    """What a handed-off flow gets that its caller does not: its own registry's world.
+
+    A sub-flow is a different program. It resolves the registry that claimed its class
+    and runs with that registry's prompt directory, node index and stand-ins — so a
+    sub-flow shipped in another distribution renders its own `prompts/` instead of
+    looking for them under its caller's package, and a node the parent substituted is
+    not silently substituted for the child as well.
+
+    An unclaimed class (declared beside its parent, never registered separately)
+    inherits, which is what keeps the common case ceremony-free.
+    """
+    registry = registry_of(cls)
+    if registry is None or registry.nodes is env.nodes:
+        return {}
+    return {
+        "workflow_dir": registry.directory(),
+        "nodes": stub_nodes(registry.nodes) if env.dry_run else registry.nodes,
+        "agent_stubs": registry.agent_stubs if env.dry_run else None,
+    }
 
 
 def _flow_id(wf: Callable[..., Any]) -> str:
@@ -315,4 +448,4 @@ def _coerce(raw: dict[str, Any], returns: type, node_id: str) -> Any:
     return raw
 
 
-__all__ = ["Engine", "RunEnv"]
+__all__ = ["Engine", "RunEnv", "stub_nodes"]

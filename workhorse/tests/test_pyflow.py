@@ -16,6 +16,7 @@ Run: ./.venv/bin/python tests/test_pyflow.py   (or via pytest)
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -35,6 +36,7 @@ from workhorse.pyflow import (  # noqa: E402
     Done,
     NodeNotRunError,
     Registry,
+    UnknownNodeError,
     UnknownStateError,
     Workflow,
     WorkflowDefinitionError,
@@ -42,6 +44,7 @@ from workhorse.pyflow import (  # noqa: E402
     WorkflowFrozenError,
     state,
 )
+from workhorse.pyflow import activity as pyflow_activity  # noqa: E402
 from workhorse.pyflow import driver as pyflow_driver  # noqa: E402
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
@@ -577,6 +580,92 @@ def test_agent_validates_the_reply_into_the_declared_model():
         assert (env.run_dir / "review" / "prompt.md").read_text() == "rendered prompt"
 
 
+def test_agent_carries_cwd_and_add_dirs_onto_the_node():
+    """`cwd` decides whose CLAUDE.md, skills and git context a turn sees, so a
+    workflow that runs against a checkout it computed must be able to say where.
+    They land on the same `AgentNode` the YAML engine builds, so the render, the
+    de-dupe and the `--add-dir` flags are the runner's existing behavior."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        nodes: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            nodes.append(node)
+            return "rendered", {"kind": "ok", "count": 0}
+
+        real = pyflow_engine.agent_runner.run_agent
+        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        try:
+
+            class Asks(Workflow):
+                def start(self) -> Transition:
+                    self.agent(
+                        "prompts/review.md",
+                        returns=Payload,
+                        cwd=Path("/repos/acme"),
+                        add_dirs=["/repos/docs", Path("/repos/api-service")],
+                    )
+                    # Saying nothing must leave the model's own defaults in place
+                    # rather than overwrite them with None.
+                    self.agent("prompts/plain.md", returns=Payload)
+                    return Done(None)
+
+            drive(Asks(), env)
+        finally:
+            pyflow_engine.agent_runner.run_agent = real
+
+        assert nodes[0].cwd == "/repos/acme", nodes[0]
+        assert nodes[0].add_dirs == ["/repos/docs", "/repos/api-service"], nodes[0]
+        assert nodes[1].cwd is None, nodes[1]
+        assert nodes[1].add_dirs == [], nodes[1]
+
+
+# ---------------------------------------------------------------------------- activity
+
+
+def test_a_states_flagged_log_line_becomes_the_run_activity():
+    """The YAML engine's per-node `activity:` has no counterpart in a state machine —
+    a state is one method that may do several things. So the run's activity is
+    whichever log line most recently flagged itself, and the driver's per-transition
+    label rebase preserves it. See `tests/test_activity.py` for the semantics."""
+    with tempfile.TemporaryDirectory() as tmp:
+        # Its own logger, at INFO: a logger left at the root's inherited WARNING drops
+        # the flagged record before any filter sees it, and the test would pass blind.
+        log = logging.getLogger("tests.pyflow.activity")
+        log.setLevel(logging.INFO)
+        log.filters.clear()
+
+        env = _env(tmp, log=log)
+        published: list[dict[str, str]] = []
+        real = pyflow_activity.otel.set_labels
+        pyflow_activity.otel.set_labels = published.append
+        try:
+
+            class Narrates(Workflow):
+                def labels(self) -> dict[str, str]:
+                    return {"work_id": "ACME-9"}
+
+                def start(self) -> Transition:
+                    self.logger.info(
+                        "assessing %s", "legacy/report/list", extra={"activity": True}
+                    )
+                    return Continue(None, self.finish)
+
+                def finish(self) -> Transition:
+                    return Done("ok")
+
+            assert drive(Narrates(), env) == "ok"
+        finally:
+            pyflow_activity.otel.set_labels = real
+
+        # The flagged line publishes, and the transition into `finish` rebases the
+        # declared labels without clearing it.
+        assert published[-1] == {
+            "work_id": "ACME-9",
+            "activity": "assessing legacy/report/list",
+        }, published
+
+
 # --------------------------------------------------------------------------- dry run
 
 
@@ -603,6 +692,153 @@ def test_dry_run_records_the_calls_without_making_them():
         drive(Walks(), env)
         assert ran == [], "a dry run must not execute node bodies"
         assert (env.run_dir / "touch_the_world" / "output.json").is_file()
+
+
+# ------------------------------------------------------------- the composition root
+
+
+def test_the_run_index_supplies_the_body_the_callsite_only_names():
+    """`self.call(measure, …)` passes the function because `Concatenate[Logger, P]`
+    needs it for typing; what runs is whatever the run's index holds under that name.
+    That is the whole seam — a test substitutes instead of patching the node's module."""
+    with tempfile.TemporaryDirectory() as tmp:
+        registry = Registry("acme").add_blueprints(bp)
+
+        class Calls(Workflow):
+            def start(self) -> Transition:
+                return Done(self.call(measure, "login").kind)
+
+        env = _env(tmp, nodes=registry.override(measure=lambda logger, subject: Payload(
+            kind=f"substituted:{subject}", count=0
+        )))
+        assert drive(Calls(), env) == "substituted:login"
+        # Non-mutating: the registry every other run in the process shares is untouched.
+        assert registry.nodes.get("measure").fn is measure
+
+
+def test_overriding_a_node_the_registry_does_not_have_names_the_registered_ones():
+    registry = Registry("acme").add_blueprints(bp)
+    exc = _raises(WorkflowDefinitionError, registry.override, mesure=lambda logger: None)
+    assert "no node 'mesure'" in str(exc), exc
+    assert "measure" in str(exc), exc
+
+
+def test_a_node_missing_from_the_run_index_is_an_error_not_a_fallback():
+    """Falling back to the stamp would make the seam advisory — holding or not
+    depending on whether the node's blueprint had been folded in, which is the bug
+    `add_blueprints` exists to remove."""
+    with tempfile.TemporaryDirectory() as tmp:
+        other = Blueprint("globex")
+
+        @other.node
+        def unrelated(logger: Any) -> Payload:
+            return Payload()
+
+        class Calls(Workflow):
+            def start(self) -> Transition:
+                return Done(self.call(measure, "login"))
+
+        env = _env(tmp, nodes=Registry("globex").add_blueprints(other).nodes)
+        exc = _raises(UnknownNodeError, drive, Calls(), env)
+        assert "add_blueprints" in str(exc), exc
+        assert "unrelated" in str(exc), exc
+
+
+def test_a_declared_stub_is_what_a_dry_run_runs_in_place_of_the_node():
+    with tempfile.TemporaryDirectory() as tmp:
+        blueprint = Blueprint("acme")
+
+        @blueprint.node(stub=lambda logger: Payload(kind="stand-in", count=7))
+        def touch_the_world(logger: Any) -> Payload:
+            raise AssertionError("a dry run must not execute node bodies")
+
+        registry = Registry("acme").add_blueprints(blueprint)
+
+        class Walks(Workflow):
+            def start(self) -> Transition:
+                reading = self.call(touch_the_world)
+                return Done((reading.kind, reading.count))
+
+        env = _env(tmp, dry_run=True, nodes=pyflow_engine.stub_nodes(registry.nodes))
+        assert drive(Walks(), env) == ("stand-in", 7)
+
+
+def test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared():
+    """Undeclared, every reply is a blank model and the machine takes whichever branch
+    a blank selects. Declaring one per stem is what turns a dry run into a smoke test
+    of the workflow's own happy path."""
+    with tempfile.TemporaryDirectory() as tmp:
+        registry = Registry("acme").stub_agents(
+            {"review": {"kind": "approved", "count": 3}}
+        )
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                reply = self.agent("prompts/review.md", returns=Payload, args={"n": 1})
+                blank = self.agent("prompts/unlisted.md", returns=Payload)
+                return Done((reply.kind, reply.count, blank.kind))
+
+        env = _env(tmp, dry_run=True, agent_stubs=registry.agent_stubs)
+        assert drive(Asks(), env) == ("approved", 3, "?")
+
+
+def test_the_run_agent_backend_is_a_run_dependency_not_a_module_attribute():
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[str] = []
+
+        def scripted(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(node.id)
+            return "rendered", {"kind": "injected", "count": 0}
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                return Done(self.agent("prompts/review.md", returns=Payload).kind)
+
+        env = _env(tmp, run_agent=scripted)
+        assert drive(Asks(), env) == "injected"
+        assert seen == ["review"], seen
+
+
+def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
+    """A sub-flow is a different program: it renders its own `prompts/` and calls its
+    own nodes, so one shipped in another distribution does not look for its templates
+    under its caller's package — and a node its caller substituted stays real for it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        child_bp = Blueprint("globex")
+
+        @child_bp.node
+        def measure(logger: Any, subject: str) -> Payload:
+            return Payload(kind=f"child:{subject}", count=0)
+
+        class SubFlow(Workflow):
+            def start(self) -> Transition:
+                return Done(self.call(measure, "login").kind)
+
+        # A registry's directory comes from the package its entry class lives in;
+        # a class declared in a test file has none, so borrow a real package's.
+        SubFlow.__module__ = "workhorse.pyflow.registry"
+        child = Registry("globex").add_blueprints(child_bp)
+        child.main(SubFlow)
+
+        class Parent(Workflow):
+            def start(self) -> Transition:
+                return Done(self.handoff(SubFlow))
+
+        parent = Registry("acme").add_blueprints(bp)
+        env = _env(tmp, nodes=parent.override(measure=lambda logger, subject: Payload(
+            kind="parent-substituted", count=0
+        )))
+        assert drive(Parent(), env) == "child:login"
+
+
+def test_a_flow_class_may_belong_to_only_one_registry():
+    class Shared(Workflow):
+        def start(self) -> Transition:
+            return Done(None)
+
+    Registry("acme").add_flows(shared=Shared)
+    exc = _raises(WorkflowDefinitionError, Registry("globex").add_flows, shared=Shared)
+    assert "two workflows" in str(exc), exc
 
 
 # -------------------------------------------------------------------------- Registry

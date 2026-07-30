@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -99,6 +100,34 @@ class Endless(Workflow):
         return Continue(None, self.start)
 
 
+class Factored(Workflow):
+    """A machine whose seams live in private helpers, the way `research` factors them.
+
+    A leading underscore keeps a method out of state discovery, which is what makes it
+    a legal way to say a repeated turn once. The reader has to follow it anyway.
+    """
+
+    def start(self) -> Transition:
+        self._record()
+        return Continue(None, self.finish)
+
+    def finish(self) -> Transition:
+        self._ping()
+        return Done(None)
+
+    def _record(self) -> Report:
+        self.call(measure, "acme")
+        return self.agent("prompts/record.md", returns=Report)
+
+    # Mutually recursive on purpose: the scan must terminate and still reach the seam.
+    def _ping(self) -> None:
+        self._pong()
+
+    def _pong(self) -> None:
+        self._ping()
+        self.call(measure, "globex")
+
+
 def _graph(cls: type[Workflow]):
     return state_graph(cls)
 
@@ -139,6 +168,20 @@ def test_node_calls_and_prompt_paths_are_collected():
     assert graph.state("start").calls == ("measure",)
     assert graph.state("review").prompts == ("prompts/review.md",)
     assert graph.prompts() == (("review", "prompts/review.md"),)
+
+
+def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
+    graph = _graph(Factored)
+    assert graph.state("start").calls == ("measure",)
+    assert graph.state("start").prompts == ("prompts/record.md",)
+    # The helper is not a node of its own — nothing runs it but the state.
+    assert {node.name for node in graph.states} == {"start", "finish"}
+    # …and preflight therefore still checks the prompt exists.
+    assert graph.prompts() == (("start", "prompts/record.md"),)
+
+
+def test_helpers_that_call_each_other_do_not_loop_the_reader():
+    assert _graph(Factored).state("finish").calls == ("measure",)
 
 
 def test_an_alias_is_never_a_second_state():
@@ -204,11 +247,24 @@ def test_preflight_reports_a_transition_to_something_that_is_not_a_state():
 # ------------------------------------------------------------------------------ dot
 
 
+_SAMPLE: Registry | None = None
+
+
 def _sample_registry() -> Registry:
-    registry = Registry("acme").add_blueprints(bp)
-    registry.main(Sample)
-    registry.add_flows(orphan=Orphan)
-    return registry
+    """The one registry that owns `Sample`/`Orphan`, built once for the whole module.
+
+    Registering a class stamps its registry onto the class, and a second registry
+    claiming it raises — that guard is the point of `_claim`. So the registry has to be
+    a module-level singleton rather than rebuilt per test: four tests want it, and
+    whichever ran second used to fail depending on collection order.
+    """
+    global _SAMPLE
+    if _SAMPLE is None:
+        registry = Registry("acme").add_blueprints(bp)
+        registry.main(Sample)
+        registry.add_flows(orphan=Orphan)
+        _SAMPLE = registry
+    return _SAMPLE
 
 
 def test_registry_graphs_render_each_class_once_with_all_its_flow_names():
@@ -245,8 +301,17 @@ def test_dot_ids_are_flow_prefixed_so_two_flows_may_share_a_state_name():
 def test_dry_run_reports_problems_and_never_opens_a_run_dir():
     from workhorse.pyflow import run as pyflow_run
 
+    # Its own unreachable-state class, not the module-level `Orphan`: that one is
+    # already claimed by `_sample_registry()`, and a class belongs to one registry.
+    class Stranded(Workflow):
+        def start(self) -> Transition:
+            return Done(None)
+
+        def stranded(self) -> Transition:
+            return Done(None)
+
     registry = Registry("acme")
-    registry.main(Orphan)
+    registry.main(Stranded)
     calls: list[str] = []
     original = pyflow_run.registry_graphs
 
@@ -294,6 +359,63 @@ def test_dry_run_drives_the_machine_without_running_a_node():
     assert ran == [], "a dry run must not execute a node"
 
 
+def test_a_dry_run_records_which_stand_in_answered_each_seam():
+    """`events.jsonl` is the durable record, so it has to say more than "entered".
+
+    A seam a registered stand-in answered and one that fell back to a blank model look
+    identical in the log otherwise — and the difference is what tells the reader
+    whether the path the run took meant anything.
+    """
+    from workhorse.pyflow import run as pyflow_run
+
+    kit = Blueprint("marks")
+
+    @kit.node(stub=lambda logger: Report(verdict="stand-in"))
+    def declared_node(logger: Any) -> Report:
+        return Report(verdict="real")
+
+    @kit.node
+    def bare_node(logger: Any) -> Report:
+        return Report(verdict="real")
+
+    class Marked(Workflow):
+        def start(self) -> Transition:
+            self.call(declared_node)
+            self.call(bare_node)
+            self.agent("prompts/review.md", returns=Report)
+            self.agent("prompts/record.md", returns=Report)
+            return Done(None)
+
+    registry = Registry("acme").add_blueprints(kit)
+    registry.stub_agents({"review": {"verdict": "ok"}})
+    registry.main(Marked)
+    with tempfile.TemporaryDirectory() as tmp:
+        prompts = Path(tmp) / "prompts"
+        prompts.mkdir()
+        (prompts / "review.md").write_text("hi")
+        (prompts / "record.md").write_text("hi")
+        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        runs = Path(tmp) / "runs"
+        code = pyflow_run.run_pyflow(registry, runs_dir=runs, dry_run=True)
+        lines = (runs / "acme-dry-run" / "events.jsonl").read_text().splitlines()
+
+    assert code == 0
+    events = [json.loads(line) for line in lines]
+    # A state's own enter event is not a seam — it carries `waiting_on`, where a node
+    # carries its blueprint and an agent turn its prompt.
+    entered = {
+        e["node"]: e.get("stub")
+        for e in events
+        if e.get("phase") == "enter" and ("blueprint" in e or "prompt" in e)
+    }
+    assert entered == {
+        "declared_node": "declared",
+        "bare_node": "blank",
+        "review": "declared",
+        "record": "blank",
+    }, entered
+
+
 def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
     from workhorse.pyflow import run as pyflow_run
 
@@ -326,11 +448,23 @@ class Halts(Workflow):
         raise WorkflowFailed("budget exhausted")
 
 
+_HALTING: Registry | None = None
+
+
+def _halting_registry() -> Registry:
+    """One registry for `Halts`, for the same reason `_sample_registry` is a singleton."""
+    global _HALTING
+    if _HALTING is None:
+        registry = Registry("acme").add_blueprints(bp)
+        registry.main(Halts)
+        _HALTING = registry
+    return _HALTING
+
+
 def _run_halting(*, dry_run: bool) -> tuple[int, str]:
     from workhorse.pyflow import run as pyflow_run
 
-    registry = Registry("acme").add_blueprints(bp)
-    registry.main(Halts)
+    registry = _halting_registry()
     out = io.StringIO()
     with tempfile.TemporaryDirectory() as tmp:
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]

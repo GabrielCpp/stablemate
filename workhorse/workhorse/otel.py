@@ -530,14 +530,20 @@ class _Telemetry:
         Spans export only on completion, so these gauges are the only telemetry that
         reaches a collector while a node is still open — which is exactly when a
         monitor wants to show what the run is doing. So the two label dimensions a
-        dashboard renders (``wf.activity``, ``wf.work_id``) ride the gauges too, and
-        only those two, to keep metric attribute cardinality bounded. ``self._labels``
-        is rebound wholesale by ``set_labels``, so reading it without the lock sees a
-        consistent old-or-new dict, never a torn one.
+        dashboard renders (*activity*, *work_id*) ride the gauges too, and only those
+        two, to keep metric attribute cardinality bounded. ``self._labels`` is rebound
+        wholesale by ``set_labels``, so reading it without the lock sees a consistent
+        old-or-new dict, never a torn one.
+
+        Both spellings are promoted because the two engines name them differently: the
+        YAML engine prefixes every workflow label with ``wf.`` so a workflow cannot
+        shadow an OTel convention, while ``pyflow`` leaves them raw. Each engine's own
+        key rides as-is — nothing is translated on the way out, so a collector reading
+        one spelling never has to guess which engine produced it.
         """
         attrs: dict[str, str] = {"node": node_id}
         labels = self._labels
-        for key in ("wf.activity", "wf.work_id"):
+        for key in ("wf.activity", "wf.work_id", "activity", "work_id"):
             value = labels.get(key)
             if value:
                 attrs[key] = value

@@ -217,8 +217,56 @@ class ExtendResult(ResearchResult):
     moves_closer: str = ""
 
 
+# ── a state parameter ───────────────────────────────────────────────────────
+
+
+class Budget(BaseModel):
+    """The loop's three counters, travelling as one parameter.
+
+    The narrow exception to the rule at the top of this module. It is not a *payload*
+    — not the data a state works on, gathered into a bag so the signature stays short.
+    It is one value that happens to be composite: the three counters are always
+    carried together, almost always by states that have no opinion about any of them,
+    and are only ever read against the `MAX_*` caps. As three parameters they put
+    `lead_reviews=0, extensions=0` on eleven signatures and every call site between
+    them; as one they appear where they are spent.
+
+    Frozen, and the bumps return a new instance. A state parameter *is* the
+    checkpoint, which was written before the state ran — mutating one in place would
+    advance a counter the checkpoint still records at its old value, so a resume would
+    silently un-count it.
+
+    Its JSON projection is what lands in `checkpoint.json`, one readable object under
+    `params.budget`; the driver validates it back into a `Budget` on the way in.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Re-check attempts on the gate currently in flight. Per-gate, not per-run:
+    #: `implement` clears it, which is where the YAML's `reset_rework` node stood.
+    reworks: int = 0
+    #: Research-lead reviews of a killed gate, across the whole run.
+    lead_reviews: int = 0
+    #: Program self-extensions, across the whole run.
+    extensions: int = 0
+
+    def fresh_gate(self) -> Budget:
+        """Entering a new gate's experiment: its rework attempts start over."""
+        return self.model_copy(update={"reworks": 0})
+
+    def reworked(self) -> Budget:
+        return self.model_copy(update={"reworks": self.reworks + 1})
+
+    def reviewed(self) -> Budget:
+        return self.model_copy(update={"lead_reviews": self.lead_reviews + 1})
+
+    def extended(self) -> Budget:
+        return self.model_copy(update={"extensions": self.extensions + 1})
+
+
 __all__ = [
     "AntiShortcutFlags",
+    "Budget",
     "ExtendResult",
     "FailedCriterion",
     "GateCheck",

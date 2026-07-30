@@ -1,17 +1,17 @@
 """End-to-end drives of the `research` state machine (`research/workflow.py`).
 
-Nothing is stubbed except the agent turn. `clone_repo`, `load_program` and
+Nothing is substituted except the agent turn and the clone. `load_program` and
 `publish_results` run for real against a temporary git repo built by
 :func:`_program_repo`, so a run here exercises manifest parsing, the `Program`
-`setup()` residue every state reads, and a real commit onto the result branch. Only
-:func:`workhorse_workflows.kit.allow_all_directories` is neutered, because it writes to
-the developer's **global** git config; and `push_to_origin` is left alone precisely
-because it fails on a repo with no origin, which is the soft-failure path publishing
-promises.
+`setup()` residue every state reads, and a real commit onto the result branch.
+`push_to_origin` is left alone precisely because it fails on a repo with no origin,
+which is the soft-failure path publishing promises.
 
-The agent seam is patched where the engine reads it
-(`workhorse.pyflow.engine.agent_runner.run_agent`) and replies come from a per-prompt
-script, so each test is a stated *path* through the machine.
+Both substitutions are **supplied**, not patched: a run's node index and its agent
+backend are fields of `RunEnv`, so `_env` hands over a scripted agent and a
+`clone_repo` bound to the temp repo, and nothing here assigns over a module attribute
+it then has to remember to restore. Replies come from a per-prompt script, so each
+test is a stated *path* through the machine.
 
 What is under test is the loop's arithmetic. The YAML this replaces held three counters
 in six scripts and nine nodes, with the caps duplicated as branch literals kept in sync
@@ -22,7 +22,6 @@ guards read them. `test_the_rework_cap_...` is what that buys: the cap is assert
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import tempfile
 from collections import Counter
@@ -33,12 +32,11 @@ from unittest.mock import patch
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import engine as pyflow_engine
-from workhorse.pyflow.driver import drive
+from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows.research import workflow as research
-from workhorse_workflows.research.schemas import RecordResult
+from workhorse_workflows.research.schemas import RecordResult, RepoSetup
 
 PROGRAM_DIR = "programs/alpha"
 
@@ -100,16 +98,32 @@ class _Agent:
         return Counter(self.calls)
 
 
-def _env(tmp: Path) -> RunEnv:
-    writer = ArtifactWriter("research", tmp / "runs", run_id="t")
+def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
+    """The run's dependencies, handed over rather than patched in.
+
+    `run_agent` and the node index are fields of `RunEnv`, which is the whole point of
+    the registry being a composition root: the scripted agent and the substituted clone
+    are *inputs to this run*, so they cannot leak into another test and there is nothing
+    to restore afterwards.
+    """
+    writer = ArtifactWriter("research", root / "runs", run_id="t")
     return RunEnv(
         writer=writer,
         # Where the engine would render prompts from. No prompt is rendered here (the
-        # agent seam is patched above it), but the real directory keeps the paths in
-        # the recorded steps honest.
+        # scripted agent stands in for the turn), but the real directory keeps the paths
+        # in the recorded steps honest.
         workflow_dir=Path(research.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
         config=RunConfig(backend_factory=lambda cli=None: None),
+        run_agent=agent,
+        # In-place mode — what `clone_repo` does when a checkout is already in front of
+        # it — is this return plus `allow_all_directories()`, which writes
+        # `safe.directory=*` into the developer's **global** git config. That is the
+        # container's bind-mount concession, and not something a test may do to a
+        # laptop; the override is the half that is the behaviour.
+        nodes=research.workflow.override(
+            clone_repo=lambda logger: RepoSetup(repo_dir=str(repo))
+        ),
     )
 
 
@@ -125,19 +139,10 @@ def _drive(script: dict[str, list[dict[str, Any]]]) -> tuple[Any, WorkflowFailed
         agent = _Agent(script)
         result: Any = None
         error: WorkflowFailed | None = None
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = agent
         try:
-            with patch.dict(os.environ, {"AGENT_REPO_DIR": str(repo)}):
-                # Writes `safe.directory=*` into ~/.gitconfig — the container's
-                # bind-mount concession, and not something a test may do to a laptop.
-                with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
-                    try:
-                        result = drive(research.Research(program=PROGRAM_DIR), _env(root))
-                    except WorkflowFailed as exc:
-                        error = exc
-        finally:
-            pyflow_engine.agent_runner.run_agent = real
+            result = drive(research.Research(program=PROGRAM_DIR), _env(root, repo, agent))
+        except WorkflowFailed as exc:
+            error = exc
         return result, error, agent
 
 
@@ -359,17 +364,85 @@ def test_the_checkpoint_carries_the_counters_an_operator_would_edit():
         )
 
     checks = [cp for cp in seen if cp["state"] == "check_gate"]
-    # `bind_params` stores the arguments the transition actually passed, so a counter
-    # left to its default is *absent* rather than written as 0 — `implement` says
-    # nothing about `reworks`, which is the whole of what `reset_rework` used to do,
-    # and the signature re-supplies the 0 on resume. Once `rework` starts counting,
-    # the number is on disk where an operator can change it.
-    assert [cp.get("reworks", 0) for cp in checks] == [0, 1], checks
-    assert "reworks" not in checks[0], checks[0]
-    assert checks[1]["reworks"] == 1, checks[1]
+    # The counters travel as one `Budget`, and the checkpoint holds its JSON projection
+    # — a legible object under `params.budget`, not a repr the operator has to decode.
+    # `implement` hands `check_gate` a `fresh_gate()` budget, which is the whole of what
+    # the YAML's `reset_rework` node did; `rework` then counts on top of it.
+    assert [cp["budget"]["reworks"] for cp in checks] == [0, 1], checks
+    assert checks[0]["budget"] == {"reworks": 0, "lead_reviews": 0, "extensions": 0}
     # And it is plain JSON: every transition parameter is a str/int/list/dict, which
-    # is what lets `coerce_params` revalidate it back into `list[FailedCriterion]`.
+    # is what lets `coerce_params` revalidate it back into a `Budget` and a
+    # `list[FailedCriterion]` on the way in.
     json.dumps(seen)
+
+
+def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
+    """The other half, and the one serialising alone cannot prove.
+
+    `Budget` leaves as JSON and has to come back as a *model*: `check_gate` reads
+    `budget.reworks`, so a resume that handed it the raw dict would fail on an
+    attribute rather than on the science. The checkpoint used here is the one the
+    engine really wrote, taken through `json.dumps` and `read_resume` exactly the way
+    a relaunch takes it off disk — resumed one rework short of the cap, so the count
+    it carries is what decides how much run is left.
+    """
+    seen: list[dict[str, Any]] = []
+    real_write = ArtifactWriter.write_state_checkpoint
+
+    def capture(self: Any, state: str, params: dict[str, Any], **kwargs: Any) -> Any:
+        seen.append({"engine": "pyflow", "state": state, "params": params, **kwargs})
+        return real_write(self, state, params, **kwargs)
+
+    reworking = {
+        "gate-check": [{"status": "rework", "notes": "again"}],
+        "rework-experiment": [{"status": "done"}],
+        "record-result": [{"status": "ok"}],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = _program_repo(root)
+        first = _Agent(
+            {
+                "select-next-gate": [{"gate_id": "G1", "gate_doc_path": "g.md"}],
+                "implement-experiment": [{"status": "done"}],
+                **reworking,
+            }
+        )
+        with (
+            patch.object(ArtifactWriter, "write_state_checkpoint", capture),
+            patch.object(research, "MAX_REWORKS", 2),
+        ):
+            try:
+                drive(research.Research(program=PROGRAM_DIR), _env(root, repo, first))
+            except WorkflowFailed:
+                pass  # the cap; this run exists only to write the checkpoints
+
+        mid = json.loads(json.dumps([c for c in seen if c["state"] == "check_gate"][1]))
+        assert mid["params"]["budget"] == {
+            "reworks": 1,
+            "lead_reviews": 0,
+            "extensions": 0,
+        }, mid
+
+        second = _Agent(dict(reworking))
+        resume = read_resume(mid)
+        with patch.object(research, "MAX_REWORKS", 2):
+            try:
+                drive(
+                    research.Research(**resume.inputs),
+                    _env(root, repo, second),
+                    resume,
+                )
+            except WorkflowFailed as exc:
+                error: WorkflowFailed | None = exc
+            else:
+                raise AssertionError("expected the rework cap to halt the resumed run")
+
+    assert research.FAIL_MAX_REWORKS in str(error), error
+    # One more rework and no gate selection: the resumed run picked the count up where
+    # the checkpoint left it rather than starting the gate over at zero.
+    assert second.counts()["rework-experiment"] == 1, second.counts()
+    assert second.counts()["select-next-gate"] == 0, second.counts()
 
 
 def test_publishing_commits_the_gate_onto_the_result_branch():
@@ -387,14 +460,7 @@ def test_publishing_commits_the_gate_onto_the_result_branch():
         # A gate's product: something for publish to find and commit.
         (repo / PROGRAM_DIR / "PROGRESS.md").write_text("G1: PASS\n")
 
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = agent
-        try:
-            with patch.dict(os.environ, {"AGENT_REPO_DIR": str(repo)}):
-                with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
-                    drive(research.Research(program=PROGRAM_DIR), _env(root))
-        finally:
-            pyflow_engine.agent_runner.run_agent = real
+        drive(research.Research(program=PROGRAM_DIR), _env(root, repo, agent))
 
         assert "alpha/auto" in _branches(repo), _branches(repo)
         log = subprocess.run(

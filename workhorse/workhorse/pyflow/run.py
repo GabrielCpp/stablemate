@@ -22,7 +22,7 @@ from workhorse import logsetup, otel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow.driver import Resume, drive, read_resume
-from workhorse.pyflow.engine import RunEnv
+from workhorse.pyflow.engine import RunEnv, stub_nodes
 from workhorse.pyflow.errors import PyflowError, WorkflowFailed
 from workhorse.pyflow.graph import preflight, registry_graphs
 from workhorse.pyflow.registry import Registry
@@ -93,6 +93,11 @@ def run_pyflow(
         session_id_path=writer.run_dir / ".session_id",
         config=config,
         dry_run=dry_run,
+        # The composition root, handed to the run as a dependency: `self.call` runs
+        # what this index holds, so a dry run is the same code path over a substituted
+        # index rather than a branch inside the engine.
+        nodes=stub_nodes(registry.nodes) if dry_run else registry.nodes,
+        agent_stubs=registry.agent_stubs if dry_run else None,
         # Anchored to the run's ORIGINAL start, restored from run.json, so a resume
         # continues one budget rather than granting a fresh one every relaunch.
         deadline=runtime_deadline(writer.started_at, config.max_runtime_s),
@@ -121,15 +126,17 @@ def run_pyflow(
             # — lands here. The run dir is left resumable on purpose: these are the
             # failures an operator fixes and continues from.
             agent_runner.terminate_active()
-            if dry_run and isinstance(exc, WorkflowFailed):
-                # …with one exception. A fail terminal reached under `--dry-run` is an
-                # artifact of the stand-in values, not a verdict on the workflow: every
-                # agent reply is a blank model, so the machine takes whichever branch a
-                # blank selects, and any workflow with a reachable fail terminal can be
-                # walked into one. Report which state halted and exit 0 — the same
-                # reasoning the branch below already uses to decline reading a real
-                # failure into a stand-in. The run dir is still marked `fail`, because
-                # the machine really did end there; it is the *check* that passed.
+            if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
+                # …with one exception, and only while the workflow declares no
+                # stand-ins. Undeclared, every agent reply is a blank model, so the
+                # machine takes whichever branch a blank selects and any workflow with
+                # a reachable fail terminal can be walked into one — reading that as a
+                # verdict would mean no such workflow could dry-run green. A workflow
+                # that declares `stub_agents({...})` has *said* what the happy path
+                # answers, so reaching a fail terminal anyway is a real finding and
+                # falls through to the exit-1 path below. The run dir is still marked
+                # `fail` either way, because the machine really did end there; here it
+                # is the *check* that passed.
                 print(
                     f"[workhorse] dry-run reached the fail terminal in "
                     f"'{_state_of(writer)}': {exc}"
@@ -159,7 +166,7 @@ def run_pyflow(
         # rather than silently open; end_run is idempotent, so the normal paths win.
         otel.end_run("aborted", error="run aborted before finalize")
 
-    verdict = "dry-run ok — no node ran" if dry_run else "done"
+    verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
     otel.end_run("terminal")
     return 0
