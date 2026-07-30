@@ -61,9 +61,12 @@ from workhorse_workflows.coder.schemas.genesis import (
 from workhorse_workflows.coder.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.schemas.qa import (
     BacklogDrain,
+    FailureAttribution,
     QaCleared,
     QaPlanValidation,
     QaResult,
+    RegressionPlatform,
+    RegressionRun,
     ScreenshotFlush,
     StackStatus,
 )
@@ -94,6 +97,7 @@ __all__ = [
     "DocumentationGate",
     "DocumentationResult",
     "DocumentationReview",
+    "FailureAttribution",
     "FarrierInstall",
     "Feedback",
     "FixCiResult",
@@ -118,6 +122,8 @@ __all__ = [
     "QaResult",
     "QaRunEntry",
     "ReflectionResult",
+    "RegressionPlatform",
+    "RegressionRun",
     "ReuseResult",
     "ReviewContext",
     "ReviewResult",

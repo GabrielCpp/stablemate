@@ -12,6 +12,8 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `docs` — is there an OKF book, how can its diff be read, and does the update hold
 * `okf` — the diff-to-OKF obligation packet, shared by `docs` and `qa`
 * `qa` — clear the evidence, bring the stack up, validate the plan, run it
+* `evidence` — the gate that fails closed: is the claimed pass backed by checkable proof
+* `regression` — which committed journey suites this story touched, and how they ran
 * `backlog` — drain separate-scope discoveries back out to the author
 * `hygiene` — the two pre-commit gates: stray screenshots, and sentinel IDs
 
@@ -58,6 +60,7 @@ from workhorse_workflows.coder.nodes.docs import (
     verify_story_documentation,
 )
 from workhorse_workflows.coder.nodes.dream import gather_run_evidence, record_improvements
+from workhorse_workflows.coder.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.nodes.genesis import (
     genesis_git_init,
     init_skeleton,
@@ -73,6 +76,10 @@ from workhorse_workflows.coder.nodes.qa import (
     ensure_stack,
     run_qa_plan,
     validate_qa_plan,
+)
+from workhorse_workflows.coder.nodes.regression import (
+    detect_regression_platform,
+    run_regression_suite,
 )
 from workhorse_workflows.coder.nodes.review import (
     check_feedback,
@@ -94,6 +101,7 @@ __all__ = [
     "classify_documentation_context",
     "clear_qa_evidence",
     "detect_okf_docs",
+    "detect_regression_platform",
     "ensure_stack",
     "file_backlog_items",
     "flush_root_screenshots",
@@ -113,6 +121,7 @@ __all__ = [
     "resolve_workspace_dirs",
     "run_lint",
     "run_qa_plan",
+    "run_regression_suite",
     "select_ci_repo",
     "select_next_layer",
     "stamp_specs",
@@ -120,6 +129,7 @@ __all__ = [
     "validate_okf_context",
     "validate_plan_context",
     "validate_qa_plan",
+    "verify_qa_evidence",
     "verify_review_resolution",
     "verify_story_documentation",
     "write_agents_yml",
