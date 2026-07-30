@@ -110,11 +110,68 @@ class ScreenshotFlush(CoderResult):
     notes: str = ""
 
 
+class RegressionPlatform(CoderResult):
+    """`detect-regression-platform.py` — which committed suites, if any, this plan touched.
+
+    `platform` defaults to `none` because the script fails **open**: an unreadable
+    plan-context skips the regression step rather than blocking a story that may not have a
+    UI at all. That is the opposite default from every gate in this module, and deliberate —
+    this is a router, not a verdict.
+    """
+
+    platform: str = "none"
+    layers: list[str] = []
+    paths: list[str] = []
+
+
+class FailureAttribution(CoderResult):
+    """Which OKF node, if any, claims to verify a failing regression test.
+
+    Diagnostic only. `classification` is `impacted` (a node this story changed verifies
+    it), `outside-impact` (some other node does) or `unattributed` (the OKF
+    `verificationIndex` names no owner) — and none of the three weakens the gate: a
+    regression failure is the story's fix work whichever bucket it lands in.
+    """
+
+    test: str = ""
+    path: str = ""
+    classification: str = ""
+    nodes: list[str] = []
+
+
+class RegressionRun(CoderResult):
+    """`run-regression-suite.py` — the committed journey suites' own verdict.
+
+    `status` defaults to `passed`, which reads wrong for a gate until you see what the
+    script means by it: every "nothing to run" path — no Makefile, no `e2e-journeys`
+    target, no `maestro_flows/`, an unknown platform — is a *skip*, and a skip is `passed`.
+    A repo with no regression suite is not a repo that failed one. Only a real non-zero
+    suite exit is `failed`, and only an unreachable stack or emulator is `blocked`.
+
+    The script emitted this twice — once as `regression_run` and once, status and notes
+    only, as `qa_result` — so the shared `blocked → setup_fix` loop would pick it up.
+    `as_qa_result()` is that mirror, made explicit and defined once.
+    """
+
+    status: str = "passed"
+    failing_tests: list[str] = []
+    log_path: str = ""
+    notes: str = ""
+    failure_attribution: list[FailureAttribution] = []
+
+    def as_qa_result(self) -> QaResult:
+        """The story's running verdict, as the YAML's duplicated `qa_result` key had it."""
+        return QaResult(status=self.status, notes=self.notes)
+
+
 __all__ = [
     "BacklogDrain",
+    "FailureAttribution",
     "QaCleared",
     "QaPlanValidation",
     "QaResult",
+    "RegressionPlatform",
+    "RegressionRun",
     "ScreenshotFlush",
     "StackStatus",
 ]

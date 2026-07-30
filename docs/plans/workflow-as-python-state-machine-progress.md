@@ -50,8 +50,8 @@ Next is **`coder`**, where `self.output(node)` and the three-tier state rule mee
 stages**, each green and committed on its own: **A** the package foundation plus the three small
 sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — done; **C** `qa`
 (91 nodes), which inherits `nodes/okf.py` and `ostler_qa.py` from B2 and is itself in three —
-**C1** the node layer (done), **C2** the evidence and regression gates, **C3** the graph and its
-tests; **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
+**C1** the node layer (done), **C2** the evidence and regression gates (done), **C3** the graph
+and its tests; **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
 parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate
 is D, not A.
 
@@ -81,6 +81,7 @@ is D, not A.
 | 5 | `a62e3fb` | `coder` **stage B1** — the `dev` sub-flow (35 YAML nodes → 13 states) and the story spine (`nodes/story.py`) it shares with the main graph. 16 end-to-end tests. No driver change |
 | 6 | `0d8c7e0` | `coder` **stage B2** — the `review` sub-flow (22 YAML nodes → 9 states) and `docs` (23 → 4), plus `nodes/okf.py` and `ostler_qa.py`, both shared with `qa` in stage C. 25 end-to-end tests. No driver change |
 | 7 | `572a231` | `coder` **stage C1** — the `qa` sub-flow's node layer: `schemas/qa.py` and `nodes/{qa,backlog,hygiene}.py`, 7 nodes ported from 6 scripts. Parity checked differentially against the scripts themselves. No driver change |
+| 8 | `5470484` | `coder` **stage C2** — the QA evidence gate and the regression pair: `nodes/{evidence,regression}.py` and 3 models, 3 nodes from 933 script lines. 31 differential comparisons, all identical first run. No driver change |
 
 ### Parity — `author`
 
@@ -302,6 +303,69 @@ against a **recorded run of the original**, not against a node-by-node reading o
   through a transition yet, and the four node modules have no flow test until then. `ensure_stack`
   and `run_qa_plan` shell out to docker and ostler and were **not** exercised in the differential
   run; their parity claim is owed in C3 and is not made here.
+
+### Parity — `coder`, stage C2 (the evidence and regression gates)
+
+Three scripts, 933 lines, and the two gates C1 said it was not making a claim about. Same method
+as C1 and a wider one: **31 differential comparisons**, each running the YAML script and the ported
+node against the same throwaway git repo and comparing every field. All 31 agreed on the first
+run, with no adjustment to either side.
+
+- **The gate that fails closed now has its evidence.** `verify_qa_evidence.py` is 510 lines of
+  accumulating checks and the only place in the QA flow where "I could not evaluate this" is
+  itself a problem. Thirteen cases were run head to head: the three passthrough statuses, no
+  `spec_dir`, a missing evidence file, unparsable JSON, the un-modeled-surface admission (both
+  with and without a clean run log), a clean single-criterion pass, one case exercising **all four
+  criterion kinds** with every sub-check failing at once (divergent parity row, unverdicted row,
+  non-existent row evidence, `persisted:false`, `bled_to_others:true`, a missing transient proof,
+  an outright `fail` verdict, an unknown `kind`), the four machine files all missing at once with
+  an incoherent `runId`, the OKF-obligation checks, and the `visual_fidelity` reports. Both engines
+  produce **the same status and the same multi-line problem list in the same order** every time.
+  Order matters here and was the thing most at risk: the note is one joined list, so a helper
+  split that reordered the checks would read as a passing port and ship a different gate.
+- **The one case that let the real ostler run agreed too.** `Ostler.artifact_vet` is stubbed for
+  twelve of the thirteen cases so the comparison is about the gate's logic rather than about
+  whether a temp repo has a loadable book. The thirteenth leaves it unstubbed, and both sides emit
+  the identical `[ostler] qa-evidence validation could not run (…)` problem — which is the branch
+  that matters most, since it is the one that turns an unavailable contract into a rejection
+  rather than a silent pass.
+- **The evidence gate roots ostler at the repo, and that disagreement was kept.** Every other
+  helper in `ostler_qa.py` roots at `find_docs_root(docs_path)`; this one at `find_repo_root()`,
+  because the artifact it vets is resolved against the repo. `artifact_vet` therefore takes `root`
+  as a keyword instead of inheriting the module's convention. Harmonizing it would have been
+  invisible on a single-checkout run and would have vetted nothing on a docs checkout.
+- **The regression pair fails open, and stays that way.** `detect-regression-platform.py` returns
+  `none` for an unreadable plan-context — the opposite default from every gate around it, and
+  correct, because it is a router and a story with no UI must not be blocked by a file it had no
+  reason to write. Six cases (services→web/mobile/both/none, the legacy flat `touched_layers`
+  fallback with its deliberately narrower map, and a missing plan-context) agree exactly, paths
+  and layers included.
+- **"Nothing to run" is `passed`, verified on both sides.** `run-regression-suite.py` treats a
+  missing `Makefile`, a missing `e2e-journeys` target, an absent or flow-less `maestro_flows/` and
+  an unknown platform as skips — a repo with no regression suite has not failed one — while
+  keeping `blocked` for the case that looks similar and is not: the plan names a web service and
+  no web repo resolves in the workspace. Six cases cover skip, unresolved-repo, the `both` merge
+  of one skip against one unresolved, and the two nothing-to-run platforms; all agree, including
+  the merged `" | "`-joined notes and the worst-status-wins rule. The real subprocess paths
+  (`make e2e-journeys`, `maestro test`) are **not** exercised — see "Not demonstrated".
+- **The duplicated `qa_result` key became a method, not a second return.** The script printed its
+  verdict twice, once as `regression_run` and once trimmed to status/notes as `qa_result`, so the
+  shared `blocked → guard_setup → setup_fix` loop would pick it up. A node returns one model, so
+  the mirror is `RegressionRun.as_qa_result()`, called at the flow's transition site in C3. The
+  differential run compares **both** outputs — the model against `regression_run`, and
+  `as_qa_result()` against the script's `qa_result` — for all six cases, so the mirror is checked
+  rather than assumed.
+- **One narrowing avoided by reading the exception list.** `detect-regression-platform.py` carried
+  a private `_load_json` catching `(FileNotFoundError, json.JSONDecodeError, OSError)` and
+  returning `{}`. That is `scriptutil.load_json`'s behavior exactly, so the node uses the engine's
+  copy; only the diagnostic's channel changes, which is the established `[script-name]`-prefix
+  rule. Had the tuples differed, the private one would have had to stay.
+- **Not demonstrated:** the two subprocess arms of the regression runner (a real `make
+  e2e-journeys` and a real `maestro test`, including the Playwright failure-line regex and the
+  timeout→`blocked` path) — neither tool is available here, and the failure-parsing branches are
+  reached only by a genuinely failing suite. The regexes are ported byte-identical and the
+  surrounding classification is covered, but the claim stops there. Also still owed from C1 and
+  not made here: `ensure_stack` and `run_qa_plan`, which shell out to docker and ostler.
 
 ## Findings for loop 2
 

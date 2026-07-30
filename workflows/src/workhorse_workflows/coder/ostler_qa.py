@@ -13,7 +13,9 @@ YAML engine's way of getting a fresh `ostler` into a subprocess per node — is 
 now, because nodes run in the engine's process and there is nothing to purge.
 
 Library code, not nodes: `qa_context` and `qa_context_validate` back `nodes/okf.py`, which
-`docs` and `qa` share; `qa_validate` and `qa_run` back the QA flow's plan gate and runner.
+`docs` and `qa` share; `qa_validate` and `qa_run` back the QA flow's plan gate and runner;
+`artifact_vet` backs the evidence gate, which is the only caller that roots ostler at the
+repo rather than the docs tree.
 """
 from __future__ import annotations
 
@@ -99,6 +101,27 @@ def qa_run(
     return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
+def artifact_vet(
+    kind: str, spec_dir: str, *, root: Path
+) -> tuple[int, dict[str, Any], str]:
+    """`ostler artifact vet` → the outcome dict; rc=1 when it reports problems.
+
+    `root` is the **repo** root, not the docs root, which is the one place in this module
+    that is true — `verify_qa_evidence.py` built its `Ostler` from `find_repo_root()` and
+    the artifact it vets (`<spec_dir>/qa-evidence.json`) is resolved against that. Kept as
+    the script had it rather than harmonized with the other four helpers, because the two
+    roots differ on a docs checkout and the gate would then vet nothing.
+
+    A contract that cannot be evaluated cannot validate a pass, so the caller treats a
+    non-empty `stderr` as a problem in its own right rather than as an absence of problems.
+    """
+    try:
+        vetted = okf(root).artifact_vet(kind, spec_dir)
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        return 1, {}, str(exc)
+    return (1 if vetted.get("problems") else 0), vetted, ""
+
+
 def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
     """Concise routing notes off the packet, keeping the deterministic diagnostics."""
     for key in ("notes", "message", "problems", "errors", "healthFindings"):
@@ -111,6 +134,7 @@ def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
 
 
 __all__ = [
+    "artifact_vet",
     "notes_for",
     "okf",
     "parse_source_roots",
