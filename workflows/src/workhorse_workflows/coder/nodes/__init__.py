@@ -16,6 +16,7 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `regression` — which committed journey suites this story touched, and how they ran
 * `backlog` — drain separate-scope discoveries back out to the author
 * `hygiene` — the two pre-commit gates: stray screenshots, and sentinel IDs
+* `queue` — the main graph's spine: which epic, which story, on what branch, what it recorded
 
 Ported from `base-library/workflows/coder/scripts/`. The same three things change as in
 `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a
@@ -77,6 +78,17 @@ from workhorse_workflows.coder.nodes.qa import (
     run_qa_plan,
     validate_qa_plan,
 )
+from workhorse_workflows.coder.nodes.queue import (
+    branch_epic,
+    branch_story,
+    commit_story,
+    flag_epic_blocked,
+    flag_qa_failure,
+    init_base,
+    prune_epic,
+    select_epic,
+    select_story,
+)
 from workhorse_workflows.coder.nodes.regression import (
     detect_regression_platform,
     run_regression_suite,
@@ -95,21 +107,28 @@ from workhorse_workflows.coder.nodes.story import (
 __all__ = [
     "blueprint",
     "branch_code_repos",
+    "branch_epic",
+    "branch_story",
     "build_okf_context",
     "check_feedback",
     "check_sentinel_ids",
     "classify_documentation_context",
     "clear_qa_evidence",
+    "commit_story",
     "detect_okf_docs",
     "detect_regression_platform",
     "ensure_stack",
     "file_backlog_items",
+    "flag_epic_blocked",
+    "flag_qa_failure",
     "flush_root_screenshots",
     "gather_run_evidence",
     "genesis_git_init",
+    "init_base",
     "init_skeleton",
     "install_farrier",
     "poll_pr_checks",
+    "prune_epic",
     "prepare_story",
     "push_ci_fix",
     "push_epic_branch",
@@ -123,7 +142,9 @@ __all__ = [
     "run_qa_plan",
     "run_regression_suite",
     "select_ci_repo",
+    "select_epic",
     "select_next_layer",
+    "select_story",
     "stamp_specs",
     "validate_genesis",
     "validate_okf_context",

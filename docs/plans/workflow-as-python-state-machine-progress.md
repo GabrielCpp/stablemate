@@ -83,6 +83,7 @@ is D, not A.
 | 7 | `572a231` | `coder` **stage C1** — the `qa` sub-flow's node layer: `schemas/qa.py` and `nodes/{qa,backlog,hygiene}.py`, 7 nodes ported from 6 scripts. Parity checked differentially against the scripts themselves. No driver change |
 | 8 | `d4ab851` | `coder` **stage C2** — the QA evidence gate and the regression pair: `nodes/{evidence,regression}.py` and 3 models, 3 nodes from 933 script lines. 31 differential comparisons, all identical first run. No driver change |
 | 9 | `a7ec0da` | `coder` **stage C3** — the `qa` graph: 91 YAML nodes → 25 states around one `QaLoop` carrier, plus the 17 prompts B2 and C3 reference. 26 end-to-end tests. No driver change |
+| 10 | (this commit) | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
 
 ### Parity — `author`
 
@@ -418,6 +419,37 @@ against its script — but **26 end-to-end tests through the real driver**
   C2), and `stamp_specs` against a book with a real id ledger — it runs for real here, but on a temp
   repo whose ostler book is empty, so only the no-op and single-spec paths are covered.
 
+### Parity — `coder`, stage D1 (the queue spine)
+
+Stage D lands in four: **D1** the queue spine (here), **D2** the PR/CI/merge and backlog nodes,
+**D3** the `fix` flow and its tests, **D4** the main graph, the entry points and the
+workflow-level parity record. D1 has no graph to drive, so the claim here is node-level, made
+the same way C1's was — every script read end to end against its port.
+
+- **Nine scripts, nine nodes, and the mapping is one-to-one.** `init-base` → `init_base`,
+  `branch-story` → `branch_story`, `select-next-epic` → `select_epic`, `branch-epic` →
+  `branch_epic`, `select-next-story` → `select_story`, `flag-epic-blocked` →
+  `flag_epic_blocked`, `prune-epic` → `prune_epic`, `commit-story` → `commit_story`,
+  `flag-qa-failure` → `flag_qa_failure`. No collapses and no splits: these are the states the
+  main graph steps through between sub-flows, so each is already at state granularity.
+- **The tri-state survives, and it is the one that matters.** `select_story` returns
+  `story_outcome` (`story` | `done` | `blocked`) as a string defaulting to `blocked`, per the
+  rule `schemas/ci.py` settled. This is the field whose conflation merged an epic with 20 of 21
+  stories unbuilt; every one of the eight "no story" exits keeps its own distinct `reason`
+  string, quoted from the script.
+- **Every legacy fallback is ported intact.** `epics-todo.json` in `select_epic` and
+  `prune_epic`, `dependencies.json` with all four of its sentinels in `select_story`, and
+  `prune_epic`'s explicit-sidecar precedence — none was narrowed, including the sidecar argument
+  no graph passes.
+- **The only non-zero exit becomes the only raise.** `branch-epic.py` printed `{"error": …}` and
+  exited 1 on a failed checkout; `branch_epic` raises `WorkflowFailed` with the same message.
+  Every other script's `emit(...)`/`sys.exit(0)` is a returned model.
+- **`SPEC_DIR` was dead configuration, and is now a parameter.** `branch-story.py` read the spec
+  dir from `os.environ.get("SPEC_DIR", …)`; nothing in the workflow set it, so the default was
+  the behavior. It is a defaulted argument now — same behavior, visible at the callsite.
+- **Not demonstrated:** any of these under the main graph, which does not exist until D4. The
+  `flag_qa_failure` PR comment reaches GitHub and is seamed, as everywhere else in this port.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -441,6 +473,22 @@ or something it left stranded.
 - **Stranded by this port:** both `await-operator.py` copies (280 lines of ctypes inotify each),
   `init_counter.py`/`incr_counter.py` (the counter is a state parameter now), and the unreferenced
   `board.py`, `checkout-workspace.py`, `gh-token.py`.
+- **`commit-multi-repo.py` and `branch-multi-repo.py` are referenced by no graph, and were already
+  dead before this port.** Grepping the whole tree turns up exactly two references each — a test
+  (`base-library/workflows/coder/tests/test_multi_repo_git.py`) and a doc (`docs/multi-repo.md`) —
+  and no workflow node. `commit-story.py` and `branch-story.py` do the multi-repo work the names
+  suggest. They are not ports; they are deletion-list entries, along with their test and the doc's
+  claim.
+- **`fresh_import` is gone, and one behavior goes with it.** Both status-stamping scripts reached
+  `story_status.py` through `scriptutil.fresh_import("story_status", also_purge=("ostler",))`, a
+  re-import per call so that a mid-run edit to ostler — an environment-fix loop landing a change
+  while QA nodes are still ahead in the graph — was not shadowed by the copy an earlier node had
+  cached in `sys.modules`. That only worked because each node was a separate script *import*; under
+  the driver every node in a run shares one interpreter and one import, so the port is a plain
+  module-scope import and the mid-run-reload behavior is genuinely lost. Recorded rather than
+  absorbed: it is the only thing in `coder` that `fresh_import` bought, and loop 2 should decide
+  whether an in-run ostler upgrade is a case worth re-supporting or one worth declaring out of
+  scope.
 - **groom stamps activity labels with a prefix.** The driver's labels are unprefixed by decision;
   groom is the side that changes.
 - **`refuel:` has no counterpart, and this is the one thing `okf-builder` loses.** Both of its

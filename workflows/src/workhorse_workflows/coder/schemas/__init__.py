@@ -82,6 +82,17 @@ from workhorse_workflows.coder.schemas.qa import (
     SetupResult,
     StackStatus,
 )
+from workhorse_workflows.coder.schemas.queue import (
+    BaseBranch,
+    EpicBlocked,
+    EpicBranch,
+    EpicPick,
+    EpicPruned,
+    QaFlagged,
+    StoryBranch,
+    StoryCommitted,
+    StoryPick,
+)
 from workhorse_workflows.coder.schemas.review import (
     CodeReuseResult,
     CodeReviewResult,
@@ -95,6 +106,7 @@ from workhorse_workflows.coder.schemas.story import SpecsStamped, StoryPaths, Wo
 __all__ = [
     "AgentsYml",
     "BacklogDrain",
+    "BaseBranch",
     "BranchOutcome",
     "CiChecks",
     "CiRepoPick",
@@ -110,6 +122,10 @@ __all__ = [
     "DocumentationGate",
     "DocumentationResult",
     "DocumentationReview",
+    "EpicBlocked",
+    "EpicBranch",
+    "EpicPick",
+    "EpicPruned",
     "FailureAttribution",
     "FarrierInstall",
     "Feedback",
@@ -134,6 +150,7 @@ __all__ = [
     "QaAudit",
     "QaCleared",
     "QaContextRepair",
+    "QaFlagged",
     "QaFlowResult",
     "QaLoop",
     "QaPlanResult",
@@ -157,7 +174,10 @@ __all__ = [
     "Skeleton",
     "SpecsStamped",
     "StackStatus",
+    "StoryBranch",
+    "StoryCommitted",
     "StoryPaths",
+    "StoryPick",
     "TargetClassification",
     "WorkspaceDirs",
 ]
