@@ -51,7 +51,7 @@ stages**, each green and committed on its own: **A** the package foundation plus
 sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — done; **C** `qa`
 (91 nodes), which inherits `nodes/okf.py` and `ostler_qa.py` from B2 and is itself in three —
 **C1** the node layer (done), **C2** the evidence and regression gates (done), **C3** the graph
-and its tests; **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
+and its tests (done); **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
 parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate
 is D, not A.
 
@@ -82,6 +82,7 @@ is D, not A.
 | 6 | `0d8c7e0` | `coder` **stage B2** — the `review` sub-flow (22 YAML nodes → 9 states) and `docs` (23 → 4), plus `nodes/okf.py` and `ostler_qa.py`, both shared with `qa` in stage C. 25 end-to-end tests. No driver change |
 | 7 | `572a231` | `coder` **stage C1** — the `qa` sub-flow's node layer: `schemas/qa.py` and `nodes/{qa,backlog,hygiene}.py`, 7 nodes ported from 6 scripts. Parity checked differentially against the scripts themselves. No driver change |
 | 8 | `d4ab851` | `coder` **stage C2** — the QA evidence gate and the regression pair: `nodes/{evidence,regression}.py` and 3 models, 3 nodes from 933 script lines. 31 differential comparisons, all identical first run. No driver change |
+| 9 | _this commit_ | `coder` **stage C3** — the `qa` graph: 91 YAML nodes → 25 states around one `QaLoop` carrier, plus the 17 prompts B2 and C3 reference. 26 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -367,6 +368,56 @@ run, with no adjustment to either side.
   surrounding classification is covered, but the claim stops there. Also still owed from C1 and
   not made here: `ensure_stack` and `run_qa_plan`, which shell out to docker and ostler.
 
+### Parity — `coder`, stage C3 (the `qa` graph)
+
+The largest sub-flow in the tree: **91 YAML nodes → 25 states**. Twenty-nine of the nodes were
+branch routers that fold into the `if` at the end of the state that produced the value they read,
+eleven were counter/flag mutators that become fields on the carrier, four were `emit-kv` terminals
+that become the `Done` value, and six were the setup/gate chain that collapses into two helpers.
+The method here is not C1's and C2's node-level differential — those already compared every node
+against its script — but **26 end-to-end tests through the real driver**
+(`workflows/tests/coder/flows/test_qa.py`), one per branch the graph can take.
+
+- **One carrier, and the driver already supported it.** All eighteen loop-carried values —
+  the running `QaResult`, five sets of gate notes, six counters, three flags — travel as a single
+  `QaLoop` model bound to one state parameter. C1 predicted this would need no driver change and
+  it did not: the resume test kills a run mid-`audit-qa`, reads the checkpoint back, and re-enters
+  `audit` with the whole carrier intact (`resume.params["loop"]["qa"]["status"] == "passed"`) —
+  without re-running the QA suite to rebuild it. That is the state-granularity rule surviving the
+  size test, which is the thing stage C existed to find out.
+- **The evidence gate is exercised through the flow, not around it.** The scripted `ostler qa run`
+  writes what the real runner writes — `qa-evidence.json`, `qa/qa-run.ndjson`, `qa/run-manifest.json`
+  — so `verify_qa_evidence` reads real files off disk and reaches its verdict on its own terms. A
+  pass here is one the gate had to be convinced of. The fail-closed direction is covered too: a
+  non-empty `artifact_vet` problem list turns a runner pass into `invalid`, which routes to
+  **replanning** rather than into the fix loop, and the auditor never sees it.
+- **The two claims C1 and C2 deferred are now made.** `ensure_stack` is driven through both arms
+  with a real `qa-stack.yml` on disk and docker seamed at `workhorse.stack.ensure_stack` — a stack
+  that comes up on the second try after one `setup_fix`, and one that never does. `run_qa_plan`'s
+  four statuses are driven through the graph rather than asserted on the node. The real
+  `make e2e-journeys` subprocess is still seamed (C2's "not demonstrated" stands for the shell
+  command itself), but everything above it — platform detection off a real `.code-workspace`, the
+  fix→re-run→re-QA round trip, the three-attempt bound — runs for real.
+- **Every loop was made to terminate on purpose, and the bound is asserted.** Context repair caps
+  at 3, plan rework at 3 (four plan turns), QA fixes at 3 plus **one bonus pass reserved for an
+  `evidence`-class failure** — a `code`-class failure gets three and a test asserts the difference,
+  because that asymmetry is easy to port as "four" and is not.
+- **`add_dirs` is `affected_repo_paths`, not the workspace, and that is now checkable.** `dev` and
+  `docs` grant the whole workspace; every one of `qa`'s eleven agent turns grants only the repos the
+  plan touched, exactly as its YAML did. The engine's `AgentNode` reaches the scripted agent, so the
+  test reads `node.add_dirs` and asserts it against `resolve_impl_context`'s recorded output — the
+  one place in the suite that would notice if a port quietly widened a grant.
+- **Seven divergences, all recorded in `flows/qa.py`'s docstring.** The load-bearing ones: the
+  two-key `repair-qa-context` reply became a model with both halves rather than two outputs; an
+  empty `story_path` ends `exhausted` rather than failing (`docs` raises on the same condition —
+  the divergence is the YAML's, and is preserved); the five `max_*` budgets are `ClassVar` because
+  the YAML never declared them as flow vars; `clear_qa_gate_state` became `QaLoop.cleared()` on the
+  transition out of the plan turn. `decide_qa_run`'s `blocked` arm is unreachable in the YAML and is
+  preserved unreachable.
+- **Not demonstrated:** the real `make e2e-journeys` / `maestro test` subprocesses (unchanged from
+  C2), and `stamp_specs` against a book with a real id ledger — it runs for real here, but on a temp
+  repo whose ostler book is empty, so only the no-op and single-spec paths are covered.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -543,6 +594,36 @@ or something it left stranded.
   nodes currently read `AGENT_REPO_DIR`, `CODER_WORKSPACE` and `CODER_DOCS_PATH` exactly as the
   YAML scripts did, because this loop ports behavior rather than redesigning it. Converting them
   to inputs is a coherent loop-2 change and touches every port.
+- **The QA setup gate has no terminal, and in auto mode it is an infinite cycle.** Once
+  `max_setup_reworks` is spent, `guard_setup` escalates to the operator gate; the gate's answer is
+  applied as a QA fix that rejoins at `build_qa_okf_context`, which walks back down to
+  `ensure_stack`, which is still down, which finds the budget still spent, which escalates again.
+  Every counter on that cycle is either already at its cap or — `qa_rework_count`, which the fix
+  path does increment — read by nothing on it. With `operator_mode=auto` the resolver always
+  answers, so nothing breaks it. The YAML was stopped by the engine's global step budget; the port
+  is stopped by the driver's transition budget, which at least names the state it died in. Ported
+  faithfully and pinned by `test_a_stack_nobody_can_repair_spins_on_the_operator_gate`; bounding it
+  is a behavior change and therefore loop 2's. The obvious fix is for the setup-exhaustion arm to
+  reach `guard_qa` rather than the plain fix path, so the QA budget actually bounds it.
+- **`await_operator_qa` declares a `plan_rework_count` output that nothing produces or reads.**
+  `await_operator.py` prints no such key and no branch downstream consults it, so the YAML's own
+  `outputs:` list is a no-op that would silently zero the counter if the script ever grew one. The
+  port drops it. Recorded as a finding rather than a narrowing because there is no reader to lose.
+- **A fifth and sixth inert budget var, in `qa`.** `max_qa_reworks`, `max_context_reworks`,
+  `max_plan_reworks`, `max_setup_reworks` and `max_triage_scopes` are all declared at top level and
+  all branched on as literals with a "keep in sync" comment — the same shape as `max_genesis_`,
+  `max_validate_` and `max_review_reworks`. That is eight declared-but-inert budget vars across
+  four flows. They are `ClassVar` ints in the port, which makes the real ceiling the only ceiling.
+  The loop-2 sweep this calls for is now unambiguous: **every** `max_*` var in `coder`'s YAML is
+  suspect until read.
+- **Stage B2 shipped without the prompts it renders, and C3 fixed it.** `review` and `docs`
+  reference six prompt files that were never copied into `workhorse_workflows/coder/prompts/`;
+  their tests script the agent turn, so a missing prompt file is invisible to them — the engine
+  derives the node id from the path's stem and never opens it. All 17 prompts the three flows
+  reach are now present. **The class is the finding**: no test in any port so far asserts that a
+  prompt a flow names exists on disk, and stage D should add one static check that walks every
+  `self.agent(prompt=…)` in the package and stats the file. That is cheap and would have caught
+  this at B2.
 
 ## What is next
 
