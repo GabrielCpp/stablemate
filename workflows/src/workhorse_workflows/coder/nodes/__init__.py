@@ -6,6 +6,8 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `genesis` — turn a directory into a repo the author and coder can both stand on
 * `dream` — digest a finished run's process record, and drain reflection into a ledger
 * `ci` — the post-PR loop: poll Actions, hand a failure to a fixer, push, poll again
+* `story` — the spine every per-story flow starts with: slug → paths, workspace, stamping
+* `dev` — planning's gates and the per-service implementation loop
 
 Ported from `base-library/workflows/coder/scripts/`. The same three things change as in
 `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a
@@ -33,8 +35,15 @@ from workhorse_workflows.coder.nodes.ci import (
     poll_pr_checks,
     push_ci_fix,
     push_epic_branch,
-    resolve_ci_workspace,
     select_ci_repo,
+)
+from workhorse_workflows.coder.nodes.dev import (
+    branch_code_repos,
+    read_operator_context,
+    resolve_impl_context,
+    run_lint,
+    select_next_layer,
+    validate_plan_context,
 )
 from workhorse_workflows.coder.nodes.dream import gather_run_evidence, record_improvements
 from workhorse_workflows.coder.nodes.genesis import (
@@ -45,20 +54,33 @@ from workhorse_workflows.coder.nodes.genesis import (
     validate_genesis,
     write_agents_yml,
 )
+from workhorse_workflows.coder.nodes.story import (
+    prepare_story,
+    resolve_workspace_dirs,
+    stamp_specs,
+)
 
 __all__ = [
     "blueprint",
+    "branch_code_repos",
     "gather_run_evidence",
     "genesis_git_init",
     "init_skeleton",
     "install_farrier",
     "poll_pr_checks",
+    "prepare_story",
     "push_ci_fix",
     "push_epic_branch",
+    "read_operator_context",
     "record_improvements",
-    "resolve_ci_workspace",
     "resolve_genesis_target",
+    "resolve_impl_context",
+    "resolve_workspace_dirs",
+    "run_lint",
     "select_ci_repo",
+    "select_next_layer",
+    "stamp_specs",
     "validate_genesis",
+    "validate_plan_context",
     "write_agents_yml",
 ]

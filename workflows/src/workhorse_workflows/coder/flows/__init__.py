@@ -29,8 +29,9 @@ Each sub-flow gets its own transition budget, because `handoff` drives it throug
 """
 from __future__ import annotations
 
+from workhorse_workflows.coder.flows.dev import Dev
 from workhorse_workflows.coder.flows.dream import Dream
 from workhorse_workflows.coder.flows.fix_ci import FixCi
 from workhorse_workflows.coder.flows.genesis import Genesis
 
-__all__ = ["Dream", "FixCi", "Genesis"]
+__all__ = ["Dev", "Dream", "FixCi", "Genesis"]

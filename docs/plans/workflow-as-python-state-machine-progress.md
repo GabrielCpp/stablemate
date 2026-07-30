@@ -48,10 +48,10 @@ API `author` settled is the API.
 Next is **`coder`**, where `self.output(node)` and the three-tier state rule meet 4,366 lines,
 71 scripts, 19 awaits and 8 sub-flows. It is too large for one green step, so it lands in **four
 stages**, each green and committed on its own: **A** the package foundation plus the three small
-sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs`; **C** `qa` (91
-nodes); **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
-parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate is
-D, not A.
+sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — `dev` done, the
+other two next; **C** `qa` (91 nodes); **D** the 80-node main graph, `fix`, both pyproject lines,
+the top-level tests and the parity record. Only after D does `coder` resolve through an entry
+point, so loop 1.1's exit gate is D, not A.
 
 ## What landed
 
@@ -75,7 +75,8 @@ D, not A.
 | 1 | `950a672` | The driver additions `author` asked for, all additive: `self.agent(cwd=, add_dirs=)`, declared dry-run stand-ins (`@node(stub=)`, `Registry.stub_agents`), activity as a flagged log record, JSON-safe checkpoint params. `research` adopts them |
 | 2 | `c96f845` | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
 | 3 | `6049493` | The `okf-builder` port — 29 YAML nodes → 12 states + one sub-flow (19 → 6), 11 scripts → `nodes/` by subject, both pyproject tables, 8 end-to-end tests. No driver change |
-| 4 | _this commit_ | `coder` **stage A of four** — the package foundation (`paths.py`, `contract.py`, the shared `Blueprint`, `schemas/`) and the three small sub-flows: `genesis` (18 YAML nodes → 8 states), `dream` (4 → 3), `fix_ci` (11 → 4). 28 end-to-end tests. No driver change |
+| 4 | `87bd040` | `coder` **stage A of four** — the package foundation (`paths.py`, `contract.py`, the shared `Blueprint`, `schemas/`) and the three small sub-flows: `genesis` (18 YAML nodes → 8 states), `dream` (4 → 3), `fix_ci` (11 → 4). 28 end-to-end tests. No driver change |
+| 5 | `e0cf4af` | `coder` **stage B1** — the `dev` sub-flow (35 YAML nodes → 13 states) and the story spine (`nodes/story.py`) it shares with the main graph. 16 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -148,6 +149,42 @@ resolve through an entry point until stage D, so the workflow-level parity recor
 - **Not demonstrated yet:** the sub-flows under `handoff` from the main graph (stage D), and — as
   with the other ports — a recorded side-by-side run of the YAML, for the reason in the findings.
 
+### Parity — `coder`, stage B1 (`dev`)
+
+`dev` is the flow with the most gates of any sub-graph in the tree — four of them, three bounded
+and one that escalates to a human — so the record here is mostly about the gates.
+
+- **Every node has a home, checked one by one.** 35 YAML nodes → 13 states. The collapses are the
+  same three kinds every port has used: the four `decide_*` routers (`decide_plan`,
+  `decide_reuse`, `decide_validation`, `decide_lint_layer`, `decide_impl_layer`,
+  `decide_operator_scope`) fold into the `if` at the end of the state that produced the value; the
+  three `guard_*` nodes (`guard_reuse`, `guard_validate`, `guard_lint`) fold into the same place;
+  and the six counter nodes (`reset_plan`, `seed_reuse`, `incr_reuse`, `incr_plan_rework`,
+  `reset_lint`, `incr_lint`) disappear entirely, because a counter is a state parameter now.
+- **Same artifacts, and no seam past the agent turn.** The 16 end-to-end tests run a real authored
+  story in a real docs git repo, two real code repos named by a real `.code-workspace`, real
+  `stamp_specs`, real `branch_code_repos` and a real `run_lint` that shells out. They assert the
+  artifacts: the front-matter `type:` that stamping adds to each untyped plan file, the branch each
+  code repo actually moved onto, the operator context file's `STATUS: ANSWERED` → `CONSUMED` flip,
+  and the per-layer implement calls in `implementation_order`.
+- **Same gate arithmetic.** Each bounded gate is pinned twice — once taking the repair arm and once
+  exhausting it: the reuse gate reworks and re-checks, then proceeds *anyway* at
+  `max_reuse_reworks`; the path gate refines four times and only then reaches the operator
+  (`MAX_VALIDATE_REWORKS`); the lint gate fixes and re-runs until clean, and moves on dirty at
+  `max_lint_reworks`. The permissive defaults are pinned too — a blank `status` takes `done`/`ok`
+  /`valid`, which is the YAML's `default:` arm.
+- **Same operator behavior in both modes.** `auto` runs the resolver turn and reworks on
+  `answered`; an `escalated` resolver falls through to the human wait; `human` waits on the story's
+  `context.md` directly; an `epic`-scoped answer leaves the flow with `status="replan"` instead of
+  retrying; and a context file that never says `ANSWERED` is not treated as an answer.
+- **Same resume behavior.** A run killed inside `implement-plan` resumes on `implement` with
+  `index=0` on the checkpoint — the layer loop restarts on the layer that died, not at planning.
+- **The reserved-name trap bit again, and is pinned by a test.** `dev`'s path gate is
+  `validate_paths`, not `validate`; `test_validate_is_not_a_reserved_pydantic_name` asserts both
+  that `validate_paths` is a state and that `validate` is not, so the rename cannot quietly regress.
+- **Not demonstrated:** `dev` under `handoff` from the main graph (stage D), and — as with every
+  port in this loop — a recorded side-by-side YAML run.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -196,7 +233,11 @@ or something it left stranded.
   `validate` state was silently unregistered until it was renamed `verify`. The trap is the
   pydantic-v1 deprecated aliases nobody thinks of as API: `validate`, `json`, `dict`, `copy`,
   `schema`. Both fixes were workflow-side, so no driver change was made; a `__init_subclass__`
-  check that rejects a shadowing state by name is a loop-2 driver question.
+  check that rejects a shadowing state by name is a loop-2 driver question. **It has now bitten
+  twice**: `coder`'s `dev` flow wanted a `validate` state for the path gate and it is
+  `validate_paths` for the same reason, pinned by
+  `test_validate_is_not_a_reserved_pydantic_name`. Two workflows out of four hit the same name;
+  that is a rate, not a coincidence.
 - **The `fix_ci` attempt budget is a lifetime one, not the per-repo one its comment claims.**
   `ci_attempts` is never reset when `select_ci_repo` advances, so a second repo inherits whatever
   the first spent — a repo that needed one fix leaves the next one two instead of three. Behavior
@@ -222,6 +263,75 @@ or something it left stranded.
   `workhorse_workflows` package, never the consuming repo, so that rung could only ever have
   returned something wrong. It is dropped rather than ported. Flagged here because this loop
   narrows nothing without saying so.
+- **The context manifest never reaches a pyflow prompt, and the degradation is silent. This is
+  the largest parity gap in the loop, and it is engine-side, not port-side.** The YAML engine
+  loads farrier's per-repo `.agents/agents-context.json` and merges it into *every* render
+  context (`main.py`: `WorkflowContext(initial={**manifest, …})`, and a sub-flow's child context
+  is `{manifest, flow.vars, rendered_args}`). `pyflow`'s agent turn renders against
+  `WorkflowContext(jsonable(args))` and nothing else (`engine.py:316`), and `pyflow/run.py` never
+  reads a manifest at all. Five things follow, none of which any port can fix from the workflow
+  side:
+  - `instruction_ref()` / `prompt_ref()` resolve against an empty map, so each one renders the
+    placeholder sentence `generated <name> instruction file when installed` **into a live agent
+    prompt**. `author` has 6 prompts doing this, `okf-builder` 4 (via `skill_load_ref`), `coder`
+    2 of the 10 ported so far — `refine-plan.md`, which `dev` renders on three of its four
+    gates, carries 22 `instruction_ref` calls.
+  - `template.*` and `repo.name` render empty. `refine-plan.md` mostly survives on
+    `| default(...)` filters, so it silently reverts to the *generic* layer names and paths the
+    defaults encode rather than the repo's own — the exact drift the manifest exists to prevent.
+    `author`'s three `{{ repo.name | title }}` headings have no default and render as a blank.
+  - `get_node_output()` is inert: it reads `_run_dir` off the context, which is absent.
+  - `skill_dir()` falls back to the workflow package directory, which is not where any skill is.
+  - **And it is silent**, because `_farrier_globals`' `unresolved()` warning is gated on
+    `manifest_present`, which is false — the one path designed to report this is the path the gap
+    switches off. `workhorse.references`' pre-run static scan is likewise skipped for pyflow.
+  Repo-authored flavor overrides (`<repo>/.agents/flavors/<workflow>/<node>.md`) go with it, for
+  the same reason: `_repo_root` is a manifest key. The fix is a handful of lines in
+  `pyflow/run.py` and `engine.py` — load the manifest the way `main.py` does and merge it under
+  the render args — but it is an **engine** change and it touches every port already landed, so
+  it is reported here rather than made. Nothing was invented to work around it.
+- **`dev`'s three rework budgets were all inert vars, and the port makes two of them live.**
+  Every one of the flow's bounded loops branches on a *literal* with a comment saying "keep in
+  sync with `vars.max_*`" — `"2"` for reuse, `"3"` for validate, `"2"` for lint — so setting any
+  of them on the command line changed nothing. `max_validate_reworks` is worse than inert: it is
+  declared in the **top-level** workflow vars (line 152), never in `dev`'s, and a flow's context
+  is `{manifest, flow.vars, rendered_args}`, so it could not have reached the flow even if a
+  branch had read it. The port keeps `max_lint_reworks` and `max_reuse_reworks` as real inputs
+  (same defaults, now actually honoured) and makes the third a `ClassVar` `MAX_VALIDATE_REWORKS
+  = 3`, matching the literal that was really in force. Same numbers, so no run changes — but two
+  knobs that did nothing now do something, which is a divergence and not a bug fix to absorb
+  quietly.
+- **`stamp_specs` never re-runs after a refine pass, and the port preserves that.** The YAML
+  stamps the plan files' front matter once, right after the first `plan` turn; `rework_plan` goes
+  to `decide_plan` and `rework_plan_paths` to `incr_plan_rework`, so neither passes through
+  `stamp_specs_plan`. A refine that writes a *new* plan file leaves it untyped for the rest of the
+  run. Kept as-is because changing it is a behavior change; worth a decision in loop 2, since
+  `stamp_specs` is idempotent and re-running it would cost nothing.
+- **`implement-plan.md` reads three values the YAML node never passed it.** The prompt renders
+  `story_path`, `spec_dir` and `impl_instruction_paths` from the flow context, which the YAML
+  supplied ambiently because context is global there. Under `pyflow` the render context is the
+  `args` dict alone, so the port passes all three explicitly from `implement`'s state parameters.
+  This is the general shape of the manifest gap in miniature — and the reason it is worth
+  saying twice: **a YAML prompt may read anything in context, and only the ones a port notices get
+  passed.** A sweep of every ported prompt's free variables against its call site is a loop-2 task.
+- **`qa_source_roots_json` was a JSON-encoded string; it is a `list[str]` now.** Same reason
+  `fix_ci`'s `processed_repos` was: a workflow var is a string, a state parameter is a value.
+  Nothing on disk carried the encoded form.
+- **`PlanResult.services` has two live, conflicting shapes and no consumer.** `plan-story.md`
+  asks for a list of `"repo::path"` strings and `refine-plan.md` for a list of
+  `{repo, path, type}` objects. Nothing in the flow ever reads the field — `plan-context.json`,
+  written by the same turn, is what every downstream node decodes — so the port models neither
+  and lets `extra="ignore"` drop whichever arrives. Picking a winner is a prompt decision, not a
+  port decision.
+- **`resolve_ci_workspace` and `resolve_workspace_dirs` were the same script twice.** They are one
+  node now, with `resolve_ci_workspace` kept as a `@blueprint.node(aliases=…)` so a run
+  checkpointed on the old name still resolves its `output.json`.
+- **Environment variables read inside nodes are a loop-2 item, per `docs/backload.md`.** The
+  working tree carries the rule "using environment variables in nodes and workflow IS
+  PROHIBITED — everything needs to be passed by argument or be a workflow parameter". `coder`'s
+  nodes currently read `AGENT_REPO_DIR`, `CODER_WORKSPACE` and `CODER_DOCS_PATH` exactly as the
+  YAML scripts did, because this loop ports behavior rather than redesigning it. Converting them
+  to inputs is a coherent loop-2 change and touches every port.
 
 ## What is next
 
@@ -239,7 +349,19 @@ or something it left stranded.
 
 ## Open questions
 
-None.
+Both are the user's call, both raised and not yet answered, and neither blocks stages C and D.
+
+1. **Repair the manifest gap in the engine, in this loop, or leave it for loop 2?** See the
+   finding above. It is a `pyflow/run.py` + `engine.py` change, so it is a driver-API-adjacent
+   change and therefore the user's call; it also re-validates every port already landed. Leaving it
+   means the ports are *structurally* at parity while every prompt that references a skill renders
+   a placeholder sentence — which is not a difference any port should absorb silently, hence its
+   place here rather than only in the findings.
+2. **Keep or restore the one narrowing in `coder/paths.py`** — the dropped fourth rung
+   (a walk upward from `__file__`) in the launch-checkout resolution. Under the driver that rung
+   can only ever resolve to the installed `workhorse_workflows` package, never the consuming
+   repo, so porting it would port a wrong answer. Recorded as a finding; restoring it is one line
+   if the user wants byte-parity over correctness here.
 
 ## Decisions re-confirmed
 
