@@ -8,6 +8,9 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `ci` — the post-PR loop: poll Actions, hand a failure to a fixer, push, poll again
 * `story` — the spine every per-story flow starts with: slug → paths, workspace, stamping
 * `dev` — planning's gates and the per-service implementation loop
+* `review` — where a review runs, what its findings settled to, what a human dropped in
+* `docs` — is there an OKF book, how can its diff be read, and does the update hold
+* `okf` — the diff-to-OKF obligation packet, shared by `docs` and `qa`
 
 Ported from `base-library/workflows/coder/scripts/`. The same three things change as in
 `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a
@@ -45,6 +48,11 @@ from workhorse_workflows.coder.nodes.dev import (
     select_next_layer,
     validate_plan_context,
 )
+from workhorse_workflows.coder.nodes.docs import (
+    classify_documentation_context,
+    detect_okf_docs,
+    verify_story_documentation,
+)
 from workhorse_workflows.coder.nodes.dream import gather_run_evidence, record_improvements
 from workhorse_workflows.coder.nodes.genesis import (
     genesis_git_init,
@@ -53,6 +61,12 @@ from workhorse_workflows.coder.nodes.genesis import (
     resolve_genesis_target,
     validate_genesis,
     write_agents_yml,
+)
+from workhorse_workflows.coder.nodes.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.nodes.review import (
+    check_feedback,
+    resolve_review_context,
+    verify_review_resolution,
 )
 from workhorse_workflows.coder.nodes.story import (
     prepare_story,
@@ -63,6 +77,10 @@ from workhorse_workflows.coder.nodes.story import (
 __all__ = [
     "blueprint",
     "branch_code_repos",
+    "build_okf_context",
+    "check_feedback",
+    "classify_documentation_context",
+    "detect_okf_docs",
     "gather_run_evidence",
     "genesis_git_init",
     "init_skeleton",
@@ -75,12 +93,16 @@ __all__ = [
     "record_improvements",
     "resolve_genesis_target",
     "resolve_impl_context",
+    "resolve_review_context",
     "resolve_workspace_dirs",
     "run_lint",
     "select_ci_repo",
     "select_next_layer",
     "stamp_specs",
     "validate_genesis",
+    "validate_okf_context",
     "validate_plan_context",
+    "verify_review_resolution",
+    "verify_story_documentation",
     "write_agents_yml",
 ]

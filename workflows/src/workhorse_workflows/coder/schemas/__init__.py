@@ -35,6 +35,14 @@ from workhorse_workflows.coder.schemas.dev import (
     QaRunEntry,
     ReuseResult,
 )
+from workhorse_workflows.coder.schemas.docs import (
+    ContextClassification,
+    DocsResult,
+    DocumentationGate,
+    DocumentationResult,
+    DocumentationReview,
+    OkfDetection,
+)
 from workhorse_workflows.coder.schemas.dream import (
     ImprovementsRecorded,
     ReflectionResult,
@@ -50,6 +58,15 @@ from workhorse_workflows.coder.schemas.genesis import (
     Skeleton,
     TargetClassification,
 )
+from workhorse_workflows.coder.schemas.okf import OkfContextResult
+from workhorse_workflows.coder.schemas.review import (
+    CodeReuseResult,
+    CodeReviewResult,
+    Feedback,
+    ReviewContext,
+    ReviewResult,
+    ReviewVerdict,
+)
 from workhorse_workflows.coder.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
 
 __all__ = [
@@ -57,11 +74,19 @@ __all__ = [
     "BranchOutcome",
     "CiChecks",
     "CiRepoPick",
+    "CodeReuseResult",
+    "CodeReviewResult",
     "CoderResult",
+    "ContextClassification",
     "ConventionsResult",
     "DevResult",
     "DispatchEntry",
+    "DocsResult",
+    "DocumentationGate",
+    "DocumentationResult",
+    "DocumentationReview",
     "FarrierInstall",
+    "Feedback",
     "FixCiResult",
     "FixLintResult",
     "FixResult",
@@ -72,6 +97,8 @@ __all__ = [
     "ImprovementsRecorded",
     "LayerPick",
     "LintOutcome",
+    "OkfContextResult",
+    "OkfDetection",
     "OperatorAnswer",
     "OperatorResolution",
     "PlanResult",
@@ -80,6 +107,9 @@ __all__ = [
     "QaRunEntry",
     "ReflectionResult",
     "ReuseResult",
+    "ReviewContext",
+    "ReviewResult",
+    "ReviewVerdict",
     "RunEvidence",
     "Skeleton",
     "SpecsStamped",

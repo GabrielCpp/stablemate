@@ -48,10 +48,10 @@ API `author` settled is the API.
 Next is **`coder`**, where `self.output(node)` and the three-tier state rule meet 4,366 lines,
 71 scripts, 19 awaits and 8 sub-flows. It is too large for one green step, so it lands in **four
 stages**, each green and committed on its own: **A** the package foundation plus the three small
-sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — `dev` done, the
-other two next; **C** `qa` (91 nodes); **D** the 80-node main graph, `fix`, both pyproject lines,
-the top-level tests and the parity record. Only after D does `coder` resolve through an entry
-point, so loop 1.1's exit gate is D, not A.
+sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — done; **C** `qa`
+(91 nodes) — next, and it inherits `nodes/okf.py` and `ostler_qa.py` from B2; **D** the 80-node
+main graph, `fix`, both pyproject lines, the top-level tests and the parity record. Only after D
+does `coder` resolve through an entry point, so loop 1.1's exit gate is D, not A.
 
 ## What landed
 
@@ -76,7 +76,8 @@ point, so loop 1.1's exit gate is D, not A.
 | 2 | `c96f845` | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
 | 3 | `6049493` | The `okf-builder` port — 29 YAML nodes → 12 states + one sub-flow (19 → 6), 11 scripts → `nodes/` by subject, both pyproject tables, 8 end-to-end tests. No driver change |
 | 4 | `87bd040` | `coder` **stage A of four** — the package foundation (`paths.py`, `contract.py`, the shared `Blueprint`, `schemas/`) and the three small sub-flows: `genesis` (18 YAML nodes → 8 states), `dream` (4 → 3), `fix_ci` (11 → 4). 28 end-to-end tests. No driver change |
-| 5 | `e0cf4af` | `coder` **stage B1** — the `dev` sub-flow (35 YAML nodes → 13 states) and the story spine (`nodes/story.py`) it shares with the main graph. 16 end-to-end tests. No driver change |
+| 5 | `a62e3fb` | `coder` **stage B1** — the `dev` sub-flow (35 YAML nodes → 13 states) and the story spine (`nodes/story.py`) it shares with the main graph. 16 end-to-end tests. No driver change |
+| 6 | `032faf8` | `coder` **stage B2** — the `review` sub-flow (22 YAML nodes → 9 states) and `docs` (23 → 4), plus `nodes/okf.py` and `ostler_qa.py`, both shared with `qa` in stage C. 25 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -184,6 +185,70 @@ and one that escalates to a human — so the record here is mostly about the gat
   that `validate_paths` is a state and that `validate` is not, so the rename cannot quietly regress.
 - **Not demonstrated:** `dev` under `handoff` from the main graph (stage D), and — as with every
   port in this loop — a recorded side-by-side YAML run.
+
+### Parity — `coder`, stage B2 (`review`, `docs`)
+
+**The lead here is a defect the port itself introduced and the tests caught**, because the work
+order's rule is that a behavior you cannot reproduce is a finding, not a difference to absorb.
+`build_okf_context` ported `build-qa-okf-context.py`'s "blank `docs_path` → let `Ostler` discover
+its own root" literally. Under the YAML that was correct: the node carried `cwd: docs_repo_path`,
+so discovery landed on the docs repo. A driver node has no per-node cwd, so discovery landed on
+the *orchestrating* repo instead and the packet was diffed against the wrong git tree —
+`'…/acme/docs/features' is outside repository at '…/stablemate'`, thrown by the docs flow's
+local-mode test. The fix resolves through `find_docs_root(docs_path)`, which is what the sibling
+validator node already did and what the YAML's `cwd:` really meant; the local path then converges
+in one pass with build, validate and gate all `passed`. This is the class of bug the package's
+"the repo a node works on is a parameter, never the process's cwd" rule exists to prevent, and it
+is the first time in this loop that the rule caught something rather than merely being followed.
+Every other cwd-sensitive node is worth the same read in C and D.
+
+- **Every node has a home, checked one by one.** `review` 22 YAML nodes → 9 states, `docs` 23 → 4.
+  Same three collapses as every port before it: the eight routers (`decide_impl`,
+  `decide_apply_review`, `decide_impl_feedback`, `decide_documentation_story`,
+  `decide_documentation_okf`, `decide_documentation_result`,
+  `decide_documentation_context_mode`, `decide_documentation_gate`, `decide_documentation_review`)
+  fold into the `if` at the end of the state that produced the value; the guards (`guard_review`,
+  `gate_review`, `guard_documentation`) fold into the same place; and the counter `call` nodes
+  (`reset_review`, `incr_review`, `reset_documentation_rework`, `incr_documentation_rework`)
+  disappear, because a counter is a state parameter now. `docs` collapses hardest — 23 → 4 —
+  because its `mark_*` nodes are `Done(...)` terminals, its `fail` node is a `raise
+  WorkflowFailed` at the deciding site, and its packet chain is two calls into `nodes/okf.py`.
+- **No seam past the agent turn, in either flow.** `review`'s 14 tests run a real
+  `resolve_review_context` against a real `plan-context.json` and `.code-workspace`, real
+  `stamp_specs`, and a **real `Ostler.settle_review`** behind `verify_review_resolution`.
+  `docs`'s 11 run real `detect_okf_docs`, real `classify_documentation_context`, and — in local
+  mode — a real ostler QA-context build, validate and gate over a real diff.
+- **The anti-gaming gate is demonstrated end to end, which is the strongest evidence in B2.** The
+  apply turn claims `applied` while citing an `evidence.md` that is not on disk; ostler's
+  settlement ledger opens the finding and the gate downgrades to `needs_changes`; the second pass
+  writes the artifact and the identical claim is allowed through. The observable artifacts are
+  `review-settlement.json` (`all_verified: true`, `verified: ["F1"]`) and the story's
+  `Review fixes applied` status line. A prompt mandate could not have produced that; the gate did.
+- **Same routing in every documentation mode.** No OKF book → `not_applicable` with **zero agent
+  calls**; a code repo outside the docs worktree → `semantic`, no packet built; a repo alongside
+  the docs → `local`, packet built *and* validated *and* gated, with `source_roots == ["acme=."]`.
+  A `documented` claim naming no nodes is sent back by the gate and never reaches the reviewer.
+- **Same budget arithmetic, and the same two things that happen at the ceiling.** Each bounded
+  loop is pinned twice, taking the repair arm and exhausting it: `review`'s apply loop re-applies
+  and then **reaches the operator** at the ceiling (it escalates rather than proceeding, which is
+  the YAML's `gate_review` arm), while `docs` reworks and then fails with
+  `"did not converge in 4 passes"`. A `blocked` settlement escalates to the operator *without*
+  spending a rework pass; a `blocked` documentation review raises `WorkflowFailed` at the deciding
+  site instead of routing to `documentation_failed`.
+- **Same operator and feedback behavior.** `human` mode waits on the story's `context.md`
+  directly; an `escalated` resolver falls through to the same wait; an `answered` resolution never
+  waits at all — the operator-gate split this loop settled, once more without a driver change. One
+  dropped note in the feedback inbox buys exactly one rework pass, because reading it stamps
+  `CONSUMED`.
+- **Same resume behavior, twice.** A run killed inside `code-review` resumes on `review` with the
+  two bound models on the checkpoint; a run killed inside `review-story-documentation` resumes on
+  `Docs.review` with `author.nodes == ["docs/features/widget.md"]`. Both confirm the rule the
+  driver already stated: **only the kwargs a transition actually binds land in `resume.params`** —
+  `review_rework` keeps its default on the way back in, which is the same `0` the killed run was
+  carrying, so the omission is not a loss.
+- **Not demonstrated:** either flow under `handoff` from the main graph (stage D); the
+  `review`/`docs` interaction with `qa`'s copy of the OKF packet (stage C); and, as everywhere in
+  this loop, a recorded side-by-side YAML run.
 
 ## Findings for loop 2
 
@@ -326,6 +391,35 @@ or something it left stranded.
 - **`resolve_ci_workspace` and `resolve_workspace_dirs` were the same script twice.** They are one
   node now, with `resolve_ci_workspace` kept as a `@blueprint.node(aliases=…)` so a run
   checkpointed on the old name still resolves its `output.json`.
+- **A node has no per-node cwd, and one ported script depended on that without saying so.** The
+  YAML gave `build_documentation_context` `cwd: docs_repo_path`, so `build-qa-okf-context.py`
+  could pass `None` to `Ostler` and let it discover its root. Under the driver that discovery
+  lands on the orchestrating repo, and the packet is diffed against the wrong git tree. Caught by
+  the docs local-mode test, fixed in stage B2 by resolving through `find_docs_root(docs_path)` —
+  which is what the sibling validator node already did and what the `cwd:` really meant, so the
+  fix restores the YAML's behavior rather than changing it. Recorded here because **the class is
+  the finding, not the instance**: every YAML node carrying a `cwd:` is a script that may be
+  reading the process's location for something the port has to pass explicitly. Stages C and D
+  should read each one, and loop 2 should decide whether the driver ought to make this
+  impossible rather than merely detectable.
+- **`max_review_reworks` is the third inert budget var in `coder`.** Declared once at top level
+  (line 132), never in the `review` flow's own vars — so, like `dev`'s `max_validate_reworks`, it
+  could not have reached the flow even if something read it, and `gate_review` branches on a
+  literal instead. That is three for three: `max_genesis_reworks`, `max_validate_reworks`,
+  `max_review_reworks`. The shape is not an accident of one flow, and a loop-2 sweep for
+  branch-on-literal-next-to-a-declared-var will find more.
+- **`verify-review-resolution.py` hardcodes `docs/specs/<slug>`.** The story spine resolves a spec
+  dir through ostler's `spec_path`; this one does not, so a repo whose specs live elsewhere gets a
+  pass-through gate instead of a settlement — silently, because "no verdict sidecar" is a legal
+  state. Ported as written, since changing it changes which stories the anti-gaming gate binds on.
+- **`classify-documentation-context.py` encodes and decodes for no one.** It takes
+  `qa_source_roots_json` and returns `documentation_source_roots_json`, both JSON-encoded strings
+  crossing a boundary that is now a typed value. Same divergence already recorded for `dev`, now
+  seen twice; the port passes `list[str]` and the encoding is gone.
+- **`await_operator_review` has no `SCOPE: epic` branch, where `dev`'s equivalent does.** An
+  operator who answers a review block with an epic-scoped instruction has it applied as a
+  story-level fix. Preserved, because adding the branch is a behavior change — but it is the kind
+  of asymmetry that reads as an oversight rather than a decision, and loop 2 should ask.
 - **Environment variables read inside nodes are a loop-2 item, per `docs/backload.md`.** The
   working tree carries the rule "using environment variables in nodes and workflow IS
   PROHIBITED — everything needs to be passed by argument or be a workflow parameter". `coder`'s
