@@ -59,6 +59,14 @@ from workhorse_workflows.coder.schemas.genesis import (
     TargetClassification,
 )
 from workhorse_workflows.coder.schemas.okf import OkfContextResult
+from workhorse_workflows.coder.schemas.qa import (
+    BacklogDrain,
+    QaCleared,
+    QaPlanValidation,
+    QaResult,
+    ScreenshotFlush,
+    StackStatus,
+)
 from workhorse_workflows.coder.schemas.review import (
     CodeReuseResult,
     CodeReviewResult,
@@ -71,6 +79,7 @@ from workhorse_workflows.coder.schemas.story import SpecsStamped, StoryPaths, Wo
 
 __all__ = [
     "AgentsYml",
+    "BacklogDrain",
     "BranchOutcome",
     "CiChecks",
     "CiRepoPick",
@@ -104,6 +113,9 @@ __all__ = [
     "PlanResult",
     "PlanValidation",
     "PushOutcome",
+    "QaCleared",
+    "QaPlanValidation",
+    "QaResult",
     "QaRunEntry",
     "ReflectionResult",
     "ReuseResult",
@@ -111,8 +123,10 @@ __all__ = [
     "ReviewResult",
     "ReviewVerdict",
     "RunEvidence",
+    "ScreenshotFlush",
     "Skeleton",
     "SpecsStamped",
+    "StackStatus",
     "StoryPaths",
     "TargetClassification",
     "WorkspaceDirs",
