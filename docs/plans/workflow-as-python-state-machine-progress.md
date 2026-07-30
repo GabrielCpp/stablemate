@@ -87,7 +87,7 @@ point, so loop 1.1's exit gate is D4, not A.
 | 9 | `a7ec0da` | `coder` **stage C3** — the `qa` graph: 91 YAML nodes → 25 states around one `QaLoop` carrier, plus the 17 prompts B2 and C3 reference. 26 end-to-end tests. No driver change |
 | 10 | `945e540` | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
 | 11 | `f896461` | `coder` **stage D2** — the PR boundary and the backlog drain: `schemas/{pr,backlog}.py` and `nodes/pr.py`, 9 nodes from 10 scripts. Two subprocess layers collapse; the four fix-drain nodes join the filing node in `nodes/backlog.py` behind one bullet-grammar definition. No driver change |
-| 12 | `PENDING` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
+| 12 | `78436af` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
