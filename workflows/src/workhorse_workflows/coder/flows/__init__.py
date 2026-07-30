@@ -7,12 +7,13 @@ and the caller names it at the callsite::
 
     result = self.handoff(FixCi, branch=epic, docs_path=self.docs_path)
 
-Two of the flows in this package are never handed off to. `genesis` and `dream` live here
-because the YAML put them under `flows:`, but neither is sequenced by the main loop:
-`genesis` produces the preconditions the main loop *assumes*, and `dream` runs after the
-work like sleep, so that reflection never gates a story. Both are entered directly, which
-under the driver means they are registered flows on the coder `Registry` and reached as
-`workhorse run coder genesis`.
+Three of the flows in this package are never handed off to. `genesis`, `dream` and `fix`
+live here because the YAML put them under `flows:`, but none is sequenced by the main loop:
+`genesis` produces the preconditions the main loop *assumes*, `dream` runs after the work
+like sleep, so that reflection never gates a story, and `fix` is a standalone drain of the
+backlog the main loop also drains inline, on its own copy of the same nodes. All three are
+entered directly, which under the driver means they are registered flows on the coder
+`Registry` and reached as `workhorse run coder genesis`.
 
 Two things follow from `Engine.handoff` that a sub-flow author has to know, because neither
 is obvious from the callsite:
@@ -32,9 +33,10 @@ from __future__ import annotations
 from workhorse_workflows.coder.flows.dev import Dev
 from workhorse_workflows.coder.flows.docs import Docs
 from workhorse_workflows.coder.flows.dream import Dream
+from workhorse_workflows.coder.flows.fix import Fix
 from workhorse_workflows.coder.flows.fix_ci import FixCi
 from workhorse_workflows.coder.flows.genesis import Genesis
 from workhorse_workflows.coder.flows.qa import Qa
 from workhorse_workflows.coder.flows.review import Review
 
-__all__ = ["Dev", "Docs", "Dream", "FixCi", "Genesis", "Qa", "Review"]
+__all__ = ["Dev", "Docs", "Dream", "Fix", "FixCi", "Genesis", "Qa", "Review"]
