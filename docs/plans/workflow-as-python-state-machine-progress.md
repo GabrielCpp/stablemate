@@ -49,9 +49,11 @@ Next is **`coder`**, where `self.output(node)` and the three-tier state rule mee
 71 scripts, 19 awaits and 8 sub-flows. It is too large for one green step, so it lands in **four
 stages**, each green and committed on its own: **A** the package foundation plus the three small
 sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — done; **C** `qa`
-(91 nodes) — next, and it inherits `nodes/okf.py` and `ostler_qa.py` from B2; **D** the 80-node
-main graph, `fix`, both pyproject lines, the top-level tests and the parity record. Only after D
-does `coder` resolve through an entry point, so loop 1.1's exit gate is D, not A.
+(91 nodes), which inherits `nodes/okf.py` and `ostler_qa.py` from B2 and is itself in three —
+**C1** the node layer (done), **C2** the evidence and regression gates, **C3** the graph and its
+tests; **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
+parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate
+is D, not A.
 
 ## What landed
 
@@ -78,6 +80,7 @@ does `coder` resolve through an entry point, so loop 1.1's exit gate is D, not A
 | 4 | `87bd040` | `coder` **stage A of four** — the package foundation (`paths.py`, `contract.py`, the shared `Blueprint`, `schemas/`) and the three small sub-flows: `genesis` (18 YAML nodes → 8 states), `dream` (4 → 3), `fix_ci` (11 → 4). 28 end-to-end tests. No driver change |
 | 5 | `a62e3fb` | `coder` **stage B1** — the `dev` sub-flow (35 YAML nodes → 13 states) and the story spine (`nodes/story.py`) it shares with the main graph. 16 end-to-end tests. No driver change |
 | 6 | `032faf8` | `coder` **stage B2** — the `review` sub-flow (22 YAML nodes → 9 states) and `docs` (23 → 4), plus `nodes/okf.py` and `ostler_qa.py`, both shared with `qa` in stage C. 25 end-to-end tests. No driver change |
+| 7 | `ce918ac` | `coder` **stage C1** — the `qa` sub-flow's node layer: `schemas/qa.py` and `nodes/{qa,backlog,hygiene}.py`, 7 nodes ported from 6 scripts. Parity checked differentially against the scripts themselves. No driver change |
 
 ### Parity — `author`
 
@@ -249,6 +252,56 @@ Every other cwd-sensitive node is worth the same read in C and D.
 - **Not demonstrated:** either flow under `handoff` from the main graph (stage D); the
   `review`/`docs` interaction with `qa`'s copy of the OKF packet (stage C); and, as everywhere in
   this loop, a recorded side-by-side YAML run.
+
+### Parity — `coder`, stage C1 (the `qa` node layer)
+
+Stage C is the size test, so it lands in three: **C1** the node layer (here), **C2** the evidence
+and regression gates, **C3** the 91-node graph itself plus its end-to-end tests. C1 has no flow to
+drive yet, so its parity claim is made a different way — and, for the first time in this loop,
+against a **recorded run of the original**, not against a node-by-node reading of it.
+
+- **Differential parity, not asserted parity.** Six of the seven nodes come from standalone
+  scripts that need no agent turn, so the port was checked by running the YAML script and the
+  ported node against the *same* throwaway git repo and comparing what each produced.
+  `check-sentinel-ids` (dirty branch and clean), `flush-root-screenshots` and
+  `append-backlog-item` each agree with their script on **every** field they emit — status, the
+  full `notes` prose, the counts — and `append-backlog-item` additionally produces a
+  `docs/backlog.md` **identical byte for byte** to the script's, including where each item landed
+  under which heading. That is the side-by-side comparison the earlier stages could not get,
+  because these nodes are the part of `coder` with no agent in the loop.
+- **The three de-dup signals survive the port intact.** The differential run plants an id
+  collision after kebab-casing (`"Fix Login"` vs `fix-login`) and a description collision under a
+  different id, and both engines skip both and file the other two — 2 appended, 2 skipped, same
+  note string, same file on disk.
+- **`clear-qa-gate-state.py` deliberately has no node**, and this is the clearest instance yet of
+  the shape doing the work. Its whole body zeroed five keys the QA loop carried between passes.
+  Under the driver those five are the flow's own state parameters, so "forget them" is simply the
+  transition out of `plan_qa` not carrying them forward. Nothing was narrowed; the script's job
+  moved into the transition, where it is checkable.
+- **The size test's answer, decided here.** At 91 nodes the `qa` graph's shared mutable state is 5
+  counters, 3 flags, `qa_failure_class`, `triage_scope_count`, the running `qa_result` and four
+  gate-diagnostic note strings. One-parameter-per-var would put ~12 parameters on ~24 states, so
+  C3 threads a single pydantic `QaLoop` carrier as **one** state parameter. This is legal without
+  any driver change (models round-trip through checkpoints, settled in `author`) and it hides
+  nothing, because every state in this one cycle needs essentially the whole loop state. It is a
+  representation choice inside the existing shape — **not** an API change, and `self.output(node)`
+  did not break.
+- **`QaResult` is one model where the YAML kept one key.** Nine different writers wrote
+  `qa_result` in three payload shapes; the port keeps them one model rather than nine, and keeps
+  the status vocabularies separate (ostler's four states vs the plan validator's two off a
+  returncode) rather than unifying them into a vocabulary neither side used.
+- **The two hygiene gates keep disagreeing on purpose.** A screenshot that cannot be moved is
+  logged and the flow continues; a sentinel ID fails the pass. Every *failure to run* the sentinel
+  gate still returns `passed`, exactly as the script did — it diffs a branch, and a repo with no
+  history has no added lines to be wrong about. The gate that fails closed is the evidence gate,
+  in C2.
+- **No repo parameter for the hygiene nodes, and that is the faithful port.** Neither YAML node
+  carried a `cwd:`, so no-arg `find_repo_root()` resolves the same repo it always did. The wider
+  problem this touches is already recorded as the per-node-cwd finding below; C1 does not widen it.
+- **Not demonstrated:** the `qa` flow itself — no graph exists until C3, so nothing here is driven
+  through a transition yet, and the four node modules have no flow test until then. `ensure_stack`
+  and `run_qa_plan` shell out to docker and ostler and were **not** exercised in the differential
+  run; their parity claim is owed in C3 and is not made here.
 
 ## Findings for loop 2
 
@@ -443,7 +496,7 @@ or something it left stranded.
 
 ## Open questions
 
-Both are the user's call, both raised and not yet answered, and neither blocks stages C and D.
+All three are the user's call, all raised and not yet answered, and none blocks stages C and D.
 
 1. **Repair the manifest gap in the engine, in this loop, or leave it for loop 2?** See the
    finding above. It is a `pyflow/run.py` + `engine.py` change, so it is a driver-API-adjacent
@@ -451,7 +504,15 @@ Both are the user's call, both raised and not yet answered, and neither blocks s
    means the ports are *structurally* at parity while every prompt that references a skill renders
    a placeholder sentence — which is not a difference any port should absorb silently, hence its
    place here rather than only in the findings.
-2. **Keep or restore the one narrowing in `coder/paths.py`** — the dropped fourth rung
+2. **The package layout note in `docs/backload.md`, found during C1.** It proposes grouping a
+   workflow by *flow* — `coder/qa/{flow.py,nodes.py}` plus a `shared/` — rather than the current
+   `nodes/` -by-subject plus `flows/`. It is a real improvement and it is also a rename of every
+   module in all four ports, so doing it mid-`coder` would churn A, B and C for no behavior change.
+   Recommendation: land it in loop 2 as one mechanical move once `coder` is drivable, not now.
+   Raised here because it is much cheaper to decide before D than after. (The same file's
+   "environment variables in nodes are PROHIBITED" note is already a finding above, and the
+   "paths mangling should come from ostler" note belongs with it.)
+3. **Keep or restore the one narrowing in `coder/paths.py`** — the dropped fourth rung
    (a walk upward from `__file__`) in the launch-checkout resolution. Under the driver that rung
    can only ever resolve to the installed `workhorse_workflows` package, never the consuming
    repo, so porting it would port a wrong answer. Recorded as a finding; restoring it is one line

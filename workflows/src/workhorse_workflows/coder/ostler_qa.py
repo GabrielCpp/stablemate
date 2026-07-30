@@ -13,7 +13,7 @@ YAML engine's way of getting a fresh `ostler` into a subprocess per node — is 
 now, because nodes run in the engine's process and there is nothing to purge.
 
 Library code, not nodes: `qa_context` and `qa_context_validate` back `nodes/okf.py`, which
-`docs` and `qa` share.
+`docs` and `qa` share; `qa_validate` and `qa_run` back the QA flow's plan gate and runner.
 """
 from __future__ import annotations
 
@@ -77,6 +77,28 @@ def qa_context_validate(
     return (0 if not problems else 1), payload, ""
 
 
+def qa_validate(
+    plan: str, spec_dir: str, *, docs_root: Path | None = None
+) -> tuple[int, dict[str, Any], str]:
+    """`ostler qa validate` → the outcome data; rc=0 iff the plan is valid."""
+    try:
+        outcome = okf(docs_root).qa_validate(plan, spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid"}, str(exc)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
+
+
+def qa_run(
+    plan: str, spec_dir: str, *, docs_root: Path | None = None
+) -> tuple[int, dict[str, Any], str]:
+    """`ostler qa run` → the four-state outcome data; rc=0 iff the run passed."""
+    try:
+        outcome = okf(docs_root).qa_run(plan, spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid"}, str(exc)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
+
+
 def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
     """Concise routing notes off the packet, keeping the deterministic diagnostics."""
     for key in ("notes", "message", "problems", "errors", "healthFindings"):
@@ -88,4 +110,12 @@ def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
     return stderr or fallback
 
 
-__all__ = ["notes_for", "okf", "parse_source_roots", "qa_context", "qa_context_validate"]
+__all__ = [
+    "notes_for",
+    "okf",
+    "parse_source_roots",
+    "qa_context",
+    "qa_context_validate",
+    "qa_run",
+    "qa_validate",
+]

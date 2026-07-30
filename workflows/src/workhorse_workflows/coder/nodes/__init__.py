@@ -11,6 +11,9 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `review` — where a review runs, what its findings settled to, what a human dropped in
 * `docs` — is there an OKF book, how can its diff be read, and does the update hold
 * `okf` — the diff-to-OKF obligation packet, shared by `docs` and `qa`
+* `qa` — clear the evidence, bring the stack up, validate the plan, run it
+* `backlog` — drain separate-scope discoveries back out to the author
+* `hygiene` — the two pre-commit gates: stray screenshots, and sentinel IDs
 
 Ported from `base-library/workflows/coder/scripts/`. The same three things change as in
 `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a
@@ -34,6 +37,7 @@ push/poll mismatch (recorded in the progress ledger) became visible at all.
 from __future__ import annotations
 
 from workhorse_workflows.coder.nodes._blueprint import blueprint
+from workhorse_workflows.coder.nodes.backlog import file_backlog_items
 from workhorse_workflows.coder.nodes.ci import (
     poll_pr_checks,
     push_ci_fix,
@@ -62,7 +66,14 @@ from workhorse_workflows.coder.nodes.genesis import (
     validate_genesis,
     write_agents_yml,
 )
+from workhorse_workflows.coder.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.nodes.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.nodes.qa import (
+    clear_qa_evidence,
+    ensure_stack,
+    run_qa_plan,
+    validate_qa_plan,
+)
 from workhorse_workflows.coder.nodes.review import (
     check_feedback,
     resolve_review_context,
@@ -79,8 +90,13 @@ __all__ = [
     "branch_code_repos",
     "build_okf_context",
     "check_feedback",
+    "check_sentinel_ids",
     "classify_documentation_context",
+    "clear_qa_evidence",
     "detect_okf_docs",
+    "ensure_stack",
+    "file_backlog_items",
+    "flush_root_screenshots",
     "gather_run_evidence",
     "genesis_git_init",
     "init_skeleton",
@@ -96,12 +112,14 @@ __all__ = [
     "resolve_review_context",
     "resolve_workspace_dirs",
     "run_lint",
+    "run_qa_plan",
     "select_ci_repo",
     "select_next_layer",
     "stamp_specs",
     "validate_genesis",
     "validate_okf_context",
     "validate_plan_context",
+    "validate_qa_plan",
     "verify_review_resolution",
     "verify_story_documentation",
     "write_agents_yml",
