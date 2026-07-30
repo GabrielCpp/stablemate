@@ -2091,6 +2091,7 @@ dependencies = [
     { name = "ostler" },
     { name = "pygithub" },
     { name = "pyyaml" },
+    { name = "ruamel-yaml" },
     { name = "workhorse-agent" },
 ]
 
@@ -2106,6 +2107,7 @@ requires-dist = [
     { name = "pygithub", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "workhorse-agent", editable = "workhorse" },
 ]
 provides-extras = ["test"]
