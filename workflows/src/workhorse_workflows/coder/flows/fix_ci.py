@@ -51,13 +51,10 @@ from __future__ import annotations
 from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow
-from workhorse_workflows.coder.nodes.ci import (
-    poll_pr_checks,
-    push_ci_fix,
-    resolve_ci_workspace,
-    select_ci_repo,
-)
-from workhorse_workflows.coder.schemas.ci import CiChecks, FixCiResult, WorkspaceDirs
+from workhorse_workflows.coder.nodes.ci import poll_pr_checks, push_ci_fix, select_ci_repo
+from workhorse_workflows.coder.nodes.story import resolve_workspace_dirs
+from workhorse_workflows.coder.schemas.ci import CiChecks, FixCiResult
+from workhorse_workflows.coder.schemas.story import WorkspaceDirs
 
 
 class FixCi(Workflow):
@@ -89,8 +86,13 @@ class FixCi(Workflow):
         `resolve_workspace`. It is `setup` rather than a state because nothing decides on
         it — it is read once, by the agent turn, as `add_dirs` — and because a resume
         should not re-derive the workspace it was already driving against.
+
+        The node is the story spine's `resolve_workspace_dirs`, which carries
+        `resolve_ci_workspace` as an alias: this flow called the same body under that name
+        before `dev` needed it too, and the alias is what keeps an in-flight run resumable
+        across the rename.
         """
-        return self.call(resolve_ci_workspace, self.docs_path)
+        return self.call(resolve_workspace_dirs, self.docs_path)
 
     def start(self, processed: list[str] | None = None, attempts: int = 0) -> Continue | Done:
         """Take the next repo whose CI has not been looked at, or finish.

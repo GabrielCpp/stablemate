@@ -22,20 +22,15 @@ The `processed_repos` accumulator is the one place a JSON-encoded **string** bec
 `list[str]`. The YAML round-tripped it through `json.dumps`/`json.loads` on every hop
 because a workflow var is a string; a state parameter is a value, so the encoding has no
 job left to do. Nothing on disk carried the encoded form.
+
+`WorkspaceDirs` lived here while `fix_ci` was the only flow that had one; it is defined in
+`schemas/story.py` now, because `resolve-workspace-dirs.py` is the story spine's and every
+per-story flow returns it. It stays importable from here — `fix_ci` is still a caller.
 """
 from __future__ import annotations
 
 from workhorse_workflows.coder.schemas._base import CoderResult
-
-
-class WorkspaceDirs(CoderResult):
-    """`resolve-workspace-dirs.py` — every directory the fixer agent may read.
-
-    The docs root is prepended when the workspace does not already contain it, so a fix
-    turn can always reach the epic and story it is fixing against.
-    """
-
-    dirs: list[str] = []
+from workhorse_workflows.coder.schemas.story import WorkspaceDirs
 
 
 class CiRepoPick(CoderResult):

@@ -99,6 +99,23 @@ def operator_context_path(root: Path, gate: str) -> Path:
     return root / OPERATOR_DIR / f"{gate}.md"
 
 
+def story_context_path(story_path: str) -> Path:
+    """The per-story operator context file: `<story-folder>/context.md`.
+
+    A second gate location, not a duplicate of `operator_context_path`. The coder's
+    per-story gates (`await_operator` and its siblings) put the questions *next to the
+    story* so the operator answering them is reading the story they are about, and
+    `await_operator.py` derived exactly this path. Without a story — a standalone run
+    pointed at no slug — it falls back to the launch root, as that script did.
+
+    `story_path` is already absolute by the time a flow has it (`prepare_story` resolves
+    it), so this is a `.parent`; the fallback is what needs a root.
+    """
+    if story_path:
+        return Path(story_path).parent / "context.md"
+    return launch_repo_root() / "context.md"
+
+
 __all__ = [
     "DREAM_INBOX",
     "DREAM_LEDGER",
@@ -107,4 +124,5 @@ __all__ = [
     "epics_repo_root",
     "launch_repo_root",
     "operator_context_path",
+    "story_context_path",
 ]

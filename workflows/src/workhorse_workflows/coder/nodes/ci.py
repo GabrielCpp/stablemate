@@ -1,7 +1,10 @@
-"""The CI fix loop's deterministic work: the workspace, the poll, the push.
+"""The CI fix loop's deterministic work: the repo pick, the poll, the push.
 
-Ports `resolve-workspace-dirs.py`, `select-ci-fix-repo.py`, `await-pr-checks.py`,
-`push-ci.py` and `push-epic.py`.
+Ports `select-ci-fix-repo.py`, `await-pr-checks.py`, `push-ci.py` and `push-epic.py`.
+`resolve-workspace-dirs.py` was ported here too while `fix_ci` was the only flow that had
+it; it now lives in `nodes/story.py` as `resolve_workspace_dirs`, because `dev`, `review`,
+`docs` and `qa` all run the same forty lines and one of them had to be the definition. The
+old node name survives as an alias on it, so an in-flight CI run still resumes.
 
 **The repo a node works on is a parameter now, not the process's cwd.** Every node in the
 YAML's `fix_ci` graph carried `cwd: {{ current_repo_cwd }}`, and `await-pr-checks.py` has a
@@ -33,14 +36,9 @@ import time
 from pathlib import Path
 
 from github import GithubException
-from workhorse.scriptutil import find_docs_root, find_repo_root
+from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.coder.nodes._blueprint import blueprint
-from workhorse_workflows.coder.schemas.ci import (
-    CiChecks,
-    CiRepoPick,
-    PushOutcome,
-    WorkspaceDirs,
-)
+from workhorse_workflows.coder.schemas.ci import CiChecks, CiRepoPick, PushOutcome
 from workhorse_workflows.kit import (
     branch_exists,
     find_open_pr,
@@ -71,22 +69,6 @@ AUTH_RE = re.compile(
 #: Consecutive polls that find no Actions runs at all before the repo is called CI-less.
 #: Not one poll: a run takes a moment to be queued after a push.
 NO_RUNS_POLL_LIMIT = 6
-
-
-@blueprint.node
-def resolve_ci_workspace(logger: logging.Logger, docs_path: str = "") -> WorkspaceDirs:
-    """Every directory the CI fixer may read: the workspace repos, plus the docs root.
-
-    The docs root is prepended when the workspace does not already carry it, because the
-    fixer is fixing an epic and the epic lives there.
-    """
-    docs_root = find_docs_root(docs_path)
-    repos = resolve_workspace("CODER_WORKSPACE")
-    dirs = [r["path"] for r in repos.values() if Path(r["path"]).is_dir()]
-    if str(docs_root) not in dirs:
-        dirs = [str(docs_root), *dirs]
-    logger.info("CI fix context: %d director(ies)", len(dirs))
-    return WorkspaceDirs(dirs=dirs)
 
 
 @blueprint.node
@@ -377,6 +359,5 @@ __all__ = [
     "poll_pr_checks",
     "push_ci_fix",
     "push_epic_branch",
-    "resolve_ci_workspace",
     "select_ci_repo",
 ]
