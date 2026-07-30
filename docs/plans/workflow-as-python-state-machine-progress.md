@@ -88,7 +88,7 @@ okf-builder 8, research 9), every one against real nodes with only the agent tur
 | 10 | `945e540` | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
 | 11 | `f896461` | `coder` **stage D2** — the PR boundary and the backlog drain: `schemas/{pr,backlog}.py` and `nodes/pr.py`, 9 nodes from 10 scripts. Two subprocess layers collapse; the four fix-drain nodes join the filing node in `nodes/backlog.py` behind one bullet-grammar definition. No driver change |
 | 12 | `78436af` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
-| 13 | (this commit) | `coder` **stage D4** — the main graph: 80 YAML nodes → 27 states, both pyproject lines, 12 end-to-end tests plus a cross-workflow static prompt check (77 sites). Loop 1.1's exit gate. No driver change |
+| 13 | `7e33233` | `coder` **stage D4** — the main graph: 80 YAML nodes → 27 states, both pyproject lines, 12 end-to-end tests plus a cross-workflow static prompt check (77 sites). Loop 1.1's exit gate. No driver change |
 
 ### Parity — `author`
 
