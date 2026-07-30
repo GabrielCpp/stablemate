@@ -46,7 +46,12 @@ what it was there to do — it needed **no driver change at all**, which is the 
 API `author` settled is the API.
 
 Next is **`coder`**, where `self.output(node)` and the three-tier state rule meet 4,366 lines,
-71 scripts, 19 awaits and 8 sub-flows.
+71 scripts, 19 awaits and 8 sub-flows. It is too large for one green step, so it lands in **four
+stages**, each green and committed on its own: **A** the package foundation plus the three small
+sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs`; **C** `qa` (91
+nodes); **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
+parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate is
+D, not A.
 
 ## What landed
 
@@ -69,7 +74,8 @@ Next is **`coder`**, where `self.output(node)` and the three-tier state rule mee
 | 0 | `f4788a3` | `research` restructured into the normative package layout — `nodes/` (3 subject modules + the shared `Blueprint`), tests to `workflows/tests/research/test_workflow.py`. No behavior change; 12 tests still pass |
 | 1 | `950a672` | The driver additions `author` asked for, all additive: `self.agent(cwd=, add_dirs=)`, declared dry-run stand-ins (`@node(stub=)`, `Registry.stub_agents`), activity as a flagged log record, JSON-safe checkpoint params. `research` adopts them |
 | 2 | `c96f845` | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
-| 3 | _this commit_ | The `okf-builder` port — 29 YAML nodes → 12 states + one sub-flow (19 → 6), 11 scripts → `nodes/` by subject, both pyproject tables, 8 end-to-end tests. No driver change |
+| 3 | `6049493` | The `okf-builder` port — 29 YAML nodes → 12 states + one sub-flow (19 → 6), 11 scripts → `nodes/` by subject, both pyproject tables, 8 end-to-end tests. No driver change |
+| 4 | _this commit_ | `coder` **stage A of four** — the package foundation (`paths.py`, `contract.py`, the shared `Blueprint`, `schemas/`) and the three small sub-flows: `genesis` (18 YAML nodes → 8 states), `dream` (4 → 3), `fix_ci` (11 → 4). 28 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -120,6 +126,28 @@ What was demonstrated, so loop 2 can see exactly how far it goes:
   stops — so, as with `author`, the comparison is node-by-node against the YAML's wiring and
   scripts. The one thing the port genuinely loses is in the findings below, not absorbed here.
 
+### Parity — `coder`, stage A
+
+Partial by construction: the three sub-flows below are drivable on their own, but `coder` does not
+resolve through an entry point until stage D, so the workflow-level parity record is still owed.
+
+- **Same artifacts, asserted rather than inferred.** 28 end-to-end tests drive the real nodes —
+  real `git init`/`git commit`, real `agents.yml` merge, real event-log digest, real
+  `push_epic_branch` — against temp repos, with only the agent turn and the two out-of-process
+  boundaries scripted (`farrier` for `genesis`, the four GitHub exits for `fix_ci`). They assert
+  the files: the rendered `agents.yml` with its comments intact after the ruamel round-trip, the
+  seeded scaffolds, the dream ledger's JSON and markdown, the deleted inbox.
+- **Same skip-ahead behavior.** A branch that did not run leaves no `run_dir/<node>/output.json`,
+  which is what the tests read — an existing repo skips `git_init`, an existing service skips the
+  skeleton and never re-runs the init command, a failed farrier install never reaches the
+  conventions turn.
+- **Same resume behavior, per flow.** `genesis` killed in the repair turn resumes on `fix` with
+  `reworks` intact and re-runs neither the build nor farrier; `dream` killed in the reflection
+  resumes on `reflect`; `fix_ci` killed in the fixer resumes on `fix` with the picked repo, the
+  processed list, the attempt count and the poll's summary on the checkpoint, and does not re-poll.
+- **Not demonstrated yet:** the sub-flows under `handoff` from the main graph (stage D), and — as
+  with the other ports — a recorded side-by-side run of the YAML, for the reason in the findings.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -161,6 +189,39 @@ or something it left stranded.
   stale instead is `boot-app.py`'s `--teardown` argv sentinel (one script serving as two nodes
   became four nodes and a private `_finish`), and `record.py`'s `ast.literal_eval` tolerance for
   Python-repr `discovered` lists, which is unreachable once the agent reply is a typed model.
+- **Every public name on `dir(Workflow)` is reserved, and one collision is silent.** `Workflow` is
+  a pydantic model, so an input field that shadows a parent attribute at least *warns*
+  (`dream`'s documented `run_dir` var had to become `reflect_on` with `run_dir` kept as an alias),
+  but a **state method** that shadows one is simply not a state and nothing says so — `genesis`'s
+  `validate` state was silently unregistered until it was renamed `verify`. The trap is the
+  pydantic-v1 deprecated aliases nobody thinks of as API: `validate`, `json`, `dict`, `copy`,
+  `schema`. Both fixes were workflow-side, so no driver change was made; a `__init_subclass__`
+  check that rejects a shadowing state by name is a loop-2 driver question.
+- **The `fix_ci` attempt budget is a lifetime one, not the per-repo one its comment claims.**
+  `ci_attempts` is never reset when `select_ci_repo` advances, so a second repo inherits whatever
+  the first spent — a repo that needed one fix leaves the next one two instead of three. Behavior
+  preserved and now pinned by a test
+  (`test_the_attempt_budget_is_shared_across_repos_not_reset_per_repo`); repairing it is a
+  behavior change, so it is reported rather than absorbed.
+- **`fix_ci`'s `ci_summary` input is unreachable.** The main graph passes the CI summary in through
+  the `type: flow` node, but `poll` always runs before `fix` and overwrites the var, so the fixer
+  can never see it. Kept for interface parity, never read, and pinned by the fix test asserting the
+  fixer gets the poll's summary instead.
+- **`max_genesis_reworks` was an inert var.** The YAML declared it and the repair loop branched on
+  a literal `2` instead; the port's `MAX_REWORKS` makes the real ceiling the only ceiling. Same
+  number, so no behavior moved — but the var was operator-settable and did nothing.
+- **A latent multi-repo defect in the YAML's CI push.** `push-ci.py` ran `push-epic.py`, which
+  resolves its repo with `find_repo_root()` and so prefers `AGENT_REPO_DIR`, while every `fix_ci`
+  node was pinned to the picked repo with `cwd:`. In a multi-repo workspace with that variable set,
+  the loop polled one repo's PR and pushed a different repo's branch. The port takes `repo_dir`
+  like its neighbours and falls back to `find_repo_root()` only when handed nothing, which is the
+  single-repo case the YAML got right.
+- **One narrowing, in `coder/paths.py`, and it is the only one in stage A.** The `await-*` scripts
+  resolved the launch checkout through four rungs; the fourth was a walk upward from `__file__`,
+  reached only when nothing above it matched. Under the driver `__file__` is the installed
+  `workhorse_workflows` package, never the consuming repo, so that rung could only ever have
+  returned something wrong. It is dropped rather than ported. Flagged here because this loop
+  narrows nothing without saying so.
 
 ## What is next
 
