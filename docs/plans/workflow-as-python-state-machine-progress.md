@@ -52,8 +52,10 @@ sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs`
 (91 nodes), which inherits `nodes/okf.py` and `ostler_qa.py` from B2 and is itself in three —
 **C1** the node layer (done), **C2** the evidence and regression gates (done), **C3** the graph
 and its tests (done); **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
-parity record. Only after D does `coder` resolve through an entry point, so loop 1.1's exit gate
-is D, not A.
+parity record — itself in four: **D1** the queue spine (done), **D2** the PR boundary and the
+backlog drain (done), **D3** the `fix` flow and its tests (done), **D4** the main graph, the entry
+points and the workflow-level parity record. Only after D4 does `coder` resolve through an entry
+point, so loop 1.1's exit gate is D4, not A.
 
 ## What landed
 
@@ -85,6 +87,7 @@ is D, not A.
 | 9 | `a7ec0da` | `coder` **stage C3** — the `qa` graph: 91 YAML nodes → 25 states around one `QaLoop` carrier, plus the 17 prompts B2 and C3 reference. 26 end-to-end tests. No driver change |
 | 10 | `945e540` | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
 | 11 | `f896461` | `coder` **stage D2** — the PR boundary and the backlog drain: `schemas/{pr,backlog}.py` and `nodes/pr.py`, 9 nodes from 10 scripts. Two subprocess layers collapse; the four fix-drain nodes join the filing node in `nodes/backlog.py` behind one bullet-grammar definition. No driver change |
+| 12 | `PENDING` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -510,6 +513,58 @@ already shipped.
   `get_pulls` — which is seamed here as everywhere else in this port, and the story-mode multi-repo
   PR fan-out, which needs the workspace fixture D3's tests build.
 
+### Parity — `coder`, stage D3 (the `fix` flow)
+
+Twenty-four YAML nodes (lines 3605–3893) become nine states, and this is the first stage of D with
+a graph to drive, so the claim is behavioral again rather than node-level: **12 end-to-end tests,
+real nodes, only the agent turn scripted**. The backlog file, the seeded story, the code repo's
+branch and its git log are all read back off disk after the run.
+
+- **The whole loop runs, and the artifacts are the YAML's.** One drained item produces
+  `docs/epics/fixes/stories/<slug>/story.md` carrying the bullet as its single acceptance
+  criterion, the bullet gone from `## Filed by coder`, and one commit `fixes: <slug>` in the repo
+  the plan named. Five agent turns exactly: `plan-story`, `implement-plan`, `qa-story`,
+  `document-story`, `review-story-documentation`.
+- **`commit_fix_item.next` really is the draw.** Two backlog items drain in one run as two full
+  iterations and **two commits** — not one squashed at the end. That commit-per-item rule is the
+  whole difference between this flow and the main graph's nested copy of the same nodes, and it is
+  now a test rather than a docstring.
+- **The `docs` handoff is exercised, not stubbed.** `seed_fix_story` creates `docs/epics/fixes/`,
+  which is a `MANAGED_DIRS` entry, so the sub-flow's OKF pre-gate answers `yes` and the flow spends
+  both of its turns for real, taking the `semantic` route because the code repos sit outside the
+  docs worktree. A blocked reviewer raises out of the sub-flow, across the handoff boundary
+  (`Engine.handoff` does not catch), and out of the fix flow — which is `fix_documentation_failed`,
+  the `type: fail`, reached by the arm that reaches it.
+- **The retry is one, and the notes cross.** `check → apply_once → recheck`, with
+  `apply-qa-fixes` receiving `check`'s verdict verbatim. This is the threaded-argument rule under
+  test: `qa_notes` was `get_node_output('check_fix','qa_result').notes` in the YAML, and agent turns
+  are not nodes here, so it rides a `Continue` kwarg. A second failure flags rather than retrying.
+- **Both flag arms leave the bullet in place, annotated.** A blocked plan flags without spending an
+  implement or QA turn at all; a second QA failure flags after exactly one retry. Both write
+  `(blocked: …)` in the line, and `select_fix_item` skips it on the very next draw — which is what
+  keeps a permanently stuck item from spinning the drain.
+- **Resume lands on `check`.** A run killed mid-`qa-story` resumes at `state="check"`,
+  `flow="Fix"`, and the resumed run re-draws nothing, re-plans nothing and re-implements nothing —
+  it spends one QA turn and finishes. Same shape as every other resume test in this port.
+- **Three divergences are preserved and pinned by tests, not smoothed.** (1) `implement_fix.next`
+  is `check_fix`, so a plan dispatching two services gets **one** implemented and is then QA'd —
+  `flows.dev` loops back to its layer selector and this flow does not. (2)
+  `branch_fix_code_repos` is called with `spec_dir` alone, so the branch defaults to the docs
+  repo's *current* branch and the code repos stay on `main` — consistent with "commit onto the
+  current branch, no push, no PR", and asserted as `branched == []`,
+  `already_on_branch == ["api"]`. (3) There is no `stamp_specs` after the plan turn, so a drained
+  fix's plan is not registered as an OKF Concept. All three read more like omissions than
+  decisions; all three are the YAML's wiring and stay.
+- **The prune happens before the documentation.** `prune_fix_item.next` is `document_fix_item`, so
+  a run that dies in documentation has already taken the bullet off the backlog while leaving the
+  work uncommitted — the failed item is not re-drawn next run. Preserved, tested, and on the
+  findings list below.
+- **`refuel: fix_bullet_id` has no counterpart.** The drain is unbounded in the YAML and bounded
+  here by the transition budget — the same loop-2 design question `okf-builder` raised.
+- **Not demonstrated:** the `local` documentation route (the tests take `semantic` by construction,
+  so no real `ostler qa context` subprocess runs in this suite), and a drain against a book with a
+  populated id ledger — `seed_fix_story` self-creates the `fixes` bucket on an empty one.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -743,6 +798,31 @@ or something it left stranded.
   prompt a flow names exists on disk, and stage D should add one static check that walks every
   `self.agent(prompt=…)` in the package and stats the file. That is cheap and would have caught
   this at B2.
+- **The standalone `fix` flow implements only the first service layer.** `implement_fix.next` is
+  `check_fix`, where `flows.dev`'s equivalent loops back to its layer selector. A drained fix whose
+  plan dispatches two services gets one of them implemented and is then QA'd as a whole — and QA
+  has exactly one retry behind it, so the second service's absence is most likely flagged as a QA
+  failure rather than as an unimplemented layer. Ported as wired and pinned by
+  `test_only_the_first_service_layer_is_implemented`; it reads much more like an omission than a
+  decision, and adding the loop is a behavior change, so loop 2 should decide.
+- **The fix drain prunes before it documents, so a documentation failure loses the item.**
+  `prune_fix_item.next` is `document_fix_item`, and `document_fix_item`'s failure arm is a
+  `type: fail`. A run that dies documenting has already removed the bullet from the backlog while
+  leaving the work uncommitted, so the next run does not re-draw it — the item is silently gone
+  from the worklist with its change sitting in the working tree. Preserved and pinned by
+  `test_documentation_that_cannot_converge_fails_the_run_before_the_commit`. Moving the prune
+  after the commit would fix it and is a behavior change.
+- **`branch_fix_code_repos` is passed one argument where `dev`'s equivalent is passed three.** The
+  YAML node lists only `spec_dir`, so `branch` and `docs_path` take their defaults and a blank
+  branch falls back to the docs repo's *current* branch — the standalone drain never creates a fix
+  branch. That happens to be coherent with the flow's own "one commit per item onto the current
+  branch, no push, no PR" design, which is why it is preserved and asserted rather than
+  harmonised; but it is one argument list away from the story flow's, and loop 2 should confirm
+  the coherence is intended rather than lucky.
+- **`plan_fix` has no `stamp_specs` after it, where `dev`'s plan turn does.** A drained fix's plan
+  files are never registered as OKF Concepts, so the book has no record of what the fix planned to
+  change. Same class as the `stamp_specs`-never-re-runs finding above, and the same cheap fix
+  (`stamp_specs` is idempotent).
 
 ## What is next
 
