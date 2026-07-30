@@ -69,7 +69,7 @@ from workhorse_workflows.coder.nodes.dev import (
     select_next_layer,
 )
 from workhorse_workflows.coder.nodes.queue import commit_story
-from workhorse_workflows.coder.nodes.story import prepare_story, resolve_workspace_dirs
+from workhorse_workflows.coder.nodes.story import prepare_fix_story, resolve_workspace_dirs
 from workhorse_workflows.coder.schemas._base import CoderResult
 from workhorse_workflows.coder.schemas.dev import DispatchEntry, ImplResult, PlanResult
 from workhorse_workflows.coder.schemas.qa import QaResult
@@ -117,7 +117,7 @@ class Fix(Workflow):
         seed = self.call(
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
-        story = self.call(prepare_story, self.docs_path, seed.story_slug, seed.epic)
+        story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
         return Continue(story, self.plan)
 
     def plan(self) -> Continue:
@@ -320,7 +320,7 @@ class Fix(Workflow):
         parameter — and it survives the `docs` handoff, because a handoff subscopes the run
         writer, so the child's own `prepare_story` call cannot overwrite this one.
         """
-        return self.output(prepare_story)
+        return self.output(prepare_fix_story)
 
     @property
     def _layer(self) -> DispatchEntry:

@@ -77,4 +77,25 @@ class MergeFlagged(CoderResult):
     merge_flagged: bool = False
 
 
-__all__ = ["CiFlagged", "MergeFlagged", "MergeOutcome", "PrGate", "StoryPr"]
+class MergeFixResult(CoderResult):
+    """`fix_merge`'s reply — the conflict resolution the agent turn wrote.
+
+    Nothing branches on it: the YAML declared `fix_merge_result` as an output key and then
+    routed unconditionally to `push_merge`, because whether the resolution *worked* is
+    settled by the push and the re-merge, not by the turn's own account of itself. It is a
+    schema rather than nothing because `self.agent` needs a reply type, and a typed record
+    in the run directory is what makes the resolution readable afterwards.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+__all__ = [
+    "CiFlagged",
+    "MergeFixResult",
+    "MergeFlagged",
+    "MergeOutcome",
+    "PrGate",
+    "StoryPr",
+]

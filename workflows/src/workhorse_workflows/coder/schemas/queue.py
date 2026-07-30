@@ -143,6 +143,18 @@ class QaFlagged(CoderResult):
     qa_flagged: bool = False
 
 
+class ReplanResult(CoderResult):
+    """`replan_epic`'s reply — the rewrite of the epic the operator's answer forced.
+
+    Unbranched, like `MergeFixResult`: the YAML declared `replan_result` and then went
+    straight back to `select_story`, because the evidence that the replan worked is the
+    queue the next pick reads, not the turn's summary of itself.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
 __all__ = [
     "BaseBranch",
     "EpicBlocked",
@@ -150,6 +162,7 @@ __all__ = [
     "EpicPick",
     "EpicPruned",
     "QaFlagged",
+    "ReplanResult",
     "StoryBranch",
     "StoryCommitted",
     "StoryPick",

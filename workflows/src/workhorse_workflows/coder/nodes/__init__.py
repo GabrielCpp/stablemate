@@ -113,6 +113,7 @@ from workhorse_workflows.coder.nodes.review import (
     verify_review_resolution,
 )
 from workhorse_workflows.coder.nodes.story import (
+    prepare_fix_story,
     prepare_story,
     resolve_workspace_dirs,
     stamp_specs,
@@ -150,6 +151,7 @@ __all__ = [
     "poll_pr_checks",
     "prune_epic",
     "prune_fix_item",
+    "prepare_fix_story",
     "prepare_story",
     "push_ci_fix",
     "push_epic_branch",
