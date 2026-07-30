@@ -166,18 +166,48 @@ def registry_graphs(registry: Registry) -> list[FlowGraph]:
     return [state_graph(cls, names) for cls, names in by_class.items()]
 
 
+@dataclass
+class _Found:
+    """What a scan has seen so far. Mutable, because the scan recurses."""
+
+    edges: list[Edge] = field(default_factory=list)
+    calls: list[str] = field(default_factory=list)
+    prompts: list[str] = field(default_factory=list)
+    handoffs: list[str] = field(default_factory=list)
+    terminal: bool = False
+
+
 def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
     tree = _source_tree(spec.fn)
     if tree is None:
         return StateNode(name=spec.name, opaque=True)
 
-    edges: list[Edge] = []
-    calls: list[str] = []
-    prompts: list[str] = []
-    handoffs: list[str] = []
-    terminal = False
+    found = _Found()
+    _scan(cls, tree, found, {spec.name})
+    return StateNode(
+        name=spec.name,
+        edges=tuple(dict.fromkeys(found.edges)),
+        terminal=found.terminal,
+        calls=tuple(dict.fromkeys(found.calls)),
+        prompts=tuple(dict.fromkeys(found.prompts)),
+        handoffs=tuple(dict.fromkeys(found.handoffs)),
+    )
 
-    # `ast.walk` rather than a visitor: a transition inside a nested helper or a
+
+def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> None:
+    """Record every seam this body reaches, following its own private helpers.
+
+    A state that factors its turn into a `_record()` or its node call into a
+    `_publish()` is doing what the design sanctions — private methods are not states
+    — but reading only the state's literal body would then lose the prompt from the
+    diagram *and* from the dry run's prompt-exists check, which is the opposite of
+    what factoring should cost. So `self._helper(...)` is followed and merged in.
+    Attributed to the state, not to the helper: the helper is not a node.
+
+    `seen` bounds it. A helper calling itself, or two calling each other, would
+    otherwise recurse forever over a workflow that runs perfectly well.
+    """
+    # `ast.walk` rather than a visitor: a transition inside a nested function or a
     # comprehension still counts, and over-reporting is the contract here anyway.
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -187,24 +217,20 @@ def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
             continue
         tail = dotted.rsplit(".", 1)[-1]
         if tail == "Done":
-            terminal = True
+            found.terminal = True
         elif tail in _TARGET_ARG:
-            edges.append(_read_edge(cls, tail, node))
+            found.edges.append(_read_edge(cls, tail, node))
         elif dotted == "self.call":
-            _append(calls, _first_ident(node))
+            _append(found.calls, _first_ident(node))
         elif dotted == "self.agent":
-            _append(prompts, _first_literal(node))
+            _append(found.prompts, _first_literal(node))
         elif dotted == "self.handoff":
-            _append(handoffs, _first_ident(node))
-
-    return StateNode(
-        name=spec.name,
-        edges=tuple(dict.fromkeys(edges)),
-        terminal=terminal,
-        calls=tuple(dict.fromkeys(calls)),
-        prompts=tuple(dict.fromkeys(prompts)),
-        handoffs=tuple(dict.fromkeys(handoffs)),
-    )
+            _append(found.handoffs, _first_ident(node))
+        elif dotted == f"self.{tail}" and tail.startswith("_") and tail not in seen:
+            seen.add(tail)
+            helper = _source_tree(getattr(cls, tail, None))
+            if helper is not None:
+                _scan(cls, helper, found, seen)
 
 
 def _read_edge(cls: type[Workflow], ctor: str, call: ast.Call) -> Edge:

@@ -40,6 +40,10 @@ class NodeSpec:
     #: All names this node's artifacts may live under, live name first. `self.output`
     #: walks these so renaming a node does not orphan a run dir mid-week.
     dir_names: tuple[str, ...] = field(default=())
+    #: What `--dry-run` runs in place of `fn` — the author's answer to "what would
+    #: this have returned". Same signature as the node. None = a blank return model,
+    #: which type-checks and is honest about knowing nothing.
+    stub: Callable[..., Any] | None = None
 
 
 def node_spec(fn: Callable[..., Any]) -> NodeSpec:
@@ -86,6 +90,7 @@ class Blueprint:
         *,
         aliases: Iterable[str] = (),
         retries: int = 0,
+        stub: Callable[..., Any] | None = None,
     ) -> Any:
         """Register a node. Usable bare (`@bp.node`) or called (`@bp.node(retries=2)`).
 
@@ -93,6 +98,11 @@ class Blueprint:
         on a state: `self.output(node)` resolves by node name against the run
         directory, so renaming a node breaks output lookups in exactly the way
         renaming a state breaks checkpoints.
+
+        `stub` is what a dry run calls instead — `stub=lambda logger, **kw: Report(ok=True)`.
+        Declaring one is how a workflow turns `--dry-run` from "every branch takes an
+        arbitrary path" into a real smoke test of its happy path; without one the node
+        yields a blank instance of its return model.
 
         There is deliberately no `timeout=`: a node runs in the engine's own process
         and there is no portable way to interrupt it, so the knob would be accepted
@@ -111,6 +121,7 @@ class Blueprint:
                 retries=retries,
                 returns=_return_type(target),
                 dir_names=(name, *alias_tuple),
+                stub=stub,
             )
             self.index.register(name, spec, alias_tuple)
             setattr(target, NODE_ATTR, spec)

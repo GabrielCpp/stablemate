@@ -211,6 +211,8 @@ class Workflow(BaseModel):
         args: dict[str, Any] | None = None,
         power: str | None = None,
         timeout: float | None = None,
+        cwd: str | Path | None = None,
+        add_dirs: list[str | Path] | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
@@ -219,11 +221,23 @@ class Workflow(BaseModel):
 
         `power` is the abstract tier ("low"/"medium"/"high") the operator's config maps
         to a concrete model per backend; `timeout` is this turn's wall-clock budget in
-        seconds. Both default to None = whatever the engine defaults to, so a state
-        that says nothing behaves exactly as before.
+        seconds. `cwd` is the working directory the agent CLI is launched in — which is
+        what decides whose CLAUDE.md, skills and git context the turn sees — and
+        `add_dirs` are further directories it may read. All four default to None =
+        whatever the engine defaults to, so a state that says nothing behaves exactly
+        as before.
+
+        Unlike the YAML node's fields these are real paths, not Jinja templates: a
+        state computes the path in Python and passes it.
         """
         return self._require_engine().agent(
-            prompt, returns=returns, args=args or {}, power=power, timeout=timeout
+            prompt,
+            returns=returns,
+            args=args or {},
+            power=power,
+            timeout=timeout,
+            cwd=cwd,
+            add_dirs=add_dirs,
         )
 
     def handoff(self, wf: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> Any:

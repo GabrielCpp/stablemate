@@ -49,19 +49,30 @@ template.
 src/workhorse_workflows/
   kit/            shared workflow-side helpers (GitHub, git, workspace resolution)
   <workflow>/
-    workflow.py   the Workflow subclass, the blueprint wiring, `main`
-    models.py     the params/state models
-    nodes/        the callables (today's scripts/), assembled into a Blueprint
-    flows/        sub-workflows
+    workflow.py   the Workflow subclass and `main` — one class, nothing else
+    schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows)
+    paths.py      pure derivations: the dirs and filenames the nodes agree on
+    nodes/        the callables (today's scripts/), one module per subject,
+                  assembled into a Blueprint by nodes/__init__.py
+    flows/        sub-workflows, each its own Workflow subclass reached by handoff()
     prompts/      unchanged from the YAML era
-    tests/
+
+tests/<workflow>/  outside src/ and outside the wheel; mirrors the node modules,
+                   plus one test_workflow.py for the machine
 ```
 
-Imports point one way: `workflow.py` imports `nodes/` and `flows/`; nothing under
-`nodes/` imports `workflow.py`.
+Imports point one way: `workflow.py` imports `nodes/`, `flows/`, `schemas` and `paths`;
+nothing under `nodes/` imports `workflow.py`.
+
+How small each of those files has to be is **normative, not per-workflow taste** — one
+subject per module, `nodes/` is a package even when it holds three functions, and
+`~400 lines` is the trigger to apply the rule. The plan's
+[One workflow, several files](../docs/plans/workflow-as-python-state-machine.md) carries
+the rules and the reasoning; `coder` is 71 scripts totalling 8,661 lines, and a single
+`nodes.py` at that size is `scriptutil.py` again.
 
 ## Status
 
-Skeleton. The entry-point and script tables are declared and empty; workflows land one
-at a time, `research` first, and the YAML engine keeps running the un-ported ones from
-the base library the whole way.
+`research` has landed — the first port, and the one the driver is proved against.
+`author`, `okf-builder` and `coder` follow, one at a time, and the YAML engine keeps
+running the un-ported ones from the base library the whole way.

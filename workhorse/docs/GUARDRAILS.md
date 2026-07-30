@@ -317,6 +317,12 @@ nothing else. Flows inherit the parent's rendered labels (a flow's context holds
 its rendered args, so it usually cannot re-derive them) and may layer their own on top.
 Full reference: [WORKFLOW.md §1.2](WORKFLOW.md#12-labels--tagging-telemetry-with-the-unit-of-work).
 
+A Python state machine says the same thing with a `labels()` method and, for the "what is
+it doing *now*" dimension, a flagged log record (`logger.info(msg, extra={"activity":
+True})`) — and it does **not** `wf.`-prefix its keys, so a collector reads them raw. Both
+spellings ride the live gauges below. See the README's "Labels, and saying what the run is
+doing".
+
 #### Watching a run that has not finished
 
 Spans export **when they end**, so the node a run is currently sitting in — the

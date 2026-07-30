@@ -72,11 +72,41 @@ class NameIndex(Generic[T]):
         for alias, name in other._aliases.items():
             self._alias(alias, name)
 
+    def replacing(self, targets: dict[str, T]) -> "NameIndex[T]":
+        """A copy of this index with `targets` swapped in — the substitution primitive.
+
+        Non-mutating, because the index a registry built at import time is shared by
+        every run in the process: a test that substituted in place would leak into the
+        next one, which is the very thing substituting instead of patching is for.
+
+        Names are resolved the way a lookup resolves them, so a retired name works
+        here too; a name this index does not carry is an error rather than a silent
+        addition, since "override" and "define" failing the same way is how a typo
+        becomes a passing test.
+        """
+        copy: NameIndex[T] = NameIndex(self.kind, owner=self.owner)
+        copy._live = dict(self._live)
+        copy._aliases = dict(self._aliases)
+        for name, target in targets.items():
+            live = self.canonical(name)
+            if live is None:
+                known = ", ".join(sorted(self._live)) or "(none)"
+                raise WorkflowDefinitionError(
+                    f"cannot replace {self.kind} {name!r}: this index has no such "
+                    f"{self.kind}. Known {self.kind}s: {known}."
+                )
+            copy._live[live] = target
+        return copy
+
     # --- lookup -------------------------------------------------------------
 
     def live_names(self) -> list[str]:
         """The names `dot` and `--dry-run` render. Aliases are deliberately absent."""
         return list(self._live)
+
+    def items(self) -> list[tuple[str, T]]:
+        """Live name → target pairs, for callers that transform the whole index."""
+        return list(self._live.items())
 
     def get(self, name: str) -> T | None:
         if name in self._live:

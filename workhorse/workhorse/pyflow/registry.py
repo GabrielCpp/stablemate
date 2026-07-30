@@ -1,8 +1,7 @@
 """The module-level object an entry point points at.
 
 ```python
-workflow = Registry("coder")
-workflow.add_blueprints(scriptutil.blueprint, blueprint)
+workflow = Registry("coder").add_blueprints(kit.blueprint, blueprint)
 main = workflow.main(Coder)
 ```
 
@@ -11,9 +10,17 @@ the `workhorse.workflows` entry point names it (so `workhorse run coder …` fin
 workflow), and `main` — *the callable `main(Entry)` returns*, never a call made at
 import — is the `workhorse-coder` console script. A workflow module must stay
 importable without running anything.
+
+It is also the run's **composition root**. `registry.nodes` is not bookkeeping: it is
+what `self.call` resolves against, so a substituted copy of it (`override(...)`,
+`stub_nodes(...)`) is how a test or a dry run replaces a node without patching anyone's
+module attributes. Registration travels with the flow class as well as the node
+function, which is what lets a handed-off sub-flow bring its own prompts and its own
+node table instead of inheriting its caller's.
 """
 from __future__ import annotations
 
+import dataclasses
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -24,6 +31,23 @@ from workhorse.pyflow.blueprint import Blueprint, NodeSpec
 from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.workflow import Workflow, state
+
+#: Attribute stamped on a registered flow class. `self.handoff(Surveyor, …)` takes the
+#: class, not a name, so the registration has to travel with it — the same idiom as
+#: `NODE_ATTR` on a node function, for the same reason.
+REGISTRY_ATTR = "__workhorse_registry__"
+
+
+def registry_of(cls: type[Workflow]) -> "Registry | None":
+    """The registry that claimed `cls`, or None if it was never registered.
+
+    None means "inherit the caller's world", which is what keeps a sub-flow declared
+    beside its parent working with no ceremony. Read off `cls.__dict__` rather than
+    with `getattr`, so a subclass of a registered flow is unclaimed until it registers
+    itself instead of quietly answering with its base's registry.
+    """
+    registry = cls.__dict__.get(REGISTRY_ATTR)
+    return registry if isinstance(registry, Registry) else None
 
 
 class Registry:
@@ -40,6 +64,8 @@ class Registry:
         self.flows: dict[str, type[Workflow]] = {}
         self.entry: type[Workflow] | None = None
         self.nodes: NameIndex[NodeSpec] = NameIndex("node", owner=f"workflow {name!r}")
+        #: Canned agent replies for `--dry-run`, by prompt stem. See `stub_agents`.
+        self.agent_stubs: dict[str, Any] = {}
 
     # --- composition --------------------------------------------------------
 
@@ -64,8 +90,55 @@ class Registry:
                     f"flow {flow_name!r} is registered twice on workflow {self.name!r}"
                 )
             _require_workflow(flow_name, workflow)
+            self._claim(workflow)
             self.flows[flow_name] = workflow
         return self
+
+    def stub_agents(self, replies: dict[str, Any]) -> "Registry":
+        """Declare what `--dry-run` should get back from each prompt, by stem.
+
+        A value, a dict of the reply model's fields, or a callable taking the render
+        args. Declaring these is what turns a dry run from "every branch reads a blank
+        field and takes an arbitrary path" into a smoke test of the workflow's own
+        happy path — and it is why a fail terminal under `--dry-run` is a real verdict
+        for a workflow that declares them and not for one that does not.
+
+        A dict rather than `**kwargs` because prompt stems are hyphenated
+        (`check-gate`), which is not an identifier.
+        """
+        self.agent_stubs.update(replies)
+        return self
+
+    def override(self, **by_name: Callable[..., Any]) -> NameIndex[NodeSpec]:
+        """A copy of `self.nodes` with those nodes bound to those functions.
+
+        What a test hands to `RunEnv(nodes=…)` instead of patching the module the node
+        lives in. The copy is non-mutating, so the registry every other run in the
+        process shares is untouched.
+        """
+        targets: dict[str, NodeSpec] = {}
+        for name, fn in by_name.items():
+            spec = self.nodes.get(name)
+            if spec is None:
+                known = ", ".join(sorted(self.nodes.live_names())) or "(none)"
+                raise WorkflowDefinitionError(
+                    f"workflow {self.name!r} has no node {name!r} to override. "
+                    f"Registered nodes: {known}."
+                )
+            targets[name] = dataclasses.replace(spec, fn=fn)
+        return self.nodes.replacing(targets)
+
+    def _claim(self, workflow: type[Workflow]) -> None:
+        """Stamp the class so `handoff` can find its registry from the class alone."""
+        claimed = workflow.__dict__.get(REGISTRY_ATTR)
+        if claimed is not None and claimed is not self:
+            raise WorkflowDefinitionError(
+                f"{workflow.__name__} is registered on two workflows "
+                f"({getattr(claimed, 'name', '?')!r} and {self.name!r}) — a flow class "
+                "belongs to one distribution, because its registry is what decides "
+                "which prompts directory and which nodes it runs with"
+            )
+        setattr(workflow, REGISTRY_ATTR, self)
 
     def state(
         self, fn: Callable[..., Any] | None = None, *, aliases: Iterable[str] = ()
@@ -96,6 +169,7 @@ class Registry:
                 "what the CLI binds so a bare `workhorse-<name> run qa` reads 'qa' as the "
                 "flow rather than as the workflow."
             )
+        self._claim(entry)
         self.entry = entry
         self.flows.setdefault("default", entry)
 

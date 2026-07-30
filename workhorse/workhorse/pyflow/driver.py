@@ -23,8 +23,8 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from workhorse import otel
-from workhorse.pyflow.engine import Engine, RunEnv
+from workhorse.pyflow import activity as activity_log
+from workhorse.pyflow.engine import Engine, RunEnv, jsonable
 from workhorse.pyflow.errors import WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
@@ -238,6 +238,9 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
     budget = type(wf).transition_budget()
+    # One tracker per logger, so an activity a sub-flow sets survives the parent's
+    # next transition instead of being published over by a second instance.
+    activity = activity_log.install(env.log)
 
     for _ in range(budget):
         if env.deadline is not None and time.time() > env.deadline:
@@ -249,9 +252,9 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
         bound = getattr(wf, spec.name)
         kwargs = coerce_params(bound, params, state=spec.name)
 
-        otel.set_labels({**env.labels, **_labels(wf, env.log)})
+        activity.rebase({**env.labels, **_labels(wf, env.log)})
         env.writer.write_state_checkpoint(
-            spec.name, params, inputs=inputs, flow=flow_name, ctx=ctx_payload
+            spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
         env.log.info("[workhorse] state  → %s", spec.name)
         outcome = bound(**kwargs)
@@ -265,7 +268,7 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
             baseline = _ask(outcome.path, outcome.questions, env.log)
             env.writer.write_state_checkpoint(
                 outcome.state,
-                outcome.params,
+                jsonable(outcome.params),
                 inputs=inputs,
                 flow=flow_name,
                 ctx=ctx_payload,

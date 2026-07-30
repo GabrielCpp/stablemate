@@ -181,21 +181,34 @@ For a workflow written as a Python state machine it does two complementary thing
 First a **static pass** over the states' own source (the same reading `dot` uses):
 every prompt path a state renders must exist, every state must be reachable from the
 start state, at least one state must be able to return `Done`, and no transition may
-name something that is not a state. Then it **drives the machine for real** with
-`self.call`/`self.agent` stubbed out, which covers what only running can — imports,
-`setup()`, and the transitions actually bound along one path. The static half is the
-one that carries the weight: it sees the branches this run would never take.
+name something that is not a state. Then it **drives the machine for real** over a
+*substituted node index*, which covers what only running can — imports, `setup()`, and
+the transitions actually bound along one path. The static half is the one that carries
+the weight: it sees the branches this run would never take.
 
-The one failure a dry run declines to report is a **fail terminal**. Stubbed nodes
-return blank stand-ins, so the machine takes whichever branch a blank selects — and
-for any workflow with a reachable `raise WorkflowFailed` that can be the failing one,
-which would mean no such workflow could ever dry-run green. It prints which state
-halted and why, marks the run dir `fail`, and still exits `0`. Every other
-deliberate failure (a dead state, a bad checkpoint parameter, an exhausted transition
-budget) exits `1` as always.
+Nothing branches on "is this a dry run" inside the engine. The run is handed a copy of
+the registry's node index with every node's body replaced by its stand-in, so `self.call`
+runs the same code path it always does — see
+[The node index is the substitution seam](#the-node-index-is-the-substitution-seam).
+A node's stand-in is whatever `@blueprint.node(stub=…)` declared, or a blank instance of
+its declared return type; an agent turn's is whatever `Registry.stub_agents({...})`
+declared for that prompt stem, or a blank reply model.
+
+**What a fail terminal means depends on whether the workflow declared any stand-ins.**
+Undeclared, every reply is blank, so the machine takes whichever branch a blank selects
+— and for any workflow with a reachable `raise WorkflowFailed` that can be the failing
+one, which would mean no such workflow could ever dry-run green. So a dry run prints
+which state halted and why, marks the run dir `fail`, and still exits `0`. A workflow
+that calls `stub_agents({...})` has *said* what the happy path answers, so reaching a
+fail terminal anyway is a real finding and exits `1`. Every other deliberate failure (a
+dead state, a bad checkpoint parameter, an exhausted transition budget) exits `1` either
+way.
 
 A dry run writes its artifacts to a run dir named `dry-run` and clears it first, so
-it can never resume — or overwrite — the checkpoint of a real week-long run.
+it can never resume — or overwrite — the checkpoint of a real week-long run. Each seam
+it entered is marked in `events.jsonl` with which stand-in answered it —
+`"stub": "declared"` for one the workflow supplied, `"blank"` for the default empty
+model — which is how you tell a path the workflow *meant* from one a blank reply picked.
 
 ## Diagramming a workflow (`workhorse dot`)
 
@@ -216,7 +229,10 @@ instead: one cluster per flow, a `box3d` green node for every state that can ret
 `Done`, dashed orange edges for an `Await`, coral for a state nothing reaches, and
 edge labels naming the parameters each transition binds. The graph is read off the
 states' source, so both arms of an `if` appear (it over-approximates) and it cannot
-drift from the code. Aliases are never drawn as a second state. `--pin`/`--leaf` are
+drift from the code. A state that factors a repeated turn into a private helper keeps
+its annotations: `self._helper(...)` is followed into the class's own underscore
+methods, and what it finds is attributed to the state that called it — the helper is
+not a node. Aliases are never drawn as a second state. `--pin`/`--leaf` are
 declined there rather than ignored — they collapse a *declared* branch, and a Python
 workflow's branches are code.
 
@@ -873,6 +889,32 @@ that survives in memory but not in the checkpoint.
 `output.json` (the latest invocation, validated back into the node's declared return
 type) and raises when the node has not run.
 
+### Where an agent turn runs (`cwd` / `add_dirs`)
+
+`self.agent` takes four optional keywords beyond the prompt, all defaulting to "whatever
+the engine defaults to", so a state that says nothing behaves as before:
+
+```python
+review = self.agent(
+    "prompts/review.md",
+    returns=Verdict,
+    args={"unit": unit_id},
+    power="medium",                       # the abstract tier the config maps to a model
+    timeout=1800,                         # this turn's wall-clock budget, seconds
+    cwd=self.ctx.repo_root,               # where the CLI is launched
+    add_dirs=[self.ctx.docs_root],        # further directories it may read
+)
+```
+
+`cwd` matters more than it looks: it decides whose `CLAUDE.md`, skills and git context the
+turn sees. It is the same field the YAML `agent` node carries, and the runner de-dupes
+`add_dirs` against it and turns the rest into `--add-dir` flags, so the behavior is
+identical across both engines.
+
+The difference is that these are **real values, not Jinja templates**. A YAML node writes
+`cwd: "{{ cfg.repo_root }}"` because YAML has no other way to compute one; a state
+computes the path in Python and passes it.
+
 ### Transitions
 
 A state returns one of three things, or raises:
@@ -921,6 +963,114 @@ The two engines recognize each other's checkpoints and refuse them by name, in b
 directions: they share one runs directory and one `--resume-latest`, and a state name
 that happens to match a node id would otherwise resume the wrong thing.
 
+### The node index is the substitution seam
+
+`self.call(measure, ...)` takes the function object because that is what makes the call
+type-check — the argument list is `measure`'s own. But what *runs* is whatever the run's
+node index holds under `measure`'s registered name. `Registry.add_blueprints(...)` folds
+every blueprint's nodes into that one index, and the run is handed it as a field of its
+environment. So the registry is a **composition root**: a node is resolved by name, from a
+table the caller supplies, rather than by dereferencing the module attribute the state
+happened to import.
+
+A node the index does not carry is a hard error naming `add_blueprints`, not a silent
+fallback — which is what finally gives the collision detection teeth.
+
+Three ways to put something else in the table:
+
+```python
+# 1. declared at authoring time — what --dry-run returns for this node
+@blueprint.node(stub=lambda logger, subject: Reading(kind="stub", count=0))
+def measure(logger, subject: str) -> Reading: ...
+
+# 2. declared on the registry — what --dry-run returns for an agent turn,
+#    keyed by prompt stem (hyphens, hence a dict rather than **kwargs)
+workflow = Registry("acme").add_blueprints(blueprint).stub_agents(
+    {"review": {"ok": True}}
+)
+
+# 3. supplied by one run — a copy of the index with those names rebound
+env = RunEnv(..., nodes=workflow.override(measure=lambda logger, subject: Reading(...)))
+```
+
+`override` is non-mutating: it returns a copy, so a substitution belongs to the run that
+asked for it and cannot leak into the next one.
+
+**That is what a test uses instead of patching.** The research workflow's tests used to
+reach into two module namespaces and put them back afterwards:
+
+```python
+# before — monkeypatching, with a finally-restore to remember
+pyflow_engine.agent_runner.run_agent = agent
+with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
+    ...
+```
+
+```python
+# after — the same two dependencies, handed to the run
+RunEnv(
+    ...,
+    run_agent=agent,
+    nodes=research.workflow.override(
+        clone_repo=lambda logger: RepoSetup(repo_dir=str(repo))
+    ),
+)
+```
+
+Nothing else in the workflow is substituted: the real `load_program` and
+`publish_results` run against a temporary git repo. The point is not fewer stand-ins, it
+is that the two there are cannot outlive the run — there is no global to restore and no
+ordering between tests to get wrong.
+
+A **sub-flow does not inherit any of this.** `handoff` resolves the child class's own
+registry (stamped on the class when it is registered) and swaps `workflow_dir`, `nodes`
+and `agent_stubs` together, so a child renders prompts from its own package and calls its
+own nodes — a parent's override stops at the boundary. A class with no registry of its own
+keeps the parent's world, which is what same-module sub-flows want.
+
+### Labels, and saying what the run is doing
+
+A workflow declares its telemetry dimensions by overriding `labels()`, the counterpart of
+the YAML `labels:` block. It takes no arguments and is re-read before every transition, so
+it reads whatever the instance can already see — inputs, `self.ctx`, and `self.output(node)`
+for anything a node recorded:
+
+```python
+    def labels(self) -> dict[str, str]:
+        try:
+            return {"work_id": self.output(select_next_unit).unit_id}
+        except NodeNotRunError:
+            return {"work_id": ""}
+```
+
+Values that render empty are dropped rather than stamped blank, and a `labels()` that
+raises costs the labels for that transition and nothing else — never the run.
+
+Unlike the YAML engine these keys are **not** `wf.`-prefixed. The prefix existed so a
+workflow could not shadow an OTel convention; here the collector reads the unprefixed
+spelling, and nothing is translated on the way out. Both spellings of `activity` and
+`work_id` are promoted onto the live gauges, so each engine's own keys reach a dashboard
+untouched.
+
+**Activity — what the run is working on right now — is a flagged log record**, not a
+field:
+
+```python
+    def assess(self, unit_id: str):
+        self.logger.info("assessing %s", unit_id, extra={"activity": True})
+```
+
+The rendered message *is* the activity: `activity` is a flag, not a value, so the text is
+never written twice and never drifts from what the log says. A YAML node hangs this on a
+per-node `activity:` string, but a state is one method that may do several things and the
+interesting one is whichever it is doing now — and a `@blueprint.node` is a plain function
+with no `self`, so its injected `logger` is the only route it could have. Both are the same
+logger object, so both work identically.
+
+It is **sticky**: the last flagged line stands until another replaces it, so a state that
+flags once and then works for an hour stays correctly labelled. Nothing flagged yet falls
+back to the node id, which the gauges stamp anyway.
+
 ## Development
 
 This section is for working on the **controller itself** (the Python that runs
@@ -950,6 +1100,7 @@ agents/local-worker/          # source repo dir for the workhorse controller
 │   │   ├── registry.py        # What an entry point / console script points at
 │   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
 │   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
+│   │   ├── activity.py        # The flagged-log-record activity tracker (a logging.Filter)
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
 │       ├── agent.py           # Invoke Claude CLI; the retry → reframe → default resilience ladder

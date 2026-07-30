@@ -1,26 +1,38 @@
-"""Tests for the per-node ``activity:`` field.
+"""Tests for "what is the run working on right now" — both engines' spellings of it.
 
-Three seams:
+The YAML engine says it with a per-node ``activity:`` field; ``pyflow`` says it with a
+flagged log record (``logger.info(msg, extra={"activity": True})``), because a state is
+one method that may do several things and the interesting one is whichever it is doing
+now. Five seams:
+
 - the node models parse an ``activity`` off ``agent``/``script``/``flow``/``call``
   nodes (and the loader passes it through — a field on the model but dropped by the
   loader would be silently lost);
 - the graph walk renders it per node and folds it into the labels dict as
   ``wf.activity`` (reusing ``main._render_labels``);
-- unlike most labels, ``wf.activity`` and ``wf.work_id`` also ride the LIVE liveness
-  metrics (``workhorse.node.active`` and the run heartbeat), so a monitor can show
-  what the run is doing while the node span is still open — and only those two keys
-  do, to keep metric attribute cardinality bounded.
+- ``pyflow.activity.ActivityLog`` publishes the last flagged message as the
+  ``activity`` label, unprefixed, and keeps it across a transition's ``rebase``;
+- unlike most labels, activity and work_id also ride the LIVE liveness metrics
+  (``workhorse.node.active`` and the run heartbeat), so a monitor can show what the run
+  is doing while the node span is still open — and only those two keys do, to keep
+  metric attribute cardinality bounded;
+- both spellings of those two ride, prefixed and not, because neither engine's keys
+  are translated on the way out.
 
 Run: ./.venv/bin/python tests/test_activity.py   (or via pytest)
 """
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
+import logging
 import tempfile
 from pathlib import Path
 
+from workhorse import otel
 from workhorse.graph.loader import load_workflow
+from workhorse.pyflow import activity as pyflow_activity
 
 main = importlib.import_module("workhorse.main")
 test_otel = importlib.import_module("tests.test_otel")
@@ -31,6 +43,32 @@ def _load(raw: dict):
         p = Path(d) / "workflow.yaml"
         p.write_text(json.dumps(raw))  # JSON is valid YAML
         return load_workflow(p)
+
+
+@contextlib.contextmanager
+def _live():
+    """Make ``otel.set_labels`` really land somewhere readable.
+
+    ``_telemetry()`` builds a facade over fakes but does not install it, and the module
+    functions are no-ops with nothing active — so a tracker test that skipped this
+    would pass while publishing into the void."""
+    t, _tracer, meter, _sd = test_otel._telemetry()
+    saved = otel._active
+    otel._active = t
+    try:
+        yield t, meter
+    finally:
+        otel._active = saved
+
+
+def _logger(name: str) -> logging.Logger:
+    """A logger whose INFO records actually reach the filters. A logger left at its
+    inherited WARNING level drops the flagged line before any filter sees it, which
+    would make every assertion below vacuously true."""
+    log = logging.getLogger(f"tests.activity.{name}")
+    log.setLevel(logging.INFO)
+    log.filters.clear()
+    return log
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +173,88 @@ def test_live_attrs_omit_absent_labels():
     gauge = meter.instruments["workhorse.node.active"]
     _kind, _value, attrs = gauge.records[-1]
     assert attrs == {"node": "plan"}, attrs
+
+
+def test_unprefixed_labels_ride_the_gauge_too():
+    # pyflow does not prefix its labels, so the promotion has to recognize both
+    # spellings or a Python workflow could never reach the live gauges at all.
+    t, _tracer, meter, _sd = test_otel._telemetry()
+    t.set_labels({"activity": "assessing legacy/report/list", "work_id": "ACME-3",
+                  "phase": "survey"})
+    t.record_event({"node": "assess", "seq": 1, "phase": "enter"})
+    gauge = meter.instruments["workhorse.node.active"]
+    _kind, value, attrs = gauge.records[-1]
+    assert value == 1, gauge.records
+    assert attrs == {"node": "assess", "activity": "assessing legacy/report/list",
+                     "work_id": "ACME-3"}, attrs
+
+
+# --------------------------------------------------------------------------- #
+# pyflow — the flagged log record IS the activity
+# --------------------------------------------------------------------------- #
+def test_a_flagged_log_record_becomes_the_activity_label():
+    with _live() as (t, _meter):
+        log = _logger("flag")
+        pyflow_activity.install(log).rebase({"work_id": "ACME-1"})
+
+        log.info("assessing %s", "legacy/report/list", extra={"activity": True})
+        assert t._labels == {
+            "work_id": "ACME-1",
+            "activity": "assessing legacy/report/list",
+        }, t._labels
+
+        # An ordinary line is just a log line. Every node logs; only the ones that
+        # opt in are claiming to describe the run.
+        log.info("wrote 12 bullets")
+        assert t._labels["activity"] == "assessing legacy/report/list", t._labels
+
+
+def test_the_activity_survives_a_transitions_rebase():
+    # Sticky is the whole point: a state that flags once and then works for an hour
+    # must stay correctly labelled, and every transition rebases the labels.
+    with _live() as (t, _meter):
+        log = _logger("sticky")
+        tracker = pyflow_activity.install(log)
+
+        log.info("freezing the unit list", extra={"activity": True})
+        tracker.rebase({"work_id": "ACME-2"})
+        assert t._labels == {
+            "work_id": "ACME-2",
+            "activity": "freezing the unit list",
+        }, t._labels
+
+
+def test_a_rebase_replaces_the_declared_labels():
+    # Same contract as `otel.set_labels`: a key that stopped resolving must stop
+    # appearing rather than linger at its last value.
+    with _live() as (t, _meter):
+        tracker = pyflow_activity.install(_logger("rebase"))
+        tracker.rebase({"work_id": "ACME-A", "phase": "survey"})
+        tracker.rebase({"work_id": "ACME-B"})
+        assert t._labels == {"work_id": "ACME-B"}, t._labels
+
+
+def test_a_bad_format_string_costs_the_activity_and_nothing_else():
+    with _live() as (t, _meter):
+        log = _logger("badfmt")
+        pyflow_activity.install(log)
+        log.info("assessing %s", "one", extra={"activity": True})
+
+        # Two placeholders, one argument: `getMessage()` raises. Instrumentation must
+        # never be the thing that ends an unattended run, so the old activity stands.
+        log.info("comparing %s to %s", "one", extra={"activity": True})
+        assert t._labels == {"activity": "assessing one"}, t._labels
+
+
+def test_installing_twice_returns_the_one_tracker():
+    # `handoff` drives a sub-workflow through a recursive `drive()` on the same
+    # logger; a second tracker would publish over the first and lose the sub-flow's
+    # activity on the parent's next transition.
+    log = _logger("install")
+    first = pyflow_activity.install(log)
+    assert pyflow_activity.install(log) is first
+    trackers = [f for f in log.filters if isinstance(f, pyflow_activity.ActivityLog)]
+    assert len(trackers) == 1, log.filters
 
 
 if __name__ == "__main__":
