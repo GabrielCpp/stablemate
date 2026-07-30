@@ -34,6 +34,7 @@ from workhorse_workflows.coder.flows.docs import Docs
 from workhorse_workflows.coder.flows.dream import Dream
 from workhorse_workflows.coder.flows.fix_ci import FixCi
 from workhorse_workflows.coder.flows.genesis import Genesis
+from workhorse_workflows.coder.flows.qa import Qa
 from workhorse_workflows.coder.flows.review import Review
 
-__all__ = ["Dev", "Docs", "Dream", "FixCi", "Genesis", "Review"]
+__all__ = ["Dev", "Docs", "Dream", "FixCi", "Genesis", "Qa", "Review"]

@@ -164,14 +164,267 @@ class RegressionRun(CoderResult):
         return QaResult(status=self.status, notes=self.notes)
 
 
+# ── the agent turns' replies ──────────────────────────────────────────────────────────
+# Each model's *top-level field names* are the output keys the turn is asked for — that is
+# what `_outputs_for` reads off it — and the field defaults are the YAML's `default:` blocks,
+# which is where a turn that answered nothing lands.
+
+
+class ContextRepair(CoderResult):
+    """The repair half of `prompts/repair-qa-context.md` — did the obligation packet heal?
+
+    `repaired` re-runs the build; anything else, blank included, goes to the operator gate.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+class QaContextRepair(CoderResult):
+    """`repair-qa-context.md`'s whole reply — the only two-key agent turn in the coder.
+
+    The YAML declared two outputs on one node (`qa_context_repair` and `qa_result`), and the
+    driver builds one output key per top-level field of the model a turn returns. So the two
+    keys are the two fields, each typed as the model the prompt actually specifies. Nothing
+    about the driver had to change to carry this; it is the shape `_outputs_for` already
+    implied, and the port is the first place that shape was needed.
+    """
+
+    qa_context_repair: ContextRepair = ContextRepair()
+    qa_result: QaResult = QaResult()
+
+
+class QaPlanResult(CoderResult):
+    """`plan-qa.md` — the authored `qa-plan.yml`, as the author reports it.
+
+    Nothing branches on it: the plan is judged by `validate_qa_plan` reading the file, not by
+    the author's word for it. Kept because the YAML declared the key and the run record is
+    poorer without the author's own account of what it wrote.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+class QaPlanReview(CoderResult):
+    """`review-qa-plan.md` — the semantic read of a plan that already parses.
+
+    `revise` is the default because the YAML's is: a reviewer that produced nothing has not
+    approved anything, and the bounded replan loop is the safe arm.
+    """
+
+    disposition: str = "revise"
+    notes: str = "Semantic QA plan review produced no valid result."
+
+
+class QaAssessment(CoderResult):
+    """`qa-story.md` — what the runner's raw verdict actually means for this story.
+
+    Four dispositions (`confirmed`, `repair_plan`, `extend_plan`, `repair_setup`) crossed with
+    a `failure_class` and an `objective_reached` flag; the flow reads all three in sequence,
+    which is what the YAML's four chained branch nodes did.
+    """
+
+    disposition: str = "repair_plan"
+    failure_class: str = "plan"
+    objective_reached: str = "no"
+    notes: str = "QA run assessment produced no valid result."
+
+
+class QaAudit(CoderResult):
+    """`audit-qa.md` — an adversarial second read of a pass that already cleared the gate.
+
+    `verdict` is `stands` or `refuted`, and `refutation_class` narrows a refutation to a
+    product contradiction (the story is wrong), a plan defect or an evidence defect. A blank
+    reply defaults to `refuted`/`plan-defect`, which spends a plan rework rather than
+    shipping an unaudited pass.
+    """
+
+    verdict: str = "refuted"
+    refutation_class: str = "plan-defect"
+    notes: str = "Independent QA audit produced no valid result."
+
+
+class QaTriage(CoderResult):
+    """`triage-qa.md` — are the findings in-AC fixes, or a scope the author must re-derive?
+
+    The YAML declared these as two bare scalar outputs rather than one object; here they are
+    two fields of one model, which produces the same two keys. Both defaults are the YAML's
+    and both are deliberately safe: never rescope on a malformed answer, and never let one
+    earn the verification-only bonus pass.
+    """
+
+    triage_action: str = "qa_fix"
+    qa_failure_class: str = "code"
+
+
+class QaReport(CoderResult):
+    """`report-qa-dev(-pass).md` — the findings written out to the tracker, in `dev` runs.
+
+    One model for both prompts: they emit the same key and differ only in whether the story
+    passed. Nothing branches on it — the report is the terminal act of a `dev` run.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+class RegressionFix(CoderResult):
+    """`fix-regression.md` — the attempt to make the committed journey suites green again.
+
+    No `status`, and that is the prompt's own contract rather than an omission: the fixer's
+    claim is not trusted, the suite is simply re-run, and `run_regression_suite` is the only
+    thing that decides whether the fix worked.
+    """
+
+    notes: str = ""
+
+
+class SetupResult(CoderResult):
+    """`setup-fix.md` — the repair attempt on a stack manifest that would not come up.
+
+    `unfixable` is the YAML's default and escalates to the operator gate. That is the right
+    way round for a bounded loop: a fixer that exhausted its retries and said nothing must
+    not be read as "ready" and sent back to `ensure_stack` to fail again.
+    """
+
+    status: str = "unfixable"
+    notes: str = ""
+
+
+# ── what the flow threads, and what it returns ────────────────────────────────────────
+
+
+class QaLoop(CoderResult):
+    """Everything the QA flow carries from gate to gate — one state parameter, not eighteen.
+
+    The YAML kept all of this in flow vars: the running `qa_result`, five rework counters, the
+    parent-owned rescope budget, three string flags used as booleans, the triager's failure
+    class, and the six gate diagnostics `plan_qa` renders into its next brief. A driver state
+    has parameters instead, and QA's graph is dense enough that threading eighteen of them
+    through twenty-five states would be the whole file. So they travel as one model, which is
+    legal without any driver change — a pydantic model round-trips through a checkpoint, as
+    `author` settled — and a resume rebuilds the loop exactly.
+
+    The three `"yes"`/`"no"` flags are real booleans here. They were compared against string
+    literals in branch tables and never rendered into a prompt, so nothing observes the
+    spelling.
+
+    The diagnostics are what makes the loop converge: each failed gate hands the next
+    `plan_qa` turn what it found, which is why `cleared()` exists — see the flow.
+    """
+
+    #: The story's running verdict, as whichever gate last wrote it left it.
+    qa: QaResult = QaResult()
+
+    #: `validate_qa_okf_context`'s verdict on the obligation packet, and its reasons. These
+    #: two deliberately survive `cleared()`: `clear-qa-gate-state.py` never blanked them.
+    context_status: str = ""
+    context_notes: str = ""
+
+    #: The four gate diagnostics `clear-qa-gate-state.py` blanked before each plan turn.
+    plan_validation_notes: str = ""
+    plan_review_notes: str = ""
+    assessment_notes: str = ""
+    audit_notes: str = ""
+
+    #: The triager's class, which is what the one-shot bonus pass is granted on. Blank until
+    #: a triage turn runs — the YAML never declared this var, so an untriaged loop reads it
+    #: as unset and earns no bonus.
+    failure_class: str = ""
+
+    #: The five bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair.
+    context_rework: int = 0
+    plan_rework: int = 0
+    qa_rework: int = 0
+    setup_rework: int = 0
+    regression_fix: int = 0
+
+    #: The parent-owned rescope budget, threaded in and crossed back out on a rescope.
+    triage_scope: int = 0
+
+    #: Regression bookkeeping: a fix was applied since the last primary QA, and primary QA
+    #: owes a re-run because of it.
+    regression_fix_applied: bool = False
+    regression_reqa_pending: bool = False
+
+    #: Whether the one verification-only bonus pass past `MAX_QA_REWORKS` has been spent.
+    bonus_used: bool = False
+
+    def update(self, **changes: object) -> QaLoop:
+        """The same loop with some fields replaced — the port of an `incr`/`emit-kv` node."""
+        return self.model_copy(update=changes)
+
+    def with_qa(self, qa: QaResult) -> QaLoop:
+        """The same loop carrying a new running verdict."""
+        return self.model_copy(update={"qa": qa})
+
+    def cleared(self) -> QaLoop:
+        """`clear-qa-gate-state.py`: forget every gate's findings before re-running them.
+
+        The script replaced five keys wholesale, so the running verdict is blanked too — a
+        re-planned story has not failed QA yet. The two *context* fields are not in that set
+        and stay, which is the script's behaviour and not an oversight of the port.
+        """
+        return self.model_copy(
+            update={
+                "qa": QaResult(),
+                "plan_validation_notes": "",
+                "plan_review_notes": "",
+                "assessment_notes": "",
+                "audit_notes": "",
+            }
+        )
+
+    @property
+    def block_notes(self) -> str:
+        """The composed brief the operator gate and the setup fixer are both handed.
+
+        `"{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"`, rendered once here
+        because four YAML nodes rendered it identically.
+        """
+        return f"{self.qa.notes} | Assessment: {self.assessment_notes}"
+
+
+class QaFlowResult(CoderResult):
+    """What the QA flow hands back — the YAML's five `qa_phase` output keys, as one value.
+
+    `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`, `exhausted`,
+    `replan`, `rescope`), and `exhausted` is the default for the same reason the YAML's
+    `qa_phase` output declared it: a flow that produced nothing has not passed.
+
+    `triage_scope` crosses the flow boundary in both directions — the parent seeds it and
+    reads the bumped value back — which is the one piece of state the isolated flow does not
+    own.
+    """
+
+    status: str = "exhausted"
+    qa: QaResult = QaResult()
+    qa_rework: int = 0
+    triage_scope: int = 0
+    operator_notes: str = ""
+
+
 __all__ = [
     "BacklogDrain",
+    "ContextRepair",
     "FailureAttribution",
+    "QaAssessment",
+    "QaAudit",
     "QaCleared",
+    "QaContextRepair",
+    "QaFlowResult",
+    "QaLoop",
+    "QaPlanResult",
+    "QaPlanReview",
     "QaPlanValidation",
+    "QaReport",
     "QaResult",
+    "QaTriage",
+    "RegressionFix",
     "RegressionPlatform",
     "RegressionRun",
     "ScreenshotFlush",
+    "SetupResult",
     "StackStatus",
 ]
