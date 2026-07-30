@@ -38,13 +38,14 @@ that every port lands beside the YAML engine and nothing is deleted until all fo
 on the driver — see "Loop 1.1 — port every workflow, decommission nothing" in the plan. Loop 2 is
 now deletion only, and its entry gate is this ledger carrying parity evidence per workflow.
 
-Loop 1.1 starts from: **the second port**. The driver has one workflow proving it; the shapes it
-has *not* met yet are `Await` (nothing in `research` waits on a human), `handoff` (no sub-flow),
-and a workflow whose states outnumber `research`'s twelve. Order is `author` → `okf-builder` →
-`coder`: `author` first because it is the first to exercise both unmet arms (12 `await-operator`
-sites, 2 `type: flow` nodes) and a defect found there costs one port rather than three;
-`okf-builder` second as the cheap confirmation; `coder` last, where `self.output(node)` and the
-three-tier state rule meet 4,366 lines, 19 awaits and 8 sub-flows.
+Loop 1.1 is **two ports in, two to go**. `research` and `author` run on the driver; `okf-builder`
+and `coder` are still YAML. `author` was taken first because it was the first to exercise `Await`
+and `handoff`, and it paid: the driver needed four additions (step 1) and the port found six things
+the new shape does not reproduce (see "Findings for loop 2").
+
+Next is **`okf-builder`** — 729 lines, 11 scripts, no awaits, one sub-flow. It should mostly
+confirm what `author` settled. Then `coder`, where `self.output(node)` and the three-tier state
+rule meet 4,366 lines, 19 awaits and 8 sub-flows.
 
 ## What landed
 
@@ -64,18 +65,65 @@ three-tier state rule meet 4,366 lines, 19 awaits and 8 sub-flows.
 
 | Step | Commit | What |
 |---|---|---|
-| 0 | _this commit_ | `research` restructured into the normative package layout — `nodes/` (3 subject modules + the shared `Blueprint`), tests to `workflows/tests/research/test_workflow.py`. No behavior change; 12 tests still pass |
+| 0 | `f4788a3` | `research` restructured into the normative package layout — `nodes/` (3 subject modules + the shared `Blueprint`), tests to `workflows/tests/research/test_workflow.py`. No behavior change; 12 tests still pass |
+| 1 | `950a672` | The driver additions `author` asked for, all additive: `self.agent(cwd=, add_dirs=)`, declared dry-run stand-ins (`@node(stub=)`, `Registry.stub_agents`), activity as a flagged log record, JSON-safe checkpoint params. `research` adopts them |
+| 2 | _this commit_ | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
+
+### Parity — `author`
+
+What was demonstrated, so loop 2 can see exactly how far it goes:
+
+- **Every mode reaches its terminal.** `epic`, `story`, `survey` and `parity-survey` dry-run green,
+  as do both sub-flows on their own entry points — each behind the static preflight, which checks
+  the untaken branches and every prompt path too.
+- **Same artifacts.** The 12 end-to-end tests drive the real nodes against a temp git repo with
+  only the agent turn scripted, and assert the artifacts themselves: the ostler graph (epic, seeds,
+  stories, `covers`), the commit and its message, story mode's *absence* of a commit, the operator
+  context file, and the run labels.
+- **Same resume behavior.** A run killed mid-story resumes on that story alone
+  (`test_a_run_killed_mid_story_resumes_on_that_story_alone`) — the checkpoint is the state
+  parameter, so the loop does not restart from the epic.
+- **Not demonstrated:** a side-by-side run of the YAML `author` on the same input. It needs 30+
+  real agent turns to reach a terminal, so the comparison is against the YAML's *scripts and node
+  wiring*, node by node, not against a recorded run. Where the port could not match the YAML, it is
+  a finding below rather than a silent difference.
+
+## Findings for loop 2
+
+Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
+or something it left stranded.
+
+- **`Await` replaces the file, `await-operator.py` appended.** `_ask()` writes the questions with
+  `path.write_text()`, so a second block on the same context file overwrites the first block's
+  questions *and* the operator's answer to them. The YAML re-armed in place and preserved the prose.
+  The resolver prompts now treat their own prior `## Your answers` section as the loop guard, which
+  is what survives — but the transcript loss is real, and the fix is in the driver.
+- **No `Await` escape under `--dry-run`.** A dry run that reaches an await blocks on a real file
+  poll. `author` gets past it because `operator_mode=auto` routes around the awaits;
+  `operator_mode=human` cannot dry-run at all.
+- **The prompts' `STATUS: CONSUMED` protocol was stale, and is now corrected.** Only
+  `await-operator.py` ever wrote `CONSUMED`; under the driver the three resolver prompts were
+  naming a marker nothing writes. They now route on the reply's `decision` field and use the file
+  as the transcript. The YAML copies in `base-library/` still carry the old text — same defect,
+  same fix, deliberately not touched while the YAML engine is live.
+- **`handoff()` takes keywords only.** A `Workflow` subclass is a pydantic model, so a sub-flow's
+  inputs bind by name; positional args raise. Worth an explicit error rather than the pydantic one.
+- **Stranded by this port:** both `await-operator.py` copies (280 lines of ctypes inotify each),
+  `init_counter.py`/`incr_counter.py` (the counter is a state parameter now), and the unreferenced
+  `board.py`, `checkout-workspace.py`, `gh-token.py`.
+- **groom stamps activity labels with a prefix.** The driver's labels are unprefixed by decision;
+  groom is the side that changes.
 
 ## What is next
 
-1. **Port `author`, then `okf-builder`, then `coder`** — loop 1.1, deleting nothing. Each port is the
+1. **Port `okf-builder`, then `coder`** — loop 1.1, deleting nothing. Each port is the
    whole package per that section: `workflow.py` holding only the class, `nodes/` grouped by subject,
    schemas, `paths.py` for the derivations, `flows/` per sub-graph, one entry-point line and one
    console script in `workflows/pyproject.toml`, and tests under `workflows/tests/<workflow>/`
    mirroring the node modules. Take `tests/research/test_workflow.py` as the pattern for what goes
    *inside* a test module — real nodes against a temp git repo, only the agent turn scripted — because
-   it is what made the port's claims checkable. `author` includes the 16 scripts under
-   `base-library/workflows/author/surveyor/` (2,162 lines), which are author's and are easy to miss.
+   it is what made the port's claims checkable. `author` is now the closest worked example for
+   both of the shapes `research` lacks: `Await` (`gate_*` states) and `handoff` (`flows/`).
 2. **Record parity per workflow, here.** Same artifacts and same resume behavior as the YAML for at
    least one real run. Both engines are present for the whole of loop 1.1, so the comparison is
    available; loop 2 will not start without it.
@@ -113,6 +161,11 @@ that settled it is named so the next reader can go straight there.
   the shape: it is a branch *inside* `except PyflowError`, not a handler before it — a
   `raise` from a sibling `except` arm escapes the whole `try` rather than falling through to
   the next one, which is what the first attempt got wrong.
+- **The three driver additions `author` asked for were approved, so do not re-ask** *(raised by the
+  port, answered by the user)*. Activity is `logger.info(msg, extra={"activity": True})`; activity
+  labels are **unprefixed** ("we will not carry over the prefix, we will change groom instead
+  later"); `self.agent` takes `cwd`/`add_dirs`. A driver-API change is still the user's call —
+  these three are simply already made.
 - **The `kit` package forwards through `__getattr__`; it does not re-export** *(step 2, found while
   building)*. workhorse re-executes a script module on **every** node run, so a script's
   `from workhorse_workflows.kit import github_client` re-reads that attribute each time — which is
