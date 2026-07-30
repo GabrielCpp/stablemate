@@ -1,0 +1,13 @@
+# Fixtures are frozen slices of real runs — for a run against a client repo that means
+# client file paths, story text and epic names. This repo ships publicly (see CLAUDE.md),
+# so the store is untracked by construction rather than by remembering: nothing here is
+# ever a candidate for `git add`, and $STABLEMATE_EVAL_FIXTURES moves it off the tree
+# entirely when harvesting from a private repo.
+.fixtures/
+
+# Eval output: sample-level results, per-sample run dirs (rendered prompts and raw agent
+# answers), and the scratch worktrees. Large, and derived — re-run to regenerate.
+.evals/
+
+# Benchmark run artifacts and scorecards, per benchmarks/README.md's layout note.
+.runs/
