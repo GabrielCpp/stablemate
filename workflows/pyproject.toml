@@ -27,10 +27,16 @@ dependencies = [
   # install of it paid for both.
   "gitpython>=3.1",
   "PyGithub>=2.0",
+  # The surveyor's enumeration rules, its finding-record front matter and its cluster
+  # partition are all YAML the nodes read directly. Declared here rather than leaned on
+  # through workhorse's own dependency: a module that imports it says so.
+  "pyyaml>=6.0",
   # Workflow-side tools each land with the first workflow that imports one — a
-  # dependency nothing imports is a claim the lockfile cannot check. `ostler` arrives
-  # with the author/coder/okf-builder ports, along with the `visual` extra
-  # (`ostler[vet]`) their screenshot steps need.
+  # dependency nothing imports is a claim the lockfile cannot check. `ostler` arrived
+  # with the author port: its epic/story/coverage nodes read and write the planning-doc
+  # graph through the library, and `verify_integrity` runs `ostler doctor` over it. The
+  # `vet` extra stays out until the coder port's screenshot steps import it.
+  "ostler>=0.1",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +51,7 @@ test = ["pytest>=8.0"]
 # runnable by path) and this is what `workhorse run research` gets.
 [project.entry-points."workhorse.workflows"]
 research = "workhorse_workflows.research.workflow:workflow"
+author = "workhorse_workflows.author.workflow:workflow"
 
 # One console script per workflow, pointing at the callable `workflow.main(Entry)`
 # RETURNS. `[project.scripts]` targets are called after import, so a module-level
@@ -55,6 +62,7 @@ research = "workhorse_workflows.research.workflow:workflow"
 #     workhorse-research run          --run-id=… --params …
 [project.scripts]
 workhorse-research = "workhorse_workflows.research.workflow:main"
+workhorse-author = "workhorse_workflows.author.workflow:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
@@ -63,6 +71,7 @@ Issues = "https://github.com/GabrielCpp/stablemate/issues"
 
 [tool.uv.sources]
 workhorse-agent = { workspace = true }
+ostler = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

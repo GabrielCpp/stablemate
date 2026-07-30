@@ -52,14 +52,18 @@ def test_library_dir_none_when_unconfigured_and_no_base():
 
 # ── --workflow resolution ───────────────────────────────────────────────────
 
+# The fixture name is deliberately one no distribution ships. A name that IS an
+# installed workflow package resolves through the entry point instead — that is the
+# documented precedence, so using `author` here tested the packaged path by accident
+# the moment the author port added its entry point.
 def test_bare_name_resolves_against_library():
     with tempfile.TemporaryDirectory() as tmp:
         lib = Path(tmp) / "agents"
-        wf = lib / "workflows" / "author" / "workflow.yaml"
+        wf = lib / "workflows" / "layered-only" / "workflow.yaml"
         wf.parent.mkdir(parents=True)
-        wf.write_text("name: author\n")
+        wf.write_text("name: layered-only\n")
         with patch.object(m, "_library_layers", lambda: [lib]):
-            assert m._resolve_workflow_path("author") == wf.resolve()
+            assert m._resolve_workflow_path("layered-only") == wf.resolve()
 
 
 def test_explicit_absolute_path_passes_through():
@@ -81,7 +85,7 @@ def test_relative_path_is_not_treated_as_library_name():
 def test_bare_name_without_library_errors():
     with patch.object(m, "_library_layers", list):
         try:
-            m._resolve_workflow_path("author")
+            m._resolve_workflow_path("layered-only")
             raise AssertionError("expected SystemExit when no library is available")
         except SystemExit as e:
             assert e.code == 1
