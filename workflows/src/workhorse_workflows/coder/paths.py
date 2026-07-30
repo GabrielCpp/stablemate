@@ -91,12 +91,29 @@ def launch_repo_root() -> Path:
     return cwd
 
 
-def operator_context_path(root: Path, gate: str) -> Path:
-    """The absolute file an `Await` writes its questions into, for `gate`.
+def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
+    """The absolute file an `Await` writes its questions into, for `gate` on `epic`.
 
     Absolute because `Await` takes a real path to poll, unlike everything else here.
+
+    The three rungs are `await-ci-operator.py`'s and `await-merge-operator.py`'s, in their
+    order, and they are a *per-epic* resolution rather than a per-gate one:
+
+    1. `docs/epics/<epic>/<gate>-context.md` when that epic folder exists — the questions
+       land next to the epic they are about, which is where the operator is already looking;
+    2. `<root>/<gate>-context.<epic>.md` when it does not, so an epic with no folder still
+       gets a file of its own;
+    3. `<root>/<gate>-context.md` with no epic at all.
+
+    Rungs 1 and 2 are what keep two epics escalating in the same checkout from overwriting
+    each other's questions. `gate` is `ci-operator` or `merge-operator`.
     """
-    return root / OPERATOR_DIR / f"{gate}.md"
+    if epic:
+        epic_dir = root / "docs" / "epics" / epic
+        if epic_dir.is_dir():
+            return epic_dir / f"{gate}-context.md"
+        return root / f"{gate}-context.{epic}.md"
+    return root / f"{gate}-context.md"
 
 
 def story_context_path(story_path: str) -> Path:

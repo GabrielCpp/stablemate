@@ -200,4 +200,25 @@ def stamp_specs(
     return SpecsStamped(stamped=stamped)
 
 
-__all__ = ["prepare_story", "resolve_workspace_dirs", "stamp_specs"]
+@blueprint.node
+def prepare_fix_story(
+    logger: logging.Logger,
+    docs_path: str = "",
+    story: str = "",
+    epic: str = "",
+) -> StoryPaths:
+    """`prepare_story` under a second node id, for the backlog drain nested in the main loop.
+
+    Not a convenience and not a copy: the body is `prepare_story`'s, called directly. What
+    differs is the *name*, and the name is the point. A node's output is recorded under its
+    id, so the drain — which runs inside a story's own run, right after that story goes
+    green — would otherwise overwrite the original story's `prepare_story` record. The main
+    loop's commit reads that record to know which story it is committing, so the drain would
+    have made it commit the fix item's identity instead. The YAML hit this and registered
+    `prepare-story.py` a second time under `prepare_fix_story` for exactly this reason; the
+    comment there is the bug report.
+    """
+    return prepare_story(logger, docs_path=docs_path, story=story, epic=epic)
+
+
+__all__ = ["prepare_fix_story", "prepare_story", "resolve_workspace_dirs", "stamp_specs"]

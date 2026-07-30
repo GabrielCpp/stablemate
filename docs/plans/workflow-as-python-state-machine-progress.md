@@ -30,32 +30,32 @@ entry is longer than a few lines it belongs in the plan or in the commit message
 
 ## Current position
 
-**Loop 1 is done.** All seven steps are committed. `research` runs end-to-end on the driver
-and the YAML engine is still green (`make test && make check-public`).
+**Loops 1 and 1.1 are both done.** All four workflows resolve through `workhorse.workflows`
+entry points and run on the driver:
 
-**Next is loop 1.1**, not loop 2. The porting work was pulled out of loop 2 into its own loop so
-that every port lands beside the YAML engine and nothing is deleted until all four workflows run
-on the driver — see "Loop 1.1 — port every workflow, decommission nothing" in the plan. Loop 2 is
-now deletion only, and its entry gate is this ledger carrying parity evidence per workflow.
+```
+author → workhorse_workflows.author.workflow:workflow
+coder  → workhorse_workflows.coder.workflow:workflow
+okf-builder → workhorse_workflows.okf_builder.workflow:workflow
+research → workhorse_workflows.research.workflow:workflow
+```
 
-Loop 1.1 is **three ports in, one to go**. `research`, `author` and `okf-builder` run on the
-driver; `coder` is still YAML. `author` was taken first because it was the first to exercise
-`Await` and `handoff`, and it paid: the driver needed four additions (step 1) and the port found
-six things the new shape does not reproduce (see "Findings for loop 2"). `okf-builder` then did
-what it was there to do — it needed **no driver change at all**, which is the evidence that the
-API `author` settled is the API.
+Each has a parity section below. Nothing was deleted: the YAML engine and all four
+`base-library/workflows/*/workflow.yaml` are untouched and green — `make test && make check-public`
+passes with both engines present, which was the whole point of splitting the port out of loop 2.
 
-Next is **`coder`**, where `self.output(node)` and the three-tier state rule meet 4,366 lines,
-71 scripts, 19 awaits and 8 sub-flows. It is too large for one green step, so it lands in **four
-stages**, each green and committed on its own: **A** the package foundation plus the three small
-sub-flows (`genesis`, `dream`, `fix_ci`) — done; **B** `dev`, `review`, `docs` — done; **C** `qa`
-(91 nodes), which inherits `nodes/okf.py` and `ostler_qa.py` from B2 and is itself in three —
-**C1** the node layer (done), **C2** the evidence and regression gates (done), **C3** the graph
-and its tests (done); **D** the 80-node main graph, `fix`, both pyproject lines, the top-level tests and the
-parity record — itself in four: **D1** the queue spine (done), **D2** the PR boundary and the
-backlog drain (done), **D3** the `fix` flow and its tests (done), **D4** the main graph, the entry
-points and the workflow-level parity record. Only after D4 does `coder` resolve through an entry
-point, so loop 1.1's exit gate is D4, not A.
+The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
+`author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
+consecutive green steps against a frozen API, which is the strongest evidence available that the
+shape is settled.
+
+Ported, counting every graph and sub-graph: **559 YAML nodes → 178 states**, a factor of three.
+`author` 166 → 46 across three flows, `coder` 308 → 102 across nine, `okf-builder` 48 → 17 across
+two, `research` 37 → 13. **291 end-to-end tests** in `workflows/tests/` (author 155, coder 119,
+okf-builder 8, research 9), every one against real nodes with only the agent turn scripted, plus
+81 cross-cutting ones — 372 in total, on top of the YAML engine's own suite.
+
+**Next is loop 2, and loop 2 is deletion.** Its starting state is at the bottom of this file.
 
 ## What landed
 
@@ -88,6 +88,7 @@ point, so loop 1.1's exit gate is D4, not A.
 | 10 | `945e540` | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
 | 11 | `f896461` | `coder` **stage D2** — the PR boundary and the backlog drain: `schemas/{pr,backlog}.py` and `nodes/pr.py`, 9 nodes from 10 scripts. Two subprocess layers collapse; the four fix-drain nodes join the filing node in `nodes/backlog.py` behind one bullet-grammar definition. No driver change |
 | 12 | `78436af` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
+| 13 | (this commit) | `coder` **stage D4** — the main graph: 80 YAML nodes → 27 states, both pyproject lines, 12 end-to-end tests plus a cross-workflow static prompt check (77 sites). Loop 1.1's exit gate. No driver change |
 
 ### Parity — `author`
 
@@ -565,6 +566,74 @@ branch and its git log are all read back off disk after the run.
   so no real `ostler qa context` subprocess runs in this suite), and a drain against a book with a
   populated id ledger — `seed_fix_story` self-creates the `fixes` bucket on an empty one.
 
+### Parity — `coder`, stage D4 (the main graph)
+
+The last stage of the loop. Eighty YAML nodes (lines 191–1348) become **27 states**, and `coder`
+now resolves through `workhorse.workflows` like the other three. The claim is behavioral: **12
+end-to-end tests driving the real graph**, plus a static sweep that covers all four ports at once.
+
+- **The whole loop runs, on real nodes.** One epic of one story walks `select_epic → select_story
+  → prepare → dev → review → document → qa → drain → finalize → commit → select_story → open_pr →
+  ci → merge → select_epic → Done`, and what is read back off disk afterwards is the YAML's own
+  artifacts: the story stamped `status: QA passed` in its front matter and `- **Status**: QA
+  passed` in its body, the epic gone from `docs/epics/index.md`, the work committed as
+  `EPIC-1: STORY-1`, the status stamp as a separate scoped commit behind it, and a clean tree.
+- **`docs` runs twice per story and that is not a duplicate.** The story's own documentation pass
+  and `final_docs` after the drain are separate states, because the second exists so a fix drained
+  behind the story is in the book before the single commit that covers both. Asserted as
+  `["Dev", "Review", "Docs", "Qa", "Docs"]`, since collapsing them is the obvious wrong
+  simplification and nothing else in the graph would notice.
+- **The five sub-flows are stand-ins in this file, and the handoff boundary is not.** Each has its
+  own end-to-end suite (`dev` 16, `review`/`docs` 25, `qa` 26, `fix` 12, the three small ones 28),
+  so re-running them from the top would test them twice and this graph once. A stub is a real
+  `Workflow` subclass handed to the real `self.handoff`: constructed with the real keywords by a
+  model that forbids extras, driven by the real driver, recorded under the real node id. A keyword
+  the graph passes that a flow does not declare still fails here — the half of the boundary a
+  flow's own suite cannot check. Every stub replies with the flow's real result model, because
+  `DevResult.status`, `QaFlowResult.triage_scope` and `DocsResult.status` are what the graph
+  branches on.
+- **The run-global counter is under test, both ways.** Three stories in a row that commit nothing
+  raise `WorkflowFailed`; three that each land a commit walk the whole epic to the PR. That is
+  `zero_diff` threaded through eight states across the epic boundary, which is the noisiest thing
+  in this port and now the best-pinned.
+- **The triage budget survives a rescope.** A `qa` verdict of `rescope` goes back to `dev` and
+  re-enters QA carrying what the first entry spent (`[0, 1]`), with `prepare` — where the budget is
+  seeded — entered once for the two QA entries. That is the reason `init_triage_counter` is in
+  `prepare` and not in `qa`, now asserted rather than commented.
+- **Story mode is a separate path end to end.** `mode=story` cuts its own branch in `start`, never
+  touches the queue (`select_epic` and `open_pr` have no run directory at all), and ends at
+  `open_story_pr` on the branch `branch_story` recorded — read back from that node rather than
+  re-derived from the slug. Handed a bare slug and no epic, every handoff still receives `EPIC-1`,
+  which is the story-side of the two epic disjunctions doing its job.
+- **The CI escalation is reachable and it escalates.** With CI red, the loop spends exactly three
+  `repair_ci` attempts (four polls), writes its questions to
+  `docs/epics/<epic>/ci-operator-context.md` naming the spent budget, waits, and resumes on the
+  operator's answer with the budget reset — a fifth poll, green, then merge. `operator_mode` is left
+  at `auto` deliberately: this gate does not consult it, per the YAML's own comment on the variable,
+  so the escalation is reachable in the default configuration. This is the one place a node is
+  seamed: `poll_pr_checks` is replaced by a node of the same name stamped by a test-local blueprint,
+  because offline it can only ever answer `unavailable`.
+- **Resume lands on `qa`.** A run killed inside the QA handoff resumes at `state="qa"`,
+  `flow="Coder"`, carrying `epic` and both counters, and the resumed run does not re-enter `dev`.
+- **The nested drain keeps its own story record.** `prepare_fix_story` exists because the nested
+  drain runs in the *parent's* run scope, where a second `prepare_story` call would overwrite the
+  record `commit` reads to know which story it is committing. Both records survive side by side
+  (`STORY-1` and the drained slug), the bullet leaves `docs/backlog.md`, and one commit covers the
+  story and the fix — which is the whole reason the drain is nested here rather than handed off to
+  `Fix`.
+- **A static check now covers what no test could see.** `tests/test_prompts_exist.py` walks the AST
+  of all four workflow packages, finds every `self.agent(...)` prompt argument, and stats the file:
+  **77 sites, all present**. This is the check stage C3's finding asked for, and it is
+  cross-workflow rather than `coder`-only because the hole it closes was never `coder`-specific.
+- **One widening, stated.** `setup()` calls `resolve_workspace_dirs` for every mode, where the YAML
+  resolved the workspace only on the epic path. It is idempotent and read-only, and it is what makes
+  story mode's `docs_path` resolution identical to epic mode's; recorded because this loop widens
+  nothing without saying so.
+- **Not demonstrated:** any of the five sub-flows *inside* the main graph on real nodes — that is
+  what their own suites do, and the composition of the two is the gap this file leaves; a run
+  against a real GitHub PR, seamed here as everywhere in this port; and `dream`, which is entered by
+  no state in the main graph and only through its own console script.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -823,20 +892,145 @@ or something it left stranded.
   files are never registered as OKF Concepts, so the book has no record of what the fix planned to
   change. Same class as the `stamp_specs`-never-re-runs finding above, and the same cheap fix
   (`stamp_specs` is idempotent).
+- **Cutting an epic branch dirties the queue file by one byte, and that byte hides the churn
+  guard.** `branch-epic.py`'s reconcile — `content = show_file(root, base, QUEUE_PATH)` then
+  `write_text(content)` — round-trips `docs/epics/index.md` through `git show`, which strips the
+  file's trailing newline. So every epic branch starts with the queue file modified, and the
+  **first** story of any epic always has something to commit whether or not it did any work. The
+  zero-diff churn guard therefore needs *four* consecutive empty stories to trip on a fresh epic,
+  not three. Inherited, not introduced: the port's `_reconcile_queue` is the YAML's three lines.
+  Found by a test that expected three and got a pass; the test now uses four and says why. The fix
+  is one `+ "\n"`, and it is a behavior change to the queue file's bytes, so it is loop 2's.
+- **The epic CI gate is inert, on both engines.** `open_pr` emits `ci_epic` as the bare epic name,
+  and every consumer then derives its own branch: `_open_epic_pr` and `merge-pr.py` build
+  `feat/{epic}`, while `await-pr-checks.py:94` and `push-epic.py:46` assign `br = epic` and look
+  for a PR on a branch that does not exist. The poll finds nothing, answers `unavailable`, and the
+  whole CI cluster is a pass-through — which is why an offline test can walk it end to end and see
+  `should_gate=True` with no gating. Preserved and asserted as `unavailable`; whether the fix is to
+  emit the branch or to derive it in one place is loop 2's.
+- **`zero_diff_count` is never seeded in the YAML.** `incr_zero_diff` reads a var no node
+  initialises and no `vars:` block declares — it works only because the engine's context returns
+  empty for an unknown key and the increment coerces it. The port makes it a state parameter with
+  an explicit `0` default, which is the same behavior with the hole closed.
+- **The nested drain in the main graph has the same three defects as the standalone `fix` flow,
+  independently.** It implements only the first dispatched service layer, calls
+  `branch_fix_code_repos` with one argument where `dev`'s equivalent gets three, and passes six
+  arguments to `implement-plan.md` where `dev` passes nine. These are the same findings recorded
+  above for `flows/fix.py`, seen a second time in a graph that was written separately — so the fix
+  is one shared shape, not two patches.
+- **`paths.OPERATOR_DIR` is now referenced by nothing.** It named `.agents/operator`, where the
+  YAML's `await-operator.py` staged its context files; every gate in the port writes to
+  `operator_context_path()` under the docs tree instead, which is where the YAML's own gates
+  pointed. Kept, because deleting is loop 2's; a deletion-list entry, not a defect.
 
-## What is next
+## Loop 2 — starting state
 
-1. **Port `coder`** — loop 1.1's last, deleting nothing. Each port is the
-   whole package per that section: `workflow.py` holding only the class, `nodes/` grouped by subject,
-   schemas, `paths.py` for the derivations, `flows/` per sub-graph, one entry-point line and one
-   console script in `workflows/pyproject.toml`, and tests under `workflows/tests/<workflow>/`
-   mirroring the node modules. Take `tests/research/test_workflow.py` as the pattern for what goes
-   *inside* a test module — real nodes against a temp git repo, only the agent turn scripted — because
-   it is what made the port's claims checkable. `author` is now the closest worked example for
-   both of the shapes `research` lacks: `Await` (`gate_*` states) and `handoff` (`flows/`).
-2. **Record parity per workflow, here.** Same artifacts and same resume behavior as the YAML for at
-   least one real run. Both engines are present for the whole of loop 1.1, so the comparison is
-   available; loop 2 will not start without it.
+Loop 1.1's exit hands loop 2 a repo where **both engines work and one of them has no users left in
+this tree.** Loop 2 is deletion, and this is the list, ordered so each step leaves the suite green.
+
+**Before deleting anything, three things are true and worth re-checking rather than assuming:**
+`make test && make check-public` passes; all four names resolve to packages (`workhorse run <name>`
+prefers an installed package over a library layer, so the YAML copies are already shadowed for
+anyone with the distribution installed); and no port has been run against a live agent — every
+parity claim in this file is against real nodes with the agent turn scripted.
+
+### 1. The deletion list
+
+| What | Size | Note |
+|---|---|---|
+| `base-library/workflows/{author,coder,okf-builder,research}/workflow.yaml` | 7,719 lines | The four graphs, now ported |
+| …their `scripts/` | 15,820 lines across 131 scripts | Includes `author/surveyor/scripts/` (25 of them) |
+| …their `tests/` | 56 files | They test the scripts, not the graphs |
+| …their `prompts/` | — | **Not** deletable wholesale: the ports copied what they render, and the two sets have drifted (see the `CONSUMED` finding). Diff before deleting. |
+| Both `await-operator.py` | 555 lines of ctypes inotify | The loop's headline non-port; `Await` replaced it |
+| `init_counter.py` / `incr_counter.py` | — | Counters are state parameters now |
+| `commit-multi-repo.py`, `branch-multi-repo.py`, `open-multi-repo-pr.py` | — | Graph-unreferenced *before* the port, plus `test_multi_repo_git.py` and the claims in `coder/docs/multi-repo.md` |
+| `board.py`, `checkout-workspace.py`, `gh-token.py` | — | Unreferenced |
+| `workhorse/workhorse/main.py` and `graph/`, `runner/{script,branch}.py` | ~1,760 + graph | The YAML engine proper — **last**, and see the coupling below |
+| `workhorse/workhorse/scriptutil.py` | 154 lines | The residue of the split; `kit` replaced it |
+| `paths.OPERATOR_DIR` | 1 line | Stranded by the port |
+
+### 2. What the engine deletion is actually blocked on
+
+`pyflow` is not free-standing today. It imports `workhorse.artifacts`, `config_run`, `rundir`,
+`packaged` and `runner.agent` — all keepers — but also two things that go with the YAML engine:
+
+- `engine.py:29–30` imports `WorkflowContext` and `AgentNode`/`OutputSpec` from `workhorse.graph`.
+  The context object is how a prompt gets rendered and the node models are how a turn is described
+  to `runner.agent`; deleting `graph/` means giving `pyflow` its own two small types first.
+- `registry.py:180` calls `workhorse.main.main(...)` for the console script — the entire CLI
+  (params, run ids, resume, `dot`, `config`) lives in the YAML engine's `main.py`. **This is the
+  real work of loop 2**: the CLI has to be lifted out of `main.py` before `main.py` can go, and
+  that is a refactor, not a deletion. Sequence it first and the rest is `git rm`.
+
+Also on the way: `workhorse.testing.WorkflowRun` (575 lines) is the YAML whole-workflow harness and
+`workhorse/tests/` is largely YAML-engine tests. They are the safety net for every step above, so
+they are deleted *after* the thing they test, not before.
+
+### 3. The behavior decisions this loop deferred
+
+Every one is a "preserved and pinned, fixing it is a behavior change" from the findings above, and
+none can be settled by a port. Grouped by what they cost to get wrong:
+
+- **Silently loses work:** the fix drain prunes before it documents; the trailing-newline dirty
+  queue; `stamp_specs` never re-running after a refine.
+- **Silently does less than it says:** the inert epic CI gate; `open-story-pr.py`'s inert
+  `base_branch`; the first-service-layer-only drain (twice); `fix_ci`'s lifetime attempt budget and
+  its unreachable `ci_summary`; `verify-review-resolution.py`'s hardcoded spec path.
+- **A knob that does nothing:** eight declared-but-inert `max_*` vars across four flows. The sweep
+  is now unambiguous — every `max_*` in the YAML is suspect until read.
+- **Unbounded:** the QA setup gate's operator cycle, which only terminates because the transition
+  budget stops it.
+
+### 4. The three engine-side items, which are not deletions
+
+1. **The context manifest never reaches a pyflow prompt** — the largest parity gap in this loop,
+   engine-side, still open. It is a handful of lines in `pyflow/run.py` and `engine.py`, and it
+   re-validates every port, which is why it was reported rather than made. It should land *before*
+   the YAML engine goes, while `main.py` is still there to copy the behavior from.
+2. **`refuel:` has no counterpart.** The YAML's progress-metered gas tank distinguishes a
+   productive long run from a spin; the driver's flat transition budget does not. A driver-side
+   refuel is a design question, and deleting the YAML engine deletes the only implementation.
+3. **A state that shadows a `dir(Workflow)` name is silently not a state.** It has bitten twice out
+   of four workflows (`validate`, twice). A `__init_subclass__` check is a small driver change and
+   the trap is a rate, not a coincidence.
+
+### 5. Two structural moves, both cheap now and expensive later
+
+- **The package layout** (`docs/backload.md`): group a workflow by *flow* — `coder/qa/{flow.py,
+  nodes.py}` plus a `shared/` — rather than `nodes/`-by-subject plus `flows/`. It is a rename of
+  every module in all four ports, so it wants to be one mechanical commit, and it wants to happen
+  before anything else is built on the current layout.
+- **Environment variables read inside nodes** (same file: "using environment variables in nodes and
+  workflow IS PROHIBITED"). `coder`'s nodes read `AGENT_REPO_DIR`, `CODER_WORKSPACE` and
+  `CODER_DOCS_PATH` exactly as the YAML scripts did. Converting them to inputs touches every port.
+
+### 6. One sweep this loop could not do
+
+**Every ported prompt's free variables against its call site.** A YAML prompt could read anything
+in context; under `pyflow` the render context is the `args` dict alone, so only the values a port
+*noticed* get passed. `implement-plan.md` was caught reading three (`story_path`, `spec_dir`,
+`impl_instruction_paths`); the drain was caught passing six where nine were wanted. Nothing
+proves the rest are complete — `tests/test_prompts_exist.py` checks that a prompt *file* exists,
+which is a different question. A Jinja-AST sweep over every `prompts/**/*.md` against its
+`self.agent(args=…)` is mechanical and belongs at the top of loop 2.
+
+## What was next, and is now done
+
+Both items this section carried through loop 1.1 are closed.
+
+1. **Port `coder`** — landed across nine stages (A, B1, B2, C1, C2, C3, D1, D2, D3, D4), deleting
+   nothing, in the whole package shape: `workflow.py` holding only the class, `nodes/` grouped by
+   subject, schemas, `paths.py` for the derivations, `flows/` per sub-graph, both
+   `workflows/pyproject.toml` lines, and tests under `workflows/tests/coder/` mirroring the node
+   modules. 308 YAML nodes across nine graphs became 102 states, with 119 end-to-end tests.
+2. **Record parity per workflow, here.** Done, in the fourteen `### Parity` sections above. Each is
+   behavioral rather than asserted: real nodes against a temp git repo with only the agent turn
+   scripted, artifacts read back off disk, resume driven through a real interruption. Where a
+   behavior could not be reproduced offline — a live agent, a real GitHub PR, docker — the section
+   says so under its own "Not demonstrated" heading rather than claiming coverage it does not have.
+
+What is next is **loop 2**, whose starting state is the section above.
 
 ## Open questions
 

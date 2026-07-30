@@ -67,6 +67,7 @@ from workhorse_workflows.coder.schemas.genesis import (
 from workhorse_workflows.coder.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.schemas.pr import (
     CiFlagged,
+    MergeFixResult,
     MergeFlagged,
     MergeOutcome,
     PrGate,
@@ -102,6 +103,7 @@ from workhorse_workflows.coder.schemas.queue import (
     EpicPick,
     EpicPruned,
     QaFlagged,
+    ReplanResult,
     StoryBranch,
     StoryCommitted,
     StoryPick,
@@ -157,6 +159,7 @@ __all__ = [
     "ImprovementsRecorded",
     "LayerPick",
     "LintOutcome",
+    "MergeFixResult",
     "MergeFlagged",
     "MergeOutcome",
     "OkfContextResult",
@@ -172,6 +175,7 @@ __all__ = [
     "QaCleared",
     "QaContextRepair",
     "QaFlagged",
+    "ReplanResult",
     "QaFlowResult",
     "QaLoop",
     "QaPlanResult",
