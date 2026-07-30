@@ -14,7 +14,8 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `qa` — clear the evidence, bring the stack up, validate the plan, run it
 * `evidence` — the gate that fails closed: is the claimed pass backed by checkable proof
 * `regression` — which committed journey suites this story touched, and how they ran
-* `backlog` — drain separate-scope discoveries back out to the author
+* `backlog` — file separate-scope discoveries out to the author, and drain them back in
+* `pr` — the epic's PR boundary: open it, merge it, escalate when neither can happen
 * `hygiene` — the two pre-commit gates: stray screenshots, and sentinel IDs
 * `queue` — the main graph's spine: which epic, which story, on what branch, what it recorded
 
@@ -40,7 +41,13 @@ push/poll mismatch (recorded in the progress ledger) became visible at all.
 from __future__ import annotations
 
 from workhorse_workflows.coder.nodes._blueprint import blueprint
-from workhorse_workflows.coder.nodes.backlog import file_backlog_items
+from workhorse_workflows.coder.nodes.backlog import (
+    file_backlog_items,
+    mark_fix_blocked,
+    prune_fix_item,
+    seed_fix_story,
+    select_fix_item,
+)
 from workhorse_workflows.coder.nodes.ci import (
     poll_pr_checks,
     push_ci_fix,
@@ -72,6 +79,13 @@ from workhorse_workflows.coder.nodes.genesis import (
 )
 from workhorse_workflows.coder.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.nodes.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.nodes.pr import (
+    flag_ci_failure,
+    flag_merge_failure,
+    merge_pr,
+    open_pr,
+    open_story_pr,
+)
 from workhorse_workflows.coder.nodes.qa import (
     clear_qa_evidence,
     ensure_stack,
@@ -119,7 +133,9 @@ __all__ = [
     "detect_regression_platform",
     "ensure_stack",
     "file_backlog_items",
+    "flag_ci_failure",
     "flag_epic_blocked",
+    "flag_merge_failure",
     "flag_qa_failure",
     "flush_root_screenshots",
     "gather_run_evidence",
@@ -127,8 +143,13 @@ __all__ = [
     "init_base",
     "init_skeleton",
     "install_farrier",
+    "mark_fix_blocked",
+    "merge_pr",
+    "open_pr",
+    "open_story_pr",
     "poll_pr_checks",
     "prune_epic",
+    "prune_fix_item",
     "prepare_story",
     "push_ci_fix",
     "push_epic_branch",
@@ -141,8 +162,10 @@ __all__ = [
     "run_lint",
     "run_qa_plan",
     "run_regression_suite",
+    "seed_fix_story",
     "select_ci_repo",
     "select_epic",
+    "select_fix_item",
     "select_next_layer",
     "select_story",
     "stamp_specs",

@@ -13,6 +13,12 @@ partially-answered node degrade into defaults rather than raise.
 from __future__ import annotations
 
 from workhorse_workflows.coder.schemas._base import CoderResult
+from workhorse_workflows.coder.schemas.backlog import (
+    FixBlocked,
+    FixPick,
+    FixPruned,
+    FixStorySeed,
+)
 from workhorse_workflows.coder.schemas.ci import (
     CiChecks,
     CiRepoPick,
@@ -59,6 +65,13 @@ from workhorse_workflows.coder.schemas.genesis import (
     TargetClassification,
 )
 from workhorse_workflows.coder.schemas.okf import OkfContextResult
+from workhorse_workflows.coder.schemas.pr import (
+    CiFlagged,
+    MergeFlagged,
+    MergeOutcome,
+    PrGate,
+    StoryPr,
+)
 from workhorse_workflows.coder.schemas.qa import (
     BacklogDrain,
     ContextRepair,
@@ -109,6 +122,7 @@ __all__ = [
     "BaseBranch",
     "BranchOutcome",
     "CiChecks",
+    "CiFlagged",
     "CiRepoPick",
     "CodeReuseResult",
     "CodeReviewResult",
@@ -129,9 +143,13 @@ __all__ = [
     "FailureAttribution",
     "FarrierInstall",
     "Feedback",
+    "FixBlocked",
     "FixCiResult",
     "FixLintResult",
+    "FixPick",
+    "FixPruned",
     "FixResult",
+    "FixStorySeed",
     "GenesisReport",
     "GitInit",
     "ImplContext",
@@ -139,12 +157,15 @@ __all__ = [
     "ImprovementsRecorded",
     "LayerPick",
     "LintOutcome",
+    "MergeFlagged",
+    "MergeOutcome",
     "OkfContextResult",
     "OkfDetection",
     "OperatorAnswer",
     "OperatorResolution",
     "PlanResult",
     "PlanValidation",
+    "PrGate",
     "PushOutcome",
     "QaAssessment",
     "QaAudit",
@@ -178,6 +199,7 @@ __all__ = [
     "StoryCommitted",
     "StoryPaths",
     "StoryPick",
+    "StoryPr",
     "TargetClassification",
     "WorkspaceDirs",
 ]

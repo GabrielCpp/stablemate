@@ -84,6 +84,7 @@ is D, not A.
 | 8 | `d4ab851` | `coder` **stage C2** — the QA evidence gate and the regression pair: `nodes/{evidence,regression}.py` and 3 models, 3 nodes from 933 script lines. 31 differential comparisons, all identical first run. No driver change |
 | 9 | `a7ec0da` | `coder` **stage C3** — the `qa` graph: 91 YAML nodes → 25 states around one `QaLoop` carrier, plus the 17 prompts B2 and C3 reference. 26 end-to-end tests. No driver change |
 | 10 | `945e540` | `coder` **stage D1** — the main graph's queue spine: `schemas/queue.py`, `story_status.py` and `nodes/queue.py`, 9 nodes ported from 9 scripts (≈900 lines). Parity checked script-by-script against the sources. No driver change |
+| 11 | _(this commit)_ | `coder` **stage D2** — the PR boundary and the backlog drain: `schemas/{pr,backlog}.py` and `nodes/pr.py`, 9 nodes from 10 scripts. Two subprocess layers collapse; the four fix-drain nodes join the filing node in `nodes/backlog.py` behind one bullet-grammar definition. No driver change |
 
 ### Parity — `author`
 
@@ -450,6 +451,65 @@ the same way C1's was — every script read end to end against its port.
 - **Not demonstrated:** any of these under the main graph, which does not exist until D4. The
   `flag_qa_failure` PR comment reaches GitHub and is seamed, as everywhere else in this port.
 
+### Parity — `coder`, stage D2 (the PR boundary and the backlog drain)
+
+Ten scripts, nine nodes. Node-level again — the graph that drives them is D4's — and checked the
+same way: every script read end to end against its port, and the four drain nodes additionally
+run for real, in sequence, against a temp repo (draw → seed → re-seed → block → dry draw →
+prune), because they are the group whose contract is a file format shared with a node that
+already shipped.
+
+- **Two process layers collapse, and nothing else about the PR path changes.** `open-pr.py` was a
+  seventeen-line `runpy.run_path` harness that ran `gh-open-pr.py` in-process with a swapped
+  `sys.argv` and stdout redirected to stderr, purely so the helper's prints could not corrupt the
+  caller's JSON envelope. `gh-open-pr.py` then spawned `push-epic.py` as a **subprocess**, with
+  `GH_TOKEN` injected into its environment so the child could resolve the credential the parent
+  already held. Both are gone: `_open_epic_pr` is a private function of `open_pr`, and the push is
+  a direct call to `push_epic_branch`, which resolves its own token from the same repo root. Same
+  two-layers-gone story `push-ci.py` told in stage A — and it also settles the environment rule
+  for this group: no node here reads an environment variable.
+- **`gh-open-pr.py` is not a node, deliberately.** It emitted nothing — it is entirely side
+  effects — and no graph references it. A node whose output nothing reads is a node the run record
+  cannot explain, so it folds into the node that always called it rather than becoming a second
+  state.
+- **The `main` default is not applied to a blank, in three of four scripts.** `open-pr.py`,
+  `gh-open-pr.py` and `merge-pr.py` all read `sys.argv[2] if len(sys.argv) > 2 else "main"`, and
+  the YAML always passed the argument — so an unrendered `base_branch` arrived as `""` and stayed
+  `""`. Only `open-story-pr.py` coerced (`base = base or "main"`). The port reproduces the
+  asymmetry rather than smoothing it: tidying it is a narrowing, and this loop narrows nothing.
+- **`merge_status` stays a string, and it is the second genuine tri-state in this port.**
+  `decide_merge`'s `default:` arm is `guard_merge` — the pessimistic one — so a blank must route
+  the way `failed` does, which a pair of bools cannot express. Written as `if status in (...)` with
+  the blank's arm named, per the rule `schemas/ci.py` settled. `story_pr` stays a string for a
+  different reason: nothing branches on it, but it is a *report*, and collapsing it would lose "I
+  opened one" against "one was already open".
+- **The two give-up banners become `logger.warning`.** `flag-ci-failure.py` and
+  `flag-merge-failure.py` printed `"=" * 60` operator blocks to stderr. The banner text is
+  preserved verbatim, including the "expected, NOT a crash" line; only the channel changes, because
+  the run record is the operator-facing channel now and a stderr block survives only as long as the
+  terminal it scrolled past. Their two bodies differed only in wording, so the PR-comment half is
+  one `_comment_on_pr` helper.
+- **The four fix-drain nodes go into `nodes/backlog.py`, not a new module.** `BACKLOG_ID_RE` is
+  declared identically in four of the five backlog scripts and `## Filed by coder` in two. That
+  repetition is not incidental: a drain that parsed bullets differently from the filer would
+  silently skip items the filer wrote. One definition of each now serves all five nodes, which is
+  the only way to make that drift impossible rather than merely unlikely.
+- **The one name collision is kept apart.** `seed-fix-story.py`'s `kebab` turns a *sentence* into a
+  bounded 60-char slug; `append-backlog-item.py`'s `kebab` sanitizes an already-chosen *id* and
+  keeps `.` and `_`. Same name, different jobs — the port keeps both, as `_fix_slug` and `kebab`.
+  Merging them would have changed one of the two behaviors.
+- **`seed-fix-story.py`'s four `scriptutil.die(…, code=2)` calls are the only raises here.** They
+  become `WorkflowFailed` with the same messages. Every other exit across the ten scripts was an
+  `emit(...)`/`sys.exit(0)` and is a returned model.
+- **The drain's idempotence is demonstrated, not asserted.** Re-seeding the same bullet reuses the
+  existing story (`reusing (idempotent)`) and leaves its written sections byte-identical;
+  `mark_fix_blocked` on an already-annotated bullet reports `marked=True` without writing; the
+  blocked bullet is then invisible to `select_fix_item` and still present in the file for a human.
+  All four observed on a real temp repo with a real ostler book.
+- **Not demonstrated:** every GitHub call — `create_pull`, `merge`, `create_issue_comment`,
+  `get_pulls` — which is seamed here as everywhere else in this port, and the story-mode multi-repo
+  PR fan-out, which needs the workspace fixture D3's tests build.
+
 ## Findings for loop 2
 
 Not deletions — this loop deletes nothing. Each is either something the port could not reproduce
@@ -479,6 +539,17 @@ or something it left stranded.
   and no workflow node. `commit-story.py` and `branch-story.py` do the multi-repo work the names
   suggest. They are not ports; they are deletion-list entries, along with their test and the doc's
   claim.
+- **`open-multi-repo-pr.py` is the third graph-unreferenced multi-repo script.** Same shape as the
+  two above: one reference in the whole tree (`coder/docs/multi-repo.md:205`) and no workflow node.
+  `open-story-pr.py` does the per-repo PR fan-out the name suggests, and it is the one the graph
+  actually wires. Deletion-list entry, with the doc's claim about it.
+- **`open-story-pr.py`'s `base_branch` argument reaches nothing.** The script read it, coerced it
+  (`base = base or "main"`), and then never passed it anywhere — every PR's base comes from
+  `get_repo_base_branch`, whose own fallback is a separate literal `"main"`. So a run configured
+  with a non-`main` base opened its story PRs against whatever each repo declared or probed to,
+  never against the configured value. The port keeps the parameter, inert, because wiring it
+  through would change behavior; loop 2 should decide whether the fix is to wire it as the fallback
+  or to drop the argument from the graph.
 - **`fresh_import` is gone, and one behavior goes with it.** Both status-stamping scripts reached
   `story_status.py` through `scriptutil.fresh_import("story_status", also_purge=("ostler",))`, a
   re-import per call so that a mid-run edit to ostler — an environment-fix loop landing a change
