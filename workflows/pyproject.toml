@@ -52,6 +52,7 @@ test = ["pytest>=8.0"]
 [project.entry-points."workhorse.workflows"]
 research = "workhorse_workflows.research.workflow:workflow"
 author = "workhorse_workflows.author.workflow:workflow"
+okf-builder = "workhorse_workflows.okf_builder.workflow:workflow"
 
 # One console script per workflow, pointing at the callable `workflow.main(Entry)`
 # RETURNS. `[project.scripts]` targets are called after import, so a module-level
@@ -63,6 +64,7 @@ author = "workhorse_workflows.author.workflow:workflow"
 [project.scripts]
 workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
+workhorse-okf-builder = "workhorse_workflows.okf_builder.workflow:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
