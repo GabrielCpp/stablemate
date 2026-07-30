@@ -190,8 +190,8 @@ sank it.)*
 ### Registration and calling
 
 ```python
-from workhorse import scriptutil
-from workhorse.pyflow import Blueprint, Continue, Done, Await, Workflow, WorkflowFailed
+from workhorse.pyflow import Blueprint, Continue, Done, Await, Registry, Workflow, WorkflowFailed
+from workhorse_workflows import kit
 
 blueprint = Blueprint("coder")
 
@@ -219,9 +219,8 @@ class Coder(Workflow):
         return Continue(None, self.escalate, story=story)
 
 
-workflow = Workflow()
-workflow.add_blueprints(scriptutil.blueprint, blueprint)
-workflow.main(Coder)
+workflow = Registry("coder").add_blueprints(kit.blueprint, blueprint)
+main = workflow.main(Coder)                     # the callable, never a call at import
 ```
 
 Decisions embedded above, each with its reason:
@@ -238,6 +237,14 @@ Decisions embedded above, each with its reason:
   "`workflow.logger` via `ContextVar`" — `Concatenate[Logger, P]` (below) strips the parameter for
   the type checker, so an explicit first argument costs nothing and keeps a node a plain function
   you can call from a test.
+- **The registry is the composition root, and `registry.nodes` is what actually runs.** `self.call`
+  is handed the *function object* because `Concatenate[Logger, P]` needs it to type the arguments —
+  but the function is read for its registered **name**, and what runs is whatever the run's node
+  index holds under that name. That makes `add_blueprints(...)` load-bearing rather than
+  bookkeeping: a node whose blueprint the registry never folded in fails at the callsite naming
+  `add_blueprints`, instead of running anyway because the stamp was on the function. Strictness is
+  the point — the index is the one place a run's node implementations can be substituted, and a
+  seam only holds if nothing can route around it.
 - **Nodes return plain values; states return a transition.** Wrapping node results would put
   `.result[...]` at every callsite and re-erase the typing. States are different: their return value
   crosses a persistence boundary, is what gets checkpointed, and is the only place a
@@ -257,8 +264,43 @@ Decisions embedded above, each with its reason:
 - **`self.call` / `self.agent` / `self.handoff` are seams, not conveniences.** Calling a node
   function directly would work and would be invisible. Going through `self.call` is what makes it a
   node: its own span, its own recorded `output.json` — which is what `self.output(…)` later reads —
-  and, the payoff, a no-op that merely records itself under `--dry-run`, which is what lets `dot`
-  render without executing.
+  and, the payoff, a resolution through the run's node index, which is what makes both `--dry-run`
+  and a test a **substitution** rather than a patch.
+
+### The node index is the substitution seam
+
+`RunEnv` carries the run's dependency set — its node index, its agent stand-ins, its agent runner —
+because those are inputs to a run, not module globals. Everything downstream follows from that one
+choice:
+
+```python
+env = RunEnv(..., nodes=research.workflow.override(clone_repo=fake_clone), run_agent=scripted)
+drive(Research(topic="x"), env)
+```
+
+A test **supplies dependencies**; it does not reach into another module and assign over its
+attributes. The before/after is the `research` suite, which used to do both kinds of patching:
+`pyflow_engine.agent_runner.run_agent = agent` with a `finally` that put it back, and
+`patch("…research.nodes.setup.allow_all_directories")`. The first is a global mutated for the
+duration of a test — order-dependent and invisible to anything reading the workflow; the second
+names a private symbol two packages away, so it breaks when that node is refactored even though the
+behaviour under test did not change. Both become constructor arguments.
+
+The rule is about *dependencies*, not about the word `patch`. Lowering `MAX_REWORKS` so a
+test spends three loops instead of four replaces no seam — the cap is the workflow's own
+constant and the guard still reads it — and wrapping `write_state_checkpoint` to collect
+what it wrote is an observation, not a substitution. Those stay.
+
+The same seam is what `--dry-run` uses, so there is one substitution mechanism rather than a test
+mechanism and an engine `if`. See "`--dry-run`, and what happens to `dot`".
+
+Two rules keep it honest:
+
+- **A name the index does not carry is an error**, not a fallback to the stamped function. The
+  index would otherwise be advisory — a node could be substituted or not depending on whether its
+  blueprint had been registered, which is precisely the class of bug a seam exists to remove.
+- **Nothing is resolved at import.** The index is read per call, from the env, so the same workflow
+  module drives a real run, a dry run and a test without knowing which it is in.
 
 ### Where state lives
 
@@ -278,6 +320,15 @@ hand-editable — line of JSON:
 {"state": "write_story", "params": {"epic": "auth", "story": "login-form", "resolves": 1}}
 ```
 
+A parameter does not have to be a scalar. It may be a model, in which case the checkpoint stores
+its JSON projection and the state's own annotation validates it back on the way in — the same
+`TypeAdapter` pass that already puts `"docs/epics"` back into a `Path`. So this is equally a
+checkpoint:
+
+```json
+{"state": "measure", "params": {"gate": "throughput", "budget": {"reworks": 2, "lead_reviews": 0, "extensions": 1}}}
+```
+
 That is not merely a smaller checkpoint. It is what makes a whole class of bug inexpressible. The
 `author` YAML renders `{{ epic }}` into its commit message, where it resolves to whatever
 `select_epic` last wrote into the run context — many nodes earlier, possibly several times over.
@@ -294,7 +345,11 @@ Two things fall out, both visible in the rendering:
   "this run is on coverage rework 2 of 3" is in the checkpoint rather than inside a counter node's
   output. The bill is that a counter owned by an outer loop must be passed through the inner states
   that never read it — two of them, in `author`. Two is the honest price; if it were seven, that
-  would be the design reporting that the loop is wrong.
+  would be the design reporting that the loop is wrong. Past two counters the bill is paid once
+  instead of per counter: they travel as **one frozen model** — `research`'s `Budget` — which a
+  state bumps by returning a new instance rather than mutating a parameter. That keeps the
+  threading cost at one name per signature while the checkpoint stays legible, one nested object
+  instead of three loose integers.
 
 `setup()` exists for the residue and is deliberately narrow. In `author` it holds two strings:
 `base_branch` is decided at the top of the run and used only at the very bottom, and threading it
@@ -577,8 +632,31 @@ resolve to; the previous ones were destroyed when they were superseded. Four not
 
 ## `--dry-run`, and what happens to `dot`
 
-Decorated node functions become no-ops in dry-run mode, registering the call instead of executing
-it. Two distinct payoffs, of unequal value:
+A dry run is **the node index with every entry replaced by its stand-in** — not a branch inside
+`Engine.call`. That is the whole mechanism: `--dry-run` builds a substituted index off
+`registry.nodes` and hands it to the run, so it exercises exactly the resolution path a real run
+uses instead of a second path that only exists in dry-run mode.
+
+What a stand-in is, in order of preference:
+
+- what the node declared, `@blueprint.node(stub=lambda …: TestReport(outcome="valid"))` — the
+  author's answer to "what would this have returned";
+- otherwise a blank instance of the node's return model. It type-checks and it is honest about
+  knowing nothing.
+
+Agent turns get the same treatment: `Registry.stub_agents({"check-gate": …})` keys a canned reply
+by prompt stem, and a prompt with no entry falls back to a blank model. Stems, not paths, because
+the stem is what the workflow author actually names.
+
+The distinction that matters is **what a fail terminal means**. With blank stand-ins, every branch
+reads a blank field and takes an arbitrary path, so a workflow that ends in `WorkflowFailed` has
+reported nothing about itself — which is why `run.py` reports such a run as a fail terminal rather
+than failing on it. Once a registry declares stand-ins, that exemption lifts: the stand-ins are the
+author's claim about which path is the success path, and a dry run that still fails has found a
+real defect. So the exemption is conditional on the registry declaring nothing, and a workflow
+earns a stricter smoke test by describing its own happy path.
+
+Two distinct payoffs, of unequal value:
 
 **A CI smoke test (the real payoff).** Run the whole workflow with nodes stubbed: every prompt path
 resolves, every state name binds, no import errors, no unreachable state. This catches the failure
@@ -771,8 +849,10 @@ subsection is wrong.
 **The positional after `run` is a flow**, exactly as it is today, and under this design it stops
 being an engine feature. A flow is a `Workflow` subclass, so `run qa` is `drive(QA(**params))` — the
 same class, driver and checkpoint file as when a state reaches it through `self.handoff(QA, ...)`.
-`add_flows` exists only to map the CLI token onto the class; `handoff` needs no registry because it
-already holds the class.
+`add_flows` exists only to map the CLI token onto the class — the caller never names a registry,
+because `handoff` already holds the class and the class carries its registration. That is what lets
+a sub-flow from another distribution bring its own prompt root and node index along with it; see
+"A sub-flow is independent".
 
 **`--params` binds to the entry class's model**, not to a context bag: `Author` for `run`, `QA` for
 `run qa`. That makes the CLI the fourth front door onto the one validation this design already has,
@@ -841,7 +921,8 @@ grows, because nodes are where the work accretes.
 author/
   __init__.py
   workflow.py            # the Workflow subclass, and nothing else
-  models.py              # result models shared by nodes and states
+  schemas.py             # agent-reply schemas + node return types  (→ schemas/ when it grows)
+  paths.py               # pure derivations: epic_dir, story_dir, story_path
   nodes/
     __init__.py          # assembles the Blueprint; the one import workflow.py needs
     config.py            # load_config, branch_author, …
@@ -851,7 +932,8 @@ author/
     surveyor.py          # its own Workflow subclass, reached by self.handoff(...)
     parity_surveyor.py
   prompts/               # unchanged — see "Prompt rendering is workhorse's"
-  tests/
+
+workflows/tests/author/  # outside the wheel — see "Where the tests go"
 ```
 
 Each directory earns its place against something that exists today:
@@ -862,24 +944,32 @@ Each directory earns its place against something that exists today:
   defined" answer survives the port, and a diff across the migration lines up by name. It is
   2,389 lines today and should come out at roughly a fifth of that. A reviewer of a state-machine
   change should not be scrolling past `subprocess` calls to find it.
-- **`nodes/` is today's `scripts/`, renamed.** `author/scripts/` is 24 files already; they port
+- **`nodes/` is today's `scripts/`, renamed, and it is a directory even when it holds three
+  functions.** `author/scripts/` is 48 files already (23 plus 25 under `surveyor/`); they port
   one-for-one into node modules with the argv/JSON envelope stripped and nothing else changed. The
   port stays a move, not a redesign, precisely *because* the directory survives. Group by subject
   rather than one file per node — `stories.py` holding four related nodes reads better than four
-  files — but the grouping is a judgement call, and the only rule below is the one that isn't.
+  files.
 - **`flows/` is the YAML's `flows:` key.** Each file is its own `Workflow` subclass with its own
   states, reached by `self.handoff(...)`, and it is the reason `handoff` was un-rejected.
   `author/surveyor/` is already a sibling directory on disk (23 nodes; `parity-surveyor` is 8), so
   this layout makes explicit what the YAML expressed by nesting.
-- **`models.py`** exists because node result models are shared between the nodes that return them
-  and the states that read them; putting them in either place makes the other import it.
+- **`schemas.py`** exists because agent-reply schemas and node return types are shared between the
+  nodes that return them and the states that read them; putting them in either place makes the other
+  import it. *(It was `models.py` in the previous draft. Renamed while porting `research` — `5d3f89d`
+  — because "models" invited the rejected reading that these are payloads crossing a transition. The
+  name now carries the decision; see "Rejected along the way".)*
+- **`paths.py`** is where "derived values get derived, not carried" lands as a file. The three-tier
+  rule sends `epic_dir`/`story_dir`/`story_path` out of the state machine as pure functions of
+  `(ctx, epic, story)`; they are imported by both states and nodes, so they cannot live in either.
+  Small workflows will not have this file. `author` has four such functions and `coder` more.
 
-**One rule, and it is checkable: imports point one way.** `workflow.py` imports `nodes/` and
-`flows/`; nothing under `nodes/` imports `workflow.py`. That is what keeps a node a plain function a
-test can call with a logger and no engine, and what stops the state machine's vocabulary leaking
-into the reusable layer — the same failure `scriptutil.build_dispatch_list` is an example of two
-sections up. Worth enforcing with an import rule rather than a convention, since the violation is
-one convenient import away and invisible afterwards.
+**One rule, and it is checkable: imports point one way.** `workflow.py` imports `nodes/`, `flows/`,
+`schemas` and `paths`; nothing under `nodes/` imports `workflow.py`. That is what keeps a node a
+plain function a test can call with a logger and no engine, and what stops the state machine's
+vocabulary leaking into the reusable layer — the same failure `scriptutil.build_dispatch_list` is an
+example of two sections up. Worth enforcing with an import rule rather than a convention, since the
+violation is one convenient import away and invisible afterwards.
 
 Two consequences to settle when building:
 
@@ -892,6 +982,120 @@ Two consequences to settle when building:
 - **`add_blueprints` is where the assembly shows.** `nodes/__init__.py` builds one `Blueprint` from
   its submodules so `workflow.py` reads `workflow.add_blueprints(kit.blueprint, nodes.blueprint)`.
   If that file ever grows logic beyond registration, the split has been drawn in the wrong place.
+
+#### How small, and what to do when a file is not
+
+Decided (2026-07-29), because the shape above is only load-bearing if it is normative. The layout is
+not a suggestion a port may flatten, and it is not a judgement call to re-argue per workflow — a
+port that decides its own layout is a port that decides it by line count as it goes, which is how
+`research` ended up with the shape the next section corrects.
+
+Three rules, in order of how often they bite:
+
+1. **One subject per module, and the docstring is the test.** A module whose one-line summary needs
+   an "and also" is two modules. This is the rule that actually does the work; the number below only
+   tells you when to apply it.
+2. **~400 lines is a trigger to look, not a lint.** Past it, ask rule 1. Prose is not the enemy —
+   `research/workflow.py` is 617 lines and mostly docstring, and splitting *that* would trade a file
+   you can read top to bottom for two you cannot. `subprocess` bodies at 400 lines are a different
+   answer than commentary at 600.
+3. **Every part that grows is a directory before it needs to be**, and the same names mirror across
+   them: `nodes/stories.py` ↔ `schemas/stories.py` ↔ `tests/author/test_stories.py`. Splitting a
+   flat module later renames every import in the tree; starting as a package costs one
+   `__init__.py`.
+
+**`schemas.py` becomes `schemas/` on the same trigger**, mirroring the node module names, with
+`schemas/__init__.py` re-exporting the classes so `from ..schemas import GateCheck` keeps working.
+Plain re-export is right here and it is *not* the `kit.__getattr__` case in the ledger: that
+forwarding exists to preserve a monkeypatch seam on module attributes, and a model class is neither
+patched nor re-read per node run.
+
+**`workflow.py` holds exactly one class, and there are no state mixins.** When it is still too long
+after the node bodies are gone, the levers are, in order: derivations to `paths.py`, shared
+constants to `constants.py` (only once nodes read them too), and a genuine sub-graph to `flows/`.
+What is *not* a lever is splitting states across files. States are methods of one frozen Pydantic
+class whose names are registry keys and alias targets; a mixin scatters the machine across files
+while leaving it one class, so the graph stops being readable in one place without becoming readable
+anywhere else. And `flows/` is not a general splitting tool either — `handoff` means *run this to its
+own `Done` and return the result*, so extracting states that merely happen to be adjacent invents a
+sub-workflow that has no terminal of its own. A 1,200-line `coder/workflow.py` with 71 nodes
+elsewhere is the machine being genuinely large, and it stays one file.
+
+#### Where the tests go
+
+**`workflows/tests/<workflow>/`, outside `src/` and outside the wheel** — decided (2026-07-29),
+correcting the `tests/` line the layout sketch above used to carry inside the package. The shipped
+`research` port already does this (`workflows/tests/test_research_workflow.py`), and it is right for
+the ordinary src-layout reason: tests are not part of the distribution, and a `src/` package that
+ships them makes every install carry them.
+
+What changes is the granularity. One file per workflow is already 404 lines for the *smallest* of
+the four; `coder`'s 71 nodes cannot land in one. Mirror the node modules — `tests/coder/test_stories.py`
+beside `nodes/stories.py` — plus one module for the machine itself (`test_workflow.py`: the
+end-to-end run, the resume, the dry-run). The pattern inside each file does not change and is
+`test_research_workflow.py`'s: real nodes against a temp git repo with only the agent turn scripted.
+
+#### What the `research` port shipped, and why it is not the template
+
+`research` landed flat — `nodes.py` (316), `schemas.py` (236), `workflow.py` (617), one 404-line test
+file — and for 3 nodes that was the right size to stop at. It is the wrong thing for the next three
+ports to copy, and they will copy it, because a worked example outranks a design section every time:
+`author` has 48 scripts totalling 5,695 lines and `coder` has 71 totalling 8,661. A single `nodes.py`
+at that scale is `scriptutil.py` again, and this design's whole packaging argument is that
+`scriptutil.py` was a thousand-line module nobody meant to write.
+
+So **`research` was restructured into the layout above before `author` is ported**, not after. It
+was the cheapest moment — no behavior touched, one commit — and the only moment where doing it cost
+one port rather than four. `nodes/` is now `setup.py` (73), `program.py` (200), `publish.py` (55)
+over a 13-line `_blueprint.py`, with `schemas.py` at 236 and the tests mirroring the node modules.
+
+That left `workflow.py`, and it left it at 617 lines of which the surplus was **parameter
+threading, not logic**. The size pass took it to **517** with four levers, all of them private
+helpers rather than a split — the file stays one class with no state mixins, per *One workflow,
+several files*:
+
+- **three counters became one `Budget` model** (`schemas.py`, now 284), threaded as a single
+  parameter and bumped by returning a new instance. This is the case that made a model-valued
+  parameter worth supporting;
+- **`_program_args(**extra)`** for the `repo_dir` / `program_dir` / `progress_path` triple that
+  appeared on 53 lines;
+- **`_publish()`** for five identical `self.call(publish_results, …)` blocks;
+- **`_record(gate_id, *, forced)`** for four `record-result.md` agent turns.
+
+Two states did **not** take `_program_args`: `check_gate` and `rework` render prompts that take no
+`progress_path`, and the reason is the point of the gate — the reviewer must not be anchored on
+what the implementer wrote to the progress file. They keep literal argument dicts with a comment
+saying so. A helper that quietly widened their argument set would have changed the experiment.
+
+The pass also cost the engine a fix, which is the honest part of the result. `graph.py` read only
+a state's own body, so moving an `agent(...)` into `_record` dropped the prompt from `dot` **and**
+from `preflight`'s prompt-exists check — factoring silently bought less static coverage. The
+reader now follows `self._helper(...)` into the class's own private methods and attributes what it
+finds to the calling state (with a `seen` guard, since helpers may call each other). The rule the
+design already had — a leading underscore is not a state — now costs nothing to use.
+
+Worth keeping, because it is the clearest evidence the design does what it claims: the port's own
+account of what the counters cost in YAML. The workflow needed six scripts and nine nodes to hold
+three integers —
+
+```
+init_lead_counter  init_extend_counter  reset_rework     (three "set it to 0" nodes)
+guard_rework       guard_lead_review    guard_extend     (three ">= literal" branches)
+incr_rework        incr_lead_review     incr_extend      (three "+1" script nodes)
+```
+
+— and the caps could not be written in the branches, because a branch condition is a literal, so
+`vars.max_reworks: "3"` was kept in step with `guard_rework`'s `"3"` **by a comment asking the next
+editor to remember**. In Python the caps are module constants the guards read, a reset is a default
+argument, an increment is `+ 1`, and a guard is `if`. Branch nodes went the same way: `route_gate`,
+`check_killed_pre`, `decide_gate`, `route_lead_verdict` and `route_goal_verdict` are `if`/`elif`
+inside the state that produced the value they branch on. **30 YAML nodes became 12 states**, and
+the counters ended up in the checkpoint where an operator can read and edit them.
+
+What did *not* collapse is the four terminals, because the difference between them is real: a goal
+verdict (`reached` / `impossible`) is a scientific conclusion and ends the run clean, `Done(...)`;
+a budget exhausted without a verdict is an apparatus failure and ends it red,
+`raise WorkflowFailed(...)` — the old `program_dead` node.
 
 ### The `scriptutil` split (a deliverable, not a side effect)
 
@@ -1022,7 +1226,28 @@ configured library directory, is a live question — see the open questions.
   a method of *this* class, so nothing expresses what a YAML `flow:` node did — run a *different*
   state machine to its own `Done` and return the result. `author` needs it twice, for the
   `surveyor` and `parity-surveyor` sub-graphs. With that meaning the name is accurate rather than
-  misleading: it *is* a transfer of control that returns only when the callee terminates.
+  misleading: it *is* a transfer of control that returns only when the callee terminates. What it
+  is **not** is a way to reuse the caller's environment — see below.
+
+#### A sub-flow is independent
+
+A handed-off flow resolves **its own registry**, and gets that registry's prompt directory, node
+index and stand-ins. Registration travels with the class, the same way a node's registration
+travels with the function, so `handoff(Surveyor, …)` finds the composition root `Surveyor` was
+registered under rather than inheriting the caller's.
+
+This is not symmetry for its own sake. Inheriting the parent's environment is already a bug in the
+tree: `handoff` swaps only the writer, so a sub-flow living in another distribution renders its
+prompts out of the *parent's* package directory — a path that either does not exist or, worse,
+resolves to a same-named prompt belonging to someone else. The independence rule fixes that and
+answers the node-index question in the same stroke.
+
+The consequence worth stating plainly: **a parent's substitutions do not reach its children.** A
+test that overrides `clone_repo` in the parent's index has said nothing about the child's, and a
+test that wants both says so twice. That is the cost, and it is the right one — a sub-flow is a
+different program, and a stand-in that leaked across the boundary would be a global under another
+name, which is exactly what the index exists to abolish. A class with no registry of its own
+inherits the caller's, which keeps a sub-flow declared beside its parent working with no ceremony.
 - **`with w.match(...) / w.case(...)` builder blocks** — readable, and they force the pure-builder
   model (a context manager cannot skip its body; the `sys.settrace` recipes that fake it break
   under debuggers and coverage, which is disqualifying for a week-long unattended runner). But that
@@ -1051,6 +1276,11 @@ index, not the argument.
 | Which invocation `self.output` resolves to | **The latest.** Last write wins, and a node that has not run raises rather than returning empty. | *The fourth thing, which is a read* |
 | How state and node names get pinned | **`aliases=[…]` on the decorator.** Identity is the plain name; a resume that matches nothing fails loudly, and the alias is the fix. Nodes need it too, because `self.output` resolves by node name. | *The rules resume imposes*, rule 4 |
 | Where the pure-git helpers land | **All of them in `kit`; workhorse keeps none.** `scriptutil.py` is the only module under `workhorse/workhorse/` that imports `git`, so the cut is total and the acceptance test is binary. | *The `scriptutil` split* |
+| How a workflow's files are split | **Normative, not per-port taste.** `nodes/` is a package of subject modules even when small, `schemas.py` becomes `schemas/` on the same trigger, `workflow.py` is one class with no state mixins, tests live in `workflows/tests/<workflow>/` mirroring the node modules. `research` shipped flat and is restructured before `author` is ported. | *One workflow, several files* |
+| What `registry.nodes` is for | **It is the composition root, and it is what runs.** `self.call` reads the function for its name and the run's index for the implementation; a name the index does not carry is an error naming `add_blueprints`. | *The node index is the substitution seam* |
+| How a test replaces a node or the agent | **By supplying dependencies, never by patching.** `RunEnv` carries `nodes`, `agent_stubs` and `run_agent`; `Registry.override(...)` produces a substituted index. The two `patch()`es in the `research` suite are deleted, not relocated. | *ibid.* |
+| What `--dry-run` runs | **A substituted index, not an engine branch.** Stand-ins come from `@blueprint.node(stub=…)` and `Registry.stub_agents({...})`, falling back to a blank return model. The fail-terminal exemption applies only while a registry declares no stand-ins. | *`--dry-run`, and what happens to `dot`* |
+| What a sub-flow inherits from its caller | **Nothing but the run directory.** A handed-off class resolves its own registry, hence its own prompt root, node index and stand-ins; a parent's overrides do not reach it. A class with no registry of its own inherits the caller's. | *A sub-flow is independent* |
 | `check_base_stands_alone` and unresolved skill names | **Not a gap — the referent is not the library's.** Workhorse resolves skills from the workspace it is installed into, never from the base library, so a prompt naming a skill the base does not carry is not a dependency on an overlay. | *below* |
 
 ### Migration
@@ -1124,12 +1354,18 @@ Two constraints on that first step, both learned from the `author` rendering:
 
 ## Execution loops
 
-Three `/loop` runs, split at the point where the old front-end must start coming down. The split is
-load-bearing: everything in loop 1 lands **beside** the YAML engine with it still green, so the
-work is revertible one commit at a time. Loop 2 keeps that property for as long as it can — the
-ports land beside the YAML too, and the deletion is the last act, gated on all four workflows
-running on the driver. The point of no return is inside loop 2, not at its boundary. Loop 3 changes
-no behavior at all: it makes the tree say what the code now does.
+Four `/loop` runs, split at the point where the old front-end must start coming down. The split is
+load-bearing: everything in loops 1 and 1.1 lands **beside** the YAML engine with it still green,
+so the work is revertible one commit at a time. Loop 2 is where that stops, and it is now the
+*only* place it stops — the ports were originally the first half of loop 2, which put the point of
+no return *inside* a loop rather than at its boundary. Loop 1.1 pulls every port out in front of
+every deletion, so loop 2 opens on a checkable precondition (all four workflows run on the driver)
+and everything it does is irreversible by design. Loop 3 changes no behavior at all: it makes the
+tree say what the code now does.
+
+The price of that ordering, named so nobody is surprised by it: for the length of loop 1.1 the tree
+carries two engines and `make test` runs both suites. That is the cost of being able to revert any
+single commit, and it is worth paying.
 
 `research` is the *last* step of loop 1, not the first of loop 2. Porting it is migration in the
 literal sense, but its purpose here is proof: an unproven driver is not a finished driver, and the
@@ -1174,7 +1410,7 @@ only file you should need to reconstruct where this loop is.
 Then read ONLY these sections of the plan: "The shape to build", "Packaging and
 distribution", "farrier keeps no workflow knowledge", "Suggested first step", "Decided
 (2026-07-29)" and "Rejected along the way". Those are decisions, not suggestions. Do NOT
-read the file end to end — it is ~1,350 lines, and re-reading it every iteration is what
+read the file end to end — it is ~1,550 lines, and re-reading it every iteration is what
 drove the first run of this loop into repeated autocompaction. Open another section only
 when the step you are on names it.
 
@@ -1224,6 +1460,18 @@ Deliver, in dependency order — one focused commit per iteration:
 6. `--dry-run` and per-flow `dot` enumeration against the new model.
 7. Port `research/workflow.yaml` (508 lines) as the proof, and show the counter machinery
    it deletes as a concrete before/after.
+8. Wire the registry as the composition root — added 2026-07-29, after the port showed the
+   node index was write-only. `RunEnv` carries `nodes` / `agent_stubs` / `run_agent`;
+   `self.call` resolves the stamped NAME through that index and errors on a name
+   `add_blueprints` never folded in; `--dry-run` becomes a substituted index rather than an
+   `if` inside `Engine.call`; a handed-off class resolves its own registry, hence its own
+   prompt root and node table. Acceptance: `research`'s suite substitutes no *seam* by
+   patching — no agent runner, no node, no engine attribute — and `--dry-run` reaches
+   `Done` on a registry that declares stand-ins. What legitimately remains is
+   `patch.object(research, "MAX_REWORKS", 2)`, which lowers a cap so a test spends three
+   loops rather than four, and a wrapper on `ArtifactWriter.write_state_checkpoint` that
+   *observes* what was written. Neither replaces a dependency. See "The node index is the
+   substitution seam".
 
 Each iteration ends green AND ends committed. `ruff check .` from the repo root (zero
 findings, fix rather than noqa), then `make test && make check-public
@@ -1255,13 +1503,17 @@ End the loop when research runs end-to-end on the new driver with the YAML engin
 green, and report what is left for loop 2.
 ```
 
-#### Resuming loop 1 mid-flight
+#### Resuming loop 1 mid-flight — HISTORY, loop 1 is complete
+
+**This prompt has been run and loop 1 is done** (`5d3f89d`, `772b5d0`, `2ea582a`, `2637034`; see
+the ledger). It is kept only because it is the worked example of restarting a stalled loop, and
+because the diagnosis below is the case study behind "Context discipline" above. Do not fire it.
 
 The first run landed steps 1, 3, 4, 5 and 6 — `740a6ef`, `7cae8d1`, `5bb7e29`, `ea47ff7`,
 `53dc4ba`, or 2,350 lines under `workhorse/workhorse/pyflow/` — then stalled inside step 7 with
-**step 2 never done**. That skip is itself a symptom: `research/nodes.py` now imports `checkout`,
+**step 2 never done**. That skip is itself a symptom: `research/nodes.py` imported `checkout`,
 `clone`, `commit_all` and `fetch_reset` from `workhorse.scriptutil`, which is exactly the module
-step 2 empties, so the port is being written against a seam that is scheduled to move.
+step 2 empties, so the port was being written against a seam that was scheduled to move.
 
 Do **not** re-fire the prompt above to finish this. Most of it specifies committed work, and
 re-reading a spec for finished work is the cost that stalled the run. Use this instead:
@@ -1309,37 +1561,134 @@ End the loop when research runs end-to-end on the driver with the YAML engine st
 and write loop 2's starting state into the ledger.
 ```
 
-### Loop 2 — migrate the remaining workflows, then delete the old front-end
+### Loop 1.1 — port every workflow, decommission nothing
+
+Loop 1 proved the driver on one workflow. This loop ports the other three and stops there: **no
+deletion, no narrowing, no doc correction that presumes a deletion.** The YAML engine keeps running
+the whole way, both front doors resolve, and every commit is revertible on its own.
+
+The ordering inside is not arbitrary, and `research` is the reason. It exercised branches, a bounded
+rework loop, counters and twelve states — but nothing in it waits on a human and nothing in it calls
+a sub-workflow, so two of the driver's three transition arms have never run against a real workflow.
+`Await` exists at `pyflow/transitions.py:107` and `self.handoff(...)` has a graph edge, and both are
+still theory. What the remaining YAML actually needs:
+
+| Workflow | YAML | scripts | `await-operator` sites | `type: flow` nodes |
+|---|---:|---:|---:|---:|
+| `author` | 2,116 | 23 (+25 under `surveyor/`) — 5,695 lines | 12 | 2 |
+| `okf-builder` | 729 | 11 — 1,723 lines | 0 | 1 |
+| `coder` | 4,366 | 71 — 8,661 lines | 19 | 8 |
+
+So `author` goes first: it is the first workflow to exercise `Await` *and* `handoff`, and an
+`Await` defect found there costs one port to fix where the same defect found in `coder` costs three.
+The rendered artifact under [`author-workflow-python/`](author-workflow-python/) means it is also
+the one port that is a transcription rather than a design exercise. `okf-builder` is second because
+it is cheap and consolidates. `coder` is last on the old grounds — largest, and the only one
+carrying the docker/stack machinery — but now also because by then every construct it uses has been
+built once already.
 
 ```
-/loop Execute the migration half of docs/plans/workflow-as-python-state-machine.md: port
-the remaining workflows to the Python driver, then delete the YAML front-end. Loop 1 built
-and proved the machinery on `research`.
+/loop Port the remaining three workflows in docs/plans/workflow-as-python-state-machine.md
+onto the Python driver. Loop 1 built the driver and proved it on `research`. This loop
+DELETES NOTHING: the YAML engine stays green and fully usable until loop 2, and any step
+that cannot land without breaking it is a finding to report, not a step to force.
 
 START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger loop
 1 left behind. It carries loop 1's final report, what is next, and the decisions already
-settled; keep writing it here. Then read the ported `research` workflow, which is the
-worked example every other port follows, and ONLY these sections of the plan: "The shape to
-build", "Resume", "Packaging and distribution", "Decided (2026-07-29)" and "Rejected along
-the way". Do NOT read the plan end to end — it is ~1,350 lines, and re-reading it each
-iteration is what drove loop 1 into repeated autocompaction. A port question is answered by
-`research` and the driver source first, by the plan only when neither settles it.
+settled; keep writing it here, in the same commit as the work.
+
+Then read the ported `research` workflow — its nodes, schemas and workflow modules plus its
+tests under workflows/tests/ — because it is the worked example every other port follows for
+node contracts, state shape and test pattern. It is NOT the example for FILE LAYOUT: it
+shipped flat and step 0 below restructures it. From the plan read ONLY "The shape to build",
+"One workflow, several files", "Resume", "Packaging and distribution", "Decided
+(2026-07-29)" and "Rejected along the way". Do NOT read the plan end to end: it is ~1,650
+lines, and re-reading it each iteration is what stalled loop 1's first run. A port question
+is answered by `research` and the driver source first, by the plan only when neither settles
+it.
 
 Port in this order, one workflow per iteration, each landing green before the next:
 
-1. `author` (2,389 lines of YAML over 159 nodes + 23 scripts totalling 2,650). The whole
-   thing is ALREADY RENDERED in docs/plans/author-workflow-python/ — that is the reference,
-   not a fresh design exercise. Where the port diverges from it, say why.
-2. `okf-builder`.
-3. `coder` (4,366 lines — the largest, and the one with the docker/stack machinery, so it
-   lands last and inherits every lesson).
+0. Restructure `research` into the layout in "One workflow, several files" — `nodes/` as a
+   package of subject modules, tests as `workflows/tests/research/` — BEFORE porting
+   anything else, because every later port copies the shape it finds and `author` is 48
+   scripts totalling 5,695 lines. No behavior change, one commit: 316 lines of nodes.py
+   become two node modules, and the 404-line test file splits to mirror them. Doing it now
+   costs one port; doing it after `coder` costs four. The layout is decided, not a
+   per-workflow judgement call — one subject per module, ~400 lines is the trigger to apply
+   that rule, `workflow.py` holds one class and NO state mixins, `schemas.py` becomes
+   `schemas/` on the same trigger, and every part that grows is a directory before it has
+   to be.
+1. `author` — 2,116 lines of YAML, 23 scripts (2,653 lines) plus 25 more under
+   `surveyor/` (3,042 lines) that are author's too and are easy to miss. It is FIRST
+   because it is the first workflow to exercise `Await` (12 await-operator sites) and
+   `handoff` (2 `type: flow` nodes), neither of which `research` touched — find a defect in
+   those arms here, where it costs one port, not in `coder`, where it costs three. The
+   whole workflow is ALREADY RENDERED in docs/plans/author-workflow-python/: that is the
+   reference, not a fresh design exercise. Where the port diverges from it, say why.
+2. `okf-builder` — 729 lines, 11 scripts, no awaits, 1 sub-flow. The cheap one; it should
+   mostly confirm what author settled.
+3. `coder` — 4,366 lines, 71 scripts (8,661 lines), 19 awaits, 8 sub-flows, and the only
+   docker/stack machinery. Last, so it inherits every lesson. It is also the size test: if
+   `self.output(node)` or the state-granularity rule breaks down anywhere, it breaks here.
 
-Parity is the gate for each port, and "it runs" is not parity. Before deleting a workflow's
-YAML, demonstrate the ported flow produces the same artifacts and the same resume behavior
-for at least one real run, and record the evidence. A behavior you cannot reproduce is a
-finding to report, not a difference to absorb silently.
+Each port produces the whole package — workflow.py holding only the class, nodes/ grouped by
+subject, schemas, paths.py for the derivations the three-tier rule pushes out, flows/ for
+each `type: flow` sub-graph, one `[project.entry-points."workhorse.workflows"]` line, one
+`[project.scripts]` console script, and tests under workflows/tests/<workflow>/ mirroring
+the node modules plus one module for the machine itself. Take research's test file as the
+pattern for what goes INSIDE each: real nodes against a temp git repo with only the agent
+turn scripted. That pattern is what made research's claims checkable, and a port without it
+is a port whose parity is an assertion. One node module per subject and one test module
+beside it is what keeps `coder`'s 71 nodes reviewable — a single nodes.py at that size is
+scriptutil.py again, which is the module this whole packaging argument exists to unmake.
 
-Only after all four run on the driver, delete — in this order, each its own commit:
+Parity is the gate, and "it runs" is not parity. For each workflow demonstrate that the
+ported flow produces the same artifacts and the same resume behavior as the YAML for at
+least one real run, and record the evidence in the ledger. A behavior you cannot reproduce
+is a finding to report, not a difference to absorb silently. Both engines are present for
+the whole loop, so this comparison is available — that is the main thing this ordering buys,
+and taking a port on faith wastes it.
+
+`await-operator.py`'s 280 lines of ctypes inotify do NOT get ported — the driver's portable
+polling wait replaces them. Deleting them is loop 2's; leaving them unported and unused is
+this loop's.
+
+Each iteration ends green AND ends committed. `ruff check .` from the repo root, then
+`make test && make check-public >/tmp/wf-loop11-test.log 2>&1 || tail -80
+/tmp/wf-loop11-test.log` — redirect it, read the tail only on failure. Note that this bar
+covers BOTH engines for the length of this loop; a YAML suite that goes red is a
+regression, not an expected casualty.
+
+STOP and ask me before: deleting or narrowing anything at all, changing the driver API (it
+invalidates the ports already done, so it is my call), and porting a behavior you cannot
+find a home for in the new shape.
+
+End the loop when all four workflows resolve through `workhorse.workflows` entry points and
+run on the driver, each with parity evidence in the ledger, with the YAML engine still
+green and nothing deleted. Then write loop 2's starting state: the deletion list, and
+anything found during porting that belongs on it.
+```
+
+### Loop 2 — decommission the YAML front-end
+
+Loop 1.1 ends with two working engines and a checkable precondition. This loop is the irreversible
+one, and it does nothing but subtract. Its entry gate is loop 1.1's exit condition: all four
+workflows on the driver, each with parity evidence. If that evidence is missing for any workflow,
+this loop does not start — it sends the workflow back.
+
+```
+/loop Decommission the YAML front-end, per docs/plans/workflow-as-python-state-machine.md.
+Loop 1.1 ported all four workflows onto the driver and deleted nothing; this loop is the
+deletion, and it is the irreversible half.
+
+START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger,
+which carries loop 1.1's deletion list and the parity evidence for each port. CHECK THAT
+EVIDENCE FIRST: a workflow without recorded parity is not ready to have its YAML deleted,
+and the right move is to say so and stop, not to delete and find out. From the plan read
+ONLY "Packaging and distribution", "What this leaves in the base library" and "Migration".
+
+Delete in this order, each its own commit:
 
 - `graph/loader.py` (45), `graph/nodes.py` (256); rewrite `graph/dot.py` (297) against the
   new model; rework `main.py`'s `_step_loop`/resume; trim `testing.py` (575) to what a
@@ -1353,31 +1702,31 @@ Only after all four run on the driver, delete — in this order, each its own co
 - Narrow the base-library fetch to a sparse checkout of `library/`. This is the decided
   trust posture and it can only land here, once `base-library/workflows/` is gone: what
   remains is markdown, so the cache should hold documents rather than a repository.
-- `await-operator.py`'s 280 lines of ctypes inotify, per workflow. The driver's polling
-  wait replaces it; do not port it.
+- `await-operator.py`'s 280 lines of ctypes inotify, per workflow. Loop 1.1 left them
+  unported on purpose; the driver's polling wait is their replacement.
 - Correct — do not rewrite — the docs that would otherwise describe a deleted front-end as
   current: docs/features/workhorse/workflow-format.md, base-library/workflows/README.md,
   workhorse/README.md, workhorse/CLAUDE.md's graph-walk description. Enough that no
   committed file is actively false at the moment the deletion lands; the full documentation
-  pass is loop 3's, and doing it here means writing it mid-port.
+  pass is loop 3's, and doing it here means writing it mid-deletion.
 
 Each iteration ends green AND ends committed. `ruff check .` from the repo root, then
 `make test && make check-public >/tmp/wf-loop2-test.log 2>&1 || tail -80
-/tmp/wf-loop2-test.log` — redirect it and read the tail only on failure; passing suite
-output is context you will need for the port. Commit, and update the ledger in that same
-commit: the workflow ported, its parity evidence, what is next. Never end an iteration with
-a dirty tree — a half-ported workflow that is not committed leaves the next iteration
-unable to tell "ported" from "in progress", and it will re-derive from source to find out.
-Keep workhorse/README.md and workhorse/docs/GUARDRAILS.md current as behavior changes —
-they are the operator contract.
+/tmp/wf-loop2-test.log` — redirect it and read the tail only on failure. Commit, and update
+the ledger in that same commit: what was deleted, what it took with it, what is next. Never
+end an iteration with a dirty tree — this is the loop where a dirty tree is worst, because a
+half-finished deletion is the one state neither engine can be trusted in. Keep
+workhorse/README.md and workhorse/docs/GUARDRAILS.md current as behavior changes — they are
+the operator contract.
 
-STOP and ask me before: deleting anything not on the list above, and any moment a port
-suggests the driver API itself is wrong. A driver change mid-migration invalidates the
-ports already done, so it is my call, not the loop's.
+STOP and ask me before: deleting anything not on the list above, and any moment a deletion
+suggests the driver API itself is wrong. Nothing here is meant to change the driver — if
+subtracting the YAML exposes something the ports were quietly relying on, that is a finding
+and my call, not a fix to improvise.
 
-End the loop when no YAML front-end remains, all four workflows resolve through
-`workhorse.workflows` entry points, and the 7,992 lines are accounted for — deleted,
-ported, or explicitly kept with a reason.
+End the loop when no YAML front-end remains, all four workflows still resolve through
+`workhorse.workflows` entry points and still run, and the 7,719 lines of workflow YAML are
+accounted for — deleted, ported, or explicitly kept with a reason.
 ```
 
 ### Loop 3 — make the tree say what the code does, at a public bar
@@ -1396,7 +1745,7 @@ merely misleads a human, who can look at the source; a stale skill actively manu
 ```
 /loop Bring the repository's documentation, examples and skills in line with the Python
 workflow design in docs/plans/workflow-as-python-state-machine.md, to a standard fit for a
-public repository. Loops 1 and 2 shipped the code. This loop changes NO behavior — if a doc
+public repository. Loops 1, 1.1 and 2 shipped the code. This loop changes NO behavior — if a doc
 can only be made true by changing code, that is a finding to report, not a change to make.
 
 START by reading docs/plans/workflow-as-python-state-machine-progress.md — the ledger,
@@ -1404,7 +1753,7 @@ carrying loop 2's final report and what each port actually settled. Then work fr
 SHIPPED CODE: what the docs must now describe is what loops 1 and 2 built, and where the
 plan and the code disagree the code wins and the disagreement is worth a line in the
 ledger. Read the plan only to recover intent behind something the source leaves ambiguous,
-and then only the section that covers it — never the whole file, which is ~1,350 lines and
+and then only the section that covers it — never the whole file, which is ~1,650 lines and
 whose repeated re-reading drove loop 1 into autocompaction.
 
 Work in this order — one focused commit per iteration:
