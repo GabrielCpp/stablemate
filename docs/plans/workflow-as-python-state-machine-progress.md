@@ -38,14 +38,15 @@ that every port lands beside the YAML engine and nothing is deleted until all fo
 on the driver — see "Loop 1.1 — port every workflow, decommission nothing" in the plan. Loop 2 is
 now deletion only, and its entry gate is this ledger carrying parity evidence per workflow.
 
-Loop 1.1 is **two ports in, two to go**. `research` and `author` run on the driver; `okf-builder`
-and `coder` are still YAML. `author` was taken first because it was the first to exercise `Await`
-and `handoff`, and it paid: the driver needed four additions (step 1) and the port found six things
-the new shape does not reproduce (see "Findings for loop 2").
+Loop 1.1 is **three ports in, one to go**. `research`, `author` and `okf-builder` run on the
+driver; `coder` is still YAML. `author` was taken first because it was the first to exercise
+`Await` and `handoff`, and it paid: the driver needed four additions (step 1) and the port found
+six things the new shape does not reproduce (see "Findings for loop 2"). `okf-builder` then did
+what it was there to do — it needed **no driver change at all**, which is the evidence that the
+API `author` settled is the API.
 
-Next is **`okf-builder`** — 729 lines, 11 scripts, no awaits, one sub-flow. It should mostly
-confirm what `author` settled. Then `coder`, where `self.output(node)` and the three-tier state
-rule meet 4,366 lines, 19 awaits and 8 sub-flows.
+Next is **`coder`**, where `self.output(node)` and the three-tier state rule meet 4,366 lines,
+71 scripts, 19 awaits and 8 sub-flows.
 
 ## What landed
 
@@ -67,7 +68,8 @@ rule meet 4,366 lines, 19 awaits and 8 sub-flows.
 |---|---|---|
 | 0 | `f4788a3` | `research` restructured into the normative package layout — `nodes/` (3 subject modules + the shared `Blueprint`), tests to `workflows/tests/research/test_workflow.py`. No behavior change; 12 tests still pass |
 | 1 | `950a672` | The driver additions `author` asked for, all additive: `self.agent(cwd=, add_dirs=)`, declared dry-run stand-ins (`@node(stub=)`, `Registry.stub_agents`), activity as a flagged log record, JSON-safe checkpoint params. `research` adopts them |
-| 2 | _this commit_ | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
+| 2 | `c96f845` | The `author` port — 101 YAML nodes → 26 states + two sub-flows (14 and 6), 48 scripts → `nodes/` by subject + `nodes/survey/`, both pyproject tables, 155 tests |
+| 3 | _this commit_ | The `okf-builder` port — 29 YAML nodes → 12 states + one sub-flow (19 → 6), 11 scripts → `nodes/` by subject, both pyproject tables, 8 end-to-end tests. No driver change |
 
 ### Parity — `author`
 
@@ -87,6 +89,36 @@ What was demonstrated, so loop 2 can see exactly how far it goes:
   real agent turns to reach a terminal, so the comparison is against the YAML's *scripts and node
   wiring*, node by node, not against a recorded run. Where the port could not match the YAML, it is
   a finding below rather than a silent difference.
+
+### Parity — `okf-builder`
+
+- **Every node has a home, and the mapping was checked one by one.** 29 main-graph nodes → 12
+  states, 19 walk nodes → 6 states plus one private helper. The collapses are all the same three
+  kinds: a `decide_*` router folds into the `if` at the end of the state that produced the value
+  it routes on (`decide_start`, `decide_item`, `decide_checkpoint`, `decide_coverage`,
+  `decide_auto_waive`, `decide_boot`, `decide_browser`, `decide_wt_*`); a `guard_*` folds into the
+  same place (`guard_budget`, `guard_fixup_progress`, `guard_rounds`, `guard_wt_*`); and the four
+  `type: fail` terminals (`cannot_build`, `rounds_exhausted`, `budget_exhausted`, `doctor_stuck`)
+  become `raise WorkflowFailed` at the site that decides them, which is why the count drops
+  without any behavior going with it.
+- **Same artifacts.** 8 end-to-end tests drive the real nodes — real `ostler doctor`, real
+  coverage join, real git — against a temp repo whose source and book actually correspond, with
+  only the agent turn scripted. They assert the artifacts: the worklist items and their states,
+  `coverage.json`'s totals, the source inventory's unit codes, the queued repair's `kind`/`target`
+  /`context`, and the activity labels.
+- **Same convergence and the same refusals.** A complete book drains in one investigation, skips
+  the recheck and skips the walk; an investigation's `discovered` opens the items it reveals; a
+  dirty doctor queues one `fixup` per file and re-converges; a repair that never lands stops at
+  `MAX_STALL_ROUNDS` rather than looping; the item ceiling is a **failure**, not a finished book;
+  a non-directory source root fails before the first agent turn.
+- **Same resume behavior.** A run killed mid-investigation resumes on that item alone — the
+  checkpoint carries `item_target`, the worklist entry is still `active`, and the second drive
+  makes exactly one more agent call.
+- **Both graphs dry-run green**, the parent and `walkthrough-web` on its own entry point.
+- **Not demonstrated:** a recorded side-by-side run of the YAML. Its `--dry-run` is a *static graph
+  check*, not an execution trace — it prints `29 nodes: prepare, check_ostler, decide_start, …` and
+  stops — so, as with `author`, the comparison is node-by-node against the YAML's wiring and
+  scripts. The one thing the port genuinely loses is in the findings below, not absorbed here.
 
 ## Findings for loop 2
 
@@ -113,10 +145,26 @@ or something it left stranded.
   `board.py`, `checkout-workspace.py`, `gh-token.py`.
 - **groom stamps activity labels with a prefix.** The driver's labels are unprefixed by decision;
   groom is the side that changes.
+- **`refuel:` has no counterpart, and this is the one thing `okf-builder` loses.** Both of its
+  `select_item` nodes carry `refuel: done_count` — the YAML's transition budget is a gas tank that
+  *refills on evidence of progress*, so a loop still completing items may run indefinitely while a
+  loop that has stopped completing them runs dry and halts. The driver has a flat transition
+  budget: it bounds the machine, but it cannot tell a productive long run from a spin. Nothing was
+  invented to replace it; both ceilings the port does enforce (`max_items`, `MAX_STALL_ROUNDS`) are
+  narrower guards that happen to cover the two loops that spin in practice. Reported, not absorbed
+  — a driver-side refuel is a loop-2 design question, not a port decision.
+- **The YAML's `--dry-run` is a static graph check, not an execution trace.** It lists the node
+  ids and stops, which is why no port in this loop can show a recorded side-by-side run against
+  the YAML. The pyflow `--dry-run` *does* execute, through declared stand-ins. Worth noting when
+  loop 2 decides what "the YAML engine still works" was ever able to mean.
+- **Stranded by this port:** nothing in `okf-builder/scripts/` — all 11 have a home. What goes
+  stale instead is `boot-app.py`'s `--teardown` argv sentinel (one script serving as two nodes
+  became four nodes and a private `_finish`), and `record.py`'s `ast.literal_eval` tolerance for
+  Python-repr `discovered` lists, which is unreachable once the agent reply is a typed model.
 
 ## What is next
 
-1. **Port `okf-builder`, then `coder`** — loop 1.1, deleting nothing. Each port is the
+1. **Port `coder`** — loop 1.1's last, deleting nothing. Each port is the
    whole package per that section: `workflow.py` holding only the class, `nodes/` grouped by subject,
    schemas, `paths.py` for the derivations, `flows/` per sub-graph, one entry-point line and one
    console script in `workflows/pyproject.toml`, and tests under `workflows/tests/<workflow>/`
