@@ -2165,6 +2165,66 @@ rewrite removed them.
     check exists precisely because a report scoring stale artifacts is "the same vacuous
     success it exists to detect" — and it now always passes.
 
+### Iteration 12 — the ladder family, which needed re-grounding rather than re-pointing
+
+Nine `concepts/` pages describing what is now `runner/ladder.py`, `runner/caps.py` and
+`runner/reframe.py`. The tempting reading of `ostler`'s `dangling-code-ref` output is that
+these pages are *correct documents with stale `code:` pointers* — fix the path, move on.
+Reading `ladder.py` and `caps.py` in full first showed that is wrong for this family: loop 2
+turned `run_agent` from a module function reading import-time env constants into
+`AgentRunner`, a **frozen dataclass whose backend, resilience policy and clock are injected**.
+That changes the *contracts* these pages state, not merely where the symbol lives. Three
+documented behaviours were flatly false:
+
+- **`invoke-claude.md` documented a fallback that no longer exists.** Its contract had
+  `backend: AgentBackend | None (default None)` resolving through `get_backend()` when
+  omitted. The shipped docstring says the opposite in as many words: "``AGENT_CLI`` is read
+  once at the CLI boundary and the chosen adapter is handed down, so the ladder names no CLI
+  and imports none."
+- **Every retry counter had moved from a parameter or a module constant to an
+  `AgentResilience` field.** `max_invoke_retries`, `max_output_retries`, `_MAX_CAP_WAITS`,
+  `_INVOKE_BACKOFF_BASE_S`, `_CAP_TICK_S`, `_CAP_WAIT_MARGIN_S` and the rest are one field
+  each on the run's resilience policy (`config_run.py`, whose module docstring makes the
+  point: "``from_env`` is the *only* place these variables are read"). A test states a bound
+  now instead of setting an env var, and the pages said otherwise.
+- **`run-agent.md` claimed the console echoes the resolved prompt variables.** Its setup step
+  read "Echo the prompt summary (template path + resolved variable values)". The shipped code
+  writes the rendered prompt to `<run_dir>/<node_id>/prompt.md` and prints **only that path**.
+  A doc promising that variable values reach the terminal is a privacy claim in the wrong
+  direction, so this is corrected rather than softened, and the new page cites the test that
+  pins it (`test_rendered_prompt_is_written_and_only_path_is_printed`).
+
+Smaller corrections, all against source: `parse_reset_seconds`' `now` is **required and
+positional** (no `datetime.now()` default — the docstring: "a parser that reads the clock
+cannot be exercised without one"); `cap_delay_seconds`' text-parse branch now labels from the
+*injected* now, not a fresh `datetime.now()`; `sleep_with_notice` emits `otel.heartbeat` once
+before the first chunk and after **every** chunk including the last, which no version of the
+page mentioned; `timeout_retry_prompt` rounds with `max(1, int(round(...)))`.
+
+**One rename, and only one.** Of the nine slugs, seven already matched their new public name
+(the functions only lost a leading underscore), and `run-agent` is not false — it is the
+agent-node ladder, it has 19 inbound files, and the STOP rule says rewrite rather than delete
+a subject that survives. `invoke-claude` was actively misleading: the unit names no CLI and
+resolves none. It became `agent-turn.md` via `git mv`, and the page carries a blockquote
+saying it was `invoke-claude.md` and why, so a reader arriving from an old link learns the
+reason rather than meeting a 404. Four inbound references outside the family
+(`claude-backend.md`, `extract-outputs.md` ×2, `stream-subprocess.md` ×3) were re-pointed;
+the rest of those pages is iteration 13/14 work and was left alone deliberately.
+
+`dangling-code-ref` for the book: **32 → 24**, of which 1 is groom's (`.toast`, pre-existing)
+and 23 are the still-unported backend/stream pages. `missing-code-symbol` moved 7 → 9, both
+new ones in farrier's `install.py` — a concurrent workstream's split, not this port.
+`missing-anchor` holds at 19, all finding 25. Zero broken markdown links across all 313
+tracked files.
+
+**Open call for the next iteration.** The work order says "regenerate grounded content with
+the builder rather than hand-writing it". These nine were hand-grounded, and that was the
+right call *for these nine*: what needed correcting was which collaborators are injected and
+which contracts became false — judgment about the refactor's intent that a regeneration pass
+does not supply. The remaining 16 backend pages are a different shape — a near-mechanical
+`backends.py` → `backends/<cli>.py` split with the symbol names largely intact — and are the
+better candidate for an okf-builder run.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
