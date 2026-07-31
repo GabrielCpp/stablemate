@@ -68,7 +68,7 @@ Key flags (run `workhorse --help` for the full list):
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
-| `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it)) |
+| `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
 
 ### Named workflows (`workhorse run`)
@@ -105,7 +105,7 @@ must live in *that* environment (`pipx inject workhorse-agent ostler`), not mere
 `PATH`.
 
 The skill and prompt *content* those prompts reference is separate, and separately
-configured — see [Initial setup](#initial-setup).
+configured — see [Initial setup](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md#initial-setup).
 
 The skill and prompt references its prompts make are checked in the same breath. A
 `{{ instruction_ref("story-docs") }}` that resolves against nothing does not fail — it
@@ -166,7 +166,7 @@ the weight: it sees the branches this run would never take.
 Nothing branches on "is this a dry run" inside the driver. The run is handed a copy of
 the registry's node index with every node's body replaced by its stand-in, so `self.call`
 runs the same code path it always does — see
-[The node index is the substitution seam](#the-node-index-is-the-substitution-seam).
+[The node index is the substitution seam](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam).
 A node's stand-in is whatever `@blueprint.node(stub=…)` declared, or a blank instance of
 its declared return type; an agent turn's is whatever `Registry.stub_agents({...})`
 declared for that prompt stem, or a blank reply model.
@@ -220,29 +220,13 @@ mode its own flow if its diagram should stand alone.
 ## Choosing the agent CLI backend
 
 The controller drives one agent CLI per run, behind a backend facade
-(`workhorse/runner/backends.py`). The CLI is chosen **per-run** (the *model* is
-still per-node — see below):
+(`workhorse/runner/backends.py`). The CLI is chosen **per-run**; the *model* is per-node:
 
 ```bash
 workhorse run <name>                      # claude (default)
-workhorse run <name> --cli codex
-workhorse run <name> --cli copilot
-workhorse run <name> --cli aider          # OpenRouter-native
-workhorse run <name> --cli opencode       # OpenRouter-native
+workhorse run <name> --cli codex          # or copilot, aider, opencode
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,aider,opencode} env var.
 ```
-
-The backend default model is overridable per run with the `AGENT_MODEL` env var.
-Workflows can request an abstract `power` tier per agent turn; your user-wide config
-maps that tier to concrete backend model/effort settings. Turns with no `power=` (and
-tiers with no mapping) fall through to `AGENT_MODEL`, then to a per-backend
-`[default.<backend>]` config table (see [Node power selection](#node-power-selection)).
-If nothing supplies a value, Workhorse leaves model/effort unset and the selected
-harness uses its own defaults. The resilience/timeout knobs are env vars too — see
-[docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
-JSONL provider error events and logs that identify a transient failure are aborted
-immediately and retried by Workhorse's bounded backoff instead of being left to a
-CLI's opaque internal retry loop.
 
 | Backend | CLI | Default model | In-place compaction |
 |---|---|---|---|
@@ -252,277 +236,31 @@ CLI's opaque internal retry loop.
 | `aider` | `aider --message` (plain text) | — (node names it) | no — ladder reframes |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
 
-For running OpenRouter models (e.g. MiMo) on `aider` / `opencode`, see
-[OpenRouter models](#openrouter-models--aider-and-opencode) below.
+JSONL provider error events and logs that identify a transient failure are aborted
+immediately and retried by workhorse's bounded backoff instead of being left to a CLI's
+opaque internal retry loop.
 
-### Node power selection
-
-An agent turn's optional `power=` argument is one of `high`, `medium`, or `low`. It is
-not a model name; it is resolved through the workhorse config file for the active
-backend (see [Config file location](#config-file-location) below):
-
-```python
-verdict = self.agent("prompts/lead-review.md", returns=Verdict, power="high")
-```
-
-Example config:
+A workflow does not name a model. An agent turn asks for an abstract `power` tier
+(`high` / `medium` / `low`) and your user-wide config — one file shared with `farrier`,
+at `~/.config/stablemate/config.toml` — maps that tier to a concrete model and effort for
+the active backend. Turns with no `power=`, and tiers with no mapping, fall through to
+`AGENT_MODEL`, then to a per-backend `[default.<backend>]` table, then to the harness's
+own default:
 
 ```toml
 [power.high.claude]
 model = "opus"
 effort = "high"
-
-[power.medium.claude]
-model = "sonnet"
-effort = "high"
-
-[power.low.claude]
-model = "haiku"
-effort = "high"
-
-[power.high.codex]
-model = "@gpt-5.5"
-effort = "high"
-
-[power.high.opencode]
-model = "openai/gpt-5.5"
-effort = "high"
 ```
 
-#### Per-backend default model (`[default.<backend>]`)
-
-Nodes without a `power:` tier (and tiers you left unmapped) would otherwise run on
-whatever the harness itself defaults to — for `opencode`/`codex`/`copilot` that is
-the CLI's own auto-picked model, which may not be what you want. Pin a per-backend
-fallback in the same config file:
-
-```toml
-[default.opencode]
-model = "openai/gpt-5.5"
-effort = "high"
-```
-
-Model resolution order per turn: `power.<tier>.<backend>` mapping → `AGENT_MODEL` /
-`AGENT_CLAUDE_MODEL` env vars → `[default.<backend>]` → the backend's built-in
-default (`sonnet` for claude; unset for the others, meaning the harness decides).
-Effort resolves as: power mapping → `[default.<backend>]` (no env override exists).
-
-#### Per-harness environment (`[harness.<backend>].env`)
-
-Some harness knobs exist only as **environment variables** — no CLI flag, no
-setting workhorse could pass through. Name them per backend and workhorse exports
-them into that CLI's subprocess (and nothing else's):
-
-```toml
-[harness.opencode]
-env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
-
-[harness.claude]
-env = { MAX_THINKING_TOKENS = "31999" }
-```
-
-Applied on top of the inherited environment, so a variable set here wins over the
-same one exported by the launching shell. Values must be **strings**: `env = { FOO
-= 1 }` is a TOML integer and is dropped rather than coerced, so the config can't
-claim to have set something the process never received.
-
-Workhorse learns no harness's vocabulary here — it forwards whatever you name. It
-also does not validate the names, so a typo is silent; check the harness's own docs
-for what it reads.
-
-The worked example is the one above. `opencode` auto-summarizes a long session, and
-each summary rewrites the conversation prefix — so the next turn bills a full-price
-prompt instead of a cache read. On a model whose context window you will never
-approach (the 1M-token OpenRouter endpoints in [OpenRouter models](#openrouter-models--aider-and-opencode)),
-that is pure cost with nothing gained. Turning it off is right for *those* runs and
-wrong for a run against a 272k window, which is exactly why it is scoped to the
-harness config rather than set globally in `~/.config/opencode/opencode.jsonc`.
-
-Scoped per **harness**, not per power tier: a knob like that is a property of the
-CLI, not of how hard a node is thinking. (And unlike `model`/`effort`, which resolve
-by "first layer that names one wins", an env table would want to *merge* across
-layers — so a second layer would be a different resolution rule, not more of the
-same one.)
-
-Inspect or set config:
-
-```bash
-workhorse config show                        # print all config keys
-workhorse config show power.high.claude      # print one value
-workhorse config set-library ~/path/to/lib   # set the overlay library path
-workhorse config set-stablemate ~/path/to/sm # set the stablemate checkout path
-workhorse config set-base ~/path/to/base     # set the base library content path
-workhorse config list                        # list all config keys (power table friendly)
-workhorse config get power.high.claude       # get one key
-```
-
-#### Config file location
-
-Config lives in **one file shared with farrier**, at a platform-appropriate path (via
-[platformdirs](https://github.com/tox-dev/platformdirs)):
-
-| Platform | Default path |
-|---|---|
-| macOS | `~/Library/Application Support/stablemate/config.toml` |
-| Windows | `%APPDATA%\stablemate\config.toml` |
-| Linux | `~/.config/stablemate/config.toml` |
-
-Override the path with `STABLEMATE_CONFIG=/path/to/config.toml` (the older
-`WORKHORSE_CONFIG` is still honored).
-
-It is one file because `library_dir`, `stablemate_dir` and `base_dir` only mean anything
-if every tool agrees on them — with a file per tool, `workhorse config set-base` and
-`farrier config set-base` wrote to different places and could silently disagree. The
-pre-unification per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still
-read when the shared one is absent, and the first write folds them into it, so an
-existing setup keeps working with no migration step.
-
-#### Config schema version
-
-The file carries a `config_version`. workhorse and farrier are installed separately and
-versioned independently, so the file — not the code — is where they are kept in step:
-
-| Situation | Behavior |
-|---|---|
-| Config is newer than this build | `config set-*` **refuses** (exit 1). Upgrade workhorse. |
-| Config is older than this build | Migrated forward on the next write; the old file is kept as `config.toml.v<n>.bak`. |
-| Reading a newer config | Succeeds, logs a warning. |
-
-Reads deliberately never raise: `power` is re-read per node, so a hard failure would kill
-an unattended run mid-flight because some other tool was upgraded. Writes are the guard,
-because a writer that does not understand a key drops it — which is exactly the bug that
-made this one file in the first place.
-
-#### Initial setup
-
-The library paths are shared with `farrier`, which installs the skill and prompt
-content a workflow's prompts reference. Workhorse does not resolve workflows through
-them — they are one config file so both tools agree on where that content lives:
-
-```bash
-workhorse config set-library ~/path/to/your/prompt-library
-# Optionally, also set the stablemate path (used as CODER_WORKSPACE):
-workhorse config set-stablemate ~/path/to/stablemate
-```
-
-Then verify:
-
-```bash
-workhorse config show
-# library_dir=/Users/you/path/to/prompt-library
-# stablemate_dir=/Users/you/path/to/stablemate
-```
-
-### Codex config profiles (`<profile>@<model-slug>`)
-
-For the `codex` backend, the configured model value selects a
-[codex config profile](https://github.com/openai/codex) (from
-`~/.codex/config.toml`) — which bundles provider, auth and a pinned model — plus an
-optional model override, written as `<profile>[@<model-slug>]`. `@` is the delimiter
-because `/` and `:` already appear inside model slugs:
-
-| Configured model value | Resulting codex flags |
-|---|---|
-| `local` | `--profile local` (the profile pins the model) |
-| `openrouter@deepseek/deepseek-chat-v3.1` | `--profile openrouter -m deepseek/deepseek-chat-v3.1` |
-| `openrouter@` | `--profile openrouter` |
-| `@gpt-5.5` | `-m gpt-5.5` (no profile; falls back to `CODEX_PROFILE`) |
-| _(unset)_ | `CODEX_PROFILE` if set, else codex's own default |
-
-`CODEX_PROFILE` is the run-level default when the resolved model has no explicit
-profile.
-
-> These codex config profiles live in `~/.codex/config.toml`. Each names a
-> `model_provider` (`base_url` + `env_key`) and a model; codex 0.128+ requires
-> `wire_api = "responses"`. They are codex-internal, distinct from Workhorse's
-> `power` mapping.
-
-## OpenRouter models — `aider` and `opencode`
-
-To run a workflow on an OpenRouter model — e.g. the MiMo-V2.5 experiment — drive
-the run with an **OpenRouter-native backend** and map the desired `power` tier to an
-`openrouter/<slug>` model for that backend. Both `aider` and `opencode` speak plain
-chat-completions, so they reach OpenRouter **directly, with no proxy** (unlike
-codex's Responses API, which needs one). Export your key once and pick the backend:
-
-```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
-workhorse run <name> --cli opencode   # or: --cli aider
-```
-
-Point the power tier at the model in your config, so the same workflow still runs
-natively under `--cli claude`:
-
-```toml
-[power.high.opencode]
-model = "openrouter/xiaomi/mimo-v2.5"
-```
-
-| Trait | `aider` | `opencode` |
-|---|---|---|
-| Invocation | `aider --message` (single-message coder) | `opencode run --format json` (agentic loop) |
-| Output | plain-text transcript (captured whole) | NDJSON events |
-| Session resume | none — ladder reframes | by id (`--session`) |
-| Reasoning effort | `--reasoning-effort` (clamped to `high`) | `--variant` (minimal/high/max) |
-| Editing | search/replace diffs (robust on weak models) | tool-calling |
-
-**Pin the upstream endpoint — it is the largest cost lever, not a tuning detail.**
-An OpenRouter *model* is a fan-out over many upstream *endpoints*, and they differ on
-the two things a long run is made of:
-
-- **Price.** Across GLM 5.2's 33 endpoints the input price spans **7.0x**; across
-  MiMo-V2.5-Pro's 6 it spans 5.3x. Cache-read discounts diverge further — 98–99% off
-  on the best endpoints, ~64% on others.
-- **Context window.** Same model slug, windows from 96k to 1.05M. An unpinned run can
-  fail over onto a 96k endpoint mid-workflow and start overflowing on prompts the
-  previous turn handled fine.
-
-And a prompt cache lives **on the endpoint**, so every silent failover starts a cold
-prefix: the next turn bills a ~100k-token prompt at full input price. Left to default
-routing, none of this is visible — the run just costs more.
-
-Pin it in the **harness's own config** (there is no workhorse proxy to do it for you),
-choosing endpoints by *tag slug* (`baidu/fp8`, not `baidu`), with fallbacks off so
-drift surfaces as an error rather than a bill:
-
-- **opencode** caches automatically (verified: `cache.read` fires). In
-  `~/.config/opencode/opencode.jsonc` set
-  `provider.openrouter.models.<slug>.options.provider` to
-  `{ "order": [...], "allow_fallbacks": false }`, and
-  `provider.openrouter.options.setCacheKey: true` to send `prompt_cache_key` so repeat
-  turns route back to the node holding the prefix.
-- **aider** is litellm-based: set the same object at
-  `extra_params.extra_body.provider` (plus `--cache-prompts`) in a
-  `--model-settings-file`.
-
-List the current endpoints, prices and windows before choosing — they change:
-
-```bash
-curl -s https://openrouter.ai/api/v1/models/xiaomi/mimo-v2.5-pro/endpoints \
-  | jq -r '.data.endpoints[] | [.tag, .context_length, .pricing.prompt,
-                               .pricing.input_cache_read, .uptime_last_30m] | @tsv'
-```
-
-**Turn opencode's auto-summarization off for runs on a huge-window endpoint** — but
-per run, not globally. Each auto-compaction rewrites the conversation prefix and so
-throws the cache away; when the pinned endpoint carries a 1M window and the workflow
-never exceeds ~200k, that summary buys nothing and costs a cold prompt:
-
-```toml
-# ~/.config/stablemate/config.toml
-[harness.opencode]
-env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
-```
-
-…or for a single run, `OPENCODE_DISABLE_AUTOCOMPACT=1 workhorse run <workflow> --cli
-opencode`. Either way it is scoped to the harness, which is the point: do **not** set
-`"compaction": {"auto": false}` in `opencode.jsonc`, because that key is global with
-no per-provider scope and would also disable compaction for models that run close to
-their ceiling and rely on it. See
-[Per-harness environment](#per-harness-environment-harnessbackendenv). Note the ladder still covers a
-genuine overflow either way — opencode exposes no in-place `/compact`
-(`supports_compaction = False`), so workhorse reframes the node in a fresh session
-rather than compacting.
+The full reference — the `power` and `[default.<backend>]` tables, per-harness
+environment variables, where the config file lives and how its schema version keeps
+workhorse and farrier in step, initial setup, codex config profiles, and running
+OpenRouter models on `aider`/`opencode` (where pinning the upstream endpoint is the
+largest cost lever on a long run) — is in
+[docs/BACKENDS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md).
+The resilience and timeout knobs are env vars, documented in
+[docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 ## Resuming and run identity
 
@@ -541,7 +279,7 @@ On start the controller looks for a checkpoint there:
 - **Checkpoint present** → resume from the checkpointed state, restoring the frozen
   inputs, `ctx` and the state's parameters. Resume re-enters that state from the top,
   which is why idempotency — not merely determinism — is the contract a state body
-  owes; see [Checkpoints and renaming](#checkpoints-and-renaming).
+  owes; see [Checkpoints and renaming](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#checkpoints-and-renaming).
 
 This is what lets an unattended run survive a crash or reboot: relaunching the
 same workflow continues where it left off. To start over, delete the run dir. To
@@ -602,67 +340,28 @@ session id is also set as the `session.id` attribute on the agent-turn span.
 
 ## Telemetry (automatic when a collector is reachable)
 
-For away-from-keyboard monitoring of long runs, workhorse streams OpenTelemetry
-spans and metrics to a local OTLP collector — by default `groom`, which stores them
-in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn. Install the
-extra once and it turns itself on whenever the collector is up:
+For away-from-keyboard monitoring of long runs, workhorse streams OpenTelemetry spans,
+metrics and log records to a local OTLP collector — by default
+[`groom`](https://github.com/GabrielCpp/stablemate/tree/main/groom), which
+stores them in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn:
 
 ```bash
 pip install 'workhorse-agent[otel]'
 groom serve                                                # now every run is observed
 ```
 
-**Enablement is a tri-state.** With `WORKHORSE_OTEL` unset (the default),
-`start_run` opens one short TCP connection to the endpoint and enables telemetry
-only if something is listening — so a machine running `groom serve` gets spans with
-no env var, and a machine without one stays a complete no-op. Set it explicitly to
-override that decision in either direction:
+**Enablement is auto by default.** With `WORKHORSE_OTEL` unset, `start_run` opens one
+short TCP connection to the endpoint and enables telemetry only if something answers — so
+a machine running a collector gets spans with no env var, and one without stays a complete
+no-op. `WORKHORSE_OTEL=1` forces it on, `0` forces it off. That is the default because the
+runs most worth observing are the unattended week-long ones, which are exactly the runs
+nobody remembers to export a variable before launching.
 
-| `WORKHORSE_OTEL` | Behavior |
-|---|---|
-| _unset_ (default) | **Auto** — probe the endpoint; enable only if it answers |
-| `1` / `true` / `yes` | Force on — no probe (for a collector that comes up later, or one a TCP connect can't see) |
-| `0` / `false` / `no` | Force off — no probe, never enabled |
-
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # groom serve (the default)
-export WORKHORSE_OTEL=0                                    # opt out of auto-on
-```
-
-Auto-on is the default because the runs most worth observing are the unattended
-week-long ones — exactly the runs nobody remembers to export a variable before
-launching. Without the `otel` extra installed, auto mode stays silently inert (an
-explicit `WORKHORSE_OTEL=1` still warns that the SDK is missing, since you asked).
-
-Emitted: a root span per run, a span per node visit (nested through flows), a span
-per agent-CLI turn with duration + token usage + cost (and a `session.id` attribute
-linking it to the CLI session transcript), span events for the recovery ladder
-(retry/reframe/compact/watchdog-kill), **log records** from the driver and the node
-functions it calls (`groom logs`), and a **cap-wait heartbeat**
-metric each pause tick — the signal that lets a collector distinguish a legitimate
-multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). With no
-collector reachable, telemetry is a complete no-op and adds no dependencies;
-exports are best-effort, so a collector that dies *mid-run* can never slow or wedge
-a run either. Any standard OTLP/HTTP backend
-(Jaeger, Grafana Tempo) works unchanged.
-
-**Turn spans are comparable across backends.** Every harness reports what a turn
-consumed and every one spells it differently, so workhorse normalizes them onto one
-set of attribute names (Claude's, since those spans are already in the store): tokens
-in/out, cache read/write, reasoning tokens, and `total_cost_usd` where the harness
-reports money at all. Cost is left *absent* rather than zeroed when a harness doesn't
-say — a real `0.0` (a subscription turn) and "this CLI doesn't report cost" are
-different facts, and averaging them together understates spend. `duration_ms` is
-stamped by the engine when the CLI omits it, so latency coverage is total regardless
-of harness. Backends that report per *step* rather than per turn (opencode) are summed.
-
-**Tag spans with your own unit of work** by overriding a workflow's `labels()` — re-read
-before every transition and stamped as span attributes. Without it a store can group by
-run and state but not by task; see [Labels, and saying what the run is
-doing](#labels-and-saying-what-the-run-is-doing).
-
-There is also a wall-clock ceiling,
-`WORKHORSE_MAX_RUNTIME_S` — see
+What is emitted, how turn spans are normalized so cost and tokens are comparable across
+harnesses, the cap-wait heartbeat that distinguishes a spending-cap sleep from a hang, and
+how to tag spans with your own unit of work are in
+[docs/TELEMETRY.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/TELEMETRY.md).
+There is also a wall-clock ceiling, `WORKHORSE_MAX_RUNTIME_S` — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 ## Repository isolation
@@ -678,66 +377,18 @@ see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhors
 
 ## Writing a workflow
 
-A workflow is a Python package with this layout:
-
-```
-my_workflow/
-├── workflow.py         # The Registry, the Workflow classes, the console script
-├── nodes.py            # @blueprint.node functions
-└── prompts/            # Jinja2 .md templates
-    └── step.md
-```
-
-Its **states** are methods on a `Workflow` subclass, each returning the next state;
-its **nodes** are plain functions collected into a `Blueprint`; a `Registry` names the
-whole thing and is what the `workhorse.workflows` entry point resolves to. Control flow
-is ordinary Python — `if`, `for`, a counter that is just a counter.
-
-**Agent prompts** must output JSON matching the model the turn declared in `returns=`:
-
-````markdown
-Do the thing.
-
-Output JSON only:
-
-```json
-{"status": "ok", "count": 5}
-```
-````
-
-### Unattended resilience (defaulted outputs)
-
-Because runs are meant to survive a week without supervision, the runner will, as a
-last resort, **emit an agent turn's declared output keys as nulls and let the state
-carry on** rather than crash when the model can't be coaxed into a usable answer (after
-transient retries and prompt reframing — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)).
-
-The keys come from the `returns=` model, so a state must be ready for a reply whose
-fields are empty: give the branch it drives a safe arm, the way a long-running machine
-needs a route that keeps moving. To disable defaulting entirely and hard-fail instead,
-set `AGENT_USE_DEFAULT_OUTPUTS=false`.
-
-### A worked example
+A workflow is a Python package: `workflow.py` holds the `Registry` and the `Workflow`
+subclasses whose methods are its **states**, `nodes.py` holds the `@blueprint.node`
+functions that are its **nodes**, and `prompts/` holds the Jinja2 templates an agent turn
+renders. Control flow is ordinary Python — `if`, `for`, a counter that is just a counter —
+and each state returns the next one:
 
 ```python
-from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
-
-blueprint = Blueprint("acme")
-
-
-@blueprint.node
-def measure(logger, subject: str) -> Reading:      # a node is a plain function
-    return Reading(kind=subject, count=len(subject))
-
-
 class Build(Workflow):
     subject: str                                   # inputs — filled from --params
 
-    def setup(self) -> Settings:                   # runs once; its return becomes self.ctx
-        return Settings.load(self.subject)
-
     def start(self):
-        reading = self.call(measure, self.subject)
+        reading = self.call(measure, self.subject)          # a node
         return Continue(None, self.review, count=reading.count)
 
     def review(self, count: int):                  # state parameters — one hop only
@@ -745,367 +396,30 @@ class Build(Workflow):
         if verdict.ok:
             return Done(verdict)
         return Continue(None, self.review, count=count + 1)
-
-
-workflow = Registry("acme").add_blueprints(blueprint)
-main = workflow.main(Build)                        # the console script; see above
 ```
 
-### The three tiers of state, and no fourth
+An agent prompt must output JSON matching the model its turn declared in `returns=`, and
+— because runs go unattended for days — a state must be ready for a reply whose fields
+came back empty: after transient retries and reframing, the runner defaults a turn's
+declared outputs and lets the machine advance rather than crashing the run.
 
-| Tier | Written by | Lives for | Reached as |
-|---|---|---|---|
-| Inputs | the CLI (`--params`) | the whole run | `self.<field>` |
-| `self.ctx` | `setup()`, once | the whole run | `self.ctx` |
-| State parameters | the previous state | one hop | the state's own arguments |
-
-The rule that keeps a run resumable: **if a state writes it, it is a parameter of the
-next state.** Nothing else is carried, and the instance *freezes* once `setup()` returns
-— assigning to `self.subject` from inside a state raises rather than producing a value
-that survives in memory but not in the checkpoint.
-
-`self.output(node)` is a read, not a fourth tier: it re-reads the node's recorded
-`output.json` (the latest invocation, validated back into the node's declared return
-type) and raises when the node has not run.
-
-### Where an agent turn runs (`cwd` / `add_dirs`)
-
-`self.agent` takes four optional keywords beyond the prompt, all defaulting to "whatever
-the engine defaults to", so a state that says nothing behaves as before:
-
-```python
-review = self.agent(
-    "prompts/review.md",
-    returns=Verdict,
-    args={"unit": unit_id},
-    power="medium",                       # the abstract tier the config maps to a model
-    timeout=1800,                         # this turn's wall-clock budget, seconds
-    cwd=self.ctx.repo_root,               # where the CLI is launched
-    add_dirs=[self.ctx.docs_root],        # further directories it may read
-)
-```
-
-`cwd` matters more than it looks: it decides whose `CLAUDE.md`, skills and git context the
-turn sees. The runner de-dupes `add_dirs` against it and turns the rest into `--add-dir`
-flags.
-
-These are **real values, not templates**: the state computes the path in Python and
-passes it. (They are still Jinja-rendered on the way through, so a literal path is a
-no-op render and a template string would also work — but nothing needs one.)
-
-### Transitions
-
-A state returns one of three things, or raises:
-
-| Return | Meaning |
-|---|---|
-| `Continue(result, self.next_state, **params)` | go to `next_state` with those parameters |
-| `Done(result)` | the flow is finished; `result` is what a `handoff` caller receives |
-| `Await(path, questions, self.next_state, **params)` | write `questions` to `path`, checkpoint, and wait for a human to touch the file |
-| `raise WorkflowFailed(reason)` | end the run as failed |
-
-The target is positional, and its keyword arguments are bound against its signature *at
-transition time* — a typo in a parameter name fails on the transition that made it, not
-three states later as a missing key.
-
-`Await` is a portable polling loop (`WORKHORSE_AWAIT_POLL_S`, default 15s), not an
-inotify watch, so it behaves the same in a container, over NFS, and on a laptop that
-sleeps. The checkpoint is written **before** the wait begins, so a machine rebooted
-during a two-day wait resumes into the waiting state rather than re-asking.
-
-### Checkpoints and renaming
-
-The checkpoint is `(state, params)` plus the frozen inputs and `ctx`, tagged
-`"engine": "pyflow"`. Resume is deliberately **coarse**: it re-enters the checkpointed
-state from the top, with no intra-state memo and no per-callsite fingerprinting. That
-makes idempotency — not merely determinism — the contract a state body owes. A state
-that appends a row should check first; a state that commits should be a no-op on a
-clean tree.
-
-Because a checkpoint names a state, renaming one strands every run checkpointed on the
-old name. Both decorators take `aliases=[…]` for exactly that:
-
-```python
-@workflow.state(aliases=["qa_gate"])
-def qa(self, story: str): ...
-```
-
-A checkpoint naming an unknown state **fails loudly** rather than silently starting the
-run over; declaring the old name as an alias resumes it; an alias that collides with a
-live name raises at import; and `dot` / `--dry-run` render live names only, so an alias
-never shows up as a second state in a diagram. `@blueprint.node` takes `aliases=[…]` for
-the same reason — `self.output(node)` resolves against a run directory named after the
-node.
-
-A checkpoint left behind by the retired YAML engine is refused by name rather than
-misread: it shares the runs directory and `--resume-latest` with live runs, and a node
-id that happens to match a state name would otherwise resume the wrong thing.
-
-### The node index is the substitution seam
-
-`self.call(measure, ...)` takes the function object because that is what makes the call
-type-check — the argument list is `measure`'s own. But what *runs* is whatever the run's
-node index holds under `measure`'s registered name. `Registry.add_blueprints(...)` folds
-every blueprint's nodes into that one index, and the run is handed it as a field of its
-environment. So the registry is a **composition root**: a node is resolved by name, from a
-table the caller supplies, rather than by dereferencing the module attribute the state
-happened to import.
-
-A node the index does not carry is a hard error naming `add_blueprints`, not a silent
-fallback — which is what finally gives the collision detection teeth.
-
-Three ways to put something else in the table:
-
-```python
-# 1. declared at authoring time — what --dry-run returns for this node
-@blueprint.node(stub=lambda logger, subject: Reading(kind="stub", count=0))
-def measure(logger, subject: str) -> Reading: ...
-
-# 2. declared on the registry — what --dry-run returns for an agent turn,
-#    keyed by prompt stem (hyphens, hence a dict rather than **kwargs)
-workflow = Registry("acme").add_blueprints(blueprint).stub_agents(
-    {"review": {"ok": True}}
-)
-
-# 3. supplied by one run — a copy of the index with those names rebound
-env = RunEnv(..., nodes=workflow.override(measure=lambda logger, subject: Reading(...)))
-```
-
-`override` is non-mutating: it returns a copy, so a substitution belongs to the run that
-asked for it and cannot leak into the next one.
-
-**That is what a test uses instead of patching.** The research workflow's tests used to
-reach into two module namespaces and put them back afterwards:
-
-```python
-# before — monkeypatching, with a finally-restore to remember
-pyflow_engine.agent_runner.run_agent = agent
-with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
-    ...
-```
-
-```python
-# after — the same two dependencies, handed to the run
-RunEnv(
-    ...,
-    run_agent=agent,
-    nodes=research.workflow.override(
-        clone_repo=lambda logger: RepoSetup(repo_dir=str(repo))
-    ),
-)
-```
-
-Nothing else in the workflow is substituted: the real `load_program` and
-`publish_results` run against a temporary git repo. The point is not fewer stand-ins, it
-is that the two there are cannot outlive the run — there is no global to restore and no
-ordering between tests to get wrong.
-
-A **sub-flow does not inherit any of this.** `handoff` resolves the child class's own
-registry (stamped on the class when it is registered) and swaps `workflow_dir`, `nodes`
-and `agent_stubs` together, so a child renders prompts from its own package and calls its
-own nodes — a parent's override stops at the boundary. A class with no registry of its own
-keeps the parent's world, which is what same-module sub-flows want.
-
-### Labels, and saying what the run is doing
-
-A workflow declares its telemetry dimensions by overriding `labels()`. It takes no
-arguments and is re-read before every transition, so
-it reads whatever the instance can already see — inputs, `self.ctx`, and `self.output(node)`
-for anything a node recorded:
-
-```python
-    def labels(self) -> dict[str, str]:
-        try:
-            return {"work_id": self.output(select_next_unit).unit_id}
-        except NodeNotRunError:
-            return {"work_id": ""}
-```
-
-Values that render empty are dropped rather than stamped blank, and a `labels()` that
-raises costs the labels for that transition and nothing else — never the run.
-
-These keys are **not** `wf.`-prefixed. The retired YAML engine prefixed them so a
-workflow could not shadow an OTel convention; here the collector reads the unprefixed
-spelling, and nothing is translated on the way out. Both spellings are still promoted
-onto the live gauges, so spans already in a store keep reaching a dashboard untouched.
-
-**Activity — what the run is working on right now — is a flagged log record**, not a
-field:
-
-```python
-    def assess(self, unit_id: str):
-        self.logger.info("assessing %s", unit_id, extra={"activity": True})
-```
-
-The rendered message *is* the activity: `activity` is a flag, not a value, so the text is
-never written twice and never drifts from what the log says. It is a log record rather
-than a declared field because a state is one method that may do several things and the
-interesting one is whichever it is doing now — and a `@blueprint.node` is a plain function
-with no `self`, so its injected `logger` is the only route it could have. Both are the same
-logger object, so both work identically.
-
-It is **sticky**: the last flagged line stands until another replaces it, so a state that
-flags once and then works for an hour stays correctly labelled. Nothing flagged yet falls
-back to the node id, which the gauges stamp anyway.
+The authoring reference — the package layout, the worked example end to end, the three
+tiers of state and why there is no fourth, where a turn runs (`cwd` / `add_dirs`), the
+transition table, checkpoints and the `aliases=` that survive a rename, the node index
+that tests substitute through instead of patching, and the `labels()` that tell a
+collector what a run is working on — is in
+[docs/AUTHORING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md).
 
 ## Development
 
-This section is for working on the **controller itself** (the Python that runs
-workflows), not on individual workflows. It assumes you have cloned the source
-repository (the `agents/local-worker/` directory) rather than installed from PyPI.
-Common tasks are wrapped in the [`Makefile`](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/Makefile) (`make help`):
-`make install`, `make test`, `make build`, `make publish`.
+Working on the controller itself — not on a workflow — starts from a clone of the
+[stablemate](https://github.com/GabrielCpp/stablemate) repo rather than a PyPI install.
+`make help` lists the tasks; `make test` runs the suite, which is dependency-free (each
+file in `tests/` also runs standalone under `uv run python tests/test_x.py`).
 
-### Project layout
-
-```
-agents/local-worker/          # source repo dir for the workhorse controller
-├── workhorse/                 # The workhorse Python package (entrypoint: workhorse:main)
-│   ├── main.py                # CLI: resolve the workflow, pick the run dir, hand to the driver
-│   ├── packaged.py            # Entry-point discovery: what `workhorse run <name>` resolves to
-│   ├── rundir.py              # Run identity: the (workflow, run-id) dir and the resume contract
-│   ├── manifest.py            # The per-repo context manifest (`--context-file`)
-│   ├── context.py             # WorkflowContext: the key→value bag prompts render against
-│   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
-│   ├── references.py          # Static skill/prompt reference checking (the --dry-run warning)
-│   ├── artifacts.py           # ArtifactWriter: run dir, checkpoints, per-step artifacts
-│   ├── otel.py                # OpenTelemetry facade (auto-on if a collector answers; else no-op)
-│   ├── pyflow/                # The Python state-machine driver
-│   │   ├── workflow.py        # The `Workflow` base class: state discovery, freezing, self.ctx
-│   │   ├── transitions.py     # Continue / Done / Await + transition-time signature binding
-│   │   ├── blueprint.py       # `Blueprint`: node libraries a workflow composes
-│   │   ├── registry.py        # What an entry point / console script points at
-│   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
-│   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
-│   │   ├── run.py             # run_pyflow(): run dir, dry run, exit code — the CLI's one call
-│   │   ├── graph.py / dot.py  # Read the states' source; render Graphviz DOT (`workhorse dot`)
-│   │   ├── activity.py        # The flagged-log-record activity tracker (a logging.Filter)
-│   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
-│   └── runner/
-│       ├── agent.py           # Invoke the agent CLI; the retry → reframe → default ladder
-│       ├── backends.py        # The per-CLI facade (claude/codex/copilot/aider/opencode)
-│       └── spec.py            # OutputSpec / AgentNode: what one agent turn declares
-├── tests/                     # Standalone test files (see below)
-├── compose.yaml               # Service, env, mounts, named volumes
-├── Dockerfile                 # Ubuntu + uv + Claude CLI + the controller package
-├── entrypoint.sh              # Non-root auth seeding, checkout, exec `workhorse`
-├── Makefile                   # install / test / build / publish tasks (`make help`)
-├── pyproject.toml / uv.lock   # Python deps (jinja2, pydantic); managed with uv
-├── README.md                  # This file (usage + development)
-├── CLAUDE.md                  # Agent entry point; imports README.md + docs/
-└── docs/
-    ├── GUARDRAILS.md          # The resilience/error-recovery design and env-var reference
-    └── DOCKER.md              # The Docker harness (image + compose) for unattended runs
-```
-
-### How the controller works (the loop)
-
-`pyflow/driver.py::drive` is a single loop over states. For each transition it:
-
-1. **Checkpoints** `(state, params)` plus the frozen inputs and `ctx`
-   (`ArtifactWriter.write_state_checkpoint`) so a crash here is resumable.
-2. **Calls** the state method, which does its work through `self.call` (a node
-   function), `self.agent` (an agent turn) or `self.handoff` (a sub-flow) — each of
-   which writes its own per-step artifact.
-3. **Binds** the returned transition's keyword arguments against the target state's
-   signature, so a wrong parameter name fails on the transition that made it.
-4. **Advances** to that state.
-
-`Done` ends the flow and `WorkflowFailed` ends the run; `Await` checkpoints first and
-then polls for the answer file. The resilience for agent turns lives entirely in
-`runner/agent.py::run_agent` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
-
-### Sessions (per-turn clean context)
-
-**Each agent turn runs as a fresh prompt with a clean Claude context.** The controller
-does *not* chain one turn's conversation into the next — turn N does not inherit
-turn N‑1's messages. Concretely, `run_agent` drops any persisted `.session_id`
-before a turn's first attempt, and a reframed attempt also starts fresh.
-
-The persisted session is `--resume`d in exactly one situation: **continuing the
-same turn that was interrupted.** When the controller resumes from a checkpoint and
-re-enters the state that was killed mid-run, that turn calls
-`run_agent(..., resume_session=True)` so Claude picks up where it left off; every turn
-the run then reaches starts clean again.
-
-**Context overflow → compact & continue.** If a turn exhausts the model's
-context window mid-run (the headless CLI returns instead of auto-compacting),
-`run_agent` runs `/compact` on that turn's session and retries the *same* prompt
-on it, preserving the turn's progress (bounded by `AGENT_MAX_COMPACT_ATTEMPTS`;
-falls back to a fresh-session reframe if `/compact` can't help). Verified against
-Claude Code 2.1.x. See the recovery ladder in [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
-
-> Not yet implemented: a configurable *per-turn* limit (`--max-turns`) that
-> proactively compacts before the window is exhausted. Today compaction is
-> reactive — triggered when an overflow is detected.
-
-### Running tests
-
-Tests live in `tests/` and are **dependency-free**: each file runs standalone
-(`uv run python tests/test_x.py` prints PASS/FAIL and exits non-zero on failure) and is
-also pytest-compatible. There is no pytest in the venv by default; run them with
-the project's Python:
-
-```bash
-# All of them (via the Makefile)
-make test
-
-# One file
-uv run python tests/test_agent_recovery.py
-```
-
-If a `.venv` isn't present, create one with `uv sync` (or `make install`).
-
-**Where to put tests.** There are two styles. Controller-internal tests add a
-`tests/test_<area>.py` that patches the CLI boundary (`_run_claude_cli` /
-`_invoke_claude`) and sleeping so nothing hits the network or waits in real time:
-`test_agent_cap.py` (cap/transient handling), `test_agent_recovery.py` (reframe →
-default ladder), `test_resume_auto.py`, `test_idempotency.py`,
-`test_templates_resilient.py`.
-
-**Whole-workflow tests** drive a real workflow through `drive()` in the current
-process — no `workhorse` CLI subprocess and no PATH shims. They substitute rather than
-patch: agent turns are answered by a `run_agent` handed to the `RunEnv`, and node
-functions by `Registry.override(...)`, so neither stand-in can outlive the run (see
-[The node index is the substitution seam](#the-node-index-is-the-substitution-seam)).
-Local `git` runs for **real** against a throwaway repo built with
-`workhorse.testing.make_git_repo` — git is never mocked. `workhorse.testing` also
-carries the artifact assertions (`assert_file`, `assert_file_contains`,
-`assert_json_file`) a workflow test makes about what a run left on disk.
-
-### Where docs go
-
-- **Tool/usage + development docs** → this `README.md` (root).
-- **Design notes** (resilience/error recovery) and the **Docker harness** →
-  `docs/`, e.g. `docs/GUARDRAILS.md`, `docs/DOCKER.md`. Put new long-form design
-  and deployment docs here rather than at the root.
-- **`CLAUDE.md`** (root) is the agent entry point and stays at the root so Claude
-  Code auto-loads it; it `@`-imports `README.md` and `docs/GUARDRAILS.md`.
-- **Per-workflow docs** → inside that workflow's own package directory (under
-  `../workflows/src/workhorse_workflows/<name>/`), not here. The controller is workflow-agnostic; keep
-  workflow-specific knowledge with the workflow.
-
-Keep these docs current when you change behavior — they are the contract for
-operators running week-long jobs, and `CLAUDE.md` imports them, so updating them
-keeps agent context accurate too.
-
-### Conventions
-
-- **Python 3.12**, `from __future__ import annotations` at the top of each module.
-- **Pydantic** models for anything crossing a boundary — an agent's JSON reply, a
-  node's return value, the context manifest. A state declares what it expects
-  (`returns=`) and the runner validates into it; nothing downstream re-checks shapes.
-- **Fail soft for unattended runs.** New failure paths in agent handling should
-  slot into the existing retry → reframe → default ladder rather than raising, so
-  one bad node can't end a week-long run. Reserve hard raises for genuinely
-  unrecoverable, deterministic errors.
-- **Comments explain *why*.** Match the existing density — the tricky invariants
-  (checkpoint/fast-forward idempotency, cap-vs-transient classification) are
-  documented inline; keep them that way.
-
-### Editing the container
-
-The repo ships a Docker harness (`Dockerfile`, `compose.yaml`, `entrypoint.sh`)
-for isolated unattended runs. It is not part of the PyPI package; its build/run
-workflow — including rebuilding the image after controller or `pyproject.toml`
-changes — is documented in [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
+The project layout, how the driver's loop works, why every agent turn gets a clean
+session, where to put a test and which of the two styles it is, where docs go, and the
+container build are in
+[docs/DEVELOPMENT.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DEVELOPMENT.md).
+The Docker harness for isolated unattended runs — not shipped in the PyPI package — is in
+[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
