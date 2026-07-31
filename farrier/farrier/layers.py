@@ -101,22 +101,18 @@ def searched_layers() -> str:
     return "\n".join(f"  - {layer.name}" for layer in LAYERS)
 
 
-def available_names(*parts: str, suffix: str = "", dirs: bool = False) -> list[str]:
+def available_names(*parts: str, suffix: str = "") -> list[str]:
     """Every name a layer provides under ``<root>/<parts>`` — the catalog for an error's
     "here is what does exist" half.
 
     Deduplicated across layers because a shadowed name is still one name to the operator:
     listing it twice would imply a choice they do not have. ``suffix`` is stripped from
-    filenames (``.yml`` for packs, ``.md`` for roots); ``dirs=True`` enumerates directories
-    instead, which is how workflows are stored.
+    the filenames it finds (``.yml`` for packs, ``.md`` for roots).
     """
     names: set[str] = set()
     for _layer, directory in layer_dirs(*parts):
         for entry in directory.iterdir():
-            if dirs:
-                if entry.is_dir():
-                    names.add(entry.name)
-            elif entry.is_file() and (not suffix or entry.name.endswith(suffix)):
+            if entry.is_file() and (not suffix or entry.name.endswith(suffix)):
                 names.add(entry.name[: -len(suffix)] if suffix else entry.name)
     return sorted(names)
 

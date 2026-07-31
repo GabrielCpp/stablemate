@@ -80,7 +80,6 @@ def test_generated_skill_carries_metadata_in_front_matter(tmp_path):
     outputs = renderer.render(
         agents={"claude": True, "codex": False, "copilot": False},
         roots=set(),
-        workflows=set(),
     )
     content = next(c for p, c in outputs.items() if p.name == "SKILL.md")
     assert content.startswith("---\n")  # front matter preserved at byte 0
@@ -104,7 +103,6 @@ def test_generated_skill_metadata_follows_description(tmp_path):
     outputs = renderer.render(
         agents={"claude": True, "codex": False, "copilot": False},
         roots=set(),
-        workflows=set(),
     )
     content = next(c for p, c in outputs.items() if p.name == "SKILL.md")
     lines = content.splitlines()
@@ -127,7 +125,6 @@ def _render_claude_command(tmp_path: Path, source: Source) -> str:
     outputs = renderer.render(
         agents={"claude": True, "codex": False, "copilot": False},
         roots=set(),
-        workflows=set(),
     )
     return next(c for p, c in outputs.items() if p.name.endswith(".md"))
 
@@ -257,7 +254,6 @@ def test_generated_copilot_prompt_with_front_matter_untouched(tmp_path):
     outputs = renderer.render(
         agents={"claude": False, "codex": False, "copilot": True},
         roots=set(),
-        workflows=set(),
     )
     content = next(c for p, c in outputs.items() if p.name.endswith(".prompt.md"))
     assert "generated_by" not in content

@@ -1,133 +1,67 @@
-"""The generated launcher (.agents/agents.mk) is emitted for every repo, but its
-workflow-run targets appear only when a workflow is installed.
+"""The generated launcher (.agents/agents.mk) is emitted for every repo, and carries
+only the two targets that regenerate and verify farrier's adapters.
 
-Rationale: `agent-install`/`agent-check` are useful even for a skills/prompts-only
-repo (and let an existing root Makefile `include` the launcher unconditionally),
-while `agent-run`/`agent-native`/… only make sense with a workflow to run.
+Rationale: farrier installs skills and prompts, not workflows. A workflow is a
+Python package workhorse resolves through the `workhorse.workflows` entry-point
+group, so nothing about running one is per-repo generated state — `agent-install`
+and `agent-check` are the whole launcher, and an existing root Makefile can
+`include` it unconditionally.
 
     ./.venv/bin/python -m pytest tests/test_agents_mk.py
 """
 from __future__ import annotations
 
-from farrier.install import render_agents_mk, render_local_compose, resolve_workflow_meta
-
-META = {
-    "repo_url": "REPLACE_ME-git-remote-url",
-    "branch": "main",
-    "agents_dir": "$(abspath $(CURDIR)/../vigilant-octo/agents)",
-    "repo_name": "demo",
-    "remote_checkout": False,
-    "agents": {"claude": False, "codex": True, "copilot": False},
-}
+from farrier.install import render_agents_mk
 
 
 def test_regen_targets_always_present():
-    for workflows in ([], ["coder"]):
-        mk = render_agents_mk(workflows, META)
-        assert "help:" in mk
-        assert "agent-install:" in mk
-        assert "agent-check:" in mk
-        assert ".DEFAULT_GOAL := help" in mk
-
-
-def test_workflow_targets_omitted_without_workflows():
-    mk = render_agents_mk([], META)
-    assert "agent-run:" not in mk
-    assert "agent-native:" not in mk
-    assert "COMPOSE :=" not in mk
-    assert "WORKFLOW_DIR" not in mk
-    # .PHONY lists only the always-on targets.
+    mk = render_agents_mk()
+    assert "help:" in mk
+    assert "agent-install:" in mk
+    assert "agent-check:" in mk
+    assert ".DEFAULT_GOAL := help" in mk
+    # .PHONY lists exactly those.
     assert ".PHONY: help agent-install agent-check\n" in mk
 
 
-def test_workflow_targets_present_with_workflows():
-    # build_outputs passes a sorted list; WF defaults to the first entry.
-    mk = render_agents_mk(["author", "coder"], META)
-    assert "agent-run:" in mk
-    assert "agent-native:" in mk
-    assert "agent-artifacts:" in mk
-    assert "COMPOSE :=" in mk
-    assert "COMPOSE := docker compose -p $(PROJECT)" in mk
-    assert 'PROJECT="$(PROJECT)"' in mk
-    assert "WF           ?= author" in mk
-    assert 'REPO_URL="$(REPO_URL)"' in mk
-    assert 'REPO_CONFIG="$(REPO_CONFIG)"' in mk
-    assert "bash -o pipefail -c" in mk
-    assert "--exit-code-from $(WF)" in mk
-    assert "agent-run" in mk[mk.index(".PHONY"):mk.index("\n", mk.index(".PHONY"))]
+def test_no_workflow_run_targets_or_docker_plumbing():
+    """The YAML-era run targets are gone, not merely unused.
 
-
-def test_local_compose_defaults_to_read_only_host_checkout():
-    compose = render_local_compose(["author"], META)
-
-    assert "REPO_URL: /mnt/demo-src" in compose
-    assert "source: ${REPO_SRC:-.}" in compose
-    assert "REPO_TOKEN_ENV" not in compose
-    assert "${HOME}/.claude/.credentials.json" not in compose
-
-
-def test_local_compose_runs_as_the_host_uid_not_a_fixed_user():
-    """Services run as ${AGENT_UID}:${AGENT_GID}, not a hardcoded `nobody`.
-
-    The container must be able to write into bind-mounted host paths it does not
-    own — git worktree metadata goes back into the source repo's .git. A fixed
-    `nobody` cannot. The 65534 fallback preserves the old behavior when nothing
-    exports the vars (e.g. a hand-run `docker compose up`).
+    Each of these drove the retired front end: `--workflow <dir>/workflow.yaml`,
+    a compose override generated per installed workflow, and a `WF` variable
+    naming which of them to run. Asserting their absence keeps a copy-paste from
+    an old launcher from reintroducing an invocation workhorse no longer accepts.
     """
-    compose = render_local_compose(["author", "coder"], META)
-
-    assert 'user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"' in compose
-    assert 'user: "nobody"' not in compose
-    # Every generated service gets it, not just the first.
-    assert compose.count('user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"') == 2
-
-
-def test_agents_mk_exports_the_host_uid_to_compose():
-    """agents.mk must derive and forward the uid/gid, or the compose default
-    (65534/nobody) silently applies and worktree writes fail on a host repo."""
-    mk = render_agents_mk(["coder"], META)
-
-    assert "AGENT_UID    ?= $(shell id -u)" in mk
-    assert "AGENT_GID    ?= $(shell id -g)" in mk
-    # Forwarded on the compose path...
-    assert 'AGENT_UID="$(AGENT_UID)"' in mk
-    assert 'AGENT_GID="$(AGENT_GID)"' in mk
-    # ...including agent-hello, which builds its own docker compose invocation
-    # rather than going through $(ENVV).
-    hello = mk[mk.index("agent-hello:"):]
-    hello = hello[: hello.index("\n\n")]
-    assert 'AGENT_UID="$(AGENT_UID)"' in hello
+    mk = render_agents_mk()
+    for absent in (
+        "agent-run:",
+        "agent-native:",
+        "agent-build:",
+        "agent-hello:",
+        "agent-artifacts:",
+        "COMPOSE :=",
+        "WORKFLOW_DIR",
+        "WORKFLOW_ARG",
+        "--workflow",
+        "local.compose.yaml",
+        "WF           ?=",
+    ):
+        assert absent not in mk, absent
 
 
-def test_local_compose_mounts_claude_credentials_when_claude_enabled():
-    meta = dict(META)
-    meta["agents"] = {"claude": True, "codex": False, "copilot": False}
-
-    compose = render_local_compose(["author"], meta)
-
-    assert "CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}" in compose
-    assert "source: ${HOME}/.claude/.credentials.json" in compose
-    assert "target: /mnt/claude-credentials.json" in compose
+def test_points_at_the_workhorse_cli_for_running_a_workflow():
+    """A reader who lost `make agent-run` needs the replacement in the same file."""
+    mk = render_agents_mk()
+    assert "workhorse run <name>" in mk
+    assert "--dry-run" in mk
 
 
-def test_explicit_repo_url_uses_authenticated_remote_checkout(tmp_path):
-    meta = resolve_workflow_meta(
-        {
-            "workflow": {
-                "repoUrl": "https://github.com/example/private.git",
-                "branch": "master",
-                "githubTokenEnv": "EXAMPLE_GITHUB_TOKEN",
-                "envPassthrough": ["EXAMPLE_GITHUB_TOKEN"],
-            }
-        },
-        tmp_path,
-        "demo",
-    )
-
-    compose = render_local_compose(["author"], meta)
-
-    assert "REPO_URL: ${REPO_URL:-https://github.com/example/private.git}" in compose
-    assert "AGENT_CONFIG_FILE: /repo-config/agents.yml" in compose
-    assert "target: /repo-config/agents.yml" in compose
-    assert "EXAMPLE_GITHUB_TOKEN: ${EXAMPLE_GITHUB_TOKEN:-}" in compose
-    assert "source: ${REPO_SRC" not in compose
+def test_farrier_regeneration_is_library_aware():
+    mk = render_agents_mk()
+    assert "AGENTS_DIR     ?= $(shell farrier config show library_dir)" in mk
+    assert (
+        'FARRIER_LIB_ARG := $(if $(wildcard $(AGENTS_DIR)/library),'
+        '--library "$(AGENTS_DIR)",)'
+    ) in mk
+    # SRC=1 still runs the installer from a local stablemate checkout.
+    assert "uv run --project $(STABLEMATE_DIR)/farrier farrier" in mk

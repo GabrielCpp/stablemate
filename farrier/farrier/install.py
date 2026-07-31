@@ -6,12 +6,10 @@ modules (see each for detail):
 
   - ``config``     — home-config TOML persistence
   - ``layers``     — base/overlay discovery and the resolution stack
-  - ``git``        — repo remote/branch queries
   - ``naming``     — pure name/id transforms
   - ``frontmatter``— YAML front-matter and metadata parsing
   - ``sources``    — the ``Source`` record, loading, selection, packs
   - ``launcher``   — ``.agents/`` launcher generation
-  - ``workflows``  — workflow meta, dependency extraction, file headers
   - ``renderer``   — the ``Renderer`` class
   - ``outputs``    — full-render orchestration and repo mutations
   - ``scaffolds``  — ``farrier scaffold`` definitions and fetching
@@ -45,17 +43,13 @@ from farrier.frontmatter import (
     read_yaml,
     split_front_matter,
 )
-from farrier.git import get_default_branch, get_git_remote
 from farrier.launcher import (
-    DEFAULT_AGENTS_DIR,
-    DEFAULT_STABLEMATE_DIR,
     LAUNCHER_AGENTS_MK,
     LAUNCHER_COMPOSE,
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_CONTEXT_MANIFEST_FMT,
     LAUNCHER_ROOT_MAKEFILE,
     render_agents_mk,
-    render_local_compose,
 )
 from farrier.layers import (
     BASE_DIR_ENV,
@@ -122,18 +116,13 @@ from farrier.sources import (
     parse_scaffold_ids,
     selected_sources,
 )
-from farrier.workflows import (
-    collect_template_values,
-    resolve_workflow_meta,
-)
+from farrier.template_values import collect_template_values
 
 __all__ = [
     "AGENTS_GITIGNORE_BLOCK",
     "BASE_DIR_ENV",
     "BASE_LAYER_NAME",
     "config_path",
-    "DEFAULT_AGENTS_DIR",
-    "DEFAULT_STABLEMATE_DIR",
     "LAUNCHER_AGENTS_MK",
     "LAUNCHER_COMPOSE",
     "LAUNCHER_CONTEXT_MANIFEST",
@@ -163,8 +152,6 @@ __all__ = [
     "first_heading",
     "flatten_scaffold_tree",
     "frontmatter_metadata",
-    "get_default_branch",
-    "get_git_remote",
     "install_outputs",
     "is_library_dir",
     "kebab",
@@ -191,11 +178,9 @@ __all__ = [
     "remove_targets",
     "render_agents_mk",
     "render_expected",
-    "render_local_compose",
     "resolve_library_dir",
     "resolve_scaffold_params",
     "resolve_stablemate_dir",
-    "resolve_workflow_meta",
     "searched_layers",
     "selected_sources",
     "set_layers",

@@ -1,7 +1,7 @@
 """One error shape for every "agents.yml names something the library does not have".
 
-Five selection keys can name a missing thing — ``packs``, ``workflows``, ``skills``,
-``prompts``, ``roots`` — and they used to fail in four different ways, two of them silently.
+Four selection keys can name a missing thing — ``packs``, ``skills``, ``prompts``,
+``roots`` — and they used to fail in four different ways, two of them silently.
 Every one of them is the same operator mistake and deserves the same answer, so they share one
 formatter here.
 

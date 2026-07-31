@@ -206,7 +206,7 @@ def available_scaffold_ids(repo: Path, defs: dict[str, dict[str, Any]]) -> set[s
     if not config_path.is_file():
         return set(defs)
     config = read_yaml(config_path)
-    _, _, _, scaffold_ids, _ = collect_selection(config)
+    _, _, _, scaffold_ids = collect_selection(config)
     return scaffold_ids
 
 

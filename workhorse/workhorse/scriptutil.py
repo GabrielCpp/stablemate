@@ -65,11 +65,17 @@ def die(message: str, *, code: int = 1) -> NoReturn:
     print(message, file=sys.stderr)
     raise SystemExit(code)
 
-def find_repo_root() -> Path:
-    """Find repo root via AGENT_REPO_DIR env or walking up from CWD."""
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+def find_repo_root(repo_dir: str | Path = "") -> Path:
+    """The consuming repo: ``repo_dir`` when given, else walk up from the CWD.
+
+    ``repo_dir`` is the run's own input — :attr:`workhorse.pyflow.Workflow.repo_dir`,
+    which the CLI defaults to the launch directory — and a node receives it as an
+    argument. This function reads no environment variable of its own: a node whose root
+    depends on the ambient environment is a node whose behavior no caller can see or
+    override, which is why `workflows/README.md` prohibits it.
+    """
+    if repo_dir:
+        return Path(repo_dir).resolve()
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "agents.yml").exists() or (candidate / ".git").exists():
@@ -77,21 +83,19 @@ def find_repo_root() -> Path:
     return here
 
 
-def find_docs_root(docs_path: str = "") -> Path:
-    """Resolve the docs repo root.
+def find_docs_root(docs_path: str = "", repo_dir: str | Path = "") -> Path:
+    """Resolve the docs repo root: ``docs_path`` when given, else the repo root.
 
-    Priority:
-    1. Explicit ``docs_path`` argument (from workflow var)
-    2. ``CODER_DOCS_PATH`` environment variable
-    3. Falls back to ``find_repo_root()`` (AGENT_REPO_DIR / CWD walk)
+    A relative ``docs_path`` is joined onto ``find_repo_root(repo_dir)``, so the two
+    inputs travel together — both are workflow inputs, and neither is read from the
+    environment here.
     """
-    path = docs_path or os.environ.get("CODER_DOCS_PATH", "")
-    if path:
-        p = Path(path)
+    if docs_path:
+        p = Path(docs_path)
         if p.is_absolute():
             return p.resolve()
-        return (find_repo_root() / p).resolve()
-    return find_repo_root()
+        return (find_repo_root(repo_dir) / p).resolve()
+    return find_repo_root(repo_dir)
 
 
 def fresh_import(name: str, *, also_purge: tuple[str, ...] = ()) -> ModuleType:

@@ -3,6 +3,10 @@
 Everything here is the CLI's contract rather than any engine's: which workflow and
 flow, the repo dir, the backend, the runs dir, params, the context manifest and the
 resume flags. It ends by handing the driver one :class:`RunInvocation`.
+
+This is also the process's one environment read. `AGENT_*` and `WORKHORSE_*` become a
+`RunConfig` and a `TelemetryHost` here, and travel on the invocation; nothing the
+driver calls goes back to `os.environ` for them.
 """
 from __future__ import annotations
 
@@ -11,8 +15,10 @@ import os
 import sys
 from pathlib import Path
 
+from workhorse import otel
 from workhorse.cli.params import load_params
 from workhorse.cli.resolve import packaged_registry
+from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
 # loader on this module and have the CLI see it.
 from workhorse.manifest import load_context_manifest as _load_context_manifest
@@ -134,12 +140,12 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     )
 
     # The consuming repo is the directory workhorse is launched in — same <cwd> rule
-    # as the runs-dir default below. A workflow's scripts resolve the repo root from
-    # AGENT_REPO_DIR first and only fall back to walking up from their cwd, and that
-    # walk finds whatever directory the installed workflow package happens to sit in
-    # rather than the target repo. Pin AGENT_REPO_DIR to the launch dir when the
-    # caller hasn't set it, so every subprocess agrees on the repo without needing
-    # the farrier Makefile.
+    # as the runs-dir default below. Pin AGENT_REPO_DIR to the launch dir when the
+    # caller hasn't set it, so every *subprocess* (the agent CLI and whatever it
+    # shells out to) agrees on the repo without needing the farrier Makefile.
+    #
+    # The workflow itself does not read it: this is the boundary, and what crosses it
+    # is `repo_dir`, resolved below and handed over as a run parameter.
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
     # --cli (else AGENT_CLI, else default claude) selects the backend for the run.
@@ -164,16 +170,28 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # if absent. The explicit --resume-run/--resume-latest flags below are manual
     # overrides that target a specific dir instead. auto stays on either way — when
     # resume_run_dir is set, the driver uses it directly and skips auto resolution.
+    # `repo_dir` is `Workflow`'s one universal input, and this is the only place it is
+    # resolved: the environment is read *here*, at the edge, so that everything inside
+    # the run receives it as an ordinary parameter. An explicit `--param repo_dir=…`
+    # wins, which is what makes a run against a checkout other than the launch
+    # directory expressible at all.
+    params = load_params(args.params, args.params_file)
+    params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
+
     return RunInvocation(
         registry=registry,
         runs_dir=runs_dir,
         flow=flow,
         run_id=args.run_id,
-        params=load_params(args.params, args.params_file),
+        params=params,
         resume_run_dir=_resume_run_dir(args, runs_dir, registry.name),
         no_cache=getattr(args, "no_cache", False),
         dry_run=getattr(args, "dry_run", False),
         context_manifest=_load_context_manifest(args.context_file),
+        # Read last, after `--cli` and the repo-dir default above have had their say,
+        # so what the run is given is the environment as the CLI finally settled it.
+        config=RunConfig.from_env(os.environ),
+        telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
 
 

@@ -191,7 +191,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     prefix = kebab(
         str(repo_config.get("prefix") or repo_config.get("name") or repo.name)
     )
-    include_skills, _, _, _, _ = collect_selection(config)
+    include_skills, _, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     skills = selected_sources(
         load_layered_sources("skill", "library", "skills"),

@@ -17,14 +17,12 @@ slug and push over ``https://github.com/…`` with a transient credential.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import yaml
 from git.exc import GitError
 from github import Auth, Github, GithubException
 
-from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import credentials
 from workhorse_workflows.kit import git as git_kit
 
 _GITHUB_URL_PREFIXES = (
@@ -49,55 +47,29 @@ def github_client(token: str | None = None):
 
     The one seam every workflow script goes through for GitHub API access (opening
     PRs, checking checks, merging) instead of shelling out to the ``gh`` CLI.
-    ``token`` defaults to ``GH_TOKEN`` / ``WORKHORSE_GIT_TOKEN`` from the environment.
+    ``token`` defaults to whatever :mod:`workhorse_workflows.kit.credentials` finds —
+    the only module in this package allowed to read the environment, and only because
+    a secret must never become a checkpointed parameter.
     """
-    tok = token or os.environ.get("GH_TOKEN") or os.environ.get("WORKHORSE_GIT_TOKEN")
+    tok = token or credentials.api_token()
     if tok:
         return Github(auth=Auth.Token(tok))
     return Github()
 
 
-_GH_TOKEN_FALLBACKS = ("GH_TOKEN", "GITHUB_TOKEN")
-
-
-def _configured_token_env(root: Path) -> str | None:
-    """The env-var name configured in agents.yml ``workflow.githubTokenEnv`` (or None)."""
-    cfg = root / "agents.yml"
-    if not cfg.is_file():
-        return None
-    try:
-        data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
-    except (yaml.YAMLError, OSError):
-        return None
-    workflow = data.get("workflow") or {}
-    if isinstance(workflow, dict):
-        name = workflow.get("githubTokenEnv") or workflow.get("github_token_env")
-        if name:
-            return str(name).strip()
-    return None
-
-
-def resolve_github_token(root: str | Path | None = None) -> str:
-    """Resolve the GitHub token for the coder PR/CI steps.
+def resolve_github_token(root: str | Path) -> str:
+    """Resolve the GitHub token for the coder PR/CI steps, given the repo ``root``.
 
     Order: the env var named by agents.yml ``workflow.githubTokenEnv`` (repo-
     configurable, not hardcoded), then the conventional ``GH_TOKEN``, then
     ``GITHUB_TOKEN``. Returns ``""`` when none is set — callers treat empty as
-    "no token" and skip (best-effort). ``root`` defaults to
-    :func:`workhorse.scriptutil.find_repo_root`."""
-    root = Path(root).resolve() if root is not None else find_repo_root()
-    names: list[str] = []
-    configured = _configured_token_env(root)
-    if configured:
-        names.append(configured)
-    for fallback in _GH_TOKEN_FALLBACKS:
-        if fallback not in names:
-            names.append(fallback)
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return value
-    return ""
+    "no token" and skip (best-effort).
+
+    ``root`` is required rather than defaulted: it is the caller's ``repo_dir``, and a
+    node that let this resolve itself from the ambient environment would be reading a
+    run input the run's parameters never recorded.
+    """
+    return credentials.github_token(root)
 
 
 def resolve_repo(path: str | Path, token: str | None = None):
