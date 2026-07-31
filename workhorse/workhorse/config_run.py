@@ -44,6 +44,26 @@ def _float(environ: Mapping[str, str], key: str, default: float) -> float:
         return default
 
 
+def _positive_int(environ: Mapping[str, str], key: str, default: int) -> int:
+    """Like ``_int``, but a zero or negative reading falls back to the default.
+
+    A budget of zero is not "no budget", it is a run that ends before its first
+    transition — so a mistyped variable degrades to the shipped default rather than
+    to a guard that fires immediately.
+    """
+    value = _int(environ, key, default)
+    return value if value > 0 else default
+
+
+def _positive_float(environ: Mapping[str, str], key: str, default: float) -> float:
+    """Like ``_float``, with the same "zero is a typo, not a setting" reading.
+
+    A poll interval of zero is a busy loop; the default is the safer misread.
+    """
+    value = _float(environ, key, default)
+    return value if value > 0 else default
+
+
 def _bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
     raw = (environ.get(key) or "").strip().lower()
     if not raw:
@@ -161,6 +181,15 @@ class RunConfig:
     resilience: AgentResilience = field(default_factory=AgentResilience)
     #: Absolute wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S); 0 = unbounded.
     max_runtime_s: float = 0.0
+    #: How often an ``Await`` re-stats the file it is blocked on
+    #: (WORKHORSE_AWAIT_POLL_S). The wait is measured in days, so this is about not
+    #: spinning rather than about latency.
+    await_poll_s: float = 15.0
+    #: Transitions a run may make before it is declared stuck
+    #: (WORKHORSE_MAX_TRANSITIONS). The gas tank bounds node *work*; this bounds the
+    #: state machine itself, so a two-state ping-pong that burns no gas still ends. A
+    #: workflow class that sets ``max_transitions`` overrides this for its own runs.
+    max_transitions: int = 1000
     #: Echo the path of each node's rendered prompt to the console
     #: (WORKHORSE_PRINT_PROMPT); the path only, never the rendered variables.
     print_prompt: bool = True
@@ -178,6 +207,8 @@ class RunConfig:
         return cls(
             resilience=AgentResilience.from_env(e),
             max_runtime_s=_configured_max_runtime_s(e),
+            await_poll_s=_positive_float(e, "WORKHORSE_AWAIT_POLL_S", 15.0),
+            max_transitions=_positive_int(e, "WORKHORSE_MAX_TRANSITIONS", 1000),
             print_prompt=_bool(e, "WORKHORSE_PRINT_PROMPT", True),
             model_override=(e.get("AGENT_MODEL") or e.get("AGENT_CLAUDE_MODEL") or None),
         )

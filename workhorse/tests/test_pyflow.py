@@ -1,11 +1,10 @@
 """Tests for the Python state-machine engine (`workhorse.pyflow`).
 
 Dependency-free and standalone, like the rest of `tests/`: nothing here touches the
-network, the agent CLI or the clock. The agent seam is the run's own
-`RunEnv.agent_runner` — a scripted stand-in for the recovery ladder, handed to the run
-rather than assigned onto a module — and the `Await` wait is patched at
-`workhorse.pyflow.driver._sleep`, so a test that exercises a week-long wait costs
-microseconds.
+network, the agent CLI or the clock. Both seams are fields of the run's own `RunEnv`,
+handed to the run rather than assigned onto a module: `agent_runner` is a scripted
+stand-in for the recovery ladder, and `clock` is a `FakeClock`, so a test that exercises
+a week-long `Await` costs microseconds.
 
 What is asserted here is mostly the *contract* rather than the mechanics: the three
 tiers of state, the `(state, params)` checkpoint, and the naming rules that decide
@@ -22,6 +21,7 @@ import logging
 import os
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from _fakes import FakeClock  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
@@ -47,7 +48,6 @@ from workhorse.pyflow import (  # noqa: E402
     state,
 )
 from workhorse.pyflow import activity as pyflow_activity  # noqa: E402
-from workhorse.pyflow import driver as pyflow_driver  # noqa: E402
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow import registry as registry_mod  # noqa: E402
 from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
@@ -76,14 +76,25 @@ class ScriptedRunner:
         self.run = run
 
 
-def _env(tmp: str, *, name: str = "acme", **kwargs: Any) -> RunEnv:
-    """A run environment rooted in `tmp`, with the agent backend stubbed out."""
+def _env(
+    tmp: str, *, name: str = "acme", config: RunConfig | None = None, **kwargs: Any
+) -> RunEnv:
+    """A run environment rooted in `tmp`, with the agent backend stubbed out.
+
+    `config` is an argument rather than a constant because the driver's own guards —
+    the transition budget, the `Await` poll interval — are `RunConfig` fields now, so a
+    test states the budget it asserts against instead of setting an env var.
+    """
     writer = ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
+    if config is None:
+        config = RunConfig(backend_factory=lambda cli=None: None)
+    elif config.backend_factory is None:
+        config = replace(config, backend_factory=lambda cli=None: None)
     return RunEnv(
         writer=writer,
         workflow_dir=Path(tmp),
         session_id_path=writer.run_dir / ".session_id",
-        config=RunConfig(backend_factory=lambda cli=None: None),
+        config=config,
         **kwargs,
     )
 
@@ -298,6 +309,28 @@ def test_the_transition_budget_ends_a_ping_pong():
         assert "transition budget exhausted after 4" in str(exc), exc
 
 
+def test_a_workflow_that_pins_no_budget_uses_the_runs_own():
+    """`WORKHORSE_MAX_TRANSITIONS` reaches the driver as a `RunConfig` field.
+
+    It used to be read from `os.environ` inside a `Workflow` classmethod, so the only
+    way to state a budget in a test was to mutate the environment — configuration read
+    below the edge (rule 4.1). The class attribute still wins when a flow sets one,
+    which is what keeps a long workflow's own `max_transitions = 4000` authoritative.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp, config=RunConfig(max_transitions=3))
+
+        class PingPong(Workflow):
+            def start(self) -> Transition:
+                return Continue(None, self.pong)
+
+            def pong(self) -> Transition:
+                return Continue(None, self.start)
+
+        exc = _raises(WorkflowFailed, drive, PingPong(), env)
+        assert "transition budget exhausted after 3" in str(exc), exc
+
+
 # --------------------------------------------------------------------------- freezing
 
 
@@ -490,7 +523,6 @@ def test_output_falls_back_to_a_directory_written_under_the_old_node_name():
 
 def test_await_writes_the_ask_and_checkpoints_before_it_waits():
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(tmp)
         ask = Path(tmp) / "docs" / "questions.md"
         observed: list[dict[str, Any]] = []
 
@@ -501,19 +533,21 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
             def resumed(self, answer: str) -> Transition:
                 return Done(ask.read_text().strip())
 
-        def fake_sleep(_seconds: float) -> None:
-            observed.append({**_checkpoint(env), "ask": ask.read_text()})
-            ask.write_text("main\n")
-            stamp = ask.stat().st_mtime + 3600
-            os.utime(ask, (stamp, stamp))
+        class AnsweringClock(FakeClock):
+            """The human, arriving during the first poll interval."""
 
-        real_sleep = pyflow_driver._sleep
-        pyflow_driver._sleep = fake_sleep
-        try:
-            assert drive(Blocks(), env) == "main"
-        finally:
-            pyflow_driver._sleep = real_sleep
+            def sleep(self, seconds: float) -> None:
+                observed.append({**_checkpoint(env), "ask": ask.read_text()})
+                ask.write_text("main\n")
+                stamp = ask.stat().st_mtime + 3600
+                os.utime(ask, (stamp, stamp))
+                super().sleep(seconds)
 
+        clock = AnsweringClock()
+        env = _env(tmp, clock=clock)
+        assert drive(Blocks(), env) == "main"
+
+        assert clock.slept == [env.config.await_poll_s], clock.slept
         assert len(observed) == 1, observed
         assert observed[0]["ask"] == "which branch?", observed[0]
         assert observed[0]["state"] == "resumed", observed[0]

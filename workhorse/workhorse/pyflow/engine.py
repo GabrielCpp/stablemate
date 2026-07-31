@@ -32,6 +32,7 @@ from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
+from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.ladder import AgentRunner
 
 logger = logging.getLogger("workhorse.engine")
@@ -135,6 +136,11 @@ class RunEnv:
     log: logging.Logger = field(default_factory=lambda: logger)
     #: Records calls instead of making them. `--dry-run` sets it.
     dry_run: bool = False
+    #: The passage of time, for the one place the driver waits: an `Await`'s poll.
+    #: Injected rather than reached for, so a test that exercises a week-long wait
+    #: costs microseconds with nothing patched. The agent ladder is handed the same
+    #: port separately (`AgentRunner.clock`) — this is the driver's own.
+    clock: Clock = SYSTEM_CLOCK
     #: Run-wide wall-clock ceiling (unix epoch), shared with any sub-flow so a
     #: handoff cannot outlive the run's budget. None = unbounded.
     deadline: float | None = None
