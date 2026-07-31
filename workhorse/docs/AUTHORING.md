@@ -40,6 +40,54 @@ its **nodes** are plain functions collected into a `Blueprint`; a `Registry` nam
 whole thing and is what the `workhorse.workflows` entry point resolves to. Control flow
 is ordinary Python — `if`, `for`, a counter that is just a counter.
 
+## Shipping your own, outside this repo
+
+`workhorse run <name>` resolves a name **only** through the `workhorse.workflows`
+entry-point group — there is no path form and no directory it scans. So a workflow of your
+own is a distribution, and this is the whole of it:
+
+```toml
+# acme-workflows/pyproject.toml
+[project]
+name = "acme-workflows"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["workhorse-agent"]
+
+[project.entry-points."workhorse.workflows"]
+greeter = "acme_workflows.greeter.workflow:workflow"   # the Registry OBJECT, not main
+
+[project.scripts]
+workhorse-greeter = "acme_workflows.greeter.workflow:main"   # optional second front door
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acme_workflows"]
+```
+
+Two details are load-bearing rather than taste:
+
+- **The entry point names the `Registry`, not the entry function.** Discovery needs the
+  registry object — `main` is the console script, and pointing the entry point at it fails
+  at resolution rather than at run time.
+- **It must install unpacked.** Prompts are rendered by a filesystem template loader rooted
+  at the package directory, so a zip-imported install is refused. Nothing special is needed
+  for this — it is what wheels do by default — but do not set `zip-safe`-style options.
+
+Then install it **into workhorse's own interpreter**, because a workflow's code and its
+tools are imported in-process:
+
+```bash
+uv pip install ./acme-workflows       # or: pipx inject workhorse-agent ./acme-workflows
+uv run workhorse run greeter --dry-run
+```
+
+Copying `hello_world/` and changing the two `Registry("hello-world")` / entry-point names
+is the shortest route to a green run of your own; everything below is what you add next.
+
 **Agent prompts** must output JSON matching the model the turn declared in `returns=`:
 
 ````markdown
