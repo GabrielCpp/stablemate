@@ -31,9 +31,10 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
-from workhorse_workflows.author.paths import launch_repo_root, survey_repo_root
-from workhorse_workflows.author.schemas.main import Committed, Defects, PullRequest, VerifyReport
-from workhorse_workflows.kit import branch_exists, commit_all, remote_urls, show_file
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import Committed, Defects, PullRequest, VerifyReport
+from workhorse_workflows.kit import branch_exists, commit_paths, remote_urls, show_file
 from workhorse_workflows.kit import github as github_kit
 
 _H2_RE = re.compile(r"^##\s+(.*\S)\s*$")
@@ -65,7 +66,7 @@ def _subsection_ids(text: str, heading: str) -> set[str]:
 @blueprint.node(stub=_stubs.holds)
 def verify_reconcile(
     logger: logging.Logger,
-    epics_dir: str = "docs/epics",
+    epics_dir: str = "",
     ref: str = "HEAD",
     repo_dir: str = "",
 ) -> VerifyReport:
@@ -80,9 +81,9 @@ def verify_reconcile(
     **Removals block, additions don't**, and it is fail-open on infrastructure: no git, no
     epics dir, or no epic with a committed baseline is a clean `skipped`, never a block.
     """
-    epics_rel = epics_dir.strip() or "docs/epics"
     ref = ref.strip() or "HEAD"
     root = launch_repo_root(repo_dir)
+    epics_rel = paths.epics_dir(root, epics_dir)
     epics_path = root / epics_rel
 
     if show_file(root, ref, epics_rel) is None and not (root / ".git").exists():
@@ -293,21 +294,42 @@ def commit_author(
     epic: str = "",
     bullet: str = "",
     repo_dir: str = "",
+    docs_dir: str = "docs",
+    id_registry: str = ".agents/ids.json",
 ) -> Committed:
     """Commit the epic/story docs this run wrote, in the one repo it wrote them in.
 
     Author only ever writes into the docs repo running the workflow — unlike coder there
     is no affected-repos resolution, so this always commits at the repo root.
     `mode="incomplete"` is the failure edge and only changes the message.
+
+    **Scoped to what this workflow writes, not to the whole tree.** The repo author runs
+    in is routinely a checkout somebody is *also* working in — `repo_dir` defaults to the
+    directory the run was launched from, so it points straight at their working tree. A
+    `git add -A` here commits their in-flight edits under an `author:` subject, which is
+    how a run ends up owning changes it never made.
+
+    Two scopes, because the run writes in two places: `docs_dir` for the prose, and
+    `id_registry` for ostler's id ledger, which lives outside the docs tree and *must*
+    travel with the documents it numbers — an id minted but left uncommitted is reminted
+    for a different entity by the next run. A scope that does not exist is dropped rather
+    than passed to git, which would fail the whole commit on an unmatched pathspec.
     """
     repo_root = find_repo_root(repo_dir)
     if not (repo_root / ".git").exists():
         logger.info("no .git at %s — nothing to commit", repo_root)
         return Committed()
 
-    committed = commit_all(repo_root, _commit_message(mode, epic, bullet))
+    scope = [
+        rel for rel in (docs_dir.strip(), id_registry.strip()) if rel and (repo_root / rel).exists()
+    ]
+    if not scope:
+        logger.info("nothing author writes exists under %s — nothing to commit", repo_root)
+        return Committed()
+
+    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet), *scope)
     if committed:
-        logger.info("committed in %s", repo_root)
+        logger.info("committed %s in %s", " ".join(scope), repo_root)
     return Committed(committed=committed)
 
 
