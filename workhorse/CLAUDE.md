@@ -12,9 +12,9 @@ state-machine driver (`workflow.py`
 declares states, `driver.py` is the state loop and checkpoint, `engine.py` provides
 `self.call` / `self.agent` / `self.output`) and `runner/` holding the agent-CLI side
 (`agent.py` is the recovery ladder, `backends.py` the per-CLI facade). `make help` lists
-the tasks; `make test` runs the suite. The full usage and development guide — project
-layout, the loop, sessions, where docs go, conventions — is
-[README.md](README.md); read its **Development** section before changing the engine.
+the tasks; `make test` runs the suite. [README.md](README.md) is what workhorse is and how
+to run it; the guide for changing the engine — project layout, the loop, sessions, where
+docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read that one first.
 
 ## Working rules (most load-bearing)
 
@@ -27,8 +27,9 @@ layout, the loop, sessions, where docs go, conventions — is
   patching the CLI boundary (`_run_claude_cli` / `_invoke_claude`) and sleeping so nothing
   hits the network or waits in real time. `make test` runs them all. Add or extend a test
   for any behavior change.
-- **Keep README.md and docs/GUARDRAILS.md current** when behavior changes — they are the
-  operator contract, and GUARDRAILS is imported here.
+- **Keep README.md and the matching `docs/` file current** when behavior changes — they
+  are the operator contract, and GUARDRAILS is imported here. Which file is which is in
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#where-docs-go).
 - **The engine's `.py` is COPY'd into the image, not bind-mounted** — changes take effect
   only after an image rebuild (add `--build` to the `docker compose up`). The build
   context is the repo root, not this directory.
