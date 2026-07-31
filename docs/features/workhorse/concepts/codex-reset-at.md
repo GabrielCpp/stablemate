@@ -15,7 +15,11 @@ display does. It is **best-effort only**: any failure (probe disabled, non-Codex
 expired OAuth, network/parse error) returns `None`, and the sole caller then falls back to its
 default cap wait — this can only ever *sharpen* a wait, never break a run.
 
-- code: `workhorse/workhorse/runner/backends.py::_codex_reset_at`
+It lives in `runner/backends/opencode.py`, beside its only caller. Despite the name it is not part
+of the [codex backend](codex-backend.md): `CodexBackend` talks to the `codex` CLI, which reports
+its own limits, while this probe exists because *OpenCode* drops the Codex provider's headers.
+
+- code: `workhorse/workhorse/runner/backends/opencode.py::_codex_reset_at`
 - verify: `workhorse/tests/test_backends.py::test_codex_reset_at_skips_non_openai_models_without_network`,
   `workhorse/tests/test_backends.py::test_codex_reset_at_disabled_by_env`,
   `workhorse/tests/test_backends.py::test_opencode_cap_attaches_codex_reset_at`,
@@ -85,7 +89,7 @@ except Exception:
 
 ### `_OPENCODE_AUTH_PATH`
 
-- code: `workhorse/workhorse/runner/backends.py::_OPENCODE_AUTH_PATH`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_OPENCODE_AUTH_PATH`
 
 Module-level `Path` constant: `$OPENCODE_AUTH_PATH` if set, else
 `~/.local/share/opencode/auth.json` — OpenCode's own OAuth credential store, read directly so this
@@ -93,7 +97,7 @@ probe can authenticate as the same Codex session OpenCode itself uses.
 
 ### `_CODEX_RESPONSES_URL`
 
-- code: `workhorse/workhorse/runner/backends.py::_CODEX_RESPONSES_URL`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_CODEX_RESPONSES_URL`
 
 Module-level `str` constant: `"https://chatgpt.com/backend-api/codex/responses"` — the Codex OAuth
 backend's Responses-API endpoint this probe posts its minimal ping request to.
@@ -101,7 +105,8 @@ backend's Responses-API endpoint this probe posts its minimal ping request to.
 ## Related pieces
 
 - [`OpenCodeBackend.run_turn`](opencode-backend.md#contract) — the sole caller: invokes this only
-  when [`_agent._is_cap(diagnostics)`](classify-turn.md) found the turn hit a usage cap, and passes
+  when [`failure.is_cap(state.diagnostics_text)`](classify-turn.md#is_cap) found the turn hit a
+  usage cap, and passes
   the result through as `rate_reset_at` to [`finalize_turn`](finalize-turn.md), which carries it
   onto the raised `BackendInvocationError.reset_at` (see [`_cap_delay_seconds`](cap-delay-seconds.md#algorithm),
   which prefers a structured `reset_at` over parsing reset text).

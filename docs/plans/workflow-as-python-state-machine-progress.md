@@ -2290,6 +2290,87 @@ collapses runs of hyphens where GitHub's does not, and the new
 all 313 tracked files by the GitHub-accurate checker. `ruff check .`, `make test` and
 `make check-public` all green.
 
+### Iteration 14 — the four non-Claude adapters, where one callback became an object
+
+Item 3, the `runner/` remainder, third slice. Nine pages, all grounded in the four adapter
+modules read in full first (`runner/backends/aider.py`, `codex.py`, `copilot.py`,
+`opencode.py` — 608 lines): `aider-backend`, `run-text-turn`, `codex-backend`,
+`codex-on-event`, `codex-reset-at`, `copilot-backend`, `copilot-on-event`,
+`opencode-backend`, `opencode-on-event`. The Claude family (`backends/claude.py`, 371 lines)
+and `stream-subprocess.md` are iteration 15.
+
+**Answering iteration 13's carried-forward question: no, again — and for a sharper reason.**
+Iteration 12 predicted the adapter pages would be "a near-mechanical split with the symbol
+names largely intact"; iteration 13 found that false for shared machinery and left open
+whether it held for the adapters. It does not. Loop 2 did not merely move these functions:
+
+1. **All nine `code:` targets named the deleted `runner/backends.py`.** That much *was*
+   mechanical. Nothing else was.
+2. **The three prefixed callbacks are now one unqualified `_on_event` per module** —
+   `_codex_on_event`/`_copilot_on_event` → `codex.py::_on_event`, `copilot.py::_on_event`;
+   module scope supplies the disambiguation the prefix used to.
+3. **OpenCode's callback is no longer a function at all.** It is
+   `_OpenCodeEvents.on_event`, a bound method on a `@dataclass(slots=True)` constructed
+   fresh per turn. The old page documented a `state["_text_parts"]` key the adapter "lazily
+   adds… not part of `stream_jsonl`'s own contract" — that hack is gone, and the module
+   docstring says why: *a struct shared by N implementations holding one implementation's
+   private key is exactly the shape the shared module must not have*. The per-turn instance
+   is also what makes cross-turn leakage structurally impossible, which
+   `test_opencode_text_parts_do_not_leak_between_turns` now pins. A page cannot be
+   "re-pointed" through that change; it has to be rewritten.
+4. **Usage accounting is entirely new, and every page described it as absent.** All four
+   adapters now populate `TurnState.usage`: codex on `turn.completed`, copilot on `result`,
+   opencode on `step_finish` (a **merge**, since a turn has several steps), aider by regex
+   over the transcript via `usage.from_text`. The old pages listed these event types under
+   "silently ignored".
+5. **Signatures across the board.** `on_event` is 3-arg over a `TurnState`, not 4-arg over a
+   dict plus a diagnostics list; `finalize_turn` takes 5 positionals, not 8; `stream_jsonl`
+   requires `resilience=` and takes `cwd=`/`env_extra=self.harness_env()`; every `run_turn`
+   and `compact` has keyword-only **required** `timeout`/`resilience` where the pages still
+   showed `timeout=DEFAULT_RESULT_TIMEOUT_S` defaults.
+6. **`_agent._is_cap(diagnostics)` → the public `failure.is_cap(state.diagnostics_text)`.**
+7. **`_codex_reset_at` moved into `opencode.py`, not `codex.py`**, along with
+   `_OPENCODE_AUTH_PATH`, `_CODEX_RESPONSES_URL` and `_OPENCODE_VARIANT` — it lives beside
+   its only caller, and despite the name is not part of the codex backend at all. The page
+   now says so.
+
+**One code/docstring disagreement, reported not fixed** (this loop changes no behavior):
+`CopilotBackend`'s class docstring says `--allow-all-tools + --no-ask-user`, while `run_turn`
+emits `--allow-all`. The code wins, so the pages document `--allow-all`; the stale docstring
+is a one-word fix for whoever next touches that module.
+
+**Three real model names were replaced with placeholders while rewriting** — a live
+OpenRouter model on the aider page, a provider model and a local Ollama tag on the codex
+page, and another OpenRouter model on the opencode page — now `openrouter/example-org/…`,
+`example-org/example-model-v3.1`, `example-coder:32b`. Documenting the real setup is the
+standing temptation of a docs pass; `make check-public` passed both before and after, which
+is the point: it gates private *project* names, not the general public bar.
+
+Ten tests the old pages never cited are now `verify:` targets, found by grepping
+`test_backends.py` rather than by trusting the pages
+(`test_codex_on_event_extracts_text_and_session`,
+`test_copilot_on_event_extracts_text_and_session`,
+`test_opencode_text_parts_do_not_leak_between_turns`,
+`test_codex_effort_sets_reasoning_override`, `test_codex_no_effort_omits_override`,
+`test_codex_profile_from_env`, `test_codex_profile_at_slug_model_string`,
+`test_aider_run_turn_builds_noninteractive_cmd`, `test_aider_effort_clamped_to_high`,
+`test_aider_no_effort_omits_flag`).
+
+The two inbound anchors into this slice — `aider-backend.md#_aider_effort` (from
+`claude-backend.md` and `run-claude-cli.md`) and `opencode-backend.md#contract` (from
+`codex-reset-at.md`, twice) — were enumerated *before* rewriting and preserved, so no
+rewrite broke a link. `opencode-on-event.md`'s broken self-link
+`[OpenCodeBackend.run_turn](#related-pieces)` and its ungrounded prose reference to
+`backends.py::OpenCodeBackend` both became real links to `opencode-backend.md`.
+
+`dangling-code-ref` **24 → 9** (the eight remaining book entries are the Claude family and
+`stream-subprocess`, iteration 15's slice, plus groom's pre-existing `.toast`);
+`missing-code-symbol` 8 → 8; `missing-anchor` 21 → 22, the increase being one more link to
+the same `#early-abort--stop-the-clis-own-retry-loop` heading — still finding 25, ostler's
+slugifier collapsing hyphen runs where GitHub's does not. Zero broken markdown links across
+all 313 tracked files by the GitHub-accurate checker. `ruff check .`, `make test` and
+`make check-public` all green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
