@@ -50,7 +50,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
      as non-JSON lines instead of only into `~/.local/share/opencode/log/opencode.log`. Without
      these flags those errors are invisible to the harness, and OpenCode's own internal exponential
      backoff would run silently until the hard watchdog killed the process. They are what makes
-     [`stream_jsonl`'s early abort](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop)
+     [`stream_jsonl`'s early abort](stream-jsonl.md#early-abort)
      possible on this backend at all.
   3. `run --format json` — non-interactive single turn, NDJSON event stream.
   4. `-m <model>` only when the caller named one.

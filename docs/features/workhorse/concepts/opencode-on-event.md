@@ -96,7 +96,7 @@ loop never sees the instance and needs no notion that this backend keeps state a
      turn progress beyond the live echo above.
 
 The `state.diagnostics` append feeds
-[`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop)'s per-line early-abort
+[`stream_jsonl`](stream-jsonl.md#early-abort)'s per-line early-abort
 scan (run by its caller immediately after `on_event` returns) and, at the end of the stream,
 [`finalize_turn`](finalize-turn.md)'s classification — an opencode structured error event surfaces
 through this branch the same way a raw non-JSON `--print-logs` diagnostic line does (opencode's own

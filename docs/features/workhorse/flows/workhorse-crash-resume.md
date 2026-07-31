@@ -24,7 +24,7 @@ afford to repeat.
   [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`. An operator Ctrl-C
   qualifies and resumes identically: `run_pyflow`'s `KeyboardInterrupt` handler terminates
   the active agent turn, records the stop via
-  [`record_interrupt`](../concepts/artifact-writer.md#record_interruptnode_id-error), prints
+  [`record_interrupt`](../concepts/artifact-writer.md#record_interrupt), prints
   the pause, and exits `130` — deliberately leaving `terminal` `null` so step 2 still sees
   an unfinished run. A `PyflowError` (exit `1`) marks the run `fail` but leaves the same dir
   on disk to be resumed explicitly once the cause is fixed.

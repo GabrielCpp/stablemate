@@ -91,7 +91,7 @@ adapter write into it event by event, the process outcome lands once the stream 
 
 `diagnostics_text` is a read-only property returning `"\n".join(self.diagnostics)` — the single
 string `classify_turn` scans. Diagnostics accumulate as a list so
-[`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop) can scan only the slice
+[`stream_jsonl`](stream-jsonl.md#early-abort) can scan only the slice
 a single line added, rather than re-joining everything seen so far on every line.
 
 Two design rules hold this struct in place:

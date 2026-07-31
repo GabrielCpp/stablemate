@@ -36,7 +36,7 @@ Nothing in it knows any CLI's event vocabulary; that is each adapter's job.
     request (e.g. a spending-cap marker was just seen) and is treated identically to a timeout:
     the loop breaks and the process group is killed. The parameter is annotated
     `Callable[[str], None]`, which understates this — the runtime contract is the truthy-return
-    one, and [`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop) depends
+    one, and [`stream_jsonl`](stream-jsonl.md#early-abort) depends
     on it.
   - `resilience: AgentResilience` (**keyword-only, required**) — the run's tuning knobs. Three are
     read here: `watchdog_grace_s` (the watchdog's headroom past `timeout`), `heartbeat_every_s`

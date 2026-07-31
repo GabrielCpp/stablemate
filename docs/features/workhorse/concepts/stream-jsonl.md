@@ -49,7 +49,7 @@ in any CLI adapter.
 - **Output:** [`TurnState`](finalize-turn.md#turnstate) — one struct, not a tuple. `result_text` and
   `session_id` are whatever `on_event` populated; `diagnostics` holds every non-JSON line and every
   diagnostic `on_event` appended; `timed_out` is `True` when `stream_subprocess` timed out/was
-  watchdog-killed **or** an [early abort](#early-abort--stop-the-clis-own-retry-loop) fired;
+  watchdog-killed **or** an [early abort](#early-abort) fired;
   `returncode` is the child's exit code verbatim.
 - **Raises:** nothing turn-specific — a `stream_subprocess` `Popen` failure propagates as its
   normal `OSError`.
@@ -73,7 +73,7 @@ in any CLI adapter.
         `state.diagnostics` verbatim (a CLI's plain-text log line, e.g. opencode's `--print-logs`
         output, still reaches the classifier).
    4. **Scan only what this line added** — `new_diag = "\n".join(state.diagnostics[before:])` — and
-      run the [early-abort](#early-abort--stop-the-clis-own-retry-loop) checks against it.
+      run the [early-abort](#early-abort) checks against it.
    5. Otherwise `return False` (keep reading).
 3. Call `stream_subprocess(cmd, node_id, timeout, on_line, resilience=resilience,
    stdin_data=stdin_data, cwd=cwd, env_extra=env_extra)` → `(timed_out, returncode)`.
@@ -86,7 +86,7 @@ in any CLI adapter.
 The read loop itself is not here: line reading, timeout, watchdog, and process-group kill all live
 in `stream_subprocess`. `stream_jsonl` is that loop's **rule set**, invoked once per line.
 
-## Early abort — stop the CLI's own retry loop
+## Early abort
 
 Two checks run against each line's newly-added diagnostics, in order, and either one returns `True`
 from `on_line` — [`stream_subprocess`](stream-subprocess.md)'s early-abort contract, treated
