@@ -20,9 +20,10 @@ That's the whole payload — markdown and YAML, and **not a line of Python**. No
 `__init__.py`, no `pyproject.toml`, no dependencies, nothing executable.
 
 It used to hold `workflows/` too: four directories of workflow YAML plus the
-`scripts/*.py` its nodes ran. A workflow is a Python package now, resolved through the
-`workhorse.workflows` entry-point group and shipped in a wheel — so the code left, and
-what stayed is documents. The `scaffolds/` directory went the same way; farrier still
+`scripts/*.py` its nodes ran. A workflow is a Python package now
+([why](../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)), resolved
+through the `workhorse.workflows` entry-point group and shipped in a wheel — so the code
+left, and what stayed is documents. The `scaffolds/` directory went the same way; farrier still
 reads one from any library layer that has it, so an overlay can ship scaffolds even
 though the base does not.
 

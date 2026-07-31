@@ -12,7 +12,10 @@ file is only the bridge from the old schema to it.
 
 This document exists because a YAML workflow is a real thing someone may still be
 holding. It maps every construct in the retired schema to what replaces it, names the
-handful that have **no** counterpart, and lists what did not change at all.
+handful that have **no** counterpart, and lists what did not change at all. For *why* the
+schema was retired rather than extended, see [Why a workflow is Python and not a config
+file](../README.md#why-a-workflow-is-python-and-not-a-config-file) — this page assumes
+that decision and only translates across it.
 
 ---
 

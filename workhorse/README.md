@@ -34,6 +34,46 @@ It is repository-agnostic: the same workflow runs against any repo a workflow's
 unattended runs lives in the source repo — see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md)
 (not shipped in the PyPI package).
 
+### Why a workflow is Python and not a config file
+
+Workhorse used to read workflows from a declarative `workflow.yaml` — a graph of
+typed nodes with `next:` edges. That front-end is deleted, and since every other
+page here states the consequence rather than the reason, the reason lives here.
+
+**The schema was not failing at expressing graphs. It was failing at the two
+things a graph does not model: values and loops.** A constant had to be declared
+as a string and then kept in sync with its use sites by comment, because a branch
+condition could not be a template expression. A bounded retry — `for _ in
+range(3)` — needed four extra nodes and three scripts to emulate a counter. And
+every value crossing a node boundary was a Jinja string, so an `int` arrived
+stringified and nothing between two nodes was checkable. Those workarounds do not
+shrink with practice; they grow with the workflow. The four workflows in this
+repo reached ~8,000 lines of YAML, of which one was 4,366.
+
+In Python all three stop being problems, because they were never workflow
+problems: a constant is a constant, a loop is a `for`, and a value crossing a
+transition is a typed model that fails at the boundary that produced it.
+
+**The second reason is dependency isolation, and it may be the bigger one.** A
+`script:` node imported its libraries from *workhorse's own interpreter*, so
+using a workflow meant injecting that workflow's dependencies into the runner's
+environment. A workflow is now an ordinary distribution: its dependencies are
+`[project.dependencies]`, resolved by `pip`/`uv` at install time, and workhorse
+is merely one of them.
+
+What this deliberately gives up is a complete static graph. Native control flow,
+a fully declarative graph, and a single source of truth are a pick-two — a
+declarative graph can only stay honest if it is the only description of the flow,
+and then it cannot use the host language. Splitting at the **state** boundary buys
+most of the third back: transitions between states are still recoverable as a
+diagram (`workhorse dot <name>` draws it), while the interior of a state is
+opaque — and the interior of a state is the part nobody wanted to read as a
+diagram anyway.
+
+> **Holding a `workflow.yaml`?** [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md)
+> maps every construct in the retired schema to what replaces it, names the three
+> that have no counterpart, and lists what did not change at all.
+
 ## Install
 
 ```bash
@@ -118,6 +158,30 @@ a warning, not an error: the run is degraded, not impossible. A run carrying **n
 manifest at all (`hello-world`, most tests) is skipped — there, unresolved is the normal
 state. References built from a computed argument can't be seen statically; those log a
 `[template] ⚠` line when they render instead.
+
+Only *required* references are reported. A prompt that enumerates the skills for every
+stack a workflow has ever met is naming a menu, not a dependency — a Go repo must not be
+told to read a Flutter skill, and must not fail preflight for not having one. Two ways to
+say so:
+
+```jinja
+{# plural: render whichever of these the repo installed, drop the rest #}
+{%- set web = instruction_refs("react-router", "react-router-qa", "flutter", "pulumi") %}
+{%- if web %}
+- Instruction files for this layer: {{ web }}
+{%- endif %}
+
+{# or guard a whole branch on one skill #}
+{% if isUsingInstruction("flutter") %}{{ instruction_ref("flutter-testing") }}{% endif %}
+```
+
+`instruction_refs(...)` (aliases `instruction_files`/`skill_files`, and `prompt_refs`/
+`prompt_files` for prompts) takes any number of names — or one list — resolves each,
+renders the survivors as a backtick-quoted comma-separated list deduplicated by path, and
+returns the **empty string** when none resolve, so `{% if %}` can drop the sentence rather
+than leave a dangling "e.g.". Its arguments are never preflight findings, and neither are
+references inside an `isUsingInstruction` branch (its `{% else %}` and `{% elif %}` are
+judged on their own, since they render precisely when the guard did not hold).
 
 ### Per-workflow commands (`workhorse-<name>`)
 
