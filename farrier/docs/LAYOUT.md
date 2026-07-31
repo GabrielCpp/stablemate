@@ -19,13 +19,14 @@ farrier never bundles content — it only renders whatever library it is aimed a
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
   packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
   scaffolds/*.yml              # scaffold definitions applied via `farrier scaffold <id>`
-  workflows/<workflow>/        # workhorse workflow.yaml + prompts + scripts
+  workflows/<workflow>/        # legacy: only still consulted to validate a selection
 ```
 
-Only `library/` and `packs/` are required for farrier to recognise a directory as
-a library — if either is missing, farrier exits with a setup hint. `scaffolds/`
-and `workflows/` are optional and only consulted when a selected pack references
-them.
+Only `library/` is required for farrier to recognise a directory as a library — that is
+the whole of `stablemate_core.layout.is_library_dir`, and a path lacking it gets a setup
+hint. `packs/`, `scaffolds/` and `workflows/` are optional and only consulted when
+something selects from them; the base library, for instance, ships `library/` and
+`packs/` and nothing else.
 
 ## `library/skills/` — skills
 

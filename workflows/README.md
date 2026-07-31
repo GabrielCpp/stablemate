@@ -1,14 +1,22 @@
 # workhorse-workflows
 
-The stablemate agent workflows as an installable Python distribution — the shape the
-[workflow-as-python-state-machine](../docs/plans/workflow-as-python-state-machine.md)
-plan moves them into. Workhorse is the engine; this is its content.
+The stablemate agent workflows as an installable Python distribution: `research`,
+`author`, `okf-builder` and `coder`, each a checkpointed state machine. Workhorse is the
+engine; this is its content.
+
+**Not on PyPI yet** — install it from a checkout of the
+[stablemate](https://github.com/GabrielCpp/stablemate) workspace, into the *same*
+interpreter as workhorse, because a workflow runs in workhorse's own process:
 
 ```bash
-uv pip install workhorse-workflows
-workhorse run research                 # resolved through the entry-point group
-workhorse-research run                 # the same parser, name already bound
+make sync                              # at the workspace root: engine + workflows, one venv
+uv run workhorse run research          # resolved through the entry-point group
+uv run workhorse-research run          # the same parser, name already bound
 ```
+
+The shape came from the
+[workflow-as-python-state-machine](../docs/plans/workflow-as-python-state-machine.md)
+plan; what is still outstanding from it is noted under [Status](#status).
 
 ## How workhorse finds a workflow in here
 
@@ -47,19 +55,24 @@ template.
 
 ```
 src/workhorse_workflows/
-  kit/            shared workflow-side helpers (GitHub, git, workspace resolution)
+  kit/            shared workflow-side helpers (git.py, github.py, workspace.py)
   <workflow>/
     workflow.py   the Workflow subclass and `main` — one class, nothing else
-    schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows)
+    schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows,
+                  as it has in author/ and coder/)
     paths.py      pure derivations: the dirs and filenames the nodes agree on
-    nodes/        the callables (today's scripts/), one module per subject,
-                  assembled into a Blueprint by nodes/__init__.py
+    nodes/        the callables, one module per subject, assembled into a Blueprint
+                  by nodes/__init__.py
     flows/        sub-workflows, each its own Workflow subclass reached by handoff()
-    prompts/      unchanged from the YAML era
+    prompts/      the agent-facing markdown, rendered by a filesystem template loader
 
 tests/<workflow>/  outside src/ and outside the wheel; mirrors the node modules,
                    plus one test_workflow.py for the machine
 ```
+
+A workflow may add modules of its own beside those — `coder/` carries `contract.py`,
+`ostler_qa.py` and `story_status.py`, and `research/` a `scaffold/` package — but the
+six names above mean the same thing in every one.
 
 Imports point one way: `workflow.py` imports `nodes/`, `flows/`, `schemas` and `paths`;
 nothing under `nodes/` imports `workflow.py`.
@@ -68,11 +81,17 @@ How small each of those files has to be is **normative, not per-workflow taste**
 subject per module, `nodes/` is a package even when it holds three functions, and
 `~400 lines` is the trigger to apply the rule. The plan's
 [One workflow, several files](../docs/plans/workflow-as-python-state-machine.md) carries
-the rules and the reasoning; `coder` is 71 scripts totalling 8,661 lines, and a single
-`nodes.py` at that size is `scriptutil.py` again.
+the rules and the reasoning; `coder`'s nodes alone run to ~6,600 lines across 18
+modules, and a single `nodes.py` at that size is `scriptutil.py` again.
 
 ## Status
 
-`research` has landed — the first port, and the one the driver is proved against.
-`author`, `okf-builder` and `coder` follow, one at a time, and the YAML engine keeps
-running the un-ported ones from the base library the whole way.
+All four workflows are ported and resolve through the entry-point group; the YAML engine
+they came from is retired, so this package is the only place a stablemate workflow lives.
+
+What the plan still owes: this distribution is unpublished, so there is no `pip install`
+route to it and a `pipx` layout needs `pipx inject workhorse-agent <this distribution>`
+to land it in the engine's venv. Farrier also still validates a `workflows:` selection
+against a `workflows/<name>/` directory in a library layer rather than against the entry
+points — see the end of
+[farrier/docs/LAYOUT.md](../farrier/docs/LAYOUT.md).
