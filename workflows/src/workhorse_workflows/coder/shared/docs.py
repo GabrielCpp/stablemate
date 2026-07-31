@@ -1,0 +1,377 @@
+"""The docs flow's deterministic work: is there a book, how do we read the diff, does it hold.
+
+Ports `detect-okf-docs.py`, `classify-documentation-context.py` and
+`verify-story-documentation.py`. The `emit(...)`/`sys.exit(0)` pairs become returned models
+and the JSON-encoded `source_roots` becomes a `list[str]`; nothing else changes.
+
+`verify_story_documentation` is the load-bearing one and the reason the flow exists in this
+shape. A documentation author can claim it documented a story without touching the OKF nodes
+the diff actually implicated, and no prompt mandate catches that. This does: it takes the
+diff-to-OKF packet the builder wrote, and for every changed production unit demands *direct*
+grounding — an exact `path::symbol` reason, or file ownership when the change carried no
+symbols. A unit covered only by a broad surface owner is a documentation gap, not coverage.
+"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+import yaml
+from git.exc import GitError
+from ostler import Ostler, path as okf_path
+from workhorse.scriptutil import find_docs_root, load_json
+from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.schemas.docs import (
+    ContextClassification,
+    DocumentationGate,
+    OkfDetection,
+)
+from workhorse_workflows.kit import open_repo
+
+#: Where the diff-to-OKF obligation packet lands, relative to the story's spec dir.
+CONTEXT_FILE = "qa-okf-context.json"
+
+#: Files whose presence means "this repo is managed by an OKF graph". An `ostler*` file is
+#: conclusive on sight; an `agents.yml` counts only when it carries an `organization` block,
+#: since every repo the coder touches has one of those for unrelated reasons.
+CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
+
+#: Doc kinds whose *directory existing* means the same thing without any configuration at
+#: all. Named by kind rather than by path so the probe follows a repo that moved them:
+#: `ostler.path` turns each into the directory this repo actually configures.
+MANAGED_KINDS = ("epics", "knowledge")
+
+#: The reason kinds that make a doc node *directly* implicated by the diff, as opposed to
+#: implicated through the surface it happens to sit under.
+DIRECT_KINDS = {"changed-code", "file-owner", "surface-owner"}
+
+#: Doctor codes suppressed in semantic mode: without a local worktree there is no diff to
+#: resolve a code reference against, so a dangling one is the mode's normal state.
+SEMANTIC_SUPPRESSED = {"dangling-code-ref", "missing-code-symbol"}
+
+
+def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """The packet's direct-grounding evidence: exact `path::symbol` refs, and owned files."""
+    exact: set[str] = set()
+    files: set[str] = set()
+    for item in packet.get("directNodes", []):
+        if not isinstance(item, dict):
+            continue
+        for reason in item.get("reasons", []):
+            if not isinstance(reason, dict):
+                continue
+            ref = str(reason.get("ref", ""))
+            if reason.get("kind") == "changed-code":
+                exact.add(ref.strip().strip("`, "))
+            elif reason.get("kind") == "file-owner":
+                files.add(ref)
+    return exact, files
+
+
+def _affected_doc_nodes(packet: dict[str, Any], author_nodes: list[str]) -> set[str]:
+    """Every doc node this story touched: what the diff implicated, plus what the author said.
+
+    The union is deliberate. The packet knows what the code changed and the author knows what
+    it *meant*, and a doctor error on either is this story's problem.
+    """
+    nodes = {
+        str(item.get("node", ""))
+        for item in packet.get("directNodes", [])
+        if isinstance(item, dict)
+        and any(
+            isinstance(reason, dict) and reason.get("kind") in DIRECT_KINDS
+            for reason in item.get("reasons", [])
+        )
+    }
+    nodes.update(author_nodes)
+    return {node for node in nodes if node}
+
+
+def _finding_affects_nodes(okf: Ostler, finding: dict[str, Any], affected: set[str]) -> bool:
+    """Does this doctor finding land on a node this story is responsible for?
+
+    What keeps the gate from failing a story for pre-existing errors elsewhere in the book.
+    A finding with no line is attributed to the whole file; one with a line is attributed to
+    the innermost UI node that starts at or above it, and then up its parent chain — because
+    a finding inside a child node is a finding against every node that contains it.
+
+    Undecidable cases resolve to `True`. This gate is fail-closed: a finding it cannot place
+    is a finding it does not get to dismiss.
+    """
+    path = str(finding.get("path", ""))
+    candidates = {node for node in affected if node.partition("#")[0] == path}
+    if not candidates:
+        return False
+    if path in candidates:
+        return True
+    line = int(finding.get("line") or 0)
+    if not line:
+        return True
+    try:
+        nodes = [
+            node
+            for node in okf.graph.ui_nodes
+            if node.path.relative_to(okf.graph.root).as_posix() == path and node.line <= line
+        ]
+    except (OSError, ValueError, RuntimeError):
+        return True
+    if not nodes:
+        return True
+    owner = max(nodes, key=lambda node: node.line)
+    while owner is not None:
+        if owner.id in candidates:
+            return True
+        owner = okf.graph.find_ui_node(owner.parent) if owner.parent else None
+    return False
+
+
+@blueprint.node
+def detect_okf_docs(
+    logger: logging.Logger,
+    docs_path: str = "",
+    features_subdir: str = "",
+    repo_dir: str = "",
+) -> OkfDetection:
+    """Are this run's docs managed by an OKF graph, so documenting the story means anything?
+
+    The cheap pre-gate in front of an agent turn. The coder runs against many repos and most
+    do not use ostler; `yes` needs both a sign the repo is managed — a config file, or one of
+    the trees ostler owns — and a graph that actually loads. Everything semantic (which
+    surfaces the story touched, whether it touched any) is the author's.
+    """
+    base = Path(find_docs_root(docs_path, repo_dir))
+    sub = Path(features_subdir) if features_subdir else None
+    if sub is None:
+        requested = okf_path.features_root_in(base)
+    else:
+        requested = sub if sub.is_absolute() else base / sub
+
+    configured = False
+    for name in CONFIG_FILES:
+        path = base / name
+        if not path.is_file():
+            continue
+        if name.startswith("ostler"):
+            configured = True
+            break
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("organization"), dict):
+            configured = True
+            break
+
+    managed_tree = any(
+        path.is_dir()
+        for path in (requested, *(okf_path.doc_root_in(base, kind) for kind in MANAGED_KINDS))
+    ) or (base / ".agents/templates.yml").is_file()
+    if not configured and not managed_tree:
+        logger.info("no OKF configuration or features at %s", base)
+        return OkfDetection(has_okf="no", reason="no OKF configuration or features tree")
+
+    okf = Ostler(base)
+    try:
+        _ = okf.graph
+    except (OSError, ValueError, RuntimeError):
+        logger.error("OKF configuration exists but the graph did not load at %s", base)
+        return OkfDetection(
+            has_okf="invalid",
+            features_root=str(requested),
+            reason="OKF configuration exists but the graph did not load",
+        )
+    features = okf.graph.doc_roots.get("features") or requested
+    logger.info("ostler graph loaded and %s exists — has OKF docs", features)
+    return OkfDetection(
+        has_okf="yes",
+        features_root=str(features),
+        reason=f"ostler graph loaded and {features} exists",
+    )
+
+
+@blueprint.node
+def classify_documentation_context(
+    logger: logging.Logger,
+    docs_path: str = "",
+    source_roots: tuple[str, ...] = (),
+    repo_dir: str = "",
+) -> ContextClassification:
+    """Deterministic local diff mapping, or semantic multi-repo review?
+
+    `local` needs every affected source root to live inside the docs repo's own git worktree,
+    because that is the only case where a diff can be mapped onto the graph mechanically. One
+    root outside it — or a docs root that is not a worktree at all — and the mapping would be
+    partial, which is worse than absent: it would ground some changed units and silently
+    leave the rest unchecked. So the whole gate falls back to doctor plus an independent
+    review turn instead.
+
+    The returned roots are re-expressed relative to the worktree, which is what
+    `ostler qa context` wants.
+    """
+    docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
+    try:
+        worktree = Path(open_repo(docs_root).working_tree_dir).resolve()
+    except (GitError, OSError, TypeError, ValueError, RuntimeError):
+        worktree = None
+
+    normalized: list[str] = []
+    external: list[str] = []
+    for raw in source_roots:
+        surface, separator, source = str(raw).partition("=")
+        if not separator or not surface.strip() or not source.strip():
+            continue
+        path = Path(source).resolve()
+        if worktree is None or not path.is_relative_to(worktree):
+            external.append(str(path))
+            continue
+        normalized.append(f"{surface.strip()}={path.relative_to(worktree).as_posix() or '.'}")
+
+    mode = "local" if worktree is not None and normalized and not external else "semantic"
+    notes = (
+        "All affected source roots share the docs Git worktree; deterministic diff mapping "
+        "enabled."
+        if mode == "local"
+        else "Affected sources span repositories or the docs root is not a Git worktree; "
+        "doctor plus independent semantic review is authoritative."
+    )
+    logger.info("documentation context mode=%s", mode)
+    return ContextClassification(mode=mode, source_roots=normalized, notes=notes)
+
+
+@blueprint.node
+def verify_story_documentation(
+    logger: logging.Logger,
+    docs_path: str = "",
+    spec_dir: str = "",
+    author_status: str = "blocked",
+    build_status: str = "invalid",
+    validation_status: str = "invalid",
+    context_mode: str = "local",
+    author_nodes: tuple[str, ...] = (),
+    repo_dir: str = "",
+) -> DocumentationGate:
+    """Fail-closed conformance and direct-grounding gate over one story's OKF update.
+
+    Four things have to hold, and every failure is collected rather than short-circuited so
+    the author's rework brief names all of them at once:
+
+    1. the author reports `documented` or `not_required`, and a `documented` claim names the
+       nodes it touched;
+    2. in local mode, the packet was built and validated;
+    3. every changed production unit in the packet is *directly* grounded — its symbols
+       carry exact `path::symbol` reasons, or the file itself is owned. Broad surface
+       ownership is not coverage, and this is the check the whole gate exists for. It
+       reports the ungrounded **references**, since those are what it tests and what the
+       author must write back verbatim;
+    4. `ostler doctor` reports no errors on any node this story affected.
+    """
+    docs_root = Path(find_docs_root(docs_path, repo_dir))
+    nodes = [str(node) for node in author_nodes]
+
+    problems: list[str] = []
+    if author_status not in {"documented", "not_required"}:
+        problems.append(f"documentation author status is {author_status!r}")
+    if author_status == "documented" and not nodes:
+        problems.append("documentation author did not identify affected OKF nodes")
+    if context_mode == "local" and build_status != "passed":
+        problems.append("diff-to-OKF context generation did not pass")
+    if context_mode == "local" and validation_status != "passed":
+        problems.append("diff-to-OKF context validation did not pass")
+
+    packet: dict[str, Any] = {}
+    if context_mode == "local":
+        spec = Path(spec_dir)
+        packet_path = (spec if spec.is_absolute() else docs_root / spec) / CONTEXT_FILE
+        loaded = load_json(packet_path, CONTEXT_FILE, logger)
+        if isinstance(loaded, dict) and loaded:
+            packet = loaded
+        else:
+            problems.append(f"cannot read {packet_path}")
+
+    exactly_grounded, file_grounded = _grounded_paths(packet)
+    ungrounded: list[str] = []
+    for change in packet.get("changedCode", []):
+        if not isinstance(change, dict):
+            continue
+        base_path = str(change.get("basePath", ""))
+        head_path = str(change.get("headPath", ""))
+        candidates = {str(change.get("path", "")), base_path, head_path} - {""}
+        base_symbols = set(change.get("baseSymbols", []))
+        head_symbols = set(change.get("headSymbols", []))
+        required = {
+            *(f"{base_path}::{symbol}" for symbol in base_symbols if base_path),
+            *(f"{head_path}::{symbol}" for symbol in head_symbols if head_path),
+        }
+        if base_symbols | head_symbols:
+            ungrounded.extend(sorted(required - exactly_grounded))
+        elif candidates.isdisjoint(
+            {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
+        ):
+            ungrounded.append(str(change.get("path", "<unknown>")))
+    if ungrounded:
+        # The *references*, not the files they live in. This gate checks symbols but used
+        # to report paths, which made it a loop the author could not exit: it burned every
+        # rework pass adding plausible bullets to a file that was already half-grounded,
+        # was told the same eight filenames each time, and failed with the same complaint.
+        # Naming the missing refs also settles their spelling, which is the other half of
+        # the trap — ostler's inventory writes a Go method as `(*Type).Method`, an author
+        # writing the natural `Type.Method` grounds nothing, and nothing in a path-level
+        # message could ever have revealed that.
+        problems.append(
+            f"{len(ungrounded)} changed production symbol(s) are not directly grounded. "
+            "Add a `code:` bullet naming each of these exactly as written here: "
+            + ", ".join(ungrounded)
+        )
+
+    okf: Ostler | None = None
+    try:
+        okf = Ostler(docs_root)
+        report = okf.doctor()
+    except (OSError, ValueError, RuntimeError) as exc:
+        report = {}
+        problems.append(f"ostler doctor could not run: {exc}")
+    affected = _affected_doc_nodes(packet, nodes)
+    # `okf` is None only when its construction raised, and then `report` is empty and the
+    # comprehension never reaches the call.
+    doctor_errors = [
+        finding
+        for finding in report.get("findings", [])
+        if isinstance(finding, dict)
+        and finding.get("severity") == "error"
+        and not (context_mode == "semantic" and finding.get("code") in SEMANTIC_SUPPRESSED)
+        and _finding_affects_nodes(okf, finding, affected)
+    ]
+    if doctor_errors:
+        problems.append(
+            "ostler doctor errors: "
+            + " | ".join(
+                f"{item.get('path') or item.get('ref') or '<graph>'}:"
+                f"{item.get('line') or 0} [{item.get('code', '?')}] {item.get('message', '')}"
+                for item in doctor_errors
+            )
+        )
+
+    changed = len(packet.get("changedCode", []))
+    if problems:
+        notes = "; ".join(problems)
+        logger.warning("story documentation invalid: %s", notes)
+        return DocumentationGate(
+            status="invalid",
+            notes=notes,
+            changed_code_count=changed,
+            doctor_error_count=len(doctor_errors),
+        )
+    notes = (
+        f"Affected documentation is conformant; {changed} changed production unit(s) have "
+        "direct OKF grounding."
+    )
+    logger.info(notes)
+    return DocumentationGate(status="passed", notes=notes, changed_code_count=changed)
+
+
+__all__ = [
+    "classify_documentation_context",
+    "detect_okf_docs",
+    "verify_story_documentation",
+]

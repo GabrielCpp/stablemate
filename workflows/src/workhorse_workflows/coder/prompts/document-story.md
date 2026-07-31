@@ -43,11 +43,17 @@ the linter rules; obey it. The reference for the type table and bullets is the
    the diff proves otherwise. **Grounding is still owed** — go to step 3.
 3. **Ground every changed production file, whatever you concluded in step 2.** A
    deterministic gate runs after you and maps the diff onto the graph: each changed
-   production unit must be owned *directly* — its changed symbols named as `path::symbol` in
-   some node's `code:` bullet, or, for a file with no symbols the inventory can see (a config
-   or manifest), the file path itself. A node that describes the behavior in prose but does
-   not name the file does not own it; that is the "broad surface ownership" the gate refuses,
-   and it is the one thing this gate exists to catch.
+   production unit must be owned *directly* — **every** one of its changed symbols named as
+   `path::symbol` in some node's `code:` bullet, or, for a file with no symbols the
+   inventory can see (a config or manifest), the file path itself. A node that describes the
+   behavior in prose but does not name the file does not own it; that is the "broad surface
+   ownership" the gate refuses, and it is the one thing this gate exists to catch.
+
+   If a previous pass's gate notes are above, they list the still-ungrounded references
+   individually. **Copy each one verbatim** — the spelling is the inventory's, not yours,
+   and a symbol renamed on the way into a bullet grounds nothing. A Go method, for example,
+   is `path.go::(*Type).Method`, not `path.go::Type.Method`. Grounding a file the notes
+   never mentioned, or half its symbols, spends a rework pass and changes nothing.
 
    So a config-only story is normal work, not a no-op: find the node that already describes
    that behavior — the gate notes above name the unowned path — and add the `code:` bullet

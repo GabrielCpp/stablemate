@@ -519,7 +519,8 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_context.add_argument("--base", required=True)
     qa_context.add_argument("--head", default="WORKTREE")
     qa_context.add_argument("--spec", required=True, type=Path)
-    qa_context.add_argument("--features-root", default="docs/features")
+    qa_context.add_argument("--features-root", default="",
+                            help="repo-relative feature book; default: as configured")
     qa_context.add_argument(
         "--source-root",
         action="append",

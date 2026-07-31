@@ -58,6 +58,7 @@ AMBIENT = {
     "prompt_file",
     "prompt_ref",
     "instruction_refs",
+    "find_by_tags",
     "instruction_files",
     "skill_files",
     "prompt_refs",
@@ -94,7 +95,7 @@ def _keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | N
     """The keys the expression an `args=` was given resolves to, or `None` if unreadable.
 
     Three shapes reach it, and all three are load-bearing. A literal `{…}` is the common one.
-    A local `args` variable is how `coder/flows/qa.py::_apply_fixes` adds `operator_feedback`
+    A local `args` variable is how `coder/qa/flow.py::_apply_fixes` adds `operator_feedback`
     conditionally — the plain fix path's YAML args did not carry the key at all — and reading
     only the literal would report that omission as a hole in the prompt. `self._helper(…)` is
     how `research/workflow.py` shares the program triple across a dozen turns.

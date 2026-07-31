@@ -17,7 +17,7 @@ returns for real.
 """
 from __future__ import annotations
 
-from workhorse_workflows.okf_builder.schemas import (
+from workhorse_workflows.okf_builder.shared.schemas import (
     AppBoot,
     BrowserBoot,
     Checkpoint,

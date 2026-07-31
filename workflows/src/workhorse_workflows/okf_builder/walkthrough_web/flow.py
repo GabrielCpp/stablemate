@@ -32,7 +32,7 @@ Divergences from the YAML, all deliberate:
   round is a parameter of `checkpoint` here, so it starts at 0 by construction.
 * `refuel: done_count` on `select_wt` has no counterpart: pyflow has no gas tank, and the
   transition budget is what bounds the machine. The drain costs four transitions per item.
-* the two boot scripts' `--teardown` sentinel is gone (see `nodes/stack.py`).
+* the two boot scripts' `--teardown` sentinel is gone (see `walkthrough_web/nodes/stack.py`).
 * `select_wt` was called without `done_baseline`, so its `max_items` cap counted `done`
   over the whole file — a *lifetime* cap, not a per-run one, unlike the main graph's.
   Preserved exactly: this call passes no baseline either. It is a real difference between
@@ -41,18 +41,17 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow
-from workhorse_workflows.okf_builder.nodes import (
+from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
+from workhorse_workflows.okf_builder.shared.schemas import WalkTurn, WebApp
+from workhorse_workflows.okf_builder.shared.worklist import record, select_item
+from workhorse_workflows.okf_builder.walkthrough_web.nodes import (
     boot_app,
     boot_browser,
-    checkpoint_book,
     detect_webapp,
-    record,
     seed_walkthrough,
-    select_item,
     teardown_app,
     teardown_browser,
 )
-from workhorse_workflows.okf_builder.schemas import WalkTurn, WebApp
 
 #: How many fixup re-drains the walk gets before it gives up and reaps the app. Lower than
 #: the build's own bound on purpose — the app is up and costing something while this loops.
@@ -68,7 +67,8 @@ class WalkthroughWeb(Workflow):
     is re-derived from the book.
     """
 
-    #: Which `docs/features/<service>` book to walk. `null` in the YAML's `vars`, `""`
+    #: Which `<features-root>/<service>` book to walk — ostler resolves the features root,
+    #: so a repo that moved it is followed. `null` in the YAML's `vars`, `""`
     #: here, because an input is typed — a walk with no service detects no app and skips.
     service: str = ""
     #: The docs repo root; `""` walks up from `repo_dir` via `find_docs_root`.

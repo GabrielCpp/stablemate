@@ -30,7 +30,7 @@ def _queued_as(names: list[str], name: str) -> str | None:
 
 
 def _index_path(graph: Graph) -> Path:
-    return graph.doc_roots["epics"] / "index.md"
+    return path_mod.epics_index(graph)
 
 
 def list_epics(graph: Graph) -> list[str]:

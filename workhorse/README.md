@@ -161,10 +161,16 @@ state. References built from a computed argument can't be seen statically; those
 
 Only *required* references are reported. A prompt that enumerates the skills for every
 stack a workflow has ever met is naming a menu, not a dependency — a Go repo must not be
-told to read a Flutter skill, and must not fail preflight for not having one. Two ways to
-say so:
+told to read a Flutter skill, and must not fail preflight for not having one. Three ways
+to say so:
 
 ```jinja
+{# by capability: whichever skills carry ALL of these tags, whatever they are called #}
+{%- set web_tests = find_by_tags("web", "tests") %}
+{%- if web_tests %}
+- How this repo writes web tests: {{ web_tests }}
+{%- endif %}
+
 {# plural: render whichever of these the repo installed, drop the rest #}
 {%- set web = instruction_refs("react-router", "react-router-qa", "flutter", "pulumi") %}
 {%- if web %}
@@ -174,6 +180,15 @@ say so:
 {# or guard a whole branch on one skill #}
 {% if isUsingInstruction("flutter") %}{{ instruction_ref("flutter-testing") }}{% endif %}
 ```
+
+`find_by_tags(...)` takes **tags**, not names: each installed skill's `tags:` front matter
+rides the manifest, and a skill matches only if it carries every tag asked for (AND — a
+second tag narrows). It renders the matches the same way `instruction_refs` renders its
+survivors, sorted so a regenerated manifest doesn't reshuffle the prompt, and returns the
+**empty string** when nothing matches or nothing is asked. Asking is what a workflow that
+ships to unknown repos can honestly do: the name of the skill teaching a subject is the
+repo's business, the subject is not. Its arguments are never preflight findings either —
+they name a capability, not a file, so "absent" is an answer rather than a defect.
 
 `instruction_refs(...)` (aliases `instruction_files`/`skill_files`, and `prompt_refs`/
 `prompt_files` for prompts) takes any number of names — or one list — resolves each,

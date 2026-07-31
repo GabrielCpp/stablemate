@@ -40,6 +40,7 @@ same workflows against a different backlog and stack.
     bench.py --spec todo-app/bench.yml coder     implement every story                (hours)
     bench.py --spec todo-app/bench.yml all       the three above, in order
     bench.py --spec todo-app/bench.yml status    what exists so far
+    bench.py --spec todo-app/bench.yml watch     is the RUNNING run progressing?      (free)
     bench.py --spec todo-app/bench.yml score     THE SCORECARD: quality + reliability
     bench.py --spec todo-app/bench.yml reset     delete the target and start clean
 
@@ -48,6 +49,15 @@ modes, and you almost never want to redo an earlier one to retry a later one. Th
 idempotent by construction — genesis keys each skeleton step on that *service's* marker
 file — so a failed run is resumed by re-running the same command, which is the property
 that makes a benchmark worth having.
+
+**Two sizes of benchmark, for two different jobs.** `todo-app` is the full one: four
+surfaces, seventeen bullets, hours per run, and the only one whose score means "how good
+are these workflows". It is far too slow to *debug* with — a defect in the coder's fifth
+node costs most of a day to reach twice. So the specs under `tasks/` exist alongside it:
+one or two surfaces, a handful of bullets, a cheap model tier pinned in the spec and a
+wall-clock budget, sized so a whole genesis→author→coder chain lands inside an hour.
+Their scores are not comparable to todo-app's and are not meant to be; what they produce
+is *failures, quickly*, which is the input a fix cycle actually runs on.
 """
 
 from __future__ import annotations
@@ -66,8 +76,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import tomli_w
 import yaml
 
+from stablemate_core.config import load_config
 # The judge runs on whatever agent CLI the rest of the workspace runs on — `AGENT_CLI`
 # picks the backend, and workhorse's cap classification/sleep helpers are reused so a
 # benchmark left overnight behaves like a workflow left overnight. Imported at module
@@ -84,7 +96,12 @@ from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 HERE = Path(__file__).resolve().parent
 STABLEMATE = HERE.parent
-WORKFLOWS = STABLEMATE / "base-library" / "workflows"
+# A workflow is an installed distribution resolved by name through the
+# `workhorse.workflows` entry-point group, so there is no per-workflow directory to run
+# from any more (`base-library/workflows/<name>` was deleted with the YAML engine). Runs
+# are launched from the workspace root, which is all `uv run` needs; the source tree is
+# still located, but only to date the code a run was produced by — see `read_runs`.
+WORKFLOW_SRC = STABLEMATE / "workflows" / "src" / "workhorse_workflows"
 
 # ── The rubric. One definition, used by the prompt, the parser, and the report. ────────
 LEVELS = {
@@ -147,6 +164,12 @@ class Spec:
     repo: dict = field(default_factory=dict)
     checks: list[dict] = field(default_factory=list)
     judge: dict = field(default_factory=dict)
+    #: Wall-clock ceiling per phase, in seconds (`budget: {author: 1800, coder: 2400}`).
+    #: Absent or 0 for a phase means unbounded, which is the old behavior.
+    budget: dict = field(default_factory=dict)
+    #: A `power.<level>.<backend>` overlay for the runs this spec drives — the tier the
+    #: benchmark is *meant* to be run at, as spec data rather than machine state.
+    power: dict = field(default_factory=dict)
 
     @property
     def logs(self) -> Path:
@@ -211,6 +234,8 @@ def load_spec(path: Path) -> Spec:
         repo=raw.get("repo") or {},
         checks=raw.get("checks") or [],
         judge=raw.get("judge") or {},
+        budget=raw.get("budget") or {},
+        power=raw.get("power") or {},
     )
 
 
@@ -255,6 +280,59 @@ def preflight(spec: Spec, phase: str) -> None:
         raise SystemExit(1)
 
 
+def effective_config(spec: Spec) -> Path:
+    """Write the config this spec's runs see: the operator's, with `spec.power` overlaid.
+
+    A node asks for an abstract tier (``power="high"``), and the operator's
+    ``~/.config/stablemate/config.toml`` decides what that costs. That is right for real
+    work and wrong for a benchmark: which model ran is the single biggest term in both
+    the score and the wall-clock, so leaving it to whatever the machine happens to be
+    configured with makes two runs incomparable and makes "finishes in an hour" a
+    property of the laptop rather than of the spec.
+
+    So the tier is spec data. It is *overlaid* rather than replacing the file, because
+    the rest of that config is machine truth this process cannot invent — ``library_dir``,
+    ``stablemate_dir``, ``[harness.*]`` credentials-adjacent knobs — and ``load_config``
+    deliberately does not merge: an explicit ``$STABLEMATE_CONFIG`` means *this file and
+    no other*. Overlaying and writing a whole file is what makes that isolation usable
+    without also mutating the operator's own config, which a benchmark must never do.
+    """
+    data = load_config()
+    merged = {**data.get("power", {})}
+    for level, backends in spec.power.items():
+        merged[level] = {**merged.get(level, {}), **backends}
+    out = spec.logs / "config.toml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(tomli_w.dumps({**data, "power": merged}), encoding="utf-8")
+    return out
+
+
+def phase_env(spec: Spec, phase: str, budget_s: float | None = None) -> dict[str, str]:
+    """The environment one phase's workflow run is launched with.
+
+    Three things, and each is a benchmark property rather than an operator preference:
+    which repo the agent works in, which model tier it runs at, and how long it is
+    allowed to take. The budget is enforced by workhorse itself
+    (``WORKHORSE_MAX_RUNTIME_S``), which checks it *between* states — so an over-budget
+    run stops at a node boundary with its checkpoint and artifacts intact, and can be
+    scored and resumed. That is the difference between a time limit and a `kill`.
+
+    ``budget_s`` overrides the spec's figure for one invocation, and exists because of
+    how the ceiling is anchored: workhorse counts it from the *original* ``started_at``
+    (`records.RunRecord`), so a run that already spent its budget meets an expired
+    deadline on the resume's first transition check and stops without doing any work.
+    Resuming an over-budget run therefore means passing a *larger total*, not the same
+    one again — see ``--budget``.
+    """
+    env = {"AGENT_REPO_DIR": str(spec.target)}
+    if spec.power:
+        env["STABLEMATE_CONFIG"] = str(effective_config(spec))
+    budget = float(spec.budget.get(phase) or 0) if budget_s is None else budget_s
+    if budget > 0:
+        env["WORKHORSE_MAX_RUNTIME_S"] = str(budget)
+    return env
+
+
 def run_logged(cmd: list[str], cwd: Path, log: Path, env: dict[str, str] | None = None) -> int:
     """Run a workflow, streaming its output to the console and to ``log`` at once.
 
@@ -284,7 +362,8 @@ def cmd_genesis(spec: Spec) -> None:
         rc = run_logged(
             ["uv", "run", "workhorse", "run", "coder", "genesis",
              "--runs-dir", str(spec.artifacts), "--params", spec.params(svc)],
-            cwd=WORKFLOWS / "coder", log=spec.logs / f"genesis-{svc}.log",
+            cwd=STABLEMATE, log=spec.logs / f"genesis-{svc}.log",
+            env=phase_env(spec, "genesis"),
         )
         if rc != 0:
             die(f"genesis failed for surface {svc!r} (exit {rc}) — see {spec.logs}/genesis-{svc}.log")
@@ -309,30 +388,69 @@ def cmd_backlog(spec: Spec) -> None:
     say(f"seeded {spec.backlog} ({len(parse_backlog(src))} bullets)")
 
 
-def cmd_author(spec: Spec) -> None:
+def resume_flags(spec: Spec, phase: str, resume: bool) -> list[str]:
+    """``--resume-latest``, once there is something to resume.
+
+    The two workflow phases are *not* idempotent the way genesis is. Genesis keys each
+    skeleton step on that service's marker file, so re-running it re-derives where it got
+    to; author and coder instead carry their position in a checkpoint, and a bare re-run
+    opens a **new** run directory and starts from the first node. Repeating the command
+    after a crash therefore redoes the work rather than continuing it — which is why this
+    is an explicit flag and not a default.
+
+    Guarded on an existing run because ``--resume-latest`` errors when it finds no
+    unfinished run, and a benchmark whose resume switch is fatal on a clean target is one
+    you cannot put in a script.
+    """
+    if not resume:
+        return []
+    if not any(spec.artifacts.glob(f"{phase}-*/run.json")):
+        die(f"--resume: no {phase} run under {spec.artifacts} to resume")
+    return ["--resume-latest"]
+
+
+def phase_rc(phase: str, rc: int, log: Path) -> int:
+    """Report a workflow phase's exit code, and hand it back for the caller to propagate.
+
+    Not `die`: a workflow that failed left a run dir with a checkpoint in it, and the next
+    move is to read the log and resume rather than to treat the phase as an abort. But it
+    must not be *silent* either — a benchmark harness that exits 0 on a failed run is the
+    one bug that discredits every number it prints, and it also lets `all` start `coder`
+    against epics `author` never finished writing.
+    """
+    if rc != 0:
+        print(f"{RED}  {phase} failed (exit {rc}) — see {log}{RESET}")
+    return rc
+
+
+def cmd_author(spec: Spec, *, resume: bool = False, budget_s: float | None = None) -> int:
     preflight(spec, "author")
     if not (spec.target / spec.backlog).is_file():
         die(f"no backlog at {spec.target / spec.backlog} — run genesis first")
-    say("author → epics + stories")
-    run_logged(
+    say("author → epics + stories" + (" (resuming)" if resume else ""))
+    log = spec.logs / "author.log"
+    return phase_rc("author", run_logged(
         ["uv", "run", "workhorse", "run", "author", "--runs-dir", str(spec.artifacts),
+         *resume_flags(spec, "author", resume),
          "--params", json.dumps({"backlog": spec.backlog})],
-        cwd=WORKFLOWS / "author", log=spec.logs / "author.log",
-        env={"AGENT_REPO_DIR": str(spec.target)},
-    )
+        cwd=STABLEMATE, log=log,
+        env=phase_env(spec, "author", budget_s),
+    ), log)
 
 
-def cmd_coder(spec: Spec) -> None:
+def cmd_coder(spec: Spec, *, resume: bool = False, budget_s: float | None = None) -> int:
     preflight(spec, "coder")
     if not (spec.target / "docs" / "epics" / "index.md").is_file():
         die("no epic queue — run author first")
-    say("coder → implementation")
-    run_logged(
+    say("coder → implementation" + (" (resuming)" if resume else ""))
+    log = spec.logs / "coder.log"
+    return phase_rc("coder", run_logged(
         ["uv", "run", "workhorse", "run", "coder", "--runs-dir", str(spec.artifacts),
+         *resume_flags(spec, "coder", resume),
          "--params", json.dumps({"docs_path": str(spec.target)})],
-        cwd=WORKFLOWS / "coder", log=spec.logs / "coder.log",
-        env={"AGENT_REPO_DIR": str(spec.target)},
-    )
+        cwd=STABLEMATE, log=log,
+        env=phase_env(spec, "coder", budget_s),
+    ), log)
 
 
 def cmd_reset(spec: Spec) -> None:
@@ -354,6 +472,225 @@ def cmd_status(spec: Spec) -> None:
     print(f"  backlog:  {len(parse_backlog(spec.target / spec.backlog))} bullet(s)")
     print(f"  epics:    {len(find_epics(spec.target))}")
     print(f"  stories:  {len(list(spec.target.glob('docs/epics/*/stories/*/story.md')))}")
+
+
+def last_activity(spec: Spec) -> tuple[float, str] | None:
+    """(seconds since the run last wrote anything, and what it wrote); None if nothing has.
+
+    The liveness signal a babysitter actually needs. A workflow that is working writes
+    node output and appends to events.jsonl continuously, so silence is the one symptom
+    common to every way a run can stop making progress — a wedged subprocess, an agent
+    turn that will never return, a state loop with no side effects — none of which show
+    up as a non-zero exit, because the process is still there.
+    """
+    newest, what = 0.0, ""
+    for path in spec.logs.glob("**/*"):
+        if not path.is_file():
+            continue
+        mtime = path.stat().st_mtime
+        if mtime > newest:
+            newest, what = mtime, str(path.relative_to(spec.logs))
+    # "no run has written anything" and "the run went quiet" are opposite verdicts —
+    # the first is nothing started, the second is something stopped — so they must not
+    # arrive at the caller as the same zero.
+    return (max(0.0, time.time() - newest), what) if newest else None
+
+
+def waiting_on_cap(spec: Spec) -> str | None:
+    """The cap-pause line a log ends on, if it does — silence that is *not* a stall.
+
+    Workhorse sleeps out a usage cap by design and a node on a cap ceiling must never be
+    disturbed, so cap-wait looks exactly like a hang from the outside and has to be ruled
+    out before anything is called stuck. It is ruled out by reading, not inferred from
+    duration: the pause line names the node and the length.
+    """
+    logs = [p for p in spec.logs.glob("*.log") if p.is_file()]
+    if not logs:
+        return None
+    newest = max(logs, key=lambda p: p.stat().st_mtime)
+    tail = newest.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+    for line in reversed(tail):
+        if "⏸" in line:
+            return line.strip()
+        if line.strip():
+            # Something was said after the last pause line, so the pause is over.
+            return None
+    return None
+
+
+def cmd_watch(spec: Spec, *, silence_s: float, live_only: bool = False) -> int:
+    """One glance at a live run: is it progressing, churning, stalled, or on stale code.
+
+    Separate from `score` because the questions are asked at different times and cost
+    different amounts. `score` is the verdict on a finished run and spends agent turns to
+    reach it. This is the babysitter's poll — structural, free, safe to run every minute
+    against a run in flight — and its exit code is the whole point: non-zero means
+    something needs a human, so it composes with a wait loop instead of being read.
+
+    `live_only` is what makes that composition work, and all it does is demote the
+    staleness row. A run that predates the current workflow source is worth saying out
+    loud — it is why its score cannot be trusted — but it is not a thing that needs a
+    human *now*, and it never stops being true: editing the workflow to fix today's
+    defect is itself what makes every earlier run stale. A loop that treats it as a
+    problem returns on its first poll, every time, after every fix. Nor is there a live
+    run hiding in that row to rescue it: a run still writing keeps its events file newer
+    than the source no matter when it started, and a run wedged on genuinely old code is
+    already the silence check's to report. The other three rows are all about the run in
+    flight, so the loop waits on those and prints this one as context.
+    """
+    say(f"watch {spec.path.parent.name}")
+    problems: list[str] = []
+
+    stories = list(spec.target.glob("docs/epics/*/stories/*/story.md"))
+    done = [s for s in stories if is_done(frontmatter(s).get("status", ""))]
+    print(f"  progress: {len(find_epics(spec.target))} epic(s), {len(done)}/{len(stories)} "
+          f"story(ies) done, {git_commits(spec.target)} commit(s)")
+
+    activity = last_activity(spec)
+    cap = waiting_on_cap(spec)
+    if activity is None:
+        print(f"  liveness: — no run has written to {spec.logs} yet")
+    elif cap:
+        print(f"  liveness: quiet {activity[0] / 60:.0f}m — on a usage cap, which is healthy:\n"
+              f"            {cap}")
+    elif activity[0] >= silence_s:
+        quiet, what = activity
+        problems.append(f"nothing written for {quiet / 60:.0f}m (last: {what})")
+        print(f"  liveness: ✗ SILENT for {quiet / 60:.0f}m — last write was {what}")
+    else:
+        print(f"  liveness: ✓ wrote {activity[1]} {activity[0] / 60:.0f}m ago")
+
+    churn = churn_candidates(spec)
+    if churn:
+        problems.append(f"{len(churn)} repeating node cycle(s)")
+        print("  churn:    ✗ repeating cycles")
+        for c in churn[:5]:
+            print(f"              {' → '.join(c['cycle'])}  x{c['repeats']}  in {c['where']}")
+    else:
+        print("  churn:    ✓ no node cycle repeats back-to-back")
+
+    hangs = [n for n in hang_candidates(spec) if n["hang"]]
+    if hangs:
+        problems.append(f"{len(hangs)} node(s) over the active-time threshold")
+        for n in hangs[:5]:
+            print(f"  stall:    ✗ {n['node']} averages {n['active_per_run'] / 60:.0f}m ACTIVE per run")
+    else:
+        print("  stall:    ✓ no leaf node is over the active-time threshold")
+
+    runs = read_runs(spec)
+    stale = [r["run"] for r in runs if r["stale"]]
+    if stale:
+        if not live_only:
+            problems.append(f"{len(stale)} run(s) predate the workflow source")
+        print(f"  code:     {'·' if live_only else '✗'} {', '.join(stale)} predate the "
+              f"current workflow source{' (context, not a fault)' if live_only else ''}")
+    elif runs:
+        print(f"  code:     ✓ all {len(runs)} run(s) postdate the workflow source")
+    else:
+        print("  code:     — no runs recorded")
+
+    if problems:
+        print(f"\n{RED}  needs attention: {'; '.join(problems)}{RESET}")
+        return 1
+    print("\n  ✓ healthy")
+    return 0
+
+
+def run_outcome(run_dir: Path) -> tuple[str, str]:
+    """How a run ended, as `(verdict, detail)`, or `("", "")` while it is still open.
+
+    Two fields on `run.json` say "over", and they mean different things. `terminal` is a
+    *verdict*: the workflow reached an end state and `writer.finish` stamped which one.
+    `interrupted_at` (with `terminal` still null) is a *stop*: the process ended between
+    states without deciding anything — Ctrl-C, or the `WORKHORSE_MAX_RUNTIME_S` budget
+    tripping as `RunBudgetExceeded`. Reading only the first is what made a budget stop
+    invisible here: the run is finished, the process is gone, and `babysit` would have
+    polled on to its ceiling waiting for a `terminal` that is deliberately never coming.
+
+    A stop is not sticky: `writer.resume` rewrites `run.json` without the stamp, so a run
+    that has been picked back up reads as open again rather than settling forever.
+    """
+    try:
+        data = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "", ""
+    if terminal := str(data.get("terminal") or ""):
+        return terminal, ""
+    if data.get("interrupted_at"):
+        return "stopped", str(data.get("error") or "no reason recorded")
+    return "", ""
+
+
+def settled_run(spec: Spec) -> tuple[str, str, str] | None:
+    """`(run name, verdict, detail)` of the newest run that has ended; None while one is open.
+
+    Workhorse writes the outcome into a run's `run.json` as the process exits, so a run
+    that is over says so on disk. That is what a wait loop needs and what a log tail is a
+    bad substitute for: the log's last line is whatever was printed, which is also what it
+    looks like the instant before the next line is printed.
+    """
+    newest, record = 0.0, None
+    for run in spec.artifacts.glob("*/run.json"):
+        mtime = run.stat().st_mtime
+        if mtime > newest:
+            newest, record = mtime, (run.parent.name, *run_outcome(run.parent))
+    return record if record and record[1] else None
+
+
+def cmd_babysit(spec: Spec, *, silence_s: float, every_s: float, ceiling_s: float) -> int:
+    """Poll `watch` until the run needs a human, finishes, or outlives its ceiling.
+
+    `watch` answers "is it healthy *now*" and composes by exit code; this is the loop that
+    was meant to close over it. The point is not automation for its own sake — it is that
+    a babysitter who polls by hand pays a turn per poll and still misses the failure by
+    however long the last interval was, while a loop that blocks costs one turn total and
+    returns the moment the picture changes.
+
+    Three exits, deliberately distinct, because they call for different next moves:
+    0 the run ended on its own terms (read `score`), 1 something needs a human (read the
+    report the loop just printed), 2 the ceiling ran out with the run still open (nothing
+    is known to be wrong — decide whether to keep waiting).
+
+    A finished run must be *seen twice* before the loop believes it. `all` runs three
+    phases back to back, so an ended newest run is equally consistent with "the chain is
+    over" and "genesis just ended and author is a second from starting" — and one poll
+    apart is enough to tell those apart, while one poll is not.
+    """
+    say(f"babysit {spec.path.parent.name} — polling every {every_s / 60:.0f}m")
+    deadline = time.time() + ceiling_s
+    seen: str | None = None
+    while True:
+        if cmd_watch(spec, silence_s=silence_s, live_only=True):
+            print(f"\n{RED}  babysit: stopping — the run needs a human{RESET}")
+            return 1
+
+        settled = settled_run(spec)
+        if settled and settled[0] == seen:
+            run, verdict, detail = settled
+            if verdict == "fail":
+                print(f"\n{RED}  babysit: {run} ended on the fail terminal{RESET}")
+                return 1
+            if verdict == "stopped":
+                # Exit 1, not 0: the run decided nothing, so there is no result to score
+                # — but its checkpoint is good, which is the whole reason the stop does
+                # not stamp a terminal. This is the exit that means read, fix, resume.
+                print(f"\n{RED}  babysit: {run} stopped without a verdict — {detail}{RESET}")
+                phase = run.split("-")[0]
+                # genesis is marker-keyed and re-runs rather than resuming, so pointing at
+                # `--resume` there would name a flag that refuses the phase.
+                print(f"  continue it with: bench.py --spec {spec.path} {phase}" + (
+                    " --resume --budget <more than the run already spent>"
+                    if phase in ("author", "coder") else ""))
+                return 1
+            print(f"\n  babysit: {run} ended ({verdict}) and nothing followed it — done")
+            return 0
+        seen = settled[0] if settled else None
+
+        if time.time() >= deadline:
+            print(f"\n  babysit: {ceiling_s / 60:.0f}m ceiling reached with the run still "
+                  f"open — healthy at the last poll, so this is a choice, not a fault")
+            return 2
+        time.sleep(every_s)
 
 
 def git_commits(target: Path) -> int:
@@ -473,10 +810,21 @@ def read_runs(spec: Spec) -> list[dict]:
     # success it exists to detect, one level up: a run once aborted with exit 127 before
     # doing anything, the previous run's artifacts were still on disk, and the report
     # scored them without complaint. Newest workflow-source mtime vs each run's own.
+    #
+    # The globs used to be `workflow.yaml` / `scripts/*.py` / `prompts/*.md` under
+    # `base-library/workflows/*` — the YAML engine's layout, deleted with it. They matched
+    # nothing, `newest_src` fell to its 0.0 default, and `bool(newest_src)` turned every
+    # staleness verdict to False: the check that exists to stop a benchmark reporting on
+    # code that no longer exists had itself gone stale, silently and in exactly the way it
+    # was written to catch. Which is why it is now measured off a directory whose absence
+    # is loud rather than a glob whose emptiness is not.
+    if not WORKFLOW_SRC.is_dir():
+        die(f"no workflow source at {WORKFLOW_SRC} — bench.py is out of date with the tree")
     newest_src = max(
         (f.stat().st_mtime
-         for pat in ("workflow.yaml", "scripts/*.py", "prompts/*.md")
-         for f in WORKFLOWS.glob(f"*/{pat}")),
+         for pat in ("**/*.py", "**/*.md", "**/*.j2")
+         for f in WORKFLOW_SRC.glob(pat)
+         if "__pycache__" not in f.parts),
         default=0.0,
     )
 
@@ -504,6 +852,74 @@ def read_runs(spec: Spec) -> list[dict]:
             "stale": bool(newest_src) and events.stat().st_mtime < newest_src,
         })
     return rows
+
+
+def entered_nodes(events: Path) -> list[str]:
+    """The node ids one events file entered, in order."""
+    out = []
+    for line in events.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("phase") == "enter" and ev.get("node"):
+            out.append(ev["node"])
+    return out
+
+
+def cycles(entered: list[str], max_period: int = 4, min_repeats: int = 3) -> list[dict]:
+    """Node cycles that repeat back-to-back in one entry sequence — the churn signal.
+
+    Churn is *not* "a node ran many times": a loop over a queue re-enters `implement`
+    once per story, and that is the workflow working. Churn is the same short cycle
+    repeating with nothing else between — `plan → implement → plan → implement → …`, or
+    a single node re-entered three times running. That distinguishes a run advancing
+    through a queue from one orbiting a state it cannot leave, and it needs to know
+    nothing about any particular workflow's node names to say so.
+
+    Reported per cycle rather than per node because the two failure modes it separates
+    need different fixes: a period-1 cycle is a node retrying itself, a period-2+ cycle
+    is a transition condition that never becomes false.
+    """
+    found: dict[tuple[str, ...], int] = {}
+    i, n = 0, len(entered)
+    while i < n:
+        best: tuple[int, int] | None = None
+        for p in range(1, max_period + 1):
+            window = entered[i:i + p]
+            if len(window) < p:
+                break
+            reps = 1
+            while entered[i + reps * p: i + (reps + 1) * p] == window:
+                reps += 1
+            # Longest span wins, so `a b a b a b` is reported as one 3× period-2 cycle
+            # rather than as the period-1 non-cycle it also technically is not.
+            if reps >= min_repeats and (best is None or reps * p > best[0] * best[1]):
+                best = (p, reps)
+        if best is None:
+            i += 1
+            continue
+        p, reps = best
+        key = tuple(entered[i:i + p])
+        found[key] = max(found.get(key, 0), reps)
+        i += p * reps
+    return [{"cycle": list(k), "repeats": v}
+            for k, v in sorted(found.items(), key=lambda kv: -kv[1])]
+
+
+def churn_candidates(spec: Spec) -> list[dict]:
+    """Every repeating cycle across every events file, flows included.
+
+    Flow files are walked too, unlike `read_runs`: a subflow spinning is the case worth
+    catching, and it is invisible from the parent, which sees one long-running container
+    node and no repetition at all.
+    """
+    out = []
+    for path in sorted(spec.artifacts.glob("**/events.jsonl")):
+        where = path.parent.relative_to(spec.artifacts)
+        for c in cycles(entered_nodes(path)):
+            out.append({"where": str(where), **c})
+    return sorted(out, key=lambda r: -r["repeats"])
 
 
 def node_totals(artifacts: Path) -> tuple[dict[str, float], dict[str, int], dict[str, float]]:
@@ -871,7 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="bench.py", description=__doc__.split("\n\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["genesis", "backlog", "author", "coder", "all",
-                                       "status", "score", "reset"])
+                                       "status", "watch", "babysit", "score", "reset"])
     p.add_argument("--spec", default=str(HERE / "todo-app" / "bench.yml"),
                    help="the benchmark app's spec file (default: the todo-app benchmark)")
     p.add_argument("--no-judge", action="store_true",
@@ -879,7 +1295,28 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jobs", type=int, default=4, help="judge turns to run at once")
     p.add_argument("--bullet", action="append", default=[],
                    help="score only this bullet id (repeatable)")
+    p.add_argument("--silence", type=float, default=900.0,
+                   help="watch: seconds of no artifact write before a run is called stalled")
+    p.add_argument("--every", type=float, default=180.0,
+                   help="babysit: seconds between polls")
+    p.add_argument("--for", dest="ceiling", type=float, default=7200.0,
+                   help="babysit: seconds to keep waiting before giving up (exit 2)")
+    p.add_argument("--resume", action="store_true",
+                   help="author/coder: continue the newest unfinished run from its "
+                        "checkpoint instead of starting a new one")
+    p.add_argument("--budget", type=float, default=None,
+                   help="author/coder: override the spec's WORKHORSE_MAX_RUNTIME_S. "
+                        "Counted from the ORIGINAL start, so a --resume needs a larger "
+                        "total than the run already spent, not a fresh allowance")
     args = p.parse_args(argv)
+
+    # Refused rather than ignored: both flags change how long a run takes and where it
+    # starts, so a command that silently drops one would hand back a run that looks like
+    # the one asked for and is not. `all` is excluded too — "resume" has no single
+    # meaning across three phases.
+    for flag, given in (("--resume", args.resume), ("--budget", args.budget is not None)):
+        if given and args.command not in ("author", "coder"):
+            die(f"{flag} applies to `author` and `coder`, not `{args.command}`")
 
     spec = load_spec(Path(args.spec).resolve())
     if args.command == "genesis":
@@ -887,15 +1324,22 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "backlog":
         cmd_backlog(spec)
     elif args.command == "author":
-        cmd_author(spec)
+        return cmd_author(spec, resume=args.resume, budget_s=args.budget)
     elif args.command == "coder":
-        cmd_coder(spec)
+        return cmd_coder(spec, resume=args.resume, budget_s=args.budget)
     elif args.command == "all":
+        # Short-circuited, because each phase consumes the last one's output: `coder`
+        # against a half-written epic queue does not produce a worse score, it produces a
+        # meaningless one, and the failure to explain is the earlier one either way.
         cmd_genesis(spec)
-        cmd_author(spec)
-        cmd_coder(spec)
+        return cmd_author(spec) or cmd_coder(spec)
     elif args.command == "status":
         cmd_status(spec)
+    elif args.command == "watch":
+        return cmd_watch(spec, silence_s=args.silence)
+    elif args.command == "babysit":
+        return cmd_babysit(spec, silence_s=args.silence, every_s=args.every,
+                           ceiling_s=args.ceiling)
     elif args.command == "reset":
         cmd_reset(spec)
     elif args.command == "score":

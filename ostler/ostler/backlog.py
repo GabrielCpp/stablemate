@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ostler import path as path_mod
 from ostler.model import Graph
 from ostler.result import Result
 
@@ -16,7 +17,7 @@ _ITEM = re.compile(r"^\s*[-*]\s+\[(?P<id>[^\]]+)\]\s*(?P<text>.*)$")
 
 
 def _path(graph: Graph) -> Path:
-    return graph.root / "docs" / "backlog.md"
+    return path_mod.backlog_path(graph)
 
 
 def items(graph: Graph) -> list[tuple[str, str]]:

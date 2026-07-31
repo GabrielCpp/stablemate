@@ -1,0 +1,56 @@
+# The smoke task: one Go surface, three bullets, half an hour.
+#
+# Sized to be re-run after every workflow fix, which is a design constraint and not a
+# convenience: a benchmark you only run once a day gets consulted once a day, and a fix
+# cycle that slow stops being a cycle. Small enough that a failure has one plausible
+# cause — one epic, a handful of stories, one stack, no cross-surface anything.
+#
+# It is NOT a quality measure. Three bullets cannot rank a workflow; they can only tell
+# you whether it still gets from a backlog to committed code without help. Read the score
+# here as pass/fail and the reliability half as the actual output.
+
+target: /tmp/bench-link-shortener
+backlog: docs/backlog.md
+
+# Flatten the tier map: every node runs on the same cheap setting regardless of the
+# `power=` it asks for. Node A being slower than node B is then a fact about the nodes,
+# not about which tier they happened to declare — which is what makes a wall-clock
+# reading from this spec mean anything.
+power:
+  low: {claude: {model: sonnet, effort: low}}
+  medium: {claude: {model: sonnet, effort: low}}
+  high: {claude: {model: sonnet, effort: low}}
+
+# Per-phase wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S). Checked between
+# states, so an over-budget run halts on a node boundary with its checkpoint intact —
+# score it, then resume it with `--resume-latest` if you want the rest.
+budget:
+  genesis: 600
+  author: 600
+  coder: 1200
+
+# The stack's own gates, run from the target root. Not `make lint` / `make test` like
+# todo-app: nothing scaffolds a Makefile, so those would report a missing target as a red
+# gate on every run and train you to ignore the row.
+checks:
+  - name: build
+    cmd: cd api && go build ./...
+    timeout: 300
+  - name: test
+    cmd: cd api && go test ./...
+    timeout: 600
+
+judge: {}
+
+repo:
+  docs_scaffold: shared-docs:docs
+  packs: product-planning
+
+surfaces:
+  - service: api
+    service_root: api
+    packs: go
+    scaffolds: go-service:api
+    init_cmd: go mod init example.com/link-shortener/api
+    marker: go.mod
+    markers: go.mod,main.go

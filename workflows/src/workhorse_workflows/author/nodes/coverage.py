@@ -14,8 +14,9 @@ from pathlib import Path
 from ostler import Ostler
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
-from workhorse_workflows.author.paths import survey_repo_root
-from workhorse_workflows.author.schemas.main import Defects, Pruned
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import Defects, Pruned
 
 #: `ostler doctor` error codes that mean this epic's coverage or story graph is broken.
 #: `unwritten-story` belongs here for the same reason `missing-story-file` does: an epic
@@ -32,6 +33,16 @@ _COVERAGE_CODES = {
 }
 
 _BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+#: A bullet carrying an `[id]` handle — the only kind of line the rest of the system treats
+#: as a work item (`stories._resolve_bullet` resolves story mode's bullet by it, and the
+#: coder's `BACKLOG_ID_RE` picks the next one to build by it). A backlog also carries prose
+#: bullets — a surfaces list in the preamble, say — and `_BULLET_RE` matches those too, which
+#: is right for *pruning* (a seed's `sourceBullet` is matched as text, not by id) and wrong
+#: for *counting*: an emptied three-bullet backlog reported "1 remaining" because the
+#: surfaces line is a bullet. Nothing branches on the count, so this was a false progress
+#: signal aimed squarely at the human reading the log.
+_ITEM_RE = re.compile(r"^\s*-\s*\[[A-Za-z0-9][A-Za-z0-9._-]*\]\s*")
 
 
 @blueprint.node(stub=_stubs.clean)
@@ -94,7 +105,7 @@ def _matches(backlog_norm: str, seed_norms: list[str]) -> bool:
 @blueprint.node
 def prune_backlog(
     logger: logging.Logger,
-    backlog: str = "docs/backlog.md",
+    backlog: str = "",
     epic_dir: str = "",
     repo_dir: str = "",
 ) -> Pruned:
@@ -105,9 +116,9 @@ def prune_backlog(
     left in place, and a write failure is swallowed — the run must never die because the
     backlog could not be tidied.
     """
-    backlog_rel = backlog.strip() or "docs/backlog.md"
     epic_dir_rel = epic_dir.strip()
     root = survey_repo_root(repo_dir)
+    backlog_rel = paths.backlog_file(root, backlog)
     backlog_path = root / backlog_rel
     epic = Path(epic_dir_rel).name if epic_dir_rel else ""
 
@@ -133,11 +144,10 @@ def prune_backlog(
     removed = 0
     remaining = 0
     for line in lines:
-        is_bullet = bool(_BULLET_RE.match(line))
-        if is_bullet and _matches(_normalize(line), seed_norms):
+        if _BULLET_RE.match(line) and _matches(_normalize(line), seed_norms):
             removed += 1
             continue
-        if is_bullet:
+        if _ITEM_RE.match(line):
             remaining += 1
         kept.append(line)
 

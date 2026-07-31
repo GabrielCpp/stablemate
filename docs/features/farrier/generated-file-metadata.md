@@ -45,3 +45,15 @@ repo-root-relative path. Running it prints the real editable source path on the 
 
 A human-readable warning: run the `resolve` command for this machine's editable source path, edit
 that, then `make agent-install` to regenerate this file.
+
+### tags
+- type: `list<string>` — required: no — default: omitted
+
+The library source's own `tags:`, normalized (lowercased, deduplicated, order-preserving) and
+emitted as a YAML flow list — `tags: [web, tests]` — only when the source declares any. Tags say
+what the skill *answers* rather than what it is called, which is how a workflow prompt asks for a
+capability it has no name for; the run-time half of that query is workhorse's
+`find_by_tags(*tags)`, reading the same values out of the [context
+manifest](../workhorse/context-manifest.md#instruction_tags). They ride inside `metadata:` rather
+than at the front matter's top level for the same reason the rest of this block does: it is the
+namespace every harness's parser already ignores.

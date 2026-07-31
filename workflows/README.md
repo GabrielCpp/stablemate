@@ -74,7 +74,7 @@ of them reading `AGENT_REPO_DIR`.
 
 Ambient *paths* — `repo_dir`, `docs_path`, `workspace_file` — are wanted by roughly every
 second node and chosen by no state, which is exactly the shape that used to be an
-environment read. They are fields, and `Workflow.injects` (see `coder/paths.AMBIENT`)
+environment read. They are fields, and `Workflow.injects` (see `coder/shared/paths.AMBIENT`)
 fills them into any node or sub-flow that declares a parameter of the same name and was
 not passed one. A callsite value always wins, and an empty field injects nothing, so the
 target's own default stands.
@@ -92,31 +92,109 @@ The rule is enforced, not just written down:
 make check-no-env    # also runs as part of `make test`
 ```
 
+## A workflow does not spell a doc path (load-bearing)
+
+**Where a document lives is ostler's answer.** The epics root, the epic folder, the story
+folder, the epics index, the backlog file, the feature book and its waivers and screenshots
+all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
+`docs/epics`, `docs/backlog.md` or `docs/features` as a literal.
+
+The reason is that these locations are **configurable** — a repo moves them with
+`docRoots:` in `ostler.yml` / `agents.yml` — and that epic directories are **numbered**
+(`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
+slug. A hand-built join gets both wrong, and gets them wrong *silently*: the run writes
+into a directory nothing reads, and `ostler doctor` reports a book that is not there. Two
+derivations of the same location is the failure the rule exists for; the second one never
+learns about the config.
+
+What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
+`_author-context.md`, `<gate>-context.md`, `attempts.md`, `dependencies.json` — joined onto
+a directory ostler resolved. Run artifacts that are not documents at all (`.agents/operator`,
+`.agents/okf-build`, the dream inbox and ledger, the surveyor's `docs/survey/` scratch) stay
+with the workflow, because ostler has no opinion about them.
+
+Each workflow's `shared/paths.py` is the one place that calls `ostler.path`, and it is also
+where an operator override is honoured: a `backlog` or `epics_dir` **parameter** wins when
+it is set, and empty — the normal case — means "as this repo configures it". An override
+still gets ostler's resolution rules applied inside it, via the `*_under` family.
+
+Two probes look like exceptions and are not: the repo-root resolvers test for a `docs/epics/`
+directory, and that is how a *root* is recognized before there is a root to ask ostler about.
+
+## A prompt does not name a skill (load-bearing)
+
+**Which skill teaches a subject is the repo's answer, asked for by tag.** A prompt in here
+has never met the repo it will run against, so it may not write
+`instruction_refs("go-testing", "flutter-testing", "react-router-testing", …)` — the menu
+of every stack the author happened to think of. It asks for the capability instead:
+
+```jinja
+{% raw %}{{ find_by_tags("web", "tests") }}{% endraw %}
+```
+
+The query is an AND over the `tags:` in each installed skill's front matter, it renders the
+matching skills' paths (backticked, comma-joined) and it renders **nothing** when the repo
+installs no match — so the sentence around it carries a `| default("(none installed — …)",
+true)`, or the whole paragraph sits behind `{% raw %}{% if %}{% endraw %}`.
+
+The hand-listed menu was wrong in both directions. A repo with a stack the list forgot got
+no guidance at all, and — the defect that cost a run — a repo with only a web app and no
+mobile code rendered `plan-story` with ten mentions of Flutter and Dart, because the helper
+correctly dropped the unresolvable names while the prose around it still enumerated them.
+`tests/coder/test_prompt_stack_neutrality.py` renders every coder prompt against a
+one-stack manifest and holds that line.
+
+The vocabulary the coder prompts query is `runbook`, `standards`, `tests`, `qa` and
+`codegen`, each combined with a layer — `backend`, `cli`, `web`, `mobile`, `infra`. It is
+documented for skill authors in the `stablemate-agent-library` skill, which is where
+someone adding `tags:` to a skill is reading. Adding a *new* tag to a prompt means teaching
+that vocabulary there in the same change; a tag no skill declares silently matches nothing.
+
 ## Layout
+
+**One directory per machine.** A workflow is a graph plus the sub-graphs it hands off to,
+and each of those is a state machine with nodes of its own. The layout says so: a machine's
+`flow.py` and the nodes only that machine calls are one directory, and nothing else is.
 
 ```
 src/workhorse_workflows/
   kit/            shared workflow-side helpers (git.py, github.py, workspace.py)
   <workflow>/
-    workflow.py   the Workflow subclass and `main` — one class, nothing else
-    schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows,
-                  as it has in author/ and coder/)
-    paths.py      pure derivations: the dirs and filenames the nodes agree on
-    nodes/        the callables, one module per subject, assembled into a Blueprint
-                  by nodes/__init__.py
-    flows/        sub-workflows, each its own Workflow subclass reached by handoff()
+    workflow.py   the main machine — one Workflow subclass, `main`, nothing else
+    nodes/        the callables only workflow.py calls, one module per subject
+    <flow>/       one directory per sub-graph, named for the flow:
+      flow.py       its Workflow subclass, reached by handoff() or run directly
+      nodes.py      the callables only this flow calls  (→ nodes/ when it grows)
+    shared/       what a second machine also reaches:
+      blueprint.py  the one Blueprint every node in the workflow registers on
+      paths.py      the only caller of `ostler.path`: doc dirs + this workflow's filenames
+      schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows)
+      stubs.py      the --dry-run stand-ins
+      <subject>.py  a node module more than one machine calls
     prompts/      the agent-facing markdown, rendered by a filesystem template loader
 
-tests/<workflow>/  outside src/ and outside the wheel; mirrors the node modules,
-                   plus one test_workflow.py for the machine
+tests/<workflow>/  outside src/ and outside the wheel; mirrors the tree above —
+                   tests/<workflow>/<flow>/test_flow.py, plus one test_workflow.py
 ```
 
-A workflow may add modules of its own beside those — `coder/` carries `contract.py`,
-`ostler_qa.py` and `story_status.py`, and `research/` a `scaffold/` package — but the
-six names above mean the same thing in every one.
+**What goes in `shared/` is a count, not a judgement.** Every module belongs to the machine
+that calls it; a module a *second* machine also calls moves to `shared/`, and the move is
+mechanical enough to check by grep. That is what keeps `coder/qa/nodes/evidence.py` beside
+the QA flow (one caller) while `coder/shared/story.py` is shared (seven), and why a shared
+node module keeps the name of its **subject** rather than of the flow that reads it most —
+naming one of two callers is the mirroring this layout undoes.
 
-Imports point one way: `workflow.py` imports `nodes/`, `flows/`, `schemas` and `paths`;
-nothing under `nodes/` imports `workflow.py`.
+A workflow with no sub-flows has no `shared/` and no `<flow>/`: with one machine there is
+nothing to share, which is why `research/` is `workflow.py` + `nodes/` + a `scaffold/`
+package and nothing more.
+
+Prompts stay at the workflow root even though flows have directories of their own, because
+`handoff` subscopes only the run *writer*, not the environment: a sub-flow's prompt path
+resolves against the **parent** package directory.
+
+Imports point one way: `workflow.py` imports `nodes/`, each `<flow>/` and `shared/`; a
+`<flow>/` imports its own nodes and `shared/`; nothing under either imports `workflow.py`,
+and nothing in `shared/` imports a flow.
 
 How small each of those files has to be is **normative, not per-workflow taste** — one
 subject per module, `nodes/` is a package even when it holds three functions, and

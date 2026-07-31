@@ -1,0 +1,50 @@
+# The workload task: one Go surface, five bullets, an hour.
+#
+# The bullet count is the whole design. Three bullets produce one epic and finish before
+# the coder has looped over anything; five produce enough stories that the run must
+# select repeatedly, and the failures worth catching only exist in that loop — a selector
+# that re-picks a story it already built, a repair node entered once per story, a run that
+# goes stale halfway down the queue. None of them can appear in a run with nothing to
+# iterate over.
+#
+# Still one surface, so a failure here is not confounded by cross-stack decomposition;
+# `bookmarks` is the spec that adds that variable, deliberately on its own.
+
+target: /tmp/bench-expense-split
+backlog: docs/backlog.md
+
+# See link-shortener/bench.yml: all tiers flattened onto one cheap setting so wall-clock
+# readings describe the nodes rather than the tier map.
+power:
+  low: {claude: {model: sonnet, effort: low}}
+  medium: {claude: {model: sonnet, effort: low}}
+  high: {claude: {model: sonnet, effort: low}}
+
+# Coder gets the bulk of the hour: author writes the stories once, the coder loops.
+budget:
+  genesis: 600
+  author: 900
+  coder: 2700
+
+checks:
+  - name: build
+    cmd: cd api && go build ./...
+    timeout: 300
+  - name: test
+    cmd: cd api && go test ./...
+    timeout: 600
+
+judge: {}
+
+repo:
+  docs_scaffold: shared-docs:docs
+  packs: product-planning
+
+surfaces:
+  - service: api
+    service_root: api
+    packs: go
+    scaffolds: go-service:api
+    init_cmd: go mod init example.com/expense-split/api
+    marker: go.mod
+    markers: go.mod,main.go

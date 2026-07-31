@@ -1,8 +1,9 @@
 """`coder`: the epic/story loop, and the registry the whole distribution hangs off.
 
 The YAML's main graph was 80 nodes across `workflow.yaml` lines 191–1348, above eight
-`flows:` blocks that make up the other three quarters of the file. Those eight are
-`flows/` here; this module is the graph that sequences them.
+`flows:` blocks that make up the other three quarters of the file. Those eight are one
+directory each here — `dev/`, `qa/`, `genesis/` and the rest — and this module is the
+graph that sequences them.
 
 **What the shape buys, at this size.** Twenty-seven states cover eighty nodes, and the
 factor of three is not compression for its own sake — it is the `decide_*` nodes
@@ -42,7 +43,7 @@ in story mode neither `select_epic` nor `select_story` ever runs. The queue epic
 as a state parameter rather than read back through a guarded `self.output`, so a resumed
 run does not have to re-derive it.
 
-**The backlog drain is nested here as well as being a flow.** `flows/fix.py` is the
+**The backlog drain is nested here as well as being a flow.** `fix/flow.py` is the
 standalone drain; states `drain` through `fix_recheck` below are the same seven steps run
 *inside* a story's run, right after that story goes green, which is what the YAML did at
 lines 859–1144. They are not a `handoff` to `Fix` because the two differ in their far end:
@@ -65,18 +66,24 @@ from workhorse.pyflow import (
     Workflow,
     WorkflowFailed,
 )
-from workhorse_workflows.coder import paths
-from workhorse_workflows.coder.flows import Dev, Docs, Dream, Fix, FixCi, Genesis, Qa, Review
-from workhorse_workflows.coder.flows.fix import BLOCKED_NOTE
-from workhorse_workflows.coder.nodes._blueprint import blueprint
-from workhorse_workflows.coder.nodes.backlog import (
+from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.dev import Dev
+from workhorse_workflows.coder.docs import Docs
+from workhorse_workflows.coder.dream import Dream
+from workhorse_workflows.coder.fix import BLOCKED_NOTE, Fix
+from workhorse_workflows.coder.fix_ci import FixCi
+from workhorse_workflows.coder.genesis import Genesis
+from workhorse_workflows.coder.qa import Qa
+from workhorse_workflows.coder.review import Review
+from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.backlog import (
     mark_fix_blocked,
     prune_fix_item,
     seed_fix_story,
     select_fix_item,
 )
-from workhorse_workflows.coder.nodes.ci import poll_pr_checks, push_ci_fix
-from workhorse_workflows.coder.nodes.dev import (
+from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix
+from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     resolve_impl_context,
     select_next_layer,
@@ -88,7 +95,7 @@ from workhorse_workflows.coder.nodes.pr import (
     open_pr,
     open_story_pr,
 )
-from workhorse_workflows.coder.nodes.queue import (
+from workhorse_workflows.coder.shared.queue import (
     branch_epic,
     branch_story,
     commit_story,
@@ -99,22 +106,22 @@ from workhorse_workflows.coder.nodes.queue import (
     select_epic,
     select_story,
 )
-from workhorse_workflows.coder.nodes.story import (
+from workhorse_workflows.coder.shared.story import (
     prepare_fix_story,
     prepare_story,
     resolve_workspace_dirs,
 )
-from workhorse_workflows.coder.schemas.dev import DispatchEntry, ImplResult, PlanResult
-from workhorse_workflows.coder.schemas.pr import MergeFixResult
-from workhorse_workflows.coder.schemas.qa import QaResult
-from workhorse_workflows.coder.schemas.queue import ReplanResult
-from workhorse_workflows.coder.schemas.story import StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry, ImplResult, PlanResult
+from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
+from workhorse_workflows.coder.shared.schemas.qa import QaResult
+from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
+from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
 
 class Coder(Workflow):
     """Implement one epic's stories end to end, or one named story.
 
-    `mode` decides which: `epic` walks the queue in `docs/epics/index.md`, taking the front
+    `mode` decides which: `epic` walks the queue in the epics root's `index.md`, taking the front
     epic, then each of its unimplemented stories in turn, and opens one pull request for the
     whole epic when the last story lands. `story` skips the queue, cuts a branch for the one
     slug it was given, and opens that story's own PR at the end.
@@ -796,7 +803,7 @@ class Coder(Workflow):
     def _fix_qa(self) -> QaResult:
         """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
 
-        Not `qa-story.md` — see `flows/fix.py`'s `_qa` for why that prompt cannot answer this
+        Not `qa-story.md` — see `fix/flow.py`'s `_qa` for why that prompt cannot answer this
         turn. The nested drain runs the same one.
         """
         fix = self._fix_story

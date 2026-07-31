@@ -8,6 +8,12 @@ concatenation in an argument list (`"{{ worklist_path }}.source.json"`,
 `"{{ features_root }}/coverage-waivers.json"`). A derivation a template owns is a
 derivation no test can reach, so all of them are here.
 
+**Where a document lives is ostler's answer, not this module's.** The book, its waivers
+and its screenshots come from `ostler.path`, so a repo that moved `docs/features` with
+`docRoots:` is followed and the builder writes where `ostler coverage` reads. What is
+genuinely this workflow's stays here: `.agents/okf-build` and the worklist filenames
+under it are run artifacts, not documents, and ostler has no opinion about them.
+
 **These are absolute paths, as strings.** `author`'s are repo-relative because its
 checkpoint carries them across machines; okf-builder's `prepare` emitted `str(root)` and
 every downstream node consumed it as an absolute path, and the walk sub-flow re-derives
@@ -18,6 +24,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ostler import path as okf_path
 from workhorse.scriptutil import find_docs_root
 
 #: The build's scratch directory under the docs repo: worklists, walkthrough logs.
@@ -38,9 +45,22 @@ def docs_root(docs_path: str = "", repo_dir: str = "") -> Path:
 
 
 def features_root(root: Path, service: str) -> Path:
-    """One service's book, or the whole `docs/features` tree when `service` is empty."""
-    base = root / "docs" / "features"
-    return base / service if service else base
+    """One service's book, or the whole book tree when `service` is empty — ostler's answer."""
+    return okf_path.features_root_in(root, service)
+
+
+def book_scope(root: Path, service: str) -> str:
+    """One service's book as a repo-relative prefix, for matching node paths against.
+
+    The graph reports node paths relative to the docs root, so a substring test needs the
+    book spelled the same way — derived here rather than written out, so a repo that moved
+    its book still matches instead of silently walking nothing.
+    """
+    book = features_root(root, service)
+    try:
+        return f"{book.resolve().relative_to(Path(root).resolve()).as_posix()}/"
+    except ValueError:
+        return f"{book.as_posix()}/"
 
 
 def build_dir(root: Path) -> Path:
@@ -69,17 +89,22 @@ def source_inventory_path(worklist: str | Path) -> Path:
 
 
 def waivers_path(features: str | Path) -> Path:
-    """The committed coverage waivers: which uncovered units are deliberate, and why."""
-    return Path(features) / "coverage-waivers.json"
+    """The committed coverage waivers: which uncovered units are deliberate, and why.
+
+    Takes the book rather than the root because both callers already hold one, resolved
+    by :func:`features_root`; the filename inside it is ostler's too.
+    """
+    return okf_path.waivers_path_under(Path(features))
 
 
 def screenshots_dir(features: str | Path) -> Path:
-    """Where a walkthrough turn parks what it saw."""
-    return Path(features) / "gui" / "screenshots"
+    """Where a walkthrough turn parks what it saw, inside the book it documents."""
+    return okf_path.screenshots_dir_under(Path(features))
 
 
 __all__ = [
     "BUILD_DIRNAME",
+    "book_scope",
     "build_dir",
     "docs_root",
     "features_root",

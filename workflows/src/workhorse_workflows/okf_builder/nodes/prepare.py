@@ -12,10 +12,10 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
-from workhorse_workflows.okf_builder import paths
-from workhorse_workflows.okf_builder.nodes import _stubs
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import Prepared
+from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared import stubs
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import Prepared
 
 
 def _book_has_docs(features: Path) -> bool:
@@ -66,7 +66,7 @@ def _ostler_loads(root: Path) -> tuple[bool, str]:
     return True, ""
 
 
-@blueprint.node(stub=_stubs.prepared)
+@blueprint.node(stub=stubs.prepared)
 def prepare(
     logger: logging.Logger,
     docs_path: str = "",

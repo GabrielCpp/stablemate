@@ -212,6 +212,90 @@ def test_genuinely_ambiguous_suffix_does_not_guess():
     assert "generated story-docs instruction file when installed" in out
 
 
+TAGGED = {
+    **MANIFEST,
+    "instructions": {
+        **MANIFEST["instructions"],
+        "go-errors": ".claude/skills/demo-go-errors/SKILL.md",
+        "demo-go-errors": ".claude/skills/demo-go-errors/SKILL.md",
+    },
+    "instruction_tags": {
+        "go": ["backend", "standards", "runbook"],
+        "react-router": ["web", "standards", "runbook"],
+        "go-errors": ["backend", "tests"],
+        "demo-go-errors": ["backend", "tests"],
+    },
+}
+
+
+def _tagged_ctx():
+    return wm.build_manifest_context(TAGGED).as_context()
+
+
+def test_instruction_tags_round_trip_through_one_type():
+    """The tag map rides the same reserved-key round trip as the path maps, so a prompt
+    rendered from a resumed run queries exactly what the original run queried."""
+    mc = wm.build_manifest_context(TAGGED)
+    assert mc.instruction_tags["go"] == ["backend", "standards", "runbook"]
+    back = wm.ManifestContext.from_context(mc.as_context())
+    assert back.instruction_tags == mc.instruction_tags
+
+
+def test_an_older_manifest_without_tags_matches_nothing():
+    """farrier's file is another tool's output and may predate tags entirely. A tag
+    query on it has to render empty — the sentence around it then disappears — rather
+    than raise or, worse, fall back to naming every installed skill."""
+    mc = wm.build_manifest_context(MANIFEST)
+    assert mc.instruction_tags == {}
+    assert render_string("{{ find_by_tags('web') }}", _ctx()) == ""
+
+
+def test_a_wrong_typed_tag_map_degrades_instead_of_raising():
+    mc = wm.build_manifest_context({**MANIFEST, "instruction_tags": ["web"]})
+    assert mc.instruction_tags == {}
+
+
+def test_find_by_tags_narrows_as_tags_are_added():
+    """AND, not OR: `backend` is the layer, `tests` is the capability, and asking for
+    both is how a prompt says "however this repo tests its backend" without knowing
+    that this repo spells it `go-errors`."""
+    ctx = _tagged_ctx()
+    assert render_string("{{ find_by_tags('backend') }}", ctx) == (
+        "`.claude/skills/demo-go-errors/SKILL.md`, `.claude/skills/demo-go/SKILL.md`"
+    )
+    assert render_string("{{ find_by_tags('backend', 'tests') }}", ctx) == (
+        "`.claude/skills/demo-go-errors/SKILL.md`"
+    )
+
+
+def test_find_by_tags_answers_one_path_per_skill_however_many_aliases():
+    """farrier indexes one skill under several names; counting names would list the
+    same file twice in a sentence the agent then reads as two skills."""
+    out = render_string("{{ find_by_tags('tests') }}", _tagged_ctx())
+    assert out == "`.claude/skills/demo-go-errors/SKILL.md`"
+
+
+def test_find_by_tags_is_empty_for_an_unmatched_or_empty_query():
+    """Empty is falsy, so the surrounding prose can guard on it. And an *empty* query
+    is empty rather than everything: `find_by_tags()` asks for no capability in
+    particular, and answering with the whole library is the opposite of a query."""
+    ctx = _tagged_ctx()
+    assert render_string("{{ find_by_tags('mobile') }}", ctx) == ""
+    assert render_string("{{ find_by_tags() }}", ctx) == ""
+    assert render_string(
+        "{{ find_by_tags('mobile') | default('(none installed)', true) }}", ctx
+    ) == "(none installed)"
+
+
+def test_find_by_tags_is_case_insensitive_and_takes_a_list():
+    """A tag is a query key: `Web` failing to match `web` would be a silent miss, and
+    a prompt that computed its tags has a list rather than positional arguments."""
+    ctx = _tagged_ctx()
+    expected = "`.claude/skills/demo-react-router/SKILL.md`"
+    assert render_string("{{ find_by_tags('WEB') }}", ctx) == expected
+    assert render_string("{{ find_by_tags(['web', 'standards']) }}", ctx) == expected
+
+
 def test_exact_match_still_wins_over_a_suffix_match():
     exact = {
         **MANIFEST,

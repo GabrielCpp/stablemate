@@ -24,6 +24,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ostler import path as okf_path
+
 ROOT = Path(__file__).resolve().parent.parent
 INVENTORY = ROOT / "base-library" / "workflows" / "okf-builder" / "scripts" / "inventory-source.py"
 
@@ -58,7 +60,7 @@ def service_config() -> dict[str, dict]:
 
 
 def books() -> list[str]:
-    features = ROOT / "docs" / "features"
+    features = okf_path.features_root_in(ROOT)
     if not features.is_dir():
         return []
     return sorted(d.name for d in features.iterdir() if d.is_dir())
@@ -90,7 +92,7 @@ def verify(book: str, services: dict, inv_mod, tmp: Path) -> tuple[bool, str]:
     try:
         result = Ostler(ROOT).coverage(
             inventory=out, surface=book,
-            waivers=ROOT / "docs" / "features" / book / "coverage-waivers.json")
+            waivers=okf_path.waivers_path_in(ROOT, book))
     except (OSError, ValueError, RuntimeError) as exc:
         return False, f"{book}: coverage could not be computed: {exc}"
     return is_complete(result), render(result)

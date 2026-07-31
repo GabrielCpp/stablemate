@@ -18,8 +18,9 @@ from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
-from workhorse_workflows.author.paths import feedback_repo_root, story_dir, survey_repo_root
-from workhorse_workflows.author.schemas.main import (
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.paths import feedback_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import (
     Defects,
     Feedback,
     Ledger,
@@ -30,7 +31,6 @@ from workhorse_workflows.author.schemas.main import (
 
 #: The backlog scope-item contract, shared with the coverage validator: `- [id] …`.
 _BACKLOG_ID_RE = re.compile(r"^\s*-\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]\s*(.*)$")
-_BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 #: Multi-word phrases that signal an UNRESOLVED decision shipped to the coder. A story must
 #: RESOLVE every decision or escalate it via the writer's `blocked` status — it must not write
@@ -78,13 +78,13 @@ def _kebab(text: str, *, max_len: int = 60) -> str:
 def _resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str, bool]:
     """`(id, sourceBullet, from_backlog)` for the one bullet story mode was pointed at.
 
-    `backlog_rel` is the run's backlog — not always `docs/backlog.md`. A repo that scopes a
-    run to a subset of its work points `backlog` at a separate file, and this must follow:
-    an id resolved against the wrong file comes back `from_backlog=False`, which reads as
+    `backlog_rel` is the run's backlog — not always the repo's default one. A repo that
+    scopes a run to a subset of its work points `backlog` at a separate file, and this must
+    follow: an id resolved against the wrong file comes back `from_backlog=False`, which reads as
     "literal text the operator typed" and makes the prune tail skip the bullet. The story is
     authored, the bullet is never consumed, and the next run re-authors it.
     """
-    backlog_path = root / (backlog_rel or "docs/backlog.md")
+    backlog_path = root / paths.backlog_file(root, backlog_rel)
     raw = bullet.strip()
     bare = raw[1:-1].strip() if raw.startswith("[") and raw.endswith("]") else raw
 
@@ -109,9 +109,9 @@ def _resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str
 def seed_story(
     logger: logging.Logger,
     epic: str = "",
-    epics_dir: str = "docs/epics",
+    epics_dir: str = "",
     bullet: str = "",
-    backlog: str = "docs/backlog.md",
+    backlog: str = "",
     repo_dir: str = "",
 ) -> SeededStory:
     """Register ONE bullet as a new story inside an already-existing epic.
@@ -125,9 +125,7 @@ def seed_story(
     Idempotent: a story that already covers the resolved id is reused.
     """
     epic = epic.strip()
-    epics_dir_rel = epics_dir.strip() or "docs/epics"
     bullet = bullet.strip()
-    backlog_rel = backlog.strip() or "docs/backlog.md"
 
     if not epic:
         raise WorkflowFailed(
@@ -142,10 +140,11 @@ def seed_story(
 
     root = survey_repo_root(repo_dir)
     okf = Ostler(root)
-    # ostler names the folder, not this join: epic directories carry their creation order
+    backlog_rel = paths.backlog_file(root, backlog)
+    # ostler names the folder, not a join here: epic directories carry their creation order
     # (`0001-accounts`) and story mode is invoked with the bare slug, so a literal join would
     # report a missing epic for one that is right there. `epics_dir` still says which root.
-    epic_dir_rel = f"{epics_dir_rel}/{Path(okf.epic_path(epic)).name}"
+    epic_dir_rel = paths.epic_dir(root, epic, epics_dir)
     epic_dir_abs = root / epic_dir_rel
 
     if not (epic_dir_abs / "epic.md").is_file():
@@ -159,7 +158,7 @@ def seed_story(
     for s in okf.list("story", epic=epic):
         if bullet_id in (s.get("covers") or []):
             slug = str(s.get("slug", ""))
-            path = str(s.get("path", "")) or f"{story_dir(epic_dir_rel, slug)}/story.md"
+            path = str(s.get("path", "")) or f"{paths.story_dir(epic_dir_rel, slug)}/story.md"
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             reason = f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)"
             logger.info("story '%s' already covers '%s' — reusing (idempotent)", slug, bullet_id)
@@ -187,7 +186,7 @@ def seed_story(
     if not res.ok:
         raise WorkflowFailed(f"`create story {epic} {slug}` failed: {res.message}")
 
-    story_dir_rel = story_dir(epic_dir_rel, slug)
+    story_dir_rel = paths.story_dir(epic_dir_rel, slug)
     reason = (
         f"registered story '{slug}' ({res.entity_id or '?'}) covering seed item "
         f"'{bullet_id}' in epic '{epic}'"
@@ -511,7 +510,7 @@ def check_story_feedback(
     attempt at the format.
 
     The resolver here is `feedback_repo_root`, the one this script alone used; see
-    `paths.py` on why the four are kept apart.
+    `shared/paths.py` on why the four are kept apart.
     """
     if not feedback_path:
         logger.info("no feedback_path supplied")
@@ -547,7 +546,7 @@ def check_story_feedback(
 @blueprint.node
 def prune_bullet(
     logger: logging.Logger,
-    backlog: str = "docs/backlog.md",
+    backlog: str = "",
     bullet_id: str = "",
     from_backlog: bool = False,
     repo_dir: str = "",
@@ -558,14 +557,15 @@ def prune_bullet(
     has nothing to prune. Best-effort and idempotent: a missing backlog, absent id, or write
     failure is swallowed so the run never dies over a tidy-up.
     """
-    backlog_rel = backlog.strip() or "docs/backlog.md"
     bullet_id = bullet_id.strip()
 
     if not from_backlog or not bullet_id:
         logger.info("bullet '%s' is not from the backlog (or missing) — no-op", bullet_id)
         return Pruned()
 
-    backlog_path = survey_repo_root(repo_dir) / backlog_rel
+    root = survey_repo_root(repo_dir)
+    backlog_rel = paths.backlog_file(root, backlog)
+    backlog_path = root / backlog_rel
     if not backlog_path.is_file():
         logger.info("no backlog at %s — nothing to prune", backlog_path)
         return Pruned()
@@ -579,13 +579,19 @@ def prune_bullet(
     kept: list[str] = []
     removed = 0
     remaining = 0
+    # One predicate for both halves: a line is a scope item iff it carries an `[id]` handle.
+    # The count used to run off a looser bullet regex, which counted a backlog's prose
+    # bullets — its surfaces list, say — as outstanding work, so an emptied backlog reported
+    # work left in it. Removing by id and counting by anything else is two contracts.
     for line in lines:
         m = _BACKLOG_ID_RE.match(line)
-        if m and m.group(1).strip() == bullet_id:
+        if not m:
+            kept.append(line)
+            continue
+        if m.group(1).strip() == bullet_id:
             removed += 1
             continue
-        if _BULLET_RE.match(line):
-            remaining += 1
+        remaining += 1
         kept.append(line)
 
     if removed:

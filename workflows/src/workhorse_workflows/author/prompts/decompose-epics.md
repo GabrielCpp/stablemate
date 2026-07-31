@@ -10,7 +10,7 @@ stories yet — only the epic list, its order, and a one-screen `epic.md` skelet
 
 ## Inputs (authoritative — use exactly as given)
 
-- Backlog file: `{{ workhorse_var('backlog') }}` (default `docs/backlog.md`)
+- Backlog file: `{{ workhorse_var('backlog') }}` (resolved by ostler; use it as given)
 - Epics directory: `{{ workhorse_var('epics_dir') }}`
 
 > The backlog is a **live worklist**: once an epic is fully authored, its consumed bullets are
@@ -27,7 +27,7 @@ stories yet — only the epic list, its order, and a one-screen `epic.md` skelet
 - `{{ instruction_ref('write-epics-and-stories') }}` — the decomposition method (research-first,
   dependency-ordered, MVP-aware).
 - `{{ instruction_ref('story-docs') }}` — the canonical layout, the `epic.md` body grammar, the
-  `docs/epics/index.md` queue (managed via `ostler todo`), and bookkeeping rules.
+  epics queue `{{ epics_dir }}/index.md` (managed via `ostler todo`), and bookkeeping rules.
 - The epics queue (`ostler todo list`) and existing epics, when present — to avoid duplicate epic
   folders. Existing epics are references, not templates — re-verify them against the source-of-truth.
 - `{{ epics_dir }}/_author-context.md` when present — operator answers to earlier questions.
@@ -70,7 +70,7 @@ queue it:
 CREATED=$(ostler create epic <slug> --title "<Epic Title>" --json)
 EPIC_ID=$(jq -r .id <<<"$CREATED")      # → e.g. "ACME-7" (prefix is uppercased by ostler)
 EPIC_DIR=$(jq -r .name <<<"$CREATED")   # → e.g. "0003-<slug>"
-# Append the epic to the queue (docs/epics/index.md). The bare slug is accepted everywhere an
+# Append the epic to the queue ({{ epics_dir }}/index.md). The bare slug is accepted everywhere an
 # epic is named — ostler resolves it to the numbered directory:
 ostler todo add <slug>
 ```

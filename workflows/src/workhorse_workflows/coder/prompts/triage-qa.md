@@ -50,7 +50,7 @@ will not loop forever. (A deterministic guard enforces this too, but decide hone
 Read:
 
 - `AGENTS.md`
-- `{{ instruction_ref("developer") }}`
+- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
 - the story file (especially its `## Acceptance Criteria`)
 - the parent `epic.md` (to judge what is *this* story vs a sibling/other epic)
 - `qa.md` / `qa.json` and the captured evidence under the `qa/` directory

@@ -73,14 +73,124 @@ bench.py author     # backlog.md → epics/stories                   (tens of mi
 bench.py coder      # implement every story                        (hours)
 bench.py all        # the three above, in order
 bench.py status     # what exists so far
+bench.py watch      # is the run alive, churning, or stalled?      (instant)
+bench.py babysit    # `watch` on a timer — blocks until it matters (until it does)
 bench.py score      # the scorecard: quality + reliability
 bench.py reset      # delete the target and start clean
 ```
 
-Phases are separately invocable because they have wildly different costs, and idempotent by
-construction — genesis keys each skeleton step on that *service's* marker file — so a failed
-run is resumed by re-running the same command. Useful flags: `--no-judge`, `--jobs N`,
-`--bullet <id>` (repeatable, to re-score one bullet while tuning the rubric).
+Phases are separately invocable because they have wildly different costs. Useful flags:
+`--no-judge`, `--jobs N`, `--bullet <id>` (repeatable, to re-score one bullet while tuning
+the rubric).
+
+### Picking up an interrupted phase
+
+The three phases recover differently, and the difference decides the command:
+
+- **`genesis` re-runs.** It is idempotent by construction — each skeleton step is keyed on
+  that *service's* marker file — so running it again re-derives where it got to.
+- **`author` and `coder` resume.** Their position lives in a checkpoint, not in the target
+  tree, and a bare re-run opens a *new* run directory and starts at the first node. To
+  continue one, say so:
+
+```bash
+uv run python benchmarks/bench.py --spec tasks/link-shortener/bench.yml coder \
+  --resume --budget 3600
+```
+
+`--budget` is not optional company for `--resume` when the run stopped **on its budget**.
+Workhorse anchors `WORKHORSE_MAX_RUNTIME_S` to the run's original `started_at`, so the
+ceiling is a *total*, not a per-attempt allowance: resume a 1200s-budget run with 1200s
+again and it meets an expired deadline on its first transition check and stops having done
+nothing. Pass the new total — 3600 above buys 2400 more seconds, not 3600.
+
+A budget stop is a **diagnostic, not a target**. Read `watch` before raising one: the
+question it answers is whether the run was progressing when the clock caught it or already
+stuck, and only the first is worth more time.
+
+## Watching a run in flight
+
+`score` is a post-mortem. `watch` is the live instrument, and it answers the three ways a
+run fails *without* failing: progress, liveness, churn.
+
+```bash
+uv run python benchmarks/bench.py --spec benchmarks/tasks/link-shortener/bench.yml watch
+```
+
+It **exits non-zero when something needs attention**, so it composes into a wait loop
+rather than needing to be read. What it looks for:
+
+- **Stall** — nothing written under `.runs/` for `--silence` seconds (default 900). Cap-wait
+  is excluded first: a node sleeping out a usage ceiling is healthy, and `watch` says so
+  instead of counting the silence against it.
+- **Churn** — a *short node cycle repeating back-to-back*, not a busy node. "This node ran
+  a lot" fires on every healthy multi-story run and would therefore be ignored on the one
+  run where it mattered. Period is reported because the fix differs: period 1 is a node
+  retrying itself (a bounded attempt count), period 2+ is a transition condition that never
+  goes false (a guard).
+- **Stale code** — the run's newest event predates the workflow source it ran. A verdict
+  about code that no longer exists is worse than no verdict.
+
+### `babysit` — the loop that closes over it
+
+```bash
+uv run python benchmarks/bench.py --spec benchmarks/tasks/link-shortener/bench.yml babysit \
+  --every 180 --for 3600
+```
+
+Polls `watch` and blocks until the answer changes. That is the whole value: polling by hand
+costs a turn per poll *and* still misses the failure by however long the last gap was, while
+a loop that blocks costs one and returns the moment something happens. Three exits, because
+they call for different next moves:
+
+| Exit | Meaning | Next |
+|---|---|---|
+| 0 | the run reached a terminal and nothing followed it | `score` |
+| 1 | a poll found a problem, or the run stopped without deciding — the report is above it | read it, fix, resume |
+| 2 | `--for` ran out with the run still open | nothing is known to be wrong; keep waiting or not |
+
+"Over" is two different things on disk, and the loop reads both. A run that reached an end
+state stamped a `terminal` in its `run.json` — that is a *verdict*. A run that ran out of
+`WORKHORSE_MAX_RUNTIME_S` (or caught a Ctrl-C) stamped `interrupted_at` and left `terminal`
+null — that is a *stop*, and the null is deliberate, since `terminal` is what makes a run
+invisible to `--resume-latest`. A stop exits 1 with the reason and a resume command, not 0:
+there is no result to `score`, but the checkpoint is good.
+
+A finished run is only believed once it has been **seen settled twice**. `all` runs three
+phases back to back, so an ended newest run is equally consistent with "the chain is over"
+and "author ended a second ago and coder is about to start"; one poll apart tells those
+apart and one poll does not.
+
+The staleness row is **context here, not a fault**. Every other row is about the run in
+flight; that one is about runs that already ended, is permanently true once you edit the
+workflow — which fixing today's defect is — and so would end the wait on its first poll
+after every fix. A live run wedged on genuinely old code is the stall check's to report.
+
+## The debugging task set (`tasks/`)
+
+`todo-app` is the verdict benchmark: four surfaces, eighteen bullets, hours per run. That is
+the right size for *is the workflow good* and the wrong size for *why did it break* — a
+fix-and-rerun cycle measured in hours is a cycle nobody runs twice.
+
+`tasks/` holds three small specs sized so `author + coder` finishes inside an hour, which is
+what makes the babysitting loop usable. Each isolates a failure class the others cannot
+reach — see [tasks/README.md](tasks/README.md).
+
+Two spec keys make the hour a property of the spec rather than of the laptop:
+
+- **`power:`** — a `power.<level>.<backend>` overlay. Model choice is the largest single term
+  in both wall-clock and score, so leaving it to machine config would mean the hour holds
+  only on the machine it was measured on. `bench.py` reads the operator's config, overlays
+  *only* `power`, and writes the result to `.runs/config.toml` for `$STABLEMATE_CONFIG`. It
+  overlays rather than replaces because `load_config` deliberately does not merge — an
+  explicit config that dropped `library_dir` would silently unfind the library.
+- **`budget:`** — per-phase seconds, passed as `WORKHORSE_MAX_RUNTIME_S`. Workhorse checks
+  its own deadline *between* transitions, so an over-budget run halts at a node boundary
+  with checkpoint and artifacts intact, and resumes. That is the difference between a time
+  limit and a `timeout(1)` that kills mid-node and destroys the evidence you were after.
+
+Genesis is budgeted but not charged against the hour: it scaffolds the repo once, is
+network-bound, and a fix-and-rerun cycle skips it.
 
 ## Iterating on a workflow (`evals.py`) — designed, not built
 
@@ -165,10 +275,13 @@ evals.py              the node-replay harness: A/B one change, many samples   (P
 evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 tests/                the properties the score rests on
-todo-app/
+todo-app/             the verdict benchmark: four surfaces, eighteen bullets, hours
   bench.yml           the app: target, backlog, surfaces, repo gates
   docs/backlog.md     the pristine input, copied into the target on every run
   .runs/              logs, run artifacts, scorecard.json  (gitignored)
+tasks/                the debugging task set: three specs, an hour each
+  README.md           which spec catches what, and why three and not one
+  <task>/bench.yml    same schema, plus `power:` and `budget:`
 .fixtures/            harvested node inputs                (gitignored — real run content)
 .evals/               eval results and per-sample run dirs (gitignored)
 ```

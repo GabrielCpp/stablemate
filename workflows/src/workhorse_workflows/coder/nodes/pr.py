@@ -39,9 +39,10 @@ from pathlib import Path
 
 from github import GithubException
 from workhorse.scriptutil import find_repo_root, load_json
-from workhorse_workflows.coder.nodes._blueprint import blueprint
-from workhorse_workflows.coder.nodes.ci import push_epic_branch
-from workhorse_workflows.coder.schemas.pr import (
+from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.ci import push_epic_branch
+from workhorse_workflows.coder.shared.schemas.pr import (
     CiFlagged,
     MergeFlagged,
     MergeOutcome,
@@ -65,10 +66,6 @@ from workhorse_workflows.kit import (
     resolve_workspace,
     sync_to_origin,
 )
-
-#: The epics queue, committed onto the epic branch just before the PR opens so the prune
-#: rides into the base with the epic's own merge rather than being lost at the next checkout.
-QUEUE_PATH = "docs/epics/index.md"
 
 #: Image suffixes counted as QA evidence when building a UI repo's PR body.
 SCREENSHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
@@ -118,8 +115,10 @@ def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = 
         logger.info("no branch %s to PR", branch)
         return
 
-    # Commit the queue prune onto the epic branch before pushing, best-effort.
-    if commit_paths(root, f"{epic}: prune completed epic from queue", QUEUE_PATH):
+    # Commit the queue prune onto the epic branch before pushing, best-effort, so it rides
+    # into the base with this epic's own merge rather than being lost at the next checkout.
+    # Where the queue lives is ostler's answer, not a literal here.
+    if commit_paths(root, f"{epic}: prune completed epic from queue", paths.epics_index(root)):
         logger.info("committed index.md prune onto %s", branch)
 
     token = resolve_github_token(root)

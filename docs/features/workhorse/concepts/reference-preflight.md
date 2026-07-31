@@ -40,6 +40,20 @@ are in the AST — which means every alias of the helper (`instruction_file`, `s
 string literal is not mistaken for a call. A template that will not parse yields nothing: the
 syntax error belongs to the render, and reporting it twice would turn one clear failure into two.
 
+## What is *not* reported
+
+Only *required* references are findings. A prompt has three ways to say a reference is optional,
+and all three are exempt from the scan:
+
+| Spelling | Why it is not a finding |
+|---|---|
+| `instruction_refs(...)` / `instruction_files` / `skill_files`, `prompt_refs` / `prompt_files` (`OPTIONAL_SKILL_HELPERS`, `OPTIONAL_PROMPT_HELPERS`) | The plural helpers ask *which of these did the repo install* and drop the rest. An absent name is the answer, not a defect. |
+| `find_by_tags('web', 'tests')` (`TAG_HELPERS`) | Its arguments are **tags, not names**. There is nothing here to resolve, and descending into them would report every tag in every prompt as a missing skill. |
+| A reference inside `{% if isUsingInstruction('flutter') %}` (`GUARD_HELPERS`) | It cannot render on a repo without that skill. The `{% else %}`/`{% elif %}` branches are judged on their own, since they render precisely when the guard did not hold. |
+
+This is what a prompt reaching for per-stack skills needs: a Go repo must not be told to go read a
+Flutter skill, and must not fail preflight for not having one.
+
 ## Two deliberate limits
 
 - **Only constant arguments are checkable.** `instruction_ref(skill)` names something known at

@@ -66,6 +66,52 @@ def split_front_matter(content: str) -> tuple[dict[str, str], str]:
     return header, match.group("body")
 
 
+def normalize_tags(value: Any) -> list[str]:
+    """The tag list a `tags:` value denotes — lowercased, stripped, order-preserving.
+
+    A tag is a *query key*: prompts ask for a capability with
+    ``find_by_tags('web', 'tests')`` instead of naming the skills that provide it. So
+    `Web` failing to match `web` would be a silent miss rather than an error, and the
+    normalization happens once, here, rather than at each comparison.
+
+    A bare string is split on commas — the form an author types when they forget it is
+    a list — and anything else yields no tags at all.
+    """
+    if isinstance(value, str):
+        items: list[Any] = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        return []
+    tags: list[str] = []
+    for item in items:
+        tag = str(item).strip().strip('"').strip("'").lower()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags
+
+
+def frontmatter_tags(text: str) -> list[str]:
+    """The `tags:` a file's front matter declares, normalized by :func:`normalize_tags`.
+
+    A real YAML parse rather than ``split_front_matter``'s line splitter, because both
+    spellings an author reaches for have to work: the flow list ``tags: [go, testing]``
+    and the block list of ``- `` items under ``tags:``. The line splitter sees the
+    first as an unparsed string and the second as empty, and a tag that silently does
+    not exist is the one failure mode a tag query cannot report.
+
+    Returns ``[]`` for a file with no front matter, no `tags:`, or malformed YAML.
+    """
+    match = re.match(r"\A---\n(?P<header>.*?)\n---\n", text, flags=re.DOTALL)
+    if not match:
+        return []
+    try:
+        data = yaml.safe_load(match.group("header")) or {}
+    except yaml.YAMLError:
+        return []
+    return normalize_tags(data.get("tags") if isinstance(data, dict) else None)
+
+
 def frontmatter_metadata(text: str) -> dict[str, Any]:
     """Parse a generated file's YAML front matter and return its `metadata` mapping.
 

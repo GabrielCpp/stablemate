@@ -43,6 +43,7 @@ BACKEND_SKILL_DIR: dict[str, str] = {
 # underscore. Naming them here — rather than as literals at each read — is what makes
 # the convention checkable: `_SKILL_DIR` has usages, `"_skill_dir"` has occurrences.
 _INSTRUCTIONS = "_instructions"
+_INSTRUCTION_TAGS = "_instruction_tags"
 _PROMPTS = "_prompts"
 _USED_SKILLS = "_used_skills"
 _SKILL_DIR = "_skill_dir"
@@ -68,6 +69,22 @@ def _str_list(value: Any) -> list[str]:
     return [v for v in value if isinstance(v, str)]
 
 
+def _tag_map(value: Any) -> dict[str, list[str]]:
+    """The name→tags pairs of a mapping, dropping anything else.
+
+    Tolerant like its siblings, and lowercasing as it goes: the tags are matched
+    against a prompt's query words, and a manifest written by an older farrier (or by
+    hand) must not turn `Web` into a tag nothing can ask for.
+    """
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        k: [t.lower() for t in _str_list(v)]
+        for k, v in value.items()
+        if isinstance(k, str) and _str_list(v)
+    }
+
+
 def _text(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
@@ -91,6 +108,11 @@ class ContextManifest(BaseModel):
 
     #: name → repo-root-relative path, for `instruction_ref` / `prompt_ref`.
     instructions: dict[str, str] = Field(default_factory=dict)
+    #: The same names → the `tags:` their library source declares, for `find_by_tags`.
+    #: Absent for a skill that declares none, and for a manifest written before tags
+    #: existed — a prompt that queries by tag then matches nothing, which is the same
+    #: answer it gets on a repo that installed no skill of that kind.
+    instruction_tags: dict[str, list[str]] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
     #: The skills selected for this repo, behind `isUsingInstruction`.
     used_skills: list[str] = Field(default_factory=list)
@@ -106,6 +128,11 @@ class ContextManifest(BaseModel):
     @classmethod
     def _tolerate_str_map(cls, value: Any) -> dict[str, str]:
         return _str_map(value)
+
+    @field_validator("instruction_tags", mode="before")
+    @classmethod
+    def _tolerate_tag_map(cls, value: Any) -> dict[str, list[str]]:
+        return _tag_map(value)
 
     @field_validator("used_skills", mode="before")
     @classmethod
@@ -146,6 +173,9 @@ class ContextManifest(BaseModel):
             present=True,
             values=values,
             instructions=instructions,
+            # Not rewritten per backend: a tag says what a skill is *about*, and
+            # only the paths differ between one CLI's install layout and another's.
+            instruction_tags={k: list(v) for k, v in self.instruction_tags.items()},
             prompts=dict(self.prompts),
             used_skills=tuple(self.used_skills),
             skill_dir=target_skill_dir or self.skill_dir,
@@ -169,6 +199,7 @@ class ManifestContext:
     #: The manifest's own `template`/`repo`/`vars`, destined for Jinja by name.
     values: dict[str, Any] = field(default_factory=dict)
     instructions: dict[str, str] = field(default_factory=dict)
+    instruction_tags: dict[str, list[str]] = field(default_factory=dict)
     prompts: dict[str, str] = field(default_factory=dict)
     used_skills: tuple[str, ...] = ()
     skill_dir: str = ""
@@ -180,6 +211,7 @@ class ManifestContext:
             return {}
         ctx: dict[str, Any] = dict(self.values)
         ctx[_INSTRUCTIONS] = dict(self.instructions)
+        ctx[_INSTRUCTION_TAGS] = {k: list(v) for k, v in self.instruction_tags.items()}
         ctx[_PROMPTS] = dict(self.prompts)
         ctx[_USED_SKILLS] = list(self.used_skills)
         if self.skill_dir:
@@ -199,6 +231,7 @@ class ManifestContext:
         return cls(
             present=_INSTRUCTIONS in context or _PROMPTS in context,
             instructions=_str_map(context.get(_INSTRUCTIONS)),
+            instruction_tags=_tag_map(context.get(_INSTRUCTION_TAGS)),
             prompts=_str_map(context.get(_PROMPTS)),
             used_skills=tuple(_str_list(context.get(_USED_SKILLS))),
             skill_dir=_text(context.get(_SKILL_DIR)),

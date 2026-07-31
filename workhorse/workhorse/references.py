@@ -15,12 +15,13 @@ call sites are in the AST — which also means every alias of the helper
 (``instruction_file``/``skill_file``, ``prompt_file``) is covered for free, and a
 mention inside a comment or a string is not mistaken for a call.
 
-Only *required* references are reported, and a prompt has two ways to say a reference
+Only *required* references are reported, and a prompt has three ways to say a reference
 is optional. ``instruction_refs("go", "flutter", ...)`` — plural — asks which of a set
 this repo actually installed and renders just those, so an absent one is the answer
-rather than a defect; and a reference written inside
+rather than a defect; ``find_by_tags('web', 'tests')`` asks the same question without
+naming anything, since its arguments are tags; and a reference written inside
 ``{% if isUsingInstruction('flutter') %}`` cannot render on a repo without that skill,
-so reporting it is a false positive. Both are what a prompt enumerating per-stack
+so reporting it is a false positive. All three are what a prompt reaching for per-stack
 skills needs: a Go repo must not be told to go read a Flutter skill, and must not fail
 preflight for not having one.
 
@@ -49,6 +50,11 @@ PROMPT_HELPERS = frozenset({"prompt_ref", "prompt_file"})
 # than a finding — they render the resolved subset and drop the rest.
 OPTIONAL_SKILL_HELPERS = frozenset({"instruction_refs", "instruction_files", "skill_files"})
 OPTIONAL_PROMPT_HELPERS = frozenset({"prompt_refs", "prompt_files"})
+
+# `find_by_tags('web', 'tests')` takes TAGS, not names. Its arguments name a capability
+# the repo may or may not have installed a skill for, so there is nothing here to check
+# — and descending into them would report every tag in every prompt as a missing skill.
+TAG_HELPERS = frozenset({"find_by_tags"})
 
 # `{% if isUsingInstruction('flutter') %}` is a prompt saying, in the only vocabulary
 # available to it, "only when this repo has that skill". A reference inside such a
@@ -149,10 +155,15 @@ def _collect(node: nodes.Node, guarded: bool, found: set[tuple[str, str]]) -> No
                 and isinstance(first.value, str)
             ):
                 found.add((kind, first.value))
-        elif name in OPTIONAL_SKILL_HELPERS or name in OPTIONAL_PROMPT_HELPERS:
-            # Every argument is a candidate, and a candidate that is absent is the
-            # answer, not a defect. Recorded nowhere, and its arguments are not
-            # descended into as references.
+        elif (
+            name in OPTIONAL_SKILL_HELPERS
+            or name in OPTIONAL_PROMPT_HELPERS
+            or name in TAG_HELPERS
+        ):
+            # Every argument is a candidate (a name for the plural helpers, a tag for
+            # the tag query), and a candidate that is absent is the answer, not a
+            # defect. Recorded nowhere, and its arguments are not descended into as
+            # references.
             return
 
     for child in node.iter_child_nodes():

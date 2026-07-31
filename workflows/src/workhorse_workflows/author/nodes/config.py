@@ -18,8 +18,9 @@ import yaml
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.author.nodes._blueprint import blueprint
-from workhorse_workflows.author.paths import survey_repo_root
-from workhorse_workflows.author.schemas.main import Branches, Config
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import Branches, Config
 from workhorse_workflows.kit import active_branch, checkout, local_branch_exists
 
 
@@ -38,8 +39,8 @@ def _template(root: Path) -> dict:
 @blueprint.node
 def load_config(
     logger: logging.Logger,
-    backlog: str = "docs/backlog.md",
-    epics_dir: str = "docs/epics",
+    backlog: str = "",
+    epics_dir: str = "",
     repo_dir: str = "",
 ) -> Config:
     """Resolve the author's paths and prove the backlog exists.
@@ -54,10 +55,9 @@ def load_config(
     asked to cite one. `surface_manifest` is the one picked up by presence — an unpinned
     manifest prefers the surveyor's `unit-manifest.json` when a survey has run.
     """
-    backlog = backlog.strip() or "docs/backlog.md"
-    epics_dir = epics_dir.strip() or "docs/epics"
-
     root = survey_repo_root(repo_dir)
+    backlog = paths.backlog_file(root, backlog)
+    epics_dir = paths.epics_dir(root, epics_dir)
     backlog_path = (root / backlog).resolve()
     if not backlog_path.is_file():
         logger.warning("backlog file not found: %s", backlog_path)
@@ -70,13 +70,15 @@ def load_config(
     data = _template(root)
     template = data.get("template") or {}
 
+    features_dir = paths.features_dir(root, template.get("features_dir") or "")
+
     surface_manifest = template.get("surface_manifest") or ""
     if not surface_manifest:
         survey_manifest = "docs/survey/unit-manifest.json"
         surface_manifest = (
-            survey_manifest if (root / survey_manifest).is_file() else "docs/features/inventory.json"
+            survey_manifest if (root / survey_manifest).is_file()
+            else f"{features_dir}/inventory.json"
         )
-    features_dir = template.get("features_dir") or "docs/features"
     mockup_dir = template.get("mockup_dir") or "docs/design"
 
     # Best-effort layer list, a hint for layer-aware prompts only: the prompts use

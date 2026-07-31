@@ -20,11 +20,11 @@ Load the target layer's coding standard files before planning. Use the template 
 Use the instruction files that match the layer and files touched. Only the layers this
 repository actually installs are listed below — if a layer you expected is absent, this
 repo has no skills for it, so use the shared repo guidance rather than inventing a path.
-{%- set backend_refs = instruction_refs("go", "go-architecture", "go-di", "go-errors", "go-openapi", "go-repository", "go-server", "go-storage", "go-testing") %}
-{%- set cli_refs = instruction_refs("go-cli", "go-cli-commands", "go-testing") %}
-{%- set web_refs = instruction_refs("react-router", "react-router-architecture", "react-router-ssr", "react-router-auth", "react-router-design-system", "react-router-a11y", "react-router-qa") %}
-{%- set mobile_refs = instruction_refs("flutter", "flutter-architecture", "flutter-api", "flutter-state", "flutter-navigation", "flutter-forms", "flutter-models", "flutter-theme", "flutter-testing") %}
-{%- set infra_refs = instruction_refs("pulumi", "pulumi-ci-docker", "pulumi-qa") %}
+{%- set backend_refs = find_by_tags("backend") %}
+{%- set cli_refs = find_by_tags("cli") %}
+{%- set web_refs = find_by_tags("web") %}
+{%- set mobile_refs = find_by_tags("mobile") %}
+{%- set infra_refs = find_by_tags("infra") %}
 {%- if backend_refs %}
 - {{ template.backend_layer_name | default("Go API") }}: {{ backend_refs }}
 {%- endif %}

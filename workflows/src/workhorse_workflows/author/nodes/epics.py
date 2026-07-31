@@ -10,13 +10,14 @@ from pathlib import Path
 from ostler import Ostler
 from workhorse import worklist as wl
 from workhorse_workflows.author.nodes._blueprint import blueprint
-from workhorse_workflows.author.paths import epic_dir, survey_repo_root
-from workhorse_workflows.author.schemas.main import EpicChoice
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import EpicChoice
 
 
 @blueprint.node
 def select_epic(
-    logger: logging.Logger, epics_dir: str = "docs/epics", repo_dir: str = ""
+    logger: logging.Logger, epics_dir: str = "", repo_dir: str = ""
 ) -> EpicChoice:
     """The first epic in the queue whose authoring is not yet complete.
 
@@ -32,8 +33,8 @@ def select_epic(
     the dashboard its epic progress. `has_epic` false is not a failure; it means the
     backlog is decomposed and the flow moves on to the whole-repo checks.
     """
-    epics_dir_rel = epics_dir.strip() or "docs/epics"
-    okf = Ostler(survey_repo_root(repo_dir))
+    root = survey_repo_root(repo_dir)
+    okf = Ostler(root)
 
     try:
         queue = okf.todo()
@@ -73,7 +74,7 @@ def select_epic(
     return EpicChoice(
         has_epic=True,
         epic=epic,
-        epic_dir=epic_dir(epics_dir_rel, epic),
+        epic_dir=paths.epic_dir(root, epic, epics_dir),
         reason="epic missing epic.md, has no stories, or a story is still unwritten",
         progress=snap.progress,
     )

@@ -1,23 +1,16 @@
-"""The coder workflow's non-agent work, grouped by subject.
+"""The non-agent work only the **main** coder machine calls.
 
-Importing this package registers every node on the shared `blueprint`, which is the one
-name `workflow.py` needs from here. The submodules are the subjects:
-
-* `genesis` — turn a directory into a repo the author and coder can both stand on
-* `dream` — digest a finished run's process record, and drain reflection into a ledger
-* `ci` — the post-PR loop: poll Actions, hand a failure to a fixer, push, poll again
-* `story` — the spine every per-story flow starts with: slug → paths, workspace, stamping
-* `dev` — planning's gates and the per-service implementation loop
-* `review` — where a review runs, what its findings settled to, what a human dropped in
-* `docs` — is there an OKF book, how can its diff be read, and does the update hold
-* `okf` — the diff-to-OKF obligation packet, shared by `docs` and `qa`
-* `qa` — clear the evidence, bring the stack up, validate the plan, run it
-* `evidence` — the gate that fails closed: is the claimed pass backed by checkable proof
-* `regression` — which committed journey suites this story touched, and how they ran
-* `backlog` — file separate-scope discoveries out to the author, and drain them back in
 * `pr` — the epic's PR boundary: open it, merge it, escalate when neither can happen
-* `hygiene` — the two pre-commit gates: stray screenshots, and sentinel IDs
-* `queue` — the main graph's spine: which epic, which story, on what branch, what it recorded
+
+That is the whole package, and the shortness is the point: the coder's main graph is
+mostly a sequencer, so nearly every subject it touches is one a sub-flow touches too and
+therefore lives in [`shared/`](../shared). What is left is the one boundary no sub-flow
+crosses — an epic's pull request is opened, held against CI and merged by the graph that
+owns the epic.
+
+The nodes a sub-graph calls sit beside that graph, in `<flow>/nodes.py` or
+`<flow>/nodes/`, and every one of them registers on the same `blueprint`
+`shared/blueprint.py` holds, wherever it lives.
 
 Ported from `base-library/workflows/coder/scripts/`. The same three things change as in
 `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a
@@ -40,45 +33,6 @@ push/poll mismatch (recorded in the progress ledger) became visible at all.
 """
 from __future__ import annotations
 
-from workhorse_workflows.coder.nodes._blueprint import blueprint
-from workhorse_workflows.coder.nodes.backlog import (
-    file_backlog_items,
-    mark_fix_blocked,
-    prune_fix_item,
-    seed_fix_story,
-    select_fix_item,
-)
-from workhorse_workflows.coder.nodes.ci import (
-    poll_pr_checks,
-    push_ci_fix,
-    push_epic_branch,
-    select_ci_repo,
-)
-from workhorse_workflows.coder.nodes.dev import (
-    branch_code_repos,
-    read_operator_context,
-    resolve_impl_context,
-    run_lint,
-    select_next_layer,
-    validate_plan_context,
-)
-from workhorse_workflows.coder.nodes.docs import (
-    classify_documentation_context,
-    detect_okf_docs,
-    verify_story_documentation,
-)
-from workhorse_workflows.coder.nodes.dream import gather_run_evidence, record_improvements
-from workhorse_workflows.coder.nodes.evidence import verify_qa_evidence
-from workhorse_workflows.coder.nodes.genesis import (
-    genesis_git_init,
-    init_skeleton,
-    install_farrier,
-    resolve_genesis_target,
-    validate_genesis,
-    write_agents_yml,
-)
-from workhorse_workflows.coder.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
-from workhorse_workflows.coder.nodes.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.nodes.pr import (
     flag_ci_failure,
     flag_merge_failure,
@@ -86,97 +40,11 @@ from workhorse_workflows.coder.nodes.pr import (
     open_pr,
     open_story_pr,
 )
-from workhorse_workflows.coder.nodes.qa import (
-    clear_qa_evidence,
-    ensure_stack,
-    run_qa_plan,
-    validate_qa_plan,
-)
-from workhorse_workflows.coder.nodes.queue import (
-    branch_epic,
-    branch_story,
-    commit_story,
-    flag_epic_blocked,
-    flag_qa_failure,
-    init_base,
-    prune_epic,
-    select_epic,
-    select_story,
-)
-from workhorse_workflows.coder.nodes.regression import (
-    detect_regression_platform,
-    run_regression_suite,
-)
-from workhorse_workflows.coder.nodes.review import (
-    check_feedback,
-    resolve_review_context,
-    verify_review_resolution,
-)
-from workhorse_workflows.coder.nodes.story import (
-    prepare_fix_story,
-    prepare_story,
-    resolve_workspace_dirs,
-    stamp_specs,
-)
 
 __all__ = [
-    "blueprint",
-    "branch_code_repos",
-    "branch_epic",
-    "branch_story",
-    "build_okf_context",
-    "check_feedback",
-    "check_sentinel_ids",
-    "classify_documentation_context",
-    "clear_qa_evidence",
-    "commit_story",
-    "detect_okf_docs",
-    "detect_regression_platform",
-    "ensure_stack",
-    "file_backlog_items",
     "flag_ci_failure",
-    "flag_epic_blocked",
     "flag_merge_failure",
-    "flag_qa_failure",
-    "flush_root_screenshots",
-    "gather_run_evidence",
-    "genesis_git_init",
-    "init_base",
-    "init_skeleton",
-    "install_farrier",
-    "mark_fix_blocked",
     "merge_pr",
     "open_pr",
     "open_story_pr",
-    "poll_pr_checks",
-    "prune_epic",
-    "prune_fix_item",
-    "prepare_fix_story",
-    "prepare_story",
-    "push_ci_fix",
-    "push_epic_branch",
-    "read_operator_context",
-    "record_improvements",
-    "resolve_genesis_target",
-    "resolve_impl_context",
-    "resolve_review_context",
-    "resolve_workspace_dirs",
-    "run_lint",
-    "run_qa_plan",
-    "run_regression_suite",
-    "seed_fix_story",
-    "select_ci_repo",
-    "select_epic",
-    "select_fix_item",
-    "select_next_layer",
-    "select_story",
-    "stamp_specs",
-    "validate_genesis",
-    "validate_okf_context",
-    "validate_plan_context",
-    "validate_qa_plan",
-    "verify_qa_evidence",
-    "verify_review_resolution",
-    "verify_story_documentation",
-    "write_agents_yml",
 ]

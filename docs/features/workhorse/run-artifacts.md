@@ -70,15 +70,16 @@ state changes:
   after a resume (re-marked in-progress until it finishes again).
 - `terminal` — type `enum{terminal,fail} | null` — default `null` (in progress); `terminal` when the
   entry flow returned [`Done`](workflow-format.md#transition), `fail` when a `PyflowError` ended the
-  run.
+  run. One `PyflowError` is deliberately excluded: `RunBudgetExceeded` records itself as a stop
+  (below) instead, because a run cut off by the clock decided nothing and must stay resumable.
 - `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
-  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when an operator
-  Ctrl-C stops the run. `terminal` stays `null` (an interrupted run must remain auto-resumable), so
-  this field is what separates *stopped by a human* from *still in flight, or wedged in a node* —
-  which are otherwise the same bytes on disk. Cleared by the next write: a resume, or the run
-  finishing.
-- `error` — type `string | null` — default `null`; the exception name accompanying
-  `interrupted_at` (today always `KeyboardInterrupt`).
+  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when the run **stopped
+  without deciding** — an operator Ctrl-C, or `WORKHORSE_MAX_RUNTIME_S` running out between
+  states. `terminal` stays `null` (such a run must remain auto-resumable), so this field is what
+  separates *stopped* from *still in flight, or wedged in a node* — which are otherwise the same
+  bytes on disk. Cleared by the next write: a resume, or the run finishing.
+- `error` — type `string | null` — default `null`; why the run stopped, accompanying
+  `interrupted_at` — `KeyboardInterrupt`, or the `RunBudgetExceeded` message naming the budget.
 - `pid` — type `int`, required — the writing process's pid. Also a telemetry resource attribute;
   recorded here so it survives with telemetry off.
 

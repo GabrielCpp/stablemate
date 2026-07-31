@@ -10,7 +10,7 @@ teardown (`TornDown`). Nothing else about either changes; the app half remains a
 wrapper over `workhorse.stack`, which the coder QA flow shares.
 
 The YAML's mandatory-teardown tail (every exit from the walk routed through `teardown_app`
-→ `teardown_browser` → `wt_done`) survives as `flows/walkthrough_web.py`'s `_finish`, which
+→ `teardown_browser` → `wt_done`) survives as `walkthrough_web/flow.py`'s `_finish`, which
 every terminal calls. Because the pgids are state parameters rather than run-global vars, a
 *resumed* walk can still reap what an earlier process started.
 """
@@ -27,10 +27,10 @@ import urllib.request
 from pathlib import Path
 
 from workhorse import stack
-from workhorse_workflows.okf_builder import paths
-from workhorse_workflows.okf_builder.nodes import _stubs
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import AppBoot, BrowserBoot, TornDown
+from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared import stubs
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import AppBoot, BrowserBoot, TornDown
 
 BOOT_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.5
@@ -38,7 +38,7 @@ TERM_GRACE_S = 5.0
 BROWSER_CANDIDATES = ("chromium-browser", "chromium", "google-chrome", "google-chrome-stable")
 
 
-@blueprint.node(stub=_stubs.app_up)
+@blueprint.node(stub=stubs.app_up)
 def boot_app(
     logger: logging.Logger,
     launch_cmd: str = "",
@@ -79,7 +79,7 @@ def _cdp_ok(cdp_url: str) -> bool:
         return False
 
 
-@blueprint.node(stub=_stubs.browser_up)
+@blueprint.node(stub=stubs.browser_up)
 def boot_browser(logger: logging.Logger, cdp_url: str = "", repo_root: str = ".") -> BrowserBoot:
     """Own the shared CDP browser's lifecycle.
 

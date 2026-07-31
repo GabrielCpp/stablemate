@@ -23,8 +23,9 @@ node `args:`, `cwd:`, and `command:` strings alike.
 
 - **Input:** `context: dict[str, Any]` — the node's render context, expected to carry the reserved
   keys a [context manifest](../context-manifest.md) sets (`_instructions`, `_prompts`,
-  `_used_skills`, `_skill_dir`, `_run_dir`) — all optional, each missing/falsy key degrades to its
-  empty default (`{}` / `set()` / `""`) rather than erroring; `workflow_dir: Path` — the running
+  `_instruction_tags`, `_used_skills`, `_skill_dir`, `_run_dir`) — all optional, each missing/falsy
+  key degrades to its empty default (`{}` / `set()` / `""`) rather than erroring; an older manifest
+  with no `_instruction_tags` simply matches no tag query; `workflow_dir: Path` — the running
   workflow's own directory, used as `skill_dir()`'s fallback.
 - **Output:** a `dict[str, Callable]` of Jinja global names → functions, merged into the
   `Environment.globals` of the caller (later `env.globals.update(...)` calls, i.e. a second render
@@ -76,6 +77,37 @@ including the unresolved-reference warning, but reads `context["_prompts"]` (the
 manifest](../context-manifest.md#prompts) prompt-id → path map) with a plain exact-match lookup,
 and its placeholder reads `f"generated {name} prompt when installed"`.
 
+### `instruction_refs(*names)` (aliased as `instruction_files`, `skill_files`) and `prompt_refs(*names)` (aliased as `prompt_files`)
+The plural forms: any number of names — or one list, flattened by `_flatten` — resolved through the
+same lookup as the singular helper, with the **unresolvable ones dropped instead of placeheld**.
+Survivors are deduplicated by path, sorted, and rendered by `_as_list` as a backtick-quoted
+comma-separated string; nothing resolving yields the empty string, so `{% if %}` can drop the
+sentence rather than leave a dangling "e.g.". This is what a prompt uses for a menu of skills only
+*some* repos install, which is also why these arguments are exempt from [reference
+preflight](reference-preflight.md).
+
+### `find_by_tags(*tags)`
+The same rendering, asked for by **capability rather than by name**: returns the installed skills
+carrying **all** of `tags`, from `context["_instruction_tags"]` (the [context
+manifest](../context-manifest.md#instruction_tags) name → tags map farrier writes from each library
+skill's `tags:` front matter). Algorithm:
+1. Lowercase and flatten the arguments into a `wanted` set; return `""` for an empty query, so
+   asking for nothing renders nothing rather than the whole library.
+2. Keep each manifest name whose own tags are a superset of `wanted` — AND, not OR: a second tag
+   narrows the result.
+3. Resolve each kept name through `references.resolve_instruction`, the same resolver
+   [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file) uses, so a
+   matched pack alias lands on the same installed path either route reaches; drop what doesn't
+   resolve.
+4. Render the matches sorted by path via `_as_list` — sorted rather than in manifest order, since
+   a JSON dict's order is farrier's bookkeeping and a prompt that renders differently run-to-run
+   for no semantic reason costs a diff every time the manifest is regenerated.
+
+A repo whose skills declare no tags matches nothing and renders the empty string, which is the
+degradation a prompt written against this helper must expect (`| default("(none installed — …)",
+true)`). Its arguments name a capability, not a file, so they are never [preflight
+findings](reference-preflight.md#what-is-not-reported).
+
 ### `is_using_instruction(name="", *_args, **_kwargs)` (Jinja name `isUsingInstruction`)
 Returns `name in used_skills`, `used_skills` being `set(context["_used_skills"] or [])` — the
 [context manifest](../context-manifest.md#used_skills) selected-skill-id set. Lets a prompt
@@ -105,6 +137,6 @@ backends:
 
 All manifest-sourced values are read once at the top of `_farrier_globals` (not per-call), from the
 reserved keys a [context manifest](../context-manifest.md) sets: `_instructions`, `_prompts`,
-`_used_skills`, `_skill_dir`; `_run_dir` is read separately by
+`_instruction_tags`, `_used_skills`, `_skill_dir`; `_run_dir` is read separately by
 [`get_node_output`](#get_node_outputnode_id-key-default) since it names a run artifact, not a
 manifest field.

@@ -45,7 +45,8 @@ install time — see the [`scaffold` command](../farrier.md#scaffold).)
 (`StrictUndefined` — an unresolved `template.*`/`vars.*` reference raises unless the source guards
 it with `| default(...)`) if `content` contains any of a fixed token list (`instruction_file(`,
 `instruction_ref(`, `skill_file(`, `prompt_file(`, `prompt_ref(`, `skill_dir(`,
-`isUsingInstruction(`, `repo.`, `template.`, `vars.`); otherwise it returns `content` unchanged
+`isUsingInstruction(`, `find_by_tags(`, `repo.`, `template.`, `vars.`); otherwise it returns
+`content` unchanged
 (cheap skip for templates using none of these). Helpers exposed to the template:
 
 - `instruction_ref(name)` / `instruction_file(name)` — a relative path (`relative_reference`,
@@ -60,6 +61,12 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
   `target`; same "generated ... when installed" fallback if unselected.
 - `skill_dir()` — a relative path to this `target`'s skill directory (`skill_dir_path`).
 - `isUsingInstruction(name)` — `True` iff `name` is a selected skill (for `{% if %}` gating).
+- `find_by_tags(*tags)` — the selected skills whose front matter declares **all** of `tags`
+  (`skills_with_tags` over the cached `skill_tags`), rendered as their sorted `relative_reference`
+  paths, backticked and comma-joined; the empty string when the query is empty or nothing matches.
+  The install-time twin of workhorse's Jinja global of the same name, and it must keep rendering the
+  same shape, so one library source reads identically whether farrier rendered it into a repo or
+  workhorse rendered it from the library at run time.
 - `workhorse_var(name)` — emits `{{ name }}` literally, i.e. a *workhorse* template placeholder
   passed through unrendered by farrier's own Jinja pass, so workhorse can substitute it at workflow
   run time (e.g. `{{ workhorse_var('plan_path') }}` → `{{ plan_path }}` in the installed file).
@@ -132,8 +139,10 @@ package** (never copied into the repo) needs to resolve
 `instruction_ref`/`isUsingInstruction`/`template.*`/
 `skill_dir` at run time instead of at install time: `template`/`repo` (with `root` pinned to `"."`
 so the committed file is machine-independent) /`vars`, `instructions` and `prompts` (every selected
-skill/prompt id → its rendered output path, repo-root-relative), `used_skills` (sorted lookup keys),
-and `skill_dir` (this `target`'s skill directory, repo-root-relative).
+skill/prompt id → its rendered output path, repo-root-relative), `instruction_tags` (the same alias
+keys → each skill's declared `tags:`, omitting the skills that declare none — what workhorse's
+`find_by_tags` queries), `used_skills` (sorted lookup keys), and `skill_dir` (this `target`'s skill
+directory, repo-root-relative).
 
 - code: `farrier/farrier/renderer.py::Renderer.context_manifest`
 
@@ -146,7 +155,9 @@ and the body through `render_templates`, then re-emit front matter carrying the
 
 - `generated_skill` — front matter is exactly `name` (`public_name`), `description`
   (`skill_description`: explicit header `description:`, else `"Use for <prefix> repository work
-  involving <title>[. Applies to <applyTo>]"`), and the metadata block.
+  involving <title>[. Applies to <applyTo>]"`), and the metadata block — which carries the source's
+  `tags:` as a `tags:` line inside `metadata:` when it declares any, since that block is the
+  agreed-ours namespace every harness's front-matter parser already ignores.
 - `generated_command` — front matter is `description` (`command_description`: explicit header
   `description:`, else the body's first `# ` heading), any of `argument-hint`/`model`/
   `allowed-tools` the source header sets (accepting camelCase aliases), and the metadata block.

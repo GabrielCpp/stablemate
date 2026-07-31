@@ -35,11 +35,11 @@ Before refining the plan, read:
 - `docs/CODEX.md` when the work touches docs, epics, stories, or roadmap artifacts
 - Relevant instruction files for each touched layer (only the layers this repository
   installs are listed; an absent one means this repo has no skills for that layer):
-{%- set backend_refs = instruction_refs("go", "go-architecture", "go-di", "go-errors", "go-openapi", "go-repository", "go-server", "go-storage", "go-testing") %}
-{%- set cli_refs = instruction_refs("go-cli", "go-cli-commands", "go-testing") %}
-{%- set web_refs = instruction_refs("react-router", "react-router-architecture", "react-router-ssr", "react-router-auth", "react-router-design-system", "react-router-a11y", "react-router-qa") %}
-{%- set mobile_refs = instruction_refs("flutter", "flutter-architecture", "flutter-api", "flutter-state", "flutter-navigation", "flutter-forms", "flutter-models", "flutter-theme", "flutter-testing") %}
-{%- set infra_refs = instruction_refs("pulumi", "pulumi-ci-docker", "pulumi-qa") %}
+{%- set backend_refs = find_by_tags("backend") %}
+{%- set cli_refs = find_by_tags("cli") %}
+{%- set web_refs = find_by_tags("web") %}
+{%- set mobile_refs = find_by_tags("mobile") %}
+{%- set infra_refs = find_by_tags("infra") %}
 {%- if backend_refs %}
   - {{ template.backend_layer_name | default("Go API") }}: {{ backend_refs }}
 {%- endif %}
@@ -163,7 +163,7 @@ ones the plan actually touches; a layer absent here is absent from this repo.
 - [ ] Identify the shared contract files that change, if any (`{{ template.openapi_path | default("wherever this repo keeps them") }}`)
 - [ ] Identify every generated artifact downstream of them, on both the producing and consuming sides
 - [ ] Add exact generation commands from the codegen instruction files this repo installs
-      {%- set codegen_refs = instruction_refs("go-openapi", "flutter-api", "react-router") %}
+      {%- set codegen_refs = find_by_tags("codegen") %}
       {%- if codegen_refs %} ({{ codegen_refs }}){% endif %}
 {% if web_refs %}
 ### {{ template.web_layer_name | default("Web app") }}

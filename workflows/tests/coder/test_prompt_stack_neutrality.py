@@ -11,8 +11,14 @@ still hardcoded the menu they were supposed to have replaced.
 So this renders every coder prompt against a manifest holding one stack's skills and
 asserts none of the *other* stacks' vocabulary survives. It is a rendering test rather
 than a static grep because the guards are the mechanism under test — `{%- set web_refs =
-instruction_refs(...) %}` at the top and `{% if web_refs %}` around the body — and a grep
+find_by_tags("web") %}` at the top and `{% if web_refs %}` around the body — and a grep
 cannot tell prose inside a guard from prose outside one.
+
+The manifest carries `_instruction_tags` as well as `_instructions`, because the guards
+ask by capability now rather than by name. A skill the manifest lists but does not tag is
+one no query can reach, so an untagged manifest would render *every* layer's prose away
+and pass the neutrality half of this file for the wrong reason — which is what the last
+test here exists to catch.
 
 Both directions are checked. A web-only manifest must not yield mobile prose, and a
 mobile-only manifest must not yield web prose, because a prompt that hardcodes *one*
@@ -31,30 +37,45 @@ import workhorse_workflows
 
 PROMPTS = Path(workhorse_workflows.__file__).parent / "coder" / "prompts"
 
-#: What each stack's skills are called, and the words that only belong to it. The skill
-#: names must match what the prompts pass to `instruction_refs` — they are the keys
-#: farrier writes into the manifest, and a typo here would resolve nothing and make every
-#: assertion below trivially true.
+#: What each stack's skills are called, what each declares in `tags:`, and the words that
+#: only belong to that stack. The *tags* are what the prompts query — the layer tag is the
+#: stack's own name, and the cross-cutting ones (`standards`, `tests`, `qa`, `runbook`,
+#: `codegen`) say what the skill is for. A tag missing here resolves nothing and would make
+#: every neutrality assertion below trivially true, which is why the last test re-checks
+#: that the stack a repo *does* have still reaches the prompt.
 STACKS = {
     "web": {
-        "skills": (
-            "react-router",
-            "react-router-architecture",
-            "react-router-testing",
-            "react-router-a11y",
-        ),
+        "skills": {
+            "react-router": ("web", "standards", "runbook"),
+            "react-router-architecture": ("web", "standards"),
+            "react-router-testing": ("web", "tests", "qa"),
+            "react-router-a11y": ("web", "standards"),
+        },
         "words": ("Svelte", "React Router", "react-router"),
     },
     "mobile": {
-        "skills": ("flutter", "flutter-architecture", "flutter-state", "flutter-api"),
+        "skills": {
+            "flutter": ("mobile", "standards", "runbook"),
+            "flutter-architecture": ("mobile", "standards"),
+            "flutter-state": ("mobile", "standards"),
+            "flutter-api": ("mobile", "tests", "qa"),
+        },
         "words": ("Flutter", "Dart", "Riverpod"),
     },
     "backend": {
-        "skills": ("go", "go-architecture", "go-errors", "go-openapi"),
+        "skills": {
+            "go": ("backend", "standards", "runbook"),
+            "go-architecture": ("backend", "standards"),
+            "go-errors": ("backend", "tests", "qa"),
+            "go-openapi": ("backend", "codegen"),
+        },
         "words": ("Firestore", "DynamoDB", "Cobra"),
     },
     "infra": {
-        "skills": ("pulumi", "pulumi-ci-docker"),
+        "skills": {
+            "pulumi": ("infra", "standards", "runbook"),
+            "pulumi-ci-docker": ("infra", "codegen"),
+        },
         "words": ("Pulumi", "Terraform", "main.tf"),
     },
 }
@@ -73,12 +94,13 @@ def _context(stack: str) -> dict[str, object]:
 
     The paths are fabricated but shaped like real ones: `resolve_instruction` returns
     whatever the manifest maps a name to, so what matters is only that a name present
-    resolves and a name absent does not.
+    resolves and a name absent does not. `_instruction_tags` is keyed by the same names,
+    which is how `find_by_tags` gets from a queried capability back to an installed path.
     """
+    skills: dict[str, tuple[str, ...]] = STACKS[stack]["skills"]
     return {
-        "_instructions": {
-            name: f".claude/skills/{name}/SKILL.md" for name in STACKS[stack]["skills"]
-        },
+        "_instructions": {name: f".claude/skills/{name}/SKILL.md" for name in skills},
+        "_instruction_tags": {name: list(tags) for name, tags in skills.items()},
         "_prompts": {},
     }
 
@@ -99,7 +121,7 @@ def test_a_prompt_names_no_stack_the_manifest_does_not_have(stack: str, prompt: 
     for word in _foreign_words(stack):
         assert word not in prose, (
             f"{prompt.name} rendered for a {stack}-only repo still says {word!r}; "
-            f"gate that prose on the matching `instruction_refs(...)` variable"
+            f"gate that prose on the matching `find_by_tags(...)` variable"
         )
 
 
@@ -112,7 +134,8 @@ def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> Non
     that does not, it renders as `generated go-testing instruction file when installed`
     and is also reported by `workhorse.references`' preflight — so the prompt both tells
     the agent to hunt for a Go skill and adds a finding to every non-Go run. A skill only
-    some repos install belongs in the plural helper, or behind `isUsingInstruction`.
+    some repos install is asked for by tag (`find_by_tags`), or with the plural
+    name helper, or behind `isUsingInstruction`.
 
     Checked against the placeholder rather than the source because that is the string the
     agent would actually read, and it appears no matter which alias of the helper
@@ -125,8 +148,42 @@ def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> Non
         for skill in spec["skills"]:
             assert f"generated {skill} instruction file" not in rendered, (
                 f"{prompt.name} requires the {skill!r} skill of a {stack}-only repo; "
-                f"move it into an `instruction_refs(...)` menu or guard it"
+                f"ask for it by tag with `find_by_tags(...)` or guard it"
             )
+
+
+#: The prose `instruction_ref` renders when a name does not resolve, with the name itself
+#: left as a wildcard — `templates.instruction_ref` builds it as
+#: `f"generated {name} instruction file when installed"`.
+PLACEHOLDER = re.compile(r"generated (\S+) instruction file when installed")
+
+
+@pytest.mark.parametrize("prompt", sorted(PROMPTS.glob("*.md")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("stack", sorted(STACKS))
+def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prompt: Path) -> None:
+    """The generalization of the test above: *no* singular ref may go unresolved.
+
+    That test names the stacks it knows, so it only catches a required skill belonging to
+    one of them. The defect it missed was `instruction_ref("developer")`, in four prompts:
+    `developer` is not a stack skill at all but a per-project one, so no entry in `STACKS`
+    covered it and the preflight scan was the only thing that ever said a word. Every
+    run of a repo without that project's overlay put `generated developer instruction file
+    when installed` into four live agent prompts — a filename to go hunt for that exists
+    nowhere.
+
+    The bar this asserts is the one the package can actually meet: what a repo installs is
+    the repo's business, so a prompt shipping here may not *require* any skill by name. A
+    skill some repos have is asked for by tag with `find_by_tags(...)` — which renders
+    nothing when nothing matches — or guarded with `isUsingInstruction`.
+    """
+    rendered = render(prompt, _context(stack), PROMPTS.parent)
+    missing = sorted(set(PLACEHOLDER.findall(rendered)))
+    assert not missing, (
+        f"{prompt.name} requires {', '.join(missing)} — a skill no repo is obliged to "
+        f"install, so the prompt names a file that may not exist. Ask for it by tag with "
+        f"`find_by_tags(...)` and a `| default(...)`, or guard it with "
+        f"`isUsingInstruction`"
+    )
 
 
 @pytest.mark.parametrize("stack", sorted(STACKS))
