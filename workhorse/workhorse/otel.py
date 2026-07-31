@@ -57,17 +57,21 @@ working or dead. Only something that *increments* separates the two.
 
 from __future__ import annotations
 
+import functools
 import os
 import socket
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     # Annotation-only: telemetry is imported by everything, so it must not pull
-    # the runner in at runtime just to name the value it is handed.
+    # the runner (or the record models) in at runtime just to name the values it
+    # is handed. `from __future__ import annotations` keeps these unevaluated.
+    from workhorse.records import NodeEvent
     from workhorse.runner.usage import TurnUsage
 
 
@@ -125,14 +129,119 @@ def _metric_export_every_s() -> float:
             return value
     return _HEARTBEAT_EVERY_S
 
-# The active per-run telemetry, or None (the no-op default). Set by start_run()
-# when enabled, cleared by end_run(). Module-level because there is one run per
-# process; tests construct _Telemetry directly with fakes instead.
-_active: _Telemetry | None = None
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _failsoft(fallback: _R) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
+    """Make a telemetry method degrade to `fallback` instead of raising.
+
+    The fail-soft policy lives here and nowhere else: a telemetry bug must cost
+    the span, never the run, and an instrumentation site must not have to know
+    that. `fallback` is a parameter rather than a fixed `None` so the two
+    non-void methods (`current_node`, `enabled`) can use the same decorator and
+    keep their return types.
+    """
+
+    def decorate(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+        @functools.wraps(fn)
+        def guarded(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+            try:
+                return fn(*args, **kwargs)
+            except Exception:
+                return fallback
+
+        return guarded
+
+    return decorate
+
+
+class Telemetry(Protocol):
+    """What the instrumentation sites may ask of telemetry.
+
+    One typed interface with two implementations: `_Telemetry`, which opens spans
+    and records metrics, and `_NullTelemetry`, which does nothing. Absence is the
+    null one — never a nullable reference and never a `getattr` by method name,
+    which is what this replaced: a string method name defeats rename, signature
+    checking and find-usages at once, and paired with the swallow-everything
+    policy below a typo in it is a permanent silent no-op with nothing to notice
+    it. Fail-soft is still the policy; it lives in `_failsoft` on the real class.
+    """
+
+    def enabled(self) -> bool: ...
+    def record_event(self, event: NodeEvent) -> None: ...
+    def gas_level(self, gas: int, capacity: int) -> None: ...
+    def gas_refuel(self, node_id: str) -> None: ...
+    def turn_start(
+        self,
+        node_id: str,
+        model: str | None,
+        effort: str | None,
+        timeout: float,
+        backend: str | None = None,
+    ) -> None: ...
+    def turn_end(self, error: str | None = None) -> None: ...
+    def turn_result(self, usage: TurnUsage) -> None: ...
+    def set_labels(self, labels: dict[str, str]) -> None: ...
+    def turn_session(self, session_id: str) -> None: ...
+    def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None: ...
+    def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
+    def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
+    def current_node(self) -> str: ...
+    def end_run(self, status: str, error: str | None = None) -> None: ...
+
+
+class _NullTelemetry:
+    """Telemetry that is off: every call is a near-zero-cost no-op.
+
+    This is what `_active` holds with no collector reachable, so the "do nothing"
+    policy exists in exactly one class rather than as an absence test at each of
+    the fourteen entry points below.
+    """
+
+    def enabled(self) -> bool:
+        return False
+
+    def record_event(self, event: NodeEvent) -> None: ...
+    def gas_level(self, gas: int, capacity: int) -> None: ...
+    def gas_refuel(self, node_id: str) -> None: ...
+    def turn_start(
+        self,
+        node_id: str,
+        model: str | None,
+        effort: str | None,
+        timeout: float,
+        backend: str | None = None,
+    ) -> None: ...
+    def turn_end(self, error: str | None = None) -> None: ...
+    def turn_result(self, usage: TurnUsage) -> None: ...
+    def set_labels(self, labels: dict[str, str]) -> None: ...
+    def turn_session(self, session_id: str) -> None: ...
+    def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None: ...
+    def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
+    def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
+
+    def current_node(self) -> str:
+        return ""
+
+    def end_run(self, status: str, error: str | None = None) -> None: ...
+
+
+#: The one "telemetry is off" instance. Stateless, so one reference serves every
+#: run in the process.
+_NULL: Telemetry = _NullTelemetry()
+
+# The active per-run telemetry. Set by start_run() when enabled, returned to the
+# null adapter by end_run() — never None, so no caller branches on absence.
+# Module-level because there is one run per process; tests install a fake here
+# instead of standing up an exporter.
+_active: Telemetry = _NULL
 
 
 def enabled() -> bool:
-    return _active is not None
+    """Whether the active telemetry actually exports anything."""
+    return _active.enabled()
 
 
 def _collector_reachable(endpoint: str) -> bool:
@@ -161,23 +270,23 @@ def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
     probe. Still a no-op if the optional SDK isn't importable.
     """
     global _active
-    if _active is not None or _OTEL_FORCED is False:
+    if _active.enabled() or _OTEL_FORCED is False:
         return
     if _OTEL_FORCED is None and not _collector_reachable(_OTEL_ENDPOINT):
         return
     try:
-        _active = _build(workflow, run_id, run_dir)
+        _active = _build(workflow, run_id, run_dir) or _NULL
     except Exception as exc:  # instrumentation must never break a run
         print(f"[workhorse] ⚠ OTel setup failed ({exc}); telemetry disabled", file=sys.stderr)
-        _active = None
+        _active = _NULL
 
 
 def end_run(status: str, error: str | None = None) -> None:
     """Close every open span (root last), flush, and shut the SDK down.
     Idempotent — the finally-backstop in ``main.run`` may call it again."""
     global _active
-    telemetry, _active = _active, None
-    if telemetry is None:
+    telemetry, _active = _active, _NULL
+    if not telemetry.enabled():
         return
     try:
         # Unhook logging before the provider below is shut down, so no late
@@ -187,36 +296,24 @@ def end_run(status: str, error: str | None = None) -> None:
         logsetup.detach_otel()
     except Exception:
         pass
-    try:
-        telemetry.end_run(status, error)
-    except Exception:
-        pass
+    telemetry.end_run(status, error)
 
 
-def _call(method: str, *args: Any, **kwargs: Any) -> None:
-    """Forward to the active telemetry, or do nothing. Exceptions are swallowed:
-    a telemetry bug must degrade to 'no spans', never to a crashed run."""
-    telemetry = _active
-    if telemetry is None:
-        return
-    try:
-        getattr(telemetry, method)(*args, **kwargs)
-    except Exception:
-        pass
-
-
-def record_event(record: dict[str, Any]) -> None:
+def record_event(event: NodeEvent) -> None:
     """Mirror one ArtifactWriter event-log record (enter/done/terminal) into
-    node spans. Called from ``ArtifactWriter._append_event``."""
-    _call("record_event", record)
+    node spans. Called from ``ArtifactWriter._append_event`` with the same
+    ``NodeEvent`` it writes to ``events.jsonl`` — the model is the contract, so
+    a field renamed there is a type error here rather than a silently absent
+    span attribute."""
+    _active.record_event(event)
 
 
 def gas_level(gas: int, capacity: int) -> None:
-    _call("gas_level", gas, capacity)
+    _active.gas_level(gas, capacity)
 
 
 def gas_refuel(node_id: str) -> None:
-    _call("gas_refuel", node_id)
+    _active.gas_refuel(node_id)
 
 
 def turn_start(
@@ -226,11 +323,11 @@ def turn_start(
     timeout: float,
     backend: str | None = None,
 ) -> None:
-    _call("turn_start", node_id, model, effort, timeout, backend)
+    _active.turn_start(node_id, model, effort, timeout, backend)
 
 
 def turn_end(error: str | None = None) -> None:
-    _call("turn_end", error)
+    _active.turn_end(error)
 
 
 def turn_result(usage: TurnUsage) -> None:
@@ -238,7 +335,7 @@ def turn_result(usage: TurnUsage) -> None:
 
     ``usage`` is already normalized (``runner/usage.py``), so every backend's
     dialect arrives here in Claude's key names and one query reads them all."""
-    _call("turn_result", usage)
+    _active.turn_result(usage)
 
 
 def set_labels(labels: dict[str, str]) -> None:
@@ -246,7 +343,7 @@ def set_labels(labels: dict[str, str]) -> None:
 
     Called once per node with the graph's labels rendered against the live
     context. Values must already be strings; ``{}`` clears them."""
-    _call("set_labels", labels)
+    _active.set_labels(labels)
 
 
 def turn_session(session_id: str) -> None:
@@ -254,20 +351,20 @@ def turn_session(session_id: str) -> None:
     node's span leads back to that session's transcript (``opencode export <id>``
     and equivalents) — the agent's reasoning/tool trace, which the node's
     ``prompt.md`` / ``output.json`` do not carry."""
-    _call("turn_session", session_id)
+    _active.turn_session(session_id)
 
 
 def turn_event(name: str, *, error: bool = False, **attrs: Any) -> None:
     """Record a recovery-ladder event (retry/reframe/compact/cap_wait/
     watchdog_kill) on the open turn span, falling back to the node span.
     Thread-safe: the watchdog calls this from its daemon timer thread."""
-    _call("turn_event", name, error, attrs)
+    _active.turn_event(name, error, attrs)
 
 
 def heartbeat(node_id: str, remaining_s: float) -> None:
     """One cap-wait tick: proof the run is alive inside a legitimate multi-hour
     spending-cap sleep (silence, by contrast, means a hang)."""
-    _call("heartbeat", node_id, remaining_s)
+    _active.heartbeat(node_id, remaining_s)
 
 
 def turn_heartbeat(node_id: str, idle_s: float, elapsed_s: float) -> None:
@@ -285,7 +382,7 @@ def turn_heartbeat(node_id: str, idle_s: float, elapsed_s: float) -> None:
     one goes quiet, so idle_s climbs. No heartbeat at all means the process is
     gone.
     """
-    _call("turn_heartbeat", node_id, idle_s, elapsed_s)
+    _active.turn_heartbeat(node_id, idle_s, elapsed_s)
 
 
 def current_node() -> str:
@@ -297,15 +394,7 @@ def current_node() -> str:
     which this engine deliberately does not populate. Tagging the node explicitly
     is what makes ``groom logs --node`` work at all.
     """
-    telemetry = _active
-    if telemetry is None:
-        return ""
-    try:
-        with telemetry._lock:
-            stack = telemetry._stack
-            return stack[-1][0][0] if stack else ""
-    except Exception:
-        return ""
+    return _active.current_node()
 
 
 def _build_logs(resource: Any) -> Any:
@@ -503,6 +592,10 @@ class _Telemetry:
             self._turn_beats = self._turn_idle = self._turn_elapsed = None
             self._run_beats = self._node_elapsed = None
 
+    def enabled(self) -> bool:
+        """True: an SDK was built, so these calls really export something."""
+        return True
+
     # ---- spans ---------------------------------------------------------- #
     def start_root(self, workflow: str) -> None:
         with self._lock:
@@ -554,20 +647,18 @@ class _Telemetry:
                 attrs[key] = value
         return attrs
 
+    # A telemetry bug must degrade to "no heartbeat", never take down the thread
+    # (and with it every later liveness signal) mid-run.
+    @_failsoft(None)
     def _beat_once(self) -> None:
         """Emit one liveness tick for whatever node is open (or none)."""
-        try:
-            with self._lock:
-                top = self._stack[-1] if self._stack else None
-            node = top[0][0] if top else ""
-            attrs = self._live_attrs(node)
-            self._run_beats.add(1, attrs)
-            if top is not None and self._node_elapsed is not None:
-                self._node_elapsed.set(time.monotonic() - top[2], attrs)
-        except Exception:
-            # A telemetry bug must degrade to "no heartbeat", never take down the
-            # thread (and with it every later liveness signal) mid-run.
-            pass
+        with self._lock:
+            top = self._stack[-1] if self._stack else None
+        node = top[0][0] if top else ""
+        attrs = self._live_attrs(node)
+        self._run_beats.add(1, attrs)
+        if top is not None and self._node_elapsed is not None:
+            self._node_elapsed.set(time.monotonic() - top[2], attrs)
 
     def _parent_ctx(self) -> Any:
         parent = self._stack[-1][1] if self._stack else self._root
@@ -575,10 +666,12 @@ class _Telemetry:
             return None
         return self._trace.set_span_in_context(parent)
 
-    def record_event(self, record: dict[str, Any]) -> None:
-        phase = record.get("phase")
-        node_id = str(record.get("node", ""))
-        seq = int(record.get("seq") or 0)
+    @_failsoft(None)
+    def record_event(self, event: NodeEvent) -> None:
+        phase = event.phase
+        node_id = event.node
+        seq = event.seq
+        extra = event.model_extra or {}
         with self._lock:
             if phase == "enter":
                 span = self._tracer.start_span(
@@ -599,7 +692,7 @@ class _Telemetry:
                 # span's workhorse.next.
                 self._set_node_active(node_id, 1)
             elif phase == "done":
-                self._end_node((node_id, seq), next_node=record.get("next"))
+                self._end_node((node_id, seq), next_node=extra.get("next"))
                 self._set_node_active(node_id, 0)
             elif phase == "terminal":
                 # A flow's finish() also emits a terminal (node "<run>") — the
@@ -608,7 +701,7 @@ class _Telemetry:
                 target = self._stack[-1][1] if self._stack else self._root
                 if target is not None:
                     target.add_event(
-                        "terminal", {"terminal": str(record.get("terminal") or "")}
+                        "terminal", {"terminal": str(extra.get("terminal") or "")}
                     )
 
     def _end_node(self, key: tuple[str, int], next_node: Any) -> None:
@@ -628,7 +721,14 @@ class _Telemetry:
             )
             span.end()
 
-    def end_run(self, status: str, error: str | None) -> None:
+    @_failsoft("")
+    def current_node(self) -> str:
+        """The innermost open node visit, or "" — what stamps a log record."""
+        with self._lock:
+            return self._stack[-1][0][0] if self._stack else ""
+
+    @_failsoft(None)
+    def end_run(self, status: str, error: str | None = None) -> None:
         # Stop beating before the flush below, so the last export cannot race a
         # tick that would claim the run is still alive after it ended.
         self._stop.set()
@@ -653,6 +753,7 @@ class _Telemetry:
         self._shutdown()  # flushes the batch processor + metric reader
 
     # ---- agent turns ----------------------------------------------------- #
+    @_failsoft(None)
     def turn_start(
         self,
         node_id: str,
@@ -682,6 +783,7 @@ class _Telemetry:
                 },
             )
 
+    @_failsoft(None)
     def turn_end(self, error: str | None = None) -> None:
         with self._lock:
             turn, self._turn = self._turn, None
@@ -699,6 +801,7 @@ class _Telemetry:
                 turn.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
             turn.end()
 
+    @_failsoft(None)
     def turn_result(self, usage: TurnUsage) -> None:
         with self._lock:
             turn = self._turn
@@ -716,6 +819,7 @@ class _Telemetry:
             if usage.total_cost_usd is not None:
                 turn.set_attribute("total_cost_usd", float(usage.total_cost_usd))
 
+    @_failsoft(None)
     def set_labels(self, labels: dict[str, str]) -> None:
         """Replace the workflow-declared dimensions stamped on subsequent spans.
 
@@ -727,11 +831,13 @@ class _Telemetry:
         with self._lock:
             self._labels = dict(labels)
 
+    @_failsoft(None)
     def turn_session(self, session_id: str) -> None:
         with self._lock:
             if self._turn is not None and session_id:
                 self._turn.set_attribute("session.id", session_id)
 
+    @_failsoft(None)
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None:
         with self._lock:
             target = self._turn or (self._stack[-1][1] if self._stack else self._root)
@@ -742,15 +848,18 @@ class _Telemetry:
                 target.set_status(self._trace.Status(self._trace.StatusCode.ERROR, name))
 
     # ---- metrics ---------------------------------------------------------- #
+    @_failsoft(None)
     def gas_level(self, gas: int, capacity: int) -> None:
         if self._gas is not None:
             self._gas.set(gas)
             self._gas_capacity.set(capacity)
 
+    @_failsoft(None)
     def gas_refuel(self, node_id: str) -> None:
         if self._refuels is not None:
             self._refuels.add(1, {"node": node_id})
 
+    @_failsoft(None)
     def heartbeat(self, node_id: str, remaining_s: float) -> None:
         if self._heartbeats is not None:
             self._heartbeats.add(1, {"node": node_id})
@@ -760,6 +869,7 @@ class _Telemetry:
         if self._node_active is not None:
             self._node_active.set(value, self._live_attrs(node_id))
 
+    @_failsoft(None)
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:
         if self._turn_beats is not None:
             self._turn_beats.add(1, {"node": node_id})

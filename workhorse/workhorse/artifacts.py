@@ -247,7 +247,7 @@ class ArtifactWriter:
         # every enter/done/terminal already funnels through (root run and nested
         # flow scopes alike), so node spans need no other hook. A no-op when
         # telemetry is off; never raises (see workhorse/otel.py).
-        otel.record_event(event.model_dump())
+        otel.record_event(event)
 
     def read_events(self) -> list[NodeEvent]:
         """Read the append-only event log in order (empty if absent/unwritten).
