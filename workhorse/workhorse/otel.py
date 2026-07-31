@@ -277,7 +277,7 @@ class Telemetry(Protocol):
 class _NullTelemetry:
     """Telemetry that is off: every call is a near-zero-cost no-op.
 
-    This is what `_active` holds with no collector reachable, so the "do nothing"
+    This is what a host's `active` holds with no collector reachable, so the "do nothing"
     policy exists in exactly one class rather than as an absence test at each of
     the fourteen entry points below.
     """

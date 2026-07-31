@@ -29,7 +29,8 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from _fakes import FakeClock  # noqa: E402
+from _fakes import FakeClock, RecordingTelemetry  # noqa: E402
+from workhorse import otel  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
@@ -47,7 +48,6 @@ from workhorse.pyflow import (  # noqa: E402
     WorkflowFrozenError,
     state,
 )
-from workhorse.pyflow import activity as pyflow_activity  # noqa: E402
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow import registry as registry_mod  # noqa: E402
 from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
@@ -718,9 +718,8 @@ def test_a_states_flagged_log_line_becomes_the_run_activity():
         log.filters.clear()
 
         env = _env(tmp, log=log)
-        published: list[dict[str, str]] = []
-        real = pyflow_activity.otel.set_labels
-        pyflow_activity.otel.set_labels = published.append
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
         try:
 
             class Narrates(Workflow):
@@ -738,14 +737,14 @@ def test_a_states_flagged_log_line_becomes_the_run_activity():
 
             assert drive(Narrates(), env) == "ok"
         finally:
-            pyflow_activity.otel.set_labels = real
+            otel.install(previous)
 
         # The flagged line publishes, and the transition into `finish` rebases the
         # declared labels without clearing it.
-        assert published[-1] == {
+        assert fake.labels[-1] == {
             "work_id": "ACME-9",
             "activity": "assessing legacy/report/list",
-        }, published
+        }, fake.labels
 
 
 # --------------------------------------------------------------------------- dry run

@@ -22,7 +22,6 @@ import contextlib
 import importlib
 import logging
 
-from workhorse import otel
 from workhorse.pyflow import activity as pyflow_activity
 
 test_otel = importlib.import_module("tests.test_otel")
@@ -36,12 +35,8 @@ def _live():
     functions are no-ops with nothing active — so a tracker test that skipped this
     would pass while publishing into the void."""
     t, _tracer, meter, _sd = test_otel._telemetry()
-    saved = otel._active
-    otel._active = t
-    try:
+    with test_otel.installed(t):
         yield t, meter
-    finally:
-        otel._active = saved
 
 
 def _logger(name: str) -> logging.Logger:

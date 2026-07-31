@@ -11,6 +11,7 @@ same shape whichever engine wrote it.
 
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -156,6 +157,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # Console logging first, so a node's logger has somewhere to write even with
     # telemetry off; start_run then hangs the OTel handler off the same root logger.
     logsetup.setup()
+    # The one place telemetry's environment is read. Everything below the entry point
+    # is handed the host rather than reaching for os.environ itself.
+    otel.install(otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)))
     otel.start_run(name, writer.run_id, str(writer.run_dir))
     try:
         try:
