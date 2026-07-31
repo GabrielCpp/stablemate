@@ -86,9 +86,10 @@ def _env(
     test states the budget it asserts against instead of setting an env var.
     """
     writer = ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
-    # No backend, and none to substitute: `RunConfig.backend` defaults to None, so a
-    # ladder built from this config has nothing to drive and nothing to resolve. The
-    # tests that DO run agent turns hand `_env` an `agent_runner=` of their own.
+    # No backend, and none to substitute: `RunConfig.backend` defaults to the null
+    # adapter, so a ladder built from this config drives a CLI that fails every turn
+    # with a sentence rather than one that is absent. The tests that DO run agent turns
+    # hand `_env` an `agent_runner=` of their own.
     if config is None:
         config = RunConfig()
     return RunEnv(

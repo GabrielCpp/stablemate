@@ -26,10 +26,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stablemate_core.config import resolve_harness_env
 
-from workhorse.config_run import AgentResilience
+if TYPE_CHECKING:
+    # Annotation-only, and load-bearing that it stays that way: ``config_run`` holds
+    # the run's assembled settings, which now name a backend (the null adapter that
+    # stands for "no CLI selected"). A runtime import here would close that into a
+    # cycle. Nothing in this module *uses* the type — it only types two signatures.
+    from workhorse.config_run import AgentResilience
 
 
 class AgentBackend(ABC):

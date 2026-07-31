@@ -15,13 +15,17 @@ once, which is exactly what the split exists to prevent.
 
 from __future__ import annotations
 
+import io
 import os
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.config_run import AgentResilience
-from workhorse.runner import failure, process
+from _fakes import FakeClock
+from workhorse.config_run import AgentResilience, RunConfig
+from workhorse.context import WorkflowContext
+from workhorse.runner import failure, ladder, process
 from workhorse.runner.backends import (
     AgentBackend,
     aider,
@@ -35,9 +39,10 @@ from workhorse.runner.backends.aider import AiderBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
+from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
 from workhorse.runner.backends.registry import get_backend
-from workhorse.runner.spec import AgentNode
+from workhorse.runner.spec import AgentNode, OutputSpec
 
 #: A turn's budget and the ladder's knobs are INJECTED into every backend — nothing
 #: below the CLI edge reads configuration, so a test states what it drives with.
@@ -104,6 +109,61 @@ def test_unknown_backend_raises():
 
 def test_get_backend_caches_instance():
     assert get_backend("claude") is get_backend("claude")
+
+
+def test_null_backend_is_not_selectable():
+    """"No CLI" is what a run *has* when nobody chose one, not a CLI one can choose.
+
+    Keeping it out of the registry is the whole reason it can live in its own module
+    without the port ever importing an adapter: ``AGENT_CLI=none`` is a typo, and it
+    fails like every other typo.
+    """
+    try:
+        get_backend("none")
+        raise AssertionError("expected ValueError — the null backend is not selectable")
+    except ValueError as e:
+        assert "none" in str(e)
+
+
+def test_run_config_without_a_cli_holds_the_null_backend():
+    """Absence is an implementation of the port, so the field is never ``None``.
+
+    Which is what lets ``AgentRunner.backend: AgentBackend`` be honest: no ladder path
+    guards the backend, and none has to.
+    """
+    assert isinstance(RunConfig().backend, NullBackend)
+
+
+def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
+    """A run with no CLI reaching an agent node aborts on a message, not on a crash.
+
+    The failure is non-transient and non-overflow, so it takes the ladder's existing
+    "non-recoverable CLI failure" exit: no retry (no amount of waiting supplies a CLI),
+    no reframe, and — the one that matters — no defaulted outputs, since advancing a
+    workflow on fabricated values is worse than stopping.
+    """
+    node = AgentNode(
+        type="agent",
+        id="review_implementation",
+        prompt="Review the work and decide.",
+        outputs=[OutputSpec(key="decision", default="continue")],
+        next="next_node",
+    )
+    runner = ladder.AgentRunner.from_config(RunConfig(), clock=FakeClock())
+    assert isinstance(runner.backend, NullBackend)
+
+    run_dir = Path(tempfile.mkdtemp())
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         redirect_stdout(io.StringIO()):
+        try:
+            runner.run(node, WorkflowContext(initial={}), run_dir, None)
+        except failure.BackendInvocationError as exc:
+            assert exc.transient is False
+            assert exc.overflow is False
+            assert "review_implementation" in str(exc)
+            assert "AGENT_CLI" in str(exc), "the message must say how to fix it"
+        else:
+            raise AssertionError("expected the missing CLI to abort the node")
 
 
 def test_non_claude_backends_registered():
