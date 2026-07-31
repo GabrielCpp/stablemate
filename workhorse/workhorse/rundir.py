@@ -15,7 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from workhorse.artifacts import ArtifactWriter
+from workhorse.records import RunRecord, parse_run_record
 
 
 def derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None:
@@ -64,10 +67,10 @@ def auto_resolve(
     if not (stable / ArtifactWriter.CHECKPOINT_FILE).exists():
         return rid, None
     try:
-        meta = json.loads((stable / "run.json").read_text())
-    except (OSError, json.JSONDecodeError):
-        meta = {}
-    if meta.get("terminal") is not None:  # already finished — start a new run
+        record = parse_run_record((stable / "run.json").read_text())
+    except (OSError, ValidationError):
+        record = RunRecord()
+    if record.terminal is not None:  # already finished — start a new run
         return rid, None
     return rid, stable
 
@@ -81,10 +84,10 @@ def find_latest_resumable(runs_dir: Path) -> Path | None:
         if not d.is_dir() or not (d / ArtifactWriter.CHECKPOINT_FILE).exists():
             continue
         try:
-            meta = json.loads((d / "run.json").read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
+            record = parse_run_record((d / "run.json").read_text())
+        except (OSError, ValidationError):
             continue
-        if meta.get("terminal") is None:  # never reached a terminal node
+        if record.terminal is None:  # never reached a terminal node
             candidates.append(((d / ArtifactWriter.CHECKPOINT_FILE).stat().st_mtime, d))
     if not candidates:
         return None

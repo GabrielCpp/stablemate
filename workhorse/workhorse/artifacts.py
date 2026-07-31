@@ -15,7 +15,9 @@ from workhorse.records import (
     NodeGraphCheckpoint,
     NodePhase,
     PyflowCheckpoint,
+    RunRecord,
     parse_checkpoint,
+    parse_run_record,
 )
 
 
@@ -70,12 +72,14 @@ class ArtifactWriter:
         self = cls.__new__(cls)
         self.run_dir = run_dir
         try:
-            meta = json.loads((run_dir / "run.json").read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            meta = {}
-        self._workflow_name = meta.get("workflow", run_dir.name)
-        self._run_id = meta.get("run_id", run_dir.name)
-        self._started_at = meta.get("started_at", datetime.now(timezone.utc).isoformat())
+            record = parse_run_record((run_dir / "run.json").read_text())
+        # As with the checkpoint below: a missing file and an unparseable one are the two
+        # ways a stale run dir disappoints us, and both mean "nothing recorded here".
+        except (OSError, ValidationError):
+            record = RunRecord()
+        self._workflow_name = record.workflow or run_dir.name
+        self._run_id = record.run_id or run_dir.name
+        self._started_at = record.started_at or datetime.now(timezone.utc).isoformat()
         # Continue the checkpoint sequence from where it left off so new checkpoints
         # don't collide with the completion markers already on disk.
         self._seq = 0
@@ -369,20 +373,14 @@ class ArtifactWriter:
 
     def _write_run_json(self, terminal: str | None, error: str | None = None) -> None:
         now = datetime.now(timezone.utc).isoformat()
-        data: dict[str, Any] = {
-            "workflow": self._workflow_name,
-            "run_id": self._run_id,
-            "started_at": self._started_at,
-            "ended_at": now if terminal else None,
-            "terminal": terminal,
-            # Set only by record_interrupt, and cleared by the next write (a resume,
-            # or the run finishing) — so "terminal null AND interrupted_at set" reads
-            # as stopped-by-an-operator, distinct from "terminal null, no stamp",
-            # which is a run still in flight (or wedged in one).
-            "interrupted_at": now if error and not terminal else None,
-            "error": error,
-            # The pid is advertised on telemetry too (otel resource attr); recorded
-            # here as well so it survives with telemetry off.
-            "pid": os.getpid(),
-        }
-        (self.run_dir / "run.json").write_text(json.dumps(data, indent=2))
+        record = RunRecord(
+            workflow=self._workflow_name,
+            run_id=self._run_id,
+            started_at=self._started_at,
+            ended_at=now if terminal else None,
+            terminal=terminal,
+            interrupted_at=now if error and not terminal else None,
+            error=error,
+            pid=os.getpid(),
+        )
+        (self.run_dir / "run.json").write_text(record.model_dump_json(indent=2))
