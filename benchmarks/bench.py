@@ -75,7 +75,7 @@ import yaml
 # a benchmark that silently degrades when its scorer is missing is worse than one that
 # refuses to start.
 from workhorse.runner import agent as wh_agent
-from workhorse.runner.backends import get_backend
+from workhorse.runner.backends.registry import get_backend
 
 HERE = Path(__file__).resolve().parent
 STABLEMATE = HERE.parent

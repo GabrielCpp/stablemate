@@ -284,7 +284,7 @@ def _run_run(args: argparse.Namespace) -> None:
 
     # Validate the active backend now so an unknown name fails fast with a clear
     # message instead of mid-run.
-    from workhorse.runner.backends import get_backend
+    from workhorse.runner.backends.registry import get_backend
 
     try:
         get_backend()

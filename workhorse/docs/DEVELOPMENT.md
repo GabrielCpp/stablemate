@@ -43,7 +43,16 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
 │       ├── agent.py           # Invoke the agent CLI; the retry → reframe → default ladder
-│       ├── backends.py        # The per-CLI facade (claude/codex/copilot/aider/opencode)
+│       ├── backends/          # The agent-CLI port and its adapters
+│       │   ├── __init__.py    # AgentBackend: the port, and nothing else
+│       │   ├── registry.py    # name → backend class; the only module importing every adapter
+│       │   ├── claude.py      # One adapter per CLI: its argv, its event stream, its /compact
+│       │   ├── codex.py       # …
+│       │   ├── copilot.py
+│       │   ├── opencode.py
+│       │   ├── aider.py
+│       │   ├── turn.py        # TurnState + finalize_turn: what a non-Claude turn accumulates
+│       │   └── jsonl.py       # stream_jsonl: the shared JSONL stream loop
 │       ├── usage.py           # Normalize each harness's token/cost reporting onto one shape
 │       └── spec.py            # OutputSpec / AgentNode: what one agent turn declares
 ├── tests/                     # Standalone test files (see below)
@@ -122,8 +131,9 @@ uv run python tests/test_agent_recovery.py
 If a `.venv` isn't present, create one with `uv sync` (or `make install`).
 
 **Where to put tests.** There are two styles. Controller-internal tests add a
-`tests/test_<area>.py` that patches the CLI boundary (`_run_claude_cli` /
-`_invoke_claude`) and sleeping so nothing hits the network or waits in real time:
+`tests/test_<area>.py` that injects the CLI boundary (a fake `AgentBackend` from
+`tests/_fakes.py`, or a stub `_invoke_claude`) and patches sleeping so nothing hits
+the network or waits in real time:
 `test_agent_cap.py` (cap/transient handling), `test_agent_recovery.py` (reframe →
 default ladder), `test_resume_auto.py`, `test_idempotency.py`,
 `test_templates_resilient.py`.

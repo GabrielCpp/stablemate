@@ -19,9 +19,10 @@ the resilience and timeout knobs, see
 
 ## Choosing the agent CLI backend
 
-The controller drives one agent CLI per run, behind a backend facade
-(`workhorse/runner/backends.py`). The CLI is chosen **per-run** (the *model* is
-still per-node — see below):
+The controller drives one agent CLI per run, behind a backend port
+(`workhorse/runner/backends/` — `__init__.py` declares `AgentBackend`, each CLI owns
+a sibling module, `registry.py` maps a name to one). The CLI is chosen **per-run**
+(the *model* is still per-node — see below):
 
 ```bash
 workhorse run <name>                      # claude (default)

@@ -219,8 +219,9 @@ mode its own flow if its diagram should stand alone.
 
 ## Choosing the agent CLI backend
 
-The controller drives one agent CLI per run, behind a backend facade
-(`workhorse/runner/backends.py`). The CLI is chosen **per-run**; the *model* is per-node:
+The controller drives one agent CLI per run, behind a backend port
+(`workhorse/runner/backends/`, one module per CLI). The CLI is chosen **per-run**; the
+*model* is per-node:
 
 ```bash
 workhorse run <name>                      # claude (default)

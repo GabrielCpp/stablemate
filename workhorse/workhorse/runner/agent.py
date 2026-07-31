@@ -9,7 +9,6 @@ import signal
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
@@ -17,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 
 from workhorse import otel
 from workhorse.config_run import AgentResilience
-from workhorse.runner import usage
 from stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.runner.spec import AgentNode
 
@@ -509,7 +507,7 @@ def classify_turn(
 
     The single source of truth for turning a finished subprocess into either a
     result string or a typed ``BackendInvocationError`` — shared by the Claude
-    path (``_run_claude_cli``) and the JSONL/text path (``backends._finalize_turn``)
+    path (``backends.claude``) and the JSONL/text path (``backends.turn``)
     so the failure messages and the transient/overflow/cap/non-recoverable
     classification are identical no matter which CLI ran.
 
@@ -639,7 +637,7 @@ def run_agent(
     resume_session: bool = False,
     run_dir: Path | None = None,
     *,
-    backend: "AgentBackend | None" = None,
+    backend: "AgentBackend",
     resilience: AgentResilience | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
@@ -670,6 +668,11 @@ def run_agent(
     node). A normal forward move to a new node always starts clean. (The
     compact-and-continue layer above also resumes the session, but only within
     this same call, to recover the node it is already running.)
+
+    **The backend is injected, never resolved here.** ``AGENT_CLI`` is read once at
+    the CLI boundary and the chosen adapter is handed down, so the ladder names no
+    CLI and imports none — the reason ``agent`` and ``backends`` no longer have to
+    import each other lazily.
 
     Returns (rendered_prompt, extracted_outputs_dict).
     """
@@ -739,15 +742,6 @@ def run_agent(
     if rendered_cwd and rendered_add_dirs:
         cwd_resolved = Path(rendered_cwd).resolve()
         rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
-
-    # Resolve the active CLI backend for this run (per-run via AGENT_CLI; default
-    # claude). Imported lazily to avoid an import cycle (backends imports this
-    # module). The engine/test harness may inject a backend explicitly; otherwise
-    # resolve the configured one. Used here for the compaction step and the
-    # per-backend model default.
-    if backend is None:
-        from workhorse.runner.backends import get_backend
-        backend = get_backend()
 
     # The node's abstract power tier maps through user config to concrete
     # model/effort for the active backend. Missing config falls back to env/backend
@@ -879,7 +873,7 @@ def _invoke_and_parse(
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
-    backend: "AgentBackend | None" = None,
+    backend: "AgentBackend",
 ) -> dict[str, Any]:
     """Invoke Claude and parse the node's declared outputs.
 
@@ -918,8 +912,8 @@ def _invoke_claude(
     node_id: str,
     session_id_path: Path | None,
     model: str | None = None,
-    backend: "AgentBackend | None" = None,
     *,
+    backend: "AgentBackend",
     resilience: AgentResilience,
     timeout: float,
     cwd: str | None = None,
@@ -939,11 +933,10 @@ def _invoke_claude(
 
     Persists the resulting session id (when available) so a subsequent call
     resumes the same conversation.
-    """
-    if backend is None:
-        from workhorse.runner.backends import get_backend
-        backend = get_backend()
 
+    ``backend`` is the injected port: this function drives ``run_turn`` and knows
+    nothing else about which CLI is behind it.
+    """
     max_invoke_retries = resilience.max_invoke_retries
     short_attempt = 0
     cap_waits = 0
@@ -954,7 +947,7 @@ def _invoke_claude(
         try:
             print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
             # One agent-turn span per CLI invocation; the result event's
-            # duration/usage attach via otel.turn_result (see _stream_events).
+            # duration/usage attach via otel.turn_result, from inside the adapter.
             otel.turn_start(node_id, model, effort, timeout, backend=backend.name)
             result = backend.run_turn(
                 attempt_prompt, node_id, session_id_path, model,
@@ -1018,174 +1011,6 @@ def _invoke_claude(
                 "retry", node=node_id, attempt=short_attempt, delay_s=int(delay)
             )
             time.sleep(delay)
-
-
-def _run_claude_cli(
-    prompt: str,
-    node_id: str,
-    session_id_path: Path | None,
-    model: str | None = None,
-    *,
-    resilience: AgentResilience,
-    timeout: float,
-    cwd: str | None = None,
-    add_dirs: list[str] | None = None,
-    effort: str | None = None,
-    env_extra: dict[str, str] | None = None,
-) -> str:
-    """Run a single Claude CLI turn for ``prompt``, returning the final result
-    text. Raises ``BackendInvocationError`` (via ``classify_turn``) on CLI failure,
-    classifying it as transient when the captured output matches a known retryable
-    marker.
-
-    Args:
-        timeout: Maximum seconds to wait for a result event from the agent.
-        cwd: Working directory for the subprocess (controls CLAUDE.md discovery).
-        add_dirs: Additional directories to grant the agent access to.
-        env_extra: Operator-configured extra environment for this harness
-            (``[harness.claude].env``), layered over the inherited environment.
-    """
-    cmd = [
-        "claude",
-        "--dangerously-skip-permissions",
-        "--output-format", "stream-json",
-        "--verbose",
-    ]
-    if model:
-        cmd.extend(["--model", model])
-    if effort:
-        cmd.extend(["--effort", effort])
-    for d in (add_dirs or []):
-        cmd.extend(["--add-dir", d])
-    cmd.append("-p")
-
-    # Resume session if one exists
-    if session_id_path and session_id_path.exists():
-        sid = session_id_path.read_text().strip()
-        if sid:
-            cmd.extend(["--resume", sid])
-            print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
-
-    # Stream Claude's events through the shared supervised spawn path: own process
-    # group, hard watchdog, and group-reaping kill all live in stream_subprocess, so the
-    # timeout behaves identically here and in every other harness. The diagnostics string
-    # captures non-event output (e.g. "Spending cap reached") and error-result subtypes
-    # so the caller can classify transient failures.
-    stream = _stream_events(
-        cmd, node_id, timeout,
-        resilience=resilience,
-        stdin_data=prompt, cwd=cwd or None, env_extra=env_extra,
-    )
-
-    # Classify the finished turn through the one shared classifier so the Claude
-    # path and every other backend produce identical messages and transient /
-    # overflow / cap / non-recoverable verdicts. Claude's structured-cap signals
-    # (rate_limited / rate_reset_at, from the stream-json rate_limit_event) are
-    # passed in so a capped window still carries its precise reset epoch.
-    return classify_turn(
-        "claude",
-        node_id,
-        result_text=stream.result_text,
-        diagnostics=stream.diagnostics_text,
-        timed_out=stream.timed_out,
-        returncode=stream.returncode,
-        timeout=timeout,
-        session_id=stream.session_id,
-        session_id_path=session_id_path,
-        rate_limited=stream.rate_limited,
-        rate_reset_at=stream.rate_reset_at,
-    )
-
-
-def _compact_session(
-    session_id_path: Path | None,
-    node_id: str,
-    model: str | None = None,
-    *,
-    resilience: AgentResilience,
-    timeout: float,
-    env_extra: dict[str, str] | None = None,
-) -> bool:
-    """Best-effort: resume the node's session and run the CLI's ``/compact`` command
-    to summarize the conversation so far, freeing context so the node can continue
-    on the same (now smaller) session.
-
-    Persists the resulting session id so the next attempt resumes the compacted
-    conversation. Returns True when compaction ran without itself overflowing;
-    returns False (never raises) when there is no session to compact, the call
-    fails, or ``/compact`` couldn't run within the window — callers then fall back
-    to reframing.
-
-    The headless CLI (verified on Claude Code 2.1.x) honors ``/compact`` in ``-p
-    --resume`` mode and reports the outcome via ``system``/``status`` events:
-    ``status: "compacting"`` then a terminal event carrying ``compact_result``
-    ("success" / "failed", with ``compact_error``). The session id is preserved.
-    We key success off ``compact_result`` (treating "started but no explicit
-    failure" as success for forward-compat), and persist the session id so the
-    retry resumes the compacted conversation.
-    """
-    if not (session_id_path and session_id_path.exists()):
-        return False
-    sid = session_id_path.read_text().strip()
-    if not sid:
-        return False
-
-    cmd = [
-        "claude",
-        "--dangerously-skip-permissions",
-        "--output-format", "stream-json",
-        "--verbose",
-    ]
-    if model:
-        cmd.extend(["--model", model])
-    cmd.extend(["--resume", sid, "-p"])
-
-    print(f"[{node_id}] 🗜 compacting session {sid[:8]}… to free context", flush=True)
-    st = {"saw_compacting": False, "compact_failed": False, "compact_error": "",
-          "new_session_id": sid}
-
-    def on_line(raw: str) -> None:
-        line = raw.strip()
-        if not line:
-            return
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            return
-        if event.get("session_id"):
-            st["new_session_id"] = event["session_id"]
-        if event.get("status") == "compacting":
-            st["saw_compacting"] = True
-        if "compact_result" in event:
-            if event.get("compact_result") == "failed":
-                st["compact_failed"] = True
-                st["compact_error"] = str(event.get("compact_error") or "")
-            elif event.get("compact_result") == "success":
-                st["saw_compacting"] = True
-
-    try:
-        # Shares the supervised spawn path (own process group, hard watchdog, group
-        # reap), so a wedged /compact turn can't hang the run either.
-        stream_subprocess(
-            cmd, node_id, timeout, on_line,
-            resilience=resilience,
-            stdin_data="/compact", env_extra=env_extra,
-        )
-    except Exception as exc:  # noqa: BLE001 — compaction is best-effort
-        print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
-        return False
-
-    saw_compacting = st["saw_compacting"]
-    compact_failed = st["compact_failed"]
-    compact_error = st["compact_error"]
-    new_session_id = st["new_session_id"]
-    if new_session_id:
-        session_id_path.write_text(new_session_id)
-
-    if compact_failed:
-        print(f"[{node_id}] ⚠ compaction failed: {compact_error}", flush=True)
-        return False
-    return saw_compacting
 
 
 def _is_transient(diagnostics: str) -> bool:
@@ -1378,126 +1203,6 @@ def _default_outputs(node: AgentNode) -> dict[str, Any]:
     output plus the ⏭ log line make the fallback explicit for later inspection.
     """
     return {spec.key: spec.default for spec in node.outputs}
-
-
-@dataclass(slots=True)
-class ClaudeTurnStream:
-    """What one Claude turn yielded, as its stream-json went past.
-
-    Mutable by construction: the per-line callback writes into it event by event and
-    the process outcome lands once the stream closes. It replaces a seven-element
-    tuple every caller had to decode by counting positions.
-    """
-
-    result_text: str = ""
-    session_id: str | None = None
-    #: Anything signalling *how* a turn failed — non-event output lines (e.g.
-    #: "Spending cap reached") and error-result subtypes — for ``classify_turn``.
-    diagnostics: list[str] = field(default_factory=list)
-    timed_out: bool = False
-    #: True once any ``rate_limit_event`` reported the limit as hit.
-    rate_limited: bool = False
-    #: The most recent window-reset epoch seen, used only when the failure is
-    #: otherwise determined to be a cap (for precise wait timing).
-    rate_reset_at: float | None = None
-    returncode: int = 0
-
-    @property
-    def diagnostics_text(self) -> str:
-        """The diagnostics as the single string ``classify_turn`` scans."""
-        return "\n".join(self.diagnostics)
-
-
-def _stream_events(
-    cmd: list[str],
-    node_id: str,
-    timeout: float,
-    *,
-    resilience: AgentResilience,
-    stdin_data: str | None = None,
-    cwd: str | None = None,
-    env_extra: dict[str, str] | None = None,
-) -> ClaudeTurnStream:
-    """Run ``cmd`` through the shared supervised spawn path and parse Claude's
-    stream-json, echoing a concise live view to stdout. Returns the finished
-    ``ClaudeTurnStream``.
-
-    ``timed_out`` indicates the turn hit its deadline (in-loop or watchdog). The
-    timeout/process-group kill all live in ``stream_subprocess`` — this function only
-    interprets the lines."""
-    stream = ClaudeTurnStream()
-
-    def on_line(raw_line: str) -> None:
-        line = raw_line.strip()
-        if not line:
-            return
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            # Non-JSON line (e.g. merged stderr) — surface it so logs aren't silent
-            # and keep it as a diagnostic for failure classification.
-            print(f"[{node_id}] {line}", flush=True)
-            stream.diagnostics.append(line)
-            return
-
-        etype = event.get("type")
-        if etype == "result":
-            stream.result_text = event.get("result", "") or stream.result_text
-            # Attach the turn's duration + token usage to the open turn span so
-            # per-node latency/cost attribution needs no artifact join. Normalized
-            # through the same mapper every other backend uses, so one query shape
-            # reads them all (workhorse/runner/usage.py). Unconditional: Claude's
-            # result event carries `duration_ms` even when it reports no tokens.
-            otel.turn_result(usage.normalize(event))
-            # An error result carries the reason in its subtype / is_error flag.
-            if event.get("is_error") or event.get("subtype") not in (None, "success"):
-                stream.diagnostics.append(
-                    str(event.get("subtype") or "") + " " + str(event.get("result") or "")
-                )
-        elif etype == "rate_limit_event":
-            blocked, reset_at = _rate_limit_info(event)
-            if reset_at is not None:
-                stream.rate_reset_at = reset_at  # last-seen window reset (only if capped)
-            if blocked:
-                stream.rate_limited = True
-        elif etype == "system" and "session_id" in event:
-            stream.session_id = event["session_id"]
-        _emit_event(node_id, event)
-
-    stream.timed_out, stream.returncode = stream_subprocess(
-        cmd, node_id, timeout, on_line,
-        resilience=resilience,
-        stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,
-    )
-    return stream
-
-
-def _emit_event(node_id: str, event: dict) -> None:
-    """Print a concise, human-readable view of a Claude stream-json event."""
-    etype = event.get("type")
-    if etype == "assistant":
-        for block in event.get("message", {}).get("content", []) or []:
-            btype = block.get("type")
-            if btype == "text":
-                text = block.get("text", "").strip()
-                if text:
-                    print(f"[{node_id}] {text}", flush=True)
-            elif btype == "tool_use":
-                name = block.get("name", "?")
-                line = f"[{node_id}] ⚙ {name} {_tool_summary(block.get('input', {}))}".rstrip()
-                print(line, flush=True)
-    elif etype == "result":
-        dur = event.get("duration_ms")
-        print(f"[{node_id}] ✓ result received" + (f" ({dur} ms)" if dur else ""), flush=True)
-
-
-def _tool_summary(inp: dict) -> str:
-    for key in ("file_path", "path", "command", "pattern", "url", "query", "description"):
-        value = inp.get(key)
-        if value:
-            flat = " ".join(str(value).split())
-            return flat[:120] + "…" if len(flat) > 120 else flat
-    return ""
 
 
 def _extract_outputs(text: str, node: AgentNode) -> dict[str, Any]:

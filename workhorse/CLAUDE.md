@@ -11,7 +11,8 @@ this directory, so the package is `workhorse/` — inside it, `pyflow/` holds th
 state-machine driver (`workflow.py`
 declares states, `driver.py` is the state loop and checkpoint, `engine.py` provides
 `self.call` / `self.agent` / `self.output`) and `runner/` holding the agent-CLI side
-(`agent.py` is the recovery ladder, `backends.py` the per-CLI facade). `make help` lists
+(`agent.py` is the recovery ladder, `backends/` the agent-CLI port and one adapter
+module per CLI). `make help` lists
 the tasks; `make test` runs the suite. [README.md](README.md) is what workhorse is and how
 to run it; the guide for changing the engine — project layout, the loop, sessions, where
 docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read that one first.
@@ -24,9 +25,9 @@ docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read tha
   hard raises for unrecoverable, deterministic errors.
 - **Tests go in `tests/test_<area>.py`** and must be dependency-free and standalone: each
   file runs under plain `uv run python tests/test_x.py` (and is also pytest-compatible),
-  patching the CLI boundary (`_run_claude_cli` / `_invoke_claude`) and sleeping so nothing
-  hits the network or waits in real time. `make test` runs them all. Add or extend a test
-  for any behavior change.
+  injecting the CLI boundary (a fake `AgentBackend` from `tests/_fakes.py`, or a stub
+  `_invoke_claude`) and patching sleeping so nothing hits the network or waits in real
+  time. `make test` runs them all. Add or extend a test for any behavior change.
 - **Keep README.md and the matching `docs/` file current** when behavior changes — they
   are the operator contract, and GUARDRAILS is imported here. Which file is which is in
   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#where-docs-go).

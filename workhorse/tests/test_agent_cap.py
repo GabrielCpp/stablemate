@@ -1,7 +1,7 @@
 """Tests for the core agent's spending/usage-cap handling in _invoke_claude.
 
 Runs without real sleeping (time.sleep and _sleep_with_notice are patched) and
-without the Claude CLI (_run_claude_cli is patched). Runnable two ways:
+without any agent CLI — the backend port is INJECTED as a fake. Runnable two ways:
     ./.venv/bin/python tests/test_agent_cap.py     # standalone, no pytest needed
     ./.venv/bin/python -m pytest tests/test_agent_cap.py
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import patch
 
+from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
@@ -130,10 +131,10 @@ def test_cap_hang_pauses_then_resumes_same_node():
         seen_prompts.append(prompt)
         return fake_cli(prompt, *a, **k)
 
-    with patch.object(agent, "_run_claude_cli", record_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
         out = agent._invoke_claude(
             "DO THE TASK", "review_implementation", None,
+            backend=FakeBackend(record_cli),
             resilience=RESILIENCE, timeout=3600,
         )
 
@@ -156,10 +157,10 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
         out = agent._invoke_claude(
             "p", "resolve_epics", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
         )
 
@@ -180,10 +181,10 @@ def test_session_limit_pauses_until_reset_then_resumes():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
         out = agent._invoke_claude(
             "p", "review_plan", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
         )
 
@@ -253,11 +254,11 @@ def test_structured_reset_at_drives_invoke_wait():
         return "OK"
 
     slept = []
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent.time, "time", lambda: now), \
+    with patch.object(agent.time, "time", lambda: now), \
          patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
         out = agent._invoke_claude(
             "p", "n", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
         )
 
@@ -280,10 +281,10 @@ def test_budget_timeout_warns_retry_with_time_budget():
             )
         return "RESULT_OK"
 
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(agent.time, "sleep", lambda s: None):
         out = agent._invoke_claude(
             "DO THE TASK", "implement", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=1200,
         )
 
@@ -308,10 +309,10 @@ def test_non_timeout_transient_retries_prompt_unchanged():
             raise BackendInvocationError("overloaded_error", transient=True)
         return "OK"
 
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(agent.time, "sleep", lambda s: None):
         out = agent._invoke_claude(
             "DO THE TASK", "implement", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=1200,
         )
 
@@ -330,10 +331,10 @@ def test_cap_sleeps_until_reset_then_resumes():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
         out = agent._invoke_claude(
             "prompt", "select_gate", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
         )
 
@@ -354,10 +355,10 @@ def test_cap_waits_do_not_consume_short_retry_budget():
             raise BackendInvocationError(CAP_MSG, transient=True)
         return "OK_AFTER_CAPS"
 
-    with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
         out = agent._invoke_claude(
             "p", "n", None,
+            backend=FakeBackend(fake_cli),
             resilience=RESILIENCE.with_overrides(max_invoke_retries=1),  # short budget = 1
             timeout=RESILIENCE.result_timeout_s,
         )
@@ -371,11 +372,11 @@ def test_cap_wait_safety_bound():
     def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise BackendInvocationError(CAP_MSG, transient=True)
 
-    with patch.object(agent, "_run_claude_cli", always_cap), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
+    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
         try:
             agent._invoke_claude(
                 "p", "n", None,
+                backend=FakeBackend(always_cap),
                 resilience=RESILIENCE.with_overrides(max_cap_waits=3),
                 timeout=RESILIENCE.result_timeout_s,
             )
@@ -392,11 +393,11 @@ def test_short_transient_uses_bounded_backoff_then_fails():
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    with patch.object(agent, "_run_claude_cli", always_overloaded), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(agent.time, "sleep", lambda s: None):
         try:
             agent._invoke_claude(
                 "p", "n", None,
+                backend=FakeBackend(always_overloaded),
                 resilience=RESILIENCE.with_overrides(max_invoke_retries=2),
                 timeout=RESILIENCE.result_timeout_s,
             )
@@ -413,15 +414,15 @@ def test_non_transient_fails_immediately():
         calls["n"] += 1
         raise BackendInvocationError("malformed workflow node", transient=False)
 
-    with patch.object(agent, "_run_claude_cli", hard_fail):
-        try:
-            agent._invoke_claude(
-                "p", "n", None,
-                resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-            )
-            raise AssertionError("expected immediate raise on non-transient error")
-        except BackendInvocationError:
-            pass
+    try:
+        agent._invoke_claude(
+            "p", "n", None,
+            backend=FakeBackend(hard_fail),
+            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+        )
+        raise AssertionError("expected immediate raise on non-transient error")
+    except BackendInvocationError:
+        pass
     assert calls["n"] == 1, "non-transient must not retry"
 
 

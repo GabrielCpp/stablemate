@@ -1,4 +1,4 @@
-"""Tests for the agent-CLI backend facade (runner/backends.py).
+"""Tests for the agent-CLI port and its adapters (``runner/backends/``).
 
 Verifies per-run selection (AGENT_CLI / explicit name), the default backend, the
 fail-fast on an unknown name, and that AgentNode.model is now optional (the
@@ -6,6 +6,11 @@ backend supplies the default). Runnable two ways:
 
     ./.venv/bin/python tests/test_backends.py
     ./.venv/bin/python -m pytest tests/test_backends.py
+
+Each adapter owns its own module, so a stub goes on the module of the CLI under
+test (``backends.codex``, ``backends.opencode``, …) rather than on one shared
+facade — patching the generic package would state a fact about every backend at
+once, which is exactly what the split exists to prevent.
 """
 
 from __future__ import annotations
@@ -16,16 +21,22 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent, backends
+from workhorse.runner import agent
 from workhorse.runner.backends import (
     AgentBackend,
-    AiderBackend,
-    ClaudeBackend,
-    CodexBackend,
-    CopilotBackend,
-    OpenCodeBackend,
-    get_backend,
+    aider,
+    codex,
+    copilot,
+    jsonl,
+    opencode,
+    turn,
 )
+from workhorse.runner.backends.aider import AiderBackend
+from workhorse.runner.backends.claude import ClaudeBackend
+from workhorse.runner.backends.codex import CodexBackend
+from workhorse.runner.backends.copilot import CopilotBackend
+from workhorse.runner.backends.opencode import OpenCodeBackend
+from workhorse.runner.backends.registry import get_backend
 from workhorse.runner.spec import AgentNode
 
 #: A turn's budget and the ladder's knobs are INJECTED into every backend — nothing
@@ -112,7 +123,7 @@ def test_non_claude_backends_registered():
 
 
 def _fake_stream(canned):
-    """Return a _stream_jsonl stand-in that records the cmd/stdin/cwd/env and returns
+    """Return a ``stream_jsonl`` stand-in that records the cmd/stdin/cwd/env and returns
     a canned ``TurnState``."""
     captured = {}
 
@@ -130,11 +141,11 @@ def test_codex_effort_sets_reasoning_override():
     """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="t")
+        turn.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort="high")
     finally:
         if prior is not None:
@@ -148,11 +159,11 @@ def test_codex_effort_clamped_to_high():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     for level in ("xhigh", "max"):
         fake, captured = _fake_stream(
-            backends.TurnState(result_text="OK", session_id="t")
+            turn.TurnState(result_text="OK", session_id="t")
         )
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
-            with patch.object(backends, "_stream_jsonl", fake):
+            with patch.object(codex, "stream_jsonl", fake):
                 _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort=level)
         finally:
             if prior is not None:
@@ -164,11 +175,11 @@ def test_codex_effort_clamped_to_high():
 def test_codex_no_effort_omits_override():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="t")
+        turn.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
@@ -214,9 +225,9 @@ def test_copilot_effort_maps_to_native_flag():
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="s")
+        turn.TurnState(result_text="OK", session_id="s")
     )
-    with patch.object(backends, "_stream_jsonl", fake):
+    with patch.object(copilot, "stream_jsonl", fake):
         _run_turn(CopilotBackend(), "BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
     assert cmd[cmd.index("--effort") + 1] == "high"
@@ -226,12 +237,12 @@ def test_copilot_effort_maps_to_native_flag():
 def test_codex_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="tid-123")
+        turn.TurnState(result_text="OK", session_id="tid-123")
     )
 
     prior = os.environ.pop("CODEX_PROFILE", None)  # no profile → bare `codex exec`
     try:
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             # Leading '@' = model only, no profile (default provider).
             out = _run_turn(CodexBackend(), "PROMPT", "n", sidp, model="@gpt-5.5")
     finally:
@@ -250,9 +261,9 @@ def test_codex_run_turn_fresh_then_resume():
 
     # Second call resumes by the persisted id.
     fake2, captured2 = _fake_stream(
-        backends.TurnState(result_text="OK2", session_id="tid-123")
+        turn.TurnState(result_text="OK2", session_id="tid-123")
     )
-    with patch.object(backends, "_stream_jsonl", fake2):
+    with patch.object(codex, "stream_jsonl", fake2):
         _run_turn(CodexBackend(), "P2", "n", sidp)
     assert captured2["cmd"][:3] == ["codex", "exec", "resume"]
     assert "tid-123" in captured2["cmd"]
@@ -264,15 +275,15 @@ def test_codex_profile_from_env():
     still maps to `-m`, overriding the profile's pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="t1")
+        turn.TurnState(result_text="OK", session_id="t1")
     )
 
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
-            _run_turn(CodexBackend(), 
+            _run_turn(CodexBackend(),
                 "PROMPT", "n", sidp, model="@deepseek/deepseek-chat-v3.1"
             )
     finally:
@@ -287,11 +298,11 @@ def test_codex_profile_from_env():
     assert cmd[cmd.index("-m") + 1] == "deepseek/deepseek-chat-v3.1"
     # Resume also carries the top-level profile ahead of `exec resume`.
     fake2, captured2 = _fake_stream(
-        backends.TurnState(result_text="OK2", session_id="t1")
+        turn.TurnState(result_text="OK2", session_id="t1")
     )
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        with patch.object(backends, "_stream_jsonl", fake2):
+        with patch.object(codex, "stream_jsonl", fake2):
             _run_turn(CodexBackend(), "P2", "n", sidp)
     finally:
         if prior is None:
@@ -315,9 +326,9 @@ def test_codex_per_node_profile_overrides_env():
     try:
         sidp = Path(tempfile.mkdtemp()) / ".s"
         fake, captured = _fake_stream(
-            backends.TurnState(result_text="X", session_id="s")
+            turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             _run_turn(CodexBackend(), "P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
         assert cmd[:4] == ["codex", "--profile", "local", "exec"]  # node profile wins
@@ -325,9 +336,9 @@ def test_codex_per_node_profile_overrides_env():
 
         sidp2 = Path(tempfile.mkdtemp()) / ".s"
         fake2, captured2 = _fake_stream(
-            backends.TurnState(result_text="X", session_id="s")
+            turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(backends, "_stream_jsonl", fake2):
+        with patch.object(codex, "stream_jsonl", fake2):
             _run_turn(CodexBackend(), "P", "n", sidp2, model="local")  # bare = profile
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
         assert "-m" not in captured2["cmd"]  # model pinned by the profile
@@ -344,11 +355,11 @@ def test_codex_profile_at_slug_model_string():
     the provider/auth bundle, the slug overrides its pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="OK", session_id="t")
+        turn.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(codex, "stream_jsonl", fake):
             _run_turn(CodexBackend(), "P", "n", sidp, model="mimo@mimo-pro")
     finally:
         if prior is not None:
@@ -359,24 +370,24 @@ def test_codex_profile_at_slug_model_string():
 
 
 def test_parse_codex_model():
-    assert backends._parse_codex_model(None) == (None, None)
-    assert backends._parse_codex_model("") == (None, None)
-    assert backends._parse_codex_model("local") == ("local", None)
-    assert backends._parse_codex_model("openrouter@deepseek/x-v3.1") == (
+    assert codex._parse_codex_model(None) == (None, None)
+    assert codex._parse_codex_model("") == (None, None)
+    assert codex._parse_codex_model("local") == ("local", None)
+    assert codex._parse_codex_model("openrouter@deepseek/x-v3.1") == (
         "openrouter",
         "deepseek/x-v3.1",
     )
-    assert backends._parse_codex_model("openrouter@") == ("openrouter", None)
-    assert backends._parse_codex_model("@gpt-5.5") == (None, "gpt-5.5")
+    assert codex._parse_codex_model("openrouter@") == ("openrouter", None)
+    assert codex._parse_codex_model("@gpt-5.5") == (None, "gpt-5.5")
 
 
 def test_copilot_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="ANSWER", session_id="sess-1")
+        turn.TurnState(result_text="ANSWER", session_id="sess-1")
     )
 
-    with patch.object(backends, "_stream_jsonl", fake):
+    with patch.object(copilot, "stream_jsonl", fake):
         out = _run_turn(CopilotBackend(), "PROMPT", "n", sidp)
 
     assert out == "ANSWER"
@@ -388,17 +399,17 @@ def test_copilot_run_turn_fresh_then_resume():
     assert sidp.read_text() == "sess-1"
 
     fake2, captured2 = _fake_stream(
-        backends.TurnState(result_text="A2", session_id="sess-1")
+        turn.TurnState(result_text="A2", session_id="sess-1")
     )
-    with patch.object(backends, "_stream_jsonl", fake2):
+    with patch.object(copilot, "stream_jsonl", fake2):
         _run_turn(CopilotBackend(), "P2", "n", sidp)
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
 
 
 def test_codex_on_event_extracts_text_and_session():
-    state = backends.TurnState()
-    backends._codex_on_event({"type": "thread.started", "thread_id": "abc"}, state, "n")
-    backends._codex_on_event(
+    state = turn.TurnState()
+    codex._on_event({"type": "thread.started", "thread_id": "abc"}, state, "n")
+    codex._on_event(
         {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}},
         state,
         "n",
@@ -408,11 +419,11 @@ def test_codex_on_event_extracts_text_and_session():
 
 
 def test_copilot_on_event_extracts_text_and_session():
-    state = backends.TurnState()
-    backends._copilot_on_event(
+    state = turn.TurnState()
+    copilot._on_event(
         {"type": "assistant.message", "data": {"content": "hello"}}, state, "n"
     )
-    backends._copilot_on_event(
+    copilot._on_event(
         {"type": "result", "sessionId": "s9", "exitCode": 0}, state, "n"
     )
     assert state.result_text == "hello"
@@ -422,10 +433,10 @@ def test_copilot_on_event_extracts_text_and_session():
 def test_finalize_turn_classifies_failures():
     # Non-zero exit whose output matches a transient marker → transient.
     try:
-        backends._finalize_turn(
+        turn.finalize_turn(
             "codex",
             "n",
-            backends.TurnState(
+            turn.TurnState(
                 result_text="x", diagnostics=["rate limit hit"], returncode=1
             ),
             None,
@@ -436,10 +447,10 @@ def test_finalize_turn_classifies_failures():
         assert e.transient is True
     # Timeout is always transient.
     try:
-        backends._finalize_turn(
+        turn.finalize_turn(
             "copilot",
             "n",
-            backends.TurnState(result_text="x", timed_out=True),
+            turn.TurnState(result_text="x", timed_out=True),
             None,
             TIMEOUT,
         )
@@ -448,13 +459,13 @@ def test_finalize_turn_classifies_failures():
         assert e.transient is True
     # Empty result is transient.
     try:
-        backends._finalize_turn("codex", "n", backends.TurnState(), None, TIMEOUT)
+        turn.finalize_turn("codex", "n", turn.TurnState(), None, TIMEOUT)
         raise AssertionError("expected raise on empty result")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Clean success returns the text.
-    ok = backends.TurnState(result_text="x")
-    assert backends._finalize_turn("codex", "n", ok, None, TIMEOUT) == "x"
+    ok = turn.TurnState(result_text="x")
+    assert turn.finalize_turn("codex", "n", ok, None, TIMEOUT) == "x"
 
 
 def test_classify_turn_records_node_to_session_manifest():
@@ -530,10 +541,10 @@ def test_finalize_turn_non_recoverable_names_each_backend():
     diag = "Unexpected server error. Check server logs for details."
     for name in ("opencode", "codex", "copilot", "claude"):
         try:
-            backends._finalize_turn(
+            turn.finalize_turn(
                 name,
                 "write_epic",
-                backends.TurnState(diagnostics=[diag], returncode=1),
+                turn.TurnState(diagnostics=[diag], returncode=1),
                 None,
                 TIMEOUT,
             )
@@ -559,10 +570,10 @@ def test_agentnode_power_is_optional():
 def test_opencode_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="PONG", session_id="ses_1")
+        turn.TurnState(result_text="PONG", session_id="ses_1")
     )
-    with patch.object(backends, "_stream_jsonl", fake):
-        out = _run_turn(OpenCodeBackend(), 
+    with patch.object(opencode, "stream_jsonl", fake):
+        out = _run_turn(OpenCodeBackend(),
             "PROMPT", "n", sidp, model="openrouter/xiaomi/mimo-v2.5", effort="high"
         )
     assert out == "PONG"
@@ -587,9 +598,9 @@ def test_opencode_run_turn_fresh_then_resume():
     assert sidp.read_text() == "ses_1"  # session persisted for resume
 
     fake2, captured2 = _fake_stream(
-        backends.TurnState(result_text="P2", session_id="ses_1")
+        turn.TurnState(result_text="P2", session_id="ses_1")
     )
-    with patch.object(backends, "_stream_jsonl", fake2):
+    with patch.object(opencode, "stream_jsonl", fake2):
         _run_turn(OpenCodeBackend(), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
 
@@ -599,25 +610,25 @@ def test_opencode_effort_variant_mapping_and_omit():
     cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
     for effort, variant in cases.items():
         fake, captured = _fake_stream(
-            backends.TurnState(result_text="X", session_id="s")
+            turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(backends, "_stream_jsonl", fake):
+        with patch.object(opencode, "stream_jsonl", fake):
             _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
     # "medium" has no opencode variant → omitted entirely.
     fake, captured = _fake_stream(
-        backends.TurnState(result_text="X", session_id="s")
+        turn.TurnState(result_text="X", session_id="s")
     )
-    with patch.object(backends, "_stream_jsonl", fake):
+    with patch.object(opencode, "stream_jsonl", fake):
         _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
 
 
 def test_opencode_on_event_text_session_and_error():
-    state = backends.TurnState()
+    state = turn.TurnState()
     # The text parts opencode streams live on its own reader, not on the TurnState
     # every backend shares — one instance per turn, exactly as run_turn builds it.
-    on_event = backends._OpenCodeEvents().on_event
+    on_event = opencode._OpenCodeEvents().on_event
     on_event({"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n")
     on_event(
         {"type": "text", "sessionID": "ses_9", "part": {"id": "p1", "text": "PONG"}},
@@ -645,11 +656,11 @@ def test_opencode_on_event_text_session_and_error():
 def test_opencode_text_parts_do_not_leak_between_turns():
     """Each turn gets its own reader, so the previous turn's answer cannot bleed into
     the next one's — the reason the parts live on the adapter and not on TurnState."""
-    first, second = backends.TurnState(), backends.TurnState()
-    backends._OpenCodeEvents().on_event(
+    first, second = turn.TurnState(), turn.TurnState()
+    opencode._OpenCodeEvents().on_event(
         {"type": "text", "part": {"id": "p1", "text": "first"}}, first, "n"
     )
-    backends._OpenCodeEvents().on_event(
+    opencode._OpenCodeEvents().on_event(
         {"type": "text", "part": {"id": "p1", "text": "second"}}, second, "n"
     )
     assert second.result_text == "second"
@@ -673,8 +684,8 @@ def _fake_text_turn():
 
 def test_aider_run_turn_builds_noninteractive_cmd():
     fake, captured = _fake_text_turn()
-    with patch.object(backends, "_run_text_turn", fake):
-        out = _run_turn(AiderBackend(), 
+    with patch.object(aider, "_run_text_turn", fake):
+        out = _run_turn(AiderBackend(),
             "PROMPT", "n", None, model="openrouter/xiaomi/mimo-v2.5", cwd="/repo"
         )
     assert out == "AIDER OK"
@@ -702,7 +713,7 @@ def test_aider_effort_clamped_to_high():
         ("max", "high"),
     ):
         fake, captured = _fake_text_turn()
-        with patch.object(backends, "_run_text_turn", fake):
+        with patch.object(aider, "_run_text_turn", fake):
             _run_turn(AiderBackend(), "P", "n", None, model="m", effort=level)
         assert (
             captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
@@ -711,7 +722,7 @@ def test_aider_effort_clamped_to_high():
 
 def test_aider_no_effort_omits_flag():
     fake, captured = _fake_text_turn()
-    with patch.object(backends, "_run_text_turn", fake):
+    with patch.object(aider, "_run_text_turn", fake):
         _run_turn(AiderBackend(), "P", "n", None, model="m")
     assert "--reasoning-effort" not in captured["cmd"]
 
@@ -721,15 +732,15 @@ def test_codex_reset_at_skips_non_openai_models_without_network():
     no network call (those caps go through the daily-key-limit path)."""
     # No urllib patch needed: a network attempt here would be a bug, so its absence
     # (these return before any request) is the assertion.
-    assert backends._codex_reset_at("openrouter/xiaomi/mimo-v2.5") is None
-    assert backends._codex_reset_at(None) is None
-    assert backends._codex_reset_at("") is None
+    assert opencode._codex_reset_at("openrouter/xiaomi/mimo-v2.5") is None
+    assert opencode._codex_reset_at(None) is None
+    assert opencode._codex_reset_at("") is None
 
 
 def test_codex_reset_at_disabled_by_env():
     """WORKHORSE_CODEX_RESET_PROBE=0 turns the probe off entirely."""
     with patch.dict(os.environ, {"WORKHORSE_CODEX_RESET_PROBE": "0"}):
-        assert backends._codex_reset_at("openai/gpt-5.5") is None
+        assert opencode._codex_reset_at("openai/gpt-5.5") is None
 
 
 def test_opencode_cap_attaches_codex_reset_at():
@@ -737,19 +748,19 @@ def test_opencode_cap_attaches_codex_reset_at():
     cap error carries it — so the runner sleeps until the window reopens, not a flat
     default hour."""
     reset = 1782759835.0
-    capped = backends.TurnState(
+    capped = turn.TurnState(
         diagnostics=['error.error="AI_APICallError: The usage limit has been reached"'],
         timed_out=True,  # cap_abort flagged timed_out
     )
     fake, _ = _fake_stream(capped)
     with (
-        patch.object(backends, "_stream_jsonl", fake),
+        patch.object(opencode, "stream_jsonl", fake),
         patch.object(
-            backends, "_codex_reset_at", lambda model, *a, **k: reset
+            opencode, "_codex_reset_at", lambda model, *a, **k: reset
         ),
     ):
         try:
-            _run_turn(OpenCodeBackend(), 
+            _run_turn(OpenCodeBackend(),
                 "P", "review_implementation", None, model="openai/gpt-5.5"
             )
             raise AssertionError("expected a cap BackendInvocationError")
@@ -764,13 +775,13 @@ def test_opencode_cap_attaches_codex_reset_at():
 
 def test_opencode_non_cap_does_not_probe_codex():
     """A normal (non-cap) opencode turn never touches the Codex reset probe."""
-    ok = backends.TurnState(result_text="DONE", session_id="s")
+    ok = turn.TurnState(result_text="DONE", session_id="s")
     fake, _ = _fake_stream(ok)
     calls = {"n": 0}
     with (
-        patch.object(backends, "_stream_jsonl", fake),
+        patch.object(opencode, "stream_jsonl", fake),
         patch.object(
-            backends,
+            opencode,
             "_codex_reset_at",
             lambda *a, **k: calls.__setitem__("n", calls["n"] + 1),
         ),
@@ -781,7 +792,7 @@ def test_opencode_non_cap_does_not_probe_codex():
 
 
 def _drive_stream_jsonl(lines, on_event):
-    """Run backends._stream_jsonl, feeding ``lines`` to its on_line callback through a
+    """Run ``jsonl.stream_jsonl``, feeding ``lines`` to its on_line callback through a
     faked stream_subprocess that stops the moment on_line requests an early abort
     (mirroring agent.stream_subprocess). Returns the finished ``TurnState``."""
 
@@ -794,7 +805,7 @@ def _drive_stream_jsonl(lines, on_event):
         return False, 0
 
     with patch.object(agent, "stream_subprocess", fake_stream):
-        return backends._stream_jsonl(
+        return jsonl.stream_jsonl(
             ["opencode"], "review_implementation", 3600, None, on_event,
             resilience=RESILIENCE,
         )
@@ -870,7 +881,7 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
             'out after 10000ms"\n',
             '{"type":"text","part":{"text":"SHOULD NOT BE READ"}}\n',
         ],
-        backends._OpenCodeEvents().on_event,
+        opencode._OpenCodeEvents().on_event,
     )
 
     assert state.timed_out is True
