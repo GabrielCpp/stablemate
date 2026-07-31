@@ -1,18 +1,20 @@
 # The stablemate base library
 
-**The scaffolds and toolchain skills that ship with stablemate. This is data, not a
-package — there is nothing here to install or import.**
+**The toolchain skills that ship with stablemate, and the pack that selects them. This
+is data, not a package — there is nothing here to install or import.**
 
 ```bash
-farrier install              # fetches this content on first use, then renders it
+farrier config set-base /path/to/this/directory   # or point at the checkout
+farrier install                                   # renders it into a repo
 ```
 
 ## What's in it
 
 | Path | Contents |
 |---|---|
-| `scaffolds/` | the definitions `farrier scaffold <id>` applies |
-| `library/skills/stablemate/` | the skills documenting the toolchain |
+| `library/skills/stablemate/` | the ten skills documenting the toolchain |
+| `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
+| `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
 
 That's the whole payload — markdown and YAML, and **not a line of Python**. No
 `__init__.py`, no `pyproject.toml`, no dependencies, nothing executable.
@@ -20,7 +22,9 @@ That's the whole payload — markdown and YAML, and **not a line of Python**. No
 It used to hold `workflows/` too: four directories of workflow YAML plus the
 `scripts/*.py` its nodes ran. A workflow is a Python package now, resolved through the
 `workhorse.workflows` entry-point group and shipped in a wheel — so the code left, and
-what stayed is documents.
+what stayed is documents. The `scaffolds/` directory went the same way; farrier still
+reads one from any library layer that has it, so an overlay can ship scaffolds even
+though the base does not.
 
 ## How the tools find it
 
@@ -28,11 +32,13 @@ They look, in order, for `$STABLEMATE_BASE_DIR` → the `base_dir` config key �
 configured `stablemate_dir` checkout (`<checkout>/base-library`, i.e. this directory) →
 a shared cache. Nothing found means overlay-only, exactly as before a base existed.
 
-The cache is the interesting one: with none of the above set, the tools **fetch this
-content from GitHub into `~/.cache/stablemate`** and use it from there — a sparse
-checkout of this directory alone, with `.git` dropped once the commit is recorded, so
-what lands is documents rather than a repository. It is fetched once and then frozen —
-`rm -rf ~/.cache/stablemate` is the upgrade path. See the
+The cache is the interesting one: it is designed to be **fetched from GitHub into
+`~/.cache/stablemate`** and used from there — a sparse checkout of this directory alone,
+with `.git` dropped once the commit is recorded, so what lands is documents rather than
+a repository. Fetched once and then frozen; `rm -rf ~/.cache/stablemate` is the upgrade
+path. `stablemate_core.base_cache` implements all of that, but **no command calls it
+yet**: today the cache route only resolves a cache someone populated by hand, and a
+working setup comes from one of the first three routes. See the
 [monorepo README](../README.md#installing).
 
 A directory counts as a library if it holds `library/`. That is the whole contract;
@@ -40,8 +46,9 @@ A directory counts as a library if it holds `library/`. That is the whole contra
 
 ## Layering
 
-The base is the **lowest-precedence** library layer. farrier and workhorse both resolve
-content across a search path:
+The base is the **lowest-precedence** library layer. farrier renders content across a
+search path (workhorse shares the *discovery* order above, but reads no library content
+— its workflows come from the `workhorse.workflows` entry-point group):
 
 ```
 1. --library / $FARRIER_LIBRARY_DIR  (explicit override)
@@ -78,6 +85,7 @@ There is no version number — this is git. What you get is a commit, and
 `cat ~/.cache/stablemate/library/.commit` says which one. (There is no `.git` in the
 cache to `rev-parse`; the fetch writes that sidecar instead.)
 
-The **layout contract** (`library/skills/<group>/<name>/SKILL.md`,
-`scaffolds/<id>.yml`) is what the tools depend on; changing it is a breaking change to
-them, not to a version string here.
+The **layout contract** (`library/skills/<group>/<name>/SKILL.md`, `packs/<pack>.yml`)
+is what the tools depend on; changing it is a breaking change to them, not to a version
+string here. `farrier/docs/LAYOUT.md` in this workspace is where that contract is
+written down.
