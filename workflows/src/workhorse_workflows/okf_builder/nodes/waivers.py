@@ -3,7 +3,7 @@
 Ported from `base-library/workflows/okf-builder/scripts/auto-waive.py`. The script was
 already an ostler *library* caller, so the only changes are the shape ones — plus its
 private copy of the scoped-findings computation, which now calls the one in
-`nodes/checkpoint.py` that it said in its own docstring it was mirroring.
+`shared/checkpoint.py` that it said in its own docstring it was mirroring.
 
 One divergence worth naming: the re-run command this node embeds in every backlog IOU is
 the ported spelling (`workhorse-okf-builder --params …`, with `recheck_only` a JSON
@@ -15,9 +15,9 @@ from __future__ import annotations
 import logging
 
 from ostler import Ostler, backlog as backlog_mod
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.nodes.checkpoint import scoped_error_findings
-from workhorse_workflows.okf_builder.schemas import Waived
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.checkpoint import scoped_error_findings
+from workhorse_workflows.okf_builder.shared.schemas import Waived
 
 #: Doctor codes whose ONLY real remedy is a source change. Deliberately narrow: a code a
 #: doc edit could fix must keep failing until it is actually fixed, never be auto-accepted.

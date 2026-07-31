@@ -17,6 +17,9 @@ have been given define them.
   means here. Follow them; do not substitute your own preferences for a stack you happen to
   know well.
 - `agents.yml`, which declares `workspace.service_roots` and `workspace.service_markers`.
+  `service_markers` is the *discovery* list — any one of those filenames identifies a
+  service root to tooling that walks the repo. It is not a checklist of files this service
+  must contain, and a name in it that is absent here is not evidence of anything.
 
 ## What to do
 
@@ -40,8 +43,12 @@ have been given define them.
 ## What not to do
 
 - **Do not create the skeleton yourself.** You are extending one the stack's own init tool
-  already produced. If `{{ workhorse_var('service_root') or '.' }}` looks empty or lacks its
-  marker file, the init step failed — say so and return `"blocked"`. Do **not** hand-write a
+  already produced. If `{{ workhorse_var('service_root') or '.' }}` looks empty or is missing
+  `{{ workhorse_var('marker_path') or 'its marker file' }}` — the one file whose presence
+  proves the init tool ran, and the only file you should judge that on — the init step
+  failed: say so and return `"blocked"`. A skeleton can be very small and still be real.
+  `go mod init` produces a `go.mod` and nothing else; that is the whole of what it makes,
+  and a sparse service root is not by itself a failed one. Do **not** hand-write a
   plausible-looking tree to fill the gap. This has happened: an agent handed an empty `web/`
   invented a routes file and `.gitkeep` stubs, producing something that read as a service
   but was not one, and the stack's real init command never ran. A skeleton nobody generated

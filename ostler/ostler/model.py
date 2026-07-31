@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -386,27 +387,41 @@ def _read_frontmatter(path: Path) -> markdown.MarkdownDoc:
     return markdown.split(path.read_text(encoding="utf-8"))
 
 
+def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
+              config: dict | None = None) -> dict[str, Path]:
+    """Where each kind of document lives under *root*, honouring `docRoots:` config.
+
+    The mapping :class:`Graph` carries, derived without loading the graph — a caller that
+    holds only a repo root (a workflow deriving an artifact path, say) gets the *same*
+    answer as one holding a graph, including a repo that moved its epics out of `docs/`.
+    Loading the graph reads every markdown file under these roots; deriving a path should
+    not cost that, and a second, subtly different derivation is what this avoids.
+
+    `kinds` and `config` are the caller's already-loaded copies, so :func:`load` does not
+    read either twice.
+    """
+    cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
+    roots = {key: root / cfg.get(key, f"docs/{key}")
+             for key in ("features", "epics", "knowledge", "specs")}
+    for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
+        roots.setdefault(kind.doc_root, root / cfg.get(kind.doc_root, kind.default_path))
+    return roots
+
+
 def load(cwd: Path | None = None) -> Graph:
     root = find_root(cwd or Path.cwd())
     config = _load_config(root)
 
-    doc_root_cfg = config.get("docRoots") or {}
-    doc_roots = {
-        key: root / doc_root_cfg.get(key, f"docs/{key}")
-        for key in ("features", "epics", "knowledge", "specs")
-    }
-
     template_kinds = dynamic_registry.load_kinds(root)
-    for kind in template_kinds:
-        doc_roots.setdefault(kind.doc_root, root / doc_root_cfg.get(kind.doc_root, kind.default_path))
+    roots = doc_roots(root, template_kinds, config)
 
     org_name = config.get("name") or root.name
     if config.get("profile") in ("full", "exploration"):
         profile = config["profile"]
     else:
-        profile = "full" if doc_roots["epics"].is_dir() else "exploration"
+        profile = "full" if roots["epics"].is_dir() else "exploration"
 
-    graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=doc_roots,
+    graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=roots,
                   template_kinds=template_kinds)
 
     _load_knowledge(graph)

@@ -30,9 +30,9 @@ from pathlib import Path
 
 from ostler import Ostler
 from ostler.fmt import run_fmt
-from workhorse_workflows.okf_builder.nodes import _stubs
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import Checkpoint
+from workhorse_workflows.okf_builder.shared import stubs
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import Checkpoint
 
 #: Findings whose remedy cannot be read off the finding: the value has to come from the
 #: source. Everything else is mechanical and stays a `fixup`.
@@ -140,7 +140,7 @@ def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[d
     ]
 
 
-@blueprint.node(stub=_stubs.clean)
+@blueprint.node(stub=stubs.clean)
 def checkpoint_book(
     logger: logging.Logger,
     repo_root: str = ".",

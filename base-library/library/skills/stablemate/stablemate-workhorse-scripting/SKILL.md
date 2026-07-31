@@ -2,6 +2,7 @@
 name: stablemate-workhorse-scripting
 description: "Writing workhorse workflow nodes — the @blueprint.node contract, typed returns, WorkflowFailed routing, the kit git/GitHub/workspace helpers, the in-process ostler facade, and substitution-based testing. Applies to a workflow distribution's Python."
 applyTo: "**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/workflow.py"
+tags: [backend, standards, tests]
 ---
 
 # Workhorse workflow nodes
@@ -162,7 +163,7 @@ of them reading `AGENT_REPO_DIR`.
 
 The ambient paths — `repo_dir`, `docs_path`, `workspace_file` — are the shape that used to
 be an environment read: wanted by every second node, chosen by no state. They are fields,
-and `Workflow.injects` (see `coder/paths.AMBIENT`) fills them into any node or sub-flow
+and `Workflow.injects` (see `coder/shared/paths.AMBIENT`) fills them into any node or sub-flow
 declaring a parameter of the same name that was not passed one. A callsite value always
 wins; an empty field injects nothing, so the target's own default stands.
 
@@ -288,8 +289,13 @@ else:
     kit.git.checkout(repo_path, branch, create=True)
 
 kit.git.commit_all(repo_path, f"{epic}: {slug}" if epic else slug)   # False = nothing to commit
-kit.git.commit_paths(repo_path, "prune completed epic from queue", "docs/epics/index.md")
+kit.git.commit_paths(repo_path, "prune completed epic from queue", paths.epics_index(root))
 ```
+
+The pathspec on that last line comes from the workflow's `shared/paths.py`, never from a
+`docs/…` literal: a workflow joins a filename it owns onto a directory **ostler** resolved,
+so a repo that moved its epics with `docRoots:` still gets the right file staged. The rule
+is stated in `workflows/README.md` under "A workflow does not spell a doc path".
 
 `push_branch` handles the transient credential helper (the token rides `GH_TOKEN`, never a
 URL / git config / log) **and** verifies the remote head advanced to the local head — an

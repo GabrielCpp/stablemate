@@ -1,4 +1,4 @@
-"""The author workflow's non-agent work, grouped by subject.
+"""The non-agent work only the **main** author machine calls, grouped by subject.
 
 Importing this package registers every node on the shared `blueprint`, which is the one
 name `workflow.py` needs from here. The submodules are the subjects:
@@ -9,11 +9,11 @@ name `workflow.py` needs from here. The submodules are the subjects:
 * `coverage` — whether an epic's stories cover it, and the backlog it consumed
 * `artifacts` — the whole-run gates, and the git tail that ships what they passed
 
-The sub-graphs keep their own package and their own blueprint, so a reader can see which
-nodes belong to which machine:
-
-* `survey` — the surveyor and parity-surveyor sub-flows (`flows/surveyor.py`,
-  `flows/parity_surveyor.py`)
+The sub-graphs' nodes are not here, and they keep a blueprint of their own so a reader can
+see which nodes belong to which machine: what both survey flows call is in
+[`shared/survey/`](../shared/survey), and what one of them calls sits beside that flow, in
+[`surveyor/nodes/`](../surveyor/nodes) and
+[`parity_surveyor/nodes/`](../parity_surveyor/nodes).
 
 Ported from `base-library/workflows/author/scripts/`. The same three things change as in
 `research`, and nothing else does: the JSON envelope on stdout becomes a **returned

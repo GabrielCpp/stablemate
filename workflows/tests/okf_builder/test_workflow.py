@@ -56,7 +56,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
-from workhorse_workflows.okf_builder import paths
+from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.workflow import MAX_STALL_ROUNDS, OkfBuilder
 
 SERVICE = "acme"

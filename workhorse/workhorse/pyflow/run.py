@@ -24,7 +24,7 @@ from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
 from workhorse.pyflow.driver import Resume, drive, read_resume
 from workhorse.pyflow.engine import RunEnv, stub_nodes
-from workhorse.pyflow.errors import PyflowError, WorkflowFailed
+from workhorse.pyflow.errors import PyflowError, RunBudgetExceeded, WorkflowFailed
 from workhorse.pyflow.graph import preflight, registry_graphs
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
@@ -188,6 +188,20 @@ def run_pyflow(invocation: RunInvocation) -> int:
             # — lands here. The run dir is left resumable on purpose: these are the
             # failures an operator fixes and continues from.
             agent_process.terminate_active()
+            if isinstance(exc, RunBudgetExceeded):
+                # …except that "resumable" has to mean resumable *by the flag*. A
+                # stamped `terminal` is what `find_latest_resumable` and the `--auto`
+                # resolution read as "this run is over", so stamping one here would hide
+                # the run from `--resume-latest` — the exact thing the message printed
+                # below tells the operator to do. A clock that ran out is a stop, not a
+                # verdict, so it is recorded the way an interrupt is: error on
+                # `run.json`, no terminal, exit 1.
+                print(f"[workhorse] ERROR: {exc}")
+                writer.record_interrupt(_state_of(writer), str(exc))
+                print(f"[workhorse] resume with: workhorse run {name} "
+                      f"--resume-run {writer.run_dir}")
+                otel.end_run("fail", error=str(exc))
+                return 1
             if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
                 # …with one exception, and only while the workflow declares no
                 # stand-ins. Undeclared, every agent reply is a blank model, so the

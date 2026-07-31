@@ -24,7 +24,7 @@ from pydantic import TypeAdapter, ValidationError
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
-from workhorse.pyflow.errors import WorkflowFailed
+from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import Checkpoint, PyflowCheckpoint, parse_checkpoint
@@ -275,7 +275,7 @@ def drive(
 
     for _ in range(budget):
         if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
-            raise WorkflowFailed(
+            raise RunBudgetExceeded(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
                 "from the run's original start. Raise the budget and resume."
             )

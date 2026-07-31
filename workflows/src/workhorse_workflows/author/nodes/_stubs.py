@@ -16,7 +16,7 @@ the driver has no "a dry run never waits" escape to fall back on.
 """
 from __future__ import annotations
 
-from workhorse_workflows.author.schemas.main import Defects, VerifyReport
+from workhorse_workflows.author.shared.schemas.main import Defects, VerifyReport
 
 
 def clean(*_args: object, **_kwargs: object) -> Defects:

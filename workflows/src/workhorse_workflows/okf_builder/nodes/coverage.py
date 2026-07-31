@@ -35,9 +35,9 @@ from ostler.coverage import is_complete, render
 # green. Importing it means the join and the grounding check cannot disagree again.
 from ostler.inventory import SOURCE_SUFFIXES, symbols
 from workhorse_workflows.kit import short_sha
-from workhorse_workflows.okf_builder.nodes import _stubs
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import Coverage, SourceInventory
+from workhorse_workflows.okf_builder.shared import stubs
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import Coverage, SourceInventory
 
 #: Directories whose contents are never source: build output, vendored trees, caches.
 SKIP_DIRS = {
@@ -286,7 +286,7 @@ def _screen_count(okf: Ostler, service: str) -> int:
     return len(data["nodes"])
 
 
-@blueprint.node(stub=_stubs.covered)
+@blueprint.node(stub=stubs.covered)
 def compute_coverage(
     logger: logging.Logger,
     repo_root: str = "",

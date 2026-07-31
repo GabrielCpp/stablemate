@@ -32,12 +32,12 @@ If the section above is non-empty, it is mid-flight feedback a human dropped int
 Read:
 
 - `AGENTS.md`
-- `{{ instruction_ref("developer") }}`
+- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
 - the story file
 - the parent `epic.md`
 - the plan artifacts under `docs/specs/<story-name>/`
 - `review.md`
-- the instruction files for the layers you touched, from those this repository installs: {{ instruction_refs("go", "go-architecture", "go-testing", "go-cli", "go-cli-commands", "react-router", "react-router-architecture", "react-router-qa", "flutter", "flutter-architecture", "flutter-api", "flutter-testing", "pulumi") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
+- the instruction files for the layers you touched, from those this repository installs: {{ find_by_tags("standards") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
 
 ## Goal
 

@@ -50,8 +50,6 @@ from workhorse.pyflow import (
     Workflow,
     WorkflowFailed,
 )
-from workhorse_workflows.author import paths
-from workhorse_workflows.author.flows import ParitySurveyor, Surveyor
 from workhorse_workflows.author.nodes import (
     blueprint,
     branch_author,
@@ -72,8 +70,9 @@ from workhorse_workflows.author.nodes import (
     verify_integrity,
     verify_reconcile,
 )
-from workhorse_workflows.author.nodes.survey import blueprint as survey_blueprint
-from workhorse_workflows.author.schemas import (
+from workhorse_workflows.author.parity_surveyor import ParitySurveyor
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.schemas import (
     AuditResult,
     CoverageReview,
     DecomposeResult,
@@ -85,6 +84,8 @@ from workhorse_workflows.author.schemas import (
     WriteEpicResult,
     WriteStoryResult,
 )
+from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
+from workhorse_workflows.author.surveyor import Surveyor
 
 #: Reworks of one stage before it is handed to the operator: the epic decomposition, one
 #: story, and one epic's story coverage all share this bound (`vars.max_reworks`).
@@ -122,18 +123,21 @@ class Author(Workflow):
     #: `story` mode: a backlog `[id]`, or the literal bullet text to author.
     bullet: str = ""
     #: The worklist. Story mode resolves `bullet` against **this** file, and the coverage
-    #: tail prunes the bullets an authored epic consumed from it.
-    backlog: str = "docs/backlog.md"
-    #: Where epics live, one directory each.
-    epics_dir: str = "docs/epics"
+    #: tail prunes the bullets an authored epic consumed from it. Blank — the normal case —
+    #: means "wherever ostler keeps it", so a repo that moved its docs is followed.
+    backlog: str = ""
+    #: Where epics live, one directory each. Blank means ostler's answer, which reads
+    #: `docRoots:`; set it only to point a run at a tree ostler does not configure.
+    epics_dir: str = ""
     #: `survey` mode: the rubric handed to the surveyor sub-flow.
     rubric: str = "docs/survey/rubric.md"
     #: `survey` mode: where the surveyor's own artifacts live.
     survey_dir: str = "docs/survey"
     #: `parity-survey` mode: the committed inventory the new build is measured against.
     baseline_inventory: str = ""
-    #: `parity-survey` mode: the feature docs describing the target.
-    target_features: str = "docs/features"
+    #: `parity-survey` mode: the feature docs describing the target. Blank means the book
+    #: ostler configures for this repo.
+    target_features: str = ""
     #: `parity-survey` mode: where the parity survey's artifacts live.
     parity_survey_dir: str = "docs/survey/legacy-vs-new"
     #: `auto` lets the resolver agent stand in for the human at every gate; `human` sends

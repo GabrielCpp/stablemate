@@ -157,7 +157,8 @@ constant in a pyflow run and only `prompt.md`/`output.json` carry information.
 
 ### `record_interrupt`
 `record_interrupt(node_id, error)`
-Records that an operator interrupt (Ctrl-C) stopped the run while `node_id` was in flight.
+Records that the run **stopped without deciding** while `node_id` was in flight — an operator
+interrupt (Ctrl-C), or `WORKHORSE_MAX_RUNTIME_S` running out between states.
 1. `_append_event(node_id=node_id, phase="error", error=error)` — closes that node's `enter`
    window, which otherwise dangles exactly as a wedged node's does.
 2. `_write_run_json(terminal=None, error=error)` — stamps `interrupted_at`/`error`.
@@ -166,12 +167,15 @@ Without it an interrupted run is indistinguishable on disk from a wedged one, an
 which required going to the backend CLI's own session transcript.
 
 Deliberately **not** `finish()`: a non-null `terminal` reads as "this run is over" to
-`auto_resolve`/`find_latest_resumable`, and an interrupted run is precisely the one that must
-still auto-resume in place (see [crash and resume](../flows/workhorse-crash-resume.md)). The stamp
-clears itself on the next `_write_run_json` — a `resume`, or the run finishing.
+`auto_resolve`/`find_latest_resumable`, and a run that merely stopped is precisely the one that
+must still auto-resume in place (see [crash and resume](../flows/workhorse-crash-resume.md)). The
+stamp clears itself on the next `_write_run_json` — a `resume`, or the run finishing.
 
-Called by `run_pyflow`'s `KeyboardInterrupt` handler, which reads the in-flight state name back
-out of the checkpoint.
+Called by `run_pyflow`'s `KeyboardInterrupt` handler and by its `RunBudgetExceeded` branch, both of
+which read the in-flight state name back out of the checkpoint. The budget case is why this is not
+just a Ctrl-C concern: a budget stop that stamped `fail` like every other `PyflowError` would be
+skipped by `--resume-latest`, making the driver's own advice ("Raise the budget and resume")
+impossible to follow through the flag that exists to follow it.
 
 ### `finish`
 `finish(terminal)`
@@ -215,8 +219,8 @@ state from the top — so today the field is history rather than a resume input.
 Writes `run.json` = `{workflow: _workflow_name, run_id: _run_id, started_at: _started_at, ended_at:
 <now if terminal else null>, terminal, interrupted_at: <now if error and not terminal else null>,
 error, pid: os.getpid()}`. Called by every constructor (`terminal=None`), by `finish`
-(`terminal="terminal"`/`"fail"`), and by `record_interrupt` (`terminal=None`, `error=<the exception
-name>`). Every call rewrites the whole file, so `interrupted_at`/`error` survive only until the run
+(`terminal="terminal"`/`"fail"`), and by `record_interrupt` (`terminal=None`, `error=<why the run
+stopped>`). Every call rewrites the whole file, so `interrupted_at`/`error` survive only until the run
 resumes or ends. The `pid` is also a telemetry resource attribute; it is recorded here so it
 survives with telemetry off.
 

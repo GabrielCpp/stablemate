@@ -2,6 +2,7 @@
 name: stablemate-agent-library
 description: "Agent Library Maintenance & Install. Applies to agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**."
 applyTo: agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**
+tags: [codegen]
 ---
 
 # Agent Library Maintenance & Install
@@ -58,6 +59,53 @@ skill's rules).
 Cross-link sibling skills with the `{% raw %}{{ instruction_file("<name>") }}{% endraw %}`
 template helper (where `<name>` is the target skill's base name) rather than
 duplicating content.
+
+## Tagging a skill so a workflow can find it
+
+A workflow prompt cannot name your skills. It ships in the public `stablemate`
+repo and has never met your stack, so a prompt that asks for `go-testing` by name
+is a prompt that renders a dead filename in every repo that writes its tests some
+other way. Prompts therefore ask by **capability**:
+
+```
+{% raw %}{{ find_by_tags("web", "tests") }}{% endraw %}    → "however this repo writes web tests"
+```
+
+The query is an AND — a skill matches only if it carries *every* tag asked for —
+and it renders the matching skills' installed paths, or nothing at all when the
+repo has none. **Nothing at all is the default for an untagged library**: a skill
+with no `tags:` can never be the answer to a query, so a per-stack skill that
+isn't tagged is invisible to every workflow that would have used it.
+
+Declare tags in the skill's frontmatter, as a list or a comma-separated string
+(case and surrounding space don't matter — they are normalized):
+
+```yaml
+---
+name: react-router-testing
+description: "..."
+applyTo: "web/**"
+tags: [web, tests, qa]
+---
+```
+
+The vocabulary the `coder` workflow queries — use these spellings, since a tag no
+prompt asks for is a tag nothing will ever read:
+
+| Tag | The skill answers |
+| --- | --- |
+| `runbook` | how to bring this repo's local stack up and work in it day to day |
+| `standards` | how code in that layer is written — the conventions a change must follow |
+| `tests` | how that layer's tests are written and run |
+| `qa` | how to bring the **real** stack up and drive it for verification |
+| `codegen` | which artifacts are generated, and the command that regenerates them |
+
+Combine one of those with the layer the skill belongs to: `backend`, `cli`,
+`web`, `mobile`, or `infra`. A skill covering more than one job carries more than
+one tag — `tags: [web, standards, runbook]` answers all three of those queries.
+
+Tags land in the generated skill's `metadata:` block and in the context manifest,
+so `make agent-install` is what makes a new tag visible to a workflow.
 
 ## Installing into the working repo
 

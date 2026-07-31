@@ -11,7 +11,12 @@ from typing import Any
 
 from jinja2 import Environment, StrictUndefined
 
-from farrier.frontmatter import first_heading, split_front_matter
+from farrier.frontmatter import (
+    first_heading,
+    frontmatter_tags,
+    normalize_tags,
+    split_front_matter,
+)
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_CONTEXT_MANIFEST,
@@ -34,8 +39,15 @@ from farrier.sources import Source, build_lookup, library_source_path, public_na
 # recognise, so `metadata` is inert to the agent. Codex/copilot prompts are left
 # untouched; aggregated Claude instruction files get an HTML-comment banner instead
 # (see local_instruction_banner).
-def skill_metadata_block(source: Source, dest_rel: str) -> str:
+def skill_metadata_block(source: Source, dest_rel: str, tags: list[str] | None = None) -> str:
     """The `metadata:` block stamping a generated skill/command with its source.
+
+    *tags* are the library source's own `tags:`, carried through so the installed copy
+    still says what it is *for* — a reader of the generated file sees the same query
+    keys `find_by_tags` matches on. They ride inside `metadata:` rather than as a
+    top-level key because the front matter of a generated skill is rebuilt from a
+    fixed set of keys the harnesses recognise, and `metadata:` is the one already
+    agreed to be ours.
 
     *dest_rel* is the generated file's repo-root-relative path — it makes the
     `resolve:` field a copy-pasteable command that turns the (machine-independent,
@@ -50,12 +62,14 @@ def skill_metadata_block(source: Source, dest_rel: str) -> str:
         "generated — run the `resolve` command below for this machine's editable "
         "source path, edit that, then `make agent-install` to regenerate"
     )
+    tag_line = f"  tags: [{', '.join(tags)}]\n" if tags else ""
     return (
         "metadata:\n"
         "  generated_by: farrier\n"
         f"  source: {library_source_path(source)}\n"
         f"  resolve: {yaml_quote(f'farrier source {dest_rel}')}\n"
         f"  do_not_edit: {yaml_quote(do_not_edit)}\n"
+        f"{tag_line}"
     )
 
 
@@ -109,6 +123,35 @@ class Renderer:
         self.prompts = prompts
         self.skill_lookup = build_lookup(skills, prefix)
         self.prompt_lookup = build_lookup(prompts, prefix)
+        self._tags: dict[Path, list[str]] = {}
+
+    def skill_tags(self, source: Source) -> list[str]:
+        """The `tags:` a library skill declares. Cached — one read per source file.
+
+        A tag is what lets a prompt ask for a *capability* ("this repo's web testing
+        conventions") rather than enumerate the skills that might provide one. The
+        enumeration is the thing being replaced: a prompt listing `react-router-qa`,
+        `flutter-testing`, `go-testing` is naming today's stacks, and a repo whose
+        stack the workflow has never met gets nothing.
+        """
+        cached = self._tags.get(source.path)
+        if cached is None:
+            cached = frontmatter_tags(source.path.read_text(encoding="utf-8"))
+            self._tags[source.path] = cached
+        return cached
+
+    def skills_with_tags(self, tags: list[str]) -> list[Source]:
+        """The selected skills carrying **all** of *tags*, in library order.
+
+        AND, not OR: ``('web', 'tests')`` means the skills that are both, so a
+        second word narrows the query rather than widening it. An empty *tags*
+        matches nothing — an unconstrained query would otherwise answer with the
+        repo's entire installed library.
+        """
+        wanted = set(tags)
+        if not wanted:
+            return []
+        return [s for s in self.skills if wanted <= set(self.skill_tags(s))]
 
     def skill_source(self, name: str) -> Source:
         source = self.optional_skill_source(name)
@@ -179,6 +222,7 @@ class Renderer:
                 "skill_file(",
                 "prompt_file(",
                 "prompt_ref(",
+                "find_by_tags(",
                 "skill_dir(",
                 "isUsingInstruction(",
                 "repo.",
@@ -223,6 +267,23 @@ class Renderer:
             """Check if this project has a specific instruction selected."""
             return self.optional_skill_source(instruction_name) is not None
 
+        def find_by_tags(*tags: str) -> str:
+            """The installed skills tagged with all of *tags*, as a reference list.
+
+            The install-time half of workhorse's Jinja global of the same name, and it
+            must render the same shape — backticked paths, comma-joined, empty when
+            nothing matches — so a library source reads identically whether farrier
+            rendered it into a repo or workhorse rendered it from the library.
+            """
+            wanted = normalize_tags(list(tags))
+            refs = sorted(
+                relative_reference(
+                    from_file, self.skill_output_path(source.id, skill_target)
+                )
+                for source in self.skills_with_tags(wanted)
+            )
+            return ", ".join(f"`{ref}`" for ref in refs)
+
         def workhorse_var(name: str) -> str:
             """Emit a runtime variable reference that workhorse will fill at run time.
             Usage in templates: {{ workhorse_var('plan_path') }}
@@ -245,6 +306,7 @@ class Renderer:
                 from_file, self.skill_dir_path(target)
             ),
             isUsingInstruction=is_using_instruction,
+            find_by_tags=find_by_tags,
             workhorse_var=workhorse_var,
             repo=self.repo_context,
             template=self.template_values,
@@ -273,6 +335,16 @@ class Renderer:
             key: rel(self.prompt_output_path(source.id, target))
             for key, source in self.prompt_lookup.items()
         }
+        # Keyed by the same alias names as `instructions`, so a tag query resolves a
+        # matched name through the same lookup a `instruction_ref` would. Untagged
+        # skills are simply absent: a name with no tags can never match a query, and
+        # writing `[]` for each of a skill's several aliases would triple the file
+        # to say nothing.
+        instruction_tags = {
+            key: tags
+            for key, source in self.skill_lookup.items()
+            if (tags := self.skill_tags(source))
+        }
         # The manifest is a committed adapter consumed at run time with the working
         # directory AT the repo root, so pin repo.root to "." — keeping the install
         # machine's absolute path out of version control (avoids cross-machine drift).
@@ -282,6 +354,7 @@ class Renderer:
             "repo": repo_context,
             "vars": self.template_values,
             "instructions": instructions,
+            "instruction_tags": instruction_tags,
             "prompts": prompts,
             "used_skills": sorted(self.skill_lookup.keys()),
             "skill_dir": rel(self.skill_dir_path(target)),
@@ -307,11 +380,12 @@ class Renderer:
         body = self.render_templates(body, target, output_path).strip()
         name = public_name(self.prefix, source)
         description = self.skill_description(source, header, body)
+        dest_rel = output_path.relative_to(self.repo).as_posix()
         return (
             "---\n"
             f"name: {name}\n"
             f"description: {yaml_quote(description)}\n"
-            f"{skill_metadata_block(source, output_path.relative_to(self.repo).as_posix())}"
+            f"{skill_metadata_block(source, dest_rel, self.skill_tags(source))}"
             "---\n"
             "\n"
             f"{body}\n"

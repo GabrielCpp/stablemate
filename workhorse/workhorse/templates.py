@@ -72,6 +72,7 @@ def _farrier_globals(
     """
     manifest = ManifestContext.from_context(context)
     instructions = manifest.instructions
+    instruction_tags = manifest.instruction_tags
     prompts = manifest.prompts
     used_skills = set(manifest.used_skills)
     skill_dir_value = manifest.skill_dir
@@ -141,6 +142,10 @@ def _farrier_globals(
     # find a Flutter skill. So the unresolved names are DROPPED, not placeheld, and the
     # result is empty — hence falsy — when none of them resolve, which is what lets the
     # surrounding sentence disappear with `{% if %}` instead of dangling after "e.g.".
+    def _as_list(paths: Iterable[str]) -> str:
+        """The one rendering of a resolved set: backticked paths, comma-joined."""
+        return ", ".join(f"`{path}`" for path in paths)
+
     def _rendered(names: Iterable[Any], lookup: Any) -> str:
         seen: set[str] = set()
         out: list[str] = []
@@ -150,14 +155,47 @@ def _farrier_globals(
             # aliases, and a prompt listing two of them means one file, said twice.
             if path is not None and path not in seen:
                 seen.add(path)
-                out.append(f"`{path}`")
-        return ", ".join(out)
+                out.append(path)
+        return _as_list(out)
 
     def instruction_refs(*names: Any) -> str:
         return _rendered(names, lambda n: resolve_instruction(instructions, n))
 
     def prompt_refs(*names: Any) -> str:
         return _rendered(names, prompts.get)
+
+    def find_by_tags(*tags: Any) -> str:
+        """The installed skills tagged with **all** of *tags*, as a reference list.
+
+        What `instruction_refs` asks by name, this asks by capability: a prompt says
+        `find_by_tags('web', 'tests')` — "however this repo writes web tests" — instead
+        of listing `react-router-qa`, `flutter-testing`, `go-testing` and hoping the
+        repo's stack is one the workflow has met before. The tags come from each
+        skill's own front matter, so a repo teaches the workflow about its stack by
+        tagging a skill rather than by getting the workflow's menu extended.
+
+        AND, not OR: a second tag narrows. An empty query renders nothing rather than
+        the whole library — `find_by_tags()` asks for no capability in particular, and
+        answering it with every installed skill would be the opposite of a query.
+        Unmatched is likewise empty (hence falsy), so the sentence around it can
+        disappear with `{% if %}` exactly as it does for the plural `*_refs` helpers.
+        """
+        wanted = {tag.lower() for tag in _flatten(tags)}
+        if not wanted:
+            return ""
+        matched: set[str] = set()
+        for name, owned in instruction_tags.items():
+            if not wanted <= set(owned):
+                continue
+            # Through the same resolver as `instruction_ref`, so a matched name that
+            # is a pack alias lands on the same installed path either route reaches.
+            path = resolve_instruction(instructions, name)
+            if path is not None:
+                matched.add(path)
+        # Sorted rather than in manifest order: a JSON dict's order is farrier's
+        # bookkeeping, and a prompt that renders differently run-to-run for no
+        # semantic reason costs a diff every time the manifest is regenerated.
+        return _as_list(sorted(matched))
 
     def is_using_instruction(name: str = "", *_args: Any, **_kwargs: Any) -> bool:
         return name in used_skills
@@ -196,6 +234,7 @@ def _farrier_globals(
         "skill_files": instruction_refs,
         "prompt_refs": prompt_refs,
         "prompt_files": prompt_refs,
+        "find_by_tags": find_by_tags,
         "isUsingInstruction": is_using_instruction,
     }
 

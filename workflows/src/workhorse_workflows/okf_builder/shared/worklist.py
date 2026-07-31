@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from workhorse import worklist as wl
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import Pick, Recorded
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 
 
 def _norm(s: object) -> str:

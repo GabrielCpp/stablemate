@@ -78,6 +78,18 @@ key `_instructions`; read by the `instruction_ref`/`instruction_file`/`skill_fil
 which fall back to a `"generated <name> instruction file when installed"` placeholder for a name
 not in the map.
 
+### instruction_tags
+- type: `map<string, list<string>>` — required: no — default: `{}`
+
+Selected-skill id → the tags that skill's front matter declares (`tags: [web, tests]`), lowercased.
+Keyed by the same alias names as [`instructions`](#instructions), so a matched name resolves
+through the same lookup an `instruction_ref` would; a skill declaring no tags is simply absent
+rather than written as `[]`. Stashed under the reserved context key `_instruction_tags`; read by
+the `find_by_tags(*tags)` Jinja helper, which renders the skills carrying **all** the queried tags
+and renders nothing when none do. Unlike [`instructions`](#instructions), it is **not**
+path-rewritten per backend — a tag is a word, not a location. A manifest written by an older
+farrier has no such key, and every tag query on it matches nothing.
+
 ### prompts
 - type: `map<string, string>` — required: no — default: `{}`
 
@@ -136,6 +148,9 @@ manifest, generated for one backend, still resolve correctly when a run is launc
   "vars": { "team": "platform" },
   "instructions": {
     "coder-workflow": ".claude/skills/acme-coder-workflow/SKILL.md"
+  },
+  "instruction_tags": {
+    "coder-workflow": ["backend", "standards"]
   },
   "prompts": {
     "story-plan": ".claude/prompts/acme-story-plan.md"

@@ -6,14 +6,47 @@ builds an epic: it walks the epic queue, and for each story plans, implements, r
 documents and QAs it, then commits, opens one PR per epic, holds it against CI, and
 merges.
 
-The package is the same shape `research`, `author` and `okf-builder` established:
+The package has the layout `workflows/README.md` prescribes for every workflow — one
+directory per *machine*, so a reader can tell which nodes belong to which graph without
+reading either:
 
-* `workflow.py` — the `Coder` class, and only that class
-* `nodes/` — the deterministic work, grouped by subject, one `@node` per YAML `script:`
-* `flows/` — one `Workflow` subclass per YAML `flows:` entry, reached by `handoff`
-* `schemas/` — agent reply models and node return models
-* `paths.py` — the derivations the scripts each carried a private copy of
-* `prompts/` — the agent turns, verbatim from the YAML workflow
+* `workflow.py` — the main machine, the `Coder` class, and only that class
+* `nodes/` — the non-agent work only that machine calls; here it is `pr` alone, because
+  the epic's PR boundary is the one subject no sub-flow touches
+* `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
+  directory per YAML `flows:` entry: each `flow.py` beside the `nodes.py` (or `nodes/`)
+  only it calls
+* `shared/` — what a second machine also reaches: `paths`, `schemas`, `contract`,
+  `blueprint`, `stubs`, and the node subjects more than one graph runs (`story`, `dev`,
+  `queue`, `backlog`, `ci`, `docs`, `okf`, `review`)
+* `prompts/` — every agent turn's Markdown, at the package root because a sub-flow's
+  prompt path resolves against the *parent* package directory
+
+**Three of the eight sub-graphs are never handed off to.** `genesis`, `dream` and `fix`
+are packages here because the YAML put them under `flows:`, but none is sequenced by the
+main loop: `genesis` produces the preconditions the main loop *assumes*, `dream` runs
+after the work like sleep so that reflection never gates a story, and `fix` is a
+standalone drain of the backlog the main loop also drains inline, on its own copy of the
+same nodes. All three are registered flows on the coder `Registry` and entered directly,
+as `workhorse run coder genesis`.
+
+The other five are reached with `self.handoff(...)`, and the caller names the class at the
+callsite::
+
+    result = self.handoff(FixCi, branch=epic, docs_path=self.docs_path)
+
+Two things follow from `Engine.handoff` that a sub-flow author has to know, because
+neither is obvious from the callsite:
+
+* only the run **writer** is subscoped, not the environment. A sub-flow's prompt paths
+  therefore resolve against the *parent* package directory, which is why every prompt a
+  flow reaches lives under `coder/prompts/`;
+* `self.output(node)` reads that subscope, so it cannot see a node the parent ran and the
+  parent cannot see one a sub-flow ran. A value that has to cross the boundary crosses it
+  as an argument or as the `Done` value.
+
+Each sub-flow gets its own transition budget, because `handoff` drives it through a fresh
+`drive()` — a per-repo loop inside one cannot exhaust the parent's.
 
 The YAML's name is `epic-coder`; the entry point and the console script are both
 `coder`, matching the directory the library resolves it by today.

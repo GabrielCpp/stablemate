@@ -8,7 +8,7 @@ commits and the run's own artifacts.
 
 **The five handed-off sub-flows are stand-ins here, and every node is real.** `dev`,
 `review`, `docs`, `qa` and `fix_ci` each already have their own end-to-end suite in
-`flows/`, driven the same way and against the same fixtures; re-running them from the top
+its own directory beside this one, driven the same way and against the same fixtures; re-running them from the top
 would test them twice and this graph once. What is *not* stubbed is the handoff boundary
 itself — a stub is a real `Workflow` subclass handed to the real `self.handoff`, so it is
 constructed with the real keywords, driven by the real driver, and recorded under the real
@@ -45,16 +45,16 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder import workflow as coder_workflow
-from workhorse_workflows.coder.nodes.backlog import prune_fix_item, select_fix_item
-from workhorse_workflows.coder.nodes.ci import poll_pr_checks
+from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
+from workhorse_workflows.coder.shared.ci import poll_pr_checks
 from workhorse_workflows.coder.nodes.pr import flag_ci_failure, merge_pr, open_pr, open_story_pr
-from workhorse_workflows.coder.nodes.queue import branch_story, commit_story, select_epic
-from workhorse_workflows.coder.nodes.story import prepare_fix_story, prepare_story
-from workhorse_workflows.coder.schemas.ci import CiChecks
-from workhorse_workflows.coder.schemas.dev import DevResult
-from workhorse_workflows.coder.schemas.docs import DocsResult
-from workhorse_workflows.coder.schemas.qa import QaFlowResult, QaResult
-from workhorse_workflows.coder.schemas.review import ReviewResult
+from workhorse_workflows.coder.shared.queue import branch_story, commit_story, select_epic
+from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
+from workhorse_workflows.coder.shared.schemas.ci import CiChecks
+from workhorse_workflows.coder.shared.schemas.dev import DevResult
+from workhorse_workflows.coder.shared.schemas.docs import DocsResult
+from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
+from workhorse_workflows.coder.shared.schemas.review import ReviewResult
 from workhorse_workflows.coder.workflow import Coder
 
 EPIC = "EPIC-1"

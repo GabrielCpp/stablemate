@@ -67,6 +67,30 @@ def test_plural_aliases_are_optional_too() -> None:
     assert referenced_names(source) == set()
 
 
+def test_tag_query_arguments_are_not_skill_names() -> None:
+    """`find_by_tags('web', 'tests')` names a capability, not a file. Descending into
+    it would report every tag in every prompt as a missing skill — the preflight would
+    be all noise on precisely the prompts that stopped hard-coding skill names."""
+    source = "{{ find_by_tags('web', 'tests') }}{{ find_by_tags('backend') }}"
+    assert referenced_names(source) == set()
+
+
+def test_a_tag_query_beside_a_real_reference_hides_neither() -> None:
+    source = "{{ find_by_tags('web') }} {{ instruction_ref('story-docs') }}"
+    assert referenced_names(source) == {("skill", "story-docs")}
+
+
+def test_a_prompt_of_tag_queries_reports_nothing(tmp_path: Path) -> None:
+    """The whole-workflow scan, not just the AST walk: a prompt that asks only by
+    capability is unresolvable-by-nothing however thin the repo's manifest is."""
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    (prompts / "qa.md").write_text(
+        "{{ find_by_tags('backend', 'tests') }}\n", encoding="utf-8"
+    )
+    assert missing_references(tmp_path, {"_instructions": {"go": "skills/go.md"}}) == []
+
+
 def test_reference_behind_an_installed_skill_guard_is_not_required() -> None:
     """A Go repo must not fail preflight for the Flutter branch it never renders."""
     source = "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter') }}{% endif %}"

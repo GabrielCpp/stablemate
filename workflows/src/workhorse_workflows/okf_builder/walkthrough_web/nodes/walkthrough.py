@@ -25,10 +25,10 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod
-from workhorse_workflows.okf_builder import paths
-from workhorse_workflows.okf_builder.nodes import _stubs
-from workhorse_workflows.okf_builder.nodes._blueprint import blueprint
-from workhorse_workflows.okf_builder.schemas import WalkSeed, WebApp
+from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared import stubs
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.schemas import WalkSeed, WebApp
 
 FALLBACK_PORT = "8787"
 LOOPBACK = "127.0.0.1"  # the docs' loopback option — keeps the walked app local
@@ -152,7 +152,7 @@ def select_server(
     return contracts[0][1]
 
 
-@blueprint.node(stub=_stubs.webapp)
+@blueprint.node(stub=stubs.webapp)
 def detect_webapp(
     logger: logging.Logger,
     docs_path: str = "",
@@ -180,7 +180,7 @@ def detect_webapp(
     Nothing is taken from the run's parameters: port, entry URL, health path and launch
     command are all detected from the documentation. Also allocates the walk worklist
     (build scratch) and the screenshots dir — which lives IN the book
-    (`docs/features/<service>/gui/screenshots`), since screenshots are committed
+    (`<book>/<service>/gui/screenshots`, resolved by ostler), since screenshots are committed
     documentation evidence, referenced by `screenshot:` bullets and vetted by `ostler vet`.
     Emits the fixed `cdp_url` the walk's shared browser listens on (must match the repo's
     playwright-MCP `--cdp-endpoint`).
@@ -194,7 +194,7 @@ def detect_webapp(
         logger.info("no service given (whole-tree build) — no single app to walk, skipping")
         return WebApp(repo_root=str(root), source_root=source_root, cdp_url=CDP_URL)
 
-    scope = f"docs/features/{service}/"
+    scope = paths.book_scope(root, service)
 
     # 1) Web-app iff the book documents at least one `screen` surface for this service.
     screens = [s for s in _search(str(root), "screen") if scope in s.get("path", "")]

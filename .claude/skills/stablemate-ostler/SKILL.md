@@ -231,6 +231,39 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> dict` |
 | `edit settle-review SLUG --write` | `okf.settle_review(slug, write=True) -> EditPlan` (`.error`, per-finding ledger) |
 
+### `ostler.path` — path derivation without a graph
+
+`Ostler`'s `*_path` methods answer against a **loaded** graph, and loading reads every
+markdown file under every doc root. A caller that only wants to know *where* something goes
+imports the derivation module directly instead:
+
+```python
+from ostler import path as okf_path
+
+okf_path.epics_root_in(root)                     # <root>/docs/epics, or wherever docRoots: says
+okf_path.epics_index_in(root)                    # the epic queue's index.md
+okf_path.backlog_path_in(root)                   # docs/backlog.md
+okf_path.features_root_in(root, service)         # the book, whole or per-service
+okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
+okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
+okf_path.waivers_path_in(root)                   # coverage-waivers.json, inside the book
+okf_path.screenshots_dir_in(root)                # <book>/gui/screenshots
+```
+
+Every derivation comes in up to three spellings, chosen by what the caller already holds:
+
+| Spelling | Takes | Use when |
+| --- | --- | --- |
+| `<name>_in(root, …)` | the **repo root** | the normal case — no graph load, `docRoots:` still honoured |
+| `<name>(graph, …)` | a loaded `Graph` | you already have one; don't re-read the config |
+| `<name>_under(container, …)` | the **directory itself** | you were *told* which one — an operator's `epics_dir`, or a book you already hold |
+
+`_under` is what keeps an override from becoming a second, dumber derivation: ostler's rules
+still apply *inside* the directory you passed, so an epic is matched by number-or-slug there
+too. **This module is the only place a doc-tree path is derived** — no workflow, node or
+script writes `docs/epics`, `docs/backlog.md` or `docs/features` as a literal; see "A
+workflow does not spell a doc path" in `workflows/README.md`.
+
 The loaded graph is a **snapshot**: reads reuse one cached load; a mutation applies
 against a fresh load and invalidates the cache, so the next read sees it (`reload()`
 forces a refresh). A read never returns `None` — an unloadable graph *raises*

@@ -1,7 +1,7 @@
 """The okf-builder workflow: a service's code becomes an exhaustive OKF book.
 
 Ported from `base-library/workflows/okf-builder/workflow.yaml` — 29 nodes (plus the
-walk's 19, in `flows/walkthrough_web.py`) reduced to 12 states. Entry-point-first: seed
+walk's 19, in `walkthrough_web/flow.py`) reduced to 12 states. Entry-point-first: seed
 the surfaces, then drain a typed worklist where each item's investigation spawns the
 deeper items it reveals (surface → elements → handler layer → callee layers → concepts
 and formats), descending the code layer by layer. When the drain is dry, a deterministic
@@ -48,25 +48,24 @@ merely quotes.
 
 **`select_item` is called with `done_baseline` here and without it in the walk.** That is
 the YAML's own asymmetry, preserved: the build's `max_items` bounds *this run*, the walk's
-bounds the worklist's lifetime. See `flows/walkthrough_web.py`.
+bounds the worklist's lifetime. See `walkthrough_web/flow.py`.
 """
 from __future__ import annotations
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Registry, Workflow, WorkflowFailed
-from workhorse_workflows.okf_builder import paths
-from workhorse_workflows.okf_builder.flows import WalkthroughWeb
 from workhorse_workflows.okf_builder.nodes import (
     auto_waive,
-    blueprint,
-    checkpoint_book,
     compute_coverage,
     inventory_source,
     prepare,
-    record,
-    select_item,
 )
-from workhorse_workflows.okf_builder.schemas import Discovery, Investigation, Prepared, Recheck
+from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
+from workhorse_workflows.okf_builder.shared.schemas import Discovery, Investigation, Prepared, Recheck
+from workhorse_workflows.okf_builder.shared.worklist import record, select_item
+from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 
 #: Coverage re-scans before the build gives up. Bounds the *dry-drain* loop only — the
 #: fixup loop is bounded by `MAX_STALL_ROUNDS` below, and by nothing else, because a big
@@ -88,7 +87,8 @@ class OkfBuilder(Workflow):
     must not read as a finished one.
     """
 
-    #: Which `docs/features/<service>` book to build; `""` = the whole tree.
+    #: Which `<features-root>/<service>` book to build, the root being ostler's answer;
+    #: `""` = the whole tree.
     service: str = ""
     #: Source subtree to inventory; defaults to `service`.
     source_path: str = ""
@@ -499,7 +499,7 @@ workflow = (
     .stub_agents(
         {
             # Keyed by prompt STEM. Each is the reply that makes a dry run *progress*
-            # past its gate; see `nodes/_stubs.py` for why the blank default does not.
+            # past its gate; see `shared/stubs.py` for why the blank default does not.
             "enumerate-surfaces": {"discovered": []},
             "investigate": {"doc_status": "documented"},
             "recheck-coverage": {"needs_journeys": False},

@@ -176,6 +176,44 @@ class Ostler:
         """Git branch name for a slug (``ostler path branch``); no graph needed."""
         return path_mod.resolve_branch(slug, epic=epic)
 
+    # -- doc-tree locations (absolute; the ``resolve_*`` pair above is CLI parity) ---
+    # A caller that holds an ``Ostler`` reaches the doc tree here rather than joining
+    # ``docs/<something>`` onto a root of its own: these follow ``docRoots:`` config, a
+    # hand-built join does not, and the symptom of the second derivation is a workflow
+    # writing into a directory nothing reads. A caller holding only a repo root gets the
+    # same answers, graph-free, from ``ostler.path``'s ``*_in`` functions.
+    def epics_dir(self) -> Path:
+        """Where epics live — ``docs/epics`` unless the repo configures otherwise."""
+        return path_mod.epics_root(self.graph)
+
+    def epics_index(self) -> Path:
+        """The epic queue file, whose front entry is the current epic."""
+        return path_mod.epics_index(self.graph)
+
+    def epic_dir(self, epic: str) -> Path:
+        """The folder of *epic*, resolved by number or bare slug (absolute)."""
+        return path_mod.epic_dir(self.graph, epic)
+
+    def story_dir(self, epic: str, slug: str) -> Path:
+        """The folder of story *slug* in *epic* — join a filename onto this, not a path."""
+        return path_mod.story_dir(self.graph, epic, slug)
+
+    def backlog_file(self) -> Path:
+        """The intake list, ``docs/backlog.md`` — the file :meth:`backlog` reads."""
+        return path_mod.backlog_path(self.graph)
+
+    def features_dir(self, service: str = "") -> Path:
+        """The feature book, scoped to one *service* in a multi-service workspace."""
+        return path_mod.features_root(self.graph, service)
+
+    def waivers_file(self, service: str = "") -> Path:
+        """A book's ``coverage-waivers.json`` — what :meth:`coverage` takes as ``waivers``."""
+        return path_mod.waivers_path(self.graph, service)
+
+    def screenshots_dir(self, service: str = "") -> Path:
+        """Where a walkthrough's registered screenshots live under a book."""
+        return path_mod.screenshots_dir(self.graph, service)
+
     # -- ids and their short handles ----------------------------------------
     def handle(self, identifier: str) -> str:
         """The short handle for *identifier* — what to show a person, never what to store.
@@ -294,7 +332,7 @@ class Ostler:
     # loads for a script that only reads the graph.
     def qa_context(self, *, base: str, spec: str | Path, head: str = "WORKTREE",
                    source_roots: dict[str, list[str]] | None = None,
-                   features_root: str = "docs/features",
+                   features_root: str = "",
                    story_file: str | Path | None = None) -> dict:
         """Build the base/head changed-code→OKF obligation packet and write it into
         ``spec`` (``ostler qa context``); returns the packet."""

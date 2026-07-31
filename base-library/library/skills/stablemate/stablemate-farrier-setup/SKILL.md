@@ -1,6 +1,7 @@
 ---
 name: stablemate-farrier-setup
 description: "Farrier setup guide — install, configure library, write agents.yml, scaffold new services with `farrier scaffold`, bind skills to local CLAUDE.md files via localInstructions."
+tags: [codegen]
 ---
 
 # Farrier Setup

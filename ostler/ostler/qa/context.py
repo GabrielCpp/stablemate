@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import graph as graph_mod
-from ostler import inventory, markdown, refs as refs_mod, registry
+from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry
 from ostler.model import Graph, _parse_ui_nodes, load
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -64,10 +64,15 @@ def build_context(
     base: str,
     head: str = "WORKTREE",
     source_roots: dict[str, list[str]] | None = None,
-    features_root: str = "docs/features",
+    features_root: str = "",
     story_file: Path | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
+    # Repo-relative on purpose: this one is handed to `git ls-tree`, which pathspecs against
+    # the work tree, not the filesystem. Empty means "wherever this repo configures its book",
+    # which ostler answers — spelling `docs/features` here would read the wrong tree in a repo
+    # that moved it.
+    features_root = features_root or path_mod.features_root_in(root).relative_to(root).as_posix()
     source_roots = source_roots or {}
     current = load(root)
     base_graph = _graph_at_revision(root, base, features_root)

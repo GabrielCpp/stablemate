@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ostler import markdown
+from ostler import markdown, path as path_mod
 from ostler.links import LinkResolver
 from ostler.model import Graph, UINode
 
@@ -97,7 +97,7 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None)
     ``etype``/``surface`` optionally scope the dump to one node type or one service.
     """
     resolver = LinkResolver(graph)
-    features_root = graph.doc_roots.get("features") or (graph.root / "docs" / "features")
+    features_root = path_mod.features_root(graph)
     by_id = {n.id: n for n in graph.ui_nodes}
     nodes: list[dict] = []
     edges: list[dict] = []
