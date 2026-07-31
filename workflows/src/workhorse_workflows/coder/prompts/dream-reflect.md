@@ -93,9 +93,9 @@ Write an empty `{"proposals": []}` if the run was clean — do not invent busywo
 
 ## Return format
 
-Return this exact JSON as the LAST thing in your final response (captured under
-`reflection_result`). Always return it:
+Return this exact JSON as the LAST thing in your final response — the object itself, with
+these keys at its top level and no wrapper around it. Always return it:
 
 ```json
-{"reflection_result": {"status": "reflected|no_issues|insufficient_evidence", "proposals": 0, "top_layer": "base-prompt|repo-flavor|workflow-dag|ostler|infra|none", "notes": "one-line summary of the biggest proposed improvement (or why none)"}}
+{"status": "reflected|no_issues|insufficient_evidence", "proposals": 0, "top_layer": "base-prompt|repo-flavor|workflow-dag|ostler|infra|none", "notes": "one-line summary of the biggest proposed improvement (or why none)"}
 ```

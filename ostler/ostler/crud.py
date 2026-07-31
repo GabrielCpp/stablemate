@@ -11,7 +11,7 @@ import shutil
 
 import yaml
 
-from ostler import ids, markdown, model, registry, todo as todo_mod
+from ostler import ids, markdown, model, path as path_mod, registry, todo as todo_mod
 from ostler.model import Graph
 from ostler.result import Result   # re-exported: `from ostler.crud import Result` still works
 
@@ -57,28 +57,42 @@ def dump_frontmatter(fm: dict) -> str:
 # epics
 # ---------------------------------------------------------------------------
 def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) -> Result:
-    edir = graph.doc_roots["epics"] / name
+    """Create ``<epics>/NNNN-<slug>/epic.md`` — the epic's directory carries its order.
+
+    The number is minted here and nowhere else, one past the highest already on disk. It
+    makes a listing of the epics root read in the order the epics were written, which is
+    the order they are meant to be worked; it is not an identity, so every command that
+    takes an epic name also accepts the bare slug (:func:`path.epic_dir`). A caller that
+    numbered the name itself keeps its number. The name that ended up on disk comes back as
+    ``entity_name``, since it is the one the caller must write files under.
+    """
+    eroot = graph.doc_roots["epics"]
+    existing = path_mod.epic_dir(graph, name)
+    if (existing / "epic.md").exists():
+        return Result(False, f"epic '{existing.name}' already exists")
+    dir_name = name if registry.epic_seq(name) is not None else registry.epic_dir_name(
+        registry.next_epic_seq(d.name for d in path_mod.epic_dirs(graph)),
+        registry.epic_slug(name))
+    edir = eroot / dir_name
     epic_md = edir / "epic.md"
-    if epic_md.exists():
-        return Result(False, f"epic '{name}' already exists")
     eid = ids.allocate(graph, prefix)
     fm = {"type": "epic", "id": eid, "title": title, "status": "planned"}
     text = f"---\n{dump_frontmatter(fm)}---\n# Epic: {title}\n\n## Seeds\n\n## Stories\n"
     edir.mkdir(parents=True, exist_ok=True)
     epic_md.write_text(text, encoding="utf-8")
-    return Result(True, f"created epic '{name}' ({eid})", [epic_md], entity_id=eid)
+    return Result(True, f"created epic '{dir_name}' ({eid})", [epic_md],
+                  entity_id=eid, entity_name=dir_name)
 
 
 def delete_epic(graph: Graph, name: str) -> Result:
-    edir = graph.doc_roots["epics"] / name
+    edir = path_mod.epic_dir(graph, name)
     if not (edir / "epic.md").exists():
         return Result(False, f"no epic '{name}'")
     shutil.rmtree(edir)
-    todo = graph.doc_roots["epics"] / "index.md"
     removed = ""
-    if todo.exists() and todo_mod.prune(graph, name).ok:
+    if todo_mod.prune(graph, edir.name).ok:
         removed = " (removed from epics index)"
-    return Result(True, f"deleted epic '{name}'{removed}", [edir])
+    return Result(True, f"deleted epic '{edir.name}'{removed}", [edir], entity_name=edir.name)
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +129,7 @@ def _story_body(title: str) -> str:
 def create_story(graph: Graph, epic_name: str, slug: str, title: str,
                  covers: list[str] | None = None, depends: list[str] | None = None,
                  prefix: str | None = None) -> Result:
-    edir = graph.doc_roots["epics"] / epic_name
+    edir = path_mod.epic_dir(graph, epic_name)
     epic_md = edir / "epic.md"
     if not epic_md.exists():
         return Result(False, f"no epic '{epic_name}'")
@@ -189,7 +203,7 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
 # ---------------------------------------------------------------------------
 def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.DEFAULT_SEED_STATUS,
              summary: str = "", meta: dict | None = None) -> Result:
-    edir = graph.doc_roots["epics"] / epic_name
+    edir = path_mod.epic_dir(graph, epic_name)
     epic_md = edir / "epic.md"
     if not epic_md.exists():
         return Result(False, f"no epic '{epic_name}'")
@@ -218,7 +232,7 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
 
 
 def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:
-    edir = graph.doc_roots["epics"] / epic_name
+    edir = path_mod.epic_dir(graph, epic_name)
     epic_md = edir / "epic.md"
     if not epic_md.exists():
         return Result(False, f"no epic '{epic_name}'")

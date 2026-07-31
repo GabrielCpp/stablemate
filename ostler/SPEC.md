@@ -35,11 +35,20 @@ Every Concept declares `type`. Ostler knows these types (the machine registry is
 
 | `type` | Location (glob, repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
-| `epic` | `docs/epics/<epic>/epic.md` | `<epic>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
+| `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
+
+An epic's directory is minted `NNNN-<slug>` (four digits minimum, one past the highest number
+currently under `docs/epics/`), so the bundle listing is the order the epics were decomposed in.
+The number is **presentation, not identity** — identity is the `id` in frontmatter, which never
+changes — so every command that takes an epic *name* accepts either form: `0007-checkout-flow` and
+the bare `checkout-flow` name the same epic. A name that already carries a number is matched
+literally, so `0009-checkout-flow` is a miss rather than a silent re-point at `0007-`. Directories
+that predate the numbering are left unnumbered and keep resolving; survivors are never renumbered
+to close a gap.
 
 `spec.*` Concepts are coder **process artifacts**. They are typed and conformance-checked
 (`type` present) but ostler does not own their internal schema or relocate them.
@@ -66,7 +75,7 @@ seeds and stories back out of the markdown body with its hierarchical parser (`m
 ```yaml
 ---
 type: epic
-id: pred-15            # allocated id (ostler-owned, from .agents/ids.json)
+id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC   # allocated id (ostler-owned, from .agents/ids.json)
 title: Account Credits "Aperçu" Billing Body at Legacy Parity
 status: in-progress    # optional: planned | in-progress | done
 ---
@@ -107,7 +116,7 @@ detailed spec lives in its own `story.md` Concept (§4); this section carries th
 
 ### 01-apercu-billing-body
 - title: Account Credits "Aperçu" Billing Body (Billed & Unbilled) at Legacy Parity
-- id: pred-16
+- id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 - covers: apercu-landing-body, apercu-subscription-change-plan-link, apercu-recent-bills-list
 - depends on: (none)
 - phase: 1
@@ -156,9 +165,22 @@ should build comes from its epic's seeds, not from the knowledge record.
 
 ## 7. Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, counter, frozen}`). `ostler epic|story|feature create`
-allocates the next `<prefix>-<n>` id atomically, scaffolds the canonical markdown, and (for stories)
-adds the `### <slug>` block to the epic's `## Stories`. No external id allocator exists.
+Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `ostler epic|story|feature create` allocates an
+id, scaffolds the canonical markdown, and (for stories) adds the `### <slug>` block to the epic's
+`## Stories`. No external id allocator exists.
+
+An id is `<PREFIX>-<ULID>`: the repo prefix (first four letters of the repo name, pinned in the
+registry on first use) followed by a monotonic ULID — 26 Crockford-Base32 chars, a 48-bit
+millisecond timestamp plus 80 bits of randomness. It is lexicographically sortable by mint time and
+allocates with **no coordination**, so concurrent worktrees, processes and clones cannot collide.
+Ids minted by the former `<prefix>-<n>` counter keep resolving; an id is an opaque, sortable string.
+
+A **short handle** — `<PREFIX>-<slice of a hash of the ULID>`, minimum six characters — abbreviates
+an id git-style: the shortest slice unambiguous among every id written down in the tree, lengthened
+on collision. Handles are display and input only. Ostler prints them by default in human-readable
+output and prints full ids under `--json` (`--handles` / `--full-ids` override either), and accepts
+a handle wherever it accepts an id regardless of how the run prints. Because a handle lengthens when
+a colliding id is later minted, **only the full id is ever written into a document**.
 
 ## 8. Conformance and validation (`ostler doctor`)
 

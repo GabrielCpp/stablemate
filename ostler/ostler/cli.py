@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -31,6 +31,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--version", action="version", version=f"ostler {_pkg_version('ostler')}"
     )
     p.add_argument("-C", "--chdir", metavar="DIR", help="operate as if run from DIR")
+    handles = p.add_mutually_exclusive_group()
+    handles.add_argument(
+        "--handles", action="store_true", dest="handles",
+        help="print ids as short handles (default for human-readable output)")
+    handles.add_argument(
+        "--full-ids", action="store_true", dest="full_ids",
+        help="print ids in full (default for --json)")
     sub = p.add_subparsers(dest="command", required=True)
 
     d = sub.add_parser("doctor", help="referential-integrity check")
@@ -336,6 +343,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pas = pa.add_subparsers(dest="what", required=True)
     pa_spec = pas.add_parser("spec", help="spec dir for a story slug")
     pa_spec.add_argument("slug")
+    pa_epic = pas.add_parser("epic", help="directory for an epic (number or bare slug)")
+    pa_epic.add_argument("epic")
     pa_story = pas.add_parser("story", help="story.md path for an epic + slug")
     pa_story.add_argument("epic")
     pa_story.add_argument("slug")
@@ -531,24 +540,60 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 # ---------------------------------------------------------------------------
+#: ``{id: handle}`` while the run is abbreviating, empty otherwise. Module state because every
+#: command prints through :func:`_out`, and threading a table through 30 dispatch arms to reach
+#: `print` would be a worse trade than one value set once per run. The mode is tracked separately
+#: because "abbreviating" and "has ids to abbreviate" differ in a fresh repo — the first `create`
+#: there is exactly the case that needs the table extended.
+_HANDLES: dict[str, str] = {}
+_HANDLES_ON = False
+
+
+def _use_handles(graph, args) -> None:
+    """Decide, once per run, whether ids print short.
+
+    Human output abbreviates by default and ``--json`` does not: a person reading a listing wants
+    a token short enough to retype, while a program reading one wants the identity that never
+    changes — a handle lengthens the moment a colliding id is minted, so it is a display form, not
+    a key to store. ``--handles`` / ``--full-ids`` override either default; input is unaffected,
+    since a handle is accepted wherever an id is regardless of how this run prints.
+    """
+    global _HANDLES, _HANDLES_ON
+    _HANDLES_ON = args.handles or (not args.full_ids and not getattr(args, "json", False))
+    _HANDLES = ids_mod.table(ids_mod.known(graph)) if _HANDLES_ON else {}
+
+
+def _out(value="") -> None:
+    """Print, abbreviating any full id in what is printed when this run renders handles."""
+    print(ids_mod.shorten(value, _HANDLES) if _HANDLES_ON else value)
+
+
 def _emit(rows, as_json: bool) -> int:
     if as_json:
-        print(json.dumps(rows, indent=2))
+        _out(json.dumps(rows, indent=2))
     elif isinstance(rows, list):
         for r in rows:
-            print(json.dumps(r) if isinstance(r, dict) else r)
+            _out(json.dumps(r) if isinstance(r, dict) else r)
         if not rows:
-            print("(none)")
+            _out("(none)")
     else:
-        print(json.dumps(rows, indent=2) if rows else "(none)")
+        _out(json.dumps(rows, indent=2) if rows else "(none)")
     return 0
 
 
 def _result(res, as_json: bool = False) -> int:
+    # An id minted by *this* command postdates the table, and it is the one id the caller is most
+    # likely to copy — so fold it in rather than printing the one full id in an abbreviated run.
+    if _HANDLES_ON and res.entity_id and res.entity_id not in _HANDLES:
+        _HANDLES.update(ids_mod.table([*_HANDLES, res.entity_id]))
     if as_json:
-        print(json.dumps({"ok": res.ok, "id": res.entity_id, "message": res.message}))
+        # `name` is the name the writer used — an epic lands in a numbered directory, so a
+        # caller that pipes `--json` into a path needs the created name, not the one it asked
+        # for. It falls back to the id-only shape's silence: "" when the writer named nothing.
+        _out(json.dumps({"ok": res.ok, "id": res.entity_id,
+                          "name": res.entity_name, "message": res.message}))
     else:
-        print(res.message)
+        _out(res.message)
     return 0 if res.ok else 1
 
 
@@ -563,15 +608,15 @@ def _cmd_reach(graph, args) -> int:
         by_id = {n["id"]: n for n in data["nodes"]}
         path = reach.route(reach.navigation_edges(data), args.start, args.target, by_id)
         if args.json:
-            print(json.dumps({"start": args.start, "target": args.target, "route": path}))
+            _out(json.dumps({"start": args.start, "target": args.target, "route": path}))
         elif path is None:
-            print(f"no documented route from {args.start} to {args.target}")
+            _out(f"no documented route from {args.start} to {args.target}")
         else:
-            print(reach.render_route(path, args.start, args.target))
+            _out(reach.render_route(path, args.start, args.target))
         return 1 if path is None else 0
 
     report = reach.reachability(graph, surface=args.surface, start=args.start)
-    print(json.dumps(report) if args.json else reach.render_reachability(report))
+    _out(json.dumps(report) if args.json else reach.render_reachability(report))
     return 1 if report["unreachable"] else 0
 
 
@@ -583,7 +628,7 @@ def _cmd_locators(graph, args) -> int:
     strict-mode violation in somebody's test run.
     """
     data = locators.build(graph, surface=args.surface, screen=args.screen)
-    print(locators.render_json(data) if args.json else locators.render(data))
+    _out(locators.render_json(data) if args.json else locators.render(data))
     broken = (data["collisions"] or data["unnamed"] or data["invalid_roles"]
               or data["counts"]["unlocatable"])
     return 1 if broken else 0
@@ -592,25 +637,25 @@ def _cmd_locators(graph, args) -> int:
 def _cmd_doctor(graph, args) -> int:
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
     if args.json:
-        print(json.dumps(report.as_dict(), indent=2))
+        _out(json.dumps(report.as_dict(), indent=2))
         return 1 if report.errors else 0
-    print(f"org: {report.org}   profile: {report.profile}")
+    _out(f"org: {report.org}   profile: {report.profile}")
     for facts in report.epics:
         orphans = facts["orphanActiveSeeds"]
-        print(
+        _out(
             f"  epic {facts['dir']}: {facts['storyCount']} stories, "
             f"{facts['activeSeedCount']} active seeds ({facts['coveredActiveSeeds']} covered)"
             + (f"  orphans: {', '.join(orphans)}" if orphans else "")
         )
     if report.findings:
-        print()
+        _out()
         for fnd in sorted(
             report.findings, key=lambda x: (x.severity != "error", x.code)
         ):
             mark = "✗" if fnd.severity == "error" else "⚠"
             scope = f"[{fnd.epic}] " if fnd.epic else ""
-            print(f"  {mark} {fnd.code}: {scope}{fnd.message}")
-    print(f"\n{report.errors} error(s), {report.warnings} warning(s)")
+            _out(f"  {mark} {fnd.code}: {scope}{fnd.message}")
+    _out(f"\n{report.errors} error(s), {report.warnings} warning(s)")
     return 1 if report.errors else 0
 
 
@@ -622,16 +667,16 @@ def _cmd_fmt(graph, args) -> int:
             if path.is_relative_to(graph.root)
             else path.as_posix()
         )
-        print(f"{'would reformat' if args.check else 'reformatted'}: {rel}")
+        _out(f"{'would reformat' if args.check else 'reformatted'}: {rel}")
     if not result.changed:
-        print("all files already canonical")
+        _out("all files already canonical")
         return 0
     if args.check:
-        print(
+        _out(
             f"\n{len(result.changed)} file(s) not canonical (run `ostler fmt` to fix)"
         )
         return 1
-    print(f"\nreformatted {len(result.changed)} file(s)")
+    _out(f"\nreformatted {len(result.changed)} file(s)")
     return 0
 
 
@@ -642,16 +687,16 @@ def _cmd_edit(graph, args) -> int:
         plan = edit.settle_review(graph, args.slug)
     else:
         plan = edit.rename(graph, args.old_slug, args.new_slug)
-    print(plan.render())
+    _out(plan.render())
     if plan.error:
         return 1
     if getattr(args, "write", False):
         plan.apply()
-        print(
+        _out(
             f"\napplied: {len(plan.changes)} file(s) changed, {len(plan.moves)} move(s)"
         )
     elif plan.changes or plan.moves:
-        print("\n(dry-run — pass --write to apply)")
+        _out("\n(dry-run — pass --write to apply)")
     return 0
 
 
@@ -668,20 +713,20 @@ def _cmd_vet(graph, args) -> int:
     )
     if outcome.error:
         if args.json:
-            print(json.dumps({"error": outcome.error}))
+            _out(json.dumps({"error": outcome.error}))
         else:
-            print(f"error: {outcome.error}")
+            _out(f"error: {outcome.error}")
         return 1
     if args.json:
-        print(outcome.report.model_dump_json(by_alias=True, indent=2))
+        _out(outcome.report.model_dump_json(by_alias=True, indent=2))
     else:
-        print(plan.render())
+        _out(plan.render())
     if getattr(args, "write", False):
         plan.apply()
         if not args.json:
-            print(f"\napplied: {len(plan.writes)} file(s) written")
+            _out(f"\napplied: {len(plan.writes)} file(s) written")
     elif not args.json:
-        print("\n(dry-run — pass --write to apply)")
+        _out("\n(dry-run — pass --write to apply)")
     return 0 if outcome.report.summary.status == "clean" else 1
 
 
@@ -693,21 +738,21 @@ def _cmd_artifact(graph, args) -> int:
             args.kind, args.spec, graph.root, force=args.force
         )
         if outcome.error:
-            print(f"error: {outcome.error}")
+            _out(f"error: {outcome.error}")
             return 1
-        print(f"scaffolded {outcome.kind} -> {outcome.path}")
+        _out(f"scaffolded {outcome.kind} -> {outcome.path}")
         return 0
     # vet
     outcome = artifact_mod.vet(args.kind, args.spec, graph.root)
     if args.json:
-        print(json.dumps(outcome.to_dict(), indent=2))
+        _out(json.dumps(outcome.to_dict(), indent=2))
     else:
         if outcome.error:
-            print(f"error: {outcome.error}")
+            _out(f"error: {outcome.error}")
         else:
-            print(f"{outcome.kind}: {outcome.status}")
+            _out(f"{outcome.kind}: {outcome.status}")
             for problem in outcome.problems:
-                print(f"  - {problem}")
+                _out(f"  - {problem}")
     return 0 if outcome.status == "clean" else 1
 
 
@@ -717,7 +762,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     def _resolve_spec(spec_arg: Path | None) -> Path:
         if spec_arg is None:
-            print("error: --spec is required")
+            _out("error: --spec is required")
             sys.exit(2)
         return spec_arg if spec_arg.is_absolute() else root / spec_arg
 
@@ -733,14 +778,14 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             elif len(parts) == 3:
                 daemons.append((name, parts[1], parts[2]))
             else:
-                print(
+                _out(
                     f"error: invalid --daemon format: {raw!r} (expected NAME:CMD[:READY_URL])"
                 )
                 return 2
         result = qa_mod.cmd_start(
             args.run_id, args.story, spec_dir, env=env, daemons=daemons
         )
-        print(result.message)
+        _out(result.message)
         return 0 if result.ok else 1
 
     if op == "step":
@@ -748,7 +793,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         captures: list[tuple[str, str]] = []
         for raw in args.capture:
             if "=" not in raw:
-                print(f"error: --capture must be KEY=$.path, got {raw!r}")
+                _out(f"error: --capture must be KEY=$.path, got {raw!r}")
                 return 2
             k, _, v = raw.partition("=")
             captures.append((k.strip(), v.strip()))
@@ -763,7 +808,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             allow_fail=args.allow_fail,
             timeout=args.timeout,
         )
-        print(result.message)
+        _out(result.message)
         return 0 if result.ok else 1
 
     if op == "assert":
@@ -771,20 +816,20 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         params: dict = {}
         for raw in args.param:
             if "=" not in raw:
-                print(f"error: assert params must be KEY=VALUE, got {raw!r}")
+                _out(f"error: assert params must be KEY=VALUE, got {raw!r}")
                 return 2
             k, _, v = raw.partition("=")
             params[k.strip()] = v.strip()
         result = qa_mod.cmd_assert(
             spec_dir, args.id, args.label, args.check, params, root=root
         )
-        print(result.message)
+        _out(result.message)
         return 0 if result.ok else 1
 
     if op == "stop":
         spec_dir = _resolve_spec(args.spec)
         result = qa_mod.cmd_stop(spec_dir)
-        print(result.message)
+        _out(result.message)
         return 0 if result.ok else 1
 
     if op == "report":
@@ -803,9 +848,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             spec_dir = root / spec_dir
         result = qa_mod.cmd_validate(args.plan_file, spec_dir, root=root)
         if args.json:
-            print(json.dumps(result.data, indent=2))
+            _out(json.dumps(result.data, indent=2))
         else:
-            print(result.message)
+            _out(result.message)
         return 0 if result.ok else 1
 
     if op == "run":
@@ -816,9 +861,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             args.plan_file, spec_dir, stop_on_fail=args.stop_on_fail, root=root
         )
         if getattr(args, "json", False):
-            print(json.dumps(result.data, indent=2))
+            _out(json.dumps(result.data, indent=2))
         else:
-            print(result.message)
+            _out(result.message)
         return 0 if result.ok else 1
 
     if op == "context":
@@ -826,7 +871,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         source_roots: dict[str, list[str]] = {}
         for raw in args.source_root:
             if "=" not in raw:
-                print(f"error: --source-root must be SURFACE=PATH, got {raw!r}")
+                _out(f"error: --source-root must be SURFACE=PATH, got {raw!r}")
                 return 2
             surface, path = raw.split("=", 1)
             source_roots.setdefault(surface.strip(), []).append(path.strip())
@@ -845,12 +890,12 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             paths = qa_mod.write_context(packet, spec_dir)
         except (OSError, RuntimeError, ValueError) as exc:
             output = {"status": "invalid", "message": str(exc)}
-            print(json.dumps(output, indent=2) if args.json else f"error: {exc}")
+            _out(json.dumps(output, indent=2) if args.json else f"error: {exc}")
             return 1
         if args.json:
-            print(json.dumps(packet, indent=2))
+            _out(json.dumps(packet, indent=2))
         else:
-            print(f"wrote {paths[0]} and {paths[1]}")
+            _out(f"wrote {paths[0]} and {paths[1]}")
         return 0 if not any(f.get("severity") == "error" for f in packet["healthFindings"]) else 1
 
     if op == "context-validate":
@@ -863,9 +908,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             problems = [str(exc)]
         output = {"status": "invalid" if problems else "passed", "problems": problems}
         if args.json:
-            print(json.dumps(output, indent=2))
+            _out(json.dumps(output, indent=2))
         else:
-            print("Context is valid." if not problems else "Context validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
+            _out("Context is valid." if not problems else "Context validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
         return 1 if problems else 0
 
     return 2
@@ -908,13 +953,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     args = _build_parser().parse_args(argv)
     cwd = Path(args.chdir) if args.chdir else None
     graph = load(cwd)
+    _use_handles(graph, args)
     c = args.command
 
     if c == "doctor":
         return _cmd_doctor(graph, args)
     if c == "trace":
-        lines, found = trace.run(graph, args.token)
-        print("\n".join(lines))
+        lines, found = trace.run(graph, ids_mod.resolve(graph, args.token))
+        _out("\n".join(lines))
         return 0 if found else 1
     if c == "reach":
         return _cmd_reach(graph, args)
@@ -936,7 +982,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         )
         if args.json:
             ids = {n["id"] for n in sel}
-            print(
+            _out(
                 json.dumps(
                     {
                         "counts": {"nodes": len(sel)},
@@ -946,9 +992,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 )
             )
         elif args.ids:
-            print(graph_mod.render_ids(sel))
+            _out(graph_mod.render_ids(sel))
         else:
-            print(graph_mod.render_tree(sel))
+            _out(graph_mod.render_tree(sel))
         return 0
     if c == "coverage":
         try:
@@ -959,13 +1005,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
             # downstream as "everything is covered".
             print(f"ostler coverage: {exc}", file=sys.stderr)
             return 2
-        print(json.dumps(res, indent=2) if args.json else coverage.render(res))
+        _out(json.dumps(res, indent=2) if args.json else coverage.render(res))
         # Exit non-zero on an incomplete book so a `make` target / CI check can gate on it.
         return 0 if coverage.is_complete(res) else 1
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
-            print(
+            _out(
                 f"error: argument --type: invalid choice: '{args.etype}' "
                 f"(choose from {', '.join(valid_types)})"
             )
@@ -980,7 +1026,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
             query_mod.search(graph, args.q, args.etype), args.json
         )
     if c == "query":
-        return _emit(query_mod.query(graph, args.name, args.arg), args.json)
+        return _emit(query_mod.query(graph, args.name, ids_mod.resolve(graph, args.arg)), args.json)
     if c == "next-epic":
         return _emit(select.next_epic(graph), args.json)
     if c == "next-story":
@@ -994,7 +1040,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 args.epic,
                 args.slug,
                 args.title,
-                _split(args.covers),
+                [ids_mod.resolve(graph, s) for s in _split(args.covers)],
                 _split(args.depends),
                 args.prefix,
             )
@@ -1020,19 +1066,23 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 "prerequisites": args.prerequisites,
                 "sourceBullet": args.source_bullet,
             }
+            # A handle resolves here too: `seed add` is update-or-create, so naming an existing
+            # seed by its handle updates that seed instead of filing a second one under a name
+            # that only looked new. An id nothing matches is passed through and creates.
             return _result(
                 crud.add_seed(
-                    graph, args.epic, args.id, args.status, args.summary, meta
+                    graph, args.epic, ids_mod.resolve(graph, args.id),
+                    args.status, args.summary, meta
                 )
             )
-        return _result(crud.remove_seed(graph, args.epic, args.id))
+        return _result(crud.remove_seed(graph, args.epic, ids_mod.resolve(graph, args.id)))
     if c == "set-status":
         return _result(crud.set_status(graph, args.slug, args.status))
     if c == "backlog":
         if args.op == "add":
             return _result(backlog_mod.add(graph, args.id, args.text, args.section))
         if args.op == "prune":
-            return _result(backlog_mod.prune(graph, args.id))
+            return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
         return _emit(
             [{"id": i, "text": t} for i, t in backlog_mod.items(graph)], args.json
         )
@@ -1046,11 +1096,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return _emit(todo_mod.list_epics(graph), args.json)
     if c == "path":
         if args.what == "spec":
-            print(path_mod.resolve_spec(graph, args.slug))
+            _out(path_mod.resolve_spec(graph, args.slug))
+        elif args.what == "epic":
+            _out(path_mod.resolve_epic(graph, args.epic))
         elif args.what == "story":
-            print(path_mod.resolve_story(graph, args.epic, args.slug))
+            _out(path_mod.resolve_story(graph, args.epic, args.slug))
         else:
-            print(path_mod.resolve_branch(args.slug, epic=args.is_epic))
+            _out(path_mod.resolve_branch(args.slug, epic=args.is_epic))
         return 0
     if c == "scaffold":
         return _result(
@@ -1069,18 +1121,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "edit":
         return _cmd_edit(graph, args)
     if c == "freeze":
-        plan = freeze_mod.freeze(graph, args.ident, by=args.by, note=args.note)
-        print(plan.render())
+        plan = freeze_mod.freeze(graph, ids_mod.resolve(graph, args.ident), by=args.by, note=args.note)
+        _out(plan.render())
         if plan.error:
             return 1
         plan.apply()
-        print(
+        _out(
             f"frozen — recorded in {(graph.root / '.agents' / 'ids.json').as_posix()}"
         )
         return 0
     if c == "unfreeze":
-        plan = freeze_mod.unfreeze(graph, args.ident)
-        print(plan.render())
+        plan = freeze_mod.unfreeze(graph, ids_mod.resolve(graph, args.ident))
+        _out(plan.render())
         if plan.error:
             return 1
         plan.apply()
@@ -1094,7 +1146,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "new":
         fields = _parse_fields(args.fields)
         if fields is None:
-            print("invalid field (expected key=value)")
+            _out("invalid field (expected key=value)")
             return 2
         return _result(
             crud_generic.create_instance(graph, args.kind, args.name, fields),
@@ -1105,7 +1157,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "set":
         fields = _parse_fields(args.fields)
         if fields is None:
-            print("invalid field (expected key=value)")
+            _out("invalid field (expected key=value)")
             return 2
         return _result(
             crud_generic.edit_instance(graph, args.kind, args.name, fields),

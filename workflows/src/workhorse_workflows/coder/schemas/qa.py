@@ -3,10 +3,10 @@
 **`QaResult` is one model for what the YAML kept as one key.** Nine nodes wrote
 `qa_result` — the ostler runner, the evidence gate, the sentinel gate, the regression
 suite, three `mark-*` scripts and three agent turns — with three different payload shapes,
-because a run-context key has no schema. Here it is a single model whose `ostler` field is
-simply empty for the nodes that never had a payload, and it is what the flow threads from
-gate to gate as *the* verdict. Collapsing it is not a narrowing: every writer already
-produced `status` and `notes`, and only the ostler-backed ones produced more.
+because a run-context key has no schema. Here it is a single model — `status` and `notes`,
+what every one of those writers actually produced — and it is what the flow threads from
+gate to gate as *the* verdict. The ostler-backed runner produces more, so it returns the
+`QaRunResult` subclass; a `QaResult`-typed field holds it without losing the payload.
 
 **The status vocabularies stay separate.** `QaResult.status` is ostler's four-state
 `passed | failed | blocked | invalid`; `QaPlanValidation.status` is the two-state
@@ -33,12 +33,29 @@ class QaResult(CoderResult):
     that routes on it names its arms explicitly and sends the blank to a `default`, which
     is what the YAML's branch tables did.
 
-    `ostler` carries the runner's raw payload. It is empty for the writers that never had
-    one — the sentinel gate, the evidence gate, the agent repair turns.
+    The runner's raw payload is **not** a field here — see `QaRunResult` below for why.
     """
 
     status: str = ""
     notes: str = ""
+
+
+class QaRunResult(QaResult):
+    """`run_qa_plan`'s verdict, plus the ostler payload only it has.
+
+    `ostler` is a subclass field rather than an optional field on `QaResult` because a
+    model's top-level fields are the output keys an agent turn is *asked* for — a field
+    here is a promise every writer of this model must keep. Three agent turns return a
+    `QaResult`, and none of them has a runner payload to report, so declaring `ostler` on
+    the base made every one of those turns unparseable: the reply carried `status` and
+    `notes`, the driver demanded a third key, and the node spent its whole retry →
+    reframe ladder before defaulting to a blank verdict. The payload belongs to the one
+    script node that produces it.
+
+    Nothing reads `ostler`; it is kept for the run record, and a `QaResult`-typed field
+    holds this subclass without losing it.
+    """
+
     ostler: dict[str, Any] = {}
 
 
@@ -420,6 +437,7 @@ __all__ = [
     "QaPlanValidation",
     "QaReport",
     "QaResult",
+    "QaRunResult",
     "QaTriage",
     "RegressionFix",
     "RegressionPlatform",

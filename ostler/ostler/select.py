@@ -18,8 +18,18 @@ def is_done(status: str) -> bool:
     return any(tok in s for tok in _DONE_TOKENS)
 
 
-def _epic_by_name(graph: Graph, name: str) -> Epic | None:
-    return next((e for e in graph.epics if e.name == name), None)
+def epic_by_name(graph: Graph, name: str) -> Epic | None:
+    """The epic named by its directory (`0001-checkout-flow`) or by its bare slug.
+
+    Both spellings are accepted for the same reason `path.epic_dir` accepts both: the
+    number is creation order, not identity, and plenty of callers — older index lines,
+    prompts, an operator on the command line — only ever knew the slug.
+    """
+    exact = next((e for e in graph.epics if e.name == name), None)
+    if exact is not None or registry.epic_seq(name) is not None:
+        return exact
+    slug = registry.epic_slug(name)
+    return next((e for e in graph.epics if registry.epic_slug(e.name) == slug), None)
 
 
 def epic_done(epic: Epic) -> bool:
@@ -41,8 +51,12 @@ def dag_order(epic: Epic) -> list[Story]:
     """The epic's stories in dependency order (a dependency precedes its dependents).
 
     Ties and cycles keep declaration order, so a malformed DAG degrades to the file's own
-    sequence rather than dropping stories. This is the order the coder builds in, so it is the
-    order the author writes in.
+    sequence rather than dropping stories.
+
+    This is the *authoring* order (:func:`_author_report`). The build path does not need it:
+    a story is only runnable once every dependency is done, so no two runnable stories can
+    depend on each other and reordering them cannot change which comes first. It iterates the
+    epic's declared order directly — see :func:`next_story_report` on what that order is.
     """
     by_slug = {s.slug: s for s in epic.stories if s.slug}
     order: list[Story] = []
@@ -70,7 +84,7 @@ def next_epic(graph: Graph) -> dict | None:
     """First queued epic with unfinished work; falls back to graph order if no index."""
     order = todo.list_epics(graph) or [e.name for e in graph.epics]
     for name in order:
-        epic = _epic_by_name(graph, name)
+        epic = epic_by_name(graph, name)
         if epic is None:
             continue
         if not epic_done(epic):
@@ -132,7 +146,14 @@ def next_story_report(graph: Graph, epic_name: str,
 
     ``state`` is one of:
 
-    ``ready``       a runnable story — ``story`` holds it.
+    ``ready``       a runnable story — ``story`` holds it. When several are runnable it is the
+                    first in the epic's **declared** order, i.e. the order `## Stories` lists
+                    them in, which is the order they were created in. A slug's numeric prefix
+                    is *not* an ordering contract — ostler never mints it and never sorts on
+                    it — so an epic that declares `03` before `02` builds `03` first, and that
+                    is correct: `depends on:` is where sequence is stated, and a story with no
+                    unmet dependency is by definition parallel to the ones around it. (Reading
+                    the prefix as the queue is what made a run look like it *skipped* a story.)
     ``done``        every story in the epic is done. The only state that means "prune it".
     ``blocked``     stories remain but none is runnable: each is either in ``skip`` or waiting
                     on an unmet dependency (``waiting_on`` names which). Not finished.
@@ -158,7 +179,7 @@ def next_story_report(graph: Graph, epic_name: str,
     separate axes and a story is routinely finished on one and untouched on the other, so a
     caller must say which it means; the shape of the report is identical either way.
     """
-    epic = _epic_by_name(graph, epic_name)
+    epic = epic_by_name(graph, epic_name)
     if epic is None:
         return {"state": "no-epic", "story": None, "epic": epic_name, "total": 0, "done": 0,
                 "remaining": [], "skipped": [], "waiting_on": {},
@@ -179,7 +200,7 @@ def next_story_report(graph: Graph, epic_name: str,
         report["detail"] = f"epic '{epic.name}' lists no stories in `## {registry.STORIES_HEADING}`"
         return report
 
-    # dependency order: a story is eligible once its deps are done; iterate to a fixpoint pick
+    # First runnable in the epic's declared order — see the docstring on why that is the order.
     for story in epic.stories:
         if _runnable(epic, story, done, skip):
             report["state"] = "ready"

@@ -229,6 +229,11 @@ __marimo__/
 
 .agents/*
 
-/.agents/*
-!/.agents/agents.mk
-!/.agents/flavors/
+/.agents/runs/
+/.agents/skills/
+/.agents/prompts/
+/.agents/workflows/
+/.agents/operator/
+/.agents/local.compose.yaml
+/.agents/agents-context.json
+/.agents/agents-context.*.json

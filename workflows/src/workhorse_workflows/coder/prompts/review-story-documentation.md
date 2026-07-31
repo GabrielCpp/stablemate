@@ -38,7 +38,7 @@ describes the complete current system rather than this story as a changelog. In 
 Return JSON only:
 
 ```json
-{"documentation_review": {"status": "approved", "notes": "The current OKF book fully covers the reviewed implementation delta."}}
+{"status": "approved", "notes": "The current OKF book fully covers the reviewed implementation delta."}
 ```
 
 Use `status=revise` with precise node/path findings when the author can correct the book. Use

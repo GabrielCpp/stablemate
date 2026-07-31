@@ -16,3 +16,5 @@
 - Paths mangleling for backload, docs, etc.. should be done / provided by ostler. This apply to all workflows.
 - We need to stop collecting telemetry on test runs. We should clear telemetly of tests run from groom.
 - We need to stop showing grrom telemetry from workflow which are not currently connected.
+
+- I see the coder workflow have skill reference, we should query scripts by tags from the frontmatter rather than by name. e.g. go, tests, architecture. Then, we can reference them using a jinja method `find_by_tags('go', 'tests')` to return all instruction having all tags listed.

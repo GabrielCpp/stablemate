@@ -87,7 +87,8 @@ For **each task**:
 - Map each test to the plan's **Given / When / Should** cases.
 - Add assertions for: new functions, new branches, new error conditions, new state transitions.
 - **For a component that consumes an external contract** (an API payload, another producer's output), derive its test fixtures from a **captured real payload** (a golden file recorded from the real producer), not a hand-authored shape. A fixture you invent can encode the *same wrong assumption* as the code it tests — then both agree and the suite passes green over a real bug. Record the real payload and assert against it.
-- Before editing a layer's tests, load and follow that layer's **testing instruction file** from the resolved list in Step 1.2 (e.g. the Go, Flutter, or React testing skill). Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
+- Before editing a layer's tests, load and follow that layer's **testing instruction file** from the resolved list in Step 1.2 — that list is the whole set; a layer missing from it
+  has no testing skill in this repo. Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
 - If skills are available, explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
 
 ### 3c. Run code generation (if applicable)
@@ -128,7 +129,7 @@ After all implementation tasks are done, run every command from the layer's inst
 
 **Per-service verification**: Run the verification command for this service: `{{ workhorse_var('verification') }}`. This is the canonical build/test/lint command from the repo's agents.yml.
 
-**Generated client code is first-class**: when the plan regenerates an API client (Dart, TypeScript, …), treat the generated package as app code — do **not** hide analyzer/type failures by excluding it. If generated-API analysis fails, fix the generation inputs, the generated package's dependencies, or the regeneration flow until both the app and the generated package pass.
+**Generated client code is first-class**: when the plan regenerates an API client in any language, treat the generated package as app code — do **not** hide analyzer/type failures by excluding it. If generated-API analysis fails, fix the generation inputs, the generated package's dependencies, or the regeneration flow until both the app and the generated package pass.
 
 **Story success gate**: Before considering implementation complete, every touched layer must be cleanly formatted, linted/analyzed, tested, and built — using the exact commands from the plan's **Verification Commands** and the layer's instruction files (loaded in Step 1.2). Agent toolkit config or source changes additionally require `farrier --check` to leave generated adapter files current.
 
@@ -196,7 +197,7 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 After implementing the story and running verification, return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `impl_result` key — without it the node fails to parse and is retried:
 
 ```json
-{"impl_result": {"status": "done|blocked", "notes": "<what you implemented and verified, or what blocked you>"}}
+{"status": "done|blocked", "notes": "<what you implemented and verified, or what blocked you>"}
 ```
 
 - `status`: `"done"` only when the implementation is complete, verification passed, **and the code was run in a local environment with the touched story path exercised (Step 5)**. Use `"blocked"` if you could not complete it or could not run it locally.

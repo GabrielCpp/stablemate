@@ -62,7 +62,11 @@ from workhorse_workflows.author.workflow import Author
 BACKLOG = "docs/backlog.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
-EPIC_DIR = f"{EPICS}/{EPIC}"
+#: ostler numbers epic directories in creation order, so the folder is `0001-accounts` — the
+#: name the run carries once `select_epic` has resolved the queue entry. Every ostler call
+#: still takes the bare `EPIC` slug.
+EPIC_NAME = f"0001-{EPIC}"
+EPIC_DIR = f"{EPICS}/{EPIC_NAME}"
 #: The run-wide operator context file — `paths.author_context(epics_dir)`.
 CONTEXT = f"{EPICS}/_author-context.md"
 
@@ -778,8 +782,8 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     assert stamped, seen
     # The epic is the label until a story is picked, which is what the YAML rendered too —
     # and `progress` is absent rather than blank, because the driver drops empty values.
-    assert stamped[0] == {"work_id": EPIC, "epic": EPIC}, stamped[0]
-    assert {labels["work_id"] for labels in stamped} == {EPIC, *SLUGS}, stamped
+    assert stamped[0] == {"work_id": EPIC_NAME, "epic": EPIC_NAME}, stamped[0]
+    assert {labels["work_id"] for labels in stamped} == {EPIC_NAME, *SLUGS}, stamped
     # `progress` is the worklist's own count, so a dashboard can read it without knowing
     # anything about authoring.
     assert any(labels.get("progress") for labels in stamped), stamped

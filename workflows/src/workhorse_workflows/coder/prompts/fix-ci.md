@@ -27,5 +27,5 @@ If you cannot determine or fix the failure (e.g. the checks are unreadable, or t
 ## Output
 Respond with JSON only after you have committed your fix (or concluded you cannot):
 ```json
-{"fix_ci_result": {"status": "fixed|failed", "notes": "<what you changed, or why you couldn't>"}}
+{"status": "fixed|failed", "notes": "<what you changed, or why you couldn't>"}
 ```

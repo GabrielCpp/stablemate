@@ -47,9 +47,7 @@ Return this exact JSON in your **final response**:
 
 ```json
 {
-  "fix_result": {
-    "status": "fixed" | "blocked",
-    "notes": "Per error: the underlying cause and what you changed. If blocked: which error you could not resolve and what is needed."
-  }
+  "status": "fixed" | "blocked",
+  "notes": "Per error: the underlying cause and what you changed. If blocked: which error you could not resolve and what is needed."
 }
 ```

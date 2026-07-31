@@ -133,6 +133,16 @@ def _seed(workspace: Path) -> None:
             for i in range(12)
         ]
     )
+    # A heartbeat inside the live window: the telemetry pane shows the runs that
+    # are connected *now*, so span history alone leaves it empty.
+    store.insert_metrics(
+        [
+            {
+                "run_id": "run-running", "name": "workhorse.run.heartbeat",
+                "ts": now, "value": 1.0, "attrs": {"node": "split_stories"},
+            }
+        ]
+    )
 
 
 class _Live:

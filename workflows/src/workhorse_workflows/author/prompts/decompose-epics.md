@@ -64,14 +64,20 @@ For each new epic, create it with `ostler` (which allocates the id and scaffolds
 queue it:
 
 ```bash
-# Allocates the id, scaffolds {{ epics_dir }}/<slug>/epic.md with empty ## Seeds + ## Stories:
-EPIC_ID=$(ostler create epic <slug> --title "<Epic Title>" --json | jq -r .id)   # → e.g. "ACME-7" (prefix is uppercased by ostler)
-# Append the epic to the queue (docs/epics/index.md):
+# Allocates the id and scaffolds the folder with empty ## Seeds + ## Stories. ostler numbers
+# the directory in creation order, so the folder is <NNNN>-<slug>, not <slug> — read the name
+# it created back out of the JSON rather than assuming it:
+CREATED=$(ostler create epic <slug> --title "<Epic Title>" --json)
+EPIC_ID=$(jq -r .id <<<"$CREATED")      # → e.g. "ACME-7" (prefix is uppercased by ostler)
+EPIC_DIR=$(jq -r .name <<<"$CREATED")   # → e.g. "0003-<slug>"
+# Append the epic to the queue (docs/epics/index.md). The bare slug is accepted everywhere an
+# epic is named — ostler resolves it to the numbered directory:
 ostler todo add <slug>
 ```
 
-Use a kebab `<slug>` as the epic folder name. Then author the epic narrative into the scaffolded
-`{{ epics_dir }}/<slug>/epic.md` body: goal, why-this-epic, method (how fidelity/quality will be
+Use a kebab `<slug>`; ostler prefixes it with the sequence number. Then author the epic narrative
+into the scaffolded `{{ epics_dir }}/$EPIC_DIR/epic.md` body (`ostler path epic <slug>` prints that
+directory at any time): goal, why-this-epic, method (how fidelity/quality will be
 judged — name the **source-of-truth**, which is the running site, not source templates alone), a
 scope table, and epic-level acceptance. Use the canonical structure from
 `{{ instruction_ref('story-docs') }}` — do not copy prior epics verbatim. Seeds and stories are

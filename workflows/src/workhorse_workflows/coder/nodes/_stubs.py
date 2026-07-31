@@ -15,6 +15,12 @@ are as deliberate as the ones that are:
   poll and no agent to fix with.
 * `gather_run_evidence`, `record_improvements` — dream is linear; nothing branches on
   either, so a blank instance walks the same path a real one does.
+
+The same argument covers the story spine. `prepare_story` blank means `story_path == ""`,
+and `docs` (and every other per-story flow that resolves the slug for itself) raises
+`WorkflowFailed` on exactly that, because a slug that would not resolve is a run with
+nothing to work on. A dry run would stop at the first `handoff` past `dev` and never reach
+the QA/commit/PR cluster at the far end — the half of the graph a smoke test is most for.
 """
 from __future__ import annotations
 
@@ -24,6 +30,13 @@ from workhorse_workflows.coder.schemas.genesis import (
     Skeleton,
     TargetClassification,
 )
+from workhorse_workflows.coder.schemas.story import StoryPaths
+
+#: The synthetic story a dry run walks. Named so it is unmistakable in `events.jsonl`,
+#: and rooted somewhere that plainly does not exist — nothing under `--dry-run` opens it.
+_SLUG = "dry-run-story"
+_EPIC = "dry-run-epic"
+_DIR = f"/dry-run/docs/epics/{_EPIC}/stories/{_SLUG}"
 
 
 def classified(*_args: object, **_kwargs: object) -> TargetClassification:
@@ -50,4 +63,15 @@ def valid(*_args: object, **_kwargs: object) -> GenesisReport:
     return GenesisReport(valid=True)
 
 
-__all__ = ["built", "classified", "installed", "valid"]
+def story_paths(*_args: object, **_kwargs: object) -> StoryPaths:
+    """`prepare_story` — a slug that resolved, so the per-story flows have work to do."""
+    return StoryPaths(
+        story_path=f"{_DIR}/story.md",
+        spec_dir=f"{_DIR}/spec",
+        qa_dir=f"{_DIR}/qa",
+        story_slug=_SLUG,
+        story_epic=_EPIC,
+    )
+
+
+__all__ = ["built", "classified", "installed", "story_paths", "valid"]

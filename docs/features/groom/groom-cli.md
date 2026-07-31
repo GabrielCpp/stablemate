@@ -10,9 +10,10 @@ title: groom
 
 The `groom` CLI is the manually launched host-side surface for the
 [groom dashboard service](groom.md). It has no default action: invoking
-`groom` without a command is an argument error. Its command tree contains
-exactly one command, [`serve`](#serve), which starts the local
-[groom server](http/groom.md) and keeps it running until the server exits. The
+`groom` without a command is an argument error. [`serve`](#serve) starts the
+local [groom server](http/groom.md) and keeps it running until the server exits;
+`status`, `logs` and `db-path` read the collected telemetry, and
+[`purge-tests`](#purge-tests) evicts the part of it a test process wrote. The
 [`Groom CLI entrypoints module`](concepts/groom-cli-entrypoints-module.md) owns
 this executable root and the companion [`groom-sidecar`](groom-sidecar.md)
 console script; `groom-sidecar` is separate, not a subcommand of `groom`, and its
@@ -78,6 +79,41 @@ standard usage/error path.
   - Parser failures exit with status 2 before the command handler runs; uncaught
     server startup/runtime exceptions leave the process through Python's normal
     unhandled-exception path.
+
+### purge-tests
+- usage: `groom purge-tests [--dry-run] [--no-vacuum]`
+- parent: [groom](#groom)
+- flags:
+  - `--dry-run`
+    - type: boolean
+    - required: false
+    - default: `false`
+    - Reports the same counts the real purge would and deletes nothing.
+  - `--no-vacuum`
+    - type: boolean
+    - required: false
+    - default: `false` (i.e. vacuum by default)
+    - Skips the `VACUUM` that follows a purge. Faster, but SQLite keeps the freed
+      pages for reuse, so the file holds its old size on disk.
+- args:
+  - none: `purge-tests` accepts no positional arguments.
+- does:
+  - Classifies every distinct `(run_id, run_dir)` in the `spans` and `logs`
+    tables — the two that carry `run_dir` — as throwaway or real by the run dir
+    alone: a path containing `pytest-of-`, `.workhorse-test/` or `.groom-test/`,
+    or one whose first segment under a temp root is a `tempfile.mkdtemp` name
+    (`tmp` + a random suffix), is throwaway. The second rule is the purge's
+    alone; the OTLP receivers drop only the first, unambiguous kind.
+  - Deletes every `spans`, `metrics` and `logs` row belonging to those run ids,
+    in chunks of 500 ids, then commits and (unless `--no-vacuum`) vacuums.
+    `metrics` has no `run_dir` column, so its rows are reachable only through a
+    run id some span or log record identified.
+  - Prints the run/span/metric/log counts removed, or `no test-run telemetry
+    found.` when the store is already clean.
+- code: groom/groom/cli.py::purge_tests
+- errors:
+  - none specific: a store with nothing to purge is a successful no-op, and a
+    second pass over an already-purged store removes zero rows.
 
 ## Invocations
 

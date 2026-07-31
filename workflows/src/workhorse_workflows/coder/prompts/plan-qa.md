@@ -127,14 +127,14 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   that actually exist (check the tool's `--help`, source, or the layer's `qa_skill` — do not guess
   by analogy with a similar-looking tool), and `capture:`/`assert_count` must match the command's
   **real** output shape (e.g. don't JSONPath-capture from a command that prints plain text).
-- Use `{{key}}` to reference values captured by prior steps (not shell variables).
-- Use `{{env.NAME}}` for env-block values.
+- Use `{% raw %}{{key}}{% endraw %}` to reference values captured by prior steps (not shell variables).
+- Use `{% raw %}{{env.NAME}}{% endraw %}` for env-block values.
 - Payload files referenced in a step command must be written to `qa/payloads/` **before** the plan runs — include a `fixture` step or note them as pre-existing files.
 - `assert_count: 1` is the no-duplicate check — use it on queries where exactly one result is expected.
 - Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
 - The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and `qa/asserts/` as sub-directories.
-- **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent DynamoDB lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{{key}}` in all steps that need it:
-  ```yaml
+- **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{% raw %}{{key}}{% endraw %}` in all steps that need it:
+{% raw %}  ```yaml
   - id: gen-device-id
     mechanism: fixture
     cmd: printf '{"device_id":"qa-prefix-%s"}' "$(date +%s)"
@@ -146,7 +146,7 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   - id: logout
     mechanism: live
     cmd: curl -H "Device: {{device_id}}" ...   # same ID — closes the right session
-  ```
+  ```{% endraw %}
   `ostler qa validate` enforces this and will reject a plan that puts `$(date` in a non-fixture step.
 Use role/label locators before CSS for Playwright. Use runner-supported common actions
 for Maestro. Advanced cases may point to committed native Playwright tests or Maestro
@@ -208,9 +208,7 @@ Return JSON only:
 
 ```json
 {
-  "qa_plan_result": {
-    "status": "done",
-    "notes": "Wrote qa-plan.yml and qa-plan.md with complete AC and OKF coverage."
-  }
+  "status": "done",
+  "notes": "Wrote qa-plan.yml and qa-plan.md with complete AC and OKF coverage."
 }
 ```

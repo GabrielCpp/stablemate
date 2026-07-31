@@ -34,7 +34,7 @@ override that decision in either direction:
 
 | `WORKHORSE_OTEL` | Behavior |
 |---|---|
-| _unset_ (default) | **Auto** — probe the endpoint; enable only if it answers |
+| _unset_ (default) | **Auto** — probe the endpoint; enable only if it answers *and* this is not a test process |
 | `1` / `true` / `yes` | Force on — no probe (for a collector that comes up later, or one a TCP connect can't see) |
 | `0` / `false` / `no` | Force off — no probe, never enabled |
 
@@ -47,6 +47,18 @@ Auto-on is the default because the runs most worth observing are the unattended
 week-long ones — exactly the runs nobody remembers to export a variable before
 launching. Without the `otel` extra installed, auto mode stays silently inert (an
 explicit `WORKHORSE_OTEL=1` still warns that the SDK is missing, since you asked).
+
+**Auto also declines inside a test process.** A suite run on a machine with
+`groom serve` up is otherwise the collector's single largest producer — one
+`make test` of the workflows suite wrote a six-figure number of spans — and none
+of it is a run anyone will come back to. `start_run` recognizes a test process
+three ways, because the suites here run three ways: `PYTEST_CURRENT_TEST` in the
+environment, `pytest` already imported (collection, and xdist workers), or an
+`argv[0]` of `test_*.py` / `conftest.py` (the repo's standalone-test
+convention). This is an auto-mode rule only: an explicit `WORKHORSE_OTEL=1`
+still exports, which is what the telemetry tests themselves rely on. groom
+independently drops and can purge test-run telemetry from older producers
+(`groom purge-tests`).
 
 Emitted: a root span per run, a span per node visit (nested through flows), a span
 per agent-CLI turn with duration + token usage + cost (and a `session.id` attribute

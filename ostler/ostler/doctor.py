@@ -13,7 +13,8 @@ from pathlib import Path
 from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas)
 from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
-from ostler.coverage import normalize_ref
+from ostler import refs as refs_mod
+from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, section_gaps
 
 
@@ -57,6 +58,16 @@ class Report:
         }
 
 
+def _epic_matches(epic: Epic, epic_filter: str) -> bool:
+    """Whether ``--epic <filter>`` names this epic — by directory or by bare slug.
+
+    Epic directories are numbered, so `--epic checkout-flow` has to keep finding
+    `0001-checkout-flow`; a filter nobody matches still narrows to nothing, as before.
+    """
+    return (epic_filter in (epic.name, epic.directory.name)
+            or registry.epic_slug(epic.name) == registry.epic_slug(epic_filter))
+
+
 def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True) -> Report:
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
@@ -80,14 +91,13 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     all_story_slugs = graph.all_story_slugs()
 
     for epic in graph.epics:
-        if epic_filter and epic.name != epic_filter and epic.directory.name != epic_filter:
+        if epic_filter and not _epic_matches(epic, epic_filter):
             continue
         report.epics.append(_epic_facts(epic))
         _check_epic(graph, epic, all_story_slugs, f)
 
     if epic_filter:
-        keep = {e.name for e in graph.epics
-                if epic_filter in (e.name, e.directory.name)} or {epic_filter}
+        keep = {e.name for e in graph.epics if _epic_matches(e, epic_filter)} or {epic_filter}
         report.findings = [fd for fd in report.findings if fd.epic in keep]
 
     # Frozen-entity checks are graph-global (an approved entity is pinned regardless of which
@@ -370,10 +380,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
         if uitype is None or "code" not in uitype.bullet_by_key:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
-        for raw in _code_values(node.meta.get("code")):
-            ref = raw.strip().strip("`, ").strip()
-            if not ref:
-                continue
+        for ref in refs_mod.code_refs(node.meta.get("code")):
             target_path, separator, symbol = ref.partition("::")
             target = graph.root / target_path
             if not target.is_file():
@@ -403,8 +410,13 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                     f"'{symbol}'", path=rel, line=node.line, ref=ref))
 
 
-def _code_values(value) -> list[str]:
-    """A bullet's values — a repeated key parses to a list, a single one to a string."""
+def _bullet_values(value) -> list[str]:
+    """A bullet's raw values — a repeated key parses to a list, a single one to a string.
+
+    Raw on purpose: its one caller scans relation bullets for markdown links, so the value
+    must arrive undecorated. `code:`/`verify:` targets go through `refs.code_refs` instead,
+    which knows that one bullet may cite several.
+    """
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)] if value else []
@@ -537,7 +549,7 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
     relation_hrefs: dict[tuple[str, str], str] = {}
     for node in graph.ui_nodes:
         for key in registry.RELATION_KEYS:
-            for value in _code_values(node.meta.get(key, "")):
+            for value in _bullet_values(node.meta.get(key, "")):
                 for _text, href in markdown.extract_refs(value).links:
                     relation_hrefs[(str(node.path), href)] = key
 

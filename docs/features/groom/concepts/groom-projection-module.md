@@ -143,12 +143,14 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 ### method-traces-view
 
-- sig: `traces_view(summaries: list[dict], spans: list[dict], runs: dict[str, RunTelemetry], live_ids: set[str] = frozenset(), now: float | None = None) -> dict`
+- sig: `traces_view(summaries: list[dict], spans: list[dict], runs: dict[str, RunTelemetry], live_ids: set[str] = frozenset(), now: float | None = None, connected_only: bool = True) -> dict`
 - abstract: false
 - raises: none intentionally raised.
 - code: groom/groom/projection.py::traces_view
 - step: Project a per-run summary strip (with any fired alert rules) above the filtered span table.
 - step: Pass `live_ids` — the runs the durable store sees beating now — through to every card, so a run absent from the hot cache (a groom that just restarted) is still reported as running.
+- step: Drop every card that is not `live` unless `connected_only` is false, so the pane shows what is running rather than two weeks of retained history, and reuse the same `live` value the card already carries rather than a second notion of connectedness.
+- step: Drop the spans of the runs that were hidden, so the table never lists nodes of a run absent from the strip above it.
 - step: Stay a pull view: telemetry is fetched on demand, and only the alerts are pushed.
 
 ### method-run-card

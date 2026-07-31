@@ -101,31 +101,33 @@ def _unwritten(root: Path) -> list:
     return [f for f in doctor.run(load(root)).findings if f.code == "unwritten-story"]
 
 
-def _scaffolded(root: Path, slugs: list[str]) -> None:
+def _scaffolded(root: Path, slugs: list[str]) -> str:
+    """Scaffold the stories under a fresh epic; return its numbered directory name."""
     from ostler import crud
 
-    crud.create_epic(load(root), "billing", "Billing", prefix="pred")
+    epic_dir = crud.create_epic(load(root), "billing", "Billing", prefix="pred").entity_name
     for slug in slugs:
         crud.create_story(load(root), "billing", slug, slug.title())
+    return epic_dir
 
 
 def test_every_unwritten_story_is_named_with_its_empty_sections(tmp_path: Path):
-    _scaffolded(tmp_path, ["01-a", "02-b", "03-c"])
+    epic_dir = _scaffolded(tmp_path, ["01-a", "02-b", "03-c"])
 
     found = _unwritten(tmp_path)
 
     assert [f.ref for f in found] == ["01-a", "02-b", "03-c"], "one finding per story, not one summary"
     assert all(f.severity == "error" for f in found)
-    assert all(f.epic == "billing" for f in found)
+    assert all(f.epic == epic_dir for f in found)
     # Which sections are empty is the actionable part — "unwritten" alone does not say what to write.
     assert "Context, Acceptance Criteria are empty" in found[0].message
     # And it is located: a finding without a path cannot be opened from a report.
-    assert found[0].path == "docs/epics/billing/stories/01-a/story.md"
+    assert found[0].path == f"docs/epics/{epic_dir}/stories/01-a/story.md"
 
 
 def test_writing_the_sections_clears_the_finding(tmp_path: Path):
-    _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / "docs/epics/billing/stories/01-a/story.md"
+    epic_dir = _scaffolded(tmp_path, ["01-a"])
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- the operator needs a daily total\n")
@@ -140,8 +142,8 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
 def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
     # Half-written is the state a rerun resumes into, so it must be reported as precisely as
     # a fresh scaffold — otherwise an author run that stopped mid-story looks finished.
-    _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / "docs/epics/billing/stories/01-a/story.md"
+    epic_dir = _scaffolded(tmp_path, ["01-a"])
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\n- the operator needs a daily total\n"),

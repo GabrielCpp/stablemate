@@ -71,7 +71,7 @@ Otherwise, resolve it. Do not escalate just because a decision is hard.
 End your turn with exactly this JSON and nothing after it:
 
 ```json
-{"resolve_status": {"decision": "answered", "summary": "<one line: what you decided/did>"}}
+{"decision": "answered", "summary": "<one line: what you decided/did>"}
 ```
 
 Use `"decision": "escalated"` when you wrote `STATUS: AWAITING_OPERATOR`.

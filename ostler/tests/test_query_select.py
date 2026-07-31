@@ -64,16 +64,24 @@ def test_next_story_respects_dependencies(tmp_path: Path):
 
 
 def test_todo_queue(tmp_path: Path):
+    """The queue names the directories that exist; every operation still takes a bare slug.
+
+    A caller queues, reorders and prunes by the slug it knows — the numbering is ostler's,
+    minted at creation, and a workflow prompt holding `two` must not have to learn that the
+    folder is `0002-two` before it can touch the queue.
+    """
     g = load(tmp_path)
     crud.create_epic(g, "one", "One", prefix="x")
     crud.create_epic(load(tmp_path), "two", "Two", prefix="x")
     todo.add(load(tmp_path), "one")
     todo.add(load(tmp_path), "two")
-    assert todo.list_epics(load(tmp_path)) == ["one", "two"]
+    assert todo.list_epics(load(tmp_path)) == ["0001-one", "0002-two"]
     todo.reorder(load(tmp_path), ["two", "one"])
-    assert todo.list_epics(load(tmp_path)) == ["two", "one"]
+    assert todo.list_epics(load(tmp_path)) == ["0002-two", "0001-one"]
     todo.prune(load(tmp_path), "two")
-    assert todo.list_epics(load(tmp_path)) == ["one"]
+    assert todo.list_epics(load(tmp_path)) == ["0001-one"]
+    # And a slug already queued under its numbered name is not queued twice.
+    assert not todo.add(load(tmp_path), "one").ok
 
 
 def test_todo_add_warns_when_the_epic_has_no_doc(tmp_path: Path):
@@ -176,6 +184,36 @@ def test_report_separates_done_from_blocked(tmp_path: Path):
     finished = select.next_story_report(load(tmp_path), "e")
     assert finished["state"] == "done"
     assert finished["done"] == finished["total"] == 2
+
+
+def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
+    """A story numbered `02` declared after `03` does not jump the queue — and must not.
+
+    Real epics are written this way: the author appends each story as it decides on it, so
+    `## Stories` ends up listing `01, 03, 04, 02, …` while the prefixes track milestones. A
+    coder run then builds `01` and picks `03`, which reads as *skipping* `02` and cost a
+    session's diagnosis. It is correct: `02` states its sequence with `depends on:`, which is
+    honoured, and having no unmet dependency is exactly what makes `03` parallel to it. Sorting
+    on the prefix instead would invent an ordering contract ostler does not offer — it never
+    mints the slug — and would serialise work the author declared independent.
+    """
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "01-first", "First")
+    crud.create_story(load(tmp_path), "e", "03-independent", "Independent")
+    crud.create_story(load(tmp_path), "e", "02-after-first", "After first", depends=["01-first"])
+
+    assert select.next_story(load(tmp_path), "e")["slug"] == "01-first"
+
+    # '01' done unblocks '02', but '03' is declared first and is runnable, so '03' is next.
+    crud.set_status(load(tmp_path), "01-first", "QA passed")
+    report = select.next_story_report(load(tmp_path), "e")
+    assert report["state"] == "ready"
+    assert report["story"]["slug"] == "03-independent"
+
+    # The dependency itself is still a real gate: '02' is only passed over, never lost.
+    crud.set_status(load(tmp_path), "03-independent", "QA passed")
+    assert select.next_story(load(tmp_path), "e")["slug"] == "02-after-first"
 
 
 def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Path):
@@ -297,15 +335,15 @@ def test_author_and_build_are_separate_axes(tmp_path: Path):
 def test_epic_authored_needs_stories_a_doc_and_content(tmp_path: Path):
     """``epic_authored`` is the fact ``select-epic.py`` got wrong — pin all three of its parts."""
     _epic_of_scaffolds(tmp_path, [("a", []), ("b", [])])
-    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    epic = select.epic_by_name(load(tmp_path), "e")
     assert not select.epic_authored(epic), "an epic of bare scaffolds is not authored"
 
     _authored(tmp_path, "a")
-    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    epic = select.epic_by_name(load(tmp_path), "e")
     assert not select.epic_authored(epic), "one written story does not finish the epic"
 
     _authored(tmp_path, "b")
-    epic = next(e for e in load(tmp_path).epics if e.name == "e")
+    epic = select.epic_by_name(load(tmp_path), "e")
     assert select.epic_authored(epic)
 
 
@@ -313,8 +351,8 @@ def test_epic_with_no_stories_is_not_authored(tmp_path: Path):
     # Zero of zero is arithmetically "all", and calling it authored drops unwritten scope out
     # of the queue silently — the same trap `no-stories` exists to keep out of `done`.
     crud.create_epic(load(tmp_path), "empty", "Empty", prefix="x")
-    epic = next(e for e in load(tmp_path).epics if e.name == "empty")
-    assert not select.epic_authored(epic)
+    epic = select.epic_by_name(load(tmp_path), "empty")
+    assert epic is not None and not select.epic_authored(epic)
 
 
 def test_an_unknown_need_is_rejected(tmp_path: Path):

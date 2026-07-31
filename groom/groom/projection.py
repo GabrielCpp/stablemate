@@ -586,13 +586,26 @@ def traces_view(
     runs: dict[str, RunTelemetry],
     live_ids: frozenset[str] | set[str] = frozenset(),
     now: float | None = None,
+    connected_only: bool = True,
 ) -> dict[str, Any]:
     """The telemetry pane: a per-run summary strip (with any fired alert rules)
     above the filtered span table. Pulled on demand — telemetry is a pull view;
     the pushes are the alerts. ``live_ids`` is ``store.live_run_ids()``, which
-    covers the runs no longer (or not yet) in the hot cache."""
+    covers the runs no longer (or not yet) in the hot cache.
+
+    By default the pane shows only runs that are **connected right now** — the
+    same ``live`` predicate the fleet rows use, not a second notion of it. The
+    store keeps two weeks of history, so the unfiltered strip is mostly runs that
+    ended days ago; the pane exists to watch what is happening. History is one
+    ``connected_only=False`` away (the pane's *show ended* toggle, and any
+    explicit ``run=`` search, which asks for a named run and must find it even
+    once it is over). Spans follow their run: a span table listing nodes of a run
+    the strip above has hidden reads as telemetry from nowhere.
+    """
     now = now if now is not None else time.time()
-    return {
-        "runs": [run_card(s, runs.get(s["run_id"]), live_ids, now) for s in summaries],
-        "spans": [span_row(s) for s in spans],
-    }
+    cards = [run_card(s, runs.get(s["run_id"]), live_ids, now) for s in summaries]
+    if connected_only:
+        cards = [card for card in cards if card["live"]]
+        connected = {card["run_id"] for card in cards}
+        spans = [span for span in spans if (span.get("run_id") or "") in connected]
+    return {"runs": cards, "spans": [span_row(s) for s in spans]}

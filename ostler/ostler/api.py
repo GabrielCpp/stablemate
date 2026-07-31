@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 from ostler import backlog as backlog_mod
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
+from ostler import ids as ids_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import select, todo as todo_mod
@@ -91,8 +92,8 @@ class Ostler:
         return query_mod.search(self.graph, q, etype)
 
     def query(self, name: str, arg: str) -> list[dict]:
-        """A named reverse-index query (``ostler query``)."""
-        return query_mod.query(self.graph, name, arg)
+        """A named reverse-index query (``ostler query``) — ``arg`` may be a short handle."""
+        return query_mod.query(self.graph, name, ids_mod.resolve(self.graph, arg))
 
     def next_epic(self) -> dict | None:
         """The next epic with unfinished work, or ``None`` (``ostler next-epic``)."""
@@ -127,7 +128,7 @@ class Ostler:
         The authoring counterpart to ``next_epic``'s done-ness: this is what tells an author
         rerun that an epic still needs work. Unknown epics are not authored.
         """
-        found = next((e for e in self.graph.epics if e.name == epic), None)
+        found = select.epic_by_name(self.graph, epic)
         return found is not None and select.epic_authored(found)
 
     def todo(self) -> list[str]:
@@ -158,6 +159,15 @@ class Ostler:
         """Spec directory for a story slug (``ostler path spec``)."""
         return path_mod.resolve_spec(self.graph, slug)
 
+    def epic_path(self, epic: str) -> str:
+        """Directory of an epic, by number or bare slug (``ostler path epic``).
+
+        The one place a caller should learn where an epic lives: the directory is numbered
+        (`docs/epics/0001-checkout-flow`), so building the path by joining the epics root
+        with a slug now names a directory that does not exist.
+        """
+        return path_mod.resolve_epic(self.graph, epic)
+
     def story_path(self, epic: str, slug: str) -> str:
         """``story.md`` path for an epic + slug (``ostler path story``)."""
         return path_mod.resolve_story(self.graph, epic, slug)
@@ -166,19 +176,50 @@ class Ostler:
         """Git branch name for a slug (``ostler path branch``); no graph needed."""
         return path_mod.resolve_branch(slug, epic=epic)
 
+    # -- ids and their short handles ----------------------------------------
+    def handle(self, identifier: str) -> str:
+        """The short handle for *identifier* — what to show a person, never what to store.
+
+        Abbreviated against every id in the repo, so the handle is unambiguous now; it can
+        lengthen once a colliding id is minted, which is why the full id is what gets written
+        into a document (``ostler --handles``).
+        """
+        return self.handles().get(identifier, identifier)
+
+    def handles(self) -> dict[str, str]:
+        """``{id: handle}`` for every id in the repo — the whole table in one pass."""
+        return ids_mod.table(ids_mod.known(self.graph))
+
+    def expand(self, token: str) -> str:
+        """*token* as a full id: a short handle is expanded, anything else returned untouched.
+
+        Every ostler entry point that takes an id already does this, so a node only needs it
+        when it accepts an id from somewhere ostler is not (an operator answer, a prompt).
+        """
+        return ids_mod.resolve(self.graph, token)
+
     # -- mutation (each invalidates the cached snapshot) --------------------
     def create_epic(self, name: str, title: str, *, prefix: str | None = None) -> Result:
-        """Create an epic, allocating its id (``ostler create epic``)."""
+        """Create an epic, allocating its id (``ostler create epic``).
+
+        The directory is numbered in creation order, so the name that exists afterwards is
+        ``result.entity_name`` (``0001-<name>``), not ``name``.
+        """
         return self._apply(crud.create_epic(self._fresh(), name, title, prefix))
 
     def create_story(self, epic: str, slug: str, title: str, *,
                      covers: list[str] | None = None,
                      depends: list[str] | None = None,
                      prefix: str | None = None) -> Result:
-        """Create a story under ``epic`` (``ostler create story``)."""
+        """Create a story under ``epic`` (``ostler create story``).
+
+        ``covers`` may name seeds by short handle; what is written into the epic is always the
+        full id, so the coverage edge does not go stale when a handle later lengthens.
+        """
+        graph = self._fresh()
         return self._apply(crud.create_story(
-            self._fresh(), epic, slug, title,
-            covers or [], depends or [], prefix))
+            graph, epic, slug, title,
+            [ids_mod.resolve(graph, c) for c in (covers or [])], depends or [], prefix))
 
     def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
         """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent."""
@@ -186,9 +227,15 @@ class Ostler:
 
     def add_seed(self, epic: str, seed_id: str, *, status: str, summary: str = "",
                  meta: dict | None = None) -> Result:
-        """Add a seed to ``epic`` (``ostler seed add``)."""
+        """Add a seed to ``epic`` (``ostler seed add``).
+
+        ``seed_id`` may be a short handle. That matters here more than for a read: `seed add` is
+        update-or-create, so a handle left unresolved would file a *second* seed under a name that
+        only looked new instead of updating the one it names.
+        """
+        graph = self._fresh()
         return self._apply(crud.add_seed(
-            self._fresh(), epic, seed_id, status, summary, meta or {}))
+            graph, epic, ids_mod.resolve(graph, seed_id), status, summary, meta or {}))
 
     def set_status(self, slug: str, status: str) -> Result:
         """Set a story's status (``ostler set-status``)."""
@@ -199,13 +246,13 @@ class Ostler:
         return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
 
     def backlog_prune(self, item_id: str) -> Result:
-        """Remove a backlog item (``ostler backlog prune``)."""
-        return self._apply(backlog_mod.prune(self._fresh(), item_id))
+        """Remove a backlog item (``ostler backlog prune``) — ``item_id`` may be a short handle."""
+        graph = self._fresh()
+        return self._apply(backlog_mod.prune(graph, ids_mod.resolve(graph, item_id)))
 
     def allocate_id(self) -> str:
         """Mint and persist the next repo-prefixed ostler id (``PRED-15``) — the same id space
         stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
-        from ostler import ids as ids_mod
         return ids_mod.allocate(self.graph)
 
     def add_doctor_waiver(self, code: str, ref: str, reason: str, backlog: str = "") -> Result:

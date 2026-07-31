@@ -16,6 +16,14 @@ precisely because monotonic ids minted in one millisecond differ only in their l
 decorrelates them, so even a burst of ids gets short, well-spread handles. Handles are for
 display/input only; ordering always lives on the full id.
 
+**Where handles apply.** :func:`known` is the universe a handle is unambiguous within — every id
+written down anywhere in the tree — so a handle printed by one command resolves in the next.
+:func:`resolve` accepts a handle wherever ostler takes an id, *always*: that costs nothing and a
+caller that pasted a full id is unaffected. Rendering is the side with a choice, and :func:`table`
+plus :func:`shorten` are what the CLI renders through — see ``cli.py``'s ``--handles`` /
+``--full-ids``. A handle is unstable by construction (it lengthens when a later id collides with
+it), which is why it is never what gets *written* into a document.
+
 The registry is ``{prefix, frozen}``; ``frozen`` (freeze.py / doctor.py) is unaffected.
 """
 
@@ -30,6 +38,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
+from ostler import backlog
 from ostler.model import Graph
 
 # Crockford Base32, in ASCII order (0-9 then A-Z minus I, L, O, U) so a raw string sort == value
@@ -170,3 +179,87 @@ def expand(handle: str, existing: Iterable[str]) -> str | None:
     matches = [i for i in ids
                if _split(i)[0] == prefix and _fingerprint(i).startswith(slice_) and _fingerprint(i)]
     return matches[0] if len(matches) == 1 else None
+
+
+# ---------------------------------------------------------------------------
+# The graph's ids: one universe to abbreviate within and resolve against
+# ---------------------------------------------------------------------------
+def known(graph: Graph) -> list[str]:
+    """Every minted id currently written down in the tree, sorted.
+
+    The universe matters more than it looks: an abbreviation is only unambiguous *relative to a
+    set*, so a handle printed by `list` resolves in `seed remove` only if both commands ask the
+    same question. Collecting from the whole graph — not from the rows one command happens to be
+    holding — is what makes the handle a token you can copy from any output into any input.
+    """
+    out: set[str] = set()
+    for epic in graph.epics:
+        out.add(epic.eid)
+        out.update(s.id for s in epic.seeds)
+        out.update(s.eid for s in epic.stories)
+    out.update(str(f.data.get("id") or "") for f in graph.features)
+    # The backlog is markdown ostler manages but does not load into the graph, and its ids are
+    # exactly the ones a person retypes most (`backlog prune <id>`) — so they are in the universe.
+    out.update(i for i, _ in backlog.items(graph))
+    out.discard("")
+    return sorted(out)
+
+
+def table(existing: Iterable[str], min_len: int = HANDLE_MIN) -> dict[str, str]:
+    """``{id: handle}`` for every id in *existing* — :func:`abbreviate` for a whole set at once.
+
+    Batched because the per-id call re-hashes every other id to find its shortest unambiguous
+    slice; over a few hundred ids that is quadratic for an answer the whole set shares.
+    """
+    ids = [i for i in existing if i]
+    fps = {i: _fingerprint(i) for i in ids}
+    out: dict[str, str] = {}
+    for identifier in ids:
+        fp = fps[identifier]
+        if not fp:
+            out[identifier] = identifier   # legacy/prefixless: nothing to abbreviate
+            continue
+        others = [f for i, f in fps.items() if i != identifier and f]
+        prefix = _split(identifier)[0]
+        for length in range(max(min_len, 1), _FP_LEN + 1):
+            slice_ = fp[:length]
+            if not any(o.startswith(slice_) for o in others):
+                out[identifier] = f"{prefix}-{slice_}" if prefix else slice_
+                break
+        else:
+            out[identifier] = identifier   # only reachable if the same id is listed twice
+    return out
+
+
+#: An id as it appears inside free text: a prefix, a hyphen, and a full 26-char ULID. Narrow on
+#: purpose — :func:`shorten` rewrites *matches of this*, never arbitrary substrings, so a body of
+#: prose or a path that merely contains a hyphen is left exactly as it was.
+_ID_TOKEN = re.compile(rf"\b[A-Za-z][A-Za-z0-9_]{{0,15}}-[{_CROCKFORD}]{{{ULID_LEN}}}\b")
+
+
+def shorten(data, handles: dict[str, str]):
+    """*data* with every id in *handles* replaced by its handle, in strings and inside containers.
+
+    Works on a JSON row, a list of them, or a line of human output alike, so the CLI has one
+    rendering seam rather than a per-command list of which keys hold an id. Keys are left alone:
+    a mapping keyed by id (the freeze registry) still reads back by id.
+    """
+    if isinstance(data, str):
+        return _ID_TOKEN.sub(lambda m: handles.get(m.group(0), m.group(0)), data)
+    if isinstance(data, dict):
+        return {k: shorten(v, handles) for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [shorten(v, handles) for v in data]
+    return data
+
+
+def resolve(graph: Graph, token: str) -> str:
+    """*token* as a full id: a handle is expanded, anything else is returned untouched.
+
+    Untouched rather than rejected because ostler's id arguments are rarely *only* ids — the same
+    argument takes a story slug or a doc path — and a lookup that cannot find a handle has no
+    standing to declare the caller wrong. The caller's own "not found" is the better error.
+    """
+    if not token:
+        return token
+    return expand(token, known(graph)) or token

@@ -26,6 +26,7 @@ from pathlib import Path
 from ostler import Ostler, markdown, registry
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.coder.nodes import _stubs
 from workhorse_workflows.coder.nodes._blueprint import blueprint
 from workhorse_workflows.coder.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
 from workhorse_workflows.kit import resolve_workspace
@@ -76,7 +77,7 @@ def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     )
 
 
-@blueprint.node
+@blueprint.node(stub=_stubs.story_paths)
 def prepare_story(
     logger: logging.Logger,
     docs_path: str = "",
@@ -115,6 +116,9 @@ def prepare_story(
             story_path_rel = okf.story_path(epic, story)
         except (OSError, ValueError, RuntimeError):
             story_path_rel = ""
+        # The literal join is the last resort only — it assumes an unnumbered epic folder,
+        # which ostler stopped creating, so it is right only for a docs tree ostler could
+        # not read at all. Every reachable path above comes from ostler.
         story_path_rel = story_path_rel or f"docs/epics/{epic}/stories/{story}/story.md"
         story_path = str((docs_root / story_path_rel).resolve())
 

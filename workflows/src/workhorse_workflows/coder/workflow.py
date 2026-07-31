@@ -784,11 +784,15 @@ class Coder(Workflow):
         return Continue(result, self.drain, epic=epic, zero_diff=zero_diff)
 
     def _fix_qa(self) -> QaResult:
-        """`qa-story.md`, which `check_fix` and `recheck_fix` ran with identical arguments."""
+        """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
+
+        Not `qa-story.md` — see `flows/fix.py`'s `_qa` for why that prompt cannot answer this
+        turn. The nested drain runs the same one.
+        """
         fix = self._fix_story
         self.logger.info("checking %s", fix.story_slug, extra={"activity": True})
         return self.agent(
-            "prompts/qa-story.md",
+            "prompts/qa-fix-item.md",
             returns=QaResult,
             # high: the drain has no QA plan, no evidence gate and no audit behind it —
             # this turn is the whole verdict on the fix.

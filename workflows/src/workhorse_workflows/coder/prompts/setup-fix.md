@@ -136,10 +136,8 @@ Then return this exact JSON object in your **final response** (after the markdow
 
 ```json
 {
-  "setup_result": {
-    "status": "ready" | "unfixable",
-    "notes": "What was blocking QA, what you changed/started to fix it, and the readiness proof — or, if unfixable, exactly what human-only resource (secret, deployed env, hardware) is required."
-  }
+  "status": "ready" | "unfixable",
+  "notes": "What was blocking QA, what you changed/started to fix it, and the readiness proof — or, if unfixable, exactly what human-only resource (secret, deployed env, hardware) is required."
 }
 ```
 

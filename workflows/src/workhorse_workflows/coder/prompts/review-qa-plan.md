@@ -41,10 +41,8 @@ Return JSON only:
 
 ```json
 {
-  "qa_plan_review": {
-    "disposition": "approved",
-    "notes": "Every objective has asserted preconditions, checkpoints, terminal proof, and runner-owned evidence."
-  }
+  "disposition": "approved",
+  "notes": "Every objective has asserted preconditions, checkpoints, terminal proof, and runner-owned evidence."
 }
 ```
 

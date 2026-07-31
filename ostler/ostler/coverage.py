@@ -36,7 +36,9 @@ from pathlib import Path
 from typing import Any
 
 from ostler import graph as graph_mod
+from ostler import refs as refs_mod
 from ostler.model import Graph
+from ostler.refs import normalize_ref
 
 
 def _values(value: Any) -> list[str]:
@@ -44,11 +46,6 @@ def _values(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)] if value else []
-
-
-def normalize_ref(value: str) -> str:
-    """Strip the decoration a `code:` bullet may carry (backticks, trailing commas)."""
-    return value.strip().strip("`, ").strip()
 
 
 def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
@@ -61,10 +58,8 @@ def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     data = graph_mod.build(graph, surface=surface)
     for node in data["nodes"]:
-        for raw in _values(node["bullets"].get("code")):
-            ref = normalize_ref(raw)
-            if ref:
-                out.setdefault(ref, []).append(node["id"])
+        for ref in refs_mod.code_refs(node["bullets"].get("code")):
+            out.setdefault(ref, []).append(node["id"])
     return out
 
 

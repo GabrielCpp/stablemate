@@ -168,21 +168,30 @@ class FakeTelemetry:
 
 
 @contextlib.contextmanager
-def _gate(forced, reachable):
-    """Pin both inputs start_run's gate reads: the WORKHORSE_OTEL tri-state and the
-    collector probe. The probe must never be left live in a test — the dev machine
-    may well have `groom serve` up, which would make these pass or fail by
-    environment. _build is faked too, so no test needs the optional SDK."""
+def _gate(forced, reachable, under_test=False):
+    """Pin all three inputs start_run's gate reads: the WORKHORSE_OTEL tri-state, the
+    collector probe, and the test-process guard. The probe must never be left live in
+    a test — the dev machine may well have `groom serve` up, which would make these
+    pass or fail by environment. The guard is pinned for the opposite reason: these
+    tests *are* a test process, so left real it would answer True for every case and
+    the gate's other two inputs would never be exercised. _build is faked too, so no
+    test needs the optional SDK."""
     probes: list[str] = []
     built: list[tuple] = []
-    saved = (otel._OTEL_FORCED, otel._collector_reachable, otel._build)
+    saved = (otel._OTEL_FORCED, otel._collector_reachable, otel._build, otel._under_test)
     otel._OTEL_FORCED = forced
     otel._collector_reachable = lambda endpoint: (probes.append(endpoint), reachable)[1]
     otel._build = lambda *a: (built.append(a), FakeTelemetry())[1]
+    otel._under_test = lambda: under_test
     try:
         yield probes, built
     finally:
-        otel._OTEL_FORCED, otel._collector_reachable, otel._build = saved
+        (
+            otel._OTEL_FORCED,
+            otel._collector_reachable,
+            otel._build,
+            otel._under_test,
+        ) = saved
         otel.end_run("test")  # back to the null adapter, through the real teardown
 
 
@@ -228,6 +237,31 @@ def test_force_on_skips_the_probe():
         assert otel.enabled() is True
         assert probes == []
         assert built == [("wf", "run-1", None)]
+
+
+def test_auto_declines_in_a_test_process():
+    # A suite run on a machine with `groom serve` up used to export like a real run,
+    # hundreds of times per invocation, into the same store the dashboard reads.
+    with _gate(forced=None, reachable=True, under_test=True) as (probes, built):
+        otel.start_run("wf", "run-1")
+        assert otel.enabled() is False
+        assert probes == []  # not even probed — the answer can't change the outcome
+        assert built == []
+
+
+def test_force_on_still_wins_in_a_test_process():
+    # The escape hatch the telemetry tests themselves need: WORKHORSE_OTEL=1 means
+    # the operator has said so, and the guard is a default, not a prohibition.
+    with _gate(forced=True, reachable=False, under_test=True) as (_, built):
+        otel.start_run("wf", "run-1")
+        assert otel.enabled() is True
+        assert built == [("wf", "run-1", None)]
+
+
+def test_under_test_detects_this_very_process():
+    # Self-evidencing: whatever runs this file (pytest, or `python tests/test_otel.py`)
+    # is a test process, so the real predicate — not the pinned one — must say so.
+    assert otel._under_test() is True
 
 
 def test_probe_detects_a_listening_socket_and_a_dead_port():

@@ -46,6 +46,11 @@ Divergences from the YAML, all deliberate:
   reads (it is `qa_plan_rework_count` here), left over from `flows.dev`'s copy of the node.
   Nothing observes it, and a flow's vars are isolated, so it is dropped. Recorded as a
   finding, not a narrowing: there is no reader to narrow.
+* **`apply_resolved` reads the QA budget it spends.** In the YAML nothing did, and the
+  operator gate's return leg is reachable from the context loop, whose own counter advances
+  only on a repaired packet — so an unmappable packet laps context → repair → gate → resolve
+  → read → apply → context forever, three agent turns a lap, until the driver's transition
+  budget ends the run. The counter was already being incremented; the guard is new.
 * the three `mark-*` scripts (`mark-qa-assessment-failed.py`, `mark-qa-audit-failed.py`,
   `mark-regression-unresolved.py`) each printed one `qa_result`. They are the assignment at
   the deciding site, with the same default strings.
@@ -297,7 +302,13 @@ class Qa(Workflow):
         status = self.call(ensure_stack, self.qa_stack_manifest, self.docs_path)
         if status.ready == "no":
             self.logger.info("QA stack did not come up: %s", status.failed_step)
-            return self._guard_setup(status, loop)
+            # The failure becomes the running verdict, because `block_notes` — what the
+            # fixer and the operator gate are both briefed with — is composed from it. A
+            # stack that never came up leaves `qa` blank otherwise, and the fixer is sent
+            # to repair a stack without being told what about it broke.
+            return self._guard_setup(
+                status, loop.with_qa(QaResult(status="blocked", notes=status.notes))
+            )
         return Continue(status, self.run, loop=loop)
 
     def run(self, loop: QaLoop) -> Continue:
@@ -722,8 +733,15 @@ class Qa(Workflow):
         `stack_manifest` is passed rather than assumed: this node's whole job is repairing it,
         and a fixer that authors `qa-stack.yml` at the root while the run reads
         `<service>/qa-stack.yml` loops forever on `skip`.
+
+        `qa_run_plan`/`qa_stack` come from the same `resolve_impl_context` the flow already
+        read: the prompt lists the touched layers' QA skills from them, and each says how to
+        bring its layer up — which is exactly this node's job. Omitting them left the prompt
+        on its `_(none resolved)_` fallback, telling the fixer to guess from the plan's smoke
+        commands while the resolved answer sat one `self.output` away.
         """
         self.logger.info("repairing the QA stack", extra={"activity": True})
+        impl = self.output(resolve_impl_context)
         result = self.agent(
             "prompts/setup-fix.md",
             returns=SetupResult,
@@ -739,6 +757,8 @@ class Qa(Workflow):
                 "qa_dir": self.ctx.qa_dir,
                 "qa_notes": loop.block_notes,
                 "stack_manifest": self.qa_stack_manifest,
+                "qa_run_plan": impl.qa_run_plan,
+                "qa_stack": impl.qa_stack,
             },
         )
         loop = loop.update(setup_rework=loop.setup_rework + 1)
@@ -798,20 +818,30 @@ class Qa(Workflow):
             )
         return Continue(answer, self.apply_resolved, loop=loop, content=answer.content)
 
-    def apply_resolved(self, loop: QaLoop, content: str) -> Continue:
+    def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Done:
         """Apply the operator's answer as a QA fix, and spend a rework on it.
 
         `apply_qa_resolved` + `incr_qa`. The same prompt `apply_qa_fixes` runs, at medium
         rather than high, because the hard thinking was the operator's.
+
+        The budget is re-read *here* rather than only in `_guard_qa`, which is the divergence
+        from the YAML. `_guard_qa` bounds the fix loop that goes through it; this state is the
+        far end of the operator gate, and the gate is reachable from the context loop
+        (`repair_context` → `_gate`) whose own counter only advances on a *repaired* packet.
+        A packet that stays unmappable therefore cycles context → repair → gate → resolve →
+        read → apply → context with no counter moving at all, three agent turns a lap — one of
+        them the unbounded-timeout resolver — until the driver's transition budget kills the
+        run. Spending `qa_rework` per lap is what the increment below was already for; all
+        that was missing is somebody reading it.
         """
         result = self._apply_fixes(
             qa_notes=loop.qa.notes, operator_feedback=content, power="medium"
         )
-        return Continue(
-            result,
-            self.build_context,
-            loop=loop.update(qa=result, qa_rework=loop.qa_rework + 1),
-        )
+        loop = loop.update(qa=result, qa_rework=loop.qa_rework + 1)
+        if loop.qa_rework >= self.MAX_QA_REWORKS:
+            self.logger.info("operator loop is out of QA reworks — ending the flow exhausted")
+            return self._exhausted(loop)
+        return Continue(result, self.build_context, loop=loop)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
 

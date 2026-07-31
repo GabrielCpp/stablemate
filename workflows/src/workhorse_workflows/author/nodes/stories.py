@@ -140,8 +140,12 @@ def seed_story(
         )
 
     root = survey_repo_root()
-    epic_dir_rel = f"{epics_dir_rel}/{epic}"
-    epic_dir_abs = root / epics_dir_rel / epic
+    okf = Ostler(root)
+    # ostler names the folder, not this join: epic directories carry their creation order
+    # (`0001-accounts`) and story mode is invoked with the bare slug, so a literal join would
+    # report a missing epic for one that is right there. `epics_dir` still says which root.
+    epic_dir_rel = f"{epics_dir_rel}/{Path(okf.epic_path(epic)).name}"
+    epic_dir_abs = root / epic_dir_rel
 
     if not (epic_dir_abs / "epic.md").is_file():
         raise WorkflowFailed(
@@ -150,7 +154,6 @@ def seed_story(
         )
 
     bullet_id, source_bullet, from_backlog = _resolve_bullet(root, bullet, backlog_rel)
-    okf = Ostler(root)
 
     for s in okf.list("story", epic=epic):
         if bullet_id in (s.get("covers") or []):

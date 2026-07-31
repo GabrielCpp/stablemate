@@ -43,6 +43,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ostler import path as okf_path
+
 #: Where a run's operator gates leave the file a human answers in. Repo-relative, one
 #: file per gate kind, so two gates open in the same story do not overwrite each other.
 OPERATOR_DIR = ".agents/operator"
@@ -99,8 +101,9 @@ def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
     The three rungs are `await-ci-operator.py`'s and `await-merge-operator.py`'s, in their
     order, and they are a *per-epic* resolution rather than a per-gate one:
 
-    1. `docs/epics/<epic>/<gate>-context.md` when that epic folder exists — the questions
-       land next to the epic they are about, which is where the operator is already looking;
+    1. `docs/epics/<NNNN-epic>/<gate>-context.md` when that epic folder exists — the questions
+       land next to the epic they are about, which is where the operator is already looking.
+       The folder is resolved through ostler, so a bare slug finds its numbered directory;
     2. `<root>/<gate>-context.<epic>.md` when it does not, so an epic with no folder still
        gets a file of its own;
     3. `<root>/<gate>-context.md` with no epic at all.
@@ -109,7 +112,10 @@ def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
     each other's questions. `gate` is `ci-operator` or `merge-operator`.
     """
     if epic:
-        epic_dir = root / "docs" / "epics" / epic
+        # ostler owns the folder rule, not this join: epic directories are numbered
+        # (`0001-checkout`) and a gate is normally invoked with the bare slug, so a literal
+        # join would miss the folder and silently demote every question to rung 2.
+        epic_dir = okf_path.epic_dir_in(root / "docs" / "epics", epic)
         if epic_dir.is_dir():
             return epic_dir / f"{gate}-context.md"
         return root / f"{gate}-context.{epic}.md"

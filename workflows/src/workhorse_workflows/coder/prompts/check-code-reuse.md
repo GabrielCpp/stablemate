@@ -70,17 +70,15 @@ captures it under `reuse_result`:
 
 ```json
 {
-  "reuse_result": {
-    "status": "ok" | "needs_rework",
-    "findings": [
-      {
-        "intended": "<what the plan proposes to build>",
-        "existing": "<the existing code that already does it: repo, path, symbol>",
-        "recommendation": "<how the plan should reuse/extend it instead>"
-      }
-    ],
-    "summary": "<one sentence: what should be reused, or 'No re-implementation found.'>"
-  }
+  "status": "ok" | "needs_rework",
+  "findings": [
+    {
+      "intended": "<what the plan proposes to build>",
+      "existing": "<the existing code that already does it: repo, path, symbol>",
+      "recommendation": "<how the plan should reuse/extend it instead>"
+    }
+  ],
+  "summary": "<one sentence: what should be reused, or 'No re-implementation found.'>"
 }
 ```
 

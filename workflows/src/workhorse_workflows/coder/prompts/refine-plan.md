@@ -33,11 +33,28 @@ Before refining the plan, read:
 
 - `AGENTS.md`
 - `docs/CODEX.md` when the work touches docs, epics, stories, or roadmap artifacts
-- Relevant instruction files for each touched layer:
-  - {{ template.backend_layer_name | default("Go API") }}: `{{ instruction_ref("go") }}`, `{{ instruction_ref("go-architecture") }}`, `{{ instruction_ref("go-di") }}`, `{{ instruction_ref("go-errors") }}`, `{{ instruction_ref("go-openapi") }}`, `{{ instruction_ref("go-repository") }}`, `{{ instruction_ref("go-server") }}`, `{{ instruction_ref("go-storage") }}`, and `{{ instruction_ref("go-testing") }}`
-  - Go CLI / `{{ template.go_cli_name | default("appctl") }}`: `{{ instruction_ref("go-cli") }}`, `{{ instruction_ref("go-cli-commands") }}`, and `{{ instruction_ref("go-testing") }}`
-  - {{ template.mobile_layer_name | default("Flutter app") }}: `{{ instruction_ref("flutter") }}`, `{{ instruction_ref("flutter-architecture") }}`, `{{ instruction_ref("flutter-api") }}`, `{{ instruction_ref("flutter-state") }}`, `{{ instruction_ref("flutter-navigation") }}`, `{{ instruction_ref("flutter-forms") }}`, `{{ instruction_ref("flutter-models") }}`, `{{ instruction_ref("flutter-theme") }}`, and `{{ instruction_ref("flutter-testing") }}`
-  - {{ template.infra_layer_name | default("Pulumi infrastructure") }}: `{{ instruction_ref("pulumi") }}`
+- Relevant instruction files for each touched layer (only the layers this repository
+  installs are listed; an absent one means this repo has no skills for that layer):
+{%- set backend_refs = instruction_refs("go", "go-architecture", "go-di", "go-errors", "go-openapi", "go-repository", "go-server", "go-storage", "go-testing") %}
+{%- set cli_refs = instruction_refs("go-cli", "go-cli-commands", "go-testing") %}
+{%- set web_refs = instruction_refs("react-router", "react-router-architecture", "react-router-ssr", "react-router-auth", "react-router-design-system", "react-router-a11y", "react-router-qa") %}
+{%- set mobile_refs = instruction_refs("flutter", "flutter-architecture", "flutter-api", "flutter-state", "flutter-navigation", "flutter-forms", "flutter-models", "flutter-theme", "flutter-testing") %}
+{%- set infra_refs = instruction_refs("pulumi", "pulumi-ci-docker", "pulumi-qa") %}
+{%- if backend_refs %}
+  - {{ template.backend_layer_name | default("Go API") }}: {{ backend_refs }}
+{%- endif %}
+{%- if cli_refs %}
+  - Go CLI / `{{ template.go_cli_name | default("appctl") }}`: {{ cli_refs }}
+{%- endif %}
+{%- if web_refs %}
+  - {{ template.web_layer_name | default("Web app") }}: {{ web_refs }}
+{%- endif %}
+{%- if mobile_refs %}
+  - {{ template.mobile_layer_name | default("Mobile app") }}: {{ mobile_refs }}
+{%- endif %}
+{%- if infra_refs %}
+  - {{ template.infra_layer_name | default("Infrastructure") }}: {{ infra_refs }}
+{%- endif %}
 
 ## Refinement Goals
 
@@ -53,13 +70,14 @@ Do not implement code while refining the plan.
 
 ## Current Iteration Focus
 
-When using this prompt, specify the focus for the pass, for example:
+When using this prompt, specify the focus for the pass. Pick the ones that apply to the
+layers this story actually touches:
 
-- Go service and repository paths
-- OpenAPI and generated client impact
-- Flutter provider and screen flow
-- `{{ template.go_cli_name | default("appctl") }}` CLI command shape
-- Verification commands and emulator requirements
+- Service and package paths on the owning side of the change
+- Shared contract and generated-client impact
+- Client-side data flow and screen/route structure
+- Command-line surface shape, where the story adds or changes one
+- Verification commands and any environment the tests need standing up
 - Safety/privacy edge cases
 
 ## Search And Document Pattern
@@ -116,58 +134,72 @@ Replace vague items such as:
 - `client side`
 - `run tests`
 
-with repository-specific paths, layer names, and commands. Use `{{ template.backend_layer_name | default("Go API") }}`, `Go CLI`, `{{ template.mobile_layer_name | default("Flutter app") }}`, `Pulumi`, and `docs` as layer names.
+with repository-specific paths, layer names, and commands, taken from this repo. The layer
+names to use are the ones listed under "Instruction Set Resolution" above, plus `docs`.
 
 ## Refinement Checklist
 
-Use only the phases relevant to the plan.
+Only the phases for layers this repository installs skills for are listed. Use only the
+ones the plan actually touches; a layer absent here is absent from this repo.
+{% if backend_refs %}
+### {{ template.backend_layer_name | default("Backend service") }}: Domain And Service Layer
 
-### Phase 1: {{ template.backend_layer_name | default("Go API") }} Service Layer
-
-- [ ] Search relevant services in `{{ template.api_path | default("api") }}/internal/core/services/`
-- [ ] Document service functions and call sites
+- [ ] Search the services the story touches, under the path the backend instructions name (`{{ template.api_path | default("the service root") }}/`)
+- [ ] Document service functions and their call sites
 - [ ] Identify domain model changes
-- [ ] Check whether errors follow relevant Go error conventions
-- [ ] Update plan with actual file paths and function names
+- [ ] Check that errors follow the conventions those instruction files set
+- [ ] Update the plan with actual file paths and function names
 
-### Phase 2: {{ template.backend_layer_name | default("Go API") }} Controller And Server Layer
+### {{ template.backend_layer_name | default("Backend service") }}: Entry Points, Wiring And Storage
 
-- [ ] Search controllers in `{{ template.api_path | default("api") }}/internal/app/controllers/`
-- [ ] Map request → controller → service → repository flow
-- [ ] Check dependency wiring in `{{ template.api_path | default("api") }}/internal/app/container.go`
-- [ ] Check route/server wiring if applicable
-- [ ] Document error response behavior and authorization checks
+- [ ] Search the handlers/controllers that expose the change
+- [ ] Map the request path end to end: entry point → service → persistence
+- [ ] Check dependency wiring wherever this repo composes it
+- [ ] Document error-response behavior and authorization checks
+- [ ] Identify the storage/external-IO adapters involved, their query patterns, and the fixtures or local emulators the tests need
+{% endif %}
+### Contracts And Code Generation
 
-### Phase 3: Firestore / Storage / External IO
+- [ ] Identify the shared contract files that change, if any (`{{ template.openapi_path | default("wherever this repo keeps them") }}`)
+- [ ] Identify every generated artifact downstream of them, on both the producing and consuming sides
+- [ ] Add exact generation commands from the codegen instruction files this repo installs
+      {%- set codegen_refs = instruction_refs("go-openapi", "flutter-api", "react-router") %}
+      {%- if codegen_refs %} ({{ codegen_refs }}){% endif %}
+{% if web_refs %}
+### {{ template.web_layer_name | default("Web app") }}
 
-- [ ] Search repositories and entities in `{{ template.api_path | default("api") }}/internal/io/`
-- [ ] Identify collection names, entity mappings, and Firestore query patterns
-- [ ] Check Firebase Auth, Firestore, Storage, or OpenRouter clients where relevant
-- [ ] Document emulator requirements and fixture needs
+- [ ] Identify affected routes, components, loaders/actions and API calls
+- [ ] Map the data flow, including the loading, error and empty states
+- [ ] Check routing and navigation impact where the story changes it
+- [ ] Add component/unit/end-to-end coverage, and the accessibility checks the web instructions require
+- [ ] Add exact commands from the web instruction files
+{% endif %}
+{%- if mobile_refs %}
+### {{ template.mobile_layer_name | default("Mobile app") }}
 
-### Phase 4: OpenAPI And Code Generation
+- [ ] Identify affected screens, widgets, state holders, models and generated API use under `{{ template.app_path | default("the app root") }}/`
+- [ ] Map the state flow, including the loading, error and empty states
+- [ ] Check routing impact when navigation changes
+- [ ] Add widget/unit/manual verification coverage
+- [ ] Add exact commands from the mobile instruction files
+{% endif %}
+{%- if cli_refs %}
+### Command-Line Surface
 
-- [ ] Identify `{{ template.openapi_path | default("api/pkg/api/openapi.yaml") }}` changes if any
-- [ ] Identify generated Go files affected under `{{ template.go_api_generated_path | default("api/pkg/api") }}/`
-- [ ] Identify generated Dart client files affected under `{{ template.dart_api_generated_path | default("app/lib/generated/api") }}/`
-- [ ] Add exact generation commands from `{{ instruction_ref("go-openapi") }}` and `{{ instruction_ref("flutter-api") }}`
+- [ ] Identify which command tree owns the change
+- [ ] Check the command conventions the CLI instruction files set ({{ cli_refs }})
+- [ ] Map the fixture, auth and local-environment needs of each command
+- [ ] Confirm development-only commands cannot be pointed at production
+{% endif %}
+{%- if infra_refs %}
+### {{ template.infra_layer_name | default("Infrastructure") }}
 
-### Phase 5: Flutter App
-
-- [ ] Identify affected screens, widgets, providers, models, services, and generated API use under `{{ template.app_path | default("app") }}/lib/`
-- [ ] Map Riverpod state flow and loading/error/empty states
-- [ ] Check routing impact in app router files when navigation changes
-- [ ] Add widget/provider/unit/manual verification coverage
-- [ ] Add exact commands from relevant Flutter instruction files
-
-### Phase 6: Go CLI / `{{ template.go_cli_name | default("appctl") }}`
-
-- [ ] Identify command ownership under the chosen Go command tree
-- [ ] Check Cobra command conventions from `{{ instruction_ref("go-cli") }}` and `{{ instruction_ref("go-cli-commands") }}`
-- [ ] Map fixture, auth, emulator, and authenticated request needs
-- [ ] Confirm commands are development-only and block production targets
-
-### Phase 7: Docs / Product Decisions
+- [ ] Identify the modules/stacks the change provisions or alters
+- [ ] Document what is created, replaced or destroyed, and the blast radius of each
+- [ ] Confirm the application contracts it provisions for are settled first
+- [ ] Add the plan/preview command from the infra instruction files, and what a safe diff looks like
+{% endif %}
+### Docs / Product Decisions
 
 - [ ] Check `docs/roadmaps/mvp.md`, parent epic, and story scope
 - [ ] Identify product decisions that must be documented before implementation
@@ -180,42 +212,45 @@ After each refinement pass, provide:
 
 ### Summary Of Findings
 
+The blocks below show the *shape* of each section. Fill them with this repo's layers,
+paths and commands — the names in them are stand-ins, not a stack to plan for.
+
 ```text
-Area: {{ template.backend_layer_name | default("Go API") }} Service Layer
+Area: <layer> — <the part of it the story changes>
 Files analyzed: 5
 Key findings:
-- UpdateProfile is in {{ template.api_path | default("api") }}/internal/core/services/profile/service.go
-- Called by profile controller and tests
-- Existing update input omits several MVP fields
+- <the function the story changes> is in <its actual path>
+- Called by <its actual call sites>
+- <what the current implementation is missing for this story>
 
 Critical issues:
-- OpenAPI and generated Dart client must change before mobile can consume new fields
+- <the shared contract> must change before <the consumer> can use the new fields
 
 Next step:
-- Refine OpenAPI and Flutter provider sections
+- Refine the <contract> and <consumer> sections
 ```
 
 ### Plan Updates Made
 
 ```text
 Updated:
-- Current State Analysis: added actual controller/service/repository paths
-- Proposed Changes: replaced vague server-side wording with concrete {{ template.backend_layer_name | default("Go API") }} files
-- Verification Commands: copied Go and Flutter commands from the relevant instruction files
+- Current State Analysis: added the actual paths for every layer the story touches
+- Proposed Changes: replaced vague wording with concrete files
+- Verification Commands: copied the commands for each touched layer from its instruction files
 ```
 
 ### Open Questions Answered
 
 ```text
-Q: Where is the OpenRouter client initialized?
-A: {{ template.api_path | default("api") }}/internal/io/openai/client.go initializes the client and is used by the AI conversation service.
+Q: <the question the plan left open>
+A: <the answer, with the file that settles it>
 ```
 
 ### Remaining Risks Or Blockers
 
 ```text
-Risk: OpenAPI changes affect generated Go and Dart files.
-Mitigation: {{ template.backend_layer_name | default("Go API") }} OpenAPI generation must run before Flutter API client generation.
+Risk: <changing the shared contract regenerates artifacts on both sides>
+Mitigation: <which side regenerates first, and what breaks if the order is reversed>
 ```
 
 ## Completion Criteria
@@ -224,7 +259,7 @@ The plan is ready when:
 
 - [ ] All placeholders are replaced with actual paths, names, or explicit decisions.
 - [ ] Relevant function/provider/endpoint call sites have been searched and documented.
-- [ ] Cross-layer contracts are clear when {{ template.backend_layer_name | default("Go API") }} and {{ template.mobile_layer_name | default("Flutter app") }} both change.
+- [ ] Cross-layer contracts are clear wherever the story changes both sides of one.
 - [ ] Code generation inputs and outputs are identified.
 - [ ] Verification commands are copied from relevant instruction files where present.
 - [ ] Test scenarios cover happy paths, errors, edge cases, and integration boundaries.
@@ -247,19 +282,20 @@ Rewrite `docs/specs/<story-name>/plan-context.json` to match the refined plan �
 }
 ```
 
-- `services`: one entry per **service** (concrete deployable unit) the refined plan changes. Each has `repo` (workspace/CWD repo name), `path` (relative path from repo root to the service folder — e.g. `web`, `api`, `report`, `pulumi`, `.` for root), `type` (`go`, `react-router`, `svelte`, `flutter`, `terraform`, `docs`), `skills` (instruction short-names for that service), and `plan_file`. This is where a layer is pinned to *where* it lives — e.g. `react-router` → the `web/` folder.
+- `services`: one entry per **service** (concrete deployable unit) the refined plan changes. Each has `repo` (workspace/CWD repo name), `path` (relative path from repo root to the service folder — e.g. `web`, `api`, `report`, `pulumi`, `.` for root), `type` — the vocabulary the workflow understands is `go`, `react-router`, `svelte`, `flutter`, `terraform` and `docs`, and you pick from it only for the layers this repo actually has (`docs` for a documentation-only service) — `skills` (instruction short-names for that service), and `plan_file`. This is where a layer is pinned to *where* it lives — e.g. `react-router` → the `web/` folder.
 - `required_instructions` is the union of all services' `skills` (kept for backwards-compatible instruction resolution). Keep it in sync with the human-facing **Required Skill Files Read** section.
 
 If refinement changed scope, add/drop a `services` entry or adjust its `skills` — do not hand-author a flat `touched_layers` list (it is derived from `services`).
 
 ## Machine-Readable Result (required)
 
-After refining the plan artifacts, return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `plan_result` key — without it the node fails to parse and is retried:
+After refining the plan artifacts, return this exact JSON object as the LAST thing in your final response — these two keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{"plan_result": {"status": "done|blocked", "summary": "<one-line summary of the refinements, or the blocker>", "services": [{"repo": "acme", "path": "web", "type": "react-router"}, {"repo": "acme", "path": "api", "type": "go"}]}}
+{"status": "done|blocked", "summary": "<one-line summary of the refinements, or the blocker>"}
 ```
 
 - `status`: `"done"` when the plan is refined and ready for re-review, or `"blocked"` if refinement cannot proceed.
 - `summary`: a one-line description of what was refined (or the blocker).
-- `services`: the repo::service entries the refined plan changes (`repo` + `path` + `type`, matching the `services` array above). Re-emit this every time — the workflow derives the touched layers and per-service run/regression scope from it (no flat `touched_layers` needed).
+
+The services are **not** part of this reply. The workflow derives the touched layers and the per-service run/regression scope from the `services` array in `plan-context.json` — so a refinement that changed scope has to land there, in the file, or it does not land at all.

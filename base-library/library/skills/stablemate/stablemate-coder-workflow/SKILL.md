@@ -228,11 +228,16 @@ Ostler resolves slugs to canonical paths. Scripts call it instead of hardcoding 
 
 ### CLI Subcommands
 ```bash
+ostler path epic <epic>              # → docs/epics/<NNNN-epic>
 ostler path spec <slug>              # → docs/specs/<slug>
-ostler path story <epic> <slug>      # → docs/epics/<epic>/stories/<slug>/story.md
+ostler path story <epic> <slug>      # → docs/epics/<NNNN-epic>/stories/<slug>/story.md
 ostler path branch <slug>            # → <slug>  (bare id — already unique)
-ostler path branch <slug> --epic     # → feat/<slug>
+ostler path branch <slug> --epic     # → feat/<slug>  (the epic's number is dropped)
 ```
+
+Epic directories carry their creation order (`0001-checkout-flow`), which is exactly why nothing
+here joins `docs/epics/<epic>` by hand — the commands above take the bare slug and return the
+folder that exists.
 
 All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs_root>` when not running from the docs repo CWD.
 
@@ -251,6 +256,8 @@ try:
     story_path_rel = okf.story_path(epic, slug)
 except (OSError, ValueError, RuntimeError):    # an unloadable graph raises; [] means empty
     story_path_rel = ""
+# Last resort only: this assumes an *unnumbered* epic folder, which ostler stopped creating,
+# so it is right only for a docs tree ostler could not read at all.
 story_path_rel = story_path_rel or f"docs/epics/{epic}/stories/{slug}/story.md"
 ```
 

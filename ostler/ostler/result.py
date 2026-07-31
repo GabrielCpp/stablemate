@@ -18,3 +18,7 @@ class Result:
     message: str
     paths: list[Path] = field(default_factory=list)
     entity_id: str = ""   # the allocated id, for create commands (consumed via --json)
+    # The name the writer actually used, when it may differ from the one asked for: an epic
+    # is created into a numbered directory (`0001-checkout-flow`), and the caller that has
+    # to write files under it needs the name that exists, not the slug it proposed.
+    entity_name: str = ""

@@ -516,6 +516,17 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::loadTraces
 - screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-slower-than-input.png
 
+### telemetry-show-ended-checkbox
+
+- selector: `#traces-filter input[name="show_ended"]`
+- role: checkbox
+- name: `show ended`
+- keyboard: natively focusable with Tab; Space toggles it, which re-queries.
+- parent: [groom dashboard](#groom-dashboard)
+- states: unchecked by default, which is the connected-runs-only view; checked sends `show_ended=1` and the pane also shows runs that have finished or gone silent.
+- code: groom/groom/assets/dashboard.js::loadTraces
+- dom: a native `<input type="checkbox">` inside its own `<label>`, so the visible text is the accessible name and clicking the text toggles it. Unchecked, the field is simply absent from the serialized form — which is the same thing an omitted query parameter means to the server, so the default view needs no client-side special case.
+
 ### telemetry-traces-table
 
 - selector: `#traces-list table.traces`
@@ -523,7 +534,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: none
 - keyboard: not focusable; the cells are selectable text.
 - parent: [groom dashboard](#groom-dashboard)
-- states: `No telemetry yet.` before the first query; `failed to load` on rejection; a run-card strip with `No spans match — …` when runs are known but no span matches; otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
+- states: `No telemetry yet.` before the first query; `failed to load` on rejection; `No run is connected right now. Tick show ended to read the runs that already finished.` when the connected-only view is empty; a run-card strip with `No spans match — …` when runs are known but no span matches; otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
 - code: groom/groom/assets/dashboard.js::Traces
 - code: groom/groom/assets/dashboard.js::RunCard
 - dom: a real `<table>` with a `<thead>` row of `<th>` cells, so the columns are announced as headers rather than as a grid of unlabelled text. Rows with an `ERROR` status carry an extra class on the status cell only.
@@ -758,12 +769,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="telemetry"`.
-  - The four span-filter fields hold whatever the operator last typed; they are shell markup and are not cleared by a mode switch.
+  - The span-filter fields hold whatever the operator last typed or ticked; they are shell markup and are not cleared by a mode switch.
 - does:
   - Writes `telemetry` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
   - Enters the traces loader, unconditionally, so reselecting the control re-queries.
-  - Serializes the four filter fields into a query string and sends `GET /traces` with it.
-  - Stores the response's run cards and span rows, which the pane renders as the card strip and the traces table; an empty span list renders the no-match note under the strip.
+  - Serializes the filter fields into a query string and sends `GET /traces` with it.
+  - Stores the response's run cards and span rows, which the pane renders as the card strip and the traces table; an empty span list renders the no-match note under the strip, or the not-connected note when `show ended` is unticked and no run came back.
   - Stores an error status on a rejected fetch, which the pane renders as `failed to load`.
   - Leaves the selected run, the fleet, the detail pane, the files and diff caches, the palette, and the socket untouched.
 - code: groom/groom/assets/dashboard.js::setMode
@@ -1172,7 +1183,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 ### filter-telemetry-spans
 
 - on: [telemetry-status-filter-select](#telemetry-status-filter-select)
-- trigger: an `input`, `change`, or `submit` event anywhere in the telemetry filter form — typing in any of the three text fields, changing the status select, or pressing Enter.
+- trigger: an `input`, `change`, or `submit` event anywhere in the telemetry filter form — typing in any of the three text fields, changing the status select, ticking the `show ended` checkbox, or pressing Enter.
 - role: combobox
 - name: `Filter by span status`
 - keyboard: Tab reaches each field in turn; ArrowUp and ArrowDown change the select; Enter submits, which is intercepted rather than navigating.
@@ -1180,9 +1191,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Telemetry mode is active.
 - does:
   - Prevents the form's default submission, so the page never navigates.
-  - Serializes all four fields — run id, node, span status, and minimum duration in seconds — into a query string and sends `GET /traces` with it. Empty fields are sent as empty values and ignored by the server.
+  - Serializes the fields — run id, node, span status, minimum duration in seconds, and the `show ended` checkbox when it is ticked — into a query string and sends `GET /traces` with it. Empty fields are sent as empty values and ignored by the server; an unticked checkbox is not sent at all, which the server reads as the connected-runs-only default.
   - Stores the returned run cards and span rows, replacing the previous result wholesale.
-  - Renders the run-card strip above the table, and the no-match note beneath it when runs are known but no span survives the filter.
+  - Renders the run-card strip above the table, and beneath it the no-match note when runs are known but no span survives the filter, or the not-connected note when the connected-only view came back empty.
   - Stores an error status on rejection, rendered as `failed to load`.
   - Re-queries on every keystroke, without debounce; the query is served from groom's local span store rather than from a remote backend.
   - Leaves the selected run, the fleet, and the detail pane untouched.

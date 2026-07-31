@@ -30,8 +30,8 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 
 | `type` | Location | Identity | Required frontmatter |
 |---|---|---|---|
-| `epic` | `docs/epics/<epic>/epic.md` | `<epic>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
+| `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
@@ -81,7 +81,16 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 All read commands accept `--json`. Mutating commands allocate ids as needed and write canonical
 markdown in place.
 
-**Global**: `ostler --version`, `ostler -C/--chdir DIR <command> …`
+**Global**: `ostler --version`, `ostler -C/--chdir DIR <command> …`, `ostler --handles|--full-ids …`
+
+**Short handles.** An id is `<PREFIX>-<26-char ULID>`; ostler abbreviates it git-style to
+`<PREFIX>-<6+ chars>` — the shortest slice unambiguous in this repo. Human output prints handles by
+default, `--json` prints full ids (a program wants the identity that never changes); `--handles` /
+`--full-ids` override either. A handle is accepted **wherever a command takes an id**, in either
+mode — `trace`, `query`, `create story --covers`, `seed add/remove`, `backlog prune`,
+`freeze`/`unfreeze` — so a token copied out of one command goes into the next. Never write a handle
+into a document: it lengthens as soon as a colliding id is minted. From Python, `okf.handle(id)` /
+`okf.handles()` render and `okf.expand(token)` resolves.
 
 **Inspect**
 ```bash
@@ -118,8 +127,13 @@ ostler graph --orphans                           # nodes no edge points to (unre
 ```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
-ostler path spec <slug> | story <epic> <slug> | branch <slug> [--epic] [--is_epic emits feat/<slug>]
+ostler path epic <epic> | spec <slug> | story <epic> <slug> | branch <slug> [--epic] [--is_epic emits feat/<slug>]
 ```
+
+Epic directories are numbered in creation order — `create epic checkout-flow` writes
+`docs/epics/0001-checkout-flow/` — so ask `path epic` instead of joining `docs/epics/<slug>`.
+The number orders the listing and is **not** the identity (that is the minted `id`), so every
+command still takes the bare slug, and `path branch` drops it (`feat/checkout-flow`).
 
 **Mutate** (allocates ids, writes markdown)
 ```bash
@@ -136,7 +150,8 @@ ostler set-status  <story> <status>
 ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
 ```
-`create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
+`create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>", "message": "…"}`
+— for `create epic`, `name` is the numbered directory it wrote; read it back rather than guessing the number.
 
 **Repair / approve**
 ```bash
@@ -203,7 +218,8 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
 | `todo list` / `backlog list` | `okf.todo() -> list[str]` / `okf.backlog() -> list[dict]` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> dict` (the report `.as_dict()`) |
-| `path spec S` / `path story E S` / `path branch S` | `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
+| `path epic E` / `path spec S` / `path story E S` / `path branch S` | `okf.epic_path("E")` / `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
+| `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
 | `create epic/story` · `seed add` · `set-status` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(slug, status)` → `Result` |
 | `backlog add/prune` · `todo add/prune/reorder` | `okf.backlog_add/backlog_prune` · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
 | `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
@@ -237,9 +253,12 @@ the check.
 
 ## Id allocation, profiles, templates
 
-- Ostler owns `.agents/ids.json` (`{prefix, counter, frozen}`) — `create epic|story|feature`
-  atomically allocates the next `<prefix>-<n>`, scaffolds the markdown, and (for stories) inserts
-  the `### <slug>` block into the epic's `## Stories`. There is no external id allocator.
+- Ostler owns `.agents/ids.json` (`{prefix, frozen}`) — `create epic|story|feature` allocates an id,
+  scaffolds the markdown, and (for stories) inserts the `### <slug>` block into the epic's
+  `## Stories`. There is no external id allocator.
+- An id is `<PREFIX>-<ULID>`: the repo prefix plus 26 Crockford-Base32 chars (ms timestamp + 80 bits
+  of randomness). It sorts by mint time and needs no coordination, so parallel worktrees can't
+  collide. Older `<prefix>-<n>` counter ids keep resolving — an id is an opaque string.
 - Profile is inferred from the tree: `full` when `docs/epics` exists (the epic/story/seed/knowledge
   coverage graph), `exploration` otherwise (knowledge/docs only, no coverage graph). Override via an
   `organization:` block in `ostler.yml`/`agents.yml`.

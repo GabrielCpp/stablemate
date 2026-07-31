@@ -45,11 +45,14 @@ and collected in Step 4b; do not re-derive them.
 
 #### 3a. Instruction Compliance
 
-- Read the relevant coding-standard files for each affected repo:
-  - **api-service (Go):** `.claude/skills/api-service/SKILL.md` plus any domain skills (`api-service-db`, `api-service-test`, `api-service-events`, `api-service-grpc`, etc.) relevant to the changed files
-  - **mobile-app (Dart/Flutter):** `.claude/skills/mobile-app/SKILL.md` (if applicable)
-  - **web-app (TypeScript/Svelte):** `.claude/skills/web-app/SKILL.md` (if applicable)
-  - Any other repo-specific skills listed in that repo's CLAUDE.md
+- Read the coding-standard files that govern the changed code. Take the list from the
+  repo itself, not from memory:
+  - the `skills` on each service entry in `plan-context.json` — that is the set the
+    implementer was held to, so it is the set to review against
+  - any further skills those files themselves point at for the areas the diff touches
+  - any other repo-specific standards listed in that repo's `AGENTS.md`/`CLAUDE.md`
+  - if a repo names no skills for a changed file, say so in the review rather than
+    substituting conventions from a stack this repo does not use
 - Verify naming conventions, code structure, and patterns match the documented standards
 - Identify any violations with specific file and line references; explain which rule was broken
 
@@ -65,11 +68,22 @@ and collected in Step 4b; do not re-derive them.
 
 #### 3c. Framework Best Practices
 
-For the specific framework of the affected repo:
+Judge each changed service against **its own** framework's idioms, as its instruction
+files define them — the specifics belong in those files, not in this prompt. The
+questions to carry into every one of them:
 
-- **Go (api-service):** Error wrapping, early returns, function length, constant extraction, `util.Ptr()`, DynamoDB reserved-word prefixes, proto enum UNSPECIFIED values
-- **Dart/Flutter (mobile-app):** Widget composition, state management, performance (const constructors, unnecessary rebuilds), null safety, async patterns
-- **TypeScript/Svelte (web-app):** Type safety, reactive patterns, component decomposition, store usage
+- **Idiom:** does the code express itself the way this framework's own docs and this
+  repo's existing code do, or is it a transliteration from another language?
+- **Errors and edges:** are failures wrapped/propagated the way the framework expects,
+  and are the null/empty/loading/absent cases handled rather than assumed away?
+- **Structure:** is the unit of composition the framework's own (module, component,
+  handler, widget) at a size the repo's other code uses?
+- **State and data flow:** is state held where this framework says it belongs, and does
+  it flow one way?
+- **Cost:** does the change do avoidable work per request, per render, or per item?
+
+Cite the rule you are applying and the file it comes from. A finding with no rule
+behind it is a preference, and belongs in 3b at most.
 
 ### 4a. Collect Automated Code-Review Findings
 
@@ -188,10 +202,8 @@ Return this JSON as your final response:
 
 ```json
 {
-  "review_impl_result": {
-    "status": "approved" | "needs_changes",
-    "notes": "<brief summary of findings from all three review passes, or 'No issues found.'>"
-  }
+  "status": "approved" | "needs_changes",
+  "notes": "<brief summary of findings from all three review passes, or 'No issues found.'>"
 }
 ```
 

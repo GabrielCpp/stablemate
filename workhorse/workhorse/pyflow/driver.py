@@ -21,12 +21,13 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
+from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
 from workhorse.pyflow.errors import WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
-from workhorse.records import Checkpoint, PyflowCheckpoint
+from workhorse.records import Checkpoint, PyflowCheckpoint, parse_checkpoint
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
@@ -204,11 +205,56 @@ def _ask(path: Path, questions: str, log: logging.Logger) -> float | None:
     return _mtime(path)
 
 
-def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
-    """Run `wf` to a `Done`, returning its result."""
+def _resume_in_place(wf: Workflow, env: RunEnv) -> Resume | None:
+    """A sub-flow's own checkpoint, read back because its parent is re-entering it.
+
+    Only `handoff` asks for this, and only for the state a resume re-entered. Three
+    things have to agree before the checkpoint is adopted, because the same file is
+    also what a *finished* visit leaves behind: it has to be a pyflow checkpoint, it
+    has to name this class, and its inputs have to be the ones this invocation was
+    constructed with. The last is what keeps a loop that runs the same flow per story
+    from resuming story A's checkpoint into story B.
+
+    Every disagreement — including an unreadable file — starts the child clean rather
+    than raising: a resume that cannot reuse the child's progress is slower, and one
+    that cannot start at all is a dead unattended run.
+    """
+    path = env.run_dir / ArtifactWriter.CHECKPOINT_FILE
+    try:
+        checkpoint = parse_checkpoint(path.read_text())
+    except (OSError, ValidationError) as exc:
+        if path.exists():
+            env.log.warning("[workhorse] ignoring unreadable sub-flow checkpoint: %s", exc)
+        return None
+    flow_name = type(wf).__name__
+    if not isinstance(checkpoint, PyflowCheckpoint) or checkpoint.flow != flow_name:
+        env.log.info("[workhorse] %s starts fresh: its checkpoint is another flow's", flow_name)
+        return None
+    if checkpoint.inputs != wf.model_dump(mode="json"):
+        env.log.info(
+            "[workhorse] %s starts fresh: its checkpoint belongs to a different "
+            "invocation of the same flow",
+            flow_name,
+        )
+        return None
+    return read_resume(checkpoint)
+
+
+def drive(
+    wf: Workflow, env: RunEnv, resume: Resume | None = None, *, resume_in_place: bool = False
+) -> Any:
+    """Run `wf` to a `Done`, returning its result.
+
+    `resume_in_place` is the sub-flow spelling of `resume`: the caller has no
+    checkpoint in hand, only the knowledge that this flow is being re-entered after a
+    kill, so the checkpoint is read from the scope the child writes into.
+    """
     if env.driver is None:
         env.driver = drive
     wf._bind(Engine(env))
+
+    if resume is None and resume_in_place:
+        resume = _resume_in_place(wf, env)
 
     if resume is not None:
         wf._seal(_revive_ctx(wf, resume.ctx))
@@ -218,6 +264,7 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
         wf._seal(wf.setup())
         state, params = wf.start_state, {}
 
+    resuming = resume is not None
     inputs = wf.model_dump(mode="json")
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
@@ -241,7 +288,12 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
             spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
         env.log.info("[workhorse] state  → %s", spec.name)
+        # Armed for the resumed state only — see `RunEnv.resume_pending`. A state
+        # further along the run is being entered for the first time, and a handoff it
+        # makes is a fresh invocation whatever a stale child checkpoint says.
+        env.resume_pending = resuming
         outcome = bound(**kwargs)
+        resuming = env.resume_pending = False
 
         if isinstance(outcome, Done):
             env.writer.write_final_context({"result": _result_payload(outcome.result)})

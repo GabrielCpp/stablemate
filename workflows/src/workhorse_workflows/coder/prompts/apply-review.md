@@ -37,7 +37,7 @@ Read:
 - the parent `epic.md`
 - the plan artifacts under `docs/specs/<story-name>/`
 - `review.md`
-- relevant instruction files for touched layers, for example `{{ instruction_ref("go") }}`, `{{ instruction_ref("go-testing") }}`, `{{ instruction_ref("go-cli") }}`, `{{ instruction_ref("go-cli-commands") }}`, `{{ instruction_ref("flutter") }}`, `{{ instruction_ref("flutter-architecture") }}`, `{{ instruction_ref("flutter-api") }}`, `{{ instruction_ref("flutter-testing") }}`, or `{{ instruction_ref("pulumi") }}`
+- the instruction files for the layers you touched, from those this repository installs: {{ instruction_refs("go", "go-architecture", "go-testing", "go-cli", "go-cli-commands", "react-router", "react-router-architecture", "react-router-qa", "flutter", "flutter-architecture", "flutter-api", "flutter-testing", "pulumi") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
 
 ## Goal
 
@@ -49,9 +49,13 @@ Resolve the findings in `review.md` without adding new story scope.
 - Do not implement optional suggestions unless they are necessary to satisfy acceptance criteria.
 - Do not broaden the plan without stopping to report a blocker.
 - Add or update tests for fixes that affect behavior.
-- For Go test changes, load and follow `{{ instruction_ref("go-testing") }}` and relevant {{ template.backend_layer_name | default("Go API") }} or Go CLI instruction files.
-- If skills are available, explicitly use the generated Go testing skill before writing or updating Go tests. Do not rely only on automatic path matching.
-- Treat `{{ instruction_ref("go-testing") }}` as the canonical source for Go test naming, integration-test shape, fixtures, `require` usage, and context rules. Fix review findings that identify drift from `go.testing`; if this prompt appears to disagree with `go.testing`, follow `go.testing` and update this prompt.
+- Before changing a layer's tests, load and follow **that layer's testing instruction
+  file** from the list above. Load it explicitly; do not rely on automatic path matching.
+- Treat that file as the canonical source for the layer's test naming, fixtures,
+  integration-test shape and assertion conventions. Fix review findings that identify
+  drift from it; where this prompt appears to disagree with it, follow it and say so in
+  the summary. A layer with no testing skill in the list above has none in this repo —
+  follow the conventions its existing tests already establish.
 - Run the narrowest relevant verification after each fix, then final verification for touched layers.
 - If a full-layer lint/analyze gate fails only because of pre-existing repository-wide diagnostics outside the story diff, run the narrowest scoped lint/analyze command available for touched files or packages. Mark that review finding resolved for this story when touched files/packages are clean, and document the unrelated full-layer debt in `review.md` without blocking the story.
 - Preserve unrelated user changes.
@@ -168,12 +172,11 @@ Stop and report a blocker if:
 
 ## Return Format
 
-Return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `impl_result` key (this is how the workflow records the result) — without the `impl_result` wrapper the node fails to parse and is retried:
+Return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{"impl_result": {"status": "applied|no_changes_needed|blocked", "notes": "Summary of fixes applied or reason no changes were needed"}}
+{"status": "applied|no_changes_needed|blocked", "notes": "Summary of fixes applied or reason no changes were needed"}
 ```
 
-- Wrap the result under an `impl_result` key.
 - **status**: `"applied"` when fixes are made, `"no_changes_needed"` if the review had no required findings to fix, or `"blocked"` if a finding could not be resolved.
 - **notes**: A brief summary of what was fixed or what the review verdict was.

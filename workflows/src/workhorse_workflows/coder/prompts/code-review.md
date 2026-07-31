@@ -40,20 +40,18 @@ Return this JSON as your final response:
 
 ```json
 {
-  "code_review_result": {
-    "status": "findings" | "clean" | "skipped",
-    "findings": [
-      {
-        "repo": "<repo directory name>",
-        "file": "<path relative to that repo>",
-        "line": 0,
-        "issue": "<what is wrong>",
-        "required_fix": "<what to change>",
-        "score": 0
-      }
-    ],
-    "findings_summary": "<one-sentence summary of what was flagged, or 'No issues found.', or 'No local changes to review.'>"
-  }
+  "status": "findings" | "clean" | "skipped",
+  "findings": [
+    {
+      "repo": "<repo directory name>",
+      "file": "<path relative to that repo>",
+      "line": 0,
+      "issue": "<what is wrong>",
+      "required_fix": "<what to change>",
+      "score": 0
+    }
+  ],
+  "findings_summary": "<one-sentence summary of what was flagged, or 'No issues found.', or 'No local changes to review.'>"
 }
 ```
 
