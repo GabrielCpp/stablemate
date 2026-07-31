@@ -199,7 +199,7 @@ cat .agents/runs/hello-world-*/greet/prompt.md
 uv run workhorse dot hello-world           # the same machine as a graphviz diagram
 ```
 
-Now read the source, which is 60 lines and commented to be read in this order:
+Now read the source, which is under 90 lines and commented to be read in this order:
 [`workflows/src/workhorse_workflows/hello_world/workflow.py`](workflows/src/workhorse_workflows/hello_world/workflow.py).
 Copy that directory, rename it, and give it an entry point of its own —
 [Shipping your own, outside this repo](workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo)
