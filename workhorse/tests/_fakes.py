@@ -76,13 +76,24 @@ class FakeClock:
         # A fixed, unremarkable instant so a test that prints the resume time reads the
         # same on every machine; tests that care state their own.
         self._now = now or datetime(2026, 1, 1, 12, 0, 0)
+        self._elapsed = 0.0
         self.slept: list[float] = []
 
     def now(self) -> datetime:
         return self._now
 
+    def monotonic(self) -> float:
+        """Elapsed seconds since this clock's own zero, moved only by ``sleep``.
+
+        Deliberately not derived from the wall clock a test may have set to an
+        arbitrary instant: what a caller measures with this is a duration, so it
+        starts at zero and advances only when the test says time passed.
+        """
+        return self._elapsed
+
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
+        self._elapsed += seconds
         self._now += timedelta(seconds=seconds)
 
 

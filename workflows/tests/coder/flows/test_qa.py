@@ -132,7 +132,7 @@ def web(
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> Path:
     """A real `web` repo carrying a `Makefile`, and a plan that names it.
 
@@ -150,7 +150,7 @@ def web(
     git(path, "add", "-A")
     git(path, "commit", "-qm", "Initial commit")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "web", "path": "web"}]}))
-    monkeypatch.setenv("CODER_WORKSPACE", str(root / "acme.code-workspace"))
+    ambient["workspace_file"] = str(root / "acme.code-workspace")
     return path
 
 

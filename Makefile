@@ -27,6 +27,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C groom test
 	$(MAKE) test-bench
 	$(MAKE) check-public
+	$(MAKE) check-no-env
 
 .PHONY: test-bench
 test-bench: ## Run the benchmark harness's own tests (its scoring must be trustworthy)
@@ -47,6 +48,12 @@ check-public: ## Guard the public/private split (no private names; the base stan
 	# is configured and shadows everything: a private name reaching this public repo,
 	# and a base skill/workflow quietly depending on the overlay.
 	uv run python scripts/check_public.py
+
+.PHONY: check-no-env
+check-no-env: ## Guard the no-environment rule (a workflow's inputs are parameters)
+	# A value read from os.environ is in no checkpoint and no telemetry, so a resume
+	# silently takes a different one and nobody can tell what the run worked on.
+	uv run python scripts/check_no_env.py
 
 .PHONY: build
 build: ## Build sdists + wheels (into each package's dist/)

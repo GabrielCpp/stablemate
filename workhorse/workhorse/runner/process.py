@@ -10,12 +10,13 @@ import shutil
 import signal
 import subprocess
 import threading
-import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from workhorse import otel
 from workhorse.config_run import AgentResilience
+from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 
 
@@ -74,20 +75,6 @@ class ActiveProcess:
             proc.wait()
 
 
-# One registry per process because there is one interrupt handler per process; what
-# is process-wide is this *reference*, not the state itself.
-_active = ActiveProcess()
-
-
-def terminate_active() -> None:
-    """Terminate the currently-streaming agent subprocess (and its group), if any.
-
-    Called by the main loop's KeyboardInterrupt handler so the child process tree is
-    cleaned up before workhorse exits, rather than being left as an orphan.
-    """
-    _active.terminate()
-
-
 def _arm_watchdog(
     proc: subprocess.Popen,
     node_id: str,
@@ -142,77 +129,246 @@ def _arm_watchdog(
 _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
 
 
-def _spawn_streaming(
-    cmd: list[str],
-    node_id: str,
-    *,
-    resilience: AgentResilience,
-    **popen_kwargs: Any,
-) -> subprocess.Popen:
-    """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window.
+@dataclass(frozen=True, slots=True)
+class ProcessSupervisor:
+    """The agent subprocess a run is currently streaming, and the clock timing it.
 
-    A transient exec failure (the CLI binary being rewritten in place by its own
-    auto-updater) is retried briefly so a healthy turn is not interrupted; a
-    permanently-missing CLI fails fast with an actionable ``BackendInvocationError``.
-    Both terminal cases raise ``BackendInvocationError`` (never a bare ``OSError``) so
-    they flow through the caller's existing ladder rather than crashing the run: a slow
-    update escalates as ``transient=True`` (the outer backoff gives it more time); an
-    absent CLI is ``transient=False`` (fail fast, resumable).
+    Two fields, and each is a reason this is an object rather than the module-level
+    state and free functions it replaces. ``active`` is state with an invariant: the
+    live handle and the lock guarding it are written by the stream loop and read by
+    the interrupt handler on a *different thread*, so they are one object or they
+    are a race. ``clock`` is the seam: the streaming path waits in exactly two
+    places — a turn's deadline and the exec-retry backoff — and a test that wants to
+    watch a timeout fire should not have to wait out a real one.
+
+    ``resilience`` is not a field, deliberately. It is a parameter of the
+    ``AgentBackend`` port, so it arrives with each turn from the ladder that owns it;
+    making it state here would mean two copies of one run's settings, and the port
+    would still carry the other.
     """
-    attempt = 0
-    while True:
-        try:
-            return subprocess.Popen(cmd, **popen_kwargs)
-        except OSError as exc:
-            # ETXTBSY/ENOEXEC/ESTALE mean the binary is momentarily busy / half-written /
-            # stale — present but not runnable this instant. ENOENT is
-            # AMBIGUOUS at a single instant: a self-updater's rename makes the binary
-            # briefly *absent*, and shutil.which() is exactly as blind as exec() during
-            # that window — so one probe cannot tell "mid-update" from "never installed".
-            # We therefore resolve ENOENT in TIME, not by probing once: retry it briefly.
-            # A self-update reappears within a second or two; a genuinely absent CLI never
-            # does, and only then (after the retries) do we fail. Other OSErrors — e.g.
-            # EACCES (permission) — are permanent, so they go terminal immediately.
-            retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
-            attempt += 1
-            if retryable and attempt <= resilience.exec_retry_max:
-                delay = min(
-                    resilience.exec_retry_base_s * (2 ** (attempt - 1)),
-                    resilience.exec_retry_cap_s,
+
+    clock: Clock = SYSTEM_CLOCK
+    active: ActiveProcess = field(default_factory=ActiveProcess)
+
+    def terminate_active(self) -> None:
+        """Terminate the currently-streaming agent subprocess (and its group), if any.
+
+        Called by the main loop's KeyboardInterrupt handler so the child process tree
+        is cleaned up before workhorse exits, rather than being left as an orphan.
+        """
+        self.active.terminate()
+
+    def spawn(
+        self,
+        cmd: list[str],
+        node_id: str,
+        *,
+        resilience: AgentResilience,
+        **popen_kwargs: Any,
+    ) -> subprocess.Popen:
+        """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window.
+
+        A transient exec failure (the CLI binary being rewritten in place by its own
+        auto-updater) is retried briefly so a healthy turn is not interrupted; a
+        permanently-missing CLI fails fast with an actionable ``BackendInvocationError``.
+        Both terminal cases raise ``BackendInvocationError`` (never a bare ``OSError``) so
+        they flow through the caller's existing ladder rather than crashing the run: a slow
+        update escalates as ``transient=True`` (the outer backoff gives it more time); an
+        absent CLI is ``transient=False`` (fail fast, resumable).
+        """
+        attempt = 0
+        while True:
+            try:
+                return subprocess.Popen(cmd, **popen_kwargs)
+            except OSError as exc:
+                # ETXTBSY/ENOEXEC/ESTALE mean the binary is momentarily busy / half-written /
+                # stale — present but not runnable this instant. ENOENT is
+                # AMBIGUOUS at a single instant: a self-updater's rename makes the binary
+                # briefly *absent*, and shutil.which() is exactly as blind as exec() during
+                # that window — so one probe cannot tell "mid-update" from "never installed".
+                # We therefore resolve ENOENT in TIME, not by probing once: retry it briefly.
+                # A self-update reappears within a second or two; a genuinely absent CLI never
+                # does, and only then (after the retries) do we fail. Other OSErrors — e.g.
+                # EACCES (permission) — are permanent, so they go terminal immediately.
+                retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
+                attempt += 1
+                if retryable and attempt <= resilience.exec_retry_max:
+                    delay = min(
+                        resilience.exec_retry_base_s * (2 ** (attempt - 1)),
+                        resilience.exec_retry_cap_s,
+                    )
+                    code = errno.errorcode.get(exc.errno, str(exc.errno))
+                    print(
+                        f"[{node_id}] ⏳ agent CLI '{cmd[0]}' unavailable ({code}) — likely "
+                        f"self-updating; retry {attempt}/{resilience.exec_retry_max} "
+                        f"in {int(delay)}s",
+                        flush=True,
+                    )
+                    otel.turn_event(
+                        "exec_retry", node=node_id, attempt=attempt, code=code, delay_s=int(delay)
+                    )
+                    self.clock.sleep(delay)
+                    continue
+                # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
+                # has had time to close. A CLI that resolves but still won't exec means the
+                # update outlasted our budget → hand to the outer transient ladder (more
+                # time). One that STILL does not resolve is genuinely absent (the classic
+                # non-interactive-PATH / missing-nvm launch bug) → fail fast, non-transient.
+                resolves = shutil.which(cmd[0]) is not None
+                if retryable and resolves:
+                    raise BackendInvocationError(
+                        f"agent CLI '{cmd[0]}' still not exec'able after "
+                        f"{resilience.exec_retry_max} retries ({exc}); likely a slow self-update",
+                        transient=True,
+                    ) from exc
+                hint = (
+                    " — a non-interactive shell does not load nvm; install the CLI on a "
+                    "stable PATH or export it before launching workhorse"
+                    if not resolves else ""
                 )
-                code = errno.errorcode.get(exc.errno, str(exc.errno))
-                print(
-                    f"[{node_id}] ⏳ agent CLI '{cmd[0]}' unavailable ({code}) — likely "
-                    f"self-updating; retry {attempt}/{resilience.exec_retry_max} "
-                    f"in {int(delay)}s",
-                    flush=True,
-                )
-                otel.turn_event(
-                    "exec_retry", node=node_id, attempt=attempt, code=code, delay_s=int(delay)
-                )
-                time.sleep(delay)
-                continue
-            # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
-            # has had time to close. A CLI that resolves but still won't exec means the
-            # update outlasted our budget → hand to the outer transient ladder (more
-            # time). One that STILL does not resolve is genuinely absent (the classic
-            # non-interactive-PATH / missing-nvm launch bug) → fail fast, non-transient.
-            resolves = shutil.which(cmd[0]) is not None
-            if retryable and resolves:
                 raise BackendInvocationError(
-                    f"agent CLI '{cmd[0]}' still not exec'able after "
-                    f"{resilience.exec_retry_max} retries ({exc}); likely a slow self-update",
-                    transient=True,
+                    f"agent CLI '{cmd[0]}' could not be launched: {exc}{hint}.",
+                    transient=False,
                 ) from exc
-            hint = (
-                " — a non-interactive shell does not load nvm; install the CLI on a "
-                "stable PATH or export it before launching workhorse"
-                if not resolves else ""
-            )
-            raise BackendInvocationError(
-                f"agent CLI '{cmd[0]}' could not be launched: {exc}{hint}.",
-                transient=False,
-            ) from exc
+
+
+    def stream(
+        self,
+        cmd: list[str],
+        node_id: str,
+        timeout: float,
+        on_line: "Callable[[str], None]",
+        *,
+        resilience: AgentResilience,
+        stdin_data: str | None = None,
+        cwd: str | None = None,
+        env_extra: dict[str, str] | None = None,
+    ) -> tuple[bool, int]:
+        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to
+        ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an
+        out-of-band watchdog that SIGKILLs the whole process group once a turn overruns
+        ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged
+        stream (a stalled API response or a hung MCP server), which the in-loop check alone
+        can never catch.
+
+        Every harness — Claude, Codex, Copilot, OpenCode, aider — streams through this one
+        path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
+        browser / JVM grandchildren), and the active-process registration behave identically
+        regardless of backend. ``on_line`` receives each raw line (newline included) and does
+        its own parsing/accumulation. Returns ``(timed_out, returncode)``.
+
+        ``env_extra`` layers over the inherited environment — the operator's
+        ``[harness.<backend>].env`` table, resolved by the backend that knows its own
+        name. It is applied last, so a harness knob configured for a run wins over the
+        same variable inherited from the launching shell.
+        """
+        env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
+        proc = self.spawn(
+            cmd,
+            node_id,
+            resilience=resilience,
+            stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
+            text=True,
+            bufsize=1,
+            cwd=cwd or None,
+            env=env,
+            # Own process group/session so the watchdog can reap the agent AND every MCP
+            # server / browser / JVM it spawns, instead of orphaning grandchildren.
+            start_new_session=True,
+        )
+        if stdin_data is not None:
+            assert proc.stdin is not None
+            proc.stdin.write(stdin_data)
+            proc.stdin.close()
+
+        self.active.set(proc)
+
+        fired = threading.Event()
+        watchdog = _arm_watchdog(
+            proc,
+            node_id,
+            timeout,
+            resilience=resilience,
+            on_fire=fired.set,
+        )
+        timed_out = False
+        assert proc.stdout is not None
+        try:
+            start = self.clock.monotonic()
+            last_line_at = start
+            last_beat_at = start
+            while True:
+                now = self.clock.monotonic()
+                elapsed = now - start
+                if elapsed > timeout:
+                    timed_out = True
+                    break
+                # Liveness telemetry, emitted here at the top so it also ticks while the
+                # stream is SILENT — the wedged case, and the only one worth paging on.
+                # The turn's own span cannot report this: it does not export until it ends.
+                if now - last_beat_at >= resilience.heartbeat_every_s:
+                    otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
+                    last_beat_at = now
+                # Short select slices keep the in-loop wall-clock check live for a cleanly
+                # arriving stream; the watchdog is the backstop for a stream that wedges
+                # mid-line (where readline() below would otherwise block past the deadline).
+                ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
+                if not ready:
+                    if proc.poll() is not None:
+                        break
+                    continue
+                raw = proc.stdout.readline()
+                if not raw:  # EOF
+                    break
+                last_line_at = self.clock.monotonic()
+                if on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
+                    timed_out = True
+                    break
+            # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
+            # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
+            timed_out = timed_out or fired.is_set()
+            if timed_out and proc.poll() is None:
+                _kill_process_group(proc, signal.SIGTERM)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _kill_process_group(proc, signal.SIGKILL)
+            proc.wait()
+        finally:
+            if watchdog is not None:
+                watchdog.cancel()
+            self.active.clear()
+            # Backstop orphan reap: if the agent is somehow still alive on exit, take its
+            # whole group down so no MCP server / browser lingers into the next node.
+            if proc.poll() is None:
+                _kill_process_group(proc, signal.SIGKILL)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        return timed_out, proc.returncode
+
+
+#: The process's supervisor. There is one interrupt handler per process, and it must
+#: reach the very subprocess the stream loop registered, so what is process-wide is
+#: this *reference* — held here and only here. Built from the real clock, because the
+#: production answer needs no configuration; a test swaps the whole supervisor through
+#: ``install`` rather than assigning over the name.
+_supervisor = ProcessSupervisor()
+
+
+def install(supervisor: ProcessSupervisor) -> ProcessSupervisor:
+    """Make ``supervisor`` the one the two functions below delegate to, and return the
+    previous one so a caller can put it back.
+
+    The injection point for the streaming path: a test installs a supervisor on a
+    ``FakeClock`` and gets the deadline logic without waiting out a real deadline.
+    """
+    global _supervisor
+    previous, _supervisor = _supervisor, supervisor
+    return previous
 
 
 def stream_subprocess(
@@ -226,108 +382,29 @@ def stream_subprocess(
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> tuple[bool, int]:
-    """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to
-    ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an
-    out-of-band watchdog that SIGKILLs the whole process group once a turn overruns
-    ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged
-    stream (a stalled API response or a hung MCP server), which the in-loop check alone
-    can never catch.
+    """Stream a turn on the installed supervisor — see :meth:`ProcessSupervisor.stream`.
 
-    Every harness — Claude, Codex, Copilot, OpenCode, aider — streams through this one
-    path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
-    browser / JVM grandchildren), and the active-process registration behave identically
-    regardless of backend. ``on_line`` receives each raw line (newline included) and does
-    its own parsing/accumulation. Returns ``(timed_out, returncode)``.
-
-    ``env_extra`` layers over the inherited environment — the operator's
-    ``[harness.<backend>].env`` table, resolved by the backend that knows its own
-    name. It is applied last, so a harness knob configured for a run wins over the
-    same variable inherited from the launching shell.
+    Kept as a function because it is what the ``AgentBackend`` adapters call, and an
+    adapter has no supervisor to be handed one: the port's turn signature is the
+    ladder's, and widening it to carry a collaborator every adapter would only pass
+    straight through is the parameter-threading this refactor removes elsewhere.
     """
-    env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
-    proc = _spawn_streaming(
+    return _supervisor.stream(
         cmd,
         node_id,
-        resilience=resilience,
-        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
-        text=True,
-        bufsize=1,
-        cwd=cwd or None,
-        env=env,
-        # Own process group/session so the watchdog can reap the agent AND every MCP
-        # server / browser / JVM it spawns, instead of orphaning grandchildren.
-        start_new_session=True,
-    )
-    if stdin_data is not None:
-        assert proc.stdin is not None
-        proc.stdin.write(stdin_data)
-        proc.stdin.close()
-
-    _active.set(proc)
-
-    fired = threading.Event()
-    watchdog = _arm_watchdog(
-        proc,
-        node_id,
         timeout,
+        on_line,
         resilience=resilience,
-        on_fire=fired.set,
+        stdin_data=stdin_data,
+        cwd=cwd,
+        env_extra=env_extra,
     )
-    timed_out = False
-    assert proc.stdout is not None
-    try:
-        start = time.monotonic()
-        last_line_at = start
-        last_beat_at = start
-        while True:
-            now = time.monotonic()
-            elapsed = now - start
-            if elapsed > timeout:
-                timed_out = True
-                break
-            # Liveness telemetry, emitted here at the top so it also ticks while the
-            # stream is SILENT — the wedged case, and the only one worth paging on.
-            # The turn's own span cannot report this: it does not export until it ends.
-            if now - last_beat_at >= resilience.heartbeat_every_s:
-                otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
-                last_beat_at = now
-            # Short select slices keep the in-loop wall-clock check live for a cleanly
-            # arriving stream; the watchdog is the backstop for a stream that wedges
-            # mid-line (where readline() below would otherwise block past the deadline).
-            ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
-            if not ready:
-                if proc.poll() is not None:
-                    break
-                continue
-            raw = proc.stdout.readline()
-            if not raw:  # EOF
-                break
-            last_line_at = time.monotonic()
-            if on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
-                timed_out = True
-                break
-        # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
-        # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
-        timed_out = timed_out or fired.is_set()
-        if timed_out and proc.poll() is None:
-            _kill_process_group(proc, signal.SIGTERM)
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                _kill_process_group(proc, signal.SIGKILL)
-        proc.wait()
-    finally:
-        if watchdog is not None:
-            watchdog.cancel()
-        _active.clear()
-        # Backstop orphan reap: if the agent is somehow still alive on exit, take its
-        # whole group down so no MCP server / browser lingers into the next node.
-        if proc.poll() is None:
-            _kill_process_group(proc, signal.SIGKILL)
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-    return timed_out, proc.returncode
+
+
+def terminate_active() -> None:
+    """Terminate the currently-streaming agent subprocess (and its group), if any.
+
+    Called by the main loop's KeyboardInterrupt handler so the child process tree is
+    cleaned up before workhorse exits, rather than being left as an orphan.
+    """
+    _supervisor.terminate_active()

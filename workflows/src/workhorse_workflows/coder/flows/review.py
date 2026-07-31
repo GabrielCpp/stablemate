@@ -78,8 +78,12 @@ class Review(Workflow):
 
     #: The story slug. ostler resolves the story path and spec dir from it.
     story: str = ""
-    #: The docs repo root. Empty resolves through `CODER_DOCS_PATH` / `AGENT_REPO_DIR`.
+    #: The docs repo root, when the planning documents live in a checkout of their own.
+    #: Empty walks up from `repo_dir`, i.e. the docs sit beside the code.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
     #: The epic slug. Empty finds the story under whichever epic carries it.
     epic: str = ""
     #: `auto` stands a high-effort agent in for the operator; `human` halts and waits.
@@ -92,6 +96,12 @@ class Review(Workflow):
     #: The PR to comment on. Empty lets the reviewer derive one from the branch, and no
     #: open PR at all is fine — the review runs against local changes either way.
     pr_number: str = ""
+
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     #: Apply passes before the loop escalates to the operator. `ClassVar` because the YAML
     #: exposed no var for it — see the module docstring.

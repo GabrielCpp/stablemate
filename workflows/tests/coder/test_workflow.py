@@ -152,7 +152,7 @@ def workspace(
     repo: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> Path:
     """A workspace file naming one code repo, for the drain's `resolve_impl_context`."""
     root = tmp_path / "ws"
@@ -163,7 +163,7 @@ def workspace(
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
-    monkeypatch.setenv("CODER_WORKSPACE", str(root / "acme.code-workspace"))
+    ambient["workspace_file"] = str(root / "acme.code-workspace")
     return root
 
 

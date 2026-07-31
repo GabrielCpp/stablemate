@@ -106,7 +106,7 @@ def elsewhere(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> Path:
     """A code repo *outside* the docs worktree — the multi-repo shape, i.e. `semantic`."""
     root = tmp_path / "ws"
@@ -117,7 +117,7 @@ def elsewhere(
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
-    monkeypatch.setenv("CODER_WORKSPACE", str(root / "acme.code-workspace"))
+    ambient["workspace_file"] = str(root / "acme.code-workspace")
     return api
 
 
@@ -126,7 +126,7 @@ def alongside(
     tmp_path: Path,
     docs: Path,
     write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> Path:
     """The docs repo *is* the code repo — the single-worktree shape, i.e. `local`."""
     (docs / SPEC_REL / "plan-context.json").write_text(
@@ -134,7 +134,7 @@ def alongside(
     )
     ws = tmp_path / "acme.code-workspace"
     write(ws, json.dumps({"folders": [{"name": "acme", "path": str(docs)}]}))
-    monkeypatch.setenv("CODER_WORKSPACE", str(ws))
+    ambient["workspace_file"] = str(ws)
     return docs
 
 

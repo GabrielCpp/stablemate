@@ -29,7 +29,13 @@ def logger() -> logging.Logger:
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real git repo, pinned as the consuming repo for the duration of the test."""
+    """A real git repo, pinned as the consuming repo for the duration of the test.
+
+    Pinned by *chdir*, not by an environment variable: the resolvers read the run's
+    `repo_dir` input and fall back to the working directory, so standing in the repo is
+    what a node called with no `repo_dir` sees. A test that exercises the input itself
+    passes `repo_dir=str(repo)` explicitly.
+    """
     root = tmp_path / "acme"
     root.mkdir()
     for args in (
@@ -38,7 +44,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ("config", "user.name", "Test"),
     ):
         subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
-    monkeypatch.setenv("AGENT_REPO_DIR", str(root))
+    monkeypatch.chdir(root)
     return root
 
 

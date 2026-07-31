@@ -42,8 +42,11 @@ from __future__ import annotations
 
 import json
 
+from typing import ClassVar
+
 from pydantic import ConfigDict, Field
 from workhorse.pyflow import Continue, Done, Workflow
+from workhorse_workflows.coder import paths
 from workhorse_workflows.coder.nodes.dream import gather_run_evidence, record_improvements
 from workhorse_workflows.coder.schemas.dream import ReflectionResult
 
@@ -61,10 +64,16 @@ class Dream(Workflow):
     #: docs root, which is the normal invocation — reflection follows the run it reads.
     #: Named `reflect_on` and aliased to the YAML's `run_dir`; see the module docstring.
     reflect_on: str = Field(default="", alias="run_dir")
-    #: The repo root. Empty resolves through `AGENT_REPO_DIR`, then the cwd.
+    #: The docs repo root the run and the ledger live under. Empty walks up from
+    #: `repo_dir`, then the working directory.
     docs_path: str = ""
     #: An optional focus for the reflection turn. Not read by either script node.
     epic: str = ""
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     def start(self) -> Continue:
         """Digest `events.jsonl` (and every nested `_flow`) into the signals that matter.

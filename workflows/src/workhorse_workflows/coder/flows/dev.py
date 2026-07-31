@@ -100,8 +100,12 @@ class Dev(Workflow):
 
     #: The story slug. ostler resolves the story path and spec dir from it.
     story: str = ""
-    #: The docs repo root. Empty resolves through `CODER_DOCS_PATH` / `AGENT_REPO_DIR`.
+    #: The docs repo root, when the planning documents live in a checkout of their own.
+    #: Empty walks up from `repo_dir`, i.e. the docs sit beside the code.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
     #: The epic slug. Empty finds the story under whichever epic carries it.
     epic: str = ""
     #: `auto` stands a high-effort agent in for the operator; `human` halts and waits.
@@ -117,6 +121,12 @@ class Dev(Workflow):
     max_lint_reworks: int = 2
     #: Plan-level code-reuse rework passes before implementation proceeds anyway.
     max_reuse_reworks: int = 2
+
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     #: Path-validation rework passes before the block goes to the operator. `ClassVar`
     #: because the YAML exposed no var for it — see the module docstring.

@@ -40,6 +40,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse_workflows.coder import paths
 from workhorse_workflows.coder.nodes.dev import resolve_impl_context
 from workhorse_workflows.coder.nodes.docs import (
     classify_documentation_context,
@@ -61,13 +62,23 @@ class Docs(Workflow):
 
     #: The story slug. ostler resolves the story path and spec dir from it.
     story: str = ""
-    #: The docs repo root. Empty resolves through `CODER_DOCS_PATH` / `AGENT_REPO_DIR`.
+    #: The docs repo root, when the planning documents live in a checkout of their own.
+    #: Empty walks up from `repo_dir`, i.e. the docs sit beside the code.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
     #: The epic slug. Empty finds the story under whichever epic carries it.
     epic: str = ""
     #: `local` or `dev` — passed through to the impl-context decode, which uses it to decide
     #: whether `-local` QA skills survive.
     target_env: str = "local"
+
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     #: Document/gate passes before the flow fails. `ClassVar` because the YAML exposed no
     #: var for it — the literal `"3"` on `guard_documentation` is the whole budget.

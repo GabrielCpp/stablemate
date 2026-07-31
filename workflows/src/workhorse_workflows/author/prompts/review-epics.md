@@ -23,8 +23,8 @@ per-epic authoring. Do not write epics or stories.
 If the backlog file or epics directory above don't exist relative to your current working
 directory, do not conclude the repo is missing before checking two things: the `_author-context.md`
 file just listed (an earlier stage may have already resolved a working-directory mixup — its
-answer applies to you too), and the `AGENT_REPO_DIR` environment variable, which pins the actual
-target repo root the same way it does for every script in this workflow.
+answer applies to you too), and the run's `repo_dir` parameter, which pins the actual target
+repo root the same way it does for every node in this workflow.
 
 ## Checks
 
