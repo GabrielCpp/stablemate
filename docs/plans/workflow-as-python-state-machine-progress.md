@@ -106,7 +106,7 @@ took it.)
 | 0.1 | `e1f92f5` | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
 | 2 | `cc8b850` | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
-| 3 | `PENDING` | **The plumbing.** `is_library_dir` is now `(path/"library").is_dir()` — `workflows/` is no longer a library's content — and farrier stopped owning `.agents/workflows`: gone from `remove_targets` and from the `--check` extra-file scan, taking `should_skip_workflow_file`/`WORKFLOW_SKIP_PARTS` with them. List item 3, done |
+| 3 | `81287c4` | **The plumbing.** `is_library_dir` is now `(path/"library").is_dir()` — `workflows/` is no longer a library's content — and farrier stopped owning `.agents/workflows`: gone from `remove_targets` and from the `--check` extra-file scan, taking `should_skip_workflow_file`/`WORKFLOW_SKIP_PARTS` with them. List item 3, done |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
