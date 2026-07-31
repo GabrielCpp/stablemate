@@ -78,7 +78,10 @@ def run_pyflow(invocation: RunInvocation) -> int:
     params = dict(invocation.params)
     config = invocation.config
     name = registry.name or "workflow"
-    manifest = invocation.context_manifest.as_context()
+    # The projected keys, for the preflight below only — `missing_references` still
+    # takes a render context and parses the manifest back out of it, the way a Jinja
+    # helper has to. The run itself carries the value, not the projection.
+    manifest_layer = invocation.context_manifest.as_context()
 
     # Preflight the skill/prompt references the farrier template helpers will have to
     # resolve. An unresolved one does not fail the render — it renders as prose into a
@@ -86,7 +89,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # and the only useful moment is before the first state instead of six hours in.
     # Warned, not raised: the run is degraded, not impossible. A run carrying no
     # manifest at all is skipped, because there unresolved is the normal state.
-    unresolved_refs = missing_references(registry.directory(), manifest)
+    unresolved_refs = missing_references(registry.directory(), manifest_layer)
     if unresolved_refs:
         print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}")
 
@@ -152,7 +155,10 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # Anchored to the run's ORIGINAL start, restored from run.json, so a resume
         # continues one budget rather than granting a fresh one every relaunch.
         deadline=runtime_deadline(writer.started_at, config.max_runtime_s),
-        manifest=manifest,
+        # The manifest crosses as itself, not as the keys it projects: flattening it
+        # here would make every reader downstream re-derive a shape only `as_context`
+        # is supposed to know.
+        manifest=invocation.context_manifest,
     )
 
     verb = "resuming" if resume else "starting"

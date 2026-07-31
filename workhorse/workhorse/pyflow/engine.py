@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
+from workhorse.manifest import ManifestContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
@@ -147,13 +148,14 @@ class RunEnv:
     deadline: float | None = None
     #: Rendered telemetry labels for the state currently running.
     labels: dict[str, str] = field(default_factory=dict)
-    #: The per-repo farrier context manifest as context keys — what
-    #: :meth:`workhorse.manifest.ManifestContext.as_context` returns. The OUTER
-    #: layer of every agent turn's render context: a
-    #: state's own arguments override it, but it is always there so the farrier
-    #: template helpers (`instruction_ref`/`isUsingInstruction`/`template.*`) resolve.
-    #: Empty = the manifest-free case, where those helpers degrade to placeholders.
-    manifest: dict[str, Any] = field(default_factory=dict)
+    #: The per-repo farrier context manifest, as the value that owns its own shape.
+    #: It is the OUTER layer of every agent turn's render context: a state's own
+    #: arguments override it, but it is always there so the farrier template helpers
+    #: (`instruction_ref`/`isUsingInstruction`/`template.*`) resolve. The default is
+    #: the manifest-free case — a real `ManifestContext` rather than an empty dict,
+    #: so nothing here branches on absence and `as_context` stays the one place that
+    #: knows which reserved keys a manifest projects onto a render context.
+    manifest: ManifestContext = field(default_factory=ManifestContext)
     #: The run's node implementations, by registered name — `registry.nodes`, or a
     #: substituted copy of it. `self.call` reads the *name* off the function it was
     #: handed and the implementation from here, which is what makes a stand-in a
@@ -352,7 +354,7 @@ class Engine:
             node,
             # The manifest underneath, the state's arguments on top: a state that
             # binds `repo` means its own, not the manifest's.
-            WorkflowContext({**self.env.manifest, **jsonable(args)}),
+            WorkflowContext({**self.env.manifest.as_context(), **jsonable(args)}),
             self.env.workflow_dir,
             self.env.session_id_path,
             run_dir=writer.run_dir,
