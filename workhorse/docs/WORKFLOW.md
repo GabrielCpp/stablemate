@@ -1,500 +1,208 @@
-# Authoring a `workflow.yaml` — RETIRED
+# Migrating a `workflow.yaml` to a Python workflow
 
-> **Nothing in this document is current.** The YAML front-end it documents is deleted:
-> there is no loader, no node types, no `requires:` preflight, and no `workflow.yaml`
-> anywhere in this repository. A workflow is a Python state machine now — a `Workflow` of
-> decorated methods returning `Continue`/`Done`/`Await`, resolved by name through the
-> `workhorse.workflows` entry-point group — and `workhorse run <name>` will not read a
-> file you hand it.
->
-> Its successor, documenting that API, has not been written yet; this file is kept
-> meanwhile as the record of the schema the four shipped workflows were ported *from*,
-> state by state. Read it in the past tense and do not author against it.
->
-> The runtime resilience knobs in [GUARDRAILS.md](GUARDRAILS.md) — retries, reframes, cap
-> waits, timeouts as environment variables — are the part of this document's surroundings
-> that did **not** change: they sit under the agent turn, which both engines drive the same
-> way.
+The YAML front-end is **deleted**. There is no loader, no node types, no `requires:`
+preflight, and no `workflow.yaml` anywhere in this repository. `workhorse run <name>`
+resolves a name through the `workhorse.workflows` entry-point group and will not read a
+file you hand it — passing a path is refused by name rather than silently misread.
+
+A workflow is now a Python package whose **states are methods** on a `Workflow` subclass
+and whose **nodes are plain functions** collected into a `Blueprint`. If you are writing a
+new workflow, read [AUTHORING.md](AUTHORING.md) instead — it is the reference, and this
+file is only the bridge from the old schema to it.
+
+This document exists because a YAML workflow is a real thing someone may still be
+holding. It maps every construct in the retired schema to what replaces it, names the
+handful that have **no** counterpart, and lists what did not change at all.
 
 ---
 
-Everything below describes the retired schema.
+## What did not change
 
-## 0. What this covered
+Port the graph, not the surroundings. These are the same engine underneath and need no
+attention during a migration:
 
-A workflow was a YAML file describing a directed graph of **nodes**; workhorse walked it
-node-by-node, checkpointing after each step so a run could resume where it stopped. The
-checkpointing survives — it is now keyed on `(state, params)` rather than a node id.
-
----
-
-## 1. Top-level structure
-
-```yaml
-name: my-workflow        # optional — defaults to the YAML filename stem
-start: first             # REQUIRED — id of the entry node
-vars:                    # optional — initial context (CLI --params overrides on fresh start)
-  subject: "the topic"
-  max_retries: 3
-requires:                # optional — tools this workflow uses directly (preflighted)
-  - dist: ostler
-    version: ">=0.1.0"
-env:                     # optional — env vars injected into every script node
-  CODER_WORKSPACE: "{{ workspace_file }}"
-labels:                  # optional — telemetry dimensions stamped on this run's spans
-  work_id: "{{ story.id or epic }}"
-nodes:                   # REQUIRED — the list of nodes (each needs a unique id + type)
-  - id: first
-    type: agent
-    ...
-```
-
-| Key | Type | Required | Meaning |
-|-----|------|----------|---------|
-| `name` | string | no | Run/log name; used in the run directory `<name>-<run-id>`. Defaults to the file stem. |
-| `start` | string | **yes** | Id of the first node. Must exist in `nodes`. |
-| `vars` | mapping | no | Initial context variables. Merged before the first node; `--params` overrides them on a fresh start (not on resume). |
-| `requires` | list | no | Tools the workflow uses directly. Checked before the first node runs — see [1.1](#11-requires--declaring-the-tools-a-workflow-uses). |
-| `env` | mapping | no | Env vars injected into every script node's subprocess (Jinja-rendered; per-node `env` merges on top). |
-| `labels` | mapping | no | Telemetry dimensions stamped on this workflow's spans — see [1.2](#12-labels--tagging-telemetry-with-the-unit-of-work). |
-| `nodes` | list | **yes** | Node definitions. Every node has a unique `id` and a `type`. |
-| `flows` | mapping | no | Named sub-graphs callable via a `flow` node — see [2.6](#26-flow--invoke-a-named-sub-graph). |
-
-**Validation at load:** `start` must reference a real node, and every `next` /
-branch target must resolve to an existing node, or the workflow is rejected.
-
-Every workflow must contain at least one `terminal` or `fail` node (the only
-node types allowed to have no `next`).
-
-### 1.1 `requires` — declaring the tools a workflow uses
-
-A workflow that shells out to a CLI, or whose scripts import a package, can declare
-it. Workhorse verifies every entry **before the first node runs** and refuses to
-start if a required one is unusable — so a missing tool costs you a message at second
-zero instead of a crash six nodes into an unattended run. This check sits deliberately
-outside the retry → reframe → default ladder: a missing tool is deterministic, so
-retrying cannot help and defaulting past it only moves the failure later.
-
-```yaml
-requires:
-  - dist: ostler          # a Python distribution, importable by the script interpreter
-    version: ">=0.1.0"
-  - cmd: uv               # an executable on PATH
-    version: ">=0.5"
-  - cmd: make
-    optional: true        # warn, never block
-```
-
-| Field | Meaning |
-|-------|---------|
-| `dist` | Python **distribution** name. Located with `importlib.metadata` and then **actually imported** in the interpreter that runs script nodes. Mutually exclusive with `cmd`. |
-| `cmd` | Executable name. Verified with `PATH` lookup + a `--version` probe. Mutually exclusive with `dist`. |
-| `version` | Optional [PEP 440](https://peps.python.org/pep-0440/) specifier (`>=1.2`, `>=1.0,<2.0`). Omit to check only for presence. |
-| `optional` | If true, an unmet entry logs a warning instead of blocking the run. Default false. |
-
-**`dist:` and `cmd:` are not interchangeable.** Script nodes run under `sys.executable`
-and import their tools in-process, so presence on `PATH` proves nothing about
-importability: a pipx-isolated install gives a perfectly working `ostler` command whose
-package `import ostler` cannot see. Use `dist:` for anything a script imports. Note the
-distribution name may differ from the import name (`workhorse-agent` vs `workhorse`), so
-the import names come from the installed metadata rather than from the declared name.
-
-**A `dist:` entry is checked by importing it, not by believing its metadata.** Metadata
-resolving only proves a *record* of the install is on this path — a half-written install,
-one whose own dependencies are absent, or a compiled extension built for another
-interpreter all resolve and then raise on the first `import` a script node does. The
-preflight therefore performs that import itself, in the engine process, and reports the
-underlying exception. A workflow whose scripts are written against a library (the OKF
-workflows against `ostler`) is thereby *unable to start* in an environment where that
-library will not load — which is the point: the alternative is a run that starts, degrades
-around the missing library node by node, and reports success over work it never did.
-Consequently those scripts import their library at module scope and carry no
-"if it isn't importable" branch; the condition is settled before the graph is entered.
-
-**Declare only what the workflow uses *directly*.** Not a transitive closure, and not
-the target repo's toolchain — workhorse is repo-agnostic, so whether a run needs `go`
-or `npm` depends on the repo it's pointed at, which a workflow cannot know. Tools
-reached through `workhorse.scriptutil` helpers (`git`, for instance) are the engine's
-dependency, not the workflow's.
-
-**Version probing is best-effort.** A tool that is present but whose version can't be
-read or parsed is reported as unverifiable, not missing — blocking there would strand a
-workflow on a tool that is in fact installed.
-
-### 1.2 `labels` — tagging telemetry with the unit of work
-
-Spans are automatically dimensioned by run, node, and backend. What they cannot know
-is what the run is *working on*, because only the workflow knows that its unit of work
-is a story, or an epic, or a service. `labels:` is how a workflow tells the engine:
-
-```yaml
-labels:
-  work_id: "{{ story.id or epic }}"
-  phase: "{{ current_phase }}"
-```
-
-Each value is a Jinja template rendered against the live context **before every node**,
-and the results land as span attributes namespaced `wf.` — `wf.work_id`, `wf.phase`.
-Re-rendering per node (rather than once at start) is the point: a week-long run moves
-through many stories, and each node span carries whichever one was current when it
-opened. That is what makes "how much did story ACME-1 cost" and "which nodes did it
-revisit" answerable from the store, instead of requiring a join against run artifacts
-on disk.
-
-Rules worth knowing:
-
-- **Keys are namespaced, values are yours.** The `wf.` prefix is added for you, so a
-  label can never shadow `workhorse.*`, `model`, or an OTel semantic-convention
-  attribute.
-- **An expression that renders empty is dropped, not stamped blank.** Templating is
-  resilient (a missing variable renders empty rather than raising), so early in a run —
-  before a story is selected — the label simply does not appear, rather than every span
-  carrying an empty string that reads like data.
-- **Nothing here can break a run.** A label whose expression throws costs that one
-  attribute and is skipped.
-- **Flows inherit.** A flow's child context holds only its rendered `args`, so it
-  usually cannot re-derive which story the parent was on; spans inside a flow carry the
-  parent's rendered labels. A flow that declares its own `labels:` layers them on top.
-- With no collector reachable, this is inert like the rest of telemetry — see the
-  README's Telemetry section.
-
-**Per-node `activity`.** A `labels:` value is workflow-wide; a node's own `activity:`
-field is the *per-node* companion — a Jinja string describing what **that** step does
-(`activity: "reviewing {{ story_slug }}"`). It renders against the live context before
-the node runs and lands as `wf.activity`, following the same rules above (empty →
-dropped, resilient, never breaks a run). It is **not** inherited like `labels` — it
-describes the current node only. Unlike most labels, `wf.activity` (and `wf.work_id`)
-also ride the live liveness metrics, so a monitor can show what the run is doing *while*
-a node is still open, before its span exports. Available on `agent`, `script`, `flow`,
-and `call` nodes.
-
-**Where the "3/12" comes from — `workhorse.worklist`.** A useful `activity` often wants
-the run's progress through its backlog ("implementing ACME-1 · 3/12"). Rather than each
-workflow re-counting its own queue, a `script:` node computes it through the shared
-`workhorse.worklist` primitive — a *parameterised* worklist that learns no workflow's
-schema (an item is `{id, status, kind?, order?, payload?}`; a `Scheme` names which statuses
-mean done/active/blocked). Its `snapshot(items)` returns `{current, progress:"done/total",
-remaining, composition:"5 api · 1 ui", kinds:"5 epic · 30 story", counts}` — the shape a
-dashboard reads uniformly no matter which workflow produced it. `kind` is a first-class
-field so **one worklist can hold every list a run tracks** (epics, stories, fixes) in a
-single store; every operation takes `kind=` to scope to one list (`None` = all), and
-`counts`/`snapshot` report the mixed composition via `by_kind`/`kinds`. The node emits `progress` as an output; `labels:` and
-the per-node `activity:` interpolate it. Storage stays where it belongs: a workflow whose
-queue is a JSON file uses the built-in `JsonBackend`; one whose items live in a doc-graph
-or a markdown section hands its own items to the stateless `snapshot`/`select_next`/
-`counts` functions (the `coder` workflow's `select-next-story.py` is the worked example —
-it feeds ostler's report counts through `worklist.snapshot` into `wf.progress`).
+- **Prompt templates.** Still Jinja2 `.md` files resolved relative to the workflow
+  package, still rendered with a resilient undefined (a missing variable renders empty and
+  logs a warning rather than raising). `args` are still rendered first and then merged
+  into the prompt context, and `node_timeout_s` / `node_timeout_min` are still injected so
+  a prompt can size its own work (both read `"unbounded"` when the turn has no budget).
+- **Power tiers.** `power: high` was and is an abstract tier resolved through
+  `~/.config/stablemate/config.toml` at `power.<tier>.<backend>` into a concrete
+  model/effort. See [BACKENDS.md](BACKENDS.md).
+- **The resilience ladder and its knobs.** Transient retries, cap waits, compact-and-
+  continue, reframing, and defaulting a turn's outputs all sit *under* the agent turn,
+  which both engines drive identically. Every `AGENT_*` variable in
+  [GUARDRAILS.md](GUARDRAILS.md) still means what it meant.
+- **Run artifacts and auto-resume.** Still `run.json`, `checkpoint.json`, `context.json`
+  and per-step folders holding `prompt.md` / `output.json` / `context_after.json`; still
+  one stable run dir per `(workflow, run-id)` that resumes if it already holds a
+  checkpoint.
+- **`--dry-run` and `dot`.** Both survive as subcommands; `--dry-run` now also checks that
+  every state name binds and no state is unreachable.
 
 ---
 
-## 2. Node types
+## Construct by construct
 
-All nodes share two fields: `id` (unique within the workflow) and `type`
-(`agent` | `script` | `branch` | `terminal` | `fail`).
+### Top-level keys
 
-### 2.1 `agent` — run the assistant
+| YAML | Python |
+|---|---|
+| `name:` | `Registry("acme")`, plus the `workhorse.workflows` entry point that publishes that name |
+| `start:` | the entry class passed to `Registry.main(...)`; the run begins in its method named `start` |
+| `vars:` | class attributes on the `Workflow` — still filled by `--params`, and frozen once `setup()` returns |
+| `requires:` | **no counterpart** — see below |
+| `env:` | **no counterpart** — a node runs in the driver's own process and reads `os.environ` directly; there is no subprocess to inject into |
+| `labels:` | a `labels()` method returning `dict[str, str]`, re-read before every transition. Keys are no longer `wf.`-prefixed |
+| `nodes:` | state methods (control flow) plus `@blueprint.node` functions (work) |
+| `flows:` | `Registry.add_flows(qa=Qa, dev=Dev, …)`, each value a `Workflow` subclass |
 
-Renders a prompt template and sends it to the active agent CLI (Claude / Codex /
-Copilot), then extracts JSON outputs from the response.
+### Node types
 
-```yaml
-- id: plan
-  type: agent
-  prompt: prompts/plan.md      # Jinja2 template, path relative to the workflow dir
-  args:                        # rendered Jinja strings, merged into the prompt context
-    story_path: "{{ story_path }}"
-    spec_dir: "{{ spec_dir }}"
-  outputs:                     # JSON keys to capture from the response
-    - key: plan_result
-      default: { status: blocked }   # emitted if the node exhausts all retries
-  power: high                  # optional abstract tier resolved through user config
-  timeout: 1800                # optional wall-clock budget in seconds (default 3600)
-  next: review_plan            # REQUIRED for agent nodes
-```
+| YAML node | Python |
+|---|---|
+| `type: agent` | `self.agent("prompts/plan.md", returns=Plan, args={…}, power=…, timeout=…)` |
+| `type: script` | a `@blueprint.node` function, invoked with `self.call(fn, …)` |
+| `type: branch` | ordinary `if` / `elif` in the state body |
+| `type: terminal` | `return Done(result)` |
+| `type: fail` | `raise WorkflowFailed(reason)` |
+| `type: flow` | `self.handoff(Qa, story=…, target_env=…)` |
+| `next: <id>` | `return Continue(result, self.next_state, **params)` |
 
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `prompt` | string | **yes** | Path to a Jinja2 template (`.md`/`.txt`), relative to the workflow dir (or absolute). |
-| `args` | map<str,str> | no | Jinja string values rendered against the context, then merged into the prompt context. Lets you parameterize a prompt without editing the template. |
-| `outputs` | list of [OutputSpec](#23-outputspec) | no | JSON keys to extract from the response. Missing keys trigger the resilience ladder. |
-| `power` | `low` \| `medium` \| `high` | no | Abstract capacity tier. Resolved through `~/.config/workhorse/config.toml` at `power.<tier>.<backend>` to concrete `model`/`effort`; missing config leaves model/effort unset so the backend default or `AGENT_MODEL` applies. |
-| `timeout` | number | no | Wall-clock seconds for the turn. Surfaced to the prompt as `node_timeout_s` / `node_timeout_min`. Default **3600** (1 hour); `0`/null → engine default. |
-| `activity` | string | no | A Jinja "what this node is doing" line, rendered per node and stamped live on telemetry as `wf.activity` — see [1.2](#12-labels--tagging-telemetry-with-the-unit-of-work). Also on `script`/`flow`/`call` nodes. |
-| `next` | string | **yes** | Node to advance to. Agent nodes may **not** be terminal. |
+### Values between nodes
 
-**Output extraction.** Strict first: the response is scanned for a fenced
-```` ```json … ``` ```` block, then the first top-level `{…}` object, parsed
-with the stdlib. If that doesn't yield an object carrying every declared
-`outputs` key, a tolerant `json-repair` pass recovers the object — fixing
-trailing commas, single quotes, comments, and truncated/unclosed braces, and
-preferring the object with the declared keys when the response embeds several
-(an example plus the real answer). Only if no object can be recovered, or a
-declared key is still missing, is it an `OutputParseError` (which then climbs
-the resilience ladder). With no `outputs`, nothing is captured (the agent may
-still print JSON).
+| YAML | Python |
+|---|---|
+| `outputs: [{key: plan_result}]` on an agent node | the fields of the model given to `returns=` |
+| `outputs:` on a script node | the node function's **return annotation** — a `BaseModel`, or any JSON-able value |
+| `default:` on an OutputSpec | **no counterpart** — see below |
+| `{{ plan_result.status }}` in a prompt | pass it: `args={"status": plan.status}` |
+| `path: result.status` dot-paths | attribute access on the typed value |
+| `get_node_output('prepare_story', 'story_path')` | `self.output(prepare_story).story_path` — a read of the recorded artifact, which **raises** `NodeNotRunError` when the node has not run |
+| the ambient context map | the three tiers in [AUTHORING.md](AUTHORING.md#the-three-tiers-of-state-and-no-fourth): inputs, `self.ctx`, state parameters. Nothing else crosses a transition |
 
-**Resilience (summary; full detail in [GUARDRAILS.md](GUARDRAILS.md)).** On
-failure workhorse climbs a ladder rather than crashing: transient retries
-(rate-limit/network) → wait-for-cap-reset → output-parse retries → compact &
-continue (context overflow) → reframe in a fresh session → finally emit the
-declared `default` outputs and advance to `next`. Each node runs as a fresh
-prompt in a clean session; conversations are not chained between nodes.
+### The flow `vars` contract
 
-### 2.2 `script` — run a Python script
-
-Runs a Python script with the workflow dir as cwd, passes rendered args as
-positional arguments, and parses its **stdout as a single JSON object**.
+The `null` = required / `""` = optional / anything-else = default convention was a
+hand-rolled signature. It is now an actual signature:
 
 ```yaml
-- id: init_counter
-  type: script
-  script: scripts/init_counter.py    # Python only — run with sys.executable
-  args:
-    - "{{ story_path }}"
-  outputs:
-    - key: rework_count
-      default: { value: 0 }
-  next: plan                         # REQUIRED for script nodes
+vars:
+  story_path: null          # required
+  target_env: "local"       # optional, defaults to "local"
 ```
 
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `script` | string | **yes** | Path relative to the workflow dir. |
-| `args` | list<str> | no | Jinja strings rendered against the context, passed as positional args. |
-| `outputs` | list of OutputSpec | no | Keys to extract from the script's JSON stdout. |
-| `next` | string | **yes** | Next node. Script nodes may **not** be terminal. |
-
-A non-zero exit, non-JSON stdout, or a missing declared key raises an error.
-
-### 2.3 OutputSpec
-
-Each entry in an `outputs` list:
-
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `key` | string | **yes** | JSON key to extract from the response/stdout and merge into the context. |
-| `default` | any | no | Value emitted if the node exhausts all retries/reframes. Any JSON type. Unset → `null`. Choose a value that keeps downstream branches safe (e.g. a `status` that routes to a recovery path). |
-
-```yaml
-outputs:
-  - key: decision
-    default: needs_rework      # branch-safe fallback
-  - key: review
-    default: { status: auto_approved }
-  - key: notes                 # no default → null on failure
+```python
+class Qa(Workflow):
+    story_path: str          # required — no default
+    target_env: str = "local"
 ```
 
-### 2.4 `branch` — route on a context value
+A missing required input now fails at binding time with the parameter's own name.
 
-Looks up a dot-path in the context and routes accordingly.
-
-```yaml
-- id: decide_plan
-  type: branch
-  path: review_plan_result.status   # dot-path into the context
-  cases:                            # exact (string) equality, checked first
-    approved: implement
-    needs_rework: refine_plan
-    blocked: await_operator
-  conditions:                       # ordered comparisons, checked if no case matched
-    - op: ">="
-      value: "3"
-      next: give_up
-  default: await_operator           # used if path unresolved OR nothing matched
-```
-
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `path` | string | **yes** | Dot-path (e.g. `result.status`, `counter.value`) resolved against the context. |
-| `cases` | map<str,str> | no | value (as string) → next node. Evaluated first. |
-| `conditions` | list of [BranchCondition](#branchcondition) | no | Ordered comparisons evaluated when no case matches; first true wins. |
-| `default` | string | no | Fallback when the path can't be resolved or nothing matches. Without it, an unresolved/unmatched branch raises an error. |
-
-#### BranchCondition
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `op` | `==` `!=` `<` `>` `<=` `>=` | Comparison. `<`,`>`,`<=`,`>=` coerce both sides to float; `==`/`!=` compare as strings. |
-| `value` | string | Right-hand side (coerced to float for numeric ops). |
-| `next` | string | Target node if the condition holds. |
-
-> Branch case/condition values are literal strings — you cannot put a Jinja
-> expression in a `cases:` key or a `value:`. Compute the value upstream and
-> branch on the produced field.
-
-### 2.5 `terminal` / `fail` — end the run
-
-```yaml
-- id: done
-  type: terminal      # success — exit code 0
-- id: qa_failed
-  type: fail          # failure — exit code 1 (still a clean, resumable stop)
-```
-
-Both take only `id` (and `type`). They have no `next`.
-
-### 2.6 `flow` — invoke a named sub-graph
-
-A `flow` node calls one of the workflow's `flows:` sub-graphs with an isolated variable
-scope. Each `flow` is a self-contained mini-workflow with its own `vars`, `start`, and
-`nodes`.
-
-```yaml
-- id: qa_phase
-  type: flow
-  name: qa               # must match a key under `flows:` in this workflow
-  args:                  # populate the flow's vars; Jinja-rendered against the parent context
-    story_path: "{{ get_node_output('prepare_story', 'story_path') }}"
-    spec_dir:   "{{ get_node_output('prepare_story', 'spec_dir') }}"
-    target_env: "{{ target_env }}"
-  outputs:
-    - key: qa_result
-  next: decide_qa
-```
-
-**Flow `vars` contract:**
-
-| Default | Meaning |
-|---------|---------|
-| `null` (absent) | Required — the parent `args:` must supply a value; missing → error at launch |
-| `""` (empty string) | Optional — caller may omit; the flow uses the empty string if absent |
-| any other value | Default used when the caller doesn't supply that key |
-
-```yaml
-flows:
-  qa:
-    name: qa
-    start: plan_qa
-    vars:
-      story_path: null    # required — must be passed by caller
-      spec_dir: null       # required
-      target_env: "local"  # optional — defaults to "local"
-      operator_mode: "auto"
-    nodes:
-      - id: plan_qa
-        ...
-```
-
-Flows invoked standalone via `workhorse run <workflow> <flow> --params '{"story":"CASE-1234"}'`
-resolve their own `prepare_story` (or equivalent) as the first node so they are
-fully self-contained without needing pre-resolved paths in the params.
-
----
-
-## 3. Context & templating
-
-### 3.1 What's in the context
-
-The context is a single key→value map that flows through the run:
-
-1. Seeded from `vars`, then overlaid by `--params` / `--params-file` on a fresh start.
-2. Each node merges its extracted `outputs` into the context, so downstream
-   templates can read `{{ upstream_key.field }}`.
-3. Persisted in the checkpoint before each node; restored verbatim on resume
-   (params are **not** re-applied on resume).
-
-### 3.2 Template rendering
-
-Prompts and `args` are Jinja2 templates rendered with a **resilient undefined**:
-a missing variable or a bad traversal renders as an empty string (and logs a
-warning) rather than crashing. This keeps a prompt usable even when an optional
-upstream output is absent — but it also means a typo silently renders empty, so
-check the warnings.
-
-Variables available inside a prompt:
-
-| Variable | Meaning |
-|----------|---------|
-| workflow `vars` | Everything declared in `vars:` (and `--params` overrides). |
-| prior node outputs | Any `outputs` keys merged by earlier nodes, e.g. `{{ plan_result.status }}`. |
-| rendered `args` | Each `args` entry is rendered first, then exposed by its key. |
-| `node_timeout_s` | This node's effective budget in seconds (int). |
-| `node_timeout_min` | Same budget in minutes (rounded) — e.g. `You have ~{{ node_timeout_min }} min`. |
-
-`args` values are rendered against the context **without** `node_timeout_*`; the
-prompt body is rendered against context **plus** args and the timeout values.
-
-### 3.3 Dot-paths (branch `path:`)
-
-`path: a.b.c` resolves `context["a"]["b"]["c"]`. A missing segment or a
-non-dict traversal routes to the branch `default` (with a warning) if one is
-set, otherwise raises.
-
----
-
-## 4. Running a workflow
+### Invocation
 
 ```bash
-# Path form
-workhorse --workflow author \
-  [--runs-dir DIR] [--run-id ID] \
-  [--params '{"story_path":"docs/…"}'] [--params-file params.json] \
-  [--cli claude|codex|copilot|aider|opencode] \
-  [--resume-run ID|PATH | --resume-latest]
+# then
+workhorse --workflow ./wf/workflow.yaml --params '{"story":"ACME-1"}'
 
-# Named workflow form (resolves from the configured prompt library)
-workhorse run <name> [<flow>] [--params '{"key":"value"}']
-# e.g.:
-workhorse run coder                                     # full coder workflow (default flow)
-workhorse run coder qa --params '{"story":"CASE-1234"}' # standalone QA flow
+# now — a NAME, resolved through the entry-point group
+workhorse run coder --params '{"story":"ACME-1"}'
+workhorse run coder qa --params '{"story":"ACME-1"}'   # a flow, standalone
+workhorse-coder run qa --params '{"story":"ACME-1"}'   # the package's own console script
 ```
 
-| Flag | Default | Meaning |
-|------|---------|---------|
-| `--workflow` | — | Path to a workflow file, **or** a bare workflow name (e.g. `author`) resolved from the configured prompt library as `<library_dir>/workflows/<name>/workflow.yaml`. May be omitted when using the positional `workhorse run <name> [<flow>]` form. Library dir = `$WORKHORSE_LIBRARY_DIR` or `library_dir` in the workhorse config file (see [Config file location in the README](../README.md)). |
-| `--runs-dir` | `<cwd>/.agents/runs` | Where run artifacts are written. Defaults to `.agents/runs` under the directory you launch workhorse from (not the workflow's dir). |
-| `--run-id` | `default` | Stable id; run dir is `<name>-<run-id>`. Use distinct ids to keep parallel runs apart. |
-| `--params` | — | Inline JSON object merged into the starting context (overrides `vars`). |
-| `--params-file` | — | JSON file of params; inline `--params` wins on conflict. |
-| `--cli` | `claude` (or `$AGENT_CLI`) | Agent backend: `claude`, `codex`, `copilot`, `aider`, or `opencode`. For OpenRouter models (e.g. MiMo) use `aider`/`opencode` and an `openrouter/<slug>` node model — see the README's "OpenRouter models". |
-| `--resume-run` / `--resume-latest` | — | Manually resume a specific / the latest unfinished run. |
+Every other flag (`--runs-dir`, `--run-id`, `--params-file`, `--cli`, `--resume-run`,
+`--resume-latest`, `--no-cache`) is unchanged.
 
-**Auto-resume.** By default each `(workflow, run-id)` maps to one stable run
-dir. If it already holds a checkpoint, the run resumes from it; otherwise it
-starts fresh. So re-invoking the same command after an interruption just
-continues — no flags needed.
+### Checkpoints
 
-Run artifacts (per run dir): `run.json` (start/end/terminal state),
-`checkpoint.json` (current node + context, for resume), `context.json` (final
-context), and per-node folders with the rendered `prompt.md`, captured
-`output.json`, and `context_after.json`. Agent `prompt.md` files are written
-before invocation; the console logs only their paths, not the resolved variables.
+A checkpoint used to name a node id; it now names `(state, params)`. Old checkpoints are
+**refused by name** rather than misread — they share the runs directory with live runs,
+and a node id that happened to match a state name would otherwise resume the wrong thing.
+A YAML run interrupted mid-flight cannot be resumed by the Python engine; start it over.
+
+Renaming a state strands runs checkpointed on the old name, so both decorators take
+`aliases=[…]`. There was no YAML equivalent — the schema had no rename story at all.
 
 ---
 
-## 5. Minimal complete example
+## What has no counterpart
+
+Three constructs did not survive, and no Python spelling replaces them. Each is a
+deliberate consequence of what the port bought, not an oversight:
+
+1. **`requires:` — the tool preflight.** A workflow was a data file that could be handed
+   to an engine with no idea what it needed, so the engine had to check first. A workflow
+   is now an installed Python distribution: its dependencies go in `[project.dependencies]`
+   and `pip`/`uv` resolves them at install time, before a run exists to fail. Consequently
+   a node imports its libraries **at module scope** and carries no "if it isn't importable"
+   branch — the condition is settled before the package can be imported at all.
+
+2. **`default:` on an OutputSpec.** You could declare the exact value a node would emit
+   after the resilience ladder gave up (`default: {status: blocked}`). The ladder still
+   defaults an exhausted agent turn, but it emits the `returns=` model's declared keys as
+   **nulls**; it is generic and does not guess a value from a key's name. So a state that
+   drives a branch off an agent reply must have a safe arm for the empty reply — the route
+   that keeps a week-long run moving. `AGENT_USE_DEFAULT_OUTPUTS=false` hard-fails instead.
+
+3. **Per-node `activity:` as a declared field.** It is now a flagged log record —
+   `logger.info("assessing %s", unit, extra={"activity": True})` — because a state is one
+   method that may do several things and the interesting one is whichever it is doing now.
+   The rendered message *is* the activity, so it is never written twice.
+
+---
+
+## A minimal port, end to end
 
 ```yaml
 name: example
 start: step
 vars:
   subject: "the Fibonacci sequence"
-
 nodes:
   - id: step
     type: agent
     prompt: prompts/step.md
-    args:
-      subject: "{{ subject }}"
-    outputs:
-      - key: result
-        default: { status: error }
+    args: {subject: "{{ subject }}"}
+    outputs: [{key: result, default: {status: error}}]
     next: decide
-
   - id: decide
     type: branch
     path: result.status
-    cases:
-      ok: done
+    cases: {ok: done}
     default: failed
-
   - id: done
     type: terminal
   - id: failed
     type: fail
 ```
 
-See [`../../`](https://github.com/GabrielCpp/stablemate) and the prompt-library
-workflows (e.g. `hello-world`, `coder`) for larger, real examples: tiered models
-per stage, CI gates, rework loops with numeric `conditions`, and operator-gated
-pauses that resume cleanly.
+becomes
+
+```python
+from pydantic import BaseModel
+from workhorse.pyflow import Blueprint, Done, Registry, Workflow, WorkflowFailed
+
+
+class Result(BaseModel):
+    status: str = ""
+
+
+class Example(Workflow):
+    subject: str = "the Fibonacci sequence"
+
+    def start(self):
+        result = self.agent("prompts/step.md", returns=Result, args={"subject": self.subject})
+        if result.status == "ok":
+            return Done(result)
+        raise WorkflowFailed(f"step returned {result.status!r}")
+
+
+workflow = Registry("example").add_blueprints(Blueprint("example"))
+main = workflow.main(Example)
+```
+
+The package layout around it — `pyproject.toml` entry point, prompt directory, node
+module — and everything the port needs beyond this table are in
+[AUTHORING.md](AUTHORING.md).

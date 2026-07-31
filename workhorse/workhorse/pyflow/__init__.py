@@ -12,7 +12,10 @@ class Build(Workflow):
     story: str
 
     def start(self) -> Continue | Done:
-        return Continue(self.review, notes="")
+        return Continue(None, self.review, notes="")
+
+    def review(self, notes: str) -> Done:
+        return Done(notes)
 
 
 workflow = Registry("acme").add_blueprints(blueprint)

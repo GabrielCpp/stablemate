@@ -11,7 +11,7 @@ A workflow is a **Python package**, not a YAML document. Its states are methods 
 `Blueprint`. There is no `workflow.yaml`, no `script:` node, no `outputs:` list, and no
 stdout protocol — a node **returns a typed value**.
 
-The engine API is documented in `workhorse/docs/WORKFLOW.md`; this skill is about the
+The engine API is documented in `workhorse/docs/AUTHORING.md`; this skill is about the
 code you write against it.
 
 ---

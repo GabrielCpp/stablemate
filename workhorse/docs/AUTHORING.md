@@ -12,8 +12,8 @@ in
 and the `power=` tiers a turn asks for are mapped to models in
 [docs/BACKENDS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md).
 
-> `docs/WORKFLOW.md` describes the **retired** YAML engine and is kept only for reading
-> old runs. A workflow is Python; this file is its successor.
+> Holding a `workflow.yaml` from the retired YAML engine? `docs/WORKFLOW.md` maps every
+> construct in that schema to what replaces it here.
 
 A workflow is a Python package with this layout:
 

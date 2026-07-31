@@ -60,7 +60,7 @@ workhorse/                     # this directory, inside the stablemate workspace
     ├── AUTHORING.md           # Writing a workflow: states, nodes, transitions, checkpoints
     ├── DEVELOPMENT.md         # This file — working on the controller itself
     ├── DOCKER.md              # The Docker harness (image + compose) for unattended runs
-    └── WORKFLOW.md            # RETIRED: the YAML engine, kept only for reading old runs
+    └── WORKFLOW.md            # Migrating a retired `workflow.yaml` to a Python workflow
 ```
 
 ## How the controller works (the loop)

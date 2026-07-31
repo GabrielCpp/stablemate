@@ -218,8 +218,8 @@ Two details worth knowing when reading them:
   if an upgrade moves them, logs degrade to console-only and traces/metrics are
   unaffected.
 
-The engine's own **narrative** — the per-node dispatch lines (`agent →`, `script →`,
-`branch →`, `flow →`, `call →`) and per-node error/resume messages — goes through the
+The engine's own **narrative** — the per-transition dispatch lines (`state →`, `call →`,
+`agent →`, `flow →`, `await →`, `resume →`) and per-node error/resume messages — goes through the
 root logger too (`workhorse.engine`), so it ships to `/v1/logs` alongside the script
 nodes' records whenever telemetry is on, and a run's own progress is visible in
 `groom logs` / the dashboard, not just on the local console. What remains on `print()`
