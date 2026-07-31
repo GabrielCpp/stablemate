@@ -631,8 +631,7 @@ def _dispatch_config(args: argparse.Namespace) -> None:
         path = Path(args.path).expanduser().resolve()
         if not _is_base_library_dir(path):
             raise SystemExit(
-                f"error: {path} is not a usable base library directory — it must contain "
-                "library/ or workflows/."
+                f"error: {path} is not a usable base library directory — it must contain library/."
             )
         write_config_key("base_dir", str(path))
         print(f"base_dir={path}")

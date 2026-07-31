@@ -1,6 +1,6 @@
 """Fetch the base library into a shared cache, so every tool and venv sees one copy.
 
-The base library is content — workflows, scaffolds, skills — with no code the tools
+The base library is content — skills, prompts, scaffolds — with no code the tools
 import beyond a path. That makes it fetchable the way any regenerable asset is: clone
 it once into the user's cache and reuse it everywhere, instead of requiring a wheel in
 each isolated pipx venv.
@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 # runs on machines that have no deploy key and no business having one.
 BASE_REPO_URL = "https://github.com/GabrielCpp/stablemate.git"
 BASE_REPO_REF = "main"
-# Where the library lives inside the repo. The payload sits directly here — `library/`,
-# `scaffolds/`, `workflows/` — with no Python package wrapping it.
+# Where the library lives inside the repo. The payload sits directly here — `library/`
+# and `scaffolds/` — with no Python package wrapping it.
 BASE_SUBPATH = "base-library"
 
 # Opt-out: set to "0"/"false" to forbid the network fetch entirely (air-gapped hosts,
@@ -169,7 +169,7 @@ def ensure_cached_base(*, quiet: bool = False) -> Path | None:
         # to a silent "no library found" that sends someone hunting their config.
         logger.warning(
             "the base library cache at %s holds no usable library (expected %s/ with "
-            "library/ or workflows/ inside); delete it to re-fetch: rm -rf %s",
+            "library/ inside); delete it to re-fetch: rm -rf %s",
             clone,
             BASE_SUBPATH,
             cache_root(),

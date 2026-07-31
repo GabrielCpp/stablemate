@@ -66,10 +66,10 @@ already current.
     from the expected content (both sides normalized to a single trailing newline before comparing)
   - run (`--check`): scan every directory farrier owns for files not present in the expected output
     map — `.agents/skills`, `.agents/prompts`, `.claude/skills`, `.claude/commands`,
-    `.github/instructions`, `.github/prompts` (`TARGET_DIRS`), plus `.agents/workflows`; within
-    `.agents/workflows`, skip files under a `__pycache__`/`.runs`/`.state`/`.codex-home` directory
-    or with a `.pyc` suffix (`should_skip_workflow_file`); every remaining file not in the expected
-    map is recorded `extra: <repo-relative path>`
+    `.github/instructions`, `.github/prompts` (`TARGET_DIRS`); every file in them not in the
+    expected map is recorded `extra: <repo-relative path>`. `.agents/workflows` is *not* scanned:
+    farrier rendered a workflow's YAML tree there until the front-end was retired and has emitted
+    nothing into it since, so a leftover from an older install is not the installer's to police
   - run (`--check`): also record as `extra` any of these fixed paths that exist on disk but aren't
     in the expected map: `.github/copilot-instructions.md`, `.github/agents/copilot-instructions.md`,
     and the launcher scaffolding paths `.agents/agents.mk`, `.agents/local.compose.yaml`,

@@ -162,6 +162,6 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
     if not is_library_dir(root):
         raise SystemExit(
             f"error: {root} (from {source}) is not a usable library directory "
-            "— it must contain library/ or workflows/."
+            "— it must contain library/."
         )
     return root
