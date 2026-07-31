@@ -5,7 +5,7 @@ title: Renderer
 ---
 # Renderer
 
-Turns a resolved [`agents.yml`](../agents-yml-config.md) selection (skills, prompts, workflows)
+Turns a resolved [`agents.yml`](../agents-yml-config.md) selection (skills, prompts, roots)
 into the concrete `{output path: file content}` map that
 [`render_expected`](../farrier.md#install) writes (or, under `--check`, diffs against disk). One
 `Renderer` is constructed per `install` run; its methods each cover one class of generated output —
@@ -90,7 +90,7 @@ passes a literal from the fixed target set above).
 
 ## `render` — the per-agent output set
 
-`render(agents, roots, workflows, workflow_meta) -> {Path: str}` is the method `render_expected`
+`render(agents, roots) -> {Path: str}` is the method `render_expected`
 calls to produce almost the whole output map, gated per enabled [`agents:`
 name](../agents-yml-config.md#agents):
 
@@ -108,19 +108,16 @@ name](../agents-yml-config.md#agents):
 - **`claude`** — every selected skill via `generated_skill(source, "claude", path)`; every selected
   prompt via `generated_command(source, "claude", path)` (front matter + provenance, unlike
   Codex/Copilot's plain copy).
-- **workflows** — validates that every name in `workflows` resolves to `workflows/<name>` in some
-  layer (`find_in_layers`), raising `SystemExit` listing the unknown names, the layers searched and
-  the workflow names that do exist. Workflow *content* is never copied into the repo — a workflow
-  runs directly from whichever layer holds it, which is why the name has to resolve at install
-  time; only the launcher scaffolding that passes that name to workhorse is generated:
-  - `.agents/agents.mk` (`render_agents_mk`) — **always** emitted, for every install, filling
-    `workflow_meta` defaults (`repo_url` → `REPLACE_ME-git-remote-url`, `branch` → `"main"`,
-    `agents_dir` → `DEFAULT_AGENTS_DIR`, `repo_name` → `repo.name`) for any key `workflow_meta`
-    omits.
-  - when `workflows` is non-empty: one `.agents/agents-context.<assistant>.json` per **enabled**
-    assistant (`context_manifest(assistant)`, JSON, sorted/indented) plus the generic
+- **launcher scaffolding** — emitted for every install, gated on nothing. Farrier installs skills
+  and prompts, not workflows: a workflow is a Python package workhorse resolves through its
+  `workhorse.workflows` entry-point group, so there is nothing to render per workflow and the
+  launcher's targets are the two that regenerate and verify the adapters above.
+  - `.agents/agents.mk` (`render_agents_mk`, no arguments) — the make launcher, carrying
+    `agent-install` and `agent-check`.
+  - one `.agents/agents-context.<assistant>.json` per **enabled** assistant
+    (`context_manifest(assistant)`, JSON, sorted/indented) plus the generic
     `.agents/agents-context.json` aliased to the first enabled assistant (`"claude"` if none is
-    enabled); and `.agents/local.compose.yaml` (`render_local_compose`).
+    enabled).
   - a thin root `Makefile` (`include .agents/agents.mk`) is emitted **only if the repo has none** —
     an existing root Makefile is never overwritten; `ensure_makefile_include` wires it at install
     time instead.
@@ -130,8 +127,9 @@ name](../agents-yml-config.md#agents):
 ### `context_manifest` — the per-repo run-time manifest
 
 `context_manifest(target)` builds the JSON object written to the per-assistant
-`agents-context.*.json` files — everything a workflow prompt running **directly from the library**
-(never copied into the repo) needs to resolve `instruction_ref`/`isUsingInstruction`/`template.*`/
+`agents-context.*.json` files — everything a workflow prompt shipped **in an installed workflow
+package** (never copied into the repo) needs to resolve
+`instruction_ref`/`isUsingInstruction`/`template.*`/
 `skill_dir` at run time instead of at install time: `template`/`repo` (with `root` pinned to `"."`
 so the committed file is machine-independent) /`vars`, `instructions` and `prompts` (every selected
 skill/prompt id → its rendered output path, repo-root-relative), `used_skills` (sorted lookup keys),

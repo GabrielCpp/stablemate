@@ -66,9 +66,9 @@ services:
 
       # Workflow directory — set via the WORKFLOW_DIR env var. Only required if
       # you actually start this generic `agent` service directly (standalone
-      # workhorse testing); per-workflow consumers (farrier's generated
-      # local.compose.yaml) define their own named services with their own
-      # /workflow mount instead and never select this one, but Compose
+      # workhorse testing); a consumer merging this file in may define its own
+      # named services with their own /workflow mount and never select this
+      # one, but Compose
       # interpolates every service's variables up front regardless of which
       # service you run — so this can't be a hard `:?` requirement without
       # breaking `docker compose up <other-service>` for anyone merging this

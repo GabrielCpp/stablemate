@@ -4,8 +4,8 @@
 
 **farrier** renders an agent-neutral prompt library into a repository — generating
 the skill, prompt and instruction adapters expected by Codex, Claude, and GitHub
-Copilot, plus the launcher scaffolding (`.agents/agents.mk` and friends) that runs
-the workflows a repo names.
+Copilot, plus the launcher scaffolding (`.agents/agents.mk` and friends) that keeps
+those adapters current.
 
 A farrier is the craftsman who fits the right gear onto each horse. This tool
 fits the shared prompt library onto each repository.
@@ -86,13 +86,16 @@ goes in `library/skills/`, `library/prompts/`, `packs/` and `scaffolds/`, the fi
 formats expected, and how source names map to generated adapters. That is documented in
 **[`docs/LAYOUT.md`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/docs/LAYOUT.md)**.
 
-A library no longer ships workflows. `workflows:` in a pack or `agents.yml` is a
-*selection* — farrier emits the launcher scaffolding for the names it lists, and
-workhorse resolves each one through its own `workhorse.workflows` entry-point group.
-Nothing is copied into `.agents/workflows/`. The catch, documented at the end of
-`docs/LAYOUT.md`: farrier still *validates* each selected name against a
-`workflows/<name>/` directory in some library layer, and the base library no longer has
-one — so today only an overlay that still ships those directories can name workflows.
+**Farrier does not install workflows.** A library ships none, `agents.yml` has no
+`workflows:` key, and nothing is written to `.agents/workflows/`. A workflow is a Python
+package workhorse resolves through its `workhorse.workflows` entry-point group: install
+it with pip/uv and run it directly.
+
+```bash
+uv tool install workhorse-workflows
+workhorse run coder --dry-run    # static preflight, drives nothing
+workhorse run coder
+```
 
 ## Locating the library
 
@@ -109,7 +112,7 @@ neither an overlay nor a base does it refuse to start.
 ## Related
 
 - [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) — the fail-soft runner
-  that executes the workflows the launcher farrier scaffolds invokes.
+  that executes the workflows, against the adapters farrier renders.
 - [`ostler`](https://pypi.org/project/ostler/) — the doc-graph CLI those workflows
   shell out to.
 

@@ -26,9 +26,10 @@ host-side groom (if one is listening).
   workflow and, after the run returns, fires a one-shot
   `groom-sidecar --exit-code "$rc"` so groom learns the workflow finished (the
   container tears down before the inotify loop could report it).
-- Entry point: the farrier-generated `.agents/agents.mk` — `make agent-run` /
-  `make agent-build` (WF=author|coder) runs `docker compose up`, whose service
-  uses `workhorse`'s image + `entrypoint.sh`.
+- Entry point: `docker compose -f workhorse/compose.yaml up`, whose service uses
+  `workhorse`'s image + `entrypoint.sh`. (farrier's generated `.agents/agents.mk`
+  used to carry `make agent-run` / `make agent-build` wrappers; farrier installs
+  skills and prompts only now, and the launcher has no run targets.)
 
 ## Invariants (load-bearing)
 
@@ -53,9 +54,9 @@ host-side groom (if one is listening).
   forwarding, post-run `groom-sidecar --exit-code`.
 - `workhorse/Dockerfile` — bakes workhorse + ostler; groom is the editable tool
   installed at runtime from the bind, not baked.
-- `workhorse/compose.yaml` + farrier's generated `.agents/local.compose.yaml` —
-  `extra_hosts: host.docker.internal:host-gateway` so the sidecar can reach a
-  bridge-bound groom (see [sidecar-protocol](sidecar-protocol.md)).
+- `workhorse/compose.yaml` — `extra_hosts: host.docker.internal:host-gateway` so
+  the sidecar can reach a bridge-bound groom (see
+  [sidecar-protocol](sidecar-protocol.md)).
 
 ## Related
 

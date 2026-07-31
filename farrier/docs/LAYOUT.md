@@ -19,12 +19,11 @@ farrier never bundles content — it only renders whatever library it is aimed a
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
   packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
   scaffolds/*.yml              # scaffold definitions applied via `farrier scaffold <id>`
-  workflows/<workflow>/        # legacy: only still consulted to validate a selection
 ```
 
 Only `library/` is required for farrier to recognise a directory as a library — that is
 the whole of `stablemate_core.layout.is_library_dir`, and a path lacking it gets a setup
-hint. `packs/`, `scaffolds/` and `workflows/` are optional and only consulted when
+hint. `packs/` and `scaffolds/` are optional and only consulted when
 something selects from them; the base library, for instance, ships `library/` and
 `packs/` and nothing else.
 
@@ -154,8 +153,6 @@ prompts:
   - go/*
 scaffolds:
   - go-service           # scaffold ids from scaffolds/*.yml
-workflows:
-  - coder                # a workflows/ directory
 includes:
   - shared-lifecycle     # compose other packs (merged, cycle-checked)
 ```
@@ -197,30 +194,29 @@ service-folder names are project-specific, placement is a `--param`, never a
 library path. Scaffolded files are seeds: written once, never overwritten, and
 invisible to `--check`.
 
-## `workflows/<name>/` — workhorse workflows
+## Workflows are not part of the library
 
-A library no longer ships workflows. A workflow used to be a directory of YAML
-(`workflow.yaml` plus `prompts/`, `scripts/`, `docs/`) that farrier copied into
-`.agents/workflows/<name>/`; the YAML front-end has been retired, and a workflow is
-now a Python package [`workhorse-agent`](https://pypi.org/project/workhorse-agent/)
-resolves through the `workhorse.workflows` entry-point group — a distribution's
-business, installed with `pip`/`uv`, not rendered out of a library.
+A library ships no workflows, and farrier installs none. A workflow used to be a
+directory of YAML (`workflow.yaml` plus `prompts/`, `scripts/`, `docs/`) that farrier
+copied into `.agents/workflows/<name>/`; the YAML front-end has been retired, and a
+workflow is now a Python package
+[`workhorse-agent`](https://pypi.org/project/workhorse-agent/) resolves through the
+`workhorse.workflows` entry-point group — a distribution's business, installed with
+`pip`/`uv`, not rendered out of a library:
 
-What survives here is the *selection*: a pack or `agents.yml` still names workflows
-with `workflows: [coder]`, and farrier uses that list to emit the launcher scaffolding
-(`.agents/agents.mk`, the local compose override, the context manifest) for the named
-workflows. Nothing is copied into `.agents/workflows/` any more, and `--check` no longer
-scans it.
+```bash
+uv tool install workhorse-workflows
+workhorse run coder --dry-run    # static preflight, drives nothing
+workhorse run coder
+```
 
-Selection is still *validated* against a `workflows/<name>/` directory in some library
-layer, which the base library no longer has — so today only an overlay that still ships
-one can be named here. **This is a known gap in farrier, not a leftover of the port.**
-`renderer.py` rejects any name for which `find_in_layers("workflows", name)` returns
-`None`; it should ask the `workhorse.workflows` entry-point group the same question
-`workhorse run` asks. Until it does, a workflow that is installed and runnable is still
-refused here if no library layer happens to carry a directory of that name. Reported in
-[the progress ledger](../../docs/plans/workflow-as-python-state-machine-progress.md);
-fixing it is farrier's work, not the retired migration's.
+There is no `workflows:` key in a pack or in `agents.yml`, no `workflows/` directory in
+a library, and nothing under `.agents/workflows/`. A leftover `workflows:` list is
+ignored rather than rejected. What farrier still generates is the launcher
+(`.agents/agents.mk`) and the per-repo context manifest
+(`.agents/agents-context*.json`) — the first regenerates and verifies the adapters, the
+second is how a running workflow resolves `instruction_ref` against *this* repo's
+adapters. Both are emitted for every install, workflow or not.
 
 ## Templating
 

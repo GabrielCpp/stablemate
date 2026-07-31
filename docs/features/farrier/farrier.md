@@ -33,7 +33,7 @@ already current.
 - flags:
   - `--repo <dir>` — repository root to render generated files into. Default: current working
     directory.
-  - `--config <path>` — path to the repo's [`agents.yml`](agents-yml-config.md) pack/workflow
+  - `--config <path>` — path to the repo's [`agents.yml`](agents-yml-config.md) pack/skill
     selection file. Default: `<repo>/agents.yml`.
   - `--check` — verify the repo's generated files are current without writing anything; exits `1`
     and prints which files would be rewritten if any are stale or missing, `0` otherwise.
@@ -52,14 +52,14 @@ already current.
     and validate `agents:` selects at least one of `codex`/`claude`/`copilot` (`normalize_agents`)
     — else `SystemExit("No agents selected in config")`
   - run: resolve the [`agents.yml`](agents-yml-config.md) selection (packs ∪ top-level
-    `skills`/`prompts`/`roots`/`workflows`, minus `exclude`) against the library's skill/prompt
-    sources; `SystemExit("Selected packs did not match any skills, prompts, or workflows")` if
+    `skills`/`prompts`/`roots`, minus `exclude`) against the library's skill/prompt
+    sources; `SystemExit("Selected packs did not match any skills or prompts")` if
     nothing at all was selected. (The `scaffolds:` lists are collected but consumed only by the
     [`scaffold`](#scaffold) command — install renders no scaffold files.)
   - run: build a [`Renderer`](concepts/renderer.md) over the selected skills/prompts and render
     every enabled agent's skill/command files, the `roots`-driven Copilot instructions, and the
-    always-on launcher scaffolding (`.agents/agents.mk`, plus `.agents/agents-context*.json` /
-    `.agents/local.compose.yaml` / a thin root `Makefile` when >= 1 workflow is selected)
+    launcher scaffolding — `.agents/agents.mk` and `.agents/agents-context*.json` for every
+    repo, plus a thin root `Makefile` only when the repo has none
   - run: render each [`localInstructions`](agents-yml-config.md#localinstructions) entry into its
     target directories' `CLAUDE.md`/`AGENTS.md`/`CODEX.md` (every target directory must already
     exist — `SystemExit` pointing at `farrier scaffold` otherwise) — together these compute the
@@ -70,18 +70,19 @@ already current.
   - run (`--check`): scan every directory farrier owns for files not present in the expected output
     map — `.agents/skills`, `.agents/prompts`, `.claude/skills`, `.claude/commands`,
     `.github/instructions`, `.github/prompts` (`TARGET_DIRS`); every file in them not in the
-    expected map is recorded `extra: <repo-relative path>`. `.agents/workflows` is *not* scanned:
-    farrier rendered a workflow's YAML tree there until the front-end was retired and has emitted
-    nothing into it since, so a leftover from an older install is not the installer's to police
+    expected map is recorded `extra: <repo-relative path>`. Neither `.agents/workflows` nor
+    `.agents/local.compose.yaml` is scanned: farrier rendered a workflow's YAML tree into the
+    first and a per-workflow compose override into the second while workflows were its concern,
+    and it emits neither now — so scanning them would report a leftover from an older install as
+    `extra:`, a `--check` failure no re-render can fix
   - run (`--check`): also record as `extra` any of these fixed paths that exist on disk but aren't
     in the expected map: `.github/copilot-instructions.md`, `.github/agents/copilot-instructions.md`,
-    and the launcher scaffolding paths `.agents/agents.mk`, `.agents/local.compose.yaml`,
-    `.agents/agents-context.json`
+    and the launcher scaffolding paths `.agents/agents.mk`, `.agents/agents-context.json`
   - run (`--check`): if any `missing`/`changed`/`extra` entries were recorded, print them in that
     order (one per line, e.g. `missing: .claude/skills/foo/SKILL.md`) and return `1`; otherwise
     return `0` with no output
-  - run (no `--check`): write the computed files into `--repo`, then seed `.agents/.gitignore`
-    rules and a root `Makefile` `include` line when a workflow launcher was generated; print the
+  - run (no `--check`): write the computed files into `--repo`, then seed the managed `.gitignore`
+    rules and a root `Makefile` `include` line pointing at the generated launcher; print the
     count of installed files and return `0`
 - code: `farrier/farrier/cli.py::_run_install`
 
