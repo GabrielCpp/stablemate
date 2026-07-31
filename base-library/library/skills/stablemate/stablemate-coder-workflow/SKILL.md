@@ -1,49 +1,60 @@
 ---
 name: stablemate-coder-workflow
-description: "Architecture and conventions for the epic-coder workhorse workflow — vars contract, node topology, get_node_output pattern, ostler path integration, and script authoring rules."
+description: "Architecture and conventions for the epic-coder workhorse workflow — the inputs contract, state topology, self.output threading, ostler path integration, and node authoring rules."
 ---
 
 # Coder Workflow — Architecture Reference
 
-Load this skill when reading, modifying, or debugging `agents/workflows/coder/workflow.yaml` or any script under `agents/workflows/coder/scripts/`.
+Load this skill when reading, modifying, or debugging the `coder` workflow —
+`workflows/src/workhorse_workflows/coder/`: `workflow.py` (the epic/story state machine),
+`flows/` (the eight sub-flows), `nodes/` (the node functions), `schemas/`, `prompts/`.
 
-> **Repo modes (mono-repo vs multi-repo), the docs root, and standalone flow
-> invocation are documented in `agents/workflows/coder/docs/repo-modes.md`
-> (repo-root-relative path — read it before touching any `cwd:`/`add_dirs:` on an
-> agent node or any path-resolution script (`resolve-impl-context.py`,
-> `resolve-review-context.py`, `find_repo_root`/`find_docs_root`). It documents
-> guarantees (and the lack thereof) around the docs root and the affected-repos
-> list that are easy to get wrong.**
+The engine API those files are written against — states, `Continue`/`Done`/`Await`,
+`self.call`/`agent`/`handoff`/`output` — is `workhorse/docs/WORKFLOW.md`. Node-authoring
+rules are the `stablemate-workhorse-scripting` skill. This skill is the coder workflow's
+own architecture, and nothing else.
+
+> **Repo modes (mono-repo vs multi-repo) and the docs root.** Before touching any
+> `cwd=`/`add_dirs=` on a `self.agent(...)` call, or any path resolution
+> (`resolve_impl_context`, `resolve_review_context`, `paths.py`'s three repo-root
+> resolvers), read `paths.py`'s module docstring — it states which resolver each caller
+> uses and why they differ. The docs root and the affected-repos list carry fewer
+> guarantees than they look like they do; see "`docs_path` Threading" below.
 
 ---
 
-## Workflow Parameters (`vars:`)
+## Workflow Inputs
 
-Only **user-supplied params** live in `vars:`. Internal state (values produced by script nodes at runtime) is NOT declared here — it is accessed via `get_node_output()`.
+Inputs are **class attributes on `Coder`** with defaults, filled from `--params`. They are
+frozen after `setup()`. Everything a node produces at runtime is *not* an input — it is a
+state parameter or `self.output(node)`.
 
-| Var | Default | Notes |
-|-----|---------|-------|
-| `mode` | `"epic"` | `"epic"` = full queue; `"story"` = single story, own branch, no merge |
+| Input | Default | Notes |
+|-------|---------|-------|
+| `mode` | `"epic"` | `"epic"` = full queue; `"story"` = single story, own branch, own PR |
 | `docs_path` | `""` | Docs repo root. Empty → `AGENT_REPO_DIR` (where workhorse launched) |
 | `story` | `""` | Story slug (e.g. `"CASE-1234"`). Required in story mode; ignored in epic mode |
-| `epic` | `""` | Optional: override which epic to run, skips queue pick |
-| `max_qa_reworks` | `"3"` | Max QA-fix cycles per story |
-| `max_setup_reworks` | `"2"` | Max setup-fix cycles when QA env is broken |
-| `max_ci_reworks` | `"3"` | Max fix_ci cycles per epic PR |
-| `max_merge_reworks` | `"2"` | Max fix_merge cycles per epic PR |
-| `operator_mode` | `"auto"` | `"auto"` = resolve_* agent stands in; `"human"` = always halt |
+| `epic` | `""` | Optional: override which epic to run, skips the queue pick |
+| `operator_mode` | `"auto"` | `"auto"` = the `resolve-operator` agent stands in; `"operator"` = escalate to a human. Does not reach the CI gate, which is always human |
 | `target_env` | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment |
+| `qa_stack_manifest` | `"qa-stack.yml"` | The stack manifest `qa` reads to bring services up |
 
-Override any var at launch:
-```
+The rework caps are **`ClassVar` constants, not inputs** — `MAX_CI_REWORKS` (3),
+`MAX_MERGE_REWORKS` (2), `MAX_ZERO_DIFF_COMMITS` (3), plus each flow's own. They were YAML
+`vars` duplicated as literals inside the branch guards; now the guard reads the constant, so
+there is one copy and a test asserts a cap by *changing it*. Raising a cap is a code change.
+
+Override any input at launch:
+```bash
 workhorse run coder --params '{"mode":"story","story":"CASE-1234"}'
 ```
 
 ### Standalone flow invocation
 
-Each per-story flow (`dev`, `review`, `qa`) is independently launchable. Its first node
-is `prepare_story`, which resolves `story_path`/`spec_dir` from the `story` slug via
-ostler — so only the minimal params are needed:
+The eight sub-flows are registered by name on the registry (`Registry("coder").add_flows(
+genesis=…, dev=…, review=…, docs=…, qa=…, fix=…, fix_ci=…, dream=…)`), and any of them is
+independently launchable. Each resolves `story_path`/`spec_dir` from the `story` slug via
+ostler in its own first state, so only the minimal params are needed:
 
 ```bash
 # QA only, against DEV
@@ -54,95 +65,104 @@ workhorse run coder dev --params '{"story":"CASE-1234"}'
 ```
 
 `docs_path` and `epic` are optional (empty string = derive from CWD / ostler defaults).
-Standalone QA runs `clear_qa_evidence` to remove both the disposable `qa/` tree and
-the stale root `qa-evidence.json`, then regenerates context. `plan-context.json` is
-not required; source-root resolution degrades to the standalone repository.
+Standalone QA clears both the disposable `qa/` tree and the stale root `qa-evidence.json`,
+then regenerates context. `plan-context.json` is not required; source-root resolution
+degrades to the standalone repository.
+
+`genesis`, `dream` and `fix` exist as names *because* they are entered directly; the other
+five are also reached by `self.handoff(...)` from the main machine.
 
 ---
 
-## Node Output References — `get_node_output()`
+## Cross-state values — three tiers, and which to use
 
-**All cross-node references at the parent level MUST use `get_node_output()`**, not bare `{{ var }}` template variables. Bare vars silently collapse to `""` if the upstream node hasn't run; `get_node_output` is explicit about source.
+There is no `get_node_output()` and no flat context. A value reaches a later state one of
+three ways, and picking the wrong one is the defect this section exists to prevent:
 
-```yaml
-# CORRECT — explicit source node
-args:
-  - "{{ get_node_output('open_pr', 'ci_epic') }}"
-  - "{{ get_node_output('prepare_story', 'spec_dir') }}"
+1. **An input** (`self.story`, `self.docs_path`) — supplied at launch, frozen, readable
+   anywhere.
+2. **`self.ctx`** — whatever `setup()` returned, computed once per run. `Coder.setup()`
+   returns `WorkspaceDirs`, so every agent turn that needs `add_dirs` reads
+   `self.ctx.workspace_dirs` regardless of how far the run got. (In the YAML this node sat
+   on the story path only, so the two main-graph turns taking `add_dirs` rendered it empty
+   on any run that reached them before the first story. Resolving it in `setup()` is the
+   same call at a strictly earlier point.)
+3. **A state parameter** — one hop, on the `Continue`: `Continue(result, self.qa, epic=epic,
+   zero_diff=zero_diff)`. Counters live here. It is part of the checkpoint, so a resumed run
+   gets it back.
 
-# WRONG — implicit flat merge, collapses silently when node hasn't run yet
-args:
-  - "{{ ci_epic }}"
-  - "{{ spec_dir }}"
-```
+`self.output(node)` is a **read of a recorded artifact**, not a fourth tier: it returns the
+node's typed return value from this run's directory and **raises `NodeNotRunError`** if the
+node has not run. That raise is the feature — the YAML's bare `{{ spec_dir }}` collapsed to
+`""` instead, and silently wrong beats loudly missing exactly never.
 
-**Exception: inside `flows:`** — flow nodes have their own isolated `vars:` populated from the parent's `args:` block. Prompts and scripts inside a flow use `{{ story_path }}` etc. — that resolves to the flow's local var, which is correct.
+**The two epic disjunctions look alike and are not.** The port keeps them apart:
 
-### Canonical Source Map
+- the story pipeline uses `prepare_story.story_epic or select_story.epic or self.epic` —
+  the epic the *story* belongs to, discovered by scanning when story mode got a bare slug;
+- `commit_story`, `qa_give_up` and `replan_epic` use `select_epic.epic or self.epic` — the
+  epic the *queue* is working, which in story mode is whatever the run was invoked with.
 
-| Key | Source Node | Used by |
-|-----|-------------|---------|
-| `story_path` | `prepare_story` | dev, review, qa flow args; replan_epic; commit; PR nodes |
-| `spec_dir` | `prepare_story` | dev, review, qa flow args; replan_epic; commit; PR nodes |
-| `story_slug` | `prepare_story` | dev, qa flow args; commit nodes; qa_give_up; open_story_pr |
-| `base_branch` | `branch_story` (story) or `init_base` (epic) | branch_epic, open_pr, open_story_pr |
-| `story_branch` | `branch_story` | open_story_pr — the branch is the cutting node's to name, never re-derived from the slug |
-| `epic` | `select_epic` | branch_epic, open_pr, prune_epic, replan_epic, qa_give_up, commit_story |
-| `ci_epic` | `open_pr` | await_ci, push_ci, fix_ci, merge, flag_ci_fail, await_ci_operator, fix_merge, push_merge, flag_merge_fail, await_merge_operator |
-| `ci_base` | `open_pr` | await_ci, merge, fix_merge, flag_merge_fail, await_merge_operator |
-| `ci_summary` | `await_ci` | fix_ci, flag_ci_fail, await_ci_operator |
-
-**Dual-source pattern** — when a value can come from two nodes depending on mode:
-```yaml
-# base_branch: story mode → branch_story, epic mode → init_base
-- "{{ get_node_output('branch_story', 'base_branch') or get_node_output('init_base', 'base_branch') }}"
-
-# epic: from select_epic, but also overridable from vars
-- "{{ get_node_output('select_epic', 'epic') or epic }}"
-```
+Both are fall-back chains because `self.output()` raises for a node that never ran, and in
+story mode neither `select_epic` nor `select_story` ever runs. The queue epic is carried as
+a **state parameter** rather than read back through a guarded `self.output`, so a resumed
+run does not re-derive it.
 
 ---
 
-## Node Topology
+## State Topology
+
+Twenty-seven states cover what was eighty YAML nodes. The factor of three is the `decide_*`
+nodes disappearing into the `if` at the end of the state that produced the value they branch
+on, and the eight `incr_*`/`reset_*`/`init_*` counter nodes becoming keyword arguments.
+
+**Where a state boundary goes:** a state ends where the *expensive or irreversible* thing
+begins — each `handoff` to a sub-flow, each agent turn, each of the two operator gates.
+Deterministic nodes fold forward into whichever state branches on them. That is why
+`prune_epic` sits inside `open_pr` (a straight line) while `dev`, `review`, `document` and
+`qa` are four states rather than one: a kill during QA must not re-run the implementation.
 
 ### Story Mode
 ```
-decide_mode → branch_story → prepare_story → dev → review → docs → qa_phase
-           → decide_post_sentinel → commit_story_pr → open_story_pr → done
+start → prepare → dev → review → document → qa → drain… → finalize
+      → commit → commit_pr → done
 ```
+`start` cuts the branch itself in story mode, off the current HEAD, recording the base it
+came from — the PR at the far end has to target that base, and re-deriving it from the slug
+is how the two drifted once.
 
 ### Epic Mode
 ```
-decide_mode → init_base → select_epic → decide_epic → branch_epic
-           → select_story → decide_story → prepare_story → dev → review → docs → qa_phase
-           → decide_post_sentinel → commit_story → select_story   (loop within epic)
-                                 ↘ [story exhausted] prune_epic → open_pr
-                                   → CI gate (reset_ci → await_ci → fix_ci loop)
-                                   → merge → select_epic          (advance to next epic)
+start → select_epic → select_story → prepare → dev → review → document → qa
+      → drain → fix_plan → fix_dispatch → fix_implement → fix_check → fix_apply
+      → fix_recheck → finalize → commit → select_story        (loop within epic)
+                                        ↘ [stories exhausted] open_pr
+                                          → merge → merge_operator → select_epic
+```
+`open_pr` pops the epic off the queue before opening the PR — that order is deliberate.
+`merge` returns `Continue | Await`: the CI/merge gate is the one place a human is always
+allowed to be the next step.
+
+### `prepare` — the convergence state
+
+Both modes pass through `prepare` before `dev`. Its `prepare_story` node is the **single
+canonical source** for `story_path`, `spec_dir`, `qa_dir`, `story_slug` and `story_epic`,
+returned as one `StoryPaths` model. Never bypass it and never re-derive those paths.
+
+```python
+def prepare(self, slug: str = "", epic: str = "", zero_diff: int = 0) -> Continue:
+    story = self.call(prepare_story, self.docs_path, slug or self.story, epic or self.epic)
+    return Continue(story, self.dev, epic=epic, zero_diff=zero_diff)
 ```
 
-### `prepare_story` — the Convergence Node
+### The backlog drain is nested as well as standalone
 
-Both modes pass through `prepare_story` before entering `dev`. It is the **single canonical source** for `story_path`, `spec_dir`, and `story_slug`. Never bypass it.
-
-In story mode: `branch_story` → `prepare_story` (resolves from the `story` slug var)
-In epic mode: `select_story` → `decide_story` → `prepare_story` (resolves from `select_story`'s output)
-
-```yaml
-- id: prepare_story
-  type: script
-  script: scripts/prepare-story.py
-  args:
-    - "{{ docs_path }}"
-    - "{{ get_node_output('select_story', 'story_slug') or story }}"
-    - "{{ get_node_output('select_story', 'epic') or epic }}"
-  outputs:
-    - key: story_path
-    - key: spec_dir
-    - key: story_slug
-    - key: story_epic
-  next: dev
-```
+`flows/fix.py` is the standalone drain. States `drain` through `fix_recheck` are the same
+seven steps run *inside* a story's run, right after that story goes green. They are not a
+`handoff` to `Fix` because the two differ at the far end: the standalone flow documents and
+commits each drained item on its own, while the nested copy leaves both to the story's own
+`finalize` and `commit`, so one commit covers the story and everything drained behind it.
+The duplication is inherited from the YAML and is preserved deliberately.
 
 ### Documentation gate topology
 
@@ -176,8 +196,9 @@ prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 -> verify_qa_evidence -> audit_qa -> regression/completion gates
 ```
 
-`qa-plan.yml` is mandatory for command, browser, and mobile surfaces. Workflow script
-nodes call `ostler qa context`, `context-validate`, `validate`, and `run`; no QA agent
+`qa-plan.yml` is mandatory for command, browser, and mobile surfaces. Node functions call
+`okf.qa_context(...)`, `okf.qa_context_validate(...)`, `okf.qa_validate(...)` and
+`okf.qa_run(...)` on the `Ostler` facade (through the `qa_cli` helpers); no QA agent
 drives Playwright/Maestro/commands or authors the run log, manifest, or evidence.
 `review_qa_plan` independently checks whether the valid plan can reach and observe its
 objectives. `assess_qa_run` constructively judges whether each completed run actually did
@@ -215,131 +236,126 @@ ostler path branch <slug> --epic     # → feat/<slug>
 
 All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs_root>` when not running from the docs repo CWD.
 
-### In Scripts (Python)
+### In nodes (Python) — the library facade, never the CLI
+
+Nodes command ostler **in-process** through `Ostler`. There is no `run_tool(["ostler", …])`
+here: the CLI is a different process with a different interpreter, and pipx isolation makes
+"the shim is on PATH" and "the module imports" routinely disagree.
+
 ```python
-from pathlib import Path
+from ostler import Ostler
 
-from workhorse.scriptutil import run_tool
-
-def _ostler_path(docs_root: Path, subcmd: str, *args: str) -> str:
-    # run_tool is the monkeypatchable seam for external CLIs (ostler, etc.) —
-    # an in-process test fakes it with no PATH shim.
-    result = run_tool(["ostler", "-C", str(docs_root), "path", subcmd, *args])
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-# Always provide a fallback in case ostler is unavailable
-spec_dir = _ostler_path(docs_root, "spec", slug) or f"docs/specs/{slug}"
-story_path = _ostler_path(docs_root, "story", epic, slug)
+okf = Ostler(docs_root)                        # root discovered upward, like `ostler -C DIR`
+spec_dir_rel = okf.spec_path(slug)             # docs/specs/<slug>
+try:
+    story_path_rel = okf.story_path(epic, slug)
+except (OSError, ValueError, RuntimeError):    # an unloadable graph raises; [] means empty
+    story_path_rel = ""
+story_path_rel = story_path_rel or f"docs/epics/{epic}/stories/{slug}/story.md"
 ```
+
+Catch the raise where a fallback is genuinely correct — a path convention the graph cannot
+confirm. Never catch it to emit a **verdict**: a gate that could not read the graph is a
+failure, not a pass. Full verb→method reference: the `stablemate-ostler` skill.
 
 ---
 
 ## `docs_path` Threading
 
-Scripts needing the docs root receive it as an **explicit positional arg**. Use `find_docs_root(docs_path_arg)` from `workhorse.scriptutil` — handles the empty → `AGENT_REPO_DIR` fallback.
+`docs_path` is a run **input**, so every node that needs the docs root takes it as a named
+parameter from the state that calls it — `self.call(prepare_story, self.docs_path, …)` — and
+resolves it with `find_docs_root(docs_path)` from `workhorse.scriptutil`, which handles the
+empty → `AGENT_REPO_DIR` fallback.
 
-```python
-from workhorse.scriptutil import find_docs_root
+`paths.py` keeps **three** repo-root resolvers on purpose, because the YAML's scripts did not
+agree and the disagreement is behavioral: a run launched from a subdirectory, or from a repo
+whose `docs/epics/` exists but whose `.git` does not, lands on a different root under each.
+Call the one the node's semantics need:
 
-def main():
-    docs_path_arg = sys.argv[1] if len(sys.argv) > 1 else ""
-    docs_root = find_docs_root(docs_path_arg)
-```
-
-Scripts that accept `docs_path` as argv[1]: `prepare-story.py`, `select-next-epic.py`, `select-next-story.py`, `branch-story.sh`.
+| Resolver | Marker | Used by |
+|---|---|---|
+| `scriptutil.find_repo_root` | `AGENT_REPO_DIR`, else `agents.yml`/`.git` upward | the consuming code repo |
+| `paths.epics_repo_root()` | `agents.yml` or a `docs/epics/` **directory** | `prune_epic` — a docs checkout with no `.git` still gets its queue popped |
+| `paths.launch_repo_root()` | `AGENT_REPO_DIR`, else `cwd` if project-shaped, else upward | the operator gates — its `cwd`-first probe is what lets a test point a gate at a sandbox by chdir alone |
 
 ---
 
-## Script Conventions
+## Node Conventions
 
-### Output Protocol
-Every script prints one JSON object to stdout and exits 0. Non-zero exit means a hard failure
-(e.g. `await_operator.py` exits 2 for "blocked"). Ostler QA adapters are intentionally thin:
-they preserve `passed|failed|blocked|invalid` in JSON and exit 0 for all expected states even
-when the underlying CLI uses a nonzero process status.
+### Return a model, raise to fail
+A node returns its schema model from `schemas/`; the engine records it and
+`self.output(node)` revives it typed. Nothing is printed to communicate. A hard failure is
+`raise WorkflowFailed(reason)` — there are no exit codes, and `raise SystemExit` inside a
+node kills the driver.
 
+The ostler QA adapters stay deliberately thin: they preserve `passed|failed|blocked|invalid`
+in the returned model for every expected state, even where the underlying library call
+signals a problem, because those four are *results* for the state to branch on, not errors.
+
+### Defaults belong in the schema
 ```python
-def emit(**kwargs) -> None:
-    payload = {"has_story": "no", "story_path": "", ...}  # defaults first
-    payload.update(kwargs)
-    print(json.dumps(payload))
-    sys.exit(0)
+class StoryPick(BaseModel):
+    has_story: str = "no"
+    story_path: str = ""
+    story_slug: str = ""
 ```
+A field's default is declared once, on the model — not re-typed as a `payload` dict in every
+node that returns it. It is also what `--dry-run` blanks to, so a pessimistic default here
+makes a dry run take the honest arm.
 
-### Declared Outputs
-Every emitted key must be listed under `outputs:` in the workflow node. The engine extracts only declared keys.
+### What bounds the run
+There is no gas tank and no `refuel:`. What stops a runaway is `max_transitions`
+(`ClassVar` on the workflow — `Coder` raises it to 4000 because eighty nodes with several
+loops is not a default-budget shape) and the run-wide `WORKHORSE_MAX_RUNTIME_S`. Forward
+progress is expressed as a *counter parameter* on the transition — `zero_diff`, `ci_rework`,
+`merge_rework` — checked against a `ClassVar` cap.
 
-```yaml
-outputs:
-  - key: story_path
-  - key: spec_dir
-  - key: story_slug
-```
-
-### Refuel Keys
-`refuel:` on a script node tops up the gas tank when the named key **changes** (real forward progress). Use the key that uniquely identifies the unit of work:
-
-| Node | `refuel:` | Why |
-|------|-----------|-----|
-| `branch_story` | `story` | Story mode entry: new story starts |
-| `select_epic` | `epic` | New epic selected from queue |
-| `select_story` | `story_slug` | New story selected within epic |
+### Idempotency
+A resume re-enters a state from the top, so every node that state already called runs again.
+Create-or-checkout the branch, skip the commit with nothing staged, look for the open PR
+before opening one.
 
 ---
 
 ## Flow Contracts
 
-Flows have their own isolated `vars:`. The parent populates them via `args:` using
-`get_node_output`. Inside the flow, prompts use plain `{{ story_path }}` — that is the
-flow's local var, not the parent context.
+A sub-flow is a `Workflow` subclass in `flows/`, with its own inputs, its own `setup()` and
+its own `labels()`. The parent enters it with `self.handoff(Flow, ...)`; a caller enters it
+by name with `workhorse run coder <flow>`. **Only the arguments passed cross the boundary** —
+a flow cannot see the parent's `ctx`, parameters or node outputs, which is what makes the
+standalone invocation honest.
 
-**`vars:` default convention:**
-
-| Default value | Meaning |
-|---------------|---------|
-| `null` (absent/no default) | Required — caller must supply; missing key → error at launch |
-| `""` (empty string) | Optional — caller may omit; flow uses `""` if absent |
-| any other value | Default used when caller doesn't supply |
-
-```yaml
-flows:
-  qa:
-    name: qa
-    start: prepare_story
-    vars:
-      story: ""          # optional — caller may omit (ostler falls back to CWD)
-      docs_path: ""      # optional
-      epic: ""           # optional
-      operator_mode: "auto"
-      target_env: "local"
-    nodes:
-      - id: prepare_story
-        ...
+```python
+def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    result = self.handoff(
+        Qa,
+        story=self._story.story_slug,
+        docs_path=self.docs_path,
+        epic=self._story_epic(epic),
+        operator_mode=self.operator_mode,
+        target_env=self.target_env,
+        qa_stack_manifest=self.qa_stack_manifest,
+        triage_scope_count=triage,
+    )
 ```
 
-The parent passes resolved values back into the flow's args after `prepare_story`:
-
-```yaml
-- id: qa_phase
-  type: flow
-  name: qa
-  args:
-    story: "{{ get_node_output('prepare_story', 'story_slug') }}"
-    docs_path: "{{ docs_path }}"
-    epic: "{{ get_node_output('prepare_story', 'story_epic') or get_node_output('select_story', 'epic') or epic }}"
-    operator_mode: "{{ operator_mode }}"
-    target_env: "{{ target_env }}"
-```
+The input-default convention replaces the YAML's `vars:` three-way rule: a flow input with a
+default is optional, an input **without** one is required and a launch that omits it fails
+before the first state. Prefer `""` over `None` for a string a flow can derive itself.
 
 ---
 
-## Checklist: Adding or Modifying a Node
+## Checklist: Adding or Modifying a State or Node
 
-- [ ] Script prints one JSON object, exits 0 on all normal paths
-- [ ] All emitted keys are declared under `outputs:` in the node
-- [ ] Args that come from other nodes use `{{ get_node_output('source_node', 'key') }}`
-- [ ] Dual-source args use the `or` fallback pattern
-- [ ] Script accepts `docs_path` as argv[1] if it needs the docs root; uses `find_docs_root()`
-- [ ] Ostler called with `-C <docs_root>` for path resolution; hardcoded fallback provided
-- [ ] `refuel:` set if the node marks forward progress (new story/epic)
-- [ ] YAML validated after edits: `python3 -c "import yaml; yaml.safe_load(open('workflow.yaml'))"`
+- [ ] The node returns a schema model with an annotated return type; nothing is printed
+- [ ] Failure is `raise WorkflowFailed(...)`, and the failing arm cannot reach a publishing state
+- [ ] Values a later state needs travel as `Continue(..., name=value)` parameters, or come
+      from `self.output(node)` — never re-derived, never a bare guessed default
+- [ ] `self.output(node)` calls that can legitimately not have run are wrapped for
+      `NodeNotRunError` with a stated fallback, not a blanket `except`
+- [ ] The node is idempotent — a resume re-enters its state from the top
+- [ ] The docs root comes from `find_docs_root(self.docs_path)` or the right `paths.py` resolver
+- [ ] Ostler is called through `Ostler(root)`, never a subprocess; the fallback is a path
+      convention, never a verdict
+- [ ] A renamed state or node carries `aliases=[...]` so in-flight runs still resume
+- [ ] `uv run ruff check .` from the repo root, and the flow's test in `workflows/tests/coder/`
