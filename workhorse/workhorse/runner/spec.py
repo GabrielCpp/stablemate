@@ -4,7 +4,7 @@ outputs it is expected to produce.
 This is the runner's own input contract, not a workflow-format type — both
 front-ends build one. The YAML loader validates a node's mapping into it; the
 Python driver constructs one per ``self.agent`` call from the state's arguments.
-Keeping it beside :mod:`workhorse.runner.agent` is what lets the driver call the
+Keeping it beside :mod:`workhorse.runner.ladder` is what lets the driver call the
 runner without importing a graph.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 class OutputSpec(BaseModel):
     key: str
     # Value emitted for this key when the node exhausts all retries/reframes and
-    # the runner falls back to "default to next node" (see runner/agent.py). The
+    # the runner falls back to "default to next node" (see runner/ladder.py). The
     # safe fallback is workflow-specific, so it's declared here by the workflow
     # author rather than guessed by the generic runner. Unset → None.
     default: Any = None
@@ -32,7 +32,7 @@ class AgentNode(BaseModel):
     # Abstract capacity tier for this node. The active backend maps this through the
     # user-wide workhorse config (`power.<level>.<backend>`) to concrete model/effort.
     # Missing config deliberately leaves model/effort unset so the backend's default
-    # behavior applies. See workhorse/config.py and runner/agent.py.
+    # behavior applies. See workhorse/config.py and runner/ladder.py.
     power: Literal["low", "medium", "high"] | None = None
     # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 3600s
     # (1 hour) — research/implementation nodes routinely run a benchmark that

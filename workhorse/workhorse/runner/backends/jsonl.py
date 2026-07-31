@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 
-from workhorse.runner import agent as _agent
+from workhorse.runner import failure as _failure
+from workhorse.runner import process as _process
 from workhorse.runner.backends.turn import TurnState
 
 
@@ -20,7 +21,7 @@ def stream_jsonl(
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id)`` per parsed object.
 
-    Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
+    Streams through ``process.stream_subprocess`` so the timeout, hard watchdog, and
     process-group kill behave identically to every other harness. ``cwd`` sets the
     subprocess working directory (previously silently dropped here, so Codex/Copilot/
     OpenCode nodes always ran in the launching process's CWD regardless of a node's
@@ -49,15 +50,15 @@ def stream_jsonl(
         # separate scheduled-reset path. Scan only newly-added diagnostics so this
         # stays O(n) over the stream.
         new_diag = "\n".join(state.diagnostics[before:])
-        if not early_abort[0] and new_diag and _agent._is_cap(new_diag):
+        if not early_abort[0] and new_diag and _failure.is_cap(new_diag):
             early_abort[0] = "cap"
             return True  # signal stream_subprocess to break and kill the process
-        if not early_abort[0] and new_diag and _agent._is_transient(new_diag):
+        if not early_abort[0] and new_diag and _failure.is_transient(new_diag):
             early_abort[0] = "transient"
             return True  # signal stream_subprocess to break and kill the process
         return False
 
-    timed_out, returncode = _agent.stream_subprocess(
+    timed_out, returncode = _process.stream_subprocess(
         cmd, node_id, timeout, on_line,
         resilience=resilience,
         stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,

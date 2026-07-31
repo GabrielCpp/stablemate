@@ -1,6 +1,6 @@
 """Test doubles for the ports the runner is handed.
 
-The ladder in ``runner/agent.py`` drives the agent CLI through the ``AgentBackend``
+The ladder in ``runner/ladder.py`` drives the agent CLI through the ``AgentBackend``
 port it is *given*, so a test states the CLI's behaviour by injecting a backend rather
 than reaching into ``agent`` and replacing one specific CLI's private turn function
 (rule 5: a monkeypatched private name is a missing injection point). One fake serves

@@ -6,7 +6,7 @@ This document describes the guardrails and error recovery mechanisms implemented
 
 The original error:
 ```
-workhorse.runner.agent.BackendInvocationError: No result text from claude for node 'review_implementation'
+workhorse.runner.failure.BackendInvocationError: No result text from claude for node 'review_implementation'
 ```
 
 This occurs when Claude's CLI doesn't return a (non-empty) result event within the expected timeframe, which can happen due to:
@@ -21,7 +21,7 @@ This occurs when Claude's CLI doesn't return a (non-empty) result event within t
 The worker is built to run unattended for days, so resilience is the single,
 default behavior — there is no mode flag to enable. Every agent node escalates
 through three layers before it can ever crash the run (see
-`workhorse/runner/agent.py::run_agent`):
+`workhorse/runner/ladder.py::run_agent`):
 
 0. **Exec-retry (spawn-time, before a turn even starts)** — the agent CLI can be
    replaced on disk *mid-run* by its own auto-updater (Claude Code ships a native
@@ -29,7 +29,7 @@ through three layers before it can ever crash the run (see
    rewrite is in flight, `exec` of the same path fails for a sub-second window —
    `ETXTBSY` (a running native binary being overwritten) or `ENOENT` during the
    updater's rename. That must not interrupt an otherwise-healthy turn, so
-   `_spawn_streaming` retries the spawn a few times with short backoff
+   `process._spawn_streaming` retries the spawn a few times with short backoff
    (`AGENT_EXEC_RETRY_*`). The subtle part is telling this apart from a *genuinely
    absent* CLI (the classic launch-context bug: a non-interactive shell never loaded
    the nvm `PATH`). You **cannot** do it by probing once — during an `ENOENT` rename
@@ -50,26 +50,27 @@ through three layers before it can ever crash the run (see
    backoff. **Scheduled-reset caps** — spending cap, usage/weekly
    limit, *session limit*, quota — are instead *waited out* until the window
    reopens and then retried; the run pauses rather than reframing or defaulting,
-   since re-asking a capped subscription can't help (`_invoke_claude`). The wait
-   time prefers the CLI's **structured** `rate_limit_event.resetsAt` epoch (exact,
+   since re-asking a capped subscription can't help
+   (`ladder._run_turn_with_recovery`). The wait time prefers the CLI's
+   **structured** `rate_limit_event.resetsAt` epoch (exact,
    timezone-correct, bounded by `AGENT_CAP_MAX_WAIT_S`), falling back to parsing
    the reset time from the message text (e.g. `session limit · resets 11:30am`),
-   then a default. A cap is detected from text markers (`_CAP_MARKERS`) or a
-   blocked `rate_limit_event` status (`_LIMIT_STATUS_MARKERS`).
+   then a default. A cap is detected from text markers (`failure._CAP_MARKERS`) or a
+   blocked `rate_limit_event` status (`failure._LIMIT_STATUS_MARKERS`).
 2. **Compact & continue** — if a node exhausts the model's **context window**
    (the headless CLI returns instead of auto-compacting — markers like
    `prompt is too long`, `context window`, `conversation is too long`), the
    runner runs `/compact` on the node's session to summarize the conversation so
    far, then retries the *same* prompt on that compacted session. This preserves
    the node's progress, unlike a reframe. Bounded by `AGENT_MAX_COMPACT_ATTEMPTS`
-   (`_compact_session`). Verified on Claude Code 2.1.x: `/compact` is honored over
-   `--resume -p` and reports `compact_result` ("success"/"failed") via `system`
+   (`backends.claude._compact_session`). Verified on Claude Code 2.1.x: `/compact` is honored
+   over `--resume -p` and reports `compact_result` ("success"/"failed") via `system`
    status events, with the session id preserved. If compaction fails or still
    overflows, it falls through to the reframe below.
 3. **Reframe the prompt** — if invocation or output parsing still fails, the
    prompt is rephrased from scratch in a *fresh session* and the node is retried,
    up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt simplifies the ask
-   further (`_rephrase_prompt`).
+   further (`reframe.rephrase_prompt`).
 4. **Default the turn's outputs** — when every reframing fails, the node emits its
    declared output keys as nulls so the state that asked for the turn gets a reply
    object and the run advances instead of aborting. The keys come from the model the

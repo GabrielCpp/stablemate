@@ -29,7 +29,7 @@ from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
-from workhorse.runner import agent as agent_runner
+from workhorse.runner import process as agent_process
 
 
 def run_pyflow(
@@ -133,7 +133,7 @@ def run_pyflow(
         try:
             drive(wf, env, resume)
         except KeyboardInterrupt:
-            agent_runner.terminate_active()
+            agent_process.terminate_active()
             _record_interrupt(writer)
             print("\n[workhorse] interrupted — run paused.")
             print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}")
@@ -144,7 +144,7 @@ def run_pyflow(
             # param, an exhausted transition budget, an explicit `raise WorkflowFailed`
             # — lands here. The run dir is left resumable on purpose: these are the
             # failures an operator fixes and continues from.
-            agent_runner.terminate_active()
+            agent_process.terminate_active()
             if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
                 # …with one exception, and only while the workflow declares no
                 # stand-ins. Undeclared, every agent reply is a blank model, so the

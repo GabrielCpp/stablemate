@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workhorse import otel
-from workhorse.runner import agent as _agent
+from workhorse.runner import failure as _failure
 from workhorse.runner.usage import TurnUsage
 
 
@@ -68,7 +68,7 @@ def finalize_turn(
 ) -> str:
     """Classify a finished turn through the one shared classifier, so the JSONL/text
     backends and the Claude path produce identical failure messages and transient /
-    overflow / non-recoverable verdicts. See ``agent.classify_turn``.
+    overflow / non-recoverable verdicts. See ``failure.classify_turn``.
 
     ``rate_reset_at`` is an optional unix epoch when a cap's window reopens (the
     opencode/Codex path fetches it out-of-band); on a cap the classifier attaches it
@@ -78,7 +78,7 @@ def finalize_turn(
     # cost/token attribution by populating `state.usage` and nothing else.
     if not state.usage.is_empty:
         otel.turn_result(state.usage)
-    return _agent.classify_turn(
+    return _failure.classify_turn(
         backend_name,
         node_id,
         result_text=state.result_text,

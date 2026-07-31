@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent as _agent
+from workhorse.runner import failure as _failure
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.jsonl import stream_jsonl
@@ -214,7 +214,7 @@ class OpenCodeBackend(AgentBackend):
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
         # headless path) so the runner sleeps until the window reopens, not a flat hour.
         rate_reset_at = (
-            _codex_reset_at(model) if _agent._is_cap(state.diagnostics_text) else None
+            _codex_reset_at(model) if _failure.is_cap(state.diagnostics_text) else None
         )
         return finalize_turn(
             "opencode",

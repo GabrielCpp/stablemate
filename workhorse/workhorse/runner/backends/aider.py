@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent as _agent
+from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn
@@ -27,7 +27,7 @@ def _run_text_turn(
     — the whole transcript IS the result, and also the diagnostics channel (overflow
     / transient markers are printed inline, so ``finalize_turn`` classifies off it).
 
-    Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
+    Streams through ``process.stream_subprocess`` so the timeout, hard watchdog, and
     process-group kill behave identically to every other harness."""
     lines: list[str] = []
 
@@ -36,7 +36,7 @@ def _run_text_turn(
         print(f"[{node_id}] {line}", flush=True)
         lines.append(line)
 
-    timed_out, returncode = _agent.stream_subprocess(
+    timed_out, returncode = _process.stream_subprocess(
         cmd, node_id, timeout, on_line,
         resilience=resilience, cwd=cwd, env_extra=env_extra,
     )

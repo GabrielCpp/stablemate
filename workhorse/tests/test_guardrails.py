@@ -7,12 +7,8 @@ import os
 import sys
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner.agent import (
-    BackendInvocationError,
-    _is_transient,
-    _is_cap,
-    _parse_reset_seconds,
-)
+from workhorse.runner.caps import parse_reset_seconds
+from workhorse.runner.failure import BackendInvocationError, is_cap, is_transient
 
 
 def test_transient_error_detection():
@@ -31,7 +27,7 @@ def test_transient_error_detection():
     ]
     
     for msg in transient_messages:
-        assert _is_transient(msg), f"Should identify '{msg}' as transient"
+        assert is_transient(msg), f"Should identify '{msg}' as transient"
         print(f"  ✓ '{msg}' correctly identified as transient")
     
     non_transient_messages = [
@@ -41,7 +37,7 @@ def test_transient_error_detection():
     ]
     
     for msg in non_transient_messages:
-        assert not _is_transient(msg), f"Should not identify '{msg}' as transient"
+        assert not is_transient(msg), f"Should not identify '{msg}' as transient"
         print(f"  ✓ '{msg}' correctly identified as non-transient")
     
     print("✓ Transient error detection tests passed!\n")
@@ -59,7 +55,7 @@ def test_cap_detection():
     ]
     
     for msg in cap_messages:
-        assert _is_cap(msg), f"Should identify '{msg}' as a cap"
+        assert is_cap(msg), f"Should identify '{msg}' as a cap"
         print(f"  ✓ '{msg}' correctly identified as cap")
     
     non_cap_messages = [
@@ -69,7 +65,7 @@ def test_cap_detection():
     ]
     
     for msg in non_cap_messages:
-        assert not _is_cap(msg), f"Should not identify '{msg}' as a cap"
+        assert not is_cap(msg), f"Should not identify '{msg}' as a cap"
         print(f"  ✓ '{msg}' correctly identified as non-cap")
     
     print("✓ Cap detection tests passed!\n")
@@ -92,7 +88,7 @@ def test_reset_time_parsing():
     ]
     
     for msg, expected_approx in test_cases:
-        result = _parse_reset_seconds(msg, now)
+        result = parse_reset_seconds(msg, now)
         if expected_approx is None:
             assert result is None, f"Should not find time in '{msg}'"
             print(f"  ✓ No time found in '{msg}' as expected")

@@ -1,7 +1,7 @@
 """Tests for run_agent's resilience ladder: transient retry → reframe → default.
 
 The worker runs unattended for days, so a node Claude can't answer must never
-crash the run. These tests patch _invoke_claude (no CLI, no real sleeping) and
+crash the run. These tests patch _run_turn_with_recovery (no CLI, no real sleeping) and
 assert the escalation order and the workflow-advancing fallback.
 
     ./.venv/bin/python tests/test_agent_recovery.py
@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent
-from workhorse.runner.agent import BackendInvocationError
+from workhorse.runner import failure, ladder
+from workhorse.runner.failure import BackendInvocationError
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 
@@ -45,8 +45,8 @@ def _run(node, backend=None, **kw):
     backend is injected for the same reason: ``run_agent`` resolves no CLI of its own,
     so a test that wants a particular compaction outcome hands one over."""
     # node.prompt is normally a template FILE path; render it inline for the test.
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)):
-        return agent.run_agent(
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        return ladder.run_agent(
             node,
             WorkflowContext(initial={}),
             Path("."),
@@ -58,7 +58,7 @@ def _run(node, backend=None, **kw):
 
 def test_success_on_first_attempt_returns_outputs():
     payload = json.dumps({"decision": "approve", "review": "looks good"})
-    with patch.object(agent, "_invoke_claude", lambda *a, **k: payload):
+    with patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: payload):
         _, outputs = _run(_node())
     assert outputs == {"decision": "approve", "review": "looks good"}
 
@@ -75,9 +75,9 @@ def test_rendered_prompt_is_written_and_only_path_is_printed():
 
     stdout = io.StringIO()
     with redirect_stdout(stdout), \
-         patch.object(agent, "render", lambda tmpl, ctx, wdir: f"Hello {ctx['secret']}"), \
-         patch.object(agent, "_invoke_claude", fake_invoke):
-        _, outputs = agent.run_agent(
+         patch.object(ladder, "render", lambda tmpl, ctx, wdir: f"Hello {ctx['secret']}"), \
+         patch.object(ladder, "_run_turn_with_recovery", fake_invoke):
+        _, outputs = ladder.run_agent(
             _node(),
             WorkflowContext(initial={"secret": "hunter2"}),
             Path("."),
@@ -108,8 +108,8 @@ def test_empty_result_then_reframe_succeeds():
             )
         return good
 
-    with patch.object(agent, "_invoke_claude", fake_invoke), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", fake_invoke), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(_node())
 
     assert outputs == {"decision": "continue", "review": "ok"}
@@ -122,8 +122,8 @@ def test_persistent_failure_defaults_to_next_node():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(agent, "_invoke_claude", always_fail), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(_node(), max_rephrase_attempts=3)
 
     # Heuristic defaults keep the workflow moving.
@@ -139,8 +139,8 @@ def test_reframe_count_then_default():
         calls["n"] += 1
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(agent, "_invoke_claude", always_fail), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _run(_node(), max_rephrase_attempts=2)
 
     assert calls["n"] == 3, "initial + 2 reframes, then default (no further invoke)"
@@ -152,8 +152,8 @@ def test_unparseable_output_reframes_then_defaults():
     def junk(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         return "I cannot produce JSON, sorry."
 
-    with patch.object(agent, "_invoke_claude", junk), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", junk), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(_node(), max_output_retries=1, max_rephrase_attempts=1)
 
     assert outputs["decision"] == "continue"
@@ -173,8 +173,8 @@ def test_default_outputs_use_declared_defaults_else_none():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(agent, "_invoke_claude", always_fail), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(node, max_rephrase_attempts=1)
 
     assert outputs == {"decision": "continue", "notes": None}
@@ -188,9 +188,9 @@ def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
     sid_path.write_text("prev-node-session-abc")  # left by an earlier node
 
     good = json.dumps({"decision": "continue", "review": "ok"})
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(agent, "_invoke_claude", lambda *a, **k: good):
-        agent.run_agent(
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: good):
+        ladder.run_agent(
             _node(), WorkflowContext(initial={}), Path("."), sid_path,
             backend=FakeBackend(),
         )
@@ -207,9 +207,9 @@ def test_interrupted_node_keeps_session_for_resume(tmp_path=None):
     sid_path.write_text("this-node-session-xyz")
 
     good = json.dumps({"decision": "continue", "review": "ok"})
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(agent, "_invoke_claude", lambda *a, **k: good):
-        agent.run_agent(
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: good):
+        ladder.run_agent(
             _node(), WorkflowContext(initial={}), Path("."), sid_path,
             backend=FakeBackend(),
             resume_session=True,
@@ -220,10 +220,10 @@ def test_interrupted_node_keeps_session_for_resume(tmp_path=None):
 
 
 def test_context_overflow_is_detected():
-    assert agent._is_context_overflow("API Error: prompt is too long: 200000 tokens > 200000") is True
-    assert agent._is_context_overflow("the conversation is too long to continue") is True
-    assert agent._is_context_overflow("rate limit") is False
-    assert agent._is_context_overflow("spending cap reached") is False
+    assert failure.is_context_overflow("API Error: prompt is too long: 200000 tokens > 200000") is True
+    assert failure.is_context_overflow("the conversation is too long to continue") is True
+    assert failure.is_context_overflow("rate limit") is False
+    assert failure.is_context_overflow("spending cap reached") is False
 
 
 def test_overflow_compacts_then_continues_same_prompt():
@@ -246,9 +246,9 @@ def test_overflow_compacts_then_continues_same_prompt():
         compacted["n"] += 1
         return True  # compaction succeeded
 
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(agent, "_invoke_claude", fake_invoke), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         patch.object(ladder, "_run_turn_with_recovery", fake_invoke), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(
             _node(), backend=FakeBackend(compact=fake_compact), max_rephrase_attempts=2
         )
@@ -266,9 +266,9 @@ def test_overflow_falls_back_to_reframe_when_compaction_fails():
     def failed_compact(session_id_path, node_id, model=None, **kwargs):
         return False  # /compact unavailable/ineffective
 
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(agent, "_invoke_claude", always_overflow), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         patch.object(ladder, "_run_turn_with_recovery", always_overflow), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(
             _node(),
             backend=FakeBackend(compact=failed_compact),
@@ -291,9 +291,9 @@ def test_overflow_compaction_attempts_are_bounded():
         compacted["n"] += 1
         return True  # succeeds but the node keeps overflowing anyway
 
-    with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(agent, "_invoke_claude", always_overflow), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
+         patch.object(ladder, "_run_turn_with_recovery", always_overflow), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _run(
             _node(),
             backend=FakeBackend(compact=ok_compact),
@@ -319,8 +319,8 @@ def test_non_recoverable_backend_error_aborts_without_reframe():
             transient=False,
         )
 
-    with patch.object(agent, "_invoke_claude", fatal), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", fatal), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         try:
             _run(_node(), max_rephrase_attempts=3)
             raise AssertionError("expected re-raise on a non-recoverable backend failure")
@@ -339,8 +339,8 @@ def test_transient_failure_still_reframes_not_aborts():
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    with patch.object(agent, "_invoke_claude", transient_fail), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", transient_fail), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         _, outputs = _run(_node(), max_rephrase_attempts=2)
 
     assert calls["n"] == 3, "transient failure should reframe (initial + 2) then default"
@@ -352,8 +352,8 @@ def test_default_outputs_disabled_raises():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(agent, "_invoke_claude", always_fail), \
-         patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
+         patch.object(ladder.time, "sleep", lambda s: None):
         try:
             _run(_node(), max_rephrase_attempts=1, use_default_outputs=False)
             raise AssertionError("expected raise when defaulting is disabled")
