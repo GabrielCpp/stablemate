@@ -1692,6 +1692,80 @@ page's prose is fine.
    `stablemate_dir`, but `library_dir` no longer participates in workflow resolution. The
    command persists a key nothing reads.
 
+### Iteration 5 — the three surviving-subject artifact/config pages
+
+Rewritten, not deleted — all three subjects survive:
+
+- **`concepts/artifact-writer.md`** — was a tour of the YAML engine's writer API and did not
+  mention `write_state_checkpoint`, the one method pyflow actually calls (finding 5 of
+  iteration 4). Now grounded on the file as it stands: the constructors (`__init__`,
+  `resume`, `at`, `subscope`), the live writes (`write_state_checkpoint`, `record_node`,
+  `write_step`, `record_interrupt`, `finish`, `write_final_context`), the live reads
+  (`read_checkpoint`, `read_output`, `read_events`), and a closing
+  **"Retired with the YAML engine"** section that keeps `write_checkpoint`, `write_branch`,
+  `read_done` and `read_context_after` documented **under their original headings** — so
+  inbound anchors still resolve — while saying plainly that no production caller remains.
+  Three behaviours the source makes true and the old page did not say: `handoff` calls
+  `subscope` **without** `resume=`, so a child scope always starts clean (justified: pyflow
+  checkpoints the *parent* state); `write_step` is always passed `context_after={}` and
+  `next_node=None`, so those two files are constant under pyflow; `_write_run_json` now
+  records `pid`.
+- **`run-artifacts.md`** — the layout page. `checkpoint.json`'s fields were the YAML
+  engine's (`current_id`, `context`, and the fast-forward `seq` rule) and are now pyflow's
+  (`engine`, `flow`, `state`, `params`, `waiting_on`, `inputs`, `ctx`, `seq`,
+  `updated_at`); `branch.json` is retired; `context_after.json` is documented as **always
+  `{}`**; `done.json`'s `next` as **always `null`** (no node graph, so no edge to name);
+  `prompt.md` as the rendered agent prompt / `name(args)` call description /
+  `handoff → <ChildClass>`; `_flow/` as always entered fresh. All six inbound anchors were
+  preserved.
+- **`concepts/config.md`** — its `code:` target `workhorse/workhorse/config.py` no longer
+  exists; the module is `core/stablemate_core/config.py`, one file shared by workhorse and
+  farrier. Re-grounded, and the six inbound anchors kept. Added what the page never
+  documented: `check_config_version`/`ConfigVersionError`/`CONFIG_VERSION` and why the
+  version guard lives on the **file** (two pipx venvs each carry their own copy of the
+  module), `legacy_config_paths` and the legacy-merge fallback, `resolve_harness_env`, the
+  `read_config` alias and the `write_*_dir` helpers, and the `$STABLEMATE_CONFIG` →
+  `$WORKHORSE_CONFIG` → platform-default resolution order.
+- **`flows/workhorse-choose-backend-and-power.md`** — one stale claim corrected in passing:
+  `write_config_key` no longer "would corrupt a hand-written `[table]` section". It
+  serialises with `tomli_w`, so nested tables survive; what it lacks is a *path syntax* for
+  reaching into one. The page also still pointed at `concepts/workflow.md#execution` and
+  `$WORKHORSE_CONFIG`, both re-pointed.
+
+`ostler doctor`: **27 → 26**, the one cleared being `config.md`'s `dangling-code-ref`.
+Every remaining error is in a `concepts/` page whose subject is gone (iteration 6 deletes
+them) or in `docs/features/farrier/`.
+
+**Learned:** ostler's `anchor_of` is *not* GitHub's slugger for headings containing `*` —
+it collapses the run of punctuation, so `write_state_checkpoint(state, params, *, inputs,
+…)` anchors as `…state-params-inputs-…`, with one hyphen where GitHub emits two. Compute
+the anchor with `ostler.model.anchor_of` rather than by hand.
+
+#### Findings — code the docs cannot describe truthfully (no code changed)
+
+7. **`otel.py` still exposes gas instruments with no producer.** `gas_level(gas, capacity)`
+   (`otel.py:214`), `gas_refuel(node_id)` (`:218`) and the `workhorse.gas` /
+   `workhorse.gas.capacity` / `workhorse.gas.refuels` instruments (`:458`–`:465`) survived
+   the deletion of `_GasTank`. Nothing calls them; the metrics can only ever be empty.
+8. **`pyflow/workflow.py:310` cites a mechanism that no longer exists** — the comment reads
+   "The gas tank already bounds node work".
+9. **`run-artifacts.md`'s runs-dir default was wrong, and had been for longer than this
+   loop**: it claimed `<workflow-dir>/runs`; `main.py:298` is
+   `(Path.cwd() / ".agents" / "runs").resolve()`. Corrected in the rewrite.
+10. **Two `verify:` targets named test files that no longer exist** —
+    `run-artifacts.md` cited `tests/test_call_node.py::test_call_node_end_to_end` and
+    `tests/test_flows.py::test_resume_across_flow_boundary`. `ostler` does not check
+    `verify:` targets the way it checks `code:` targets, so both were invisible. Replaced
+    with three live `test_pyflow.py` tests plus the surviving
+    `test_idempotency.py::test_checkpoint_seq_increments`.
+11. **`sessions.jsonl` was an entirely undocumented run artifact.** `runner/agent.py:487`
+    appends `{"node", "session_id"}` beside `.session_id` after every successful turn — the
+    only durable way to map a *past* node back to its session transcript. Now documented.
+12. **Two more `missing-code-symbol` errors are the concurrent workstream's, not the
+    port's**: `code-workspace-file.md` → `scriptutil.py::_read_workspace_file` and
+    `concepts/opencode-on-event.md` → `runner/backends.py::_opencode_on_event`. Both are
+    renames in files loop 3 is not touching.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
@@ -1705,3 +1779,8 @@ worktree. Two consecutive `make test` invocations in the same iteration disagree
 other, which is the signature of another workstream editing mid-run rather than of a real
 regression. Loop 3's iterations touch Markdown and one docstring, and commit only their own
 paths. `ruff check .` and `make check-public` are both clean.
+
+At iteration 5 the failure had moved again: an **untracked** `workhorse/workhorse/runner/backends/`
+package now shadows the tracked `runner/backends.py`, and `get_backend` is not importable
+from it — 11 failures in `test_agent_cap.py`. In a detached worktree at `HEAD`,
+`test_agent_cap.py` + `test_backends.py` are **57/57**.
