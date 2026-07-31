@@ -23,9 +23,9 @@ so it stays the one, tested implementation `ClaudeBackend` adapts into rather th
     `_stream_events`/`classify_turn` for their own logging and error messages.
   - `session_id_path: Path | None` — the node's persisted `.session_id` file. When it exists and
     holds a non-blank id, the turn resumes that session (`--resume`); the file itself is read here
-    inline (not via [`_read_session_id`](read-session-id.md), which the other three
+    inline (not via [`read_session_id`](read-session-id.md), which the other three
     session-resuming backends share instead) and later (re)written by
-    [`classify_turn`](classify-turn.md) via `_finalize_turn` on a successful or overflow turn.
+    [`classify_turn`](classify-turn.md) via `finalize_turn` on a successful or overflow turn.
   - `model: str | None` (default `None`) — when set, appended as `--model <model>`; when unset the
     CLI's own default model is used (`ClaudeBackend.default_model = "sonnet"` is applied by the
     caller before this point, not inside this function).
@@ -83,7 +83,7 @@ so it stays the one, tested implementation `ClaudeBackend` adapts into rather th
   stream into the `(result_text, session_id, diagnostics, timed_out, rate_limited, rate_reset_at,
   returncode)` tuple this function unpacks; itself delegates the supervised subprocess spawn to
   [`stream_subprocess`](stream-subprocess.md).
-- [`_read_session_id`](read-session-id.md) — the equivalent inline-resume lookup
+- [`read_session_id`](read-session-id.md) — the equivalent inline-resume lookup
   [CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md), and
   [OpenCodeBackend](opencode-backend.md) share; this function performs the same
   read-strip-check logic inline instead, since it's the only backend with a `--resume <sid>` flag

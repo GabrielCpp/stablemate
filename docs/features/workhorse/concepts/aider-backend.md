@@ -42,7 +42,7 @@ for the MiMo experiment live in aider's own model-settings file, not here.
   - Delegates the actual spawn/classification to
     [`_run_text_turn("aider", cmd, node_id, timeout, cwd, session_id_path)`](run-text-turn.md): the
     whole stdout transcript becomes the turn's result text (and, doubling as the diagnostics
-    channel, is what [`_finalize_turn`](finalize-turn.md) scans for overflow/transient markers).
+    channel, is what [`finalize_turn`](finalize-turn.md) scans for overflow/transient markers).
     Raises `agent.BackendInvocationError` on failure, exactly as classified there.
 - **`compact(session_id_path, node_id, model=None, timeout=DEFAULT_RESULT_TIMEOUT_S)`** — always
   returns `False`: aider has no resumable session to compact (each turn is a fresh `--message`), so
@@ -59,6 +59,6 @@ aider's `--reasoning-effort` accepts: aider tops out at `"high"`, so `"xhigh"`/`
 ## Related pieces
 
 - [`_run_text_turn`](run-text-turn.md) — the plain-text turn runner `run_turn` delegates to; owns
-  the process spawn, live-echo accumulation, and hand-off to [`_finalize_turn`](finalize-turn.md).
+  the process spawn, live-echo accumulation, and hand-off to [`finalize_turn`](finalize-turn.md).
 - [`get_backend`](get-backend.md) — resolves `"aider"` to a cached `AiderBackend()` instance.
 

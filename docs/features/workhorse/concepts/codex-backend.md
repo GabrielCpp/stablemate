@@ -36,7 +36,7 @@ through [`_codex_on_event`](codex-on-event.md), the vocabulary callback that tur
         --dangerously-bypass-approvals-and-sandbox [-m <model_slug>]
         [-c model_reasoning_effort="<effort>"] -
   ```
-  1. Read a persisted session id via [`_read_session_id(session_id_path)`](read-session-id.md).
+  1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md).
   2. Resolve `(profile, model_slug)` from `model` via
      [`_parse_codex_model`](#_parse_codex_model). If the node named no profile, fall back to the
      `CODEX_PROFILE` env var (stripped; empty → `None`).
@@ -58,11 +58,11 @@ through [`_codex_on_event`](codex-on-event.md), the vocabulary callback that tur
   8. `add_dirs` is accepted for interface parity with the other backends but has **no effect** —
      codex has no per-invocation extra-directory flag, so multi-repo dispatch isn't supported on
      this backend.
-  9. Stream the command through [`_stream_jsonl`](stream-jsonl.md) with `prompt` as `stdin_data`
+  9. Stream the command through [`stream_jsonl`](stream-jsonl.md) with `prompt` as `stdin_data`
      (codex reads its prompt from stdin, via the trailing `-`) and
      [`_codex_on_event`](codex-on-event.md) as the vocabulary callback, forwarding `cwd` →
      `(state, diagnostics, timed_out, returncode)`.
-  10. Return [`_finalize_turn`](finalize-turn.md)`("codex", node_id, state, diagnostics,
+  10. Return [`finalize_turn`](finalize-turn.md)`("codex", node_id, state, diagnostics,
       timed_out, returncode, session_id_path, timeout)` — raises `agent.BackendInvocationError` on
       failure, exactly as classified there.
 - **`compact(session_id_path, node_id, model=None, timeout=DEFAULT_RESULT_TIMEOUT_S)`** — always
@@ -98,18 +98,18 @@ name — the unit a `~/.codex/config.toml` profile bundles provider+auth+model i
 
 ## Related pieces
 
-- [`_read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared
+- [`read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared
   by every JSONL backend's `run_turn`.
-- [`_stream_jsonl`](stream-jsonl.md) — the shared JSONL event loop `run_turn` streams the `codex`
+- [`stream_jsonl`](stream-jsonl.md) — the shared JSONL event loop `run_turn` streams the `codex`
   invocation through; owns the process spawn, timeout, and per-line dispatch to `on_event`.
 - [`_codex_on_event`](codex-on-event.md) — the `on_event` callback that knows codex's own event
   vocabulary (`thread.started`/`item.completed`/error events) and populates `state`/`diagnostics`.
-- [`_finalize_turn`](finalize-turn.md) — the shared classifier `run_turn` hands the finished stream
+- [`finalize_turn`](finalize-turn.md) — the shared classifier `run_turn` hands the finished stream
   to, turning it into the turn's result text or a raised `BackendInvocationError`.
 - [`_codex_reset_at`](codex-reset-at.md) — a separate best-effort probe [OpenCodeBackend](opencode-backend.md)
   calls (not this backend) for the exact usage-cap reset time when a Codex-provider model hits a
   cap through OpenCode.
 - [`get_backend`](get-backend.md) — resolves `"codex"` to a cached `CodexBackend()` instance.
 - [`CopilotBackend`](copilot-backend.md) / [`OpenCodeBackend`](opencode-backend.md) — the other two
-  JSONL backends sharing `_stream_jsonl`/`_finalize_turn`; [`AiderBackend`](aider-backend.md) is the
+  JSONL backends sharing `stream_jsonl`/`finalize_turn`; [`AiderBackend`](aider-backend.md) is the
   plain-text sibling.

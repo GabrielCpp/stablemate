@@ -8,7 +8,7 @@ title: stream_subprocess — the supervised-spawn path
 The one supervised-spawn path every agent harness streams a CLI turn through — Claude
 (via [`AgentRunner.turn`](agent-turn.md), layer 1 of [the ladder](run-agent.md#the-ladder)),
 Codex/Copilot/OpenCode
-(`_stream_jsonl`), and aider (`_run_text_turn`), all in `workhorse/workhorse/runner/backends.py`.
+(`stream_jsonl`), and aider (`_run_text_turn`), all in `workhorse/workhorse/runner/backends.py`.
 It owns process-group spawning, line-by-line streaming, the dual in-loop + out-of-band timeout,
 and group-kill cleanup, so every backend gets identical per-node timeout and orphan-reaping
 behavior regardless of which CLI it drives. `main.py`'s top-level `KeyboardInterrupt`/fatal-error
@@ -145,9 +145,9 @@ killed right at the in-loop boundary.
 - [`AgentRunner.run`](run-agent.md) drives [`AgentRunner.turn`](agent-turn.md), which streams a
   Claude turn through `stream_subprocess` (see that page's "Related pieces").
 - [`_stream_events`](stream-events.md) — the Claude backend's own per-line callback, called
-  directly (not through `_stream_jsonl`) with the argv [`_run_claude_cli`](run-claude-cli.md)
+  directly (not through `stream_jsonl`) with the argv [`_run_claude_cli`](run-claude-cli.md)
   builds.
-- [`_stream_jsonl`](stream-jsonl.md) / [`_run_text_turn`](run-text-turn.md)
+- [`stream_jsonl`](stream-jsonl.md) / [`_run_text_turn`](run-text-turn.md)
   (`workhorse/workhorse/runner/backends.py`) — the Codex/Copilot/OpenCode and aider adapters that
   stream their own event/text formats through this same path, so timeout and group-kill behavior
   is identical across every backend.

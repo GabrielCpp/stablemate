@@ -6,19 +6,19 @@ title: _codex_on_event — the Codex event-vocabulary adapter
 # _codex_on_event — the Codex event-vocabulary adapter
 
 The `on_event` callback [`CodexBackend.run_turn`](codex-backend.md) hands to
-[`_stream_jsonl`](stream-jsonl.md): it knows `codex exec --json`'s own event vocabulary (`thread.started`,
-`item.completed`, error/fail events) and is the only piece of the shared JSONL loop that does — `_stream_jsonl`
+[`stream_jsonl`](stream-jsonl.md): it knows `codex exec --json`'s own event vocabulary (`thread.started`,
+`item.completed`, error/fail events) and is the only piece of the shared JSONL loop that does — `stream_jsonl`
 itself is vocabulary-agnostic and just calls `on_event(event, state, node_id, diagnostics)` once per parsed
 line. Its sibling adapters for the other JSONL backends are [`_copilot_on_event`](copilot-on-event.md) and
 [`_opencode_on_event`](opencode-on-event.md).
 
 - code: `workhorse/workhorse/runner/backends.py::_codex_on_event`
-- extends: [_stream_jsonl](stream-jsonl.md#contract)
+- extends: [stream_jsonl](stream-jsonl.md#contract)
 
 ## Contract
 
 - **Input:** `(event: dict, state: dict, node_id: str, diagnostics: list)`, matching
-  [`_stream_jsonl`](stream-jsonl.md#contract)'s `on_event` calling convention exactly:
+  [`stream_jsonl`](stream-jsonl.md#contract)'s `on_event` calling convention exactly:
   - `event` — one parsed JSON object from a `codex exec --json` line.
   - `state` — the turn's accumulator, starting as `{"result_text": "", "session_id": None}`;
     mutated in place.
@@ -51,20 +51,20 @@ Dispatches on `event.get("type") or ""` (`etype`):
    only extracts the resume id, the final answer text, and error signals; it does not track turn
    progress beyond the live echo above.
 
-Both `diagnostics` appends feed [`_stream_jsonl`](stream-jsonl.md#cap-abort--early-exit-on-a-spending-capusage-limit)'s
+Both `diagnostics` appends feed [`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop)'s
 per-line cap-abort scan (run by its caller immediately after `on_event` returns) and, at the end of
-the stream, [`_finalize_turn`](finalize-turn.md)'s classification — a codex cap or context-overflow
+the stream, [`finalize_turn`](finalize-turn.md)'s classification — a codex cap or context-overflow
 marker surfaces through whichever of these two branches captures the event carrying it, same as a
 raw non-JSON diagnostic line.
 
 ## Related pieces
 
-- [`_stream_jsonl`](stream-jsonl.md) — the generic event loop that calls this once per parsed JSON
+- [`stream_jsonl`](stream-jsonl.md) — the generic event loop that calls this once per parsed JSON
   line and owns everything vocabulary-agnostic (spawn, timeout, cap-abort scan); `_codex_on_event`
   supplies only the codex-specific dispatch above.
 - [`CodexBackend`](codex-backend.md) — the sole caller, passing `_codex_on_event` to
-  `_stream_jsonl(cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd)` in `run_turn`.
-- [`_finalize_turn`](finalize-turn.md) — reads `state["result_text"]`/`state["session_id"]` (as
+  `stream_jsonl(cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd)` in `run_turn`.
+- [`finalize_turn`](finalize-turn.md) — reads `state["result_text"]`/`state["session_id"]` (as
   populated here) and the joined `diagnostics` to classify the turn once the stream ends.
 - [`_copilot_on_event`](copilot-on-event.md) / [`_opencode_on_event`](opencode-on-event.md) — the
   analogous `on_event` adapters for the other two JSONL backends; each parses a different CLI's

@@ -94,7 +94,7 @@ explicit reason none could be computed, never a bare number.
   `continue`s the same retry loop with the same session and prompt.
 - [`BackendInvocationError.reset_at`](classify-turn.md#backendinvocationerror) — the structured
   signal this function prefers, set by [`classify_turn`](classify-turn.md#ladder-first-match-wins)
-  from the CLI's `rate_limit_event.resetsAt` (via [`rate_limit_info`](classify-turn.md#_rate_limit_info)).
+  from the CLI's `rate_limit_event.resetsAt` (via [`rate_limit_info`](classify-turn.md#rate_limit_info)).
 - [`parse_reset_seconds`](parse-reset-seconds.md#algorithm) — the text-parsing fallback this
   function calls when `exc.reset_at` is unset.
 - `Clock` (`runner/clock.py`) — the `now`/`sleep` protocol; `SYSTEM_CLOCK` in production, a
