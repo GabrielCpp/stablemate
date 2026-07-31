@@ -73,9 +73,9 @@ def test_an_explicit_node_is_not_overwritten(monkeypatch):
 
 
 def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
-    """Telemetry is opt-in; with it off, current_node has no state to read. A
+    """Telemetry is opt-in; with it off, the null adapter answers with "". A
     logging filter that raised would break logging itself, not just telemetry."""
-    otel._active = None
+    otel._active = otel._NULL
     record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
     assert logsetup._NodeFilter().filter(record) is True
     assert record.node == ""

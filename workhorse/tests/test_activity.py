@@ -61,7 +61,7 @@ def test_activity_rides_the_node_active_gauge():
     t, _tracer, meter, _sd = test_otel._telemetry()
     t.set_labels({"wf.activity": "reviewing X", "wf.work_id": "ACME-1",
                   "wf.phase": "qa"})
-    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    t.record_event(test_otel._event("impl", 1, "enter"))
 
     gauge = meter.instruments["workhorse.node.active"]
     _kind, value, attrs = gauge.records[-1]
@@ -77,7 +77,7 @@ def test_activity_rides_the_node_active_gauge():
 def test_activity_rides_the_run_heartbeat():
     t, _tracer, meter, _sd = test_otel._telemetry()
     t.set_labels({"wf.activity": "seeding", "wf.work_id": "ACME-2"})
-    t.record_event({"node": "seed", "seq": 1, "phase": "enter"})
+    t.record_event(test_otel._event("seed", 1, "enter"))
     t._beat_once()
 
     beats = meter.instruments["workhorse.run.heartbeat"]
@@ -90,7 +90,7 @@ def test_activity_rides_the_run_heartbeat():
 def test_live_attrs_omit_absent_labels():
     t, _tracer, meter, _sd = test_otel._telemetry()
     # No labels set at all — the gauge carries just the node, never a blank attr.
-    t.record_event({"node": "plan", "seq": 1, "phase": "enter"})
+    t.record_event(test_otel._event("plan", 1, "enter"))
     gauge = meter.instruments["workhorse.node.active"]
     _kind, _value, attrs = gauge.records[-1]
     assert attrs == {"node": "plan"}, attrs
@@ -102,7 +102,7 @@ def test_unprefixed_labels_ride_the_gauge_too():
     t, _tracer, meter, _sd = test_otel._telemetry()
     t.set_labels({"activity": "assessing legacy/report/list", "work_id": "ACME-3",
                   "phase": "survey"})
-    t.record_event({"node": "assess", "seq": 1, "phase": "enter"})
+    t.record_event(test_otel._event("assess", 1, "enter"))
     gauge = meter.instruments["workhorse.node.active"]
     _kind, value, attrs = gauge.records[-1]
     assert value == 1, gauge.records

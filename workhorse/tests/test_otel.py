@@ -24,8 +24,19 @@ import tempfile
 from pathlib import Path
 
 otel = importlib.import_module("workhorse.otel")
+records = importlib.import_module("workhorse.records")
 usage = importlib.import_module("workhorse.runner.usage")
 artifacts = importlib.import_module("workhorse.artifacts")
+
+
+def _event(node: str, seq: int, phase: str, **extra):
+    """One event exactly as ArtifactWriter writes it — the model record_event takes.
+
+    Building the real `NodeEvent` rather than a dict is the point: the writer and
+    the exporter now share one type, so a field renamed on it breaks here instead
+    of silently dropping a span attribute."""
+    return records.NodeEvent(ts="2026-01-01T00:00:00+00:00", seq=seq, node=node,
+                             phase=phase, **extra)
 
 
 # --------------------------------------------------------------------------- #
@@ -121,20 +132,39 @@ def _telemetry() -> tuple:
 # The no-op default
 # --------------------------------------------------------------------------- #
 def test_noop_by_default_all_calls_inert():
-    assert otel._active is None
     assert otel.enabled() is False
     # Every public function must be safely callable with nothing configured.
-    otel.record_event({"node": "a", "seq": 1, "phase": "enter"})
+    otel.record_event(_event("a", 1, "enter"))
     otel.gas_level(10, 100)
     otel.gas_refuel("select_story")
+    otel.set_labels({"work_id": "w1"})
     otel.turn_start("a", "sonnet", "high", 600.0)
+    otel.turn_session("ses_1")
     otel.turn_result(usage.TurnUsage(duration_ms=5, input_tokens=1))
     otel.turn_event("retry", attempt=1)
     otel.heartbeat("a", 120.0)
     otel.turn_heartbeat("a", 3.0, 90.0)
     otel.turn_end()
     otel.end_run("terminal")
-    assert otel._active is None
+    assert otel.current_node() == ""  # the null adapter answers, it does not raise
+    assert otel.enabled() is False
+
+
+class FakeTelemetry:
+    """A stand-in for what _build returns: an object satisfying the Telemetry port.
+
+    It answers `enabled()` truthfully, which is what the gate now reads — there is
+    no `_active is None` sentinel to assert on any more, because absence is the
+    null adapter rather than a missing reference."""
+
+    def __init__(self) -> None:
+        self.ended: list[tuple[str, str | None]] = []
+
+    def enabled(self) -> bool:
+        return True
+
+    def end_run(self, status: str, error: str | None = None) -> None:
+        self.ended.append((status, error))
 
 
 @contextlib.contextmanager
@@ -148,12 +178,12 @@ def _gate(forced, reachable):
     saved = (otel._OTEL_FORCED, otel._collector_reachable, otel._build)
     otel._OTEL_FORCED = forced
     otel._collector_reachable = lambda endpoint: (probes.append(endpoint), reachable)[1]
-    otel._build = lambda *a: (built.append(a), "telemetry")[1]
+    otel._build = lambda *a: (built.append(a), FakeTelemetry())[1]
     try:
         yield probes, built
     finally:
         otel._OTEL_FORCED, otel._collector_reachable, otel._build = saved
-        otel._active = None
+        otel.end_run("test")  # back to the null adapter, through the real teardown
 
 
 def test_tristate_parses_force_on_force_off_and_auto():
@@ -169,7 +199,7 @@ def test_auto_activates_when_the_collector_answers():
     # The default path: nobody exported WORKHORSE_OTEL, groom is up, spans flow.
     with _gate(forced=None, reachable=True) as (probes, built):
         otel.start_run("wf", "run-1")
-        assert otel._active == "telemetry"
+        assert otel.enabled() is True
         assert probes == [otel._OTEL_ENDPOINT]
         assert built == [("wf", "run-1", None)]
 
@@ -177,7 +207,7 @@ def test_auto_activates_when_the_collector_answers():
 def test_auto_stays_noop_when_no_collector_is_listening():
     with _gate(forced=None, reachable=False) as (_, built):
         otel.start_run("wf", "run-1")
-        assert otel._active is None
+        assert otel.enabled() is False
         assert built == []  # the SDK is never even built
 
 
@@ -185,7 +215,7 @@ def test_force_off_wins_over_a_reachable_collector():
     # WORKHORSE_OTEL=0 is the opt-out, and auto-on must not have weakened it.
     with _gate(forced=False, reachable=True) as (probes, built):
         otel.start_run("wf", "run-1")
-        assert otel._active is None
+        assert otel.enabled() is False
         assert probes == []  # not even probed — the answer can't change the outcome
         assert built == []
 
@@ -195,7 +225,7 @@ def test_force_on_skips_the_probe():
     # sit behind something a TCP connect can't see), so it must not be gated on it.
     with _gate(forced=True, reachable=False) as (probes, built):
         otel.start_run("wf", "run-1")
-        assert otel._active == "telemetry"
+        assert otel.enabled() is True
         assert probes == []
         assert built == [("wf", "run-1", None)]
 
@@ -277,26 +307,26 @@ def test_append_event_unchanged_with_noop_telemetry():
 # --------------------------------------------------------------------------- #
 def test_enter_done_pairs_a_node_span_and_records_next():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "plan", "seq": 1, "phase": "enter"})
+    t.record_event(_event("plan", 1, "enter"))
     span = tracer.by_name("plan")
     assert span.parent is tracer.by_name("run:wf")
     assert span.attrs["workhorse.seq"] == 1 and not span.ended
-    t.record_event({"node": "plan", "seq": 1, "phase": "done", "next": "build"})
+    t.record_event(_event("plan", 1, "done", next="build"))
     assert span.ended and span.attrs["workhorse.next"] == "build"
 
 
 def test_flow_children_nest_under_the_open_flow_node_span():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "qa_flow", "seq": 3, "phase": "enter"})
-    t.record_event({"node": "child", "seq": 1, "phase": "enter"})
+    t.record_event(_event("qa_flow", 3, "enter"))
+    t.record_event(_event("child", 1, "enter"))
     child = tracer.by_name("child")
     assert child.parent is tracer.by_name("qa_flow")
     assert child.attrs["workhorse.depth"] == 1
     # The child's terminal lands on the enclosing flow-node span, not the root.
-    t.record_event({"node": "child", "seq": 1, "phase": "done", "next": None})
-    t.record_event({"node": "<run>", "seq": 1, "phase": "terminal", "terminal": "terminal"})
+    t.record_event(_event("child", 1, "done", next=None))
+    t.record_event(_event("<run>", 1, "terminal", terminal="terminal"))
     assert ("terminal", {"terminal": "terminal"}) in tracer.by_name("qa_flow").events
-    t.record_event({"node": "qa_flow", "seq": 3, "phase": "done", "next": "wrap"})
+    t.record_event(_event("qa_flow", 3, "done", next="wrap"))
     assert tracer.by_name("qa_flow").ended
 
 
@@ -304,9 +334,9 @@ def test_loop_revisits_pair_by_seq():
     """The same node visited twice (a loop) gets two distinct spans, each done
     event closing its own visit's span via the (node, seq) key."""
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "work", "seq": 1, "phase": "enter"})
-    t.record_event({"node": "work", "seq": 1, "phase": "done", "next": "work"})
-    t.record_event({"node": "work", "seq": 2, "phase": "enter"})
+    t.record_event(_event("work", 1, "enter"))
+    t.record_event(_event("work", 1, "done", next="work"))
+    t.record_event(_event("work", 2, "enter"))
     spans = [s for s in tracer.spans if s.name == "work"]
     assert len(spans) == 2
     assert spans[0].ended and not spans[1].ended
@@ -314,7 +344,7 @@ def test_loop_revisits_pair_by_seq():
 
 def test_end_run_sweeps_open_spans_and_flags_error():
     t, tracer, _, shutdown = _telemetry()
-    t.record_event({"node": "stuck", "seq": 1, "phase": "enter"})
+    t.record_event(_event("stuck", 1, "enter"))
     t.end_run("fail", "out of gas")
     stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
     assert stuck.ended and stuck.status.code == "ERROR"
@@ -325,13 +355,13 @@ def test_end_run_sweeps_open_spans_and_flags_error():
 
 def test_done_without_matching_enter_is_ignored():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "ghost", "seq": 9, "phase": "done", "next": "x"})
+    t.record_event(_event("ghost", 9, "done", next="x"))
     assert [s.name for s in tracer.spans] == ["run:wf"]
 
 
 def test_turn_span_attrs_result_usage_and_fallback_events():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    t.record_event(_event("impl", 1, "enter"))
     t.turn_start("impl", "opus", "high", 3600.0)
     turn = tracer.by_name("agent_turn")
     assert turn.parent is tracer.by_name("impl")
@@ -350,7 +380,7 @@ def test_turn_span_attrs_result_usage_and_fallback_events():
 
 def test_turn_session_tags_open_turn_span():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    t.record_event(_event("impl", 1, "enter"))
     t.turn_start("impl", "opus", "high", 3600.0)
     t.turn_session("ses_abc123")
     assert tracer.by_name("agent_turn").attrs["session.id"] == "ses_abc123"
@@ -358,7 +388,7 @@ def test_turn_session_tags_open_turn_span():
 
 def test_turn_session_is_inert_with_no_open_turn():
     t, tracer, _, _ = _telemetry()
-    t.record_event({"node": "impl", "seq": 1, "phase": "enter"})
+    t.record_event(_event("impl", 1, "enter"))
     # No turn_start: nothing to tag, and it must not touch the node span or raise.
     t.turn_session("ses_abc123")
     assert "session.id" not in tracer.by_name("impl").attrs
@@ -401,7 +431,7 @@ def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
             lines = (writer.run_dir / "events.jsonl").read_text().splitlines()
             assert json.loads(lines[0])["phase"] == "enter"
     finally:
-        otel._active = None
+        otel._active = otel._NULL
 
 
 # --------------------------------------------------------------------------- #
@@ -412,10 +442,10 @@ def test_node_active_gauge_marks_the_open_node_and_clears_on_done():
     right now': the node's span will not export until it ends, which is exactly
     what a hung node never does."""
     t, _, meter, _ = _telemetry()
-    t.record_event({"node": "select_item", "seq": 1, "phase": "enter"})
+    t.record_event(_event("select_item", 1, "enter"))
     gauge = meter.instruments["workhorse.node.active"]
     assert gauge.records == [("set", 1, {"node": "select_item"})]
-    t.record_event({"node": "select_item", "seq": 1, "phase": "done", "next": "guard"})
+    t.record_event(_event("select_item", 1, "done", next="guard"))
     assert gauge.records[-1] == ("set", 0, {"node": "select_item"})
 
 
@@ -441,7 +471,7 @@ def test_run_heartbeat_tick_reports_the_open_node_and_its_age():
     node produces: it runs as a buffered subprocess, so there is no stream to hook
     a per-line heartbeat onto."""
     t, _, meter, _ = _telemetry()
-    t.record_event({"node": "compute_coverage", "seq": 1, "phase": "enter"})
+    t.record_event(_event("compute_coverage", 1, "enter"))
     t._beat_once()
     assert meter.instruments["workhorse.run.heartbeat"].records == [
         ("add", 1, {"node": "compute_coverage"})
