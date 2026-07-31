@@ -1,4 +1,3 @@
 STATUS: CONSUMED
-SCOPE: story
 
-Use the staging bucket.
+Drop the retry; log it instead.

@@ -125,7 +125,7 @@ GHOST: list[dict[str, Any]] = [
 def docs(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     """The docs repo, carrying one epic and one authored story under it.
 
-    `repo` is the `AGENT_REPO_DIR` pin every coder test shares; what is added here is the
+    `repo` is the checkout every coder test is stood in; what is added here is the
     tree ostler needs to resolve the slug — the epic's own `epic.md`, its `## Stories`
     listing, and the story folder the flow's `Await` writes its questions into.
     """

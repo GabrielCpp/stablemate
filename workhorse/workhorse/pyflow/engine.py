@@ -130,16 +130,16 @@ class RunEnv:
     writer: ArtifactWriter
     workflow_dir: Path
     session_id_path: Path
-    config: Any
+    config: RunConfig
     #: `drive` from the driver module, injected to keep the import one-directional.
     driver: Callable[..., Any] | None = None
     log: logging.Logger = field(default_factory=lambda: logger)
     #: Records calls instead of making them. `--dry-run` sets it.
     dry_run: bool = False
-    #: The passage of time, for the one place the driver waits: an `Await`'s poll.
-    #: Injected rather than reached for, so a test that exercises a week-long wait
-    #: costs microseconds with nothing patched. The agent ladder is handed the same
-    #: port separately (`AgentRunner.clock`) — this is the driver's own.
+    #: The passage of time — for the one place the driver waits (an `Await`'s poll)
+    #: and, through `agent_runner` below, for the ladder's own waits. Injected rather
+    #: than reached for, so a test that exercises a week-long wait costs microseconds
+    #: with nothing patched. One run, one clock.
     clock: Clock = SYSTEM_CLOCK
     #: Run-wide wall-clock ceiling (unix epoch), shared with any sub-flow so a
     #: handoff cannot outlive the run's budget. None = unbounded.

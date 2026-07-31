@@ -1,7 +1,8 @@
 """Shared fixtures for the author port's tests.
 
-Every surveyor node resolves the consuming repo through `AGENT_REPO_DIR`, so a test is
-a real directory tree plus that variable — no filesystem seam, no patched resolver. The
+Every surveyor node resolves the consuming repo from its `repo_dir` argument, falling
+back to the working directory, so a test is a real directory tree the `repo` fixture
+stands in — no filesystem seam, no patched resolver, and nothing ambient. The
 nodes themselves are the real ones: only the agent turn is ever scripted, and that
 happens in the flow-level tests, where an agent turn exists.
 

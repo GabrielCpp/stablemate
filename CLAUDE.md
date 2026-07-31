@@ -45,6 +45,27 @@ rather than attention.
 make check-public    # also runs as part of `make test`
 ```
 
+## A workflow reads no environment (load-bearing)
+
+`os.environ` / `os.getenv` are **prohibited** anywhere under
+`workflows/src/workhorse_workflows/`. Everything a node or a state needs is an argument
+or a workflow parameter — a field on the `Workflow` subclass, settable with `--param`.
+A value read from the environment is in no checkpoint (so a resume silently takes a
+different one) and in no telemetry, and `--params` cannot set it.
+
+The process boundary is where the environment belongs, and it is outside that package:
+`workhorse/cli/run.py` and `workhorse/entrypoint.sh` translate `$FOO` into `--params`
+once, on the way in. The one allowlisted module is `kit/credentials.py`, and for the
+opposite reason — a secret must *never* become a checkpointed `--param`.
+
+```bash
+make check-no-env    # also runs as part of `make test`
+```
+
+The full rule, including `Workflow.injects` for the ambient paths
+(`repo_dir`/`docs_path`/`workspace_file`), is in
+[workflows/README.md](workflows/README.md).
+
 ## Python linting (load-bearing)
 
 This repo is linted with **ruff**. Keep it clean — zero findings is the bar, and a

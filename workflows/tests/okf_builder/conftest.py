@@ -10,8 +10,8 @@ units, both covered, doctor green.
 cheapest way to make doctor emit an **error** that is neither auto-repairable by
 `ostler fmt` nor in `AUTO_WAIVABLE` — the two arms the convergence loop branches on.
 
-Everything else follows the author suite: nodes run for real against `AGENT_REPO_DIR`,
-and only the agent turn is ever scripted.
+Everything else follows the author suite: nodes run for real against the repo the test
+stands in, and only the agent turn is ever scripted.
 """
 from __future__ import annotations
 

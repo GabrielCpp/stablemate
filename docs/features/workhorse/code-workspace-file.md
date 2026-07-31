@@ -11,11 +11,12 @@ helper — see [resolve_workspace](concepts/workflow-kit.md#resolve_workspace) �
 [JSON-with-Comments](concepts/scriptutil.md#load_jsonc)) to learn which repos a workflow run
 operates on, and optionally clones/updates via
 [`checkout_workspace`](concepts/workflow-kit.md#checkout_workspace). The **path** to the file is
-never fixed — each caller passes its own env var name (`WORKSPACE_FILE` by default, or a
-workflow-specific one such as `CODER_WORKSPACE`) to
-[`resolve_workspace`](concepts/workflow-kit.md#resolve_workspace) /
-[`checkout_workspace`](concepts/workflow-kit.md#checkout_workspace), which read that env var to find
-the file. `folders[].url` and `folders[].branch` are the kit's own optional schema **extension** on
+never fixed — it is a run's input: a workflow declares a `workspace_file` field and passes it down
+to [`resolve_workspace`](concepts/workflow-kit.md#resolve_workspace) /
+[`checkout_workspace`](concepts/workflow-kit.md#checkout_workspace) as an argument, so the manifest
+a run used is recorded in its checkpoint and settable with `--param`. (A workflow reads no
+environment — see [workflows/README.md](../../../workflows/README.md).) Empty falls back to the
+single checkout at `repo_dir`, which is what makes a one-repo run need no manifest at all. `folders[].url` and `folders[].branch` are the kit's own optional schema **extension** on
 top of VSCode's format — VSCode ignores unknown keys, so a `.code-workspace` file authored with them
 still opens as a plain workspace in the editor. Every field beyond `folders` is VSCode's own
 (`settings`, `extensions`, …) and is not read.
