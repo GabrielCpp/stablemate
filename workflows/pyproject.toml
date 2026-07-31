@@ -1,7 +1,7 @@
 [project]
 name = "workhorse-workflows"
 version = "0.1.0"
-description = "The stablemate agent workflows — research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
+description = "The stablemate agent workflows — hello-world, research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -51,6 +51,10 @@ test = ["pytest>=8.0"]
 # path form and no library fallback — a workflow is a Python package. The value points at
 # the `Registry` OBJECT, not the entry function; discovery needs the registry.
 [project.entry-points."workhorse.workflows"]
+# The quick start. Deliberately first: it is the one a reader runs before they trust
+# any of the others, and it needs no repo, no manifest and — under `--dry-run` — no
+# agent CLI.
+hello-world = "workhorse_workflows.hello_world.workflow:workflow"
 research = "workhorse_workflows.research.workflow:workflow"
 author = "workhorse_workflows.author.workflow:workflow"
 okf-builder = "workhorse_workflows.okf_builder.workflow:workflow"
@@ -64,6 +68,7 @@ coder = "workhorse_workflows.coder.workflow:workflow"
 #     workhorse         run research --run-id=… --params …
 #     workhorse-research run          --run-id=… --params …
 [project.scripts]
+workhorse-hello-world = "workhorse_workflows.hello_world.workflow:main"
 workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
 workhorse-okf-builder = "workhorse_workflows.okf_builder.workflow:main"

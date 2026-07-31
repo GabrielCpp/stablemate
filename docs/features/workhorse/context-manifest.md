@@ -105,11 +105,13 @@ Jinja helper, falling back to the workflow's own directory when empty.
 `_repo_root` — the resolved absolute `$AGENT_REPO_DIR` (or `cwd`), used by the prompt-flavor-override
 lookup, not stored in the manifest itself.
 
-**Both engines load it, which is why it lives outside either one.** The YAML engine seeds the
-reshaped dict as the run's starting context; a [Python state machine](workhorse.md) takes the same
-dict on its `RunEnv` and lays it *under* every agent turn's arguments — a state that binds `repo`
-gets its own, but the farrier helpers resolve either way. An empty manifest adds no keys at all,
-so a manifest-free run renders exactly the arguments its state passed.
+**It lives outside the driver because it is a property of the run, not of the machine.** A
+[Python state machine](workhorse.md) takes the reshaped dict on its `RunEnv` and lays it *under*
+every agent turn's arguments — a state that binds `repo` gets its own, but the farrier helpers
+resolve either way. An empty manifest adds no keys at all, so a manifest-free run renders exactly
+the arguments its state passed. (The retired YAML engine instead seeded the same dict as the run's
+starting context; that is the only difference the removal made, and it is why the loader was never
+part of either front end.)
 
 **Per-backend instruction rewrite.** When the active `$AGENT_CLI` differs from the backend the
 manifest's own `skill_dir` was generated for, every path in [`instructions`](#instructions) is

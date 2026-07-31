@@ -1825,6 +1825,67 @@ and `farrier.md#version` counted twice. Re-grounding the backend/agent pages on 
     `test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`.
     Worth noting that two of three `verify:` misses found so far were only found by hand.
 
+### Iteration 7 — the quick start, which did not exist
+
+Work-order item 4 opens with a requirement the repo did not meet: *"the quick-start example
+must EXIST and RUN"*. Every quick start in the tree pointed either at `author`/`coder` —
+which want a repository, a manifest, an agent CLI and a private overlay — or at an
+illustrative `acme` snippet with no prompt file behind it. A reader could not run anything.
+
+**Shipped: `hello-world`**, a fifth workflow whose only job is to be the first one someone
+runs and the file they copy.
+
+- `workflows/src/workhorse_workflows/hello_world/` — `workflow.py` (~60 lines carrying one
+  of each construct: a node, two states, an agent turn, a registry), `prompts/greet.md`,
+  and an `__init__.py` saying why it exists and that nothing else in the tree imports it.
+- `workflows/pyproject.toml` — the `workhorse.workflows` entry point and the
+  `workhorse-hello-world` console script, both listed **first** in their group.
+- `workflows/tests/test_hello_world.py` — three tests, because the three properties fail
+  independently: the entry point resolves, `--dry-run` walks the machine green, and a real
+  turn reaches `Done`. `test_prompts_exist.py` now sweeps it too (78 passing).
+
+Verified by hand before being written into any doc: `workhorse run hello-world --dry-run`,
+the same with `--params '{"name": "globex"}'`, the console script
+`workhorse-hello-world run --dry-run`, and `workhorse dot hello-world`. `.agents/runs/` is
+git-ignored, so the demo leaves no tracked residue.
+
+Docs wired to it: `README.md` (install snippet, package table, a new **Your first run**
+section with the real console output), `workhorse/docs/AUTHORING.md` (its opener now names
+something runnable, and "A worked example" says it is illustrative), and
+`workhorse/docs/WORKFLOW.md` (the "minimal port" Python snippet is a *translation*, not a
+runnable file — it now says so and points at the real package).
+
+Also corrected: `docs/features/workhorse/context-manifest.md:108` said "**Both engines load
+it**" in the present tense. Its line 38 already claimed a manifest-free `hello-world` run
+was possible — a forward-looking claim when written, and **true as of this commit**.
+
+**Findings 16–18 (reported, not fixed — this loop changes no behavior):**
+
+16. **`workhorse/entrypoint.sh:136` still runs `--workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}"`.**
+    Unlike the prose findings, this is an executable file that cannot work: the flag was
+    removed with the YAML front end. Every Docker path through that script is broken. Fixing
+    it is a code change, so it is recorded here rather than made.
+17. **`docs/features/workhorse/flows/coder-documentation-gate.md:40` carries
+    `code: base-library/workflows/coder/workflow.yaml`** — a dangling reference to a deleted
+    file that **`ostler doctor` does not report**. Same root cause as findings 10 and 15:
+    ostler checks `code:` targets that resolve to a repo-relative path it knows how to walk,
+    and silently passes ones it cannot. Three of the misses this loop found were found by
+    hand, which is worth weighing before trusting a clean `doctor` as coverage.
+18. **A node's `stub=` is load-bearing, and nothing says so.** `pyflow/engine.py::_blank`
+    builds a dry-run stand-in with `returns.model_construct()`; for a model with required
+    fields that yields an instance with *no* fields set, so attribute access raises
+    `AttributeError`. A node whose result a later state **reads** therefore must declare
+    `stub=` or `--dry-run` cannot pass — which is not what "dry run" suggests, and is how
+    the first `hello-world` draft failed. Documented in the example's own comment; whether
+    the engine should instead default required fields is a loop-2 question.
+
+**Deferred, and now blocked on someone else's commit:** the concurrent workstream deleted
+`workhorse/workhorse/runner/agent.py` mid-iteration and split it into `caps.py`,
+`extract.py`, `failure.py`, `ladder.py`, `process.py` and `reframe.py`. Every `concepts/`
+page grounded on `runner/agent.py::…` — roughly twenty, plus `classify-turn.md` and
+`stream-subprocess.md` — is dangling as a result, and the old→new symbol map is not stable
+enough to re-ground against until that lands.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

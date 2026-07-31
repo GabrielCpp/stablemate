@@ -4,9 +4,19 @@ This is the authoring reference for workhorse workflows: the package layout, the
 tiers of state, transitions, checkpoints and aliases, the node index that tests substitute
 through instead of patching, and the labels that tell a collector what a run is doing.
 
-It assumes you can already run a workflow —
+It assumes you can already run a workflow. If you cannot yet, run the shipped quick start
+first — it needs no repository and, under `--dry-run`, no agent CLI at all:
+
+```bash
+workhorse run hello-world --dry-run
+```
+
+Its whole source is one ~60-line file,
+[`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py),
+carrying one of each thing this document describes: a node, two states, an agent turn and
+a registry. **Copy that file** and edit it — every example below is a variation on it.
 [README.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md) covers
-install, the CLI and `--dry-run`. The resilience knobs the failure paths below land in are
+install, the CLI and `--dry-run` in full. The resilience knobs the failure paths below land in are
 in
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md),
 and the `power=` tiers a turn asks for are mapped to models in
@@ -55,6 +65,10 @@ needs a route that keeps moving. To disable defaulting entirely and hard-fail in
 set `AGENT_USE_DEFAULT_OUTPUTS=false`.
 
 ## A worked example
+
+Illustrative, and deliberately a step past the quick start: it adds `setup()`, a loop and
+a second state. The runnable counterpart is `hello-world` above — reach for that one when
+you want something you can execute rather than read.
 
 ```python
 from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow

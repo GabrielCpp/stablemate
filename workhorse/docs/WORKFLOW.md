@@ -206,6 +206,16 @@ workflow = Registry("example").add_blueprints(Blueprint("example"))
 main = workflow.main(Example)
 ```
 
+That pair is a translation, not a runnable file: `prompts/step.md` is whatever prompt the
+YAML workflow already had. For something that does run as written — the same shape, with
+the prompt, the entry point and the console script actually in place — read
+[`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py)
+and check your port against it:
+
+```bash
+workhorse run hello-world --dry-run
+```
+
 The package layout around it — `pyproject.toml` entry point, prompt directory, node
 module — and everything the port needs beyond this table are in
 [AUTHORING.md](AUTHORING.md).
