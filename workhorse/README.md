@@ -177,7 +177,9 @@ workhorse run coder --dry-run
 For a YAML workflow it loads the graph and turns the skill/prompt reference warning
 described above into an exit code, then prints the node list.
 
-For a workflow written as a Python state machine it does two complementary things.
+For a workflow written as a Python state machine it does the same reference check —
+the prompts are read from the workflow's own directory either way — and then two
+complementary things.
 First a **static pass** over the states' own source (the same reading `dot` uses):
 every prompt path a state renders must exist, every state must be reachable from the
 start state, at least one state must be able to return `Done`, and no transition may

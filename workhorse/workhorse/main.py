@@ -28,6 +28,10 @@ from stablemate_core.config import (
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.graph.loader import load_workflow
+# Both engines load the manifest, so it lives outside either one. Bound under its
+# historical private name, which is also what lets a test patch the loader on this
+# module and have the CLI see it.
+from workhorse.manifest import load_context_manifest as _load_context_manifest
 from workhorse.requirements import UnmetRequirementsError, check_requirements
 from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
 from workhorse.packaged import PackagedWorkflow, PackagedWorkflowError, find_packaged_workflow
@@ -55,14 +59,6 @@ from workhorse.templates import render_string
 # progress visible in `groom logs` / the dashboard, not just the local console. The
 # console handler (logsetup) still writes it to the terminal.
 logger = logging.getLogger("workhorse.engine")
-
-# Canonical skill directory per backend — must match farrier's install layout.
-_BACKEND_SKILL_DIR: dict[str, str] = {
-    "claude": ".claude/skills",
-    "codex": ".agents/skills",
-    "copilot": ".github/skills",
-}
-
 
 class Workhorse:
     """The workflow engine handle: walks a graph node by node, driven by an
@@ -875,96 +871,6 @@ def _render_labels(labels: dict[str, str], ctx: dict[str, Any]) -> dict[str, str
     return out
 
 
-def _build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
-    """Shape a farrier context manifest into starting-context keys.
-
-    The manifest's ``template``/``repo``/``vars`` become top-level context values
-    (so ``{{ template.x }}`` / ``{{ repo.y }}`` resolve), while the path maps and
-    the selected-skills set are stashed under reserved ``_``-prefixed keys read by
-    the template helpers in workhorse/templates.py.
-
-    When the active backend (``AGENT_CLI``) differs from the backend the manifest
-    was generated for, instruction paths are rewritten from the manifest's
-    ``skill_dir`` prefix to the active backend's directory.  All three backends
-    share the ``{skill_dir}/{prefix}-{name}/SKILL.md`` structure, so a simple
-    prefix substitution is sufficient.
-    """
-    ctx: dict[str, Any] = {}
-    for key in ("template", "repo", "vars"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            ctx[key] = value
-
-    backend = os.environ.get("AGENT_CLI", "claude")
-    manifest_skill_dir = raw.get("skill_dir") or ""
-    target_skill_dir = _BACKEND_SKILL_DIR.get(backend, manifest_skill_dir)
-
-    raw_instructions: dict[str, str] = raw.get("instructions") or {}
-    if (
-        manifest_skill_dir
-        and target_skill_dir
-        and target_skill_dir != manifest_skill_dir
-    ):
-        ctx["_instructions"] = {
-            k: v.replace(manifest_skill_dir, target_skill_dir, 1)
-            for k, v in raw_instructions.items()
-        }
-    else:
-        ctx["_instructions"] = raw_instructions
-
-    ctx["_prompts"] = raw.get("prompts") or {}
-    ctx["_used_skills"] = raw.get("used_skills") or []
-    if target_skill_dir or manifest_skill_dir:
-        ctx["_skill_dir"] = target_skill_dir or manifest_skill_dir
-
-    # Absolute repo root, so the renderer can locate hand-authored prompt flavor
-    # overrides at <repo>/.agents/flavors/<workflow>/<node>.md (see templates.render).
-    # The agent runs with its cwd at the repo root (AGENT_REPO_DIR); default to cwd.
-    ctx["_repo_root"] = str(Path(os.environ.get("AGENT_REPO_DIR") or ".").resolve())
-    return ctx
-
-
-def _load_context_manifest(context_file: str | None) -> dict[str, Any]:
-    """Load the per-repo farrier context manifest that library prompts render against.
-
-    Resolution order: an explicit ``--context-file`` (which MUST exist — a typo'd
-    path is a hard error), else auto-detect the per-assistant manifest for the active
-    CLI (``$AGENT_REPO_DIR/.agents/agents-context.$AGENT_CLI.json``), then the generic
-    ``$AGENT_REPO_DIR/.agents/agents-context.json``. The per-assistant file makes a
-    Codex/Copilot run resolve ``instruction_ref`` to its own adapter files
-    (``.github/skills`` etc.) rather than Claude's. When none is present the run
-    proceeds with an empty manifest (the farrier helpers degrade to placeholders /
-    ``False``) — manifest-free workflows like hello-world need no repo context.
-    Workflows that DO need it (e.g. coder) always pass ``--context-file`` via the
-    generated Makefile, so the miss is caught there."""
-    if context_file:
-        path = Path(context_file)
-        if not path.is_file():
-            print(
-                f"error: --context-file not found: {path}\n"
-                "Run `make agent-install` to generate .agents/agents-context.json.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-    else:
-        repo_dir = os.environ.get("AGENT_REPO_DIR", ".")
-        agents_dir = Path(repo_dir) / ".agents"
-        cli = os.environ.get("AGENT_CLI", "claude").strip().lower()
-        per_cli = agents_dir / f"agents-context.{cli}.json"
-        path = per_cli if per_cli.is_file() else agents_dir / "agents-context.json"
-        if not path.is_file():
-            return {}
-    try:
-        raw = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        print(f"error: cannot read context manifest {path}: {e}", file=sys.stderr)
-        sys.exit(1)
-    if not isinstance(raw, dict):
-        print(f"error: context manifest {path} must be a JSON object", file=sys.stderr)
-        sys.exit(1)
-    return _build_manifest_context(raw)
-
-
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workflow",
@@ -1337,6 +1243,7 @@ def _run_run(args: argparse.Namespace) -> None:
                 params=params,
                 no_cache=getattr(args, "no_cache", False),
                 dry_run=getattr(args, "dry_run", False),
+                context_manifest=context_manifest,
             )
         )
 

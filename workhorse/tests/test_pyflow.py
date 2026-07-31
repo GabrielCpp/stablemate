@@ -620,6 +620,74 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
         assert nodes[1].add_dirs == [], nodes[1]
 
 
+def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
+    """A ported library prompt calls `instruction_ref(...)` / `template.*`, and those
+    helpers read the farrier manifest off the render context. It is the OUTER layer —
+    always present so they resolve, always overridable by the state's own arguments,
+    which is the same precedence the YAML engine gives it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(
+            tmp,
+            manifest={
+                "_instructions": {"go": ".claude/skills/acme-go/SKILL.md"},
+                "template": {"backend_layer_name": "Go gateway"},
+                "unit": "from-the-manifest",
+            },
+        )
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(ctx.as_dict())
+            return "rendered", {"kind": "ok", "count": 0}
+
+        real = pyflow_engine.agent_runner.run_agent
+        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        try:
+
+            class Asks(Workflow):
+                def start(self) -> Transition:
+                    self.agent(
+                        "prompts/review.md", returns=Payload, args={"unit": "CASE-1"}
+                    )
+                    return Done(None)
+
+            drive(Asks(), env)
+        finally:
+            pyflow_engine.agent_runner.run_agent = real
+
+        ctx = seen[0]
+        assert ctx["_instructions"] == {"go": ".claude/skills/acme-go/SKILL.md"}
+        assert ctx["template"] == {"backend_layer_name": "Go gateway"}
+        assert ctx["unit"] == "CASE-1", "the state's own argument wins"
+
+
+def test_a_run_with_no_manifest_renders_exactly_its_arguments():
+    """The manifest-free case (hello-world, most tests) must add no keys at all —
+    an empty seat, not a placeholder one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(ctx.as_dict())
+            return "rendered", {"kind": "ok", "count": 0}
+
+        real = pyflow_engine.agent_runner.run_agent
+        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        try:
+
+            class Asks(Workflow):
+                def start(self) -> Transition:
+                    self.agent("prompts/p.md", returns=Payload, args={"unit": "CASE-1"})
+                    return Done(None)
+
+            drive(Asks(), env)
+        finally:
+            pyflow_engine.agent_runner.run_agent = real
+
+        assert seen[0] == {"unit": "CASE-1"}
+
+
 # ---------------------------------------------------------------------------- activity
 
 

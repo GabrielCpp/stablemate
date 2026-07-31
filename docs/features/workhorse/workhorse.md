@@ -105,7 +105,7 @@ subcommand, a bare `workhorse [--workflow …]` is treated as `run`.
       over `--params-file`** on overlapping keys, since inline is merged second; with neither flag
       given, returns `{}`
   - run: load the `--context-file`/auto-detected manifest into a starting-context dict
-    (`_load_context_manifest`)
+    (`load_context_manifest`)
   - run: resolve `resume_run_dir` from the mutually-exclusive resume flags — `--resume-run` (an
     absolute path, an existing relative path, or else a name under `runs_dir`; not-a-directory
     exits `1`) or `--resume-latest` (the newest unfinished run dir under `runs_dir`, found by

@@ -27,6 +27,7 @@ from workhorse.pyflow.errors import PyflowError, WorkflowFailed
 from workhorse.pyflow.graph import preflight, registry_graphs
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
+from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import agent as agent_runner
 
@@ -41,12 +42,29 @@ def run_pyflow(
     params: dict[str, Any] | None = None,
     no_cache: bool = False,
     dry_run: bool = False,
+    context_manifest: dict[str, Any] | None = None,
 ) -> int:
     """Run one flow of `registry` and return the process exit code."""
     params = dict(params or {})
     name = registry.name or "workflow"
+    manifest = dict(context_manifest or {})
+
+    # Preflight the skill/prompt references the farrier template helpers will have to
+    # resolve. An unresolved one does not fail the render — it renders as prose into a
+    # live agent prompt — so the only way it becomes visible is by being said out loud,
+    # and the only useful moment is before the first state instead of six hours in.
+    # Warned, not raised: the run is degraded, not impossible. A run carrying no
+    # manifest at all is skipped, because there unresolved is the normal state.
+    unresolved_refs = missing_references(registry.directory(), manifest)
+    if unresolved_refs:
+        print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}")
 
     if dry_run:
+        # …and `--dry-run` is where that same list becomes an exit code a CI job can
+        # read, alongside the static graph checks below.
+        if unresolved_refs:
+            print(f"[workhorse] ERROR: {format_missing(unresolved_refs)}")
+            return 1
         # Static first, and it is the half that carries the weight: reading every
         # state finds the prompt that does not exist and the state nothing reaches,
         # including in the branches this run would never take. The stubbed drive
@@ -101,6 +119,7 @@ def run_pyflow(
         # Anchored to the run's ORIGINAL start, restored from run.json, so a resume
         # continues one budget rather than granting a fresh one every relaunch.
         deadline=runtime_deadline(writer.started_at, config.max_runtime_s),
+        manifest=manifest,
     )
 
     verb = "resuming" if resume else "starting"
