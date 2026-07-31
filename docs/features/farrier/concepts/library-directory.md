@@ -6,7 +6,7 @@ title: Library directory
 # Library directory
 
 A prompt-library root farrier renders from — a tree holding `library/` (skills, prompts, roots),
-and optionally `packs/`, `scaffolds/` and `workflows/`. farrier ships no library content of its
+and optionally `packs/` and `scaffolds/`. farrier ships no library content of its
 own; every install run resolves the *overlay* library first via `resolve_library_dir`, then stacks
 it above the *base* library via `set_layers`, and every content lookup afterwards goes through that
 stack. It is touched at the top of [`install`](../farrier.md#install)'s `does:` and also
@@ -53,7 +53,7 @@ There is no longer a set of module-global path constants pointing at one library
 `set_layers(overlay)`, which builds an ordered `LAYERS` list — the resolved overlay first (if any),
 then the base library returned by `stablemate_core.discovery.base_library_dir()` (if installed) —
 and content is looked up across that stack, highest precedence first. A higher layer shadows a
-lower one **name-for-name**, which is how an overlay overrides a base skill, pack or workflow
+lower one **name-for-name**, which is how an overlay overrides a base skill, pack or scaffold
 without forking it.
 
 `LAYERS` is mutated in place rather than rebound, so a `from farrier.layers import LAYERS` binding
@@ -66,13 +66,13 @@ overlay's get rendered instead.
 |---|---|
 | `layer_dirs(*parts)` | every `(layer, dir)` holding `<root>/<parts>`, in precedence order |
 | `find_in_layers(*parts)` | the highest-precedence layer holding `<root>/<parts>`, or `None` |
-| `available_names(*parts, suffix=, dirs=)` | every name any layer provides there, deduplicated — the "here is what does exist" half of a selection error |
+| `available_names(*parts, suffix=)` | every name any layer provides there, deduplicated — the "here is what does exist" half of a selection error |
 | `searched_layers()` | the stack as text — the "here is where I looked" half |
 
 So the paths the old globals named are now `parts` tuples passed to these helpers:
 `("library", "skills")` and `("library", "prompts")` for the selected sources,
-`("library", "roots", f"{root}.md")` for a Copilot root instruction, and `("workflows", name)` for
-a workflow the launcher will point at.
+`("library", "roots", f"{root}.md")` for a Copilot root instruction, and
+`("packs", f"{pack_id}.yml")` for a pack.
 
 - code: `farrier/farrier/layers.py::set_layers`
 - verify: `farrier/tests/test_config_resolution.py::test_overlay_shadows_base`

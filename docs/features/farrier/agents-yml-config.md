@@ -5,11 +5,10 @@ title: agents.yml (installer config)
 ---
 # agents.yml (installer config)
 
-The YAML mapping [`install`](farrier.md#install) reads to decide which skills, prompts, roots,
-and workflows from the resolved [library directory](concepts/library-directory.md) get rendered
-into a target repo's Codex/Claude/Copilot adapters, which scaffold ids
-[`farrier scaffold`](farrier.md#scaffold) may apply, and how the generated launcher
-(`.agents/agents.mk`, `.agents/local.compose.yaml`) is parameterized. Every top-level key is
+The YAML mapping [`install`](farrier.md#install) reads to decide which skills, prompts and roots
+from the resolved [library directory](concepts/library-directory.md) get rendered
+into a target repo's Codex/Claude/Copilot adapters, and which scaffold ids
+[`farrier scaffold`](farrier.md#scaffold) may apply. Every top-level key is
 optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit("Missing config:
 <path>")` if not), parses it with `yaml.safe_load` (an empty file yields `{}` rather than `None`,
 so an empty `agents.yml` fails the required-`agents:` check below rather than crashing on a `None`
@@ -69,30 +68,30 @@ Each id names a `<id>.yml` file under the library's `packs/` directory (`PACKS /
 opened. Once found, the pack file is read through the same `read_yaml` used for `agents.yml`
 itself, so a pack whose content isn't a YAML mapping fails with
 `SystemExit("Config must be a YAML mapping: <path>")` too. A pack file selects
-`skills`/`prompts`/`roots`/`scaffolds`/`workflows` and may itself list `includes:` (other pack ids),
+`skills`/`prompts`/`roots`/`scaffolds` and may itself list `includes:` (other pack ids),
 merged recursively — an include cycle raises `SystemExit("Pack include cycle detected at <id>")`.
 All selected packs' selections are unioned together (`collect_selection`), then unioned again with
-this file's own `skills`/`prompts`/`roots`/`scaffolds`/`workflows` keys below.
+this file's own `skills`/`prompts`/`roots`/`scaffolds` keys below.
 
-### skills / prompts / roots / workflows
+### skills / prompts / roots
 - type: `list` of `string` — required: no — default: `[]`
 
 Extra individual selections **added on top of** whatever the `packs:` list pulled in (union, never
-a replacement of pack-selected items). `skills`/`prompts` entries may be glob patterns; `roots`/
-`workflows` entries are compared as literal names:
+a replacement of pack-selected items). `skills`/`prompts` entries may be glob patterns; `roots`
+entries are compared as literal names:
 
 - `skills` — matched (`matches()`, case-insensitively, dash/dot-normalized) against a selectable
   skill's dotted id, its deprefixed public id, and its library-relative path with/without a
   trailing `.md` stripped. Selected skills are rendered per enabled agent as above.
 - `prompts` — same matching, against library `prompts/` sources; suffix stripping also covers
   `.prompt.md` / `.instructions.md`.
-- `roots` — literal names (no globbing); `Renderer.render` looks up `ROOTS / f"{root}.md"` and
-  silently skips any name with no matching file — only consumed when `copilot` is enabled.
-- `workflows` — literal workflow directory names under the library's `workflows/`; an unknown name
-  raises `SystemExit("Unknown workflow: <name>")`. Workflows are never copied into the repo — they
-  run directly from the library (`WORKFLOW_DIR` in the generated launcher) — but selecting >= 1
-  workflow makes `install` additionally emit `.agents/agents-context*.json` and
-  `.agents/local.compose.yaml`, and turns on the workflow-run targets in `.agents/agents.mk`.
+- `roots` — literal names (no globbing); `Renderer.render` looks up `library/roots/<root>.md`
+  across the layer stack and raises `SystemExit` listing every name no layer provides — only
+  *rendered* when `copilot` is enabled, but validated either way.
+
+There is no `workflows:` key. Farrier installs skills and prompts; a workflow is a Python package
+workhorse resolves through its `workhorse.workflows` entry-point group, installed with pip/uv and
+run as `workhorse run <name>`. A leftover `workflows:` list in a pack or in this file is ignored.
 
 ### scaffolds
 - type: `list` of `string` (scaffold definition ids) — required: no — default: `[]`
@@ -112,8 +111,8 @@ from the retired install-time file-tree scaffolds raises a `SystemExit` with a m
 
 Removes items the merged `packs`/top-level selections would otherwise include, applied last
 (same `matches()` glob semantics) before rendering. Only these two sub-keys are read — there is
-no `exclude.roots`, `exclude.workflows`, or `exclude.scaffolds`; an unwanted root or workflow
-must simply not be listed, and an unwanted scaffold id is simply never invoked.
+no `exclude.roots` or `exclude.scaffolds`; an unwanted root must simply not be listed, and an
+unwanted scaffold id is simply never invoked.
 
 ### template / vars
 - type: `mapping` (arbitrary keys) — required: no — default: `{}`
@@ -155,36 +154,21 @@ For each `paths` entry, output is written per **enabled** agent only for `codex`
 local-instruction output.
 
 ### workflow
-- type: `mapping` — required: no (only meaningful when >= 1 workflow is selected) — default: `{}`
+- type: `mapping` — required: no — default: `{}`
 
-Configuration for the generated launcher (`.agents/agents.mk`, `.agents/local.compose.yaml`) and
-for the selected workflow(s) at run time (`resolve_workflow_meta`). Every sub-key accepts either
-camelCase or snake_case spelling.
+An opaque pass-through block. **Farrier reads nothing in it.** It survives in `agents.yml` because
+the *workflow packages* you run read their own keys out of it — so what belongs here is whatever
+the workflow you installed documents. Sub-keys are conventionally accepted in either camelCase or
+snake_case spelling by the workflows that read them.
 
-- `repoUrl` / `repo_url` — type: `string` — required: no — default: `git remote get-url origin`
-  (`get_git_remote`) if unset, else the literal placeholder `REPLACE_ME-git-remote-url`. Only used
-  by GitHub-default workflow runs, not the default local bind-mount clone, so the placeholder is
-  harmless until a run needs it.
-- `branch` — type: `string` — required: no — default: the repo's detected trunk
-  (`get_default_branch`: `origin/HEAD`'s target, else a local/origin `main`, else `master`), or the
-  literal `"main"` if none of those resolve. Must be the long-lived integration branch the worker
-  clones and opens/merges PRs against — **not** whatever branch `install` happened to run from.
-- `agentsDir` / `agents_dir` — type: `string` — required: no — default:
-  `$(abspath $(CURDIR)/../vigilant-octo/agents)` (`DEFAULT_AGENTS_DIR`). Becomes `AGENTS_DIR` in
-  the generated `.agents/agents.mk`.
-- `envPassthrough` / `env_passthrough` — type: `list` of `string` (env var names) — required: no —
-  default: `[]`. Must be a list, else `SystemExit("workflow.envPassthrough must be a list of env
-  var names")`. Each named var is forwarded into the Docker worker's `environment:` block in the
-  generated `.agents/local.compose.yaml`, interpolated from the host env at `docker compose up`
-  time (empty string if unset on the host).
-- `githubTokenEnv` — type: `string` — required: no — default: none. **Not read anywhere in
-  farrier itself** — accepted in the mapping but currently inert to farrier itself;
-  it exists for the installed workflow's own runtime/prompts (workflows run directly from the
-  library and are never copied into the repo) to interpret.
-- `storyCoder` — type: `mapping` (opaque) — required: no — default: none. Same as
-  `githubTokenEnv`: farrier does not read or validate its contents. Shape it to whatever the
-  selected workflow documents; farrier passes the whole `agents.yml` through unread beyond the
-  keys listed above.
+- `githubTokenEnv` — type: `string` — required: no — default: none. Names the env var holding a
+  GitHub token; read by the workflow kit's `resolve_github_token`, not by farrier.
+- `storyCoder` — type: `mapping` (opaque) — required: no — default: none. A workflow-specific
+  subtree; farrier does not read or validate its contents.
+
+`repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to parameterize a generated
+Docker launcher. That launcher is gone — `workhorse run` takes its arguments on the command line —
+and those keys are now ignored by everything.
 
 ## A load-valid sample
 
@@ -203,7 +187,5 @@ template:
   go_module: github.com/org/myrepo
 
 workflow:
-  branch: main
-  envPassthrough:
-    - GH_TOKEN
+  githubTokenEnv: GH_TOKEN
 ```

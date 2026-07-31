@@ -343,8 +343,8 @@ def ensure_makefile_include(repo: Path) -> bool:
     """Ensure the repo's existing root Makefile includes the generated launcher.
 
     When a repo already ships its own root Makefile, farrier must not clobber it —
-    but the agent targets (`agent-run`/`agent-install`/`agent-check`/…) live in the
-    generated ``.agents/agents.mk``, so the root Makefile has to ``include`` it to
+    but the agent targets (`agent-install`/`agent-check`) live in the generated
+    ``.agents/agents.mk``, so the root Makefile has to ``include`` it to
     surface them. This appends a marked ``include .agents/agents.mk`` block at the
     *end* of the file, so the repo's own first target stays the default goal.
 
@@ -364,7 +364,7 @@ def ensure_makefile_include(repo: Path) -> bool:
         prefix += "\n"
     block = (
         f"{MAKEFILE_INCLUDE_MARKER}\n"
-        "# Surfaces agent-run / agent-install / agent-check etc. from the generated\n"
+        "# Surfaces agent-install / agent-check from the generated\n"
         "# launcher. Re-created by `farrier install`; remove this block to opt out.\n"
         f"{include_line}\n"
         f"{MAKEFILE_INCLUDE_END}\n"
@@ -378,8 +378,8 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
         write_text(path, content)
     # Workflow runs write logs/artifacts under .agents/runs (see workhorse's --runs-dir
-    # RUNS_DIR). Keep them out of version control. Only relevant when a workflow
-    # launcher was generated.
+    # RUNS_DIR). Keep them out of version control. Guarded on the launcher because the
+    # block also covers the adapter directories rendered alongside it.
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_agents_gitignore(repo):
         print("Updated .agents .gitignore rules")
     # When the repo already had a root Makefile, farrier left it untouched above —

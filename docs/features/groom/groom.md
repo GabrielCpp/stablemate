@@ -130,9 +130,8 @@ poller, and holds no role in answering or restarting containers.
 
 ## Network path: container → host `groom`
 
-`farrier`'s generated compose service template (`farrier/install.py`, the source of every
-consuming repo's `.agents/local.compose.yaml`) adds `extra_hosts: ["host.docker.internal:host-gateway"]`
-to each workflow service, so every workflow container can always reach a loopback-bound `groom` on
+`workhorse/compose.yaml` adds `extra_hosts: ["host.docker.internal:host-gateway"]`
+to the workflow service, so every workflow container can always reach a loopback-bound `groom` on
 the host at a fixed hostname regardless of which docker network the compose project uses (this
 mapping is Linux-only-relevant; Docker Desktop on Mac/Windows already resolves
 `host.docker.internal` via its VM proxy). `groom` **defaults to binding `0.0.0.0`** so the in-container sidecars can reach

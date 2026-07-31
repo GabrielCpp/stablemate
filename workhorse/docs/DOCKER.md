@@ -101,8 +101,9 @@ services:
         read_only: true
 ```
 
-A project usually wraps these commands in a `make` target (e.g. `make agent-run`)
-so contributors don't type the compose invocation by hand.
+A project usually wraps these commands in a `make` target of its own so contributors
+don't type the compose invocation by hand. farrier does not generate one: its
+`.agents/agents.mk` carries only `agent-install` / `agent-check`.
 
 The `hello-world` workflow this file used to recommend as an auth/image smoke test is a
 Python package now, not a directory to point `WORKFLOW_DIR` at, so there is no

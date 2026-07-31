@@ -2883,3 +2883,84 @@ checkers are clean. Fixing the fake is code, and this loop does not write code.
 short-circuits when `make test` fails — so `check-public` never runs, and the `||` branch
 tails **the previous iteration's log**, which reads green. It looked like a pass. Delete the
 log first, or run `make check-public` on its own line, as this iteration did.
+
+## After loop 3 — farrier stops installing workflows (finding 32, closed)
+
+Loop 3 ended with **finding 32** open: `farrier/farrier/renderer.py` refused any workflow name
+where `find_in_layers("workflows", name)` returned `None`, so an installed, runnable workflow
+was rejected because no library layer carried a directory of that name. The finding proposed
+reconciling the two discovery mechanisms. The decision taken instead was to **delete farrier's
+side of it**: farrier installs skills and prompts; a workflow is a Python package workhorse
+resolves through its `workhorse.workflows` entry-point group, installed with pip/uv and run as
+`workhorse run <name>`. There is nothing left to reconcile.
+
+**What the `workflows:` key actually did, before it was removed.** Three things, all dead:
+
+1. Validated each name with `find_in_layers("workflows", wf)`, which fails for *every* name —
+   `base-library/` holds only `library/skills/` and `packs/`.
+2. Bind-mounted `${AGENTS_DIR}/workflows/{wf}` into a generated `.agents/local.compose.yaml`.
+   Farrier never copied a workflow into `.agents/workflows/`, so the mount had no source.
+3. Passed `WORKFLOW_DIR` / `WORKFLOW_ARG` into `workhorse --workflow …` — a flag the Python
+   engine does not accept.
+
+Deleted: `farrier/farrier/workflows.py` and `git.py`; `render_local_compose` and every run
+target in the generated launcher (`agent-run`, `agent-native`, `agent-native-bg`, `agent-build`,
+`agent-hello`, `agent-logs`, `agent-container-logs`, `agent-stop`, `agent-down`,
+`agent-reseed-auth`, `agent-clean`, `agent-artifacts`); the `workflows` member of
+`collect_selection` and of `load_pack`'s merge; the `dirs:` parameter of
+`layers.available_names`. `render_agents_mk()` now takes no arguments and emits two targets,
+`agent-install` and `agent-check` — the branch farrier already had for a skills/prompts-only
+repo. `Renderer.render(agents, roots)` lost its `workflows` and `workflow_meta` arguments.
+
+**Two things looked workflow-scoped and were not; both survive.**
+
+- **The per-repo context manifests.** `.agents/agents-context.json` and
+  `.agents/agents-context.<assistant>.json` map `instruction_ref` → adapter path, and are read
+  by `workflows/src/workhorse_workflows/coder/nodes/dev.py` and by `genesis.py`. Their emission
+  was gated on `if workflows:`; deleting that block wholesale would have silently broken
+  `instruction_ref` resolution and the coder workflow's genesis health check. Emission is now
+  unconditional, which is what it should always have been.
+- **`agents.yml`'s `workflow:` block.** `githubTokenEnv` and `storyCoder` are read by the
+  workflow packages (`kit/github.py::resolve_github_token`, `coder/nodes/ci.py`,
+  `coder/nodes/pr.py`). Farrier no longer reads the block at all; `repoUrl`, `branch`,
+  `agentsDir` and `envPassthrough` now have no consumer anywhere and are documented as ignored.
+  A leftover `workflows:` list in a pack or in `agents.yml` is silently ignored — unknown
+  top-level keys are not rejected.
+
+**`LAUNCHER_COMPOSE` is removal-only, deliberately.** It stays in `remove_targets` so `--clean`
+deletes a leftover `.agents/local.compose.yaml`, but it is *not* in `check_outputs`' extra-scan.
+This follows the `.agents/workflows` precedent: an `extra:` path that a re-render cannot write
+is a `--check` failure the operator has no way to clear. The managed `.gitignore` block still
+lists `/.agents/workflows/` and `/.agents/local.compose.yaml` for the same reason — leftover
+disposal, not a live output.
+
+**The docs half rewrote rather than deleted**, per the standing rule about a subject that
+survives under a new name. `docs/features/farrier/{farrier.md,agents-yml-config.md}` and
+`concepts/{renderer.md,library-directory.md}`, `farrier/README.md`, `farrier/docs/LAYOUT.md`
+(whose `## workflows/<name>/` section became `## Workflows are not part of the library`),
+`workhorse/docs/DOCKER.md`, `workhorse/compose.yaml`'s `WORKFLOW_DIR` comment, and the root
+`Makefile`'s generated include block. Two groom pages claimed the container-to-host network
+path came from farrier's generated compose file; it comes from `workhorse/compose.yaml`'s own
+`extra_hosts: ["host.docker.internal:host-gateway"]` (verified before re-attributing it), so
+`base-library/library/skills/stablemate/stablemate-groom/SKILL.md`, `docs/features/groom/groom.md`
+and `docs/features/groom/sidecar-autostart.md` now name the right file.
+`research/scaffold/new_program.py`'s two operator-facing strings moved from `make agent-native`
+to `workhorse run research`. Every example added was checked against `workflows/pyproject.toml`'s
+entry points and `workhorse run --help` before being written.
+
+**Gates.** `ruff check .` clean from the repo root; `uv run farrier --repo "$(pwd)"` installs 23
+generated files; `farrier/tests` 80 passed; `make check-public` exit 0 (766 tracked text files,
+10 base skills resolve with no overlay); 0 broken links across 315 tracked markdown files.
+
+**Three failures observed and left alone, none of them this change's:**
+
+- `workhorse/tests/test_packaged_workflows.py::test_both_front_doors_reach_the_engine_identically`
+  fails — `params` gains a `repo_dir` key. The concurrent workstream holds uncommitted edits to
+  `workhorse/workhorse/cli/run.py`, `config_run.py` and `testing.py`; this change touches only a
+  comment in `compose.yaml` and prose in `DOCKER.md`.
+- `ostler doctor` reports 2 `okf-missing-type` errors, on `docs/specs/STORY-1/plan-api.md` and
+  `plan-web.md`. `docs/specs/` is untracked — the same workstream's.
+- The absolute-link checker flags
+  `docs/plans/workflow-as-python-state-machine-progress.md:2837`. False positive: that line is
+  prose describing the `github.com/GabrielCpp/stablemate/blob/main/<path>` *pattern* the loop-3
+  sweep validated, not a link.

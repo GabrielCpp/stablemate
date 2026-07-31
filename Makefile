@@ -102,7 +102,7 @@ release-test: ## Release both packages to TestPyPI
 	$(MAKE) -C farrier release-test
 
 # >>> farrier: agent launcher include (generated) >>>
-# Surfaces agent-run / agent-install / agent-check etc. from the generated
+# Surfaces agent-install / agent-check from the generated
 # launcher. Re-created by `farrier install`; remove this block to opt out.
 include .agents/agents.mk
 # <<< farrier: agent launcher include <<<

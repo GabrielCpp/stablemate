@@ -143,10 +143,11 @@ points).
 
 ## Network path
 
-`farrier`'s generated compose template adds `extra_hosts: ["host.docker.internal:host-gateway"]`
-to every workflow service (see [[farrier-setup]]), so a container can always reach a
-loopback-bound `groom` on the host — this is already generated into every consuming repo's
-`.agents/local.compose.yaml`; no per-repo change needed.
+`workhorse/compose.yaml` adds `extra_hosts: ["host.docker.internal:host-gateway"]` to the workflow
+service, so a container can always reach a loopback-bound `groom` on the host; no per-repo change
+needed. (farrier used to generate a per-repo `.agents/local.compose.yaml` carrying the same
+mapping. It installs skills and prompts only now and generates no compose file at all — the
+mapping lives in workhorse's own compose file.)
 
 ## When touching a workflow's operator-gate scripts
 
