@@ -2041,6 +2041,130 @@ Fixed with a callout at the end of the new section.
 
 Both remaining item-5 bullets are now done; item 5 is closed.
 
+### Iteration 11 — item 4's `--workflow` sweep, which was one page and two un-ported files
+
+The work order named eight files carrying `workhorse --workflow ./wf/workflow.yaml`. Read
+against the shipped code, most of that list was already discharged: `base-library/workflows/`
+**does not exist** (the named README is moot), and `saddlebag/README.md`,
+`workhorse/docs/GUARDRAILS.md`, `workhorse/CLAUDE.md` and `farrier/docs/LAYOUT.md` were
+already clean — LAYOUT.md's line 203 mention is a deliberate past-tense sentence about what a
+library *used to* ship, and was left alone. The same goes for the two
+`stablemate-workhorse-scripting` copies, `workflow-format.md:21`,
+`flows/workhorse-setup-and-run.md:13`, the `workflows/src/**` port-provenance docstrings, and
+all of `docs/features/workhorse/workhorse.md`, where `--workflow <name>` is the **current**
+flag taking a name.
+
+What was actually left was one page whose whole subject had died, one un-ported deployment
+path, and two comments.
+
+- **`docs/features/workhorse/concepts/testing.md` — rewritten, not deleted.** It was not
+  three stale `--workflow` lines; the module it documents was replaced wholesale. It
+  described `WorkflowRun(workflow: str | Path, sandbox: Path)` where "`workflow` is the
+  `workflow.yaml` path", `mock_agent`, `mock_agent_sequence`, `mock_command`, `run()`,
+  `RunResult` and its eight methods, two PATH-shim script templates, and three assertion
+  helpers built on `RunResult`. **The shipped `workhorse/workhorse/testing.py` is 103 lines
+  and exports four functions**: `make_git_repo`, `assert_file`, `assert_file_contains`,
+  `assert_json_file`. The subject survives under a changed shape, so per the STOP rule this
+  was a rewrite. The new page says what the module is *for* now — the two jobs a callable
+  flow cannot do for itself — documents the four functions against their actual behaviour
+  (the explicit `-b main`, the repo-local identity for identity-less CI, the
+  README-only-if-absent rule, dict-subset vs list-exact matching), and carries a was→is table
+  mapping every deleted symbol to what replaced it, so a reader arriving from an old test
+  knows where to go rather than concluding the capability was dropped.
+- **`workhorse/docs/DOCKER.md` — made honest rather than made true.** `WORKFLOW_DIR` "must
+  point at a directory containing a `workflow.yaml`" is false, and it cannot be fixed here:
+  `entrypoint.sh:136` still runs `workhorse --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}"`
+  and `compose.yaml:39` still sets that path. That is a code change, so the page now opens
+  with a **status section** saying the harness has not been ported, that the current CLI
+  refuses a path, and what the ported shape would be — with the `WORKFLOW_DIR` /
+  `WORKFLOW_PATH` rows marked as documented-as-they-behave. Two live errors alongside it: the
+  `hello-world` smoke test it recommended cannot work (that workflow is a Python package now,
+  so the paragraph now sends the reader to `workhorse run hello-world --dry-run` on the host),
+  and the config row named `WORKHORSE_CONFIG` at `~/.config/workhorse/config.toml` — the
+  unified key is `STABLEMATE_CONFIG` at `~/.config/stablemate/config.toml`, with the old
+  spelling honored as a legacy alias (`core/stablemate_core/config.py:38-41`).
+- **`docs/features/workhorse/flows/workhorse-author-test.md` — a broken example I wrote in
+  iteration 4.** Step 3 offered `RunEnv(run_agent=scripted)`. `RunEnv` has **no `run_agent`
+  field**; the seam is `agent_runner: AgentRunner | None`, and `None` means "build the real
+  ladder from `config` at the first turn", which is why a workflow with no agent node never
+  resolves a backend. Corrected, with the `StubRunner` shape named.
+- **`workhorse/workhorse/testing.py`'s module docstring** — finding 1 of iteration 4, which
+  that entry explicitly deferred to item 4 as "every runnable example". Its example imported
+  `drive` and `stub_nodes` from `workhorse.pyflow` (which exports neither), called `drive`
+  without its required `env`, and used the pure function `stub_nodes(index) -> index` as a
+  context manager. Replaced with the real `RunEnv` construction, pointing at
+  `workflows/tests/test_hello_world.py` as the same example in running code. Docstring only —
+  no behaviour changed.
+- **Root `pyproject.toml`** — said "Each workflow.yaml declares the tools it needs in a
+  `requires:` block instead", present tense, and described the base library's payload as
+  `library/, scaffolds/, workflows/`. Two of those three directories are gone. Both corrected.
+
+#### The end condition's `ostler` clause has moved, and 19 of its errors are false
+
+**Finding 20 is obsolete and is withdrawn.** It recorded that `ostler doctor` checks `code:`
+targets only and cannot see Markdown links or anchors. It can now — the concurrent workstream
+added `ostler/ostler/links.py` and a `missing-anchor` finding. The end condition's "`ostler`
+reports no dangling references" is therefore a checkable claim for the first time.
+
+The count is now **58**: 32 `dangling-code-ref`, 7 `missing-code-symbol`, 19 `missing-anchor`.
+**All 19 anchor errors are false positives**, and from a single one-character bug:
+
+```python
+_ANCHOR_SPACE_RE = re.compile(r"\s+")          # ostler/ostler/model.py:467
+return _ANCHOR_SPACE_RE.sub("-", s).strip("-") # …collapses runs
+```
+
+github-slugger replaces **each** whitespace character with its own hyphen and does **not**
+collapse runs. So `## \`resolve_workspace\` — build the repo map` strips to
+`resolve_workspace␣␣build the repo map` (the em-dash is dropped, its two flanking spaces are
+not) and slugs to `resolve_workspace--build-the-repo-map`. Ostler computes
+`resolve_workspace-build-the-repo-map` and reports the correct link as broken. Every heading
+in this book is `Name — description`, so the bug fires on every intra-page link in the book
+and *only* on correct ones. Confirmed independently: a checker matching github-slugger exactly
+reports **0 broken links across 313 tracked markdown files**, path and anchor. This is the
+same mistake this loop made in its own checker in iteration 9 and fixed empirically against
+GitHub's renderer.
+
+That leaves **39 real errors**, unchanged in substance from iteration 8's count and all of
+them item 3's remaining work: the 32 `dangling-code-ref` are `concepts/` pages still grounded
+on the pre-refactor `runner/agent.py`, and 6 of the 7 `missing-code-symbol` are farrier's
+`install.py` (a concurrent-workstream split, not this port). `concepts/testing.md` no longer
+contributes any — the question left open last iteration about an unaccounted-for eighth
+`missing-code-symbol` is settled: its `::WorkflowRun*` citations were among them, and the
+rewrite removed them.
+
+#### Findings — code the docs cannot describe truthfully (no code changed)
+
+25. **`ostler`'s anchor slugifier collapses whitespace runs** (`ostler/ostler/model.py:467`),
+    so every `X — Y` heading — the house style of the entire OKF book — yields a slug one
+    hyphen short of GitHub's. It reports 19 correct links as `missing-anchor` and would
+    report a genuinely broken `--` link as fine. One regex: replace each whitespace character
+    rather than each run. Not made here; this loop changes no behavior.
+26. **The Docker harness is un-ported, not merely mis-documented.** `entrypoint.sh:136` and
+    `compose.yaml:39` still pass `--workflow <path>`, which the current CLI refuses, so the
+    containerized route fails at startup. This supersedes and widens finding 16, which named
+    only the entrypoint line.
+27. **`farrier`'s generated launcher has one dead branch, not a dead default.** Checked
+    before writing this down, because the obvious reading is wrong: `agents.mk`'s
+    `--workflow $(WORKFLOW_ARG)` (launcher.py:190, 197) is *correct* in the default case —
+    `WORKFLOW_ARG` falls back to `$(WF)`, a bare **name**, and `main._main` injects the
+    `run` subcommand when argv starts with something that isn't one, so
+    `workhorse --workflow coder …` still works exactly as the comment at launcher.py:129
+    claims. What is dead is the **`WORKFLOW_DIR` override**:
+    `WORKFLOW_ARG := $(if $(WORKFLOW_DIR),$(WORKFLOW_DIR)/workflow.yaml,$(WF))`
+    (launcher.py:134) appends a filename that no longer exists to a directory the CLI would
+    refuse anyway, so `make agent-native WORKFLOW_DIR=…` — documented as "pin a specific
+    checkout" — cannot work. The compose the same module emits sets
+    `WORKFLOW_PATH: /workflow/workflow.yaml` (launcher.py:361), which is finding 26 again in
+    every installed repo. Both are code changes.
+28. **`benchmarks/bench.py`'s staleness guard is silently dead.** It computes the newest
+    workflow-source mtime by globbing `WORKFLOWS/*/{workflow.yaml,scripts/*.py,prompts/*.md}`
+    (line 475) where `WORKFLOWS = base-library/workflows` (line 84) — a directory that no
+    longer exists. Every pattern matches nothing, so `newest_src` takes its `default=0.0`
+    and every run compares as newer than the code. The comment above it explains that this
+    check exists precisely because a report scoring stale artifacts is "the same vacuous
+    success it exists to detect" — and it now always passes.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

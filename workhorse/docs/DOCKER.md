@@ -10,6 +10,22 @@ The bundled image runs `workhorse` as the container-local `nobody` user with
 credential seeding, persistent volumes, and isolation: the agent works against
 its own clone (never a host working tree) and all state lives in named volumes.
 
+## Status: this harness has not been ported off the YAML front-end
+
+Everything else on this page — **credentials, volumes, isolation, resetting state** — is
+current. What is **not** current is how the workflow is selected. `entrypoint.sh` still
+launches `workhorse --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}"`, and
+`compose.yaml` still bind-mounts a workflow *directory* at `/workflow` — both written for
+the [retired YAML front-end](WORKFLOW.md). The current CLI takes a workflow **name**
+resolved through the `workhorse.workflows` entry-point group and **refuses a path**, so
+that invocation fails at startup.
+
+A workflow is an installed distribution now, so the ported shape is to `pip install` the
+workflow's wheel into the image and run `workhorse run <name>` — no bind mount and no
+`WORKFLOW_DIR`. That is a code change to `entrypoint.sh` and `compose.yaml`, not a
+documentation one, and it has not been made. The `WORKFLOW_DIR` / `WORKFLOW_PATH` rows
+below are documented as they still behave, not as they should.
+
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Compose plugin)
@@ -57,7 +73,8 @@ docker compose -f compose.yaml -f your-override.compose.yaml up --abort-on-conta
 
 `WORKFLOW_DIR` must point at a directory containing a `workflow.yaml`; its
 `prompts/` and `scripts/` subdirectories are mounted alongside it inside the
-container.
+container. **This is the un-ported path described in the status note above** — the
+`workflow.yaml` it looks for is a file the current engine can no longer load.
 
 > The controller `.py` is `COPY`d into the image, not bind-mounted, so controller
 > edits take effect only after an image rebuild (`--build`).
@@ -85,20 +102,24 @@ services:
 ```
 
 A project usually wraps these commands in a `make` target (e.g. `make agent-run`)
-so contributors don't type the compose invocation by hand. For a quick auth/image
-smoke test, run the bundled `hello-world` workflow (which needs no repo clone) by
-pointing `WORKFLOW_DIR` at it.
+so contributors don't type the compose invocation by hand.
+
+The `hello-world` workflow this file used to recommend as an auth/image smoke test is a
+Python package now, not a directory to point `WORKFLOW_DIR` at, so there is no
+container-side smoke test until the harness is ported. On the host, `workhorse run
+hello-world --dry-run` covers the same ground and needs no agent CLI at all — see the
+[README](../README.md#quick-start).
 
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `WORKFLOW_DIR` | _(required)_ | Absolute path to the workflow directory (mounted at `/workflow`) |
+| `WORKFLOW_DIR` | _(required)_ | Absolute path to the workflow directory (mounted at `/workflow`). Un-ported — see the [status note](#status-this-harness-has-not-been-ported-off-the-yaml-front-end) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | _(unset)_ | Optional long-lived OAuth token (`claude setup-token`); skips the credentials-file seed |
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
 | `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `aider`, or `opencode` |
 | `AGENT_MODEL` | _(unset)_ | Fallback model override when the node's `power` mapping does not provide one |
-| `WORKHORSE_CONFIG` | `~/.config/workhorse/config.toml` | User-wide config mapping `power` tiers to backend model/effort settings |
+| `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping `power` tiers to backend model/effort settings. `WORKHORSE_CONFIG` is still honored as the pre-unification spelling |
 | `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `aider` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |
@@ -112,7 +133,7 @@ pointing `WORKFLOW_DIR` at it.
 |---|---|---|---|
 | `~/.claude/.credentials.json` | `/mnt/claude-credentials.json` | bind, read-only | Subscription auth — seeded into `claude-state` once at startup |
 | `~/.claude/settings.json` | `/mnt/claude-settings.json` | bind, read-only | Optional host Claude config (commented out by default) |
-| `$WORKFLOW_DIR` | `/workflow` | bind | Workflow definition (yaml, prompts, scripts) |
+| `$WORKFLOW_DIR` | `/workflow` | bind | Workflow definition (yaml, prompts, scripts) — un-ported; a workflow is an installed distribution now |
 | `workspace` volume | `/workspace` | named volume | **Agent working tree** — repo clones, branches, and commits; persists across reboots |
 | `claude-state` volume | `/claude-state` | named volume | Claude sessions + seeded credentials + onboarding stub; persists across reboots |
 | `runs` volume | `/runs` | named volume | Run artifacts; persists across reboots |
