@@ -98,11 +98,6 @@ class AgentResilience:
     #: on a SEPARATE thread SIGKILLs the whole process group once the turn overruns
     #: its budget by this grace, regardless of stream state.
     watchdog_grace_s: float = 120.0
-    #: Optional idle cutoff: treat a turn that has produced no stream event for this
-    #: long as stalled. Default 0 = disabled, because a legitimate long tool call
-    #: (e.g. a multi-minute ``make test``) emits nothing until it returns and must
-    #: not be killed; the watchdog above is the always-on backstop.
-    idle_timeout_s: float = 0.0
     cap_default_wait_s: float = 3600.0
     cap_wait_margin_s: float = 120.0
     cap_tick_s: float = 600.0
@@ -137,7 +132,6 @@ class AgentResilience:
             invoke_backoff_base_s=_float(e, "AGENT_INVOKE_BACKOFF_BASE_S", 15.0),
             invoke_backoff_cap_s=_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 300.0),
             watchdog_grace_s=_float(e, "AGENT_WATCHDOG_GRACE_S", 120.0),
-            idle_timeout_s=_float(e, "AGENT_IDLE_TIMEOUT_S", 0.0),
             cap_default_wait_s=_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 3600.0),
             cap_wait_margin_s=_float(e, "AGENT_CAP_WAIT_MARGIN_S", 120.0),
             cap_tick_s=_float(e, "AGENT_CAP_TICK_S", 600.0),

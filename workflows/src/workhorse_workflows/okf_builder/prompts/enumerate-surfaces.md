@@ -67,7 +67,7 @@ explicit source root below.
 
 ```json
 {"discovered": [
-  {"kind": "surface", "target": "cli:workhorse", "context": "workhorse/workhorse/main.py::main"},
+  {"kind": "surface", "target": "cli:workhorse", "context": "workhorse/workhorse/__init__.py::main"},
   {"kind": "surface", "target": "server:groom", "context": "groom/groom/app.py::create_app"},
   {"kind": "surface-slice", "target": "screens:projects", "context": "routes: /projects -> app/routes/projects.tsx; /projects/new -> app/routes/projects.new.tsx"},
   {"kind": "environment", "target": "environment:local", "context": "selector: GROOM_BIND=127.0.0.1; services: dashboard @ :8787"},

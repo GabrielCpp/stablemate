@@ -380,3 +380,10 @@ def test_run_step_reports_a_nonzero_exit(monkeypatch) -> None:
     ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
     assert not ok
     assert "seed blew up" in err
+
+
+if __name__ == "__main__":
+    import subprocess
+    import sys
+
+    raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))

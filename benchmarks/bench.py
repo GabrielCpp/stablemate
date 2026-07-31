@@ -74,10 +74,13 @@ import yaml
 # scope (not lazily): workhorse is a workspace member, so this is a hard dependency, and
 # a benchmark that silently degrades when its scorer is missing is worse than one that
 # refuses to start.
+from workhorse.config_run import AgentResilience
 from workhorse.runner import caps as wh_caps
 from workhorse.runner import extract as wh_extract
 from workhorse.runner import failure as wh_failure
+from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.registry import get_backend
+from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 HERE = Path(__file__).resolve().parent
 STABLEMATE = HERE.parent
@@ -594,7 +597,21 @@ def render(template: str, **fields: str) -> str:
     return template
 
 
-def judge_one(spec: Spec, bullet: dict, rubric: str, backend) -> dict:
+@dataclass(frozen=True, slots=True)
+class Judge:
+    """The agent CLI plus the two dependencies its recovery ladder needs.
+
+    `run_turn`, `cap_delay_seconds` and `sleep_with_notice` each take the resilience
+    settings and the clock, so the three travel together through every judging call —
+    context, not per-call inputs. Built once at the edge (`judge_backlog`) so the
+    environment is read once and every judged bullet shares one policy.
+    """
+    backend: AgentBackend
+    resilience: AgentResilience
+    clock: Clock
+
+
+def judge_one(spec: Spec, bullet: dict, rubric: str, judge: Judge) -> dict:
     """Score one backlog bullet by having an agent read the produced repo.
 
     One turn per bullet, not one turn for the whole backlog: a focused turn over a
@@ -611,7 +628,7 @@ def judge_one(spec: Spec, bullet: dict, rubric: str, backend) -> dict:
                 or "  (none)",
         levels="\n".join(f"  {n} {name} — {desc}" for n, (name, desc) in LEVELS.items()),
     )
-    text = call_agent(backend, prompt, node_id=f"judge_{bullet['id']}", spec=spec)
+    text = call_agent(judge, prompt, node_id=f"judge_{bullet['id']}", spec=spec)
     # Reuse workhorse's own response parser — the tested one that already handles fenced
     # blocks, bare objects, and the tolerant repair pass — rather than a second parser
     # that would drift from it.
@@ -636,7 +653,8 @@ def judge_one(spec: Spec, bullet: dict, rubric: str, backend) -> dict:
             "unverified_citations": bad, "capped": unverified}
 
 
-def call_agent(backend, prompt: str, *, node_id: str, spec: Spec, attempts: int = 4) -> str:
+def call_agent(judge: Judge, prompt: str, *, node_id: str, spec: Spec,
+               attempts: int = 4) -> str:
     """One agent turn, waiting out usage caps the same way workhorse itself does.
 
     Reuses workhorse's cap classification and sleep helpers rather than reimplementing
@@ -647,19 +665,23 @@ def call_agent(backend, prompt: str, *, node_id: str, spec: Spec, attempts: int 
     last = ""
     for attempt in range(attempts):
         try:
-            return backend.run_turn(
+            return judge.backend.run_turn(
                 prompt, node_id, None,
                 model=spec.judge.get("model"),
+                timeout=judge.resilience.result_timeout_s,
+                resilience=judge.resilience,
                 cwd=str(spec.target),
                 effort=spec.judge.get("effort"),
             )
         except wh_failure.BackendInvocationError as exc:
             last = str(exc)
             if wh_failure.is_cap(last):
-                delay, when = wh_caps.cap_delay_seconds(exc)
+                delay, when = wh_caps.cap_delay_seconds(
+                    exc, resilience=judge.resilience, clock=judge.clock)
                 print(f"[{node_id}] ⏸ usage cap reached — pausing ~{int(delay)}s ({when})",
                       flush=True)
-                wh_caps.sleep_with_notice(delay, node_id, when)
+                wh_caps.sleep_with_notice(
+                    delay, node_id, when, resilience=judge.resilience, clock=judge.clock)
             elif attempt < attempts - 1:
                 time.sleep(5 * (attempt + 1))
             else:
@@ -676,11 +698,11 @@ def judge_backlog(spec: Spec, bullets: list[dict], jobs: int) -> list[dict]:
     if not rubric_path.is_file():
         die(f"no rubric at {rubric_path}")
     rubric = rubric_path.read_text(encoding="utf-8")
-    backend = get_backend()
-    print(f"  judging {len(bullets)} bullet(s) with {backend.name}, {jobs} at a time…",
-          flush=True)
+    judge = Judge(get_backend(), AgentResilience.from_env(), SYSTEM_CLOCK)
+    print(f"  judging {len(bullets)} bullet(s) with {judge.backend.name}, "
+          f"{jobs} at a time…", flush=True)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        return list(pool.map(lambda b: judge_one(spec, b, rubric, backend), bullets))
+        return list(pool.map(lambda b: judge_one(spec, b, rubric, judge), bullets))
 
 
 # ── The scorecard ─────────────────────────────────────────────────────────────────────
