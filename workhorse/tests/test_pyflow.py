@@ -32,6 +32,7 @@ from _fakes import FakeClock, RecordingTelemetry  # noqa: E402
 from workhorse import otel  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
+from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
     Await,
     Blueprint,
@@ -766,11 +767,17 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
         env = _env(
             tmp,
             agent_runner=ScriptedRunner(fake_run_agent),
-            manifest={
-                "_instructions": {"go": ".claude/skills/acme-go/SKILL.md"},
-                "template": {"backend_layer_name": "Go gateway"},
-                "unit": "from-the-manifest",
-            },
+            # The manifest as the value, not as the keys it projects: the test says
+            # what a run carries and lets `as_context` decide which reserved key an
+            # instruction lands under, which is the only place that decision lives.
+            manifest=ManifestContext(
+                present=True,
+                instructions={"go": ".claude/skills/acme-go/SKILL.md"},
+                values={
+                    "template": {"backend_layer_name": "Go gateway"},
+                    "unit": "from-the-manifest",
+                },
+            ),
         )
 
         class Asks(Workflow):
