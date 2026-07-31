@@ -24,7 +24,7 @@ import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from ostler import Ostler, graph as graph_mod
+from ostler import Ostler, graph as graph_mod, markdown
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
@@ -63,17 +63,23 @@ def _read(repo_root: str, rel: str) -> str:
 def _bullet(text: str, key: str) -> str:
     """The value of a machine-facing ``- key: value`` bullet.
 
+    Asked of the parsed document rather than matched against its text, so a `launch:` line
+    inside a fenced example is not a contract and `- **launch**: …` is the same bullet as
+    `- launch: …` — the two things a line regex over the raw book could not tell apart.
+
     These bullets are prose documentation as much as they are interface, so a backticked
     value is the value even when explanation follows it on the same line (and even when
     that explanation wraps onto the next). Only an unbackticked bullet takes the whole
     line — there is no other way to tell value from commentary.
     """
-    match = re.search(rf"(?m)^-\s*{re.escape(key)}:\s*(.+?)\s*$", text)
-    if not match:
+    bullet = markdown.split(text).find_bullet(key)
+    if bullet is None:
         return ""
-    value = match.group(1)
+    value = bullet.value
     backticked = re.match(r"`([^`]+)`", value)
-    return backticked.group(1) if backticked else value.strip()
+    # Unbackticked: the first line only. A parsed bullet carries its wrapped continuation
+    # too, and that continuation is the commentary this cannot tell from the value.
+    return backticked.group(1) if backticked else value.partition("\n")[0].strip()
 
 
 def parse_launch_contract(text: str, repo_root: str, source_root: str) -> dict[str, str]:

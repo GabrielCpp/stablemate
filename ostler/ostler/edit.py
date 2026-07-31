@@ -217,9 +217,25 @@ def _story_status_change(graph: Graph, slug: str, status: str) -> FileChange | E
     fm = doc.frontmatter or {"type": "story", "slug": slug}
     fm["status"] = status
     doc.raw_frontmatter = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
-    doc.body = re.sub(r"(\*\*Status\*\*:\s*).*", lambda m: m.group(1) + status,
-                      doc.body, count=1)
+    _set_status_bullet(doc, status)
     return FileChange(path, raw, doc.render())
+
+
+def _set_status_bullet(doc: markdown.MarkdownDoc, status: str) -> None:
+    """Rewrite the value of the story's ``- **Status**: …`` bullet in place.
+
+    Located by parsed bullet rather than by matching ``**Status**:`` against the raw body:
+    a story that quotes the status line inside a fence used to have *that* rewritten
+    instead, since the regex took the first hit anywhere in the file.
+    """
+    bullet = doc.find_bullet("status")
+    if bullet is None:
+        return
+    lines = doc.body.split("\n")
+    head, sep, _ = lines[bullet.line_start].partition(":")
+    if sep:
+        lines[bullet.line_start] = f"{head}{sep} {status}"
+        doc.replace_body(lines)
 
 
 def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:

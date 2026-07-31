@@ -11,10 +11,15 @@ real repo, `classify_documentation_context` really compares resolved source root
 real git worktree, and `verify_story_documentation` really runs `ostler doctor` and really
 reads the obligation packet. The gate is the reason this flow exists, so a seam through it
 would have left nothing under test.
+
+One test calls the gate directly rather than driving the flow: what a *half-grounded* file
+does to the rework brief cannot be staged through `ostler qa context`, and it is the case
+that decides whether the loop can converge at all.
 """
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -30,6 +35,7 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.docs import (
+    CONTEXT_FILE,
     classify_documentation_context,
     verify_story_documentation,
 )
@@ -320,6 +326,92 @@ def test_a_documented_claim_naming_no_nodes_is_sent_back(
     assert "did not identify affected OKF nodes" in agent.args_for("document-story")[1][
         "gate_notes"
     ]
+
+
+def test_the_grounding_failure_names_the_symbols_not_the_files(
+    docs: Path,
+    logger: logging.Logger,
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """The rework brief has to name what the gate actually tested, or the loop cannot end.
+
+    This gate checks `path::symbol` refs and used to report the *files* they live in, which
+    made it unwinnable in the one case that matters — a file that is half grounded. The
+    author sees the same filename it already wrote a bullet for, adds another plausible
+    bullet, and fails on the identical complaint until the four passes are gone; that is
+    exactly how the `link-shortener` benchmark run burned its whole rework budget.
+
+    Naming the refs also settles their *spelling*, the second half of the trap: ostler's
+    inventory writes a Go method as `(*Type).Method`, so an author writing the natural
+    `Type.Method` grounds nothing and no path-level message could ever have said so.
+
+    The gate is called directly here rather than through the flow because the input under
+    test is the obligation packet, and in a real `local` run that file is built by
+    `ostler qa context` off a diff — a half-grounded Go method is not something the flow
+    can be steered into producing.
+    """
+    controller = "api/internal/app/controllers/link.go"
+    settled = "api/internal/app/exceptions/errors.go"
+    write_json(
+        docs / SPEC_REL / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": controller,
+                    "basePath": controller,
+                    "headPath": controller,
+                    "baseSymbols": [],
+                    "headSymbols": ["(*LinkController).Create", "(*LinkController).Resolve"],
+                },
+                {
+                    "path": settled,
+                    "basePath": settled,
+                    "headPath": settled,
+                    "baseSymbols": [],
+                    "headSymbols": ["ErrNotFound"],
+                },
+                {
+                    "path": "api/config.yaml",
+                    "basePath": "api/config.yaml",
+                    "headPath": "api/config.yaml",
+                    "baseSymbols": [],
+                    "headSymbols": [],
+                },
+            ],
+            "directNodes": [
+                {
+                    "node": "docs/features/widget.md#links",
+                    "reasons": [
+                        {"kind": "changed-code", "ref": f"{controller}::(*LinkController).Create"},
+                        {"kind": "changed-code", "ref": f"{settled}::ErrNotFound"},
+                    ],
+                }
+            ],
+        },
+    )
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=("docs/features/widget.md#links",),
+    )
+
+    assert gate.status == "invalid", gate
+    # The one ungrounded symbol, spelled as the inventory spells it — not `link.go`, and
+    # not the receiver-less `LinkController.Resolve` an author would reach for.
+    assert f"{controller}::(*LinkController).Resolve" in gate.notes, gate.notes
+    # Its already-grounded sibling is not re-litigated, and neither is the file that is
+    # wholly settled: everything named is something still owed.
+    assert "Create" not in gate.notes, gate.notes
+    assert settled not in gate.notes, gate.notes
+    # A file the inventory sees no symbols in is still owed *as a path* — the one case
+    # where naming the file is naming the reference.
+    assert "api/config.yaml" in gate.notes, gate.notes
+    assert "2 changed production symbol(s)" in gate.notes, gate.notes
 
 
 def test_not_required_is_a_real_answer_and_still_goes_through_the_gate(

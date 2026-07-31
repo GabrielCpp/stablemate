@@ -96,6 +96,7 @@ from workhorse_workflows.coder.nodes.pr import (
     open_story_pr,
 )
 from workhorse_workflows.coder.shared.queue import (
+    begin_run,
     branch_epic,
     branch_story,
     commit_story,
@@ -208,7 +209,11 @@ class Coder(Workflow):
         Story mode cuts its branch here — off the current HEAD, recording the base it came
         from, because the PR at the far end has to target that base and re-deriving it from
         the slug is how the two drifted once.
+
+        `begin_run` goes first in both modes: the run dir is stable across runs, so this is
+        where a previous run's set-aside epics and given-up stories stop being ours.
         """
+        self.call(begin_run, str(self.run_dir))
         if self.mode == "story":
             branch = self.call(branch_story, self.story, self.docs_path)
             self.logger.info("story mode: %s off %s", branch.story_branch, branch.base_branch)

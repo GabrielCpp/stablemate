@@ -37,6 +37,10 @@ dependencies = [
   # graph through the library, and `verify_integrity` runs `ostler doctor` over it. The
   # `vet` extra stays out until the coder port's screenshot steps import it.
   "ostler>=0.1",
+  # A unified diff is a format with a grammar, and the coder's hygiene gate reads one to
+  # find the lines a branch added. Hand-scanning it means every `startswith("+++ b/")`
+  # test is a guess that the line is a header rather than a hunk body that looks like one.
+  "unidiff>=0.7",
   # Genesis merges a service into a repo's existing `agents.yml`, and that file is
   # hand-written and commented. A round-trip loader is the whole requirement: pyyaml
   # would round-trip it into a comment-free re-serialization, which is a config file

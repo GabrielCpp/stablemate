@@ -26,7 +26,11 @@ from ostler.model import Graph, _file_main_section, anchor_of
 # Frontmatter keys emitted first, in this order; the rest follow in their original order.
 FRONTMATTER_ORDER = ("type", "slug", "surface", "title", "status", "id", "area", "route")
 
-_KEY_RE = re.compile(r"^([A-Za-z][\w-]*)\s*:(.*)$")
+#: A bullet key is an identifier — this validates the *key*, it does not find the bullet.
+_KEY = re.compile(r"\A[A-Za-z][\w-]*\Z")
+#: `[[target|alias]]` is an Obsidian extension, not CommonMark, so no parser in the
+#: dependency set has a token for it. Substitution is therefore confined to the prose
+#: lines `markdown.code_line_spans` leaves over — a wikilink in a snippet stays a snippet.
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 # Canonical UI headings, matched case-insensitively so `## components` → `## Components`.
 _HEADING_BY_LOWER = {h.lower(): h for h in registry.UI_HEADING_TO_TYPE}
@@ -45,8 +49,24 @@ def _canonical_frontmatter(fm: dict) -> str:
 
 def _bullet_key(text: str) -> str | None:
     """The lowercased key of a ``key: value`` bullet, or None if it isn't that shape."""
-    m = _KEY_RE.match(text.strip())
-    return m.group(1).lower() if m else None
+    key, sep, _ = text.strip().partition(":")
+    key = key.strip()
+    return key.lower() if sep and _KEY.match(key) else None
+
+
+def _rewrite_wikilinks(body: str) -> str:
+    """Rewrite ``[[target|alias]]`` to a markdown link **outside code blocks**.
+
+    A doc that documents the wikilink form shows it in a fence; rewriting there would edit
+    the example into something that no longer is one.
+    """
+    lines = body.split("\n")
+    in_code = {i for start, end in markdown.code_line_spans(body) for i in range(start, end)}
+    for i, line in enumerate(lines):
+        if i not in in_code:
+            lines[i] = _WIKILINK_RE.sub(
+                lambda m: f"[{(m.group(2) or m.group(1)).strip()}]({m.group(1).strip()})", line)
+    return "\n".join(lines)
 
 
 def _emit_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
@@ -145,9 +165,7 @@ def format_text(text: str) -> str:
             if edit := _bullet_edit(sub, uitype, body_lines):
                 edits.append(edit)
 
-    new_body = "\n".join(_apply_edits(body_lines, edits))
-    new_body = _WIKILINK_RE.sub(
-        lambda m: f"[{(m.group(2) or m.group(1)).strip()}]({m.group(1).strip()})", new_body)
+    new_body = _rewrite_wikilinks("\n".join(_apply_edits(body_lines, edits)))
 
     if doc.has_frontmatter:
         doc.raw_frontmatter = _canonical_frontmatter(fm)

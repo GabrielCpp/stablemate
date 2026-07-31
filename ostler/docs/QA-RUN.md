@@ -212,9 +212,17 @@ Check types for `ostler qa assert`:
 ostler qa start <run-id> --story <story-id> --spec <spec-dir>
                 [--daemon <name>:<cmd>] ...
     Open a QA session. Write session_start record. Start declared daemons, wait
-    for each daemon's ready_check before proceeding. Daemons are killed on stop
+    for each daemon's ready_check (URL or {cmd, assert_contains}) before
+    proceeding — a check that never passes blocks the run, and a daemon that dies
+    first is reported as dead, with its exit code and log tail, rather than as slow.
+    Daemons are killed on stop
     or on SIGINT/SIGTERM. Returns immediately on success; daemons run in the
     background under ostler's supervision.
+    Creates <spec-dir>/qa/ with steps/ and asserts/ already in it, before the
+    first daemon starts. A plan may therefore redirect a command straight into
+    qa/steps/ (curl -o, a shell >) without making the directory first; curl
+    cannot create a missing parent and exits 23 there, and the empty capture
+    that follows reads as a product defect rather than as a layout gap.
     Fails if a session is already open for this spec-dir (prevents nesting).
 
 ostler qa step --id <id> --label <text> --mechanism live|synthetic|fixture
@@ -222,11 +230,22 @@ ostler qa step --id <id> --label <text> --mechanism live|synthetic|fixture
                [--capture <key>=<jq-path>] ...
                [--out <spec-dir>/<file>]
     Execute <shell-command> in a subprocess. Record stdout+stderr, exit code,
-    and HTTP status (from a trailing \n%{http_code}\n convention on curl calls).
+    and HTTP status. The status is read from a trailing \n%{http_code}\n
+    written out by curl -w; failing that, from the HTTP/x.y status line of a
+    curl -D header dump (the last one, so a -L redirect chain reports the
+    response that came back rather than the hop that pointed at it). The
+    write-out form wins, so a body that merely begins with HTTP/ cannot
+    displace the code curl was asked to report.
     If --capture is given, apply each jq-path to the stdout JSON and store the
     result under <key> in the session's capture store (available as
     {{key}} substitution in subsequent step --cmd strings).
-    If --out is given, write stdout verbatim to that path as a sidecar file.
+    If --out is given, write stdout verbatim to that path as a sidecar file —
+    unless the command redirected its own stdout there (curl -o/-D, a shell >),
+    in which case the file it wrote is adopted as the step's stdout instead of
+    being overwritten with the empty pipe the redirect left behind. qa/ is
+    wiped at session start, so bytes at that path are always this run's own
+    evidence. The step record carries stdout_file_written_by_cmd: true when
+    this happens.
     Append a step record to the run log. Exits non-zero and appends a failed
     step record if the command exits non-zero, unless --allow-fail is set.
 
@@ -287,11 +306,27 @@ env:
   tenant: valley-view
 
 # Daemons ostler starts before step 1 and kills on stop.
-# ready_check: URL ostler polls (HTTP 200) before advancing to the first step.
+# ready_check: what ostler polls before advancing to the first step. Two forms —
+#   a string, polled for HTTP 200, and
+#   a {cmd, assert_contains} mapping, ready when the command exits 0 and its stdout
+#   carries the needle. The mapping is the only option for a service with no GET that
+#   answers 200 (an API whose sole route is a POST, say); it runs in the daemon's own
+#   cwd, and takes the same `assert_contains` a step does.
+# timeout: seconds to keep polling before the run is blocked (default 30). A daemon that
+#   *exits* before its check passes does not wait this out: ostler reports the exit code and
+#   the tail of `qa/daemon-<name>.log` straight away, because "timed out" describes a slow
+#   service and says nothing about one that never started (a taken port, a build error).
 background:
   - name: eventbridge-tail
     cmd: go run ./tools/eventbridge-tail --event-bus api-service-dev --port 7890
     ready_check: http://localhost:7890/events
+  - name: api-server
+    cmd: cd api && go run ./cmd/server
+    ready_check:
+      cmd: >
+        curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/links
+        -H 'Content-Type: application/json' -d '{"longUrl":"https://example.com/probe"}'
+      assert_contains: "201"
 
 steps:
   - id: preflight
@@ -393,7 +428,7 @@ ostler runs it and records PASS/FAIL in the log.
 | Key                  | Type   | What ostler checks                                                                                           |
 | -------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
 | `assert_contains`    | string | step stdout contains the literal string                                                                      |
-| `expect_http`        | int    | last line of stdout (curl `%{http_code}` convention) equals value                                            |
+| `expect_http`        | int    | recorded HTTP status equals value — curl `-w '%{http_code}'` trailing line, else a `-D` dump's status line   |
 | `assert_count`       | int    | stdout parsed as JSON array has exactly this many elements                                                   |
 | `cloudwatch_confirm` | object | `aws logs filter-log-events` with `filter` over the last hour returns ≥ 1 match (or `min_matches:` override) |
 

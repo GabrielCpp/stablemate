@@ -24,6 +24,7 @@ import logging
 import re
 
 import yaml
+from ostler import markdown
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
 from workhorse_workflows.author.shared.survey.inventory import UNIT_STATUSES, record_slug
@@ -31,8 +32,6 @@ from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import RecordCheck, VerifyResult
 from workhorse_workflows.kit import show_file
 
-#: A record is markdown with a leading YAML front-matter fence.
-FRONT_MATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*(?:\n|$)", re.S)
 #: `remediation_pattern` values are emergent per initiative — proposed by assessors,
 #: normalized during partitioning — so the schema stays closed while the taxonomy stays
 #: open. All it enforces is the shape the partitioner clusters on.
@@ -44,14 +43,20 @@ EFFORTS = {"trivial", "small", "substantial"}
 
 
 def load_record(text: str) -> dict:
-    """Parse a record's YAML front-matter. Raises ValueError when malformed."""
+    """Parse a record's YAML front-matter. Raises ValueError when malformed.
+
+    The fence is located by ``ostler.markdown.split`` — the same parser the doc graph
+    uses — rather than by a pattern of this module's own. ``split`` swallows a YAML error
+    into an empty mapping, which is the wrong answer for an assessor being told to fix its
+    own record, so the raw block is re-read here to surface the parser's message.
+    """
     if not text.lstrip().startswith("---"):
         raise ValueError("record has no leading `---` YAML front-matter block")
-    m = FRONT_MATTER_RE.match(text)
-    if not m:
+    doc = markdown.split(text)
+    if not doc.has_frontmatter:
         raise ValueError("YAML front-matter block is not closed by a second `---` fence")
     try:
-        data = yaml.safe_load(m.group(1))
+        data = yaml.safe_load(doc.raw_frontmatter)
     except yaml.YAMLError as exc:
         raise ValueError(f"YAML front-matter is not valid: {exc}") from exc
     if not isinstance(data, dict):
@@ -358,7 +363,6 @@ def verify_records(
 
 __all__ = [
     "EFFORTS",
-    "FRONT_MATTER_RE",
     "PATTERN_SLUG_RE",
     "RECORD_STATUSES",
     "check_record",

@@ -145,8 +145,8 @@ def _stamp_stories(edir: Path) -> int:
         status = fm.get("status")
         if not status:
             sec = doc.find_section("Implementation Status")
-            m = re.search(r"\*\*Status\*\*:\s*(.+)", sec.text if sec else doc.body)
-            status = m.group(1).strip() if m else "Not started"
+            bullet = sec.labelled("status") if sec else doc.find_bullet("status")
+            status = bullet.value if bullet and bullet.value else "Not started"
         fm = {"type": "story", "slug": slug, "status": status, **fm}
         fm["type"], fm["slug"], fm["status"] = "story", slug, status
         story_md.write_text(f"---\n{_dump_fm(fm)}---\n{doc.body}", encoding="utf-8")

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from _fakes import FakeClock
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import run as run_mod
@@ -29,7 +30,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
-from workhorse.pyflow.transitions import Done, Transition
+from workhorse.pyflow.transitions import Continue, Done, Transition
 from workhorse.pyflow.workflow import Workflow
 from workhorse.rundir import find_latest_resumable
 
@@ -71,8 +72,8 @@ def _run(tmp: str, failure: BaseException) -> tuple[int, Path]:
     """Drive a run that gets one transition in and then fails with `failure`.
 
     The checkpoint write is part of the simulation, not scaffolding: the budget is
-    checked at the top of the loop, so a run that stops on it has already written the
-    checkpoint of the state it was about to leave — and `find_latest_resumable` requires
+    checked once the loop has committed the position it is about to run, so a run that
+    stops on it has already written a checkpoint — and `find_latest_resumable` requires
     one. A run that dies before its first transition has nothing to resume either way.
     """
     runs_dir = Path(tmp) / "runs"
@@ -150,6 +151,71 @@ def test_the_driver_raises_it_when_the_deadline_has_passed():
             assert "WORKHORSE_MAX_RUNTIME_S" in str(exc), exc
         else:
             raise AssertionError("an expired deadline did not stop the run")
+
+
+#: The clock `Handoff.start` burns and the driver reads — one instance, so the state can
+#: spend time the run is measured against without reaching through the engine for it.
+HANDOFF_CLOCK = FakeClock()
+
+
+class Handoff(Workflow):
+    """Two states, the first of which burns time and hands the second its findings.
+
+    The shape of every gate in a real workflow: a state runs something slow, learns
+    something, and passes what it learned as the next state's parameters.
+    """
+
+    def start(self) -> Transition:
+        # A state that takes real time — the nine-minute agent turn, in fake seconds.
+        HANDOFF_CLOCK.sleep(120)
+        return Continue(None, self.settle, diagnostics=["ac:1 is not covered"])
+
+    def settle(self, diagnostics: list[str] | None = None) -> Transition:
+        return Done(diagnostics)
+
+
+def test_the_findings_of_the_state_that_ran_survive_a_budget_stop():
+    """A `Continue` reached on the last iteration must be on disk before the clock is read.
+
+    State parameters *are* the checkpoint — that is the invariant `pyflow/workflow.py`
+    opens with — but they only become durable when some iteration writes them, and the
+    budget check used to run first. So a state that completed, produced findings, and then
+    ran out of clock had them dropped: the resume replayed the state it had already run,
+    with the arguments it held on *entry*.
+
+    That is worse than the wasted pass it looks like. The replayed state is told the gate
+    found nothing, so it reports nothing to fix. Observed in the link-shortener benchmark:
+    `plan-qa` spent 8m57s, `validate_qa_plan` returned 24 diagnostics, the budget tripped on
+    the transition carrying them, and the resumed turn answered "no changes needed" — then
+    the *next* pass, handed the same diagnostics, fixed every one of them in a single turn.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = ArtifactWriter("handoff", Path(tmp) / "runs", run_id="t")
+        clock = HANDOFF_CLOCK
+        env = RunEnv(
+            writer=writer,
+            workflow_dir=Path(tmp),
+            session_id_path=writer.run_dir / ".session_id",
+            config=RunConfig(),
+            clock=clock,
+            # Generous enough that `start` is entered, short enough that the 120s it
+            # burns overruns it — the budget trips on the transition out of `start`.
+            deadline=clock.now().timestamp() + 60,
+        )
+        try:
+            drive(Handoff(), env)
+        except RunBudgetExceeded:
+            pass
+        else:
+            raise AssertionError("a state that overran its budget did not stop the run")
+
+        checkpoint = json.loads((writer.run_dir / "checkpoint.json").read_text())
+        assert checkpoint["state"] == "settle", (
+            f"resume would replay '{checkpoint['state']}', a state that already ran"
+        )
+        assert checkpoint["params"]["diagnostics"] == ["ac:1 is not covered"], (
+            f"the findings did not survive the stop: {checkpoint['params']}"
+        )
 
 
 if __name__ == "__main__":

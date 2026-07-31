@@ -25,6 +25,17 @@ from __future__ import annotations
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
+class RunScope(CoderResult):
+    """`begin_run` — the per-run skip state a previous run left in this run dir.
+
+    `cleared` names the files that were dropped, and is empty on a first run. It exists so
+    the run record shows the clearing happened: an epic that vanishes from the queue on
+    pass one and reappears on pass two is otherwise indistinguishable from a queue bug.
+    """
+
+    cleared: list[str] = []
+
+
 class BaseBranch(CoderResult):
     """`init-base.py` — the branch an epic's PR will be opened against.
 
@@ -163,6 +174,7 @@ __all__ = [
     "EpicPruned",
     "QaFlagged",
     "ReplanResult",
+    "RunScope",
     "StoryBranch",
     "StoryCommitted",
     "StoryPick",

@@ -29,6 +29,11 @@ dependencies = [
   # Tolerant parsing of an agent reply that is *almost* JSON, before the recovery
   # ladder spends a retry on it.
   "json-repair>=0.30",
+  # A *strict* JSONC/JSON5 parser for `load_jsonc` — VSCode `.code-workspace` files.
+  # Deliberately not `json-repair` above: that one invents a parse for genuinely broken
+  # input, which is the right answer for an agent reply and the wrong one for a config
+  # file the operator wrote and expects to be told about.
+  "json5>=0.9",
 ]
 # Deliberately short. The engine is workflow-agnostic, so anything a *workflow* reads
 # belongs on `workhorse-workflows`, not here: YAML (pyyaml/ruamel.yaml) left with the

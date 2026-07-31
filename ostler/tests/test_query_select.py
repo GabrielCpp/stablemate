@@ -186,6 +186,33 @@ def test_report_separates_done_from_blocked(tmp_path: Path):
     assert finished["done"] == finished["total"] == 2
 
 
+def test_a_ready_report_counts_the_work_left_like_every_other_state(tmp_path: Path):
+    """`ready` is where a run spends the whole build, and it must not be the blind state.
+
+    The census (`done`/`total`/`remaining`) used to be filled only on the paths that come
+    after the `ready` return, so the one state a progress reader is ever in answered
+    `done=0, remaining=[]`. The coder derives its `progress` label from exactly those two
+    fields and rendered "0/3" as "0/0" for every story of every epic — a queue that looks
+    empty while it is being built.
+
+    The story being handed back is itself unfinished, so it counts as remaining: `remaining`
+    is "not done", not "not selected".
+    """
+    g = load(tmp_path)
+    crud.create_epic(g, "e", "E", prefix="x")
+    for slug in ("a", "b", "c"):
+        crud.create_story(load(tmp_path), "e", slug, slug.upper())
+    crud.set_status(load(tmp_path), "a", "QA passed")
+
+    ready = select.next_story_report(load(tmp_path), "e")
+
+    assert ready["state"] == "ready" and ready["story"]["slug"] == "b"
+    assert (ready["done"], ready["total"]) == (1, 3)  # the "1/3" the run's progress reads
+    assert ready["remaining"] == ["b", "c"]
+    # Nothing is skipped or waiting, and the census says so rather than staying silent.
+    assert ready["skipped"] == [] and ready["waiting_on"] == {}
+
+
 def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
     """A story numbered `02` declared after `03` does not jump the queue — and must not.
 

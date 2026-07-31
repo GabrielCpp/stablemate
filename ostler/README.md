@@ -231,6 +231,34 @@ against a fresh load and invalidates the cache, so the next read reflects it
 machinery. `from ostler import load` returns the bare `Graph` if you want the
 functional core directly.
 
+### `ostler.markdown` — the markdown parser everything reads through
+
+The graph is markdown, so `ostler.markdown` is the one parser for it, and it is a public
+module: workhorse workflows, benchmarks and any other caller query documents through it
+rather than matching their own regexes. `split(text)` returns a `MarkdownDoc` carrying the
+parsed `frontmatter` (a real front-matter token, not a fence regex) alongside a byte-exact
+`body` — `render()` round-trips a document a human wrote without reflowing it.
+
+```python
+from ostler import markdown
+
+doc = markdown.split(path.read_text(encoding="utf-8"))
+doc.frontmatter["type"]                    # YAML decided the types, not a line split
+doc.find_section("Stories").bullets        # Bullet.label / .value / .bracketed
+doc.find_bullet("status").value            # `- **Status**: Done` → "Done"
+for table in doc.walk_tables():            # GFM pipe tables: .headers / .rows
+    table.records                          # rows keyed by header; also .column("Type")
+for label, href, line in markdown.iter_links(text):
+    ...                                    # never a link inside a fence or code span
+```
+
+A heading, bullet, table row or link inside a fenced code block is not one — that falls
+out of the token stream rather than being approximated. Line numbers on `Section` and
+`Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line. The
+rule this serves, and the parser for every other format, is the
+`stablemate-structured-parsing` skill in the base library; `make check-parsers` enforces
+it.
+
 ## The coverage model
 
 ```

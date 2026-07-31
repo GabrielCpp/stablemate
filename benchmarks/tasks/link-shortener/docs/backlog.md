@@ -11,6 +11,14 @@ Surfaces this app ships:
 Bullets are user-observable behavior, not implementation tasks. Every bullet is in scope
 for decomposition and none may be dropped.
 
+## Operating constraint
+
+The api listens on port **18080**, not the Go default 8080. This is a property of the
+benchmark rather than of the product: the runner shares a machine with whatever else is
+on it, and 8080 is the first port anything takes. A run whose service cannot bind spends
+its whole budget failing to start, so the port is stated here — where decomposition will
+carry it into the stories — instead of being left to a default that collides.
+
 ## Shortening and following links
 
 - [link-create] A person submits a long URL and gets back a short link they can share.

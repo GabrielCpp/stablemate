@@ -408,6 +408,49 @@ def test_a_resumed_run_reads_as_open_again(spec: "bench.Spec"):
     assert bench.settled_run(spec) is None
 
 
+# ── what --resume points at ───────────────────────────────────────────────────────────
+
+
+def test_resume_is_a_no_op_without_the_flag(spec: "bench.Spec"):
+    assert bench.resume_flags(spec, "coder", False) == []
+
+
+def test_resume_names_the_newest_checkpointed_run(spec: "bench.Spec"):
+    """The dir, not `--resume-latest`. Which one it is has to be this harness's choice."""
+    old = write_run_json(spec, "coder-a")
+    (old / "checkpoint.json").write_text("{}", encoding="utf-8")
+    new = write_run_json(spec, "coder-b")
+    (new / "checkpoint.json").write_text("{}", encoding="utf-8")
+    os.utime(old / "checkpoint.json", (1_000, 1_000))
+
+    assert bench.resume_flags(spec, "coder", True) == ["--resume-run", str(new)]
+
+
+def test_a_failed_run_is_still_resumable_here(spec: "bench.Spec"):
+    """The debugging loop's central move, and the reason `--resume-latest` is wrong for it.
+
+    `--resume-latest` resolves through `rundir.find_latest_resumable`, which skips any run
+    carrying a `terminal` — correct for an operator, since a run that reached an end state
+    is over. But this harness exists to *fix the workflow the run failed on and continue*,
+    and a failed run has a checkpoint with hours of story work behind it. Refusing it would
+    mean re-running the whole story to reach the state under test, every single iteration.
+    """
+    failed = write_run_json(spec, "coder-a", terminal="fail",
+                            error="documentation did not converge in 4 passes")
+    (failed / "checkpoint.json").write_text("{}", encoding="utf-8")
+
+    assert bench.resume_flags(spec, "coder", True) == ["--resume-run", str(failed)]
+
+
+def test_a_run_with_no_checkpoint_is_not_resumable(spec: "bench.Spec"):
+    """A run dir that never reached a checkpoint has nothing to continue from, and saying
+    so beats handing workhorse a dir it will reject with a less specific message."""
+    write_run_json(spec, "coder-a")
+
+    with pytest.raises(SystemExit, match="no coder run with a checkpoint"):
+        bench.resume_flags(spec, "coder", True)
+
+
 # ── the phase environment: tier and budget are spec data ──────────────────────────────
 
 

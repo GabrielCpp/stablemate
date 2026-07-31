@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 from ostler import Ostler
+from workhorse import gates
 from workhorse.scriptutil import find_docs_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -32,19 +32,17 @@ from workhorse_workflows.kit import get_affected_repos, resolve_workspace
 RESOLUTION_FILE = "review-resolution.json"
 SETTLEMENT_FILE = "review-settlement.json"
 
-#: The two states the feedback inbox can be in, and the lines that say so. Reading `NEW` is
-#: what consumes it: the node stamps `CONSUMED` on the way out, so one dropped note buys
-#: exactly one rework pass rather than a loop.
+#: The two states the feedback inbox can be in. Reading `NEW` is what consumes it: the node
+#: stamps `CONSUMED` on the way out, so one dropped note buys exactly one rework pass rather
+#: than a loop. The `STATUS:`/`SCOPE:` header itself is read through `workhorse.gates` —
+#: these names are this inbox's vocabulary, which that reader deliberately does not know.
 NEW = "NEW"
 CONSUMED = "CONSUMED"
-STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
-SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
 
 
 def _scope_of(text: str) -> str:
     """The inbox's `SCOPE:` line. Only `epic` is honoured; anything else is `story`."""
-    match = SCOPE_RE.search(text)
-    return "epic" if (match.group(1).lower() if match else "") == "epic" else "story"
+    return "epic" if gates.scope_of(text) == "epic" else "story"
 
 
 @blueprint.node
@@ -190,17 +188,18 @@ def check_feedback(
         return Feedback()
 
     current = inbox.read_text(encoding="utf-8")
-    match = STATUS_RE.search(current)
-    state = match.group(1).upper() if match else ""
+    state = gates.status_of(current)
 
     if state == NEW:
-        inbox.write_text(STATUS_RE.sub(f"STATUS: {CONSUMED}", current, count=1), encoding="utf-8")
+        inbox.write_text(gates.set_status(current, CONSUMED), encoding="utf-8")
         logger.info("consumed NEW feedback from %s", inbox)
         return Feedback(present=True, scope=_scope_of(current), content=current)
 
     if state == "":
         if current.strip():
-            inbox.write_text(f"STATUS: {CONSUMED}\n\n" + current, encoding="utf-8")
+            # `set_status` prepends the header when the file has none, which is what a
+            # hand-dropped note without one needs: it too is consumed exactly once.
+            inbox.write_text(gates.set_status(current, CONSUMED), encoding="utf-8")
             logger.info("no STATUS line but %s has content — treating as NEW", inbox)
             return Feedback(present=True, scope=_scope_of(current), content=current)
         logger.info("no STATUS line and %s is empty — nothing to do", inbox)

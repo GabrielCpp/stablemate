@@ -87,6 +87,69 @@ def test_an_augmented_assignment_declares_nothing():
     assert inventory.declares("x.py", "count += 1\n", "count") is False
 
 
+# ── Python is parsed, so the words in a string are not declarations ───────────────────
+
+PARSED = '''\
+"""A module whose docstring shows usage.
+
+    def looks_declared(): ...
+    class AlsoNot: ...
+"""
+# class Commented: ...
+
+import functools
+
+
+@functools.cache
+def wrapped(
+    first: str,
+    second: int,
+) -> str:
+    """Wrapped across lines, and decorated."""
+    local_binding = 1
+    return first
+
+
+class Outer:
+    HEADER = "x"
+
+    class Inner:
+        @property
+        def value(self) -> int: ...
+
+
+FIRST, SECOND = 1, 2
+'''
+
+
+def test_a_declaration_shaped_line_inside_a_docstring_is_not_a_declaration():
+    """The regex matched text; the parse matches code. `# class Commented` is gone too."""
+    for name in ("looks_declared", "AlsoNot", "Commented"):
+        assert inventory.declares("m.py", PARSED, name) is False, name
+
+
+def test_a_wrapped_signature_declares_its_own_name():
+    """`def wrapped(\\n first: str,` — the line regex read the continuation, not the def."""
+    assert inventory.symbols("m.py", PARSED) == ["wrapped", "Outer"]
+
+
+def test_nested_classes_decorated_methods_and_unpacked_constants_all_ground():
+    for symbol in ("Outer.Inner", "Inner.value", "HEADER", "FIRST", "SECOND", "local_binding"):
+        assert inventory.declares("m.py", PARSED, symbol) is True, symbol
+
+
+def test_an_imported_name_still_does_not_ground():
+    """The property the module exists for, restated against the parser."""
+    assert inventory.declares("m.py", PARSED, "functools") is False
+
+
+def test_a_file_that_does_not_parse_falls_back_to_the_regex():
+    """A file mid-edit is not one we can be right about — approximating beats reporting nothing."""
+    broken = "class Renderer:\n    def render(self ->\n"
+    assert inventory.symbols("broken.py", broken) == ["Renderer"]
+    assert inventory.declares("broken.py", broken, "Renderer.render") is True
+
+
 # ── the languages ─────────────────────────────────────────────────────────────────────
 
 GO = '''\

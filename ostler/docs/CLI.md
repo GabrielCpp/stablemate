@@ -186,6 +186,16 @@ ostler qa context-validate --spec docs/specs/<story> [--json]
 `--source-root` associates a production source root with an OKF surface and is repeatable —
 that mapping is what turns a diff into a set of obligations.
 
+Two kinds of changed file are dropped from that scope rather than turned into obligations.
+**Scaffolding** — build files, dependency manifests, tooling and infrastructure config — never
+runs and carries no user-observable behaviour. **Generated code** does run, but no person wrote
+it: files under `mocks/`, `__mocks__/`, `generated/`, `vendor/` or `node_modules/`, names like
+`*.gen.go`, `*.pb.go`, `*_pb2.py`, `*.g.dart`, `*.freezed.dart`, and anything carrying the
+canonical `Code generated … DO NOT EDIT` banner. Documenting either would mean writing
+Concepts for a code generator's internal error types; the contract a generated file encodes
+belongs to the thing it was generated from — the OpenAPI document, the proto, the mocked
+interface — which is in the same diff as a real unit.
+
 **Plans.** A version-2 plan declares command, Playwright and Maestro targets and maps every
 scenario to acceptance-criterion and OKF obligation ids:
 

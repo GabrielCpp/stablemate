@@ -31,7 +31,7 @@ import logging
 import re
 from pathlib import Path
 
-import yaml
+from ostler import markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
@@ -43,10 +43,6 @@ from workhorse_workflows.author.shared.schemas.survey import EmitResult, Expansi
 PARITY_BEGIN = "<!-- parity-surveyor:begin — generated; do not edit inside this fence -->"
 PARITY_END = "<!-- parity-surveyor:end -->"
 PARITY_HEADING = "## Legacy surfaces missing from the new app"
-#: The emitter's own front-matter reader. Looser than `records.FRONT_MATTER_RE` — it does
-#: not require the closing fence to end a line — and kept as its own pattern because it
-#: runs after `verify_records` already accepted every record it reads.
-PARITY_FRONT_MATTER = re.compile(r"^\s*---\s*\n(.*?)\n---", re.S)
 
 
 def parity_slug(value: str) -> str:
@@ -227,8 +223,9 @@ def emit_parity_backlog(
     for unit in data.get("units", []):
         uid = str(unit.get("id", ""))
         record_path = root / findings_dir / f"{parity_slug(uid)}.md"
-        match = PARITY_FRONT_MATTER.match(record_path.read_text(encoding="utf-8"))
-        record = yaml.safe_load(match.group(1)) if match else {}
+        # Same fence reader as `records.load_record`, so the emitter and the gate that
+        # accepted the record cannot disagree about where the front matter ends.
+        record = markdown.split(record_path.read_text(encoding="utf-8")).frontmatter or {}
         status = str(record.get("status", ""))
         owner = str(record.get("existing_owner", "")).strip()
         bullet_id = f"legacy-parity-{unit.get('area')}-{unit.get('slug')}"
@@ -286,7 +283,6 @@ def emit_parity_backlog(
 __all__ = [
     "PARITY_BEGIN",
     "PARITY_END",
-    "PARITY_FRONT_MATTER",
     "PARITY_HEADING",
     "emit_parity_backlog",
     "expand_parity_inventory",

@@ -163,6 +163,11 @@ def next_story_report(graph: Graph, epic_name: str,
                     unauthored, which is what ``Story.authored`` reports.
     ``no-epic``     no epic by that name in the graph.
 
+    ``done``/``total``/``remaining``/``skipped``/``waiting_on`` are the census, and they are
+    filled the same way whatever the state — including ``ready``, which is where a caller
+    tracking progress spends the entire build. They are not a description of why the epic
+    stalled; ``detail`` is.
+
     ``skip`` is a set of story slugs to treat as ineligible without treating them as *done*:
     a story the caller has given up on this run. Excluding it is essential — otherwise, since
     a given-up story is not "done", it stays first-runnable forever and the selector keeps
@@ -200,15 +205,12 @@ def next_story_report(graph: Graph, epic_name: str,
         report["detail"] = f"epic '{epic.name}' lists no stories in `## {registry.STORIES_HEADING}`"
         return report
 
-    # First runnable in the epic's declared order — see the docstring on why that is the order.
-    for story in epic.stories:
-        if _runnable(epic, story, done, skip):
-            report["state"] = "ready"
-            report["story"] = _story_dict(epic, story)
-            report["detail"] = f"{story.slug} is runnable"
-            return report
-
-    # Nothing runnable. Say why — per story, since the reasons differ within one epic.
+    # The not-done stories, and why each is not runnable — per story, since the reasons
+    # differ within one epic. Counted *before* selection so `remaining` means the same
+    # thing in every state, as it already does on the `author` path. It used to be filled
+    # only after the `ready` return below, which left `ready` — the one state a caller
+    # reading progress is actually in — reporting `done=0, remaining=[]`. The coder's
+    # labels rendered that as "0/0" for the whole of every epic it was building.
     for story in epic.stories:
         if story.slug in done:
             continue
@@ -219,6 +221,14 @@ def next_story_report(graph: Graph, epic_name: str,
         unmet = [dep for dep in story.dependencies if dep not in done]
         if unmet:
             report["waiting_on"][story.slug] = unmet
+
+    # First runnable in the epic's declared order — see the docstring on why that is the order.
+    for story in epic.stories:
+        if _runnable(epic, story, done, skip):
+            report["state"] = "ready"
+            report["story"] = _story_dict(epic, story)
+            report["detail"] = f"{story.slug} is runnable"
+            return report
 
     if not report["remaining"]:
         report["state"] = "done"

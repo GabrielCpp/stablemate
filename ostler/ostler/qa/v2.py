@@ -53,6 +53,13 @@ def run_plan(
     results: dict[str, ScenarioResult] = {}
     status = "passed"
     cleanup_errors: list[str] = []
+    #: Why the run stopped, in the words of whatever raised. The ledger has always carried
+    #: this as a `runner_error` record, but the caller only ever saw the counts below — so a
+    #: run that died before its first scenario reported "0 scenarios" and nothing else, and
+    #: the coder workflow's QA gate, having no cause to act on, sent a valid plan back to be
+    #: re-planned until its rework guard ran out. A gate can only route around a failure it
+    #: can read.
+    runner_errors: list[str] = []
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:
@@ -113,12 +120,18 @@ def run_plan(
                     break
     except DriverBlocked as exc:
         status = "blocked"
+        runner_errors.append(str(exc))
         session.append({"kind": "runner_error", "status": status, "message": str(exc)})
     except KeyboardInterrupt:
         status = "blocked"
+        runner_errors.append("interrupted")
         session.append({"kind": "runner_error", "status": status, "message": "interrupted"})
     except Exception as exc:  # noqa: BLE001
         status = "invalid"
+        # The class name earns its place: the failure that motivated this was an
+        # `AttributeError` from inside the runner, and "'dict' object has no attribute
+        # 'timeout'" reads like a plan defect until you know it is a Python one.
+        runner_errors.append(f"{type(exc).__name__}: {exc}")
         session.append({"kind": "runner_error", "status": status, "message": str(exc)})
     finally:
         for target_id, driver in reversed(drivers.items()):
@@ -135,6 +148,7 @@ def run_plan(
                 cleanup_errors.append(f"{target_id}: {exc}")
         if cleanup_errors:
             status = "invalid"
+            runner_errors.append(f"driver cleanup failed: {'; '.join(cleanup_errors)}")
             session.append(
                 {
                     "kind": "runner_error",
@@ -166,10 +180,14 @@ def run_plan(
     )
     if cleanup_errors:
         summary["cleanup_errors"] = cleanup_errors
+    if runner_errors:
+        summary["runner_errors"] = runner_errors
     message = (
         f"QA run {status.upper()}: {summary.get('pass_count', 0)} assertions passed, "
         f"{summary.get('fail_count', 0)} failed, {len(results)} scenarios"
     )
+    if runner_errors:
+        message += f" — {'; '.join(runner_errors)}"
     return status, message, summary
 
 

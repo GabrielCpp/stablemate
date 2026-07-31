@@ -25,12 +25,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import yaml
+from workhorse import gates
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
@@ -66,12 +66,12 @@ MAX_LINT_OUTPUT = 4000
 #: Seconds a service's lint command gets before it is called dirty.
 LINT_TIMEOUT = 300
 
-#: The three states `<story-folder>/context.md` can be in, and the two lines that say so.
+#: The three states `<story-folder>/context.md` can be in. The `STATUS:`/`SCOPE:` header that
+#: says which one is read and written through `workhorse.gates`, shared with groom on the
+#: other side of the gate; these names are this file's own vocabulary.
 AWAITING = "AWAITING_OPERATOR"
 ANSWERED = "ANSWERED"
 CONSUMED = "CONSUMED"
-STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
-SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
 
 
 def _spec_dir(spec_dir: str, root: Path) -> Path:
@@ -556,17 +556,13 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
         return OperatorAnswer()
 
     content = ctx.read_text(encoding="utf-8")
-    status = STATUS_RE.search(content)
-    if status and status.group(1).upper() == ANSWERED:
-        ctx.write_text(STATUS_RE.sub(f"STATUS: {CONSUMED}", content, count=1), encoding="utf-8")
+    if gates.status_of(content) == ANSWERED:
+        ctx.write_text(gates.set_status(content, CONSUMED), encoding="utf-8")
         logger.info("consumed the operator's answer in %s", ctx)
 
-    scope_match = SCOPE_RE.search(content)
-    scope = (scope_match.group(1).lower() if scope_match else "story")
     # Only `epic` is honoured; anything else, blank included, reworks just this story.
-    return OperatorAnswer(
-        answered=True, scope="epic" if scope == "epic" else "story", content=content
-    )
+    scope = "epic" if gates.scope_of(content) == "epic" else "story"
+    return OperatorAnswer(answered=True, scope=scope, content=content)
 
 
 __all__ = [

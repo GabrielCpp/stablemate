@@ -86,6 +86,14 @@ goes in `library/skills/`, `library/prompts/`, `packs/` and `scaffolds/`, the fi
 formats expected, and how source names map to generated adapters. That is documented in
 **[`docs/LAYOUT.md`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/docs/LAYOUT.md)**.
 
+A skill or prompt is markdown with YAML frontmatter, and `farrier.frontmatter` reads it
+with a markdown parser and `yaml.safe_load` — never a fence regex. (It is farrier's own
+module rather than `ostler.markdown` because farrier needs frontmatter only and does not
+depend on ostler; both follow the same rule, which the `stablemate-structured-parsing`
+skill states in full.) A CRLF file, a closing `---` with a trailing space and a file with
+no newline after it are all ordinary documents, and the regexes that preceded this read
+every one of them as having no frontmatter at all.
+
 **Farrier does not install workflows.** A library ships none, `agents.yml` has no
 `workflows:` key, and nothing is written to `.agents/workflows/`. A workflow is a Python
 package workhorse resolves through its `workhorse.workflows` entry-point group: install

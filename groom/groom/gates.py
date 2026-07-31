@@ -1,14 +1,20 @@
-"""STATUS-line parsing/writing for operator gate context files, plus the
-answer/restart orchestration. The regex and state names here must stay
-byte-compatible with the ``await_operator.py`` scripts in the workflow
-library (``vigilant-octo/agents``), since those scripts read back exactly
-what this module writes.
+"""Operator gate context files: what state one is in, and the answer/restart orchestration.
+
+The STATUS line itself is read and written through :mod:`workhorse.gates` — the one
+implementation of that header, shared with the workflow nodes on the other side of it.
+It used to be retyped here, and "must stay byte-compatible with what the workflow writes"
+was a comment rather than something the code could hold to.
+
+The **state names** below are still this side's business: they are the cycle an operator
+gate goes through, which the shared reader deliberately knows nothing about.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
+
+from workhorse import gates as gate_file
 
 from groom import docker_io, localfs, state
 from groom.models import AnswerResult
@@ -17,7 +23,6 @@ AWAITING = "AWAITING_OPERATOR"
 ANSWERED = "ANSWERED"
 CONSUMED = "CONSUMED"
 
-_STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
 _QUESTIONS_RE = re.compile(
     r"##\s*Questions?\s+from\s+the\s+agent\s*\n+(.*?)(?:\n##|\Z)",
     re.DOTALL | re.IGNORECASE,
@@ -27,8 +32,7 @@ _QUESTION_PREVIEW_LIMIT = 4000
 
 
 def status_of(text: str) -> str:
-    match = _STATUS_RE.search(text)
-    return match.group(1).upper() if match else ""
+    return gate_file.status_of(text)
 
 
 def is_awaiting(text: str) -> bool:
@@ -50,7 +54,7 @@ def apply_answer(text: str, answer: str) -> str:
     what a human editing the file by hand would do — so await_operator.py's
     existing state machine picks it up completely unmodified.
     """
-    new_text = _STATUS_RE.sub(f"STATUS: {ANSWERED}", text, count=1)
+    new_text = gate_file.set_status(text, ANSWERED)
     answer = answer.strip()
     if answer:
         new_text = new_text.rstrip() + f"\n\n{answer}\n"

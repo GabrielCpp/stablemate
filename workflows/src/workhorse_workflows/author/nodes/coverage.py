@@ -8,10 +8,9 @@ The YAML handed `validate_epic_coverage` two arguments and the script read only 
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
-from ostler import Ostler
+from ostler import Ostler, markdown
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
 from workhorse_workflows.author.shared import paths
@@ -32,17 +31,14 @@ _COVERAGE_CODES = {
     "unwritten-story",
 }
 
-_BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
-
-#: A bullet carrying an `[id]` handle — the only kind of line the rest of the system treats
-#: as a work item (`stories._resolve_bullet` resolves story mode's bullet by it, and the
-#: coder's `BACKLOG_ID_RE` picks the next one to build by it). A backlog also carries prose
-#: bullets — a surfaces list in the preamble, say — and `_BULLET_RE` matches those too, which
-#: is right for *pruning* (a seed's `sourceBullet` is matched as text, not by id) and wrong
-#: for *counting*: an emptied three-bullet backlog reported "1 remaining" because the
-#: surfaces line is a bullet. Nothing branches on the count, so this was a false progress
-#: signal aimed squarely at the human reading the log.
-_ITEM_RE = re.compile(r"^\s*-\s*\[[A-Za-z0-9][A-Za-z0-9._-]*\]\s*")
+#: Pruning matches *every* bullet by its text (a seed's `sourceBullet` is verbatim prose,
+#: not an id), but counting what is left counts only bullets carrying an `[id]` handle —
+#: the kind of line the rest of the system treats as a work item (`stories._resolve_bullet`
+#: resolves story mode's bullet by it, and the coder's drain picks the next one to build by
+#: it). A backlog also carries prose bullets — a surfaces list in the preamble, say — and
+#: counting those made an emptied three-bullet backlog report "1 remaining". Nothing
+#: branches on the count, so that was a false progress signal aimed squarely at the human
+#: reading the log.
 
 
 @blueprint.node(stub=_stubs.clean)
@@ -79,9 +75,15 @@ def validate_coverage(
     return Defects(ok=not errors, errors="\n".join(errors))
 
 
-def _normalize(line: str) -> str:
-    """A bullet line with its marker and whitespace stripped, lowercased."""
-    return _BULLET_RE.sub("", line).strip().lower()
+def _normalize(text: str) -> str:
+    """A bullet's own words: list marker stripped, lowercased.
+
+    A seed's `sourceBullet` is stored as the author copied it, with or without the leading
+    marker, so it is parsed too — both sides of the match are normalized by the same code
+    path rather than by a marker pattern on one side and a parse on the other.
+    """
+    bullets = markdown.split(text).walk_bullets()
+    return (bullets[0].text if bullets else text).strip().lower()
 
 
 def _matches(backlog_norm: str, seed_norms: list[str]) -> bool:
@@ -135,23 +137,31 @@ def prune_backlog(
         return Pruned()
 
     try:
-        lines = backlog_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        raw = backlog_path.read_text(encoding="utf-8")
     except OSError:
         logger.warning("could not read backlog %s — nothing to prune", backlog_path)
         return Pruned()
 
-    kept: list[str] = []
+    doc = markdown.split(raw)
+    offset = doc.body_offset
+    bullets = doc.walk_bullets()
+    drop: set[int] = set()
     removed = 0
-    remaining = 0
-    for line in lines:
-        if _BULLET_RE.match(line) and _matches(_normalize(line), seed_norms):
+    for bullet in bullets:
+        if bullet.line_start + offset in drop:
+            continue  # already carried off inside a matched parent's span
+        if _matches(bullet.text.strip().lower(), seed_norms):
             removed += 1
-            continue
-        if _ITEM_RE.match(line):
-            remaining += 1
-        kept.append(line)
+            # The bullet's span covers its continuation and nested lines, so a consumed
+            # item with sub-bullets does not leave them orphaned under the next one.
+            drop.update(range(bullet.line_start + offset, bullet.line_end + offset))
+    remaining = sum(
+        1 for b in bullets if b.bracketed[0] and b.line_start + offset not in drop
+    )
 
     if removed:
+        lines = raw.splitlines(keepends=True)
+        kept = [line for i, line in enumerate(lines) if i not in drop]
         try:
             backlog_path.write_text("".join(kept), encoding="utf-8")
         except OSError:

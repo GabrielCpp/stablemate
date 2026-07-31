@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -67,6 +66,32 @@ def build_prompt(requirement: Requirement, candidates: Sequence[Credential]) -> 
     )
 
 
+def _json_objects(text: str) -> list[dict]:
+    """Every syntactically-complete JSON object in *text*, in source order.
+
+    `json.JSONDecoder().raw_decode` is asked to decode at each `{` and reports where the
+    object it found ends, so a fenced block needs no fence pattern of its own — the block's
+    content is simply the next complete object. The pair of patterns this replaces bracketed
+    the *first* `{` to the *last* `}`, which parses as nothing when the reply also closes
+    with prose containing a brace, or carries an example object beside the real answer.
+    """
+    decoder = json.JSONDecoder()
+    found: list[dict] = []
+    idx = 0
+    while (idx := text.find("{", idx)) != -1:
+        try:
+            obj, end = decoder.raw_decode(text, idx)
+        except ValueError:
+            idx += 1
+            continue
+        if isinstance(obj, dict):
+            found.append(obj)
+            idx = end
+        else:
+            idx += 1
+    return found
+
+
 def parse_response(text: str) -> Selection:
     """Pull the JSON object out of an agent's reply.
 
@@ -77,19 +102,8 @@ def parse_response(text: str) -> Selection:
     if not text:
         raise SelectionError("agent returned no output")
 
-    candidates: list[str] = []
-    if fence := re.search(r"```(?:json)?\s*(.+?)```", text, re.DOTALL):
-        candidates.append(fence.group(1).strip())
-    candidates.append(text)
-    if (start := text.find("{")) != -1 and (end := text.rfind("}")) > start:
-        candidates.append(text[start : end + 1])
-
-    for blob in candidates:
-        try:
-            data = json.loads(blob)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict) or "selected" not in data:
+    for data in _json_objects(text):
+        if "selected" not in data:
             continue
         selected = data["selected"]
         if not isinstance(selected, str) or not selected:

@@ -186,6 +186,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         if driver == "maestro" and not target.get("app_id"):
             problems.append(f"target '{name}' requires app_id")
 
+    problems.extend(_validate_background(plan.get("background", [])))
+
     scenarios = plan.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         problems.append("'scenarios' must be a non-empty list")
@@ -308,6 +310,70 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
         if criterion_id and criterion_id not in asserted_coverage:
             problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
+    return problems
+
+
+def _validate_background(background: Any) -> list[str]:
+    """Check the daemons a plan starts before its scenarios run.
+
+    `background` was the one top-level block nobody validated, and it is the block whose
+    entries reach a `subprocess` and a readiness poll. An unrunnable shape therefore failed
+    at *run* time, where the only route back to the plan agent is a status and a sentence —
+    while everything caught here is handed to it as a diagnostic naming the field. That gap
+    is not academic: a `ready_check` mapping crashed the runner, and the coder loop spent
+    its whole rework budget re-planning a plan that was never wrong.
+    """
+    problems: list[str] = []
+    if not isinstance(background, list):
+        return ["'background' must be a list"]
+    seen: set[str] = set()
+    for index, daemon in enumerate(background):
+        label = f"background[{index}]"
+        if not isinstance(daemon, dict):
+            problems.append(f"{label} must be a mapping")
+            continue
+        name = daemon.get("name")
+        if not isinstance(name, str) or not name.strip():
+            problems.append(f"{label}.name is required")
+        elif name in seen:
+            problems.append(f"duplicate background daemon '{name}'")
+        else:
+            seen.add(name)
+        label = f"background daemon '{name}'" if isinstance(name, str) and name else label
+        if not isinstance(daemon.get("cmd"), str) or not daemon["cmd"].strip():
+            problems.append(f"{label}.cmd is required and must be non-empty")
+        timeout = daemon.get("timeout")
+        if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
+            problems.append(f"{label}.timeout must be positive")
+        check = daemon.get("ready_check")
+        if check is None:
+            continue
+        if isinstance(check, str):
+            # The string form is polled with `urlopen`, so anything that is not a URL it can
+            # open would spend the whole timeout failing to connect for a reason nobody sees.
+            if not check.startswith(("http://", "https://")):
+                problems.append(
+                    f"{label}.ready_check as a string must be an http(s) URL; "
+                    "use a {cmd, assert_contains} mapping for a command probe"
+                )
+        elif isinstance(check, dict):
+            unknown = set(check) - {"cmd", "assert_contains", "timeout"}
+            if not isinstance(check.get("cmd"), str) or not check["cmd"].strip():
+                problems.append(f"{label}.ready_check mapping requires a non-empty 'cmd'")
+            if unknown:
+                problems.append(
+                    f"{label}.ready_check has unknown keys {sorted(unknown)}; "
+                    "supported: cmd, assert_contains, timeout"
+                )
+            check_timeout = check.get("timeout")
+            if check_timeout is not None and (
+                not isinstance(check_timeout, (int, float)) or check_timeout <= 0
+            ):
+                problems.append(f"{label}.ready_check timeout must be positive")
+        else:
+            problems.append(
+                f"{label}.ready_check must be a URL string or a {{cmd, assert_contains}} mapping"
+            )
     return problems
 
 
