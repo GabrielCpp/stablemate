@@ -94,7 +94,7 @@ okf-builder 8, research 9), every one against real nodes with only the agent tur
 
 | Step | Commit | What |
 |---|---|---|
-| 0 | `09ff345` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
+| 0 | `d8b0879` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
