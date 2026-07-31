@@ -6,7 +6,7 @@ packages that work alongside an agent prompt library:
 | Package | PyPI | Role |
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
+| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
@@ -43,9 +43,13 @@ puts every piece in a single interpreter:
 
 ```bash
 git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
-make sync                             # one venv with every member installed
-uv run workhorse run <name>           # author, coder, okf-builder, research
+make sync                                    # one venv with every member installed
+uv run workhorse run hello-world --dry-run   # the quick start; needs no agent CLI
 ```
+
+That last line is the whole install check — see [Your first run](#your-first-run). The
+other workflows are `author`, `coder`, `okf-builder` and `research`, and they want a
+repository and an agent CLI.
 
 That single-interpreter part is not incidental. Workflow code runs **in workhorse's own
 interpreter** and imports its tools in-process, so `workhorse run <name>` only finds a
@@ -138,6 +142,55 @@ If a tool refuses, upgrade it — that is the mechanism working, not a bug.
 
 An overlay library shadows the base name-for-name via `farrier config set-library`, or
 `$FARRIER_LIBRARY_DIR` for a one-off.
+
+## Your first run
+
+`hello-world` is the smallest workflow that runs: two states, one node, one agent turn.
+It needs no repository, no context manifest and — under `--dry-run` — no agent CLI at
+all, so it is the one command that tells you the install worked.
+
+```bash
+uv run workhorse run hello-world --dry-run
+```
+
+```
+[workhorse.engine] [workhorse] state  → start
+[workhorse.engine] [workhorse] call   → measure (dry-run)
+[workhorse.engine] [workhorse] state  → greet
+[workhorse.engine] [workhorse] agent  → greet (dry-run)
+[workhorse.engine] Hello from a dry run.
+[workhorse] dry-run ok — every node ran its stand-in — artifacts in .agents/runs/hello-world-dry-run
+```
+
+Those four lines are the whole model. A **state** is a method that returns the next
+state; a **node** is a plain function `self.call` runs; an **agent turn** renders a
+Jinja prompt, runs an agent CLI and validates the reply into a declared model. Every
+one of them left a directory behind:
+
+```bash
+ls .agents/runs/hello-world-dry-run/       # checkpoint.json events.jsonl measure/ greet/
+cat .agents/runs/hello-world-dry-run/greet/prompt.md
+```
+
+`--dry-run` answered both seams from stand-ins the workflow declares itself, which is
+what let it finish with nothing installed. Drop the flag and it runs for real — that
+one needs an agent CLI (`claude` by default; `--cli codex|copilot|aider|opencode`):
+
+```bash
+uv run workhorse run hello-world --params '{"name": "globex"}'
+uv run workhorse dot hello-world           # the same machine as a graphviz diagram
+```
+
+Now read the source, which is 60 lines and commented to be read in this order:
+[`workflows/src/workhorse_workflows/hello_world/workflow.py`](workflows/src/workhorse_workflows/hello_world/workflow.py).
+Copy that directory, rename it, add it to your own distribution's
+`workhorse.workflows` entry points, and `workhorse run <your-name>` finds it.
+
+**Then:** [workhorse/docs/AUTHORING.md](workhorse/docs/AUTHORING.md) is the reference
+for everything the quick start leaves out — the three tiers of state, checkpoints and
+resume, sub-flows, operator gates, telemetry labels. Holding a `workflow.yaml` from the
+retired YAML engine instead? [workhorse/docs/WORKFLOW.md](workhorse/docs/WORKFLOW.md)
+maps every construct in that schema to what replaces it.
 
 ## Development
 

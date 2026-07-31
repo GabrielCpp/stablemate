@@ -5,7 +5,7 @@ fires. A misspelled node name is an `UnknownNodeError` at import, a wrong `retur
 validation error on the first reply, and a bad transition target is caught by the driver —
 but a prompt that was renamed, or copied from a YAML workflow whose file did not come with
 it, is a run that gets all the way to an agent turn before it fails. The YAML had the same
-hole; it is cheap to close statically, so this closes it for all four workflows at once.
+hole; it is cheap to close statically, so this closes it for every workflow at once.
 
 The walk is over the source rather than over the loaded classes on purpose: a state that is
 only reachable three sub-flows and an operator gate deep is exactly the one whose prompt
@@ -26,8 +26,8 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-#: The four workflow packages. `kit` is the shared library and has no prompts of its own.
-WORKFLOWS = ("author", "coder", "okf_builder", "research")
+#: The workflow packages. `kit` is the shared library and has no prompts of its own.
+WORKFLOWS = ("author", "coder", "hello_world", "okf_builder", "research")
 
 
 def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
@@ -66,7 +66,7 @@ SITES = _sites()
 def test_the_sweep_found_turns_in_every_workflow() -> None:
     """The guard against a walker that silently matches nothing.
 
-    Every one of the four workflows runs agent turns, so a package contributing zero sites
+    Every one of these workflows runs agent turns, so a package contributing zero sites
     means the walk broke — a renamed method, a changed call shape — not that the workflow
     stopped using agents.
     """
