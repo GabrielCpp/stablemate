@@ -154,37 +154,57 @@ uv run workhorse run hello-world --dry-run
 ```
 
 ```
+[workhorse] starting 'hello-world' HelloWorld (run: hello-world-dry-run)
 [workhorse.engine] [workhorse] state  → start
 [workhorse.engine] [workhorse] call   → measure (dry-run)
 [workhorse.engine] [workhorse] state  → greet
 [workhorse.engine] [workhorse] agent  → greet (dry-run)
 [workhorse.engine] Hello from a dry run.
-[workhorse] dry-run ok — every node ran its stand-in — artifacts in .agents/runs/hello-world-dry-run
+[workhorse] dry-run ok — every node ran its stand-in — artifacts in …/.agents/runs/hello-world-dry-run
 ```
 
-Those four lines are the whole model. A **state** is a method that returns the next
-state; a **node** is a plain function `self.call` runs; an **agent turn** renders a
-Jinja prompt, runs an agent CLI and validates the reply into a declared model. Every
-one of them left a directory behind:
+The four `state`/`call`/`agent` lines are the whole model. A **state** is a method that
+returns the next state; a **node** is a plain function `self.call` runs; an **agent turn**
+renders a Jinja prompt, runs an agent CLI and validates the reply into a declared model.
+Every one of them left a directory behind:
 
 ```bash
-ls .agents/runs/hello-world-dry-run/       # checkpoint.json events.jsonl measure/ greet/
-cat .agents/runs/hello-world-dry-run/greet/prompt.md
+ls .agents/runs/hello-world-dry-run/
+# checkpoint.json  context.json  events.jsonl  run.json  measure/  greet/
 ```
 
-`--dry-run` answered both seams from stand-ins the workflow declares itself, which is
-what let it finish with nothing installed. Drop the flag and it runs for real — that
-one needs an agent CLI (`claude` by default; `--cli codex|copilot|aider|opencode`):
+`--dry-run` answered both seams from stand-ins the workflow declares itself, which is what
+let it finish with nothing installed — so `greet/prompt.md` holds a placeholder rather than
+a rendered prompt. Drop the flag and it all happens for real; that one needs an agent CLI
+(`claude` by default; `--cli codex|copilot|aider|opencode`):
 
 ```bash
 uv run workhorse run hello-world --params '{"name": "globex"}'
+```
+
+```
+[workhorse.engine] [workhorse] call   → measure
+[workhorse.engine] measuring 'globex'
+[workhorse.engine] [workhorse] agent  → greet
+[greet] 🚀 Invoking claude (model: claude-sonnet-5)
+[greet] ✓ result received (10921 ms)
+[workhorse.engine] Hello, globex — what a great name, and it's got 6 letters!
+```
+
+That run gets its own directory (`hello-world-<id>`), and this time `greet/prompt.md` is
+the prompt as the agent received it — `{{ name }}` and `{{ letters }}` filled in:
+
+```bash
+cat .agents/runs/hello-world-*/greet/prompt.md
 uv run workhorse dot hello-world           # the same machine as a graphviz diagram
 ```
 
 Now read the source, which is 60 lines and commented to be read in this order:
 [`workflows/src/workhorse_workflows/hello_world/workflow.py`](workflows/src/workhorse_workflows/hello_world/workflow.py).
-Copy that directory, rename it, add it to your own distribution's
-`workhorse.workflows` entry points, and `workhorse run <your-name>` finds it.
+Copy that directory, rename it, and give it an entry point of its own —
+[Shipping your own, outside this repo](workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo)
+is the whole `pyproject.toml` and the one install command it takes, and it does not
+require a checkout of this repository.
 
 **Then:** [workhorse/docs/AUTHORING.md](workhorse/docs/AUTHORING.md) is the reference
 for everything the quick start leaves out — the three tiers of state, checkpoints and

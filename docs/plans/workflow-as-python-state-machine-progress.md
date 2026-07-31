@@ -1886,6 +1886,60 @@ page grounded on `runner/agent.py::…` — roughly twenty, plus `classify-turn.
 `stream-subprocess.md` — is dangling as a result, and the old→new symbol map is not stable
 enough to re-ground against until that lands.
 
+### Iteration 8 — the cold walk, actually walked
+
+Work-order item 5 opens with *"walk it yourself on a clean checkout and fix what you hit."*
+So this iteration walked it literally rather than by reading: a `--no-local` clone of the
+tracked tree at `89d18d5` into a scratch directory, `make sync`, and every documented
+command run against **an empty `$HOME`/`$XDG_CONFIG_HOME`/`$XDG_CACHE_HOME`** so no
+configured overlay on this machine could shadow the result.
+
+**The headline: the cold path holds.** With no overlay, no config and no cache,
+`make sync` succeeds and `workhorse run hello-world --dry-run` exits 0. With an agent CLI
+present, `workhorse run hello-world --params '{"name": "globex"}'` also completes for real
+— a live `claude` turn returning a validated `Greeting` in ~11s — and `workhorse dot
+hello-world` renders. The claim that this path assumes a private overlay is **no longer
+true as of iteration 7**; it was true when the work order was written.
+
+**Then the harder half of the end condition — "write a new workflow from the docs alone" —
+was tested by doing it.** A separate `acme-workflows` distribution was built outside the
+checkout, installed with `uv pip install`, and `workhorse run greeter --dry-run` found and
+ran it. It works, but three things needed for it appear **nowhere a reader would look**:
+
+- **No `pyproject.toml` is shown anywhere.** README said "add it to your own distribution's
+  `workhorse.workflows` entry points" and stopped. The only worked example is
+  `workflows/pyproject.toml`, which is ~100 lines and carries `[tool.uv.sources] … workspace
+  = true` — copying it *outside* this workspace does not resolve.
+- **The entry point must name the `Registry` object, not `main`.** Pointing it at the
+  console-script callable fails at resolution.
+- **The install must land in workhorse's own interpreter**, and no command for a reader's
+  own package was written down.
+
+Fixed by a new **"Shipping your own, outside this repo"** section in
+`workhorse/docs/AUTHORING.md` carrying the complete minimal `pyproject.toml` and the one
+install command — verbatim the one that was just run green — with the README's last-mile
+sentence pointing at it.
+
+**Corrections to iteration 7's own claims, found by running them:**
+
+- The README's expected output **omitted the `[workhorse] starting …` banner**, which a
+  reader sees first on a terminal. (It landed mid-block in the capture only because the
+  banner is `print()` on stdout while the narrative is logging on stderr, and a pipe
+  buffers them differently than a tty does.) Added.
+- "Those four lines" counted six. Reworded to name the four `state`/`call`/`agent` lines.
+- The `ls` sample listed four entries; a run dir has six (`context.json` and `run.json` too).
+- **`cat …/greet/prompt.md` under `--dry-run` shows `(dry-run) prompts/greet.md`, not a
+  rendered prompt** — the dry run never renders one. The README invited a reader to look at
+  a rendered prompt that is not there. Prompt inspection moved to the real run, where it is
+  genuinely rendered with `{{ name }}`/`{{ letters }}` filled in, and the dry-run stub is
+  now stated rather than glossed.
+
+**Finding 19 (reported, not fixed):** the run-directory *name* differs between the two
+paths — `hello-world-dry-run` is fixed and reused, while a real run gets
+`hello-world-<id>`. That is `run_pyflow` forcing `run_id="dry-run"` under `--dry-run`, and
+it means consecutive dry runs overwrite each other's artifacts. Fine for a quick start,
+worth knowing before anyone treats a dry-run artifact directory as durable.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
