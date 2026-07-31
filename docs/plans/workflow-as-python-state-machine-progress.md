@@ -103,7 +103,7 @@ took it.)
 |---|---|---|
 | 0 | `d8b0879` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
 | 0.1 | `e1f92f5` | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
-| 2 | *this commit* | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
+| 2 | `cc8b850` | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
