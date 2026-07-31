@@ -71,7 +71,7 @@ class WalkthroughWeb(Workflow):
     #: Which `docs/features/<service>` book to walk. `null` in the YAML's `vars`, `""`
     #: here, because an input is typed — a walk with no service detects no app and skips.
     service: str = ""
-    #: The docs repo root; `""` falls back to `AGENT_REPO_DIR` via `find_docs_root`.
+    #: The docs repo root; `""` walks up from `repo_dir` via `find_docs_root`.
     docs_path: str = ""
     #: The source subtree, defaulting to `service`.
     source_path: str = ""

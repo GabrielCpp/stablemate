@@ -72,12 +72,12 @@ def workspace(
     repo: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write_json: Callable[[Path, Any], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> dict[str, Path]:
     """Two real repos and the VSCode workspace file that names them, in order.
 
-    `resolve_workspace` reads the file `CODER_WORKSPACE` points at and resolves each
-    folder path relative to it, so the paths here are relative exactly as a checked-in
+    `resolve_workspace` reads the file the run's `workspace_file` input names and
+    resolves each folder path relative to it, so the paths here are relative as a checked-in
     `.code-workspace` carries them. The `repo` fixture's own checkout stays out of the
     workspace: it is the docs root, and the flow prepends it separately.
     """
@@ -99,7 +99,7 @@ def workspace(
         workspace_file,
         {"folders": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]},
     )
-    monkeypatch.setenv("CODER_WORKSPACE", str(workspace_file))
+    ambient["workspace_file"] = str(workspace_file)
     return {"docs": repo, **paths}
 
 

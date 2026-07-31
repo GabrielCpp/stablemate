@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow
+from workhorse_workflows.coder import paths
 from workhorse_workflows.coder.nodes.ci import poll_pr_checks, push_ci_fix, select_ci_repo
 from workhorse_workflows.coder.nodes.story import resolve_workspace_dirs
 from workhorse_workflows.coder.schemas.ci import CiChecks, FixCiResult
@@ -71,8 +72,18 @@ class FixCi(Workflow):
     #: read — the first poll overwrites it before the fixer sees anything. See the module
     #: docstring.
     ci_summary: str = ""
-    #: The docs repo root, prepended to the fixer's readable directories.
+    #: The docs repo root, prepended to the fixer's readable directories. Empty walks up
+    #: from `repo_dir`.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
+
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     #: `fix → push → poll` cycles before the loop gives up. The YAML's literal `"3"`.
     #: `ClassVar` because `Workflow` is a pydantic model and every annotated class

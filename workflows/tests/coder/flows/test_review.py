@@ -118,7 +118,7 @@ def workspace(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
+    ambient: dict[str, str],
 ) -> dict[str, Path]:
     """Two real git repos and the VSCode workspace file that names them.
 
@@ -139,7 +139,7 @@ def workspace(
         root / "acme.code-workspace",
         json.dumps({"folders": [{"name": n, "path": n} for n in repos]}),
     )
-    monkeypatch.setenv("CODER_WORKSPACE", str(root / "acme.code-workspace"))
+    ambient["workspace_file"] = str(root / "acme.code-workspace")
     return repos
 
 

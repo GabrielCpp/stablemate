@@ -124,7 +124,9 @@ def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
         # container's bind-mount concession, and not something a test may do to a
         # laptop; the override is the half that is the behaviour.
         nodes=research.workflow.override(
-            clone_repo=lambda logger: RepoSetup(repo_dir=str(repo))
+            clone_repo=lambda logger, repo_dir="", repo_url="", repo_branch="main": (
+                RepoSetup(repo_dir=str(repo))
+            )
         ),
     )
 

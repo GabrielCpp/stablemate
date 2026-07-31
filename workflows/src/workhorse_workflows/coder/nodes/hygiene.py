@@ -7,8 +7,8 @@ placeholders behind?" answers no.
 
 Both scripts had re-typed `workhorse.scriptutil.find_repo_root` character for character
 rather than importing it. They call the engine's copy here, which is not a narrowing: the
-bodies were identical, and neither YAML node carried a `cwd:`, so `AGENT_REPO_DIR` (or the
-upward walk from it) resolves the same repo it always did.
+bodies were identical, and neither YAML node carried a `cwd:`, so the run's `repo_dir`
+input (or the upward walk from it) resolves the same repo the environment read did.
 
 The gates disagree about what a problem means, and that stays: a screenshot that cannot be
 moved is logged and the flow continues, while a sentinel ID fails the QA pass. One is

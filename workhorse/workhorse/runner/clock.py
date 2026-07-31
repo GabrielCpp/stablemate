@@ -8,15 +8,25 @@ from typing import Protocol
 
 
 class Clock(Protocol):
-    """The passage of time, as the recovery ladder needs it.
+    """The passage of time, as the recovery ladder and the streaming loop need it.
 
-    Two operations, because the ladder does exactly two things with time: it asks
-    what time it is (to say when a cap window reopens) and it waits (for the cap,
-    for a backoff, for the pause before a reframe). A run that sleeps through an
-    eight-hour cap is then a test that costs microseconds, with nothing patched.
+    Three operations, because between them they do exactly three things with time.
+    The ladder asks what time it is (to say when a cap window reopens) and waits
+    (for the cap, for a backoff, for the pause before a reframe); a run that sleeps
+    through an eight-hour cap is then a test that costs microseconds, with nothing
+    patched. The streaming loop asks how long the turn has been running.
+
+    ``monotonic`` is separate from ``now`` rather than derived from it because a
+    turn's deadline must not move when the wall clock does. ``now`` is a date an
+    operator reads ("resuming around 11:30am") and is allowed to jump under NTP;
+    ``monotonic`` is a duration a timeout is measured against and never goes
+    backwards. Collapsing the two would make an NTP correction mid-turn either
+    expire a healthy turn or extend a wedged one.
     """
 
     def now(self) -> datetime: ...
+
+    def monotonic(self) -> float: ...
 
     def sleep(self, seconds: float) -> None: ...
 
@@ -30,6 +40,9 @@ class SystemClock:
 
     def now(self) -> datetime:
         return datetime.now()
+
+    def monotonic(self) -> float:
+        return time.monotonic()
 
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)

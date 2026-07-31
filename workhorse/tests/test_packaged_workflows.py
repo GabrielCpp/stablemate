@@ -309,7 +309,9 @@ def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
     assert through_workhorse == through_script
     assert through_script["flow"] == "qa"
     assert through_script["run_id"] == "test123"
-    assert through_script["params"] == {"story": "AUTH-12"}
+    # `repo_dir` is defaulted in by the CLI itself — a run always has a checkout, and
+    # every workflow declares it — so it reaches the engine alongside what was passed.
+    assert through_script["params"] == {"story": "AUTH-12", "repo_dir": str(Path.cwd())}
     # Every flag the parser grows has to reach the engine through both doors, or the
     # bound form quietly becomes a second, poorer CLI — which is the whole point here.
     assert through_script["dry_run"] is True

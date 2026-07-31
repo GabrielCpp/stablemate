@@ -55,7 +55,10 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from typing import ClassVar
+
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse_workflows.coder import paths
 from workhorse_workflows.coder.flows.docs import Docs
 from workhorse_workflows.coder.nodes.backlog import (
     mark_fix_blocked,
@@ -82,10 +85,19 @@ BLOCKED_NOTE = "blocked in fix loop (plan blocked, or QA still failing after one
 class Fix(Workflow):
     """Drain the backlog's `Filed by coder` items, each as a one-AC story, each committed."""
 
-    #: The docs repo root. Empty resolves through `AGENT_REPO_DIR` / the working directory.
+    #: The docs repo root, when the planning documents live in a checkout of their own.
+    #: Empty walks up from `repo_dir`, i.e. the docs sit beside the code.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
     #: `local` or `dev` — passed to the impl-context decode and to both QA turns.
     target_env: str = "local"
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one; see `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     def setup(self) -> WorkspaceDirs:
         """Every directory an agent turn in this run may read.

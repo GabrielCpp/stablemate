@@ -22,7 +22,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -131,6 +131,12 @@ def measure(logger: Any, subject: str) -> Payload:
 @bp.node(aliases=["survey"])
 def inventory(logger: Any) -> Payload:
     return Payload(kind="inventory", count=1)
+
+
+@bp.node
+def locate(logger: Any, subject: str = "?", repo_dir: str = "own-default", docs_path: str = "") -> Payload:
+    """A node that declares two of the ambient inputs — the shape `injects` fills."""
+    return Payload(kind=f"{subject}:{repo_dir}:{docs_path}", count=0)
 
 
 # --------------------------------------------------------------- registration & names
@@ -261,7 +267,9 @@ def test_the_checkpoint_is_the_state_and_its_params():
         assert cp["state"] == "boom", cp
         assert cp["params"] == {"attempt": 2}, cp
         assert cp["flow"] == "Stops", cp
-        assert cp["inputs"] == {"subject": "login"}, cp
+        # `repo_dir` rides along because the base declares it: every run works on a
+        # checkout, so it is an input of every workflow whether or not one was passed.
+        assert cp["inputs"] == {"subject": "login", "repo_dir": ""}, cp
         assert cp["waiting_on"] is None, cp
 
 
@@ -579,6 +587,106 @@ def test_handoff_drives_a_sub_flow_in_its_own_scope_and_returns_its_result():
         assert (env.run_dir / "sub_flow" / "_flow" / "measure" / "output.json").is_file()
         assert not (env.run_dir / "measure").exists()
 
+
+# ----------------------------------------------------------------- Workflow.injects
+
+
+def test_call_fills_an_injects_field_the_node_declares_and_the_callsite_omitted():
+    """The point of the mechanism: a value every second node wants, said once."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Run(Workflow):
+            docs_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+
+            def start(self) -> Transition:
+                return Done(self.call(locate, "login").kind)
+
+        assert drive(Run(repo_dir="/src", docs_path="/book"), env) == "login:/src:/book"
+
+
+def test_a_field_the_workflow_did_not_list_is_never_injected():
+    """`injects` is an allowlist, not name-matching: a node's `subject` argument must
+    not be captured from a same-named input the state chose not to pass."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Run(Workflow):
+            subject: str = "not-mine"
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
+
+            def start(self) -> Transition:
+                return Done(self.call(locate).kind)
+
+        assert drive(Run(repo_dir="/src"), env) == "?:/src:"
+
+
+def test_a_callsite_value_wins_over_the_input_including_positionally():
+    """`skip=1` is what makes the positional case work: the node's logger is supplied
+    by the seam, so `locate`'s first positional is `subject` and its second is
+    `repo_dir` — already answered, and not to be answered twice."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Run(Workflow):
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
+
+            def start(self) -> Transition:
+                return Done(self.call(locate, "login", "/explicit").kind)
+
+        assert drive(Run(repo_dir="/src"), env) == "login:/explicit:"
+
+
+def test_an_empty_input_injects_nothing_so_the_node_default_stands():
+    """An unset input is not an answer. Overwriting the node's own default with a
+    blank would claim the callsite said something it did not."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Run(Workflow):
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
+
+            def start(self) -> Transition:
+                return Done(self.call(locate, "login").kind)
+
+        assert drive(Run(), env) == "login:own-default:"
+
+
+def test_a_node_that_does_not_declare_the_field_is_called_unchanged():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Run(Workflow):
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
+
+            def start(self) -> Transition:
+                return Done(self.call(measure, "login").kind)
+
+        assert drive(Run(repo_dir="/src"), env) == "login"
+
+
+def test_handoff_propagates_the_injects_fields_to_the_sub_flow():
+    """A `handoff` constructs a fresh workflow, so nothing crosses that boundary that
+    is not an argument — which is why a sub-flow used to see none of the run's setting."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class SubFlow(Workflow):
+            docs_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+
+            def start(self) -> Transition:
+                return Done(self.call(locate, "sub").kind)
+
+        class Parent(Workflow):
+            docs_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+
+            def start(self) -> Transition:
+                return Done(self.handoff(SubFlow))
+
+        assert drive(Parent(repo_dir="/src", docs_path="/book"), env) == "sub:/src:/book"
 
 # ------------------------------------------------------------------------ self.agent
 

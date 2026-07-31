@@ -97,7 +97,7 @@ class OkfBuilder(Workflow):
     #: Skip discovery and re-enter at the checkpoint — repair an already-populated book.
     #: A `"yes"`/`"no"` var in the YAML, a bool here.
     recheck_only: bool = False
-    #: The docs repo root; `""` falls back to `AGENT_REPO_DIR`.
+    #: The docs repo root; `""` walks up from `repo_dir`, the run's own checkout.
     docs_path: str = ""
     #: Optional per-run investigation ceiling. 0 = run to convergence.
     max_items: int = 0

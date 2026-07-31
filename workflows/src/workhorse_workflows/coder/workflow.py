@@ -128,8 +128,11 @@ class Coder(Workflow):
     #: YAML `default:` arm, which was `init_base` — the epic path.
     mode: str = "epic"
     #: The docs repo root, when the planning documents live in a checkout of their own
-    #: rather than beside the code. Blank means "find it from the launch directory".
+    #: rather than beside the code. Blank walks up from `repo_dir`.
     docs_path: str = ""
+    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
+    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
+    workspace_file: str = ""
     #: The story slug, in story mode. Ignored in epic mode, where the queue picks.
     story: str = ""
     #: The epic to work, when it should not be read off the front of the queue.
@@ -141,6 +144,13 @@ class Coder(Workflow):
     target_env: str = "local"
     #: The QA stack manifest `qa` reads to bring services up.
     qa_stack_manifest: str = "qa-stack.yml"
+
+    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
+    #: fill each one in for any node or sub-flow that declares a parameter of the same
+    #: name and was not passed one, which is what carries them into the eight sub-flows:
+    #: a `handoff` constructs a fresh workflow, so nothing crosses that boundary unless
+    #: something puts it there. See `Workflow.injects`.
+    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     #: `max_ci_reworks` — automated attempts at a red PR before the operator is asked.
     MAX_CI_REWORKS: ClassVar[int] = 3
@@ -745,7 +755,7 @@ class Coder(Workflow):
         """
         self.call(flag_ci_failure, ci_epic, str(attempts), summary)
         return Await(
-            paths.operator_context_path(paths.launch_repo_root(), "ci-operator", ci_epic),
+            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "ci-operator", ci_epic),
             f"CI is still failing on `{ci_epic}` after {attempts} automated attempt(s).\n\n"
             f"{summary or 'no summary available'}\n\n"
             "Fix it on the branch (or in the pipeline) and touch this file when the run "
@@ -762,7 +772,7 @@ class Coder(Workflow):
         """`flag_merge_fail` + `await_merge_operator`: the merge-side twin of `_ci_gate`."""
         self.call(flag_merge_failure, ci_epic, ci_base, str(attempts))
         return Await(
-            paths.operator_context_path(paths.launch_repo_root(), "merge-operator", ci_epic),
+            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "merge-operator", ci_epic),
             f"`{ci_epic}` will not merge into `{ci_base}` after {attempts} automated "
             "attempt(s).\n\nResolve it and touch this file when the run should try again.",
             self.merge_operator,

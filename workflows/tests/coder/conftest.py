@@ -1,7 +1,7 @@
 """Shared fixtures for the coder port's tests.
 
-Same shape as the author suite: nodes run for real against a temp git repo pinned as
-`AGENT_REPO_DIR`, and only the agent turn is ever scripted. What is different here is
+Same shape as the author suite: nodes run for real against a temp git repo the `repo`
+fixture stands the test in, and only the agent turn is ever scripted. What is different here is
 that two of the three small flows reach *outside* the filesystem — `genesis` shells out
 to `farrier`, `fix_ci` talks to GitHub — so each of those gets one named seam rather than
 a patched resolver, and every node above and below the seam is the real one.
@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -57,8 +57,13 @@ def repo(
 ) -> Path:
     """A real git repo with one commit, pinned as the consuming repo for the test.
 
+    Pinned by *chdir*, not by an environment variable: the resolvers read the run's
+    `repo_dir` input and fall back to the working directory, so standing in the repo is
+    what a node called with no `repo_dir` sees. A test that exercises the input itself
+    passes `repo_dir=str(repo)` explicitly.
+
     `genesis` is the one flow that does *not* use it — it creates its own target — but it
-    still wants `AGENT_REPO_DIR` off the developer's own checkout, which is what this
+    still wants the run pointed away from the developer's own checkout, which is what this
     fixture guarantees for every test that requests it.
     """
     root = tmp_path / "acme"
@@ -69,7 +74,7 @@ def repo(
     (root / "README.md").write_text("# acme\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-qm", "Initial commit")
-    monkeypatch.setenv("AGENT_REPO_DIR", str(root))
+    monkeypatch.chdir(root)
     return root
 
 
@@ -134,7 +139,21 @@ def env(tmp_path: Path) -> Callable[..., RunEnv]:
 
 
 @pytest.fixture
-def drive_flow() -> Callable[..., Any]:
+def ambient() -> dict[str, str]:
+    """The run's ambient path inputs, as the operator would have passed them.
+
+    A fixture that builds a `.code-workspace` (or a docs checkout of its own) records it
+    here under the field name it belongs to, and `drive_flow` fills it into the flow it
+    is handed. That is the *front door*, not a back one: `workhorse/cli/run.py` defaults
+    `repo_dir` into `--params` the same way, and the value lands in the flow's inputs and
+    therefore in the checkpoint. A test that states the field at the constructor wins —
+    the fill only ever supplies what was left empty.
+    """
+    return {}
+
+
+@pytest.fixture
+def drive_flow(ambient: dict[str, str]) -> Callable[..., Any]:
     """`drive`, with the scripted agent handed to the run rather than patched in.
 
     The seam is `RunEnv.agent_runner`, the ladder the engine drives every turn through:
@@ -144,6 +163,9 @@ def drive_flow() -> Callable[..., Any]:
     """
 
     def _drive(flow: Workflow, run_env: RunEnv, agent: Any, resume: Resume | None = None) -> Any:
+        for field, value in ambient.items():
+            if field in type(flow).model_fields and not getattr(flow, field):
+                setattr(flow, field, value)
         return drive(flow, replace(run_env, agent_runner=StubRunner(agent)), resume)
 
     return _drive
@@ -184,16 +206,3 @@ def _git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(key, value)
 
 
-@pytest.fixture(autouse=True)
-def _no_inherited_workspace(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """The two resolvers that read the ambient environment, unset for every test.
-
-    `resolve_workspace` reads `CODER_WORKSPACE` and `find_docs_root` reads
-    `CODER_DOCS_PATH`, and both take precedence over the `AGENT_REPO_DIR` the `repo`
-    fixture pins. A developer running the suite with either exported would have `fix_ci`
-    iterate their real repos and `dream` write into their real docs tree. Each test that
-    wants one sets it.
-    """
-    monkeypatch.delenv("CODER_WORKSPACE", raising=False)
-    monkeypatch.delenv("CODER_DOCS_PATH", raising=False)
-    yield
