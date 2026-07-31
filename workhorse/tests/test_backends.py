@@ -25,7 +25,7 @@ from workhorse.runner.backends import (
     OpenCodeBackend,
     get_backend,
 )
-from workhorse.graph.nodes import AgentNode
+from workhorse.runner.spec import AgentNode
 
 
 def _without_agent_cli():

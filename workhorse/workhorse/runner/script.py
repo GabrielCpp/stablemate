@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 from workhorse import logsetup
 from workhorse.graph.nodes import ScriptNode
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.templates import render_string
 
 # The module name a script with a main() is executed under. Deliberately NOT

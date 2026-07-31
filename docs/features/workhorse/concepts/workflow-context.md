@@ -15,7 +15,7 @@ outputs, or the graph; [`run`](../workhorse.md#run) owns the higher-level protoc
 node's declared outputs in, deciding what seeds the initial dict from the
 [context manifest](../context-manifest.md) and `vars`).
 
-- code: `workhorse/workhorse/graph/context.py::WorkflowContext`
+- code: `workhorse/workhorse/context.py::WorkflowContext`
 - verify: `workhorse/tests/test_branch_guardrail.py::test_get_dotpath_default_vs_raise`
 
 ## State

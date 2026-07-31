@@ -26,8 +26,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from workhorse.artifacts import ArtifactWriter
-from workhorse.graph.context import WorkflowContext
-from workhorse.graph.nodes import AgentNode, OutputSpec
+from workhorse.context import WorkflowContext
+from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
 from workhorse.pyflow.names import NameIndex

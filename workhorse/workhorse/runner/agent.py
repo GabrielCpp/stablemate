@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from workhorse import otel
 from workhorse.runner import usage
 from stablemate_core.config import resolve_backend_default, resolve_power
-from workhorse.graph.nodes import AgentNode
+from workhorse.runner.spec import AgentNode
 
 try:
     from json_repair import repair_json as _repair_json
@@ -26,7 +26,7 @@ except ImportError:  # tolerant parsing degrades to strict-only if the dep is ab
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.templates import render, render_string
 
 

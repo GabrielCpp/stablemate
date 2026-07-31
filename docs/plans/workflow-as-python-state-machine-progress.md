@@ -90,6 +90,42 @@ okf-builder 8, research 9), every one against real nodes with only the agent tur
 | 12 | `78436af` | `coder` **stage D3** — the `fix` flow: 24 YAML nodes → 9 states, entered directly rather than handed off to, with the `docs` sub-flow running for real inside it. 12 end-to-end tests. No driver change |
 | 13 | `7e33233` | `coder` **stage D4** — the main graph: 80 YAML nodes → 27 states, both pyproject lines, 12 end-to-end tests plus a cross-workflow static prompt check (77 sites). Loop 1.1's exit gate. No driver change |
 
+### Loop 2 — the deletion
+
+| Step | Commit | What |
+|---|---|---|
+| 0 | `09ff345` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
+
+**The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
+workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
+
+**The baseline was red on arrival, and not from anything loop 2 did.**
+`workhorse/tests/test_library_layers.py` named its fixture workflow `coder`, and since loop 1.1
+`coder` is a real `workhorse.workflows` entry point — which by design wins over every library
+layer, so four of its six tests were resolving the entry point instead of the layering they exist
+to test. Renamed to `acme-flow`, a name no distribution ships. Worth knowing because it is the
+shape of the next such break: *any* test that uses a real workflow's name as a fixture now tests
+the entry-point branch.
+
+**Next: the engine deletion (list item 1), and it cannot be one commit.** `make test` runs
+`base-library/workflows/*/tests` **in-process against the YAML engine** via
+`workhorse.testing.WorkflowRun`, so deleting the engine is only green if those suites go with it —
+they are on the deletion list (§1, "…their `tests/`"), just one bullet later than the engine. So
+step 1 is: lift the CLI out of `main.py` into `workhorse/cli.py`, delete `graph/` and
+`runner/{script,branch,call}.py`, trim `testing.py`, and take the YAML-engine tests, the
+base-library workflow test suites and the `test-workflows` make target with them. Then step 2 is
+the rest of `base-library/workflows/` and `requires:`.
+
+**Before that commit, one thing goes to the user** — §4 item 1, the context manifest, which is no
+longer just a parity gap: 13 ported prompts under `author/` and `coder/` call `instruction_ref`,
+`isUsingInstruction` and `template.*`; only `main.py` ever loaded the manifest that resolves them;
+`run_pyflow`/`RunEnv` have no seat for one; and `templates.py` suppresses its own unresolved
+warning when no manifest is present, so the degradation is **silent** — `instruction_ref('go')`
+renders as the prose placeholder and every stack-specific guidance block drops out. Deleting
+`main.py` removes the reference implementation and makes `--context-file` permanently inert. This
+is a driver change, which loop 2's work order excludes, so it is the user's call and not a fix to
+improvise.
+
 ### Parity — `author`
 
 What was demonstrated, so loop 2 can see exactly how far it goes:
@@ -955,9 +991,12 @@ parity claim in this file is against real nodes with the agent turn scripted.
 `pyflow` is not free-standing today. It imports `workhorse.artifacts`, `config_run`, `rundir`,
 `packaged` and `runner.agent` — all keepers — but also two things that go with the YAML engine:
 
-- `engine.py:29–30` imports `WorkflowContext` and `AgentNode`/`OutputSpec` from `workhorse.graph`.
-  The context object is how a prompt gets rendered and the node models are how a turn is described
-  to `runner.agent`; deleting `graph/` means giving `pyflow` its own two small types first.
+- ~~`engine.py:29–30` imports `WorkflowContext` and `AgentNode`/`OutputSpec` from
+  `workhorse.graph`.~~ **Cleared in loop 2 step 0.** They were never the YAML front-end's: the
+  context bag is what a prompt renders against and `AgentNode`/`OutputSpec` are what a turn is
+  described to `runner.agent` with — both front-ends build one. So they moved *out* of `graph/`
+  (to `workhorse/context.py` and `workhorse/runner/spec.py`) rather than being copied into
+  `pyflow`, and `graph/` now depends on them rather than the reverse.
 - `registry.py:180` calls `workhorse.main.main(...)` for the console script — the entire CLI
   (params, run ids, resume, `dot`, `config`) lives in the YAML engine's `main.py`. **This is the
   real work of loop 2**: the CLI has to be lifted out of `main.py` before `main.py` can go, and

@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
-from workhorse.graph.context import WorkflowContext
-from workhorse.graph.nodes import AgentNode, OutputSpec
+from workhorse.context import WorkflowContext
+from workhorse.runner.spec import AgentNode, OutputSpec
 
 
 def _node() -> AgentNode:

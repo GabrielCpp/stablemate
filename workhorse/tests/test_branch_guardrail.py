@@ -7,7 +7,7 @@ Run: ./.venv/bin/python tests/test_branch_guardrail.py   (or via pytest)
 """
 from __future__ import annotations
 
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.graph.nodes import BranchCondition, BranchNode
 from workhorse.runner import branch as b
 

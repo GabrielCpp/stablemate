@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from workhorse.builtins import REGISTRY, incr, seed
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.graph.nodes import CallNode, CallOutputSpec
 from workhorse.runner import call as c
 

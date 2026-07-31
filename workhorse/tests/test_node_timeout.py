@@ -13,8 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse.runner import agent
-from workhorse.graph.context import WorkflowContext
-from workhorse.graph.nodes import AgentNode
+from workhorse.context import WorkflowContext
+from workhorse.runner.spec import AgentNode
 
 
 def _node(timeout="__unset__") -> AgentNode:
