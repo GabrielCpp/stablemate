@@ -16,6 +16,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
 from workhorse.context import WorkflowContext
@@ -38,9 +39,17 @@ def _node() -> AgentNode:
 
 
 def _run(node, **kw):
+    """Drive one node with the ladder's knobs INJECTED (``AgentResilience`` fields),
+    not patched onto the module — the ladder reads no configuration of its own."""
     # node.prompt is normally a template FILE path; render it inline for the test.
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)):
-        return agent.run_agent(node, WorkflowContext(initial={}), Path("."), None, **kw)
+        return agent.run_agent(
+            node,
+            WorkflowContext(initial={}),
+            Path("."),
+            None,
+            resilience=AgentResilience(**kw),
+        )
 
 
 def test_success_on_first_attempt_returns_outputs():
@@ -326,10 +335,9 @@ def test_default_outputs_disabled_raises():
         raise BackendInvocationError("No 'result' event received", transient=True)
 
     with patch.object(agent, "_invoke_claude", always_fail), \
-         patch.object(agent, "USE_DEFAULT_OUTPUTS", False), \
          patch.object(agent.time, "sleep", lambda s: None):
         try:
-            _run(_node(), max_rephrase_attempts=1)
+            _run(_node(), max_rephrase_attempts=1, use_default_outputs=False)
             raise AssertionError("expected raise when defaulting is disabled")
         except BackendInvocationError:
             pass

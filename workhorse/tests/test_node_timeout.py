@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode
@@ -70,8 +71,10 @@ def test_explicit_timeout_overrides_and_reaches_prompt():
 
 def test_explicit_none_falls_back_to_engine_default():
     ctx, invoke_timeout = _run_capturing(_node(timeout=None))
-    assert invoke_timeout == agent.DEFAULT_RESULT_TIMEOUT_S
-    assert ctx["node_timeout_s"] == int(agent.DEFAULT_RESULT_TIMEOUT_S)
+    # The engine default now lives on the injected settings object, not on the module.
+    default_s = AgentResilience().result_timeout_s
+    assert invoke_timeout == default_s
+    assert ctx["node_timeout_s"] == int(default_s)
 
 
 def test_numeric_string_timeout_parses_to_seconds():

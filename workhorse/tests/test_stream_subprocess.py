@@ -12,23 +12,20 @@ import os
 import sys
 import time
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 
 
 def _run(code: str, *, timeout: float, grace: float = 1.0):
     """Run a tiny python program as the 'agent', collecting streamed lines."""
     lines: list[str] = []
-    orig_grace = agent._WATCHDOG_GRACE_S
-    agent._WATCHDOG_GRACE_S = grace
-    try:
-        timed_out, rc = agent.stream_subprocess(
-            [sys.executable, "-u", "-c", code],
-            "test_node",
-            timeout,
-            lines.append,
-        )
-    finally:
-        agent._WATCHDOG_GRACE_S = orig_grace
+    timed_out, rc = agent.stream_subprocess(
+        [sys.executable, "-u", "-c", code],
+        "test_node",
+        timeout,
+        lines.append,
+        resilience=AgentResilience(watchdog_grace_s=grace),
+    )
     return timed_out, rc, lines
 
 
@@ -53,8 +50,7 @@ def test_silent_stream_still_emits_liveness_heartbeats():
     is irrelevant at the 10s production default but bounds this test.
     """
     beats: list[tuple[str, float, float]] = []
-    orig_every, orig_beat = agent._HEARTBEAT_EVERY_S, agent.otel.turn_heartbeat
-    agent._HEARTBEAT_EVERY_S = 0.1
+    orig_beat = agent.otel.turn_heartbeat
     agent.otel.turn_heartbeat = lambda node, idle, elapsed: beats.append((node, idle, elapsed))
     try:
         # Writes one line, then goes silent until the turn's deadline.
@@ -64,9 +60,9 @@ def test_silent_stream_still_emits_liveness_heartbeats():
             "select_item",
             3.0,
             lambda _line: None,
+            resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        agent._HEARTBEAT_EVERY_S = orig_every
         agent.otel.turn_heartbeat = orig_beat
 
     assert beats, "a silent turn emitted no heartbeat — a stall would be invisible"
@@ -81,8 +77,7 @@ def test_heartbeat_idle_resets_when_the_stream_speaks():
     """A chatty turn must keep idle_s near zero however long it runs — otherwise a
     healthy long turn would look identical to a hang."""
     beats: list[float] = []
-    orig_every, orig_beat = agent._HEARTBEAT_EVERY_S, agent.otel.turn_heartbeat
-    agent._HEARTBEAT_EVERY_S = 0.1
+    orig_beat = agent.otel.turn_heartbeat
     agent.otel.turn_heartbeat = lambda _n, idle, _e: beats.append(idle)
     try:
         agent.stream_subprocess(
@@ -93,9 +88,9 @@ def test_heartbeat_idle_resets_when_the_stream_speaks():
             "investigate",
             30.0,
             lambda _line: None,
+            resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        agent._HEARTBEAT_EVERY_S = orig_every
         agent.otel.turn_heartbeat = orig_beat
 
     assert beats, "a streaming turn emitted no heartbeat"

@@ -324,13 +324,9 @@ class Engine:
             WorkflowContext({**self.env.manifest, **jsonable(args)}),
             self.env.workflow_dir,
             self.env.session_id_path,
-            max_output_retries=config.resilience.max_output_retries,
-            max_rephrase_attempts=config.resilience.max_rephrase_attempts,
-            max_compact_attempts=config.resilience.max_compact_attempts,
             run_dir=writer.run_dir,
             backend=config.get_backend(),
-            use_default_outputs=config.resilience.use_default_outputs,
-            result_timeout=config.resilience.result_timeout_s,
+            resilience=config.resilience,
         )
         writer.write_step(node_id, rendered, raw, {}, next_node=None)
         return _coerce(raw, returns, node_id)
