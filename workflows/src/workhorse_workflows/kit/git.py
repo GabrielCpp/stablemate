@@ -105,15 +105,23 @@ def commits_ahead(path: str | Path, branch: str, base: str) -> int:
 
 
 def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
-    """Stage ``pathspecs`` (everything, via ``-A``, when none are given) and commit.
+    """Stage exactly ``pathspecs`` and commit them.
 
     Returns False when nothing was staged (or the commit failed), True when a
     commit was made. The staged-change check is scoped to the same pathspecs, so a
-    scoped commit lands only when those paths actually changed."""
-    scope = ["--", *pathspecs] if pathspecs else []
+    scoped commit lands only when those paths actually changed.
+
+    **A call with no pathspecs commits nothing and returns False.** It used to widen to
+    ``git add -A``, which turns a caller whose "what changed" list came out empty — the
+    normal shape ``commit_paths(root, msg, *changed)`` — into a caller that commits the
+    entire working tree, including work the run never did. Sweeping is a different
+    intent and has its own name: :func:`commit_all`."""
+    if not pathspecs:
+        return False
+    scope = ["--", *pathspecs]
     try:
         repo = open_repo(path)
-        repo.git.add(*(pathspecs or ("-A",)))
+        repo.git.add(*pathspecs)
         try:
             repo.git.diff("--cached", "--quiet", *scope)
             return False  # nothing staged
@@ -126,9 +134,26 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
 
 
 def commit_all(path: str | Path, message: str) -> bool:
-    """Stage every change (``git add -A``) and commit it. Returns False when there
-    was nothing to commit (or the commit failed)."""
-    return commit_paths(path, message)
+    """Stage EVERY change in the working tree (``git add -A``) and commit it. Returns
+    False when there was nothing to commit (or the commit failed).
+
+    This commits whatever else is in the tree at the time — another process's edits, a
+    half-finished refactor, a stray temp file — under this run's subject line. It is
+    only correct in a checkout the run owns exclusively (a container clone, a dedicated
+    worktree), and it is wrong in a checkout a human is also working in. A workflow that
+    writes a *known* set of paths should name them with :func:`commit_paths`."""
+    try:
+        repo = open_repo(path)
+        repo.git.add("-A")
+        try:
+            repo.git.diff("--cached", "--quiet")
+            return False  # nothing staged
+        except GitCommandError:
+            pass  # staged changes present
+        repo.git.commit("-m", message)
+        return True
+    except GitError:
+        return False
 
 
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:
