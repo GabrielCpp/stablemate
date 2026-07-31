@@ -9,7 +9,7 @@ How an operator points a run at a different agent harness and gives its nodes a 
 performance tier instead of a hardcoded model name: hand-edit the `[power.<tier>.<backend>]` table
 in the [workhorse config file](../concepts/config.md), pick the harness for the run with
 [`workhorse run`](../workhorse.md#run)'s `--cli`, and let each [agent
-node](../workflow-format.md#concept-agent-run-an-llm-turn)'s `power:` resolve through that table for whichever
+node](../workflow-format.md#the-agent-turn)'s `power:` resolve through that table for whichever
 [AgentBackend](../concepts/agent-backend.md) got selected via
 [`get_backend`](../concepts/get-backend.md). The same `workflow.yaml` — same `power: high` on a
 node — thus runs against `opus` under `--cli claude` or a `@gpt-5.5` profile under `--cli codex`
@@ -17,7 +17,7 @@ with no edit to the workflow itself.
 
 - start: a `workhorse` install with a config file (possibly empty — no `library_dir`/`power`
   table yet required) and a workflow whose `agent` nodes carry an optional
-  [`power:`](../workflow-format.md#field-power) tier (`low`/`medium`/`high`, default unset).
+  [`power:`](../workflow-format.md#power) tier (`low`/`medium`/`high`, default unset).
 - steps:
   1. **Populate the power table.** There is no `workhorse config set` for the nested `power` table
      — [`write_config_key`](../concepts/config.md#write_config_key) only round-trips flat top-level
@@ -60,7 +60,7 @@ with no edit to the workflow itself.
      each the registry key of one [AgentBackend](../concepts/agent-backend.md) implementation.
      `get_backend` caches one stateless instance per key, reused for every node of the run.
   4. **Run the graph.** [Workflow execution](../concepts/workflow.md#execution) walks the nodes;
-     each [`agent` node](../workflow-format.md#concept-agent-run-an-llm-turn) is driven by [`run_agent`](../concepts/run-agent.md).
+     each [`agent` node](../workflow-format.md#the-agent-turn) is driven by [`run_agent`](../concepts/run-agent.md).
   5. **Resolve this node's power to a concrete model/effort.** Inside `run_agent`'s setup (before
      the resilience ladder), `_resolve_power_settings(node.power, backend.name, os.environ)` maps
      the node's `power:` tier through [`resolve_power`](../concepts/config.md#resolve_power) against

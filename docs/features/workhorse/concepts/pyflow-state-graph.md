@@ -7,10 +7,10 @@ title: state_graph / preflight — the state machine read off its own source
 
 What [`workhorse dot <name>`](../workhorse.md#dot) draws and what
 [`--dry-run`](../workhorse.md#run) checks for a workflow written as a Python state machine
-(walked by [drive](pyflow-driver.md)). The YAML sibling has nothing to derive — a
-[node](workflow.md) declares its `next:` and the [DOT renderer](dot-renderer.md) reads it. Here
-the transition is an *expression a state returns*, so the graph is recovered by parsing each
-state's own source and reading every `Continue` / `Await` / `Done` constructor found in it.
+(walked by [drive](pyflow-driver.md)). Nothing declares the graph: a transition is an
+*expression a state returns*, so it is recovered by parsing each state's own source and reading
+every `Continue` / `Await` / `Done` constructor found in it. (The retired YAML front-end had
+nothing to derive — a node declared its `next:` and the renderer read the key back.)
 
 Two properties follow, and they are the reason this is static rather than an execution trace:
 
@@ -102,9 +102,9 @@ starts. What is left is the filesystem and the graph, which is what this is.
 `pyflow/dot.py::to_dot` emits one `subgraph cluster_*` per flow, so a distribution shipping
 several flows renders as one document; node ids are flow-prefixed (`f0__start`) so two flows
 sharing a state name never collide in DOT's single namespace, while the visible label stays the
-bare name. Styling follows the [YAML renderer](dot-renderer.md)'s vocabulary by eye rather than
-by shared code — the two walk different models, and one function branching on which engine it
-was serving is the thing worth not writing:
+bare name. The styling vocabulary is deliberately the one the retired renderer used, so a
+diagram of a ported workflow reads the same as the diagram of its predecessor — carried over by
+eye, not by shared code:
 
 | Shape | Meaning |
 |---|---|

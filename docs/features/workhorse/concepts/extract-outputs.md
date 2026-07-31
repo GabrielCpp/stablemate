@@ -5,7 +5,7 @@ title: _extract_outputs — parse agent JSON into declared outputs
 ---
 # _extract_outputs — parse agent JSON into declared outputs
 
-Turns one agent-CLI turn's raw text into the [node](../workflow-format.md#concept-agent-run-an-llm-turn)'s declared
+Turns one agent-CLI turn's raw text into the [node](../workflow-format.md#the-agent-turn)'s declared
 `outputs` dict. Called once per attempt by [`_invoke_and_parse`](invoke-and-parse.md#algorithm)
 (step 2), which treats a raised `OutputParseError` as a same-session-retry signal, and ultimately by
 [`run_agent`](run-agent.md)'s ladder, which treats an escaped `OutputParseError` as a reframe
@@ -25,7 +25,7 @@ strict-then-tolerant pipeline built to survive the ways a model's response break
   - `text: str` — the raw turn text returned by `_invoke_claude` (a completed CLI turn's result
     text; not empty — an empty result is retried as transient before this function ever runs).
   - `node: AgentNode` — supplies `node.id` (error messages) and `node.outputs: list[OutputSpec]`
-    (the [output keys](../workflow-format.md#outputspec) to extract).
+    (the [output keys](../workflow-format.md#returns) to extract).
 - **Output:** `dict[str, Any]` — one entry per `spec.key` in `node.outputs`, valued from the parsed
   JSON. `{}` when `node.outputs` is empty (a node that declares no outputs never needs to parse).
 - **Raises:** `OutputParseError` (a `RuntimeError` subclass, distinct so the runner's ladder retries
@@ -160,6 +160,6 @@ return candidates[-1]
 - [`run_agent`](run-agent.md) — the outer ladder; treats an `OutputParseError` that survives all of
   `_invoke_and_parse`'s same-session retries as [Layer 3](run-agent.md#the-ladder)'s reframe
   trigger.
-- [`OutputSpec`](../workflow-format.md#outputspec) — the per-output declaration (`key`/`default`)
+- [`OutputSpec`](../workflow-format.md#returns) — the per-output declaration (`key`/`default`)
   this function reads `node.outputs` from; `default` itself is only consumed later, by
   [`run_agent`](run-agent.md#the-ladder)'s Layer 4 (`_default_outputs`), not by this function.

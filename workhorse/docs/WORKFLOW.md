@@ -23,9 +23,12 @@ attention during a migration:
 
 - **Prompt templates.** Still Jinja2 `.md` files resolved relative to the workflow
   package, still rendered with a resilient undefined (a missing variable renders empty and
-  logs a warning rather than raising). `args` are still rendered first and then merged
-  into the prompt context, and `node_timeout_s` / `node_timeout_min` are still injected so
-  a prompt can size its own work (both read `"unbounded"` when the turn has no budget).
+  logs a warning rather than raising), and `node_timeout_s` / `node_timeout_min` are still
+  injected so a prompt can size its own work (both read `"unbounded"` when the turn has no
+  budget). One thing *did* change: `args:` was a dict of Jinja template **strings**, so it
+  stringified an `int` or a `Path` on the way past. `self.agent(args={…})` merges real
+  Python objects into the render context instead — a template that worked around the
+  stringification (`{{ count | int }}`) no longer needs to.
 - **Power tiers.** `power: high` was and is an abstract tier resolved through
   `~/.config/stablemate/config.toml` at `power.<tier>.<backend>` into a concrete
   model/effort. See [BACKENDS.md](BACKENDS.md).

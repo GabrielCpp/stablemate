@@ -105,7 +105,7 @@ killed right at the in-loop boundary.
   was watchdog-triggered (`stream_subprocess` uses this to set `fired["v"] = True`).
 - **Output:** the armed `threading.Timer` (daemon thread, so it can't block interpreter exit), or
   `None` when `timeout == float("inf")` (the node opted out of a deadline via
-  [`timeout: infinity`](../workflow-format.md#concept-agent-run-an-llm-turn)).
+  [`timeout: infinity`](../workflow-format.md#the-agent-turn)).
 - **Behavior:** starts a `threading.Timer(timeout + _WATCHDOG_GRACE_S, _fire)`. `_fire` is a no-op
   if the process already exited (`proc.poll() is not None`); otherwise it prints a `⏱ watchdog: …
   SIGKILLing process group` diagnostic, invokes `on_fire` (if given), then

@@ -128,7 +128,7 @@ The active agent backend's session id for **the current node**, written/overwrit
 attempt unless that node is a genuine resume-after-kill (`resume_session=True`), so every node
 other than a resumed one starts its agent CLI with a clean session — see
 [`run_agent`'s session model](concepts/run-agent.md#sessions) and
-[workhorse's session model](../../../workhorse/README.md#sessions-per-node-clean-context). Not
+[workhorse's session model](../../../workhorse/docs/DEVELOPMENT.md#sessions-per-turn-clean-context). Not
 managed by `ArtifactWriter`; lives at the run dir root, one file shared (and overwritten) across all
 agent nodes in the run.
 
