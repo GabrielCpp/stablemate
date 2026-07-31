@@ -61,6 +61,13 @@ EPICS_INDEX = "docs/epics/index.md"
 DREAM_INBOX = "docs/.dream-improvements.inbox.json"
 DREAM_LEDGER = "docs/workflow-improvements"
 
+#: The run's ambient path inputs: which checkout, which docs checkout, which workspace
+#: manifest. All three are *where* rather than *what*, they are wanted by roughly every
+#: second node, and no state chooses them — which is exactly the shape that used to be
+#: an environment read. `Workflow.injects` fills them in for any node or sub-flow that
+#: declares a parameter of the same name and was not passed one.
+AMBIENT = ("repo_dir", "docs_path", "workspace_file")
+
 
 def epics_repo_root(repo_dir: str | Path = "") -> Path:
     """`prune-epic.py`'s resolution: `agents.yml` or a `docs/epics/` **directory**.
@@ -143,6 +150,7 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
 
 
 __all__ = [
+    "AMBIENT",
     "DREAM_INBOX",
     "DREAM_LEDGER",
     "EPICS_INDEX",
