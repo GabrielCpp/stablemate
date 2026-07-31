@@ -47,9 +47,18 @@ def _live():
 def _logger(name: str) -> logging.Logger:
     """A logger whose INFO records actually reach the filters. A logger left at its
     inherited WARNING level drops the flagged line before any filter sees it, which
-    would make every assertion below vacuously true."""
+    would make every assertion below vacuously true.
+
+    ``propagate`` is off because the subject here is the *filter*, which runs in
+    ``Logger.handle`` before any handler — so nothing below is lost by not reaching one.
+    What propagation would add is pytest's capture handler, whose ``handleError``
+    re-raises where every real handler's swallows it (stdlib ``Handler.emit`` routes a
+    formatting failure through ``handleError``, which does not raise). A record these
+    tests deliberately make unformattable would then end the test from the harness
+    rather than from the code under test."""
     log = logging.getLogger(f"tests.activity.{name}")
     log.setLevel(logging.INFO)
+    log.propagate = False
     log.filters.clear()
     return log
 
