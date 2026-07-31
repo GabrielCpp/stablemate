@@ -10,7 +10,7 @@ human-readable summary for the live-progress log line. Called once per `tool_use
 block by [`_emit_event`](emit-event.md#algorithm), which appends the result after the
 tool name (`[{node_id}] ⚙ {name} {summary}`).
 
-- code: `workhorse/workhorse/runner/agent.py::_tool_summary`
+- code: `workhorse/workhorse/runner/backends/claude.py::_tool_summary`
 
 ## Contract
 

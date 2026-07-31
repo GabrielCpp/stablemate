@@ -12,7 +12,7 @@ callback — independent of that function's own `result_text`/`session_id`/`rate
 state accumulation; `_emit_event` never mutates turn state and its return value is
 always discarded.
 
-- code: `workhorse/workhorse/runner/agent.py::_emit_event`
+- code: `workhorse/workhorse/runner/backends/claude.py::_emit_event`
 
 ## Contract
 
