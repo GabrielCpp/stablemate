@@ -1,0 +1,272 @@
+# agents.yml — Agent toolkit configuration for a repository.
+#
+# Place this file at the root of the target repository and run:
+#   farrier --repo /path/to/repo
+#
+# All sections except `repo` and `agents` are optional.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# repo — Repository identity
+# ─────────────────────────────────────────────────────────────────────────────
+repo:
+  # name: used as the install prefix for every skill and prompt generated into
+  # this repository. A skill file named `db.md` in the `service/` namespace
+  # installs as `service-db`. A prompt named `plan-story.md` in `planning/`
+  # installs as `service-plan-story`.
+  # Defaults to the repository directory name if omitted.
+  name: myrepo
+
+  # prefix: override the install prefix independently of `name`.
+  # Omit unless the repo name and desired prefix differ.
+  # prefix: myrepo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agents — Which AI agent adapters to generate outputs for
+# ─────────────────────────────────────────────────────────────────────────────
+agents:
+  # claude: generates .claude/skills/<name>/SKILL.md and .claude/commands/<name>.md
+  claude: true
+
+  # codex: generates .codex/skills/<name>/SKILL.md and .codex/prompts/<name>.prompt.md
+  codex: false
+
+  # copilot: generates .github/instructions/, .github/skills/, .github/prompts/
+  copilot: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# packs — Installable bundles to apply to this repository
+#
+# Each entry is the name of a file under packs/*.yml in the agents library.
+# Packs are cumulative: all selected packs are merged before installation.
+# ─────────────────────────────────────────────────────────────────────────────
+packs:
+  # Repo-specific pack — skills and prompts for this repository
+  - myrepo
+
+  # acme-dev — plan → review → implement → self-review → QA workflow for service
+  # - acme-dev
+
+  # shared-lifecycle — planning, review, and testing prompts (plan-story,
+  # self-review, implement-plan, expend-test-coverage, etc.)
+  - shared-lifecycle
+
+  # qa — QA planning prompts (plan-qa, plan-qa-local) and generic QA skill
+  - qa
+
+  # shared-docs — scaffolds the standard docs/ directory layout
+  # - shared-docs
+
+  # story-coder — reusable autonomous story workflow prompts and runner
+  # - story-coder
+
+  # Technology stack packs (add as needed):
+  # - go          Go backend skills and fix prompts
+  # - flutter     Flutter app skills and fix prompts
+  # - pulumi      Pulumi infrastructure skill
+  # - typescript-backend
+  # - react-native
+  # - react-router
+
+# ─────────────────────────────────────────────────────────────────────────────
+# scaffolds — Scaffold ids (from the library's scaffolds/*.yml definitions)
+# available to this repository via `farrier scaffold <id>`.
+#
+# Scaffolds are applied on demand, not at install time:
+#   farrier scaffold                              # list available ids + params
+#   farrier scaffold go-service --param dir=api   # seed api/.gitignore
+#
+# Service folder placement is a --param (dir=app, dir=mobile, ...) since folder
+# names are project-specific and must not be baked into the shared library.
+# Scaffolded files are seeds: never overwritten once they exist, invisible to
+# --check. Packs can also contribute ids (e.g. the go pack ships go-service).
+# ─────────────────────────────────────────────────────────────────────────────
+# scaffolds:
+#   - go-service            # curated Go service .gitignore (default dir: api)
+#   - flutter-app           # curated Flutter .gitignore    (default dir: app)
+#   - pulumi-infra          # curated Pulumi .gitignore     (default dir: pulumi)
+#   - react-router-web      # curated React Router .gitignore (default dir: web)
+#   - shared-docs           # standard docs/ knowledge hierarchy (default dir: docs)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# exclude — Suppress specific skills or prompts that a pack pulls in but this
+# repository does not need.
+#
+# Patterns match paths relative to the library root (same syntax as packs).
+# ─────────────────────────────────────────────────────────────────────────────
+exclude:
+  # prompts: suppress specific prompts by glob pattern
+  prompts:
+    - planning/write-*      # don't install write-story / write-epic prompts
+    - docs/*                # don't install documentation-generation prompts
+    - misc/*                # don't install miscellaneous prompts
+
+# ─────────────────────────────────────────────────────────────────────────────
+# localInstructions — Write a skill as a local CLAUDE.md (or AGENTS.md / CODEX.md)
+# inside a subdirectory of the repository.
+#
+# Claude auto-loads a CLAUDE.md found in any ancestor directory of the file
+# being edited, so this injects the right skill rules automatically based on
+# where the agent is working — without the agent needing to load the skill
+# explicitly.
+#
+# - skill:  the installed skill name (with prefix, as it appears in .claude/skills/)
+# - skills: a list of installed skill names — aggregated into one file in order,
+#           separated by a `---` markdown rule. Use for a directory governed by
+#           several *small* complementary rule-sets. Provide either `skill`
+#           (one) or `skills` (many), not both.
+# - paths:  list of repo-relative directories to write the local instruction into
+#           ("." is the repo root → an always-loaded root CLAUDE.md)
+# - includeReadme: how to fold in a sibling README.md (default: inline)
+#           inline — copy the rendered README body into the generated file
+#           import — reference it via Claude's `@README.md` directive (no
+#                    duplicated content; README stays the single source).
+#                    `@` is Claude-only; other targets fall back to inline.
+#           none   — omit the README entirely
+#
+# Keep always-loaded files (especially the repo root) lean: embed a skill only
+# when its full body must always be in context. For a large, situational skill,
+# *link* to it from the root skill body (`instruction_file("...")`) so the agent
+# loads it on demand instead of paying its token cost every session.
+# ─────────────────────────────────────────────────────────────────────────────
+localInstructions:
+  # Always-loaded repo-root CLAUDE.md generated from the root skill. The root
+  # skill should *link* to repo-global skills (e.g. CLI command-timeout rules)
+  # rather than embedding their full bodies here, and `import` the README so its
+  # content isn't duplicated into the always-loaded root.
+  - skill: myrepo
+    paths:
+      - "."
+    includeReadme: import
+
+  # Inject DynamoDB patterns when working on any pkg/db/** file
+  - skill: myrepo-db
+    paths:
+      - pkg/db
+
+  # Inject gRPC endpoint patterns when working on any cmd/** file
+  - skill: myrepo-grpc
+    paths:
+      - cmd
+
+  # Inject test patterns when working on any pkg/** file
+  - skill: myrepo-test
+    paths:
+      - pkg
+
+  # Inject event handling patterns in the eventing package
+  - skill: myrepo-events
+    paths:
+      - pkg/eventing
+
+  # Inject CLI patterns when working on tools
+  - skill: myrepo-cli
+    paths:
+      - tools
+
+  # Inject Terraform patterns when working on infra or Helm charts
+  - skill: myrepo-terraform
+    paths:
+      - tf
+      - chart
+
+# ─────────────────────────────────────────────────────────────────────────────
+# template — Jinja2 values injected into all rendered skill and prompt files.
+#
+# Use {{ template.some_key }} in library source files. Provide a | default("…")
+# fallback in shared prompts so they remain installable without this section.
+#
+# Only define keys that your installed packs actually reference.
+# ─────────────────────────────────────────────────────────────────────────────
+template:
+  # ── Go backend ──────────────────────────────────────────────────────────────
+  # go_cli_name: name of the repo CLI binary (used in go-cli skill examples)
+  go_cli_name: appctl
+
+  # go_module: Go module path (used in import examples)
+  go_module: github.com/my-org/myrepo
+
+  # ── Flutter / mobile app ────────────────────────────────────────────────────
+  # app_path: root directory of the Flutter app within the monorepo
+  # app_path: app
+
+  # state_management_name: state management library in use
+  # state_management_name: Riverpod
+
+  # ── Shared story / planning prompts ─────────────────────────────────────────
+  # backend_layer_name: human label used in cross-layer plan sections
+  # backend_layer_name: Go API
+
+  # mobile_layer_name: human label for the mobile layer
+  # mobile_layer_name: Flutter app
+
+  # infra_layer_name: human label for the infrastructure layer
+  # infra_layer_name: Pulumi infrastructure
+
+  # openapi_path: path to the OpenAPI spec (used in Go / Flutter planning prompts)
+  # openapi_path: api/pkg/api/openapi.yaml
+
+  # ── Product planning prompts ─────────────────────────────────────────────────
+  # product_category: one-line description of what the product is
+  # product_category: B2B SaaS platform
+
+  # product_promise: one-sentence product description used in roadmap prompts
+  # product_promise: MyRepo helps teams do X by doing Y.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# workflow — Configuration for workflow runners (story-coder and similar).
+#
+# Only needed when a workflow pack is installed and the runner needs
+# repo-specific settings (Docker image, service URLs, success-gate commands).
+# ─────────────────────────────────────────────────────────────────────────────
+# workflow:
+#   storyCoder:
+#     # Docker image built from stablemate workhorse/Dockerfile
+#     dockerImage: myrepo-coder:local
+#
+#     # Path inside the container where the repo is checked out
+#     containerRepo: /workspace/myrepo
+#
+#     # Docker label used to identify nested containers (avoid accidental cleanup)
+#     nestedDockerLabel: agents.story-coder.nested=true
+#
+#     # Installed prompt names for each workflow stage (prefix + base name)
+#     prompts:
+#       plan: myrepo-plan-story
+#       reviewPlan: myrepo-review-plan
+#       implement: myrepo-implement-plan
+#       reviewImplementation: myrepo-review-implementation
+#       applyReview: myrepo-apply-review
+#       qa: myrepo-qa-story
+#       applyQaFixes: myrepo-apply-qa-fixes
+#       unblock: myrepo-unblock-story
+#
+#     # Autonomous unblock budget — how many retries before giving up
+#     unblock:
+#       enabled: true
+#       attemptsPerStage: 3           # retries per workflow stage
+#       totalAttemptsPerStory: 12     # hard cap across all stages
+#       stageTimeoutSeconds: 2700     # 45 min per stage
+#       maxConsecutiveNoDiffAttempts: 2
+#
+#     # Services to start before running QA (docker compose profiles / service names).
+#     # NOTE: the current local-worker coder workflow does NOT read qaPreflight — it is
+#     # legacy/dead config from the older containerized story-coder harness. QA stack
+#     # capability is now decided PER STORY: the author writes a `## Verification setup`
+#     # section (the stack/profile/seed + fixtures that render the surface with realistic
+#     # data), the planner copies it into plan-context.json `qa_stack`, and the coder QA
+#     # runs against that capable stack instead of a thin default. Keep this block only if
+#     # you still run the old harness; otherwise it has no effect.
+#     qaPreflight:
+#       composeProfile: dev
+#       backendServices: [emulators, api]
+#       apiService: api
+#       backendStartCommand: make dev-start
+#       cliDir: api
+#       cliCommand: ./cmd/appctl
+#
+#     # Commands that must pass for a stage to be considered complete
+#     successGate:
+#       appPath: app
+#       appCommand: make check
+#       apiPath: api
+#       apiCommand: make test
