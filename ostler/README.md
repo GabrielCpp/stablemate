@@ -125,88 +125,65 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 - `## Stories` → `### <slug>` per story, carrying the **edges**: `covers:` (seed ids) and
   `depends on:` (sibling slugs). The detailed spec lives in the story's own `story.md`.
 
-See [`SPEC.md`](SPEC.md) for the authoritative, formal definition of every field, status enum, and
-conformance rule.
+See [SPEC.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md) for the
+authoritative, formal definition of every field, status enum, and conformance rule.
 
 ## Command interface
 
 All read commands accept `--json`. Mutating commands allocate ids as needed and write canonical
-markdown in place.
+markdown in place. `ostler --version` prints the version; `-C/--chdir DIR` runs any command as if
+from `DIR`.
 
-**Global**
+| Verbs | What they do |
+|---|---|
+| `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
+| `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
+| `create` `delete` `seed` `set-status` `backlog` `todo` | mutate it — scaffold an epic/story/feature/spec, record a seed, move the queue |
+| `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
+| `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
+| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` | the `docs/features/` node/edge book — see below |
+| `qa` `artifact` | the verification control plane — see below |
 
-```bash
-ostler --version
-ostler -C, --chdir DIR <command> …            # operate as if run from DIR
-```
+`edit` is **dry-run unless `--write`**, so a rename across a whole graph is reviewable before it
+happens; `create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
 
-**Inspect**
+Every verb, with its real flags and what each one operates on, is in
+[docs/CLI.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/CLI.md).
 
-```bash
-ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
-ostler trace  <id|slug|surface|path>                 # walk the graph from any node
-```
+### The feature graph
 
-**Retrieve**
+Alongside the epic/story planning graph, ostler tends `docs/features/` — a typed node/edge book
+describing a product's actual surfaces (screens, components, endpoints, flows). `graph` queries it,
+`reach` derives the documented click-path between two screens, `locators` emits the Playwright
+locator for every documented control, `coverage` joins the book's `code:` citations against a source
+inventory, and `vet` checks a rendered screenshot against what the book claims. The visual-fidelity
+contract is in
+[docs/VET.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/VET.md).
 
-```bash
-ostler list  --type epic|story|knowledge|feature|spec|seed [--epic E] [--status S] [--json]
-ostler search <query> [--type T] [--owner O] [--tag G] [--json]
-ostler query  stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
-ostler next-epic [--json]                            # next queued epic with unfinished work
-ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
-```
+### Verification control plane
 
-**Mutate** (allocates ids, writes markdown)
-
-```bash
-ostler create epic    <name>  --title T [--prefix P] [--json]
-ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
-ostler create feature <slug>  --title T [--area A] [--route R] [--prefix P] [--json]
-ostler delete epic|story|feature <name>
-
-ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
-                               [--legacy-surface …] [--backing …] [--prerequisites …] [--source-bullet …]
-ostler seed remove <epic> <id>
-ostler set-status  <story> <status>
-
-ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
-ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
-```
-
-`create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
-
-**Repair / approve**
+`ostler qa` owns the bookkeeping of a QA run. `qa context` turns a base/head diff into a
+deterministic obligation scope for one story; `qa validate` and `qa run` then execute a version-2
+plan that declares command, Playwright and Maestro targets and maps every scenario to
+acceptance-criterion and OKF obligation ids. Validation rejects unknown coverage, unsupported actions
+and locators, disposable pre-run inputs, literal secrets, and coverage without a machine assertion.
+Each run starts with an empty `qa/`, writes an append-only ledger and content-hashed manifest, and
+returns `passed`, `failed`, `blocked`, or `invalid`. `ostler artifact` schema-checks what a workflow
+produces (a plan, a review resolution, a QA outcome) against a registered contract.
 
 ```bash
-ostler edit relink    <old-path> <new-path> [--write]
-ostler edit rename    <old-slug> <new-slug> [--write]
-ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as immutable ground truth
-ostler unfreeze <ident>
-```
-
-**Verification control plane**
-
-```bash
-# Build and validate deterministic base/head impact and obligation scope.
 ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
   --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
-ostler qa context-validate --spec docs/specs/<story>
-
-# Review, validate, and execute one universal command/browser/mobile plan.
 ostler qa validate docs/specs/<story>/qa-plan.yml --json
-ostler qa run docs/specs/<story>/qa-plan.yml --json
+ostler qa run      docs/specs/<story>/qa-plan.yml --json
 ```
 
-Version-2 plans declare command, Playwright, and Maestro targets and map every
-scenario to acceptance-criterion and OKF obligation IDs. Validation rejects
-unknown coverage, unsupported actions and locators, disposable pre-run inputs,
-literal secrets, and coverage without a machine assertion. Each run starts with
-an empty `qa/`, writes an append-only ledger and content-hashed manifest, and
-returns `passed`, `failed`, `blocked`, or `invalid`. Browser and mobile targets
-record continuously by default. See
-[`docs/QA-RUN.md`](docs/QA-RUN.md) and
-[`../docs/ostler-qa-verification.md`](../docs/ostler-qa-verification.md).
+The run contract is in
+[docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md), the
+artifact contracts in
+[docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md),
+and the design rationale in
+[docs/plans/ostler-qa-verification.md](https://github.com/GabrielCpp/stablemate/blob/main/docs/plans/ostler-qa-verification.md).
 
 ## Python API
 
@@ -297,8 +274,9 @@ ostler set    <kind> <name> field=value ...
 ostler remove <kind> <name>
 ```
 
-See [`SPEC.md` §10](SPEC.md#10-templates-and-template-declared-kinds) for the full YAML schema, a
-worked 3-level nesting example, and the bundle-vs-leaf shape rules.
+See
+[SPEC.md §10](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#10-templates-and-template-declared-kinds)
+for the full YAML schema, a worked 3-level nesting example, and the bundle-vs-leaf shape rules.
 
 ## Versioning
 
@@ -308,4 +286,4 @@ fields; major bumps may change required frontmatter or the `epic.md` grammar. A 
 
 ## License
 
-See [`LICENSE`](LICENSE).
+MIT. See [LICENSE](https://github.com/GabrielCpp/stablemate/blob/main/ostler/LICENSE).
