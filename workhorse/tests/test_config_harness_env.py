@@ -204,12 +204,12 @@ def test_harness_env_wins_over_the_inherited_shell():
     run overrides whatever the launching shell happened to export."""
     captured = {}
 
-    def fake_spawn(cmd, node_id, **kwargs):
+    def fake_spawn(self, cmd, node_id, **kwargs):
         captured.update(kwargs.get("env") or {})
         raise RuntimeError("stop before launching anything")
 
     with patch.dict(os.environ, {"HARNESS_KNOB": "from-shell"}, clear=False):
-        with patch.object(process, "_spawn_streaming", fake_spawn):
+        with patch.object(process.ProcessSupervisor, "spawn", fake_spawn):
             try:
                 process.stream_subprocess(
                     ["true"], "n", 1.0, lambda line: None,
