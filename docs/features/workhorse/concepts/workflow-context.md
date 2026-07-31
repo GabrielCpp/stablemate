@@ -8,7 +8,7 @@ title: WorkflowContext — the prompt render bag
 The key→value bag one agent turn's Jinja prompt renders against. The engine builds a fresh one
 per [`self.agent(...)`](../workflow-format.md#the-agent-turn) call — the repo's
 [context manifest](../context-manifest.md) underneath, that call's arguments on top — and
-[`run_agent`](run-agent.md) unwraps it with `as_dict()` to get the render base. It is deliberately
+[`AgentRunner.run`](run-agent.md) unwraps it with `as_dict()` to get the render base. It is deliberately
 a thin wrapper (a plain `dict` plus dotted-path traversal) that knows nothing about states, nodes,
 outputs or checkpoints.
 
@@ -89,8 +89,8 @@ caller left in this repo.
 ## `as_dict() -> dict`
 
 `dict(self._data)` — a shallow copy of the whole bag, and the **only** method with a live caller.
-`runner/agent.py::run_agent` opens with `ctx = context.as_dict()` and renders the node's prompt
-against that dict. The copy is what stops the runner mutating the bag the engine handed it.
+[`AgentRunner.run`](run-agent.md) opens with `ctx = context.as_dict()` (`runner/ladder.py`) and
+renders the node's prompt against that dict. The copy is what stops the runner mutating the bag the engine handed it.
 
 ## `__repr__() -> str`
 
@@ -100,6 +100,6 @@ against that dict. The copy is what stops the runner mutating the bag the engine
 
 - `pyflow/engine.py` — constructs one per `self.agent` call from `{manifest, args}`. The sole
   producer.
-- [`run_agent`](run-agent.md) — `as_dict()` as the Jinja render base. The sole consumer.
-- [`render_prompt`](render-prompt.md) — renders against that dict, with `ResilientUndefined` so a
+- [`AgentRunner.run`](run-agent.md) — `as_dict()` as the Jinja render base. The sole consumer.
+- [`render`](render-prompt.md) — renders against that dict, with `ResilientUndefined` so a
   missing key renders empty and warns instead of aborting the turn.

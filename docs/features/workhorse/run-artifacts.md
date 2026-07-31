@@ -154,10 +154,10 @@ A Python workflow has no such bag: state lives in the state's parameters and in 
 - type: `string` (plain text, not JSON) — required: no — default: absent
 
 The active agent backend's session id for **the current node**, written/overwritten by
-[`run_agent`](concepts/run-agent.md) after each successful turn. Deleted before a node's first
+[`AgentRunner.run`](concepts/run-agent.md) after each successful turn. Deleted before a node's first
 attempt unless that node is a genuine resume-after-kill (`resume_session=True`), so every node
 other than a resumed one starts its agent CLI with a clean session — see
-[`run_agent`'s session model](concepts/run-agent.md#sessions) and
+[`AgentRunner.run`'s session model](concepts/run-agent.md#sessions) and
 [workhorse's session model](../../../workhorse/docs/DEVELOPMENT.md#sessions-per-turn-clean-context). Not
 managed by `ArtifactWriter`; lives at the run dir root, one file shared (and overwritten) across all
 agent turns in the run.
@@ -165,7 +165,7 @@ agent turns in the run.
 ### sessions.jsonl
 - type: `list<object>` (JSON Lines) — required: no — default: absent
 
-The durable node → backend-session map, appended by [`run_agent`](concepts/run-agent.md) after each
+The durable node → backend-session map, appended by [`AgentRunner.run`](concepts/run-agent.md) after each
 successful turn. `.session_id` only ever holds the *current* node's session, so this manifest is
 what maps a **past** node back to the session transcript carrying its reasoning and tool trace —
 the detail `prompt.md`/`output.json` do not keep. The same mapping is advertised on the agent-turn

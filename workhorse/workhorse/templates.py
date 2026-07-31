@@ -266,17 +266,18 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
 def render_string(
     template_str: str, context: dict[str, Any], *, quiet: bool = False
 ) -> str:
-    """Render an inline Jinja2 template string (used for node args/cwd/commands).
+    """Render an inline Jinja2 template string (an agent turn's cwd/args/add_dirs).
 
-    Exposes the same farrier helpers as :func:`render` so node args in a
-    library-resident ``workflow.yaml`` can use ``instruction_ref``/``template.*``
-    the same way prompts do.
+    Exposes the same farrier helpers as :func:`render` so those values can use
+    ``instruction_ref``/``template.*`` the same way a prompt file does.
 
     ``quiet`` suppresses the missing-variable warning (the render still yields
-    empty). It is for the callers where an unresolved reference is an *expected*
-    state rather than a symptom — telemetry labels, which are deliberately dropped
-    until the value they track exists, and which re-render before every node, so
-    warning would mean thousands of lines about a designed behavior. Everywhere a
+    empty). It is for a caller where an unresolved reference is an *expected*
+    state rather than a symptom, re-rendered often enough that warning would mean
+    thousands of lines about a designed behavior. Nothing passes it today: the one
+    such caller was the retired YAML front-end's ``labels:`` block, whose Jinja
+    strings were re-rendered before every transition; a Python workflow overrides
+    ``labels()`` and returns a dict, with no template involved. Everywhere a
     missing variable really does indicate a broken prompt or arg, leave it off.
     """
     env = Environment(undefined=ChainableUndefined if quiet else ResilientUndefined)

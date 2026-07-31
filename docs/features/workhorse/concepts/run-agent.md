@@ -88,9 +88,9 @@ a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md)
 - **Raises:** `BackendInvocationError` when a non-recoverable backend failure occurs, or when every
   layer of the ladder is exhausted and `resilience.use_default_outputs` is off. Never raises for a
   recoverable failure while that flag is on — see [Layer 4](#the-ladder).
-  When this propagates out of `main.py`'s run loop, its top-level handler calls
-  [`terminate_active`](stream-subprocess.md#terminate_active) to clean up the in-flight subprocess
-  before the run exits.
+  It is a `RuntimeError`, **not** a `PyflowError`, so it propagates all the way out of
+  `pyflow/run.py`'s driver call without passing either of that module's two cleanup handlers — see
+  [Related pieces](#related-pieces).
 
 The counters the ladder is tuned by are **not** parameters — they are `resilience` fields:
 `max_output_retries`, `max_invoke_retries`, `max_rephrase_attempts`, `max_compact_attempts`,
@@ -230,9 +230,13 @@ into, each in its own module under `workhorse/workhorse/runner/`:
 - [`stream_subprocess`](stream-subprocess.md) and its watchdog (`runner/process.py`) — the
   supervised-spawn path (own process group, in-loop + out-of-band timeout, group-kill reap) every
   backend's CLI turn streams through. Its sibling
-  [`terminate_active`](stream-subprocess.md#terminate_active) is what `main.py`'s top-level
-  `KeyboardInterrupt`/`OutOfGasError`/`BackendInvocationError` handlers call to terminate the
-  in-flight process when a run ends abnormally (see [Raises](#contract) above).
+  [`terminate_active`](stream-subprocess.md#terminate_active) is what `pyflow/run.py` calls to
+  terminate the in-flight process when a run ends abnormally. It wraps its `drive(wf, env, resume)`
+  call in exactly two handlers: `KeyboardInterrupt` (terminate, record the interrupt, print the
+  `--resume-run` line, `SystemExit(130)`) and `PyflowError` (terminate, then mark the run `fail` and
+  leave the run dir resumable). A `BackendInvocationError` is neither — it is a plain `RuntimeError`
+  — so an exhausted ladder unwinds past both and the subprocess is reaped by process-group exit
+  rather than by this call (see [Raises](#contract) above).
 - [`_compact_session`](compact-session.md) — Claude's `/compact`-and-continue implementation of
   [`AgentBackend.compact`](agent-backend.md#contract).
 - [`extract_outputs`](extract-outputs.md) (`runner/extract.py`; strict then `json-repair`-tolerant

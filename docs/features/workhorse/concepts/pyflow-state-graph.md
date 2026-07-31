@@ -91,7 +91,7 @@ never take:
 - a state transitions to `self.<name>`, which is not a state
 - a state is unreachable from `start`
 - a state renders a prompt path that does not exist (resolved the way
-  [`render_prompt`](render-prompt.md) resolves it: relative to the workflow directory, absolute
+  [`render`](render-prompt.md) resolves it: relative to the workflow directory, absolute
   taken as-is)
 
 Argument *types* are not checked here — `ParamSpec` and the editor cover those long before a run

@@ -2604,6 +2604,82 @@ than working around it. The same fix is available to `artifact-writer.md`, `stre
 markdown links across 314 tracked files. `ruff check .`, `make test` and `make check-public`
 green.
 
+### Iteration 18 — the two ends of an agent turn: render it, then parse the answer
+
+Work-order item 3, continuing. The turn's first and last steps each had a book page grounded in
+the deleted monolith: `extract-outputs.md` still pointed every `code:` bullet at
+`runner/agent.py`, and `render-prompt.md` described a render context and a caller list the port
+rewrote. Both were repointed and rewritten — the subjects survive, so under the STOP rule neither
+was deleted.
+
+`extract-outputs.md` needed more than a path swap. The module split (`runner/extract.py`) also
+**de-underscored the two entry points**: `_extract_outputs`/`_parse_json_from_text` are now
+`extract_outputs`/`parse_json_from_text`, public because another module imports them; the four
+helpers below them (`_unwrap`, `_parse_json_strict`, `_parse_json_tolerant`, `_select_object`)
+stayed private. Repointing the path alone would have left the page naming symbols that do not
+exist under names that do.
+
+What was found untrue:
+
+1. **An entire shipped behavior was undocumented.** `_unwrap` reads an agent's answer *through an
+   envelope*: a breadth-first descent that returns the top object if it carries every wanted key,
+   else the shallowest nested dict that does, else `None`. Its own docstring records the run that
+   motivated it — an agent answered `{"code_review_result": {"status": …}}` and the strict parse
+   threw away 134 seconds of finished work. Three invariants now documented with their tests: BFS
+   (so a `findings` list element cannot outrank the envelope payload), `None` when nothing carries
+   the full set (an incomplete answer stays on the retry ladder rather than being accepted), and
+   nothing-wanted → the top object.
+2. **`OutputSpec.default` is dead data.** The field still exists on the dataclass and Layer 4 of
+   the ladder still reads it, but `pyflow/engine.py::_outputs_for` builds every spec as
+   `OutputSpec(key=name)` — so the value is always `None`. Author-declared per-key fallbacks were a
+   YAML front-end feature with no Python equivalent. Documented as such rather than removed.
+3. **`render_string`'s consumer list was three-quarters retired.** The script/call/flow render
+   sites are gone; `AgentRunner.run` is the only caller left, once per `node.cwd`, per `node.args`
+   entry, and per `add_dirs` value. A Python state that needs a computed value calls a function and
+   passes the result — there is no string left to render.
+4. **Two reserved-key reads were spelled wrong.** `_flavor_override` resolves its repo root as
+   `context.get("_node_cwd") or ManifestContext.from_context(context).repo_root`, and
+   `render_string` builds its `workflow_dir` from `ManifestContext.from_context(context).skill_dir`
+   — not from a literal `context.get("_repo_root")`/`context.get("_skill_dir")`. `ManifestContext`
+   is the only place those key names are spelled; the page now says so.
+
+**Finding 28 — `render_string`'s `quiet` kwarg has no caller anywhere in the tree.** Its docstring
+justifies it by telemetry labels re-rendered before every transition, but a Python workflow
+declares its dimensions by overriding `labels()` and returning a dict — `pyflow/driver.py::_labels`
+calls that method, and no Jinja is involved. It is a YAML-era vestige. Reported, not removed:
+deleting a parameter is a code change.
+
+**Finding 29 — `run-agent.md` described a crash-cleanup path that does not exist.** It claimed
+`main.py` has a top-level handler calling `terminate_active` on
+`KeyboardInterrupt`/`OutOfGasError`/`BackendInvocationError`. `main.py` is gone; the handlers live
+in `pyflow/run.py` around its `drive()` call and catch exactly two things: `KeyboardInterrupt` and
+`PyflowError`. `OutOfGasError` exists nowhere in the tree. `BackendInvocationError` is a
+`RuntimeError`, not a `PyflowError`, so an exhausted ladder really does unwind past both handlers
+without that cleanup — the page now states that rather than promising it.
+
+**Finding 30 — two stale symbol *labels* were repeated across the book.** `render_prompt` (the
+function is `templates.render`) and `run_agent` (the entry point is `AgentRunner.run`; no
+`run_agent` exists in `workhorse/workhorse/` at all) were used as link text on 20 lines across 9
+pages. ostler cannot catch these — a link label is prose, not a `code:` bullet — so they survived
+every prior sweep. Corrected everywhere in `docs/features/workhorse/`; one was worse than a label
+(`workflow-context.md` attributed `as_dict()`'s only live call to `runner/agent.py::run_agent`,
+now `AgentRunner.run` at `runner/ladder.py:155`).
+
+**One source file was edited, and it is a docstring.** `templates.py::render_string` described its
+callers as "node args in a library-resident ``workflow.yaml``" — a tracked file describing the YAML
+front-end as current, which is the first clause of this loop's end condition. The docstring now
+names the agent turn's cwd/args/add_dirs and records finding 28 in place. No behavior changes; no
+test observes a docstring.
+
+Also fixed at the source: both pages' headings are now bare symbol names, and two finding-25
+self-links were dropped, clearing the 2 `missing-anchor` errors on `render-prompt.md` outright.
+
+`dangling-code-ref` **2 → 1** (only groom's `.toast` survives; the workhorse book has none);
+`missing-anchor` **13 → 12**. `ostler doctor` totals **15 → 13**, and every survivor is a
+finding-25 anchor in the `artifact-writer.md` (4) / `stream-jsonl.md` (8) clusters, which the same
+bare-heading fix clears next. Zero broken markdown links across 314 tracked files. `ruff check .`,
+`make test` and `make check-public` green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
