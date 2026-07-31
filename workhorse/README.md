@@ -1081,8 +1081,8 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   and deployment docs here rather than at the root.
 - **`CLAUDE.md`** (root) is the agent entry point and stays at the root so Claude
   Code auto-loads it; it `@`-imports `README.md` and `docs/GUARDRAILS.md`.
-- **Per-workflow docs** → inside that workflow's own directory (under
-  `../workflows/<name>/`), not here. The controller is workflow-agnostic; keep
+- **Per-workflow docs** → inside that workflow's own package directory (under
+  `../workflows/src/workhorse_workflows/<name>/`), not here. The controller is workflow-agnostic; keep
   workflow-specific knowledge with the workflow.
 
 Keep these docs current when you change behavior — they are the contract for
