@@ -76,3 +76,9 @@ def test_disabled_fresh_import_still_imports_a_module_not_yet_loaded():
         finally:
             sys.path.remove(d)
             sys.modules.pop("wh_probe_c", None)
+
+
+if __name__ == "__main__":
+    import subprocess
+
+    raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))

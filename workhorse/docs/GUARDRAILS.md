@@ -89,7 +89,7 @@ The agent includes sophisticated retry logic with:
 
 ### 2. Timeout Handling
 
-- **Result timeout**: Operations that don't produce a result within `AGENT_RESULT_TIMEOUT_S` (default: 600s) are terminated gracefully
+- **Result timeout**: Operations that don't produce a result within `AGENT_RESULT_TIMEOUT_S` (default: 3600s) are terminated gracefully
 - **Process cleanup**: Hung Claude processes are properly terminated/killed
 - **Always transient**: Timeouts are always treated as recoverable errors
 
@@ -138,7 +138,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
 | `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before defaulting the node |
 | `AGENT_USE_DEFAULT_OUTPUTS` | true | Default a failed node's outputs and advance to `next` instead of crashing |
-| `AGENT_RESULT_TIMEOUT_S` | 600 | Maximum seconds to wait for a result event |
+| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 300 | Maximum backoff delay in seconds |
 | `AGENT_CAP_DEFAULT_WAIT_S` | 3600 | Default wait when cap reset time can't be parsed |
@@ -149,6 +149,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |
 | `AGENT_EXEC_RETRY_CAP_S` | 8 | Upper bound on a single exec-retry delay |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
+| `AGENT_WATCHDOG_GRACE_S` | 120 | Grace beyond `AGENT_RESULT_TIMEOUT_S` after which a separate watchdog thread SIGKILLs the turn's process group. The in-loop timeout can only fire *between* stream reads, so a socket that wedges mid-line would otherwise block forever; this is the always-on backstop. |
 
 ### Driver-level guards (workhorse/pyflow)
 

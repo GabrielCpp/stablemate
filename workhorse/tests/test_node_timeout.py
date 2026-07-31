@@ -101,3 +101,10 @@ def test_unbounded_timeout_threads_through_without_overflow():
     assert invoke_timeout == float("inf")
     assert ctx["node_timeout_s"] == "unbounded"
     assert ctx["node_timeout_min"] == "unbounded"
+
+
+if __name__ == "__main__":
+    import subprocess
+    import sys
+
+    raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))

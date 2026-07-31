@@ -223,3 +223,10 @@ def test_exact_match_still_wins_over_a_suffix_match():
     out = render_string("{{ instruction_ref('story-docs') }}",
                         wm.build_manifest_context(exact).as_context())
     assert out == ".claude/skills/demo-story-docs/SKILL.md"
+
+
+if __name__ == "__main__":
+    import subprocess
+    import sys
+
+    raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))
