@@ -7,8 +7,11 @@ layout `load_config` + the gate-loop prompts expect, so the manifest, headers,
 gate-doc format, and (optionally) the `.agents/program` selection pointer never
 depend on an agent remembering them.
 
-Usage (typically via `make research-new`):
-  new_program.py --repo <repo> --dir specs/my-program --code-root src/mypkg \\
+This is not a node and never was — it is the operator-facing producer of the input
+the workflow consumes, run once by a human before the first run:
+
+  python -m workhorse_workflows.research.scaffold.new_program \\
+      --repo <repo> --dir specs/my-program --code-root src/mypkg \\
       [--name "Foo Program"] [--gate G0] [--progress <repo-rel path>] \\
       [--result-branch <branch>] [--set-default] [--force]
 
@@ -24,7 +27,7 @@ import os
 import sys
 from pathlib import Path
 
-TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
+TEMPLATES = Path(__file__).resolve().parent / "templates"
 
 
 def slug(program_dir: str) -> str:

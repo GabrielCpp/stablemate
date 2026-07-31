@@ -144,23 +144,13 @@ def check_base_stands_alone() -> list[str]:
                 "overlay content"
             )
 
-    workflows_dir = BASE / "workflows"
-    names = (
-        sorted(p.name for p in workflows_dir.iterdir() if (p / "workflow.yaml").is_file())
-        if workflows_dir.is_dir()
-        else []
-    )
-    if not names:
-        problems.append(f"the base ships no workflows (looked in {workflows_dir})")
-    for name in names:
-        if install.find_in_layers("workflows", name) is None:
-            problems.append(f"workflow {name!r} is in the base but does not resolve")
-
+    # There is no workflow clause. The base shipped four workflow directories until the
+    # YAML front-end was retired; a workflow is now a Python package resolved through the
+    # `workhorse.workflows` entry-point group, which is a distribution's business and not
+    # the library's. What the base still carries is markdown, and the question this check
+    # asks of it is the one above: does it resolve without the overlay.
     if not problems:
-        print(
-            f"ok: {len(skills)} base skills and {len(names)} base workflows resolve "
-            "with no overlay configured"
-        )
+        print(f"ok: {len(skills)} base skills resolve with no overlay configured")
     return problems
 
 

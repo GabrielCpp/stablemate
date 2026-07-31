@@ -42,12 +42,12 @@ research → workhorse_workflows.research.workflow:workflow
 
 Each has a parity section below.
 
-**Loop 2 is in progress, and the YAML engine is gone as of step 1.** There is one engine now:
+**Loop 2 is in progress, and as of step 2 no YAML front-end remains.** There is one engine:
 `graph/`, `runner/{script,branch,call}.py`, `builtins.py` and `requirements.py` are deleted,
 `main.py` is 670 lines of CLI over `run_pyflow`, and a workflow name resolves only through the
-`workhorse.workflows` entry-point group. What remains of the front-end is inert data — the four
-`base-library/workflows/*/workflow.yaml` and their `scripts/`, which nothing can now load. They go
-in step 2.
+`workhorse.workflows` entry-point group. `base-library/workflows/` is deleted too — all 7,719 lines
+of graph YAML, its 127 scripts and its 61 prompts. What is left of loop 2 is plumbing that outlived
+its subject: the library-directory predicate, the base-library fetch, and one doc.
 
 The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
 `author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
@@ -103,6 +103,7 @@ took it.)
 |---|---|---|
 | 0 | `d8b0879` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
 | 0.1 | `e1f92f5` | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
+| 2 | *this commit* | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
@@ -233,12 +234,60 @@ linked from GUARDRAILS), and both copies of the scripting skill
 `base-library/library/skills/stablemate/stablemate-workhorse-scripting/SKILL.md`), which still show
 `from workhorse.testing import WorkflowRun, assert_step_output`.
 
-**Next: step 2**, the rest of `base-library/workflows/` — four `workflow.yaml` (7,719 lines),
-`scripts/` (15,820 lines across 131 scripts), and `prompts/` **only after diffing** against the
-ports' copies. Then list items 3–6: narrow `is_library_dir` (and `main.py`'s `set-base` error, which
-still says "library/ or workflows/"), drop the workflow clause from `check_base_stands_alone`, drop
-farrier's `.agents/workflows` cleanup, narrow the fetch to `library/`, and delete both
-`await-operator.py`.
+#### Step 2 — the YAML
+
+`base-library/workflows/` is gone: 213 tracked files, the four `workflow.yaml` (7,719 lines), 127
+scripts, 61 prompts, 15 docs and the directory's own `README.md`/`CLAUDE.md`. **The 7,719 lines are
+accounted for** — every one of them is a state in a `workhorse_workflows` package, with a `### Parity`
+section above saying how far the evidence goes.
+
+**The prompts were diffed before deleting**, as §1 required, and the drift is one systematic thing
+rather than lost content. Of 61: 33 byte-identical, 22 drifted, 6 in the port with no base
+counterpart, **0 in the base with no port counterpart**. The drift is the port removing the YAML
+engine's outer node-key wrapper from the reply contract — `{"review_epics_result": {...}}` became
+`{...}`, because `self.agent(returns=Model)` validates the object itself. The two larger ones,
+`author/prompts/resolve-{integrity,operator}.md`, carry the `CONSUMED` finding's resolution: the
+`STATUS: ANSWERED` / `STATUS: AWAITING_OPERATOR` sentinel the YAML gate parsed out of the operator
+file is now the reply's own `decision` field, and the file is appended to rather than stamped. In
+every case the base copy is the older one.
+
+**One thing was carried out rather than deleted, and it is the only such thing.**
+`research/scripts/new_program.py` (119 lines) plus `research/templates/` — the program scaffolder.
+It was never a graph node, which is why no port ported it, and it is the **only producer of the
+input the workflow consumes**: `load_config` and the gate-loop prompts read a `program.yml`,
+`PROGRESS.md` and `<gate>_program.md` in exactly the shape it stamps. Deleting it would have left
+`research` runnable with nothing to run it on. Moved verbatim to
+`workflows/src/workhorse_workflows/research/scaffold/` (one line changed: `TEMPLATES` is now
+`parent/"templates"`), invoked as
+`python -m workhorse_workflows.research.scaffold.new_program`, and verified end-to-end against a
+temp repo. A sweep for others found none: the only other graph-unreferenced scripts are the six §1
+already lists as dead plus three coder modules imported by their siblings.
+
+**The forced companion change.** `scripts/check_public.py::check_base_stands_alone` asserted "the
+base ships no workflows" as a *failure*, so deleting the directory turns `make check-public` red.
+That clause is list item 3's first half, pulled forward for exactly the reason `requires:` was
+pulled into step 1 — a green tree does not wait for its own bullet. The check now reports
+`ok: 9 base skills resolve with no overlay configured`; the second half of that item
+(`is_library_dir`, farrier's `.agents/workflows` cleanup) is still step 3's.
+`workflows/pyproject.toml`'s entry-point comment, which claimed the base kept a runnable YAML
+`research`, was corrected in the same commit.
+
+**Farrier's workflow pipeline was not touched and is not dead.** `renderer.py`, `sources.py`,
+`launcher.py` and `outputs.py` still resolve, select, materialise and mount workflow *directories*
+from a layer. The base simply ships none now; an overlay may still. Narrowing that is not on this
+loop's list.
+
+**List item 5 closed with this commit rather than after it.** `await-operator.py` lived *inside*
+`base-library/workflows/`, and there were three copies, not two: `author/scripts/` (280 lines),
+`author/surveyor/scripts/` (275) and `coder/scripts/await_operator.py` (323) — 878 lines of ctypes
+inotify, deleted unported as loop 1.1 intended, with the driver's polling `Await` as the
+replacement.
+
+**Next: list items 3, 4 and 6.** Narrow `is_library_dir` (and `main.py:635`'s `set-base` error,
+which still says "library/ or workflows/"), drop farrier's `.agents/workflows` legacy cleanup;
+narrow the base-library fetch to a sparse checkout of `library/`; correct
+`docs/features/workhorse/workflow-format.md`. (`base-library/workflows/README.md`, also on the
+docs-correction bullet, was deleted with its directory — the strongest correction available.)
 
 ### Parity — `author`
 
@@ -1088,14 +1137,14 @@ parity claim in this file is against real nodes with the agent turn scripted.
 
 | What | Size | Note |
 |---|---|---|
-| `base-library/workflows/{author,coder,okf-builder,research}/workflow.yaml` | 7,719 lines | The four graphs, now ported |
-| …their `scripts/` | 15,820 lines across 131 scripts | Includes `author/surveyor/scripts/` (25 of them) |
+| ~~`base-library/workflows/{author,coder,okf-builder,research}/workflow.yaml`~~ | ~~7,719 lines~~ | **Done, step 2.** All 7,719 accounted for as states in a `workhorse_workflows` package |
+| ~~…their `scripts/`~~ | ~~15,820 lines across 131 scripts~~ | **Done, step 2** — 127 by then, the four counters having gone with their graphs. One was carried out instead: `research/new_program.py` |
 | ~~…their `tests/`~~ | ~~56 files~~ | **Done, step 1** — 63 files in the end, plus three `pytest.ini`. They had to go with the engine they ran on |
-| …their `prompts/` | — | **Not** deletable wholesale: the ports copied what they render, and the two sets have drifted (see the `CONSUMED` finding). Diff before deleting. |
-| Both `await-operator.py` | 555 lines of ctypes inotify | The loop's headline non-port; `Await` replaced it |
-| `init_counter.py` / `incr_counter.py` | — | Counters are state parameters now |
-| `commit-multi-repo.py`, `branch-multi-repo.py`, `open-multi-repo-pr.py` | — | Graph-unreferenced *before* the port, plus `test_multi_repo_git.py` and the claims in `coder/docs/multi-repo.md` |
-| `board.py`, `checkout-workspace.py`, `gh-token.py` | — | Unreferenced |
+| ~~…their `prompts/`~~ | ~~—~~ | **Done, step 2, after the diff this row asked for.** 33 identical, 22 drifted by the node-key wrapper and the `CONSUMED` sentinel, 0 present in the base and missing from a port |
+| ~~Both `await-operator.py`~~ | ~~555 lines~~ | **Done, step 2** — three copies, not two: `author/scripts/` (280), `author/surveyor/scripts/` (275) and `coder/scripts/await_operator.py` (323), 878 lines of ctypes inotify. They lived under `base-library/workflows/`, so list item 5 closed with list item 2 |
+| ~~`init_counter.py` / `incr_counter.py`~~ | ~~—~~ | **Done, step 2.** Counters are state parameters now |
+| ~~`commit-multi-repo.py`, `branch-multi-repo.py`, `open-multi-repo-pr.py`~~ | ~~—~~ | **Done, step 2**, along with `test_multi_repo_git.py` (step 1) and `coder/docs/multi-repo.md` |
+| ~~`board.py`, `checkout-workspace.py`, `gh-token.py`~~ | ~~—~~ | **Done, step 2.** Unreferenced |
 | ~~`graph/`, `runner/{script,branch,call}.py`, `main.py`'s engine half~~ | ~~~1,760 + graph~~ | **Done, step 1**, and *first* rather than last — the base-library test suites were the only thing pinning it, and they went in the same commit. `main.py` survives as the CLI |
 | ~~`workhorse/workhorse/scriptutil.py`~~ | ~~154 lines~~ | **Wrong — do not delete.** ~20 modules under `workflows/src/workhorse_workflows/**` import it. `kit` replaced the *split-out* half, not the file |
 | `paths.OPERATOR_DIR` | 1 line | Stranded by the port |
