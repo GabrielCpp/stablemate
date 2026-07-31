@@ -30,6 +30,7 @@ import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.dream import Dream
 from workhorse_workflows.coder.paths import DREAM_INBOX, DREAM_LEDGER
@@ -321,7 +322,7 @@ def test_a_run_killed_in_reflection_resumes_on_reflection_and_re_uses_the_digest
     with pytest.raises(RuntimeError, match="killed while reflecting"):
         drive_flow(Dream(run_dir=str(past_run)), run_env, _Killed(repo))
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "reflect", resume
     assert resume.flow == "Dream", resume

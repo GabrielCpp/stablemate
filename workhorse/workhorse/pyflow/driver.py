@@ -28,6 +28,7 @@ from workhorse.pyflow.engine import Engine, RunEnv, jsonable
 from workhorse.pyflow.errors import WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
+from workhorse.records import Checkpoint, PyflowCheckpoint
 
 logger = logging.getLogger("workhorse.engine")
 
@@ -59,35 +60,30 @@ class Resume:
     waiting_on: str | None = None
 
 
-def read_resume(checkpoint: dict[str, Any]) -> Resume:
-    """Interpret a `checkpoint.json` written by this engine.
+def read_resume(checkpoint: Checkpoint) -> Resume:
+    """Narrow a parsed `checkpoint.json` to what a resume needs.
 
     Refuses a YAML-engine checkpoint outright. The two engines share a runs directory
     and a `--resume-latest`, and a `current_id` is not a state name — resuming one from
     the other would either explode confusingly or, worse, match a name by coincidence.
+
+    Everything else the old body checked — a present, non-empty `state`, `params` and
+    `inputs` that are objects — the model checks on the way off disk, so what is left
+    here is the one refusal that is a *policy* rather than a shape.
     """
-    if checkpoint.get("engine") != "pyflow":
+    if not isinstance(checkpoint, PyflowCheckpoint):
         raise WorkflowFailed(
             "this run directory holds a checkpoint from the YAML engine "
-            f"(node '{checkpoint.get('current_id')}'), not a Python state machine. "
+            f"(node '{checkpoint.current_id}'), not a Python state machine. "
             "Resume it with the workflow that wrote it, or start a new run."
         )
-    state = checkpoint.get("state")
-    if not isinstance(state, str) or not state:
-        raise WorkflowFailed("checkpoint has no 'state' to resume from")
-    params = checkpoint.get("params") or {}
-    if not isinstance(params, dict):
-        raise WorkflowFailed(f"checkpoint 'params' is {type(params).__name__}, not an object")
-    inputs = checkpoint.get("inputs") or {}
-    if not isinstance(inputs, dict):
-        raise WorkflowFailed(f"checkpoint 'inputs' is {type(inputs).__name__}, not an object")
     return Resume(
-        state=state,
-        params=params,
-        inputs=inputs,
-        ctx=checkpoint.get("ctx"),
-        flow=checkpoint.get("flow"),
-        waiting_on=checkpoint.get("waiting_on"),
+        state=checkpoint.state,
+        params=checkpoint.params,
+        inputs=checkpoint.inputs,
+        ctx=checkpoint.ctx,
+        flow=checkpoint.flow,
+        waiting_on=checkpoint.waiting_on,
     )
 
 

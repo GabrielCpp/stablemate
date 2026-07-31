@@ -265,11 +265,11 @@ def test_append_event_unchanged_with_noop_telemetry():
         writer.write_checkpoint("node_a", {"k": "v"})
         writer.write_step("node_a", "prompt", {"out": 1}, {"k": "v"}, next_node="node_b")
         events = writer.read_events()
-        assert [(e["node"], e["phase"]) for e in events] == [
+        assert [(e.node, e.phase) for e in events] == [
             ("node_a", "enter"),
             ("node_a", "done"),
         ]
-        assert events[1]["next"] == "node_b"
+        assert events[1].model_extra == {"next": "node_b"}
 
 
 # --------------------------------------------------------------------------- #

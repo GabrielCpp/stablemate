@@ -42,6 +42,7 @@ from workhorse.pyflow import Blueprint, Done, Workflow, WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder import workflow as coder_workflow
 from workhorse_workflows.coder.nodes.backlog import prune_fix_item, select_fix_item
@@ -311,7 +312,7 @@ class _Agent:
         )
         return {"status": "done", "summary": "one AC, one fix"}
 
-    def _qa_story(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _qa_fix_item(self, data: dict[str, Any]) -> dict[str, Any]:
         return {"status": "passed", "notes": ""}
 
 
@@ -601,7 +602,7 @@ def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
     drive_flow(Coder(), run_env, agent)
 
     # The drain ran, on the graph's own prompts rather than the `fix` flow's.
-    assert agent.calls == ["plan-story", "qa-story"], agent.calls
+    assert agent.calls == ["plan-story", "qa-fix-item"], agent.calls
     # Two story records, not one overwriting the other.
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
     assert _output(run_env, prepare_fix_story)["story_slug"] == FIX_SLUG
@@ -656,7 +657,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     with pytest.raises(RuntimeError, match="killed during Qa"):
         drive_flow(Coder(), run_env, _Agent())
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "qa", resume
     assert resume.flow == "Coder", resume

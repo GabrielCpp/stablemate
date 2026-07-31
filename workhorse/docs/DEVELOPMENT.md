@@ -22,6 +22,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
 │   ├── references.py          # Static skill/prompt reference checking (the --dry-run warning)
 │   ├── artifacts.py           # ArtifactWriter: run dir, checkpoints, per-step artifacts
+│   ├── records.py             # The models for what a run writes and reads back (checkpoint, event)
 │   ├── otel.py                # OpenTelemetry facade (auto-on if a collector answers; else no-op)
 │   ├── config_run.py          # The shared config file: power tiers, defaults, harness env
 │   ├── logsetup.py            # Logging configuration for the driver and node functions

@@ -53,6 +53,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder import paths
@@ -359,7 +360,7 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
         "acme/other.py": "active",
     }, _worklist(booked)
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "investigate", resume
     assert resume.params["item_target"] == "acme/other.py", resume.params

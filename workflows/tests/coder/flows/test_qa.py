@@ -31,7 +31,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
-from workhorse.pyflow.errors import WorkflowFailed
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder import ostler_qa
 from workhorse_workflows.coder.flows.qa import Qa
@@ -709,7 +709,7 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     assert agent.args_for("setup-fix")[0]["stack_manifest"] == "qa-stack.yml"
 
 
-def test_a_stack_nobody_can_repair_spins_on_the_operator_gate(
+def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     docs: Path,
     ostler: Callable[..., _Ostler],
     write: Callable[[Path, str], Path],
@@ -717,17 +717,18 @@ def test_a_stack_nobody_can_repair_spins_on_the_operator_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A faithful port of a YAML cycle that has no terminal — see the ledger's C3 findings.
+    """The YAML cycle with no terminal — the ledger's C3 finding — now has one.
 
     `guard_setup` escalates a spent setup budget to the operator gate, and the gate's answer
     is applied as a QA fix that rejoins at `build_context` — which walks back to the stack,
     which is still down, which finds the budget still spent, which escalates again. Every
-    counter on that cycle is either already at its cap or (`qa_rework`) read by nothing on
-    it. In auto mode, where the resolver always answers, nothing breaks the cycle.
+    counter on that cycle was either already at its cap or (`qa_rework`) read by nothing on
+    it, so in auto mode — where the resolver always answers — nothing broke the cycle and the
+    driver's transition budget ended the run, hundreds of agent turns later.
 
-    The YAML did the same thing and was stopped by the engine's global step budget; the port
-    is stopped by the driver's transition budget, which at least names the state it was in.
-    Bounding it is a behavior change and therefore loop 2's, not a port's.
+    `apply_resolved` now reads the budget it was already spending, so the third lap ends the
+    flow `exhausted` and the parent decides what that costs. The transition budget is pinned
+    low here so a regression is a failed assertion rather than a very slow test.
     """
     ostler()
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
@@ -737,12 +738,41 @@ def test_a_stack_nobody_can_repair_spins_on_the_operator_gate(
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, setup="unfixable")
 
-    with pytest.raises(WorkflowFailed, match="transition budget exhausted"):
-        drive_flow(Qa(story=STORY), env(), agent)
+    result = drive_flow(Qa(story=STORY), env(), agent)
 
-    # Two repairs before the budget is spent, and the gate is what it hands off to.
+    assert result.status == "exhausted", result
+    assert result.qa_rework == Qa.MAX_QA_REWORKS, result
+    # Two repairs before the setup budget is spent, and the gate is what it hands off to.
     assert agent.counts()["setup-fix"] == 2, agent.counts()
-    assert agent.counts()["resolve-operator"] >= 2, agent.counts()
+    # One resolver turn per lap of the gate, and the laps are what is now bounded.
+    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
+
+
+def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The same hole, entered from the context loop rather than the stack loop.
+
+    `build_context` guards on `context_rework`, and `repair_context` only spends one when it
+    claims to have *repaired* something. A repairer that answers `blocked` every time
+    therefore laps context → repair → gate → resolve → read → apply → context with no counter
+    moving — three agent turns a lap, one of them the unbounded-timeout resolver. This is the
+    cycle a live coder run hit; it is the reason the guard in `apply_resolved` exists.
+    """
+    ostler(context_invalid=99)
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
+    agent = _Agent(docs, repair="blocked")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.qa_rework == Qa.MAX_QA_REWORKS, result
+    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
 
 
 def test_an_escalating_resolver_hands_the_block_to_a_person(
@@ -1049,7 +1079,7 @@ def test_a_run_killed_mid_audit_resumes_on_the_audit(
     with pytest.raises(RuntimeError, match="killed during audit-qa"):
         drive_flow(Qa(story=STORY), run_env, _Agent(docs, explode={"audit-qa"}))
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "audit", resume
     assert resume.flow == "Qa", resume

@@ -32,9 +32,11 @@ from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.dev import Dev
 from workhorse_workflows.coder.nodes.dev import (
@@ -536,6 +538,40 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
     assert agent.args_for("resolve-operator")[0]["block_kind"] == "plan"
 
 
+def test_a_service_path_nobody_can_repair_gives_up_instead_of_relapping(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wider of the two operator cycles, and the one the reset makes.
+
+    `read_operator` deliberately restores the path-validation budget — the YAML re-emitted
+    `plan_rework_count: 0` and an operator answer really is a fresh licence to re-validate.
+    But a repo the workspace has not got is not a thing an answer can conjure, so before
+    `plan_blocks` the flow spent its three reworks, escalated, had the budget handed back,
+    and spent it again forever: five agent turns a lap, one of them the unbounded-timeout
+    resolver. `plan_blocks` is the counter that survives the reset, which is the only reason
+    this terminates.
+
+    The exact counts are what the bound costs, pinned so that changing it is a decision
+    rather than a drift: three refines to reach the first escalation, then four per answered
+    lap — the one `rework_plan` buys plus the three the restored budget spends — and three
+    answered laps before the fourth trip to the gate is refused. 3 + 4×3 = 15.
+    """
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    agent = _Agent(docs, bad_paths=99)
+
+    with pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"):
+        drive_flow(Dev(story=STORY), env(), agent)
+
+    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
+    assert agent.counts()["refine-plan"] == 15, agent.counts()
+    assert agent.counts()["check-code-reuse"] == 4, agent.counts()
+    assert agent.counts()["implement-plan"] == 0, agent.counts()
+
+
 # --------------------------------------------------------------------------- the operator
 
 
@@ -622,6 +658,65 @@ def test_an_escalating_resolver_falls_through_to_the_human(
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert seen == ["the prod bucket may not exist"], seen
+
+
+def test_a_plan_no_operator_can_unblock_fails_instead_of_looping(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tight operator cycle: a refine that re-raises the block every time.
+
+    `rework_plan` re-gating a still-blocked plan is what keeps the loop honest — a resolver
+    that resolved nothing cannot wave the plan through — and nothing counted the laps, so
+    honest meant endless: gate → resolve → read → rework → gate, at `power="high"` with the
+    resolver on an unbounded timeout, until the driver's transition budget ended the run
+    naming a state that was not the problem.
+
+    Three trips through the gate is the whole plan stage's allowance, so this ends as a
+    failed run rather than a `Done` — `dev` returning normally means "implemented", and the
+    parent's next state is `review`, which would have nothing to review.
+    """
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    agent = _Agent(docs, blocked=99)
+
+    with pytest.raises(WorkflowFailed, match="prod bucket may not exist"):
+        drive_flow(Dev(story=STORY), env(), agent)
+
+    # One refine per gate trip: the first trip comes off `plan-story`, and each answer buys
+    # exactly one more plan before the block is re-raised.
+    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
+    assert agent.counts()["refine-plan"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
+    assert agent.counts()["implement-plan"] == 0, agent.counts()
+
+
+def test_the_human_operator_is_bounded_by_the_same_counter(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`operator_mode=human` takes the other arm of the gate, and the same bound.
+
+    A person answering in place is not a reason to loop forever either — the third answer
+    that does not unblock the plan ends the run, with the block in the message, rather than
+    asking them a fourth time.
+    """
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    seen: list[str] = []
+    agent = _Agent(docs, blocked=99)
+
+    with (
+        patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)),
+        pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"),
+    ):
+        drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
+
+    assert agent.counts()["resolve-operator"] == 0, agent.counts()
+    assert len(seen) == Dev.MAX_PLAN_BLOCKS, seen
 
 
 def test_an_unanswered_context_file_is_not_treated_as_an_answer(
@@ -715,7 +810,7 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     with pytest.raises(RuntimeError, match="killed during implement-plan"):
         drive_flow(Dev(story=STORY), run_env, _Agent(docs, explode={"implement-plan"}))
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "implement", resume
     assert resume.flow == "Dev", resume

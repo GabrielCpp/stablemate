@@ -34,6 +34,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.fix import Fix
 from workhorse_workflows.coder.nodes.backlog import mark_fix_blocked, prune_fix_item
@@ -198,7 +199,7 @@ class _Agent:
         (repo / "pagination.go").write_text(f"// pass {nth}\n", encoding="utf-8")
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
-    def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+    def _qa_fix_item(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth <= self.qa_fails:
             return {"status": "failed", "notes": f"page two is still empty (check {nth})"}
         return {"status": "passed", "notes": "pagination works"}
@@ -274,7 +275,7 @@ def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
     assert agent.counts() == {
         "plan-story": 1,
         "implement-plan": 1,
-        "qa-story": 1,
+        "qa-fix-item": 1,
         "document-story": 1,
         "review-story-documentation": 1,
     }, agent.counts()
@@ -317,7 +318,7 @@ def test_the_drain_keeps_going_until_the_section_is_empty(
 
     assert result.has_fix is False, result
     assert agent.counts()["plan-story"] == 2, agent.counts()
-    assert agent.counts()["qa-story"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 2, agent.counts()
     assert "widget-pagination" not in _backlog(docs), _backlog(docs)
     assert "mobile-pagination" not in _backlog(docs), _backlog(docs)
     assert len([line for line in _log_of(workspace["api"]) if line.startswith("fixes:")]) == 2
@@ -345,7 +346,7 @@ def test_a_blocked_plan_flags_the_bullet_without_spending_an_implement_turn(
 
     assert result.has_fix is False, result
     assert "implement-plan" not in agent.counts(), agent.counts()
-    assert "qa-story" not in agent.counts(), agent.counts()
+    assert "qa-fix-item" not in agent.counts(), agent.counts()
     assert agent.counts()["plan-story"] == 1, agent.counts()
 
     line = next(ln for ln in _backlog(docs).splitlines() if BULLET in ln)
@@ -372,7 +373,7 @@ def test_qa_gets_exactly_one_retry_and_the_fixer_is_handed_the_first_verdict(
     result = drive_flow(Fix(), run_env, agent)
 
     assert result.has_fix is False, result
-    assert agent.counts()["qa-story"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 2, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
     assert agent.args_for("apply-qa-fixes")[0]["qa_notes"] == "page two is still empty (check 1)"
 
@@ -394,7 +395,7 @@ def test_a_second_failing_check_flags_rather_than_retrying_again(
     result = drive_flow(Fix(), run_env, agent)
 
     assert result.has_fix is False, result
-    assert agent.counts()["qa-story"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 2, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
 
     line = next(ln for ln in _backlog(docs).splitlines() if BULLET in ln)
@@ -445,7 +446,7 @@ def test_a_plan_that_dispatches_no_layer_is_still_checked(
 
     assert result.has_fix is False, result
     assert "implement-plan" not in agent.counts(), agent.counts()
-    assert agent.counts()["qa-story"] == 1, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
     assert BULLET not in _backlog(docs), _backlog(docs)
 
 
@@ -571,10 +572,10 @@ def test_a_run_killed_mid_check_resumes_at_the_check(
     run_env = env()
     run_dir = run_env.writer.run_dir
 
-    with pytest.raises(RuntimeError, match="killed during qa-story"):
-        drive_flow(Fix(), run_env, _Agent(workspace, explode={"qa-story"}))
+    with pytest.raises(RuntimeError, match="killed during qa-fix-item"):
+        drive_flow(Fix(), run_env, _Agent(workspace, explode={"qa-fix-item"}))
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "check", resume
     assert resume.flow == "Fix", resume
@@ -585,5 +586,5 @@ def test_a_run_killed_mid_check_resumes_at_the_check(
     assert result.has_fix is False, result
     assert "plan-story" not in agent.counts(), agent.counts()
     assert "implement-plan" not in agent.counts(), agent.counts()
-    assert agent.counts()["qa-story"] == 1, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
     assert BULLET not in _backlog(docs), _backlog(docs)

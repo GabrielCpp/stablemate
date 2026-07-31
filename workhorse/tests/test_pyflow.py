@@ -51,6 +51,7 @@ from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
+from workhorse.records import NodeGraphCheckpoint  # noqa: E402
 
 Transition = Any  # states are annotated loosely here; the driver checks the runtime type
 
@@ -419,7 +420,8 @@ def test_a_checkpoint_param_the_state_does_not_have_is_reported_by_name():
 
 
 def test_read_resume_refuses_a_yaml_checkpoint():
-    exc = _raises(WorkflowFailed, read_resume, {"current_id": "plan", "context": {}})
+    checkpoint = NodeGraphCheckpoint(current_id="plan", context={})
+    exc = _raises(WorkflowFailed, read_resume, checkpoint)
     assert "YAML engine" in str(exc), exc
     assert "plan" in str(exc), exc
 

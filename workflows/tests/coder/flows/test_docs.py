@@ -26,6 +26,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.docs import Docs
 from workhorse_workflows.coder.nodes.docs import (
@@ -443,7 +444,7 @@ def test_a_run_killed_mid_review_resumes_without_re_documenting(
             _Agent(explode={"review-story-documentation"}),
         )
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "review", resume
     assert resume.flow == "Docs", resume
