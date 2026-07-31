@@ -249,7 +249,7 @@ class Backend(Protocol):
 class JsonBackend:
     """A worklist stored as a JSON array of items at ``path`` — the zero-dependency
     default. Writes are atomic (tmp + ``os.replace``) so a crash mid-save can never
-    leave a half-written queue, mirroring ``ArtifactWriter.write_checkpoint``."""
+    leave a half-written queue, mirroring ``ArtifactWriter._write_checkpoint``."""
 
     path: Path
     # The JSON key holding the item list, when the file is an object rather than a bare
