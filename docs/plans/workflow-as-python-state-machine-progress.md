@@ -2371,6 +2371,95 @@ slugifier collapsing hyphen runs where GitHub's does not. Zero broken markdown l
 all 313 tracked files by the GitHub-accurate checker. `ruff check .`, `make test` and
 `make check-public` all green.
 
+### Iteration 15 — the Claude family, where the adapter turned out to own the protocol
+
+The last of item 3's `runner/` remainder: the six pages grounded in
+`runner/backends/claude.py` (`claude-backend`, `run-claude-cli`, `compact-session`,
+`stream-events`, `emit-event`, `tool-summary`) plus `stream-subprocess`, now
+`runner/process.py`. Every one of the seven still pointed `code:` at `runner/agent.py` or
+`runner/backends.py`, neither of which exists.
+
+What the pages asserted, and what the code says:
+
+1. **The adapter/implementation relationship is inverted.** The pages said `ClaudeBackend`
+   "owns no protocol code itself: it is a thin **adapter** over the existing Claude
+   functions in `runner/agent.py`". It is the opposite now, and deliberately: the module
+   docstring records that the protocol *used* to live in the CLI-agnostic ladder with the
+   facade delegating back into it, "which made the generic ring the home of one
+   implementation and forced the ladder and `backends` to import each other lazily. Claude
+   is now a sibling of every other adapter and the ladder imports it not at all." This was
+   the one falsification worth a full rewrite rather than a re-point — it reverses the
+   page's thesis, not a detail in it.
+2. Following from that: the "imports the `agent` module (not its names), so a monkeypatched
+   function resolves at call time and no import cycle forms" bullet is **entirely dead**.
+   Both of its reasons died with the split; `claude.py` imports `AgentBackend` at module
+   scope like any other adapter.
+3. `_run_claude_cli` → **`_run_cli`**. The qualifier existed because the function once sat
+   in the ladder among functions belonging to no backend in particular; one module per CLI
+   supplies that disambiguation now. `run-claude-cli.md` was retitled but keeps its slug and
+   filename — ostler node ids are path-derived, and three inbound `#algorithm` links depend
+   on it.
+4. `run_turn`/`compact` take keyword-only **required** `timeout`/`resilience` — no
+   `DEFAULT_RESULT_TIMEOUT_S` default anywhere in this family — and **both** forward
+   `env_extra=self.harness_env()`. `compact-session.md` documented neither `resilience` nor
+   `env_extra`; the code comment is explicit about why the second one matters ("same
+   harness, same environment: a knob that shapes the turn must also shape the `/compact`
+   turn"), and `test_compaction_runs_under_the_same_env` holds it.
+5. **`ClaudeTurnStream` is new** and undocumented anywhere — a `@dataclass(slots=True)` that
+   "replaces a seven-element tuple every caller had to decode by counting positions", which
+   is exactly what `stream-events.md` still documented as the return type. It is *not* the
+   shared `TurnState` from iteration 13, and the reason is structural: the four JSONL/text
+   backends go through `finalize_turn`, which calls `classify_turn` on their behalf; Claude
+   calls `classify_turn` itself, so it needs an accumulator shaped for that call. Both
+   rewritten pages now link a new `## ClaudeTurnStream` section.
+6. `_stream_events` gained an **unconditional** `otel.turn_result(usage.normalize(event))` on
+   every result event, and a `rate_limit_event` → `failure.rate_limit_info` branch feeding
+   `rate_limited`/`rate_reset_at`. The unconditional call is not a contradiction of iteration
+   13's note that `finalize_turn` guards the same call on a non-empty usage — different code
+   paths, and the code comment gives the reason ("Claude's result event carries
+   `duration_ms` even when it reports no tokens").
+7. `stream_subprocess` moved to `runner/process.py` and gained required
+   `resilience`/`env_extra`. The module around it grew substantially and none of it was
+   documented: the `ActiveProcess` class (handle **and** lock as one object rather than "two
+   module globals two functions happen to share" — the page still described `_active_proc` /
+   `_active_proc_lock`), `_spawn_streaming` with `_EXEC_BUSY_ERRNOS` and its
+   self-update exec-retry loop, the `otel.turn_event("exec_retry"/"watchdog_kill")` and
+   `otel.turn_heartbeat` emissions, and `fired = threading.Event()` in place of the
+   `fired["v"]` dict cell.
+8. `_WATCHDOG_GRACE_S` **is gone as a module constant** — the grace is
+   `resilience.watchdog_grace_s`, read off the argument. The page presented it as a
+   module-level env-backed constant, which is precisely the shape a per-run override cannot
+   affect.
+9. `terminate_active` is called from **`pyflow/run.py`**'s `KeyboardInterrupt` and
+   `PyflowError` handlers — not, as the page said, "`main.py`'s top-level
+   `KeyboardInterrupt`, `OutOfGasError`, and `BackendInvocationError` handlers".
+   **`OutOfGasError` does not exist in the tree**; `pyflow/errors.py` defines `PyflowError`
+   and six subclasses, none of them that.
+10. `stream-subprocess.md` pointed `stream_jsonl` and `_run_text_turn` at
+    `runner/backends.py`; they are `runner/backends/jsonl.py` and `runner/backends/aider.py`.
+11. `compact` is `@abstractmethod` on the port, so the four non-Claude backends each
+    implement it as a bare `return False` — they do not inherit a default. The page's
+    phrasing implied an inherited one.
+
+**Finding, not fixed (a code nit, and this loop changes no behavior):**
+`stream_subprocess`'s `on_line` parameter is annotated `Callable[[str], None]`, but the loop
+honors a truthy return as an early-abort request and `stream_jsonl` depends on that. The
+annotation understates the runtime contract. The page documents the contract as it actually
+is and says so explicitly.
+
+`emit-event.md` and `tool-summary.md` needed only their `code:` targets re-pointed — their
+algorithms survived the move verbatim, which is the expected shape for two functions that
+only format log lines.
+
+`dangling-code-ref` **9 → 2**: groom's pre-existing `.toast` and `extract-outputs.md`, which
+belongs to the `scriptutil`/`extract-outputs`/`render-prompt` de-YAML remainder rather than
+to this slice. Every Claude-family and `process.py` reference is now grounded.
+`missing-code-symbol` 8 → 8; `missing-anchor` 22 → 23, the increase being one more link to
+`#early-abort--stop-the-clis-own-retry-loop` — still finding 25, ostler collapsing hyphen
+runs where GitHub does not. Zero broken markdown links across all 313 tracked files by the
+GitHub-accurate checker. All ten inbound anchors into this slice were enumerated before
+rewriting and preserved. `ruff check .`, `make test` and `make check-public` green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
