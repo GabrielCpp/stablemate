@@ -2536,6 +2536,74 @@ Every farrier `missing-code-symbol` is cleared; the single survivor repo-wide is
 **34 → 26**. Zero broken markdown links across 313 tracked files. `ruff check .`, `make test` and
 `make check-public` green.
 
+### Iteration 17 — scriptutil, which did not shrink so much as split in two
+
+`concepts/scriptutil.md` was the largest remaining de-YAML lie in the workhorse book, and it was
+not stale in the ordinary way. Eleven of the twelve symbols it documented still exist; seven of
+them just live in a different distribution now. `workhorse/workhorse/scriptutil.py` declares
+exactly seven names — `load_jsonc`, `load_json`, `die`, `find_repo_root`, `find_docs_root`,
+`fresh_import`, `run_tool` — and git/GitHub/workspace resolution moved to
+`workflows/src/workhorse_workflows/kit/{git,github,workspace}.py`, which is where `gitpython`
+and `PyGithub` are dependencies.
+
+Per the standing rule (**rewrite, don't delete, a doc whose subject survives under a new name**),
+nothing was dropped. The page was rewritten around the seven engine survivors — three of which
+(`die`, `fresh_import`, `run_tool`) had never been documented at all — and a new sibling page
+carries the moved half:
+
+| page | what it now covers |
+|---|---|
+| `concepts/scriptutil.md` | the seven engine-side helpers, plus a "what moved to `workhorse_workflows.kit`" table |
+| `concepts/workflow-kit.md` (**new**) | `kit`'s flat `__getattr__` surface and patch contract, `workspace` (5 public helpers plus the private ones the format page leans on), `git` (24 verbs, tabled by role), `github` (7) |
+| `code-workspace-file.md` | re-pointed at the kit; `code:` target moved to `kit/workspace.py::_read_workspace_file` |
+
+`workflow-kit.md` sits in the *workhorse* book despite grounding in the `workflows` distribution.
+There is no book for `workflows`, and the book already grounds in `core/` and `base-library/`
+paths, so a cross-distribution page is not a new precedent — standing up a whole book for one
+package would be.
+
+What was found untrue, beyond the relocations:
+
+1. **"A script node runs as its own subprocess (not workhorse's own process), so nothing here is
+   imported by the engine itself (`main.py`/`graph/`/`runner/`)."** Both halves are wrong now: the
+   script runner is in-process (`runner/script.py` reuses one interpreter for a whole run — which
+   is the entire reason `fresh_import` exists), and `main.py`/`graph/` are gone.
+2. **`entrypoint.sh` invokes `python -c "from workhorse.scriptutil import checkout_workspace; …"`.**
+   It invokes `from workhorse_workflows.kit import checkout_workspace` (line 86), and only after
+   preferring a workflow-owned `/workflow/scripts/checkout-workspace.py` hook if one exists.
+3. **`open_repo` "imports `git.Repo` inside the function body, not at module load".** `kit/git.py`
+   imports GitPython at **module scope**; the constraint that forced the lazy import (git-free
+   engine scripts that still had to import the module) ended with the split.
+4. **`run_gh` — "run a `gh` CLI command".** Deleted outright, not renamed. GitHub is reached
+   through PyGithub in `kit/github.py` ("PyGithub, never the `gh` CLI"), and a node needing some
+   other CLI uses `run_tool`. Recorded in the moved-symbols table rather than silently dropped.
+5. **`checkout_workspace`'s algorithm had drifted past a relocation.** The documented version
+   fetched and reset; the shipped one also re-points `origin` at the configured URL first
+   (`_set_origin_url`) and builds its network commands through `_git_network_command`, which
+   injects a transient `x-access-token`/`$WORKHORSE_GIT_TOKEN` credential helper. Timeouts
+   (10s/300s/600s) were undocumented.
+6. **`resolve_workspace`'s single-folder fallback** now kebab-normalizes the directory name
+   (`_repo_name_from_dir`) so `.../Acme` and a config value `acme` resolve to one key.
+
+**Finding 27 — a generated file still names the pre-split path.** `farrier/farrier/launcher.py`
+emits `workhorse/workhorse/scriptutil.py's checkout_workspace()` into every repo's rendered
+`.agents/local.compose.yaml` comment. It is a comment, but it is *generated output*: correcting
+it changes the bytes farrier writes, which `install --check` reads as a stale file in every
+installed repo. Reported, not changed — this loop changes no behavior.
+
+Also fixed as a side effect: the eight `missing-anchor` errors against this page. They were
+finding-25 false positives (ostler collapses hyphen runs, so `## \`load_jsonc\` — JSON-with-Comments
+parser` never matches its own `#load_jsonc--json-with-comments-parser` link), and rewriting the
+headings to the bare symbol name (`## \`load_jsonc\``) removes the class of error entirely rather
+than working around it. The same fix is available to `artifact-writer.md`, `stream-jsonl.md` and
+`render-prompt.md`, which hold the 13 survivors.
+
+`missing-code-symbol` **1 → 0** (`scriptutil.py::_read_workspace_file` re-pointed at the kit);
+`missing-anchor` **23 → 13**; `dangling-code-ref` 2 → 2 (groom's `.toast`, and
+`extract-outputs.md`, next iteration's work). `ostler doctor` totals **26 → 15**. Zero broken
+markdown links across 314 tracked files. `ruff check .`, `make test` and `make check-public`
+green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
