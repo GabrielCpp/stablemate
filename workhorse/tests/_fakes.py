@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from workhorse import otel
 from workhorse.runner.backends import AgentBackend
 
 
@@ -83,3 +84,29 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
         self._now += timedelta(seconds=seconds)
+
+
+class RecordingTelemetry(otel._NullTelemetry):
+    """Telemetry that remembers what was published, for tests that assert on it.
+
+    Subclassing the null adapter means every signal a test does *not* care about
+    stays the same no-op it is in production, and only the two recorded here need
+    a body. Install it with ``otel.install(otel.TelemetryHost(active=fake))`` and
+    put the returned host back afterwards — the module-level functions delegate to
+    whatever host is installed, so nothing has to be assigned over.
+    """
+
+    def __init__(self) -> None:
+        #: (node, idle_s, elapsed_s) per liveness beat.
+        self.beats: list[tuple[str, float, float]] = []
+        #: One entry per ``set_labels`` call, in order.
+        self.labels: list[dict[str, str]] = []
+
+    def enabled(self) -> bool:
+        return True
+
+    def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:
+        self.beats.append((node_id, idle_s, elapsed_s))
+
+    def set_labels(self, labels: dict[str, str]) -> None:
+        self.labels.append(dict(labels))

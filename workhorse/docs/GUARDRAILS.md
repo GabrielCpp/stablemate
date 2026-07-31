@@ -164,7 +164,7 @@ same CLI configuration as the conversation it is compacting.
 ### Node functions run in the driver's own process (and what that costs)
 
 `self.call(node, ...)` invokes an ordinary Python function inside the driver's own
-process. The reason is observability: a child process has no `otel._active`, so its
+process. The reason is observability: a child process has no installed telemetry, so its
 spans would be inert and its stdout consumed whole as the node's JSON — meaning a
 node's diagnostics would be, by construction, unrecoverable after the fact.
 In-process, a node's log records ride the driver's own root logger: same handlers,

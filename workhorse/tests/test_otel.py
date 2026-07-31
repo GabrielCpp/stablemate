@@ -16,9 +16,9 @@ Run: ./.venv/bin/python tests/test_otel.py   (or via pytest)
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib
 import json
-import os
 import socket
 import tempfile
 from pathlib import Path
@@ -122,7 +122,11 @@ def _telemetry() -> tuple:
     tracer, meter = FakeTracer(), FakeMeter()
     shutdown = {"called": False}
     t = otel._Telemetry(
-        FakeTraceApi, tracer, meter, lambda: shutdown.__setitem__("called", True)
+        FakeTraceApi,
+        tracer,
+        meter,
+        lambda: shutdown.__setitem__("called", True),
+        otel.OtelSettings().heartbeat_every_s,
     )
     t.start_root("wf")
     return t, tracer, meter, shutdown
@@ -154,7 +158,7 @@ class FakeTelemetry:
     """A stand-in for what _build returns: an object satisfying the Telemetry port.
 
     It answers `enabled()` truthfully, which is what the gate now reads — there is
-    no `_active is None` sentinel to assert on any more, because absence is the
+    no `active is None` sentinel to assert on any more, because absence is the
     null adapter rather than a missing reference."""
 
     def __init__(self) -> None:
@@ -168,31 +172,46 @@ class FakeTelemetry:
 
 
 @contextlib.contextmanager
+def installed(telemetry):
+    """Install ``telemetry`` as the process's active adapter for the block.
+
+    The module functions delegate to the installed host, so this is what makes
+    ``otel.set_labels(...)`` land somewhere a test can read. Restoring the host
+    ``install`` handed back is the whole teardown — there is no module state to
+    put back by hand."""
+    previous = otel.install(otel.TelemetryHost(active=telemetry))
+    try:
+        yield telemetry
+    finally:
+        otel.install(previous)
+
+
+@contextlib.contextmanager
 def _gate(forced, reachable, under_test=False):
     """Pin all three inputs start_run's gate reads: the WORKHORSE_OTEL tri-state, the
     collector probe, and the test-process guard. The probe must never be left live in
     a test — the dev machine may well have `groom serve` up, which would make these
     pass or fail by environment. The guard is pinned for the opposite reason: these
     tests *are* a test process, so left real it would answer True for every case and
-    the gate's other two inputs would never be exercised. _build is faked too, so no
-    test needs the optional SDK."""
+    the gate's other two inputs would never be exercised. The build effect is faked
+    too, so no test needs the optional SDK.
+
+    All four are fields of the host this installs — nothing here assigns into the
+    module. The previous host comes back from ``install`` and is put back at the end."""
     probes: list[str] = []
     built: list[tuple] = []
-    saved = (otel._OTEL_FORCED, otel._collector_reachable, otel._build, otel._under_test)
-    otel._OTEL_FORCED = forced
-    otel._collector_reachable = lambda endpoint: (probes.append(endpoint), reachable)[1]
-    otel._build = lambda *a: (built.append(a), FakeTelemetry())[1]
-    otel._under_test = lambda: under_test
+    host = otel.TelemetryHost(
+        settings=dataclasses.replace(otel.OtelSettings(), forced=forced),
+        probe=lambda endpoint, timeout_s: (probes.append(endpoint), reachable)[1],
+        build=lambda *a: (built.append(a[:3]), FakeTelemetry())[1],
+        under_test=lambda: under_test,
+    )
+    previous = otel.install(host)
     try:
         yield probes, built
     finally:
-        (
-            otel._OTEL_FORCED,
-            otel._collector_reachable,
-            otel._build,
-            otel._under_test,
-        ) = saved
-        otel.end_run("test")  # back to the null adapter, through the real teardown
+        otel.end_run("test")  # close what the test opened, through the real teardown
+        otel.install(previous)
 
 
 def test_tristate_parses_force_on_force_off_and_auto():
@@ -209,7 +228,7 @@ def test_auto_activates_when_the_collector_answers():
     with _gate(forced=None, reachable=True) as (probes, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
-        assert probes == [otel._OTEL_ENDPOINT]
+        assert probes == [otel.OtelSettings().endpoint]
         assert built == [("wf", "run-1", None)]
 
 
@@ -271,56 +290,68 @@ def test_probe_detects_a_listening_socket_and_a_dead_port():
         server.bind(("127.0.0.1", 0))
         server.listen(1)
         port = server.getsockname()[1]
-        assert otel._collector_reachable(f"http://127.0.0.1:{port}") is True
-    assert otel._collector_reachable(f"http://127.0.0.1:{port}") is False
+        assert otel._collector_reachable(f"http://127.0.0.1:{port}", 0.25) is True
+    assert otel._collector_reachable(f"http://127.0.0.1:{port}", 0.25) is False
 
 
 def test_probe_treats_a_malformed_endpoint_as_no_collector():
     # Never raises out of start_run's gate, whatever the endpoint says.
-    assert otel._collector_reachable("not-a-url") is False
-    assert otel._collector_reachable("") is False
-
-
-@contextlib.contextmanager
-def _env(**pairs):
-    saved = {k: os.environ.get(k) for k in pairs}
-    try:
-        for k, v in pairs.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-        yield
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    assert otel._collector_reachable("not-a-url", 0.25) is False
+    assert otel._collector_reachable("", 0.25) is False
 
 
 def test_metric_export_defaults_to_the_heartbeat_interval():
     # The export interval, not the heartbeat, is what bounds a collector's freshness:
     # beats recorded every 10s but shipped on the SDK's 60s default leave a dead run
     # looking alive for the better part of a minute. Default them to the same clock.
-    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S=None, OTEL_METRIC_EXPORT_INTERVAL=None):
-        assert otel._metric_export_every_s() == otel._HEARTBEAT_EVERY_S
+    settings = otel.OtelSettings.from_env({})
+    assert settings.metric_export_every_s == settings.heartbeat_every_s
 
 
 def test_metric_export_honors_both_knobs_ours_first():
-    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S=None, OTEL_METRIC_EXPORT_INTERVAL="15000"):
-        assert otel._metric_export_every_s() == 15.0  # the SDK's own knob still wins
-    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="3", OTEL_METRIC_EXPORT_INTERVAL="15000"):
-        assert otel._metric_export_every_s() == 3.0  # ...but ours is more specific
+    sdk_only = otel.OtelSettings.from_env({"OTEL_METRIC_EXPORT_INTERVAL": "15000"})
+    assert sdk_only.metric_export_every_s == 15.0  # the SDK's own knob still wins
+    both = otel.OtelSettings.from_env(
+        {"OTEL_METRIC_EXPORT_INTERVAL": "15000", "WORKHORSE_OTEL_METRIC_EXPORT_S": "3"}
+    )
+    assert both.metric_export_every_s == 3.0  # ...but ours is more specific
 
 
 def test_metric_export_falls_through_garbage_rather_than_raising():
     # This runs on the start-up path of every telemetry-enabled run, so a typo in the
     # environment must cost a default, never the run.
-    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="soon", OTEL_METRIC_EXPORT_INTERVAL="15000"):
-        assert otel._metric_export_every_s() == 15.0
-    with _env(WORKHORSE_OTEL_METRIC_EXPORT_S="0", OTEL_METRIC_EXPORT_INTERVAL=""):
-        assert otel._metric_export_every_s() == otel._HEARTBEAT_EVERY_S
+    garbage = otel.OtelSettings.from_env(
+        {"WORKHORSE_OTEL_METRIC_EXPORT_S": "soon", "OTEL_METRIC_EXPORT_INTERVAL": "15000"}
+    )
+    assert garbage.metric_export_every_s == 15.0
+    zero = otel.OtelSettings.from_env(
+        {"WORKHORSE_OTEL_METRIC_EXPORT_S": "0", "OTEL_METRIC_EXPORT_INTERVAL": ""}
+    )
+    assert zero.metric_export_every_s == zero.heartbeat_every_s
+
+
+def test_settings_are_read_from_the_mapping_it_is_handed():
+    # The four reads used to happen at import, so this — the whole point of the
+    # settings object — was previously untestable without reloading the module.
+    settings = otel.OtelSettings.from_env(
+        {
+            "WORKHORSE_OTEL": "0",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.example.com:4318/",
+            "WORKHORSE_OTEL_PROBE_S": "1.5",
+            "WORKHORSE_OTEL_HEARTBEAT_S": "30",
+        }
+    )
+    assert settings.forced is False
+    assert settings.endpoint == "http://collector.example.com:4318"  # trailing / trimmed
+    assert settings.probe_timeout_s == 1.5
+    assert settings.heartbeat_every_s == 30.0
+    assert settings.metric_export_every_s == 30.0  # follows the heartbeat by default
+
+
+def test_settings_defaults_match_the_documented_ones():
+    # GUARDRAILS.md is the operator contract for these four names; the defaults are
+    # stated once, as field defaults, and from_env({}) must reproduce them exactly.
+    assert otel.OtelSettings.from_env({}) == otel.OtelSettings()
 
 
 def test_append_event_unchanged_with_noop_telemetry():
@@ -455,17 +486,13 @@ def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
     """End-to-end through the module facade: with a fake _Telemetry activated,
     ArtifactWriter events turn into spans (and the event log still writes)."""
     t, tracer, _, _ = _telemetry()
-    otel._active = t
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            writer = artifacts.ArtifactWriter("wf", Path(tmp), run_id="r1")
-            writer.write_checkpoint("node_a", {})
-            writer.write_step("node_a", "p", {}, {}, next_node="node_b")
-            assert tracer.by_name("node_a").ended
-            lines = (writer.run_dir / "events.jsonl").read_text().splitlines()
-            assert json.loads(lines[0])["phase"] == "enter"
-    finally:
-        otel._active = otel._NULL
+    with installed(t), tempfile.TemporaryDirectory() as tmp:
+        writer = artifacts.ArtifactWriter("wf", Path(tmp), run_id="r1")
+        writer.write_checkpoint("node_a", {})
+        writer.write_step("node_a", "p", {}, {}, next_node="node_b")
+        assert tracer.by_name("node_a").ended
+        lines = (writer.run_dir / "events.jsonl").read_text().splitlines()
+        assert json.loads(lines[0])["phase"] == "enter"
 
 
 # --------------------------------------------------------------------------- #

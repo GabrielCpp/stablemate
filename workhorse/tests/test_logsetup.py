@@ -75,10 +75,13 @@ def test_an_explicit_node_is_not_overwritten(monkeypatch):
 def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
     """Telemetry is opt-in; with it off, the null adapter answers with "". A
     logging filter that raised would break logging itself, not just telemetry."""
-    otel._active = otel._NULL
-    record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
-    assert logsetup._NodeFilter().filter(record) is True
-    assert record.node == ""
+    previous = otel.install(otel.TelemetryHost())  # a host with telemetry off
+    try:
+        record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
+        assert logsetup._NodeFilter().filter(record) is True
+        assert record.node == ""
+    finally:
+        otel.install(previous)
 
 
 def test_sdk_internal_logs_are_kept_out_of_the_otel_handler():

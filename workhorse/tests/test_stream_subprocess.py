@@ -12,6 +12,8 @@ import os
 import sys
 import time
 
+from _fakes import RecordingTelemetry
+from workhorse import otel
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 
@@ -49,9 +51,8 @@ def test_silent_stream_still_emits_liveness_heartbeats():
     as each slice returns. Heartbeat granularity is therefore ~1s at best, which
     is irrelevant at the 10s production default but bounds this test.
     """
-    beats: list[tuple[str, float, float]] = []
-    orig_beat = process.otel.turn_heartbeat
-    process.otel.turn_heartbeat = lambda node, idle, elapsed: beats.append((node, idle, elapsed))
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
     try:
         # Writes one line, then goes silent until the turn's deadline.
         process.stream_subprocess(
@@ -63,8 +64,9 @@ def test_silent_stream_still_emits_liveness_heartbeats():
             resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        process.otel.turn_heartbeat = orig_beat
+        otel.install(previous)
 
+    beats = fake.beats
     assert beats, "a silent turn emitted no heartbeat — a stall would be invisible"
     assert all(node == "select_item" for node, _, _ in beats)
     # idle_s must GROW while the stream is quiet: that is what distinguishes a
@@ -76,9 +78,8 @@ def test_silent_stream_still_emits_liveness_heartbeats():
 def test_heartbeat_idle_resets_when_the_stream_speaks():
     """A chatty turn must keep idle_s near zero however long it runs — otherwise a
     healthy long turn would look identical to a hang."""
-    beats: list[float] = []
-    orig_beat = process.otel.turn_heartbeat
-    process.otel.turn_heartbeat = lambda _n, idle, _e: beats.append(idle)
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
     try:
         process.stream_subprocess(
             [sys.executable, "-u", "-c",
@@ -91,8 +92,9 @@ def test_heartbeat_idle_resets_when_the_stream_speaks():
             resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        process.otel.turn_heartbeat = orig_beat
+        otel.install(previous)
 
+    beats = [idle for _node, idle, _elapsed in fake.beats]
     assert beats, "a streaming turn emitted no heartbeat"
     assert max(beats) < 0.5, f"idle_s climbed on a streaming turn: {beats}"
 
