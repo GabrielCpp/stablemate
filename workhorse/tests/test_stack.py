@@ -10,6 +10,7 @@ import logging
 
 import pytest
 
+from _fakes import FakeClock
 from workhorse import stack
 
 LOG = logging.getLogger("test-stack")
@@ -63,11 +64,10 @@ def test_boot_treats_a_clean_exit_as_a_bring_up_command(monkeypatch) -> None:
     monkeypatch.setattr(stack, "health_ok", health)
     monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Exited())
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
-    monkeypatch.setattr(stack, "POLL_INTERVAL_S", 0)
 
     out = stack.boot_app(
         "make dev-stack-test-db", "http://localhost:3000", "/", ".", ".", "", 60,
-        logger=LOG,
+        logger=LOG, clock=FakeClock(),
     )
     assert out["boot_ok"] == "yes"
     # Owns nothing: the stack lives in containers, so teardown must not killpg 4242.
@@ -87,11 +87,10 @@ def test_boot_still_fails_when_the_launch_command_errors(monkeypatch) -> None:
     monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
     monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Died())
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
-    monkeypatch.setattr(stack, "POLL_INTERVAL_S", 0)
 
     out = stack.boot_app(
         "make dev-stack-test-db", "http://localhost:3000", "/", ".", ".", "", 60,
-        logger=LOG,
+        logger=LOG, clock=FakeClock(),
     )
     assert out["boot_ok"] == "no"
 
@@ -129,11 +128,10 @@ def test_boot_app_adopt_false_launches_even_when_serving(monkeypatch) -> None:
     monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
     monkeypatch.setattr(stack.subprocess, "Popen", popen)
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
-    monkeypatch.setattr(stack, "POLL_INTERVAL_S", 0)
 
     out = stack.boot_app(
         "docker compose up -d --build", "http://localhost:3000", "/", ".", ".",
-        "<title>Acme</title>", 60, adopt=False, logger=LOG,
+        "<title>Acme</title>", 60, adopt=False, logger=LOG, clock=FakeClock(),
     )
     assert out["boot_ok"] == "yes"
     assert launched["n"] == 1  # did NOT adopt; ran the launch
@@ -327,24 +325,6 @@ def test_ensure_stack_fails_the_step_that_failed_and_stops(monkeypatch) -> None:
     assert ran == ["seed[0]"]
 
 
-class _Clock:
-    """The `time` the health window is measured against, advanced only by its own waits.
-
-    `stack` reads the wall clock directly, so a test that wants to assert *how many*
-    re-attempts a window buys would otherwise be racing the machine it runs on. Swapping
-    the module's `time` makes the window exact and the waits free.
-    """
-
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.now += seconds
-
-
 def test_ensure_stack_retries_a_health_gate_that_is_not_up_yet(monkeypatch) -> None:
     """A gate failing while a sibling service is still starting is not a verdict.
 
@@ -361,14 +341,17 @@ def test_ensure_stack_retries_a_health_gate_that_is_not_up_yet(monkeypatch) -> N
 
     monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
     monkeypatch.setattr(stack, "_run_step", run_step)
-    monkeypatch.setattr(stack, "time", _Clock())
     monkeypatch.setattr(
         stack, "boot_app",
         lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "9", "app_pgid": "9"},
     )
 
+    # The window is measured against the injected clock, which advances only by the
+    # retry's own waits — so "how many attempts does a window buy" is a statement about
+    # the window, not a race with the machine the suite runs on.
     out = stack.ensure_stack(
-        {"entry_url": "u", "launch": "go", "health": ["make stack-health"]}, logger=LOG,
+        {"entry_url": "u", "launch": "go", "health": ["make stack-health"]},
+        logger=LOG, clock=FakeClock(),
     )
     assert out["ready"] == "yes"
     assert attempts == ["health[0]", "health[0]", "health[0]"]
@@ -384,8 +367,6 @@ def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monk
 
     monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
     monkeypatch.setattr(stack, "_run_step", run_step)
-    monkeypatch.setattr(stack, "time", _Clock())
-    monkeypatch.setattr(stack, "HEALTH_RETRY_S", 5.0)
     monkeypatch.setattr(
         stack, "boot_app",
         lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "9", "app_pgid": "9"},
@@ -394,7 +375,7 @@ def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monk
     out = stack.ensure_stack(
         {"entry_url": "u", "launch": "go", "health_timeout": "12",
          "health": ["make stack-health", "make other-health"]},
-        logger=LOG,
+        logger=LOG, clock=FakeClock(),
     )
     assert out["ready"] == "no"
     assert out["failed_step"] == "health[0]"
@@ -418,7 +399,7 @@ def test_ensure_stack_reports_a_failed_launch(monkeypatch) -> None:
 def test_teardown_stack_delegates_with_the_leave_up_policy(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
-    def fake_teardown(pgid, stop, cwd, *, logger):
+    def fake_teardown(pgid, stop, cwd, *, logger, clock):
         seen.update(pgid=pgid, stop=stop, cwd=cwd)
         return {"torn_down": "skipped"}
 
