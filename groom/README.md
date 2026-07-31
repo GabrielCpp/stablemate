@@ -5,7 +5,7 @@ gates. Run `groom serve` on your host while `author`/`coder` (or any other
 `workhorse`-based workflow) containers run in the background; `groom` shows
 every running workflow, pages you the moment one blocks on an operator gate,
 and lets you answer the gate right from the browser — no more finding and
-restarting blocked containers one by one. `await_operator.py` blocks in
+restarting blocked containers one by one. The shared `await_operator` node blocks in
 place via `inotify` rather than exiting, so the container keeps running and
 just wakes up once you answer; `groom` only falls back to `docker start` if
 a container has genuinely stopped.
@@ -43,12 +43,28 @@ a container has genuinely stopped.
   `docker inspect` reconciliation scan so workflows that were already
   blocked before `groom` was started are still picked up.
 
+## Install
+
+groom is not on PyPI (that name belongs to an unrelated project), so install it from a
+checkout of the [stablemate](https://github.com/GabrielCpp/stablemate) workspace:
+
+```bash
+pipx install ./groom        # isolated CLI on your PATH
+```
+
+Requires Python ≥ 3.12. groom is an optional add-on — no base workflow requires it — and
+nothing has to be configured on the workflow side: `workhorse` probes for a collector at
+the default port when a run starts, and containers dial out to it on their own.
+
 ## Usage
 
+```bash
+groom serve                       # binds 0.0.0.0:8787 by default (see note below)
+groom serve --host 127.0.0.1      # loopback only (no container access)
 ```
-uv run groom serve                # binds 0.0.0.0:8787 by default (see note below)
-uv run groom serve --host 127.0.0.1   # loopback only (no container access)
-```
+
+From a checkout of this workspace, prefix each command with `uv run` (`uv run groom serve`)
+to use the working tree instead of the installed copy.
 
 > **Binding.** groom defaults to `0.0.0.0` so the in-container `groom-sidecar`s
 > can reach it over the docker bridge (`host.docker.internal` → the bridge
@@ -60,13 +76,13 @@ uv run groom serve --host 127.0.0.1   # loopback only (no container access)
 ## Telemetry collector (OTLP) + AFK alerting
 
 `groom` is also the default local **OpenTelemetry collector** for `workhorse`
-runs (see `docs/workhorse-otel.md` at the repo root). The same uvicorn process
+runs (see `docs/plans/workhorse-otel.md` at the repo root). The same uvicorn process
 and port expose standard OTLP/HTTP receivers — `POST /v1/traces`,
 `POST /v1/metrics` and `POST /v1/logs` — so an ordinary run
 
 ```bash
-pip install 'workhorse-agent[otel]'
-workhorse run coder      # probes the endpoint at start; exports if groom answers
+pipx install './workhorse[otel]'   # the extra carries the OTel SDK; without it, no export
+workhorse run coder                # probes the endpoint at start; exports if groom answers
 ```
 
 (No env var is needed while `groom serve` is up on the default port — workhorse
@@ -74,7 +90,7 @@ enables telemetry when it finds a collector listening. Point elsewhere with
 `OTEL_EXPORTER_OTLP_ENDPOINT`, or opt out with `WORKHORSE_OTEL=0`.)
 
 It streams node/agent-turn spans, gas/heartbeat metrics, and the log records of the
-engine and its in-process script nodes into `groom`. Because a
+engine and every node it runs in-process into `groom`. Because a
 pushed span carries its own identity, **native (non-Docker) runs appear too** —
 no discovery gate. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
@@ -145,11 +161,11 @@ uv run groom logs --level WARNING            # a FLOOR: WARNING + ERROR + FATAL
 uv run groom logs --contains "over budget"
 ```
 
-Script nodes appear here only because workhorse now **runs them in-process** and
-calls their `main(logger)`. As child processes their stdout was consumed whole as
-the node's JSON and their stderr surfaced only on failure, so a script's account
-of what it decided was unrecoverable after the fact — the gap that made a
-script-heavy workflow (okf-builder) hard to debug live.
+Deterministic (non-agent) nodes appear here only because workhorse **runs them
+in-process** and hands each one a per-node `logger`. Under the retired YAML engine they
+were child processes: stdout was consumed whole as the node's JSON and stderr surfaced
+only on failure, so a node's account of what it decided was unrecoverable after the fact
+— the gap that made a script-heavy workflow (okf-builder) hard to debug live.
 
 Records carry the same `run_id`/`run_dir` resource as the spans, so a log line
 joins to its node span and its on-disk artifacts with no correlation step. They
@@ -198,4 +214,5 @@ The last one is why this stays local: `run_dir` is a resource attribute on every
 span, so a query hands you the path to the prompt and outputs on disk — a join a
 hosted trace backend cannot make.
 
-See `docs/features/groom.md` at the repo root for the full design.
+See `docs/features/groom/` at the repo root for the full design — groom's own OKF book,
+queryable with `ostler graph --surface groom`.

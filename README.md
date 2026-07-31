@@ -5,17 +5,20 @@ packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
-| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives the Claude CLI through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | `workhorse-workflows` | The workflows themselves — `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
+| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
+| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
-| [`core/`](core/) | [`stablemate-core`](https://pypi.org/project/stablemate-core/) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. Not installed directly. |
+| [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
+| [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
+| [`core/`](core/) | `stablemate-core` (unpublished) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. Not installed directly. |
 
-And one directory that is **not** a package:
+And two directories that are **not** packages:
 
 | Directory | Role |
 | --- | --- |
-| [`base-library/`](base-library/) | The **base library**: the skills and scaffolds farrier renders. Plain data — `library/`, `scaffolds/` — markdown and YAML, with nothing to import and no dependencies. Tools find it on disk or fetch it from git. |
+| [`base-library/`](base-library/) | The **base library**: the skills farrier renders, and the packs that select them. Plain data — `library/`, `packs/` — markdown and YAML, with nothing to import and no dependencies. Tools find it on disk or fetch it from git. |
+| [`benchmarks/`](benchmarks/) | Scores a workflow chain's output against a backlog of user-observable bullets — one number, comparable across runs. Run with `uv run python benchmarks/bench.py score`. |
 
 Library content resolves across two layers: the **base** (`base-library/`, above) and an
 optional private **overlay** that shadows it name-for-name. Point a repo at an overlay
@@ -32,21 +35,38 @@ its own clock; the tools a workflow needs are declared by the workflow's own pac
 ## Installing
 
 Install the engines. **The base library is not something you install** — it is content,
-and the tools fetch it themselves:
+and the tools fetch it themselves.
+
+**A checkout is the supported install today**, because it is the one arrangement that
+puts every piece in a single interpreter:
 
 ```bash
-pipx install workhorse-agent
-pipx inject workhorse-agent workhorse-workflows   # the four workflows
+git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
+make sync                             # one venv with every member installed
+uv run workhorse run <name>           # author, coder, okf-builder, research
+```
+
+That single-interpreter part is not incidental. Workflow code runs **in workhorse's own
+interpreter** and imports its tools in-process, so `workhorse run <name>` only finds a
+workflow through the `workhorse.workflows` entry-point group in that same venv, and
+`ostler` being on your `PATH` is not enough — it has to be importable *there*. See
+[Tools a workflow needs](#tools-a-workflow-needs).
+
+Two of the tools stand alone and are on PyPI, so `pipx` suits them:
+
+```bash
 pipx install farrier
 pipx install ostler
 ```
 
-The workflows go *into* workhorse's venv rather than beside it: `workhorse run <name>`
-finds them through the `workhorse.workflows` entry-point group, which only sees
-distributions installed in the same interpreter.
+The rest are not on PyPI yet: `stablemate-core`, `workhorse-workflows` and `saddlebag`
+are unpublished, the name `groom` on the index belongs to an unrelated project, and the
+last `workhorse-agent` release predates the Python-workflow engine. A `pipx install
+./workhorse` therefore also needs core built locally first (`make -C core build`, then
+`--pip-args="--find-links core/dist"`), which is why the checkout above is the path this
+README vouches for.
 
-`groom` and `saddlebag` are optional add-ons (`pipx install groom` /
-`pipx install saddlebag`); no base workflow requires them.
+`groom` and `saddlebag` are optional add-ons — no base workflow requires either.
 
 ### The base library fetches itself
 
@@ -94,29 +114,25 @@ last, so it can never shadow a checkout you are editing:
 The base library declares **no dependencies** — it is content, and importing it pulls in
 nothing. The tools its workflows need are a property of *running* a workflow, not of
 having the library, and a workflow is a distribution now, so they are ordinary
-`[project.dependencies]` on `workhorse-workflows`. `pipx inject` above installs them
-with it; there is no second manifest to satisfy.
+`[project.dependencies]` on `workhorse-workflows`. Installing that distribution installs
+them with it; there is no second manifest to satisfy, and none that can disagree with
+what is actually importable.
 
-That matters because workflow code runs **in workhorse's own interpreter** and imports
-its tools in-process. `ostler` being on your `PATH` is not enough — it must be
-importable *there*, which is exactly what installing into that venv arranges.
-
-Until this loop, a workflow was YAML with no way to declare a dependency, so it carried a
-hand-rolled `requires:` block that workhorse checked before the first node. It has no
-successor and needs none: a manifest that can disagree with the install is worse than
-none.
+Which is the whole reason the workflows must land in workhorse's own venv rather than
+beside it. `make sync` arranges that for a checkout; a `pipx` layout needs
+`pipx inject workhorse-agent <the workflows distribution>` to reach the same place.
 
 ### Config
 
-Both tools read and write one file, `~/.config/stablemate/config.toml` (override with
+Every tool reads and writes one file, `~/.config/stablemate/config.toml` (override with
 `$STABLEMATE_CONFIG`), so `library_dir` / `stablemate_dir` / `base_dir` mean the same
 thing to each. Per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still read
 when it is absent, and the first write folds them in.
 
 The file carries a `config_version`, and **that** is what keeps the tools honest with each
-other. They install separately and version independently — `pipx install workhorse-agent`
-and `pipx install farrier` are two venvs, each with its own copy of the config code —
-while the config path is per *user*, not per venv. So no packaging arrangement can make
+other. They install separately and version independently — `pipx install farrier` and
+`pipx install ostler` are two venvs, each with its own copy of the config code — while
+the config path is per *user*, not per venv. So no packaging arrangement can make
 them agree; the guard has to live on the file:
 
 - a tool **refuses to write** a config newer than it understands, rather than serializing
@@ -128,23 +144,31 @@ them agree; the guard has to live on the file:
 
 If a tool refuses, upgrade it — that is the mechanism working, not a bug.
 
-An overlay library shadows the base name-for-name via `farrier config set-library` (or
-`$FARRIER_LIBRARY_DIR` / `$WORKHORSE_LIBRARY_DIR`).
+An overlay library shadows the base name-for-name via `farrier config set-library`, or
+`$FARRIER_LIBRARY_DIR` for a one-off.
 
 ## Development
 
 ```bash
 make sync                            # create the workspace venv (all members)
-make build                           # build wheels + sdists for both packages
-make test                            # run both test suites
+make hooks                           # once per clone: the private-name pre-commit hook
+make test                            # every suite + the benchmark tests + check-public
+make build                           # wheels + sdists for core, workhorse, workflows, farrier
 make -C farrier check                # inspect a built wheel's contents
+make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom)
 ```
 
-`make sync` runs `uv sync --all-packages` so both members are installed. (Plain
+`make sync` runs `uv sync --all-packages` so every member is installed. (Plain
 `uv sync` targets the workspace root, which is an intentionally non-packaged
 anchor — it has a `[project]` table but no `[build-system]`, so uv never builds
 or installs the root itself.) Use `uv run --package <name>` to run within a
 specific member.
+
+`make test` is the aggregate: each member's suite, then `make test-bench` (the benchmark
+harness's own tests — a benchmark whose scoring is wrong is worse than none) and
+`make check-public`, the guard that no private overlay name reached this public repo and
+that the base library still stands alone. `make okf-verify` is separate and slower: it
+checks every OKF book's coverage against its source.
 
 Each package is independently versioned and published (`make -C <pkg> publish`).
 See each package's README for details.
@@ -154,7 +178,13 @@ See each package's README for details.
 Each package is released independently, with its next version inferred from the
 [Conventional-Commit](https://www.conventionalcommits.org) history since its last
 release tag (`<dist-name>-v<version>`, e.g. `farrier-v1.3.0`). Only commits that
-touch the package's own directory count, so the two packages bump separately.
+touch the package's own directory count, so each package bumps on its own clock.
+
+The root release targets cover the three published distributions — `core`, `workhorse`
+and `farrier` — in that order, because the other two declare `stablemate-core` and
+releasing them against an unpublished core produces installs that cannot resolve.
+`workflows` builds but is not published yet (see
+[workflows/README.md](workflows/README.md)); `groom` and `saddlebag` are released by hand.
 
 | Commit since last tag | Bump |
 | --- | --- |
@@ -163,9 +193,10 @@ touch the package's own directory count, so the two packages bump separately.
 | anything else (`fix:`, `perf:`, `docs:`, …, or none) | patch |
 
 ```bash
+make version                         # print each published package's current version
 make next-version                    # show what each package WOULD bump to
-make release DRY_RUN=1               # preview the full release for both packages
-make release                         # release both: bump, build, publish, commit, tag, push
+make release DRY_RUN=1               # preview the full release, change nothing
+make release                         # bump, build, publish, commit, tag, push — all three
 make -C farrier release              # release just one package
 ```
 

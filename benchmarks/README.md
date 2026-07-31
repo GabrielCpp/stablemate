@@ -15,8 +15,9 @@ tasks, no file lists, just things a person can do:
 - [todo-create] A person adds a todo by typing a title, and it appears in their list immediately.
 ```
 
-The workflows under test (`genesis` → `author` → `coder`) are given that backlog and a
-greenfield repo. Afterwards, every bullet is scored 0–3 against what was actually built:
+The workflows under test are given that backlog and a greenfield repo, in three phases:
+`genesis` (the `coder` workflow's greenfield flow — `workhorse run coder genesis`), then
+`author`, then `coder`. Afterwards, every bullet is scored 0–3 against what was actually built:
 
 | level | name       | means                                                       |
 | ----- | ---------- | ----------------------------------------------------------- |
@@ -81,14 +82,19 @@ construction — genesis keys each skeleton step on that *service's* marker file
 run is resumed by re-running the same command. Useful flags: `--no-judge`, `--jobs N`,
 `--bullet <id>` (repeatable, to re-score one bullet while tuning the rubric).
 
-## Iterating on a workflow (`evals.py`)
+## Iterating on a workflow (`evals.py`) — designed, not built
+
+> **Status: not implemented.** `evals.py`, `evals/<workflow>.yml` and the fixture store do
+> not exist in this tree; only `.gitignore` entries for their output do. What follows is the
+> design the harness is meant to satisfy, kept here because the constraints are the hard
+> part and they are settled. `bench.py` above is the harness that *does* exist.
 
 `bench.py` answers *is the workflow good?* — once, over hours, as a single sample. That
 makes it a regression gate and a poor instrument: a prompt edit worth 15 points of node
 success rate is invisible in one end-to-end run, and one lucky run "proves" a change that
 did nothing.
 
-`evals.py` measures the other way round: **one node, many samples, frozen input.**
+`evals.py` would measure the other way round: **one node, many samples, frozen input.**
 
 ```bash
 evals.py harvest --run ~/runs/author-default   # freeze real node entries as fixtures
@@ -102,15 +108,15 @@ Three pieces, all data:
 - **fixture** — the exact context a node was entered with in a real run, plus the repo
   commit it read. Harvested from run artifacts, never hand-written, so the distribution
   is the real one.
-- **variant** — the change under test, as an *overlay on the workflow directory*: a bare
-  file replaces the node's prompt, a directory is mirrored over the whole workflow. So a
-  `workflow.yaml` edit or a stricter validator is as testable as a reworded prompt —
-  which matters, because those are the **stronger** fixes and the tooling should not make
-  the weakest one the easiest to try.
+- **variant** — the change under test, as an *overlay on the workflow package*: a bare
+  file replaces the node's prompt, a directory is mirrored over the whole workflow. So an
+  edit to the state machine itself, or a stricter validator, is as testable as a reworded
+  prompt — which matters, because those are the **stronger** fixes and the tooling should
+  not make the weakest one the easiest to try.
 - **grader** — the workflow's *own* deterministic gate, named by node id in
   `evals/<workflow>.yml`. `write_story` is graded by `validate_story` and
   `check_story_grounding`, the same two scripts production runs. Not a rubric, not a
-  judge: tightening `validate-story.py` tightens the eval in the same commit, and the two
+  judge: tightening `validate_story` tightens the eval in the same commit, and the two
   can never drift into different opinions of "done".
 
 ### What makes the number trustworthy
@@ -155,8 +161,8 @@ target and backlog, and run `bench.py --spec path/to/bench.yml score`. The layou
 
 ```
 bench.py              the end-to-end harness: one score for the whole workflow chain
-evals.py              the node-replay harness: A/B one change, many samples
-evals/author.yml      which author nodes are evaluable, and what grades each
+evals.py              the node-replay harness: A/B one change, many samples   (PLANNED)
+evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 tests/                the properties the score rests on
 todo-app/
