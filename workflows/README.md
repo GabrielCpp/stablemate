@@ -33,8 +33,10 @@ workhorse-research = "workhorse_workflows.research.workflow:main"
 
 The **entry point** points at the `Workflow` object, because discovery needs the
 registry rather than the entry function. The **console script** points at `main` — the
-callable `workflow.main(Entry)` *returns*, since a script target is called after
-import, not during it.
+callable `console_script(workflow.entry_point(Entry))` *returns*, since a script target
+is called after import, not during it. `entry_point` declares which flow a bare run
+starts and returns the registry; `console_script` — which lives in `workhorse.cli`,
+the ring a console script actually starts — turns it into that callable.
 
 `workhorse run <name>` resolves the entry point and hands the name to the same parser
 `workhorse-<name>` uses. There is one parser on purpose: two commands with two parsers

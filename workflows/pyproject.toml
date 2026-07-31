@@ -60,9 +60,10 @@ author = "workhorse_workflows.author.workflow:workflow"
 okf-builder = "workhorse_workflows.okf_builder.workflow:workflow"
 coder = "workhorse_workflows.coder.workflow:workflow"
 
-# One console script per workflow, pointing at the callable `workflow.main(Entry)`
-# RETURNS. `[project.scripts]` targets are called after import, so a module-level
-# `main = workflow.main(Research)` is the shape; `workflow.main(Research)()` is not.
+# One console script per workflow, pointing at the callable
+# `console_script(workflow.entry_point(Entry))` RETURNS. `[project.scripts]` targets are
+# called after import, so a module-level `main = console_script(...)` is the shape;
+# `console_script(...)()` is not.
 #
 # Both front doors run the same parser with the name bound differently:
 #     workhorse         run research --run-id=… --params …

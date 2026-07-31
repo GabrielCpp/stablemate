@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workhorse.cli import console_script
 from workhorse.pyflow import (
     Await,
     Continue,
@@ -1078,4 +1079,4 @@ workflow = (
         }
     )
 )
-main = workflow.main(Author)
+main = console_script(workflow.entry_point(Author))

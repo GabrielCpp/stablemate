@@ -16,6 +16,7 @@ Run: ./.venv/bin/python tests/test_pyflow.py   (or via pytest)
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
@@ -48,6 +49,7 @@ from workhorse.pyflow import (  # noqa: E402
 from workhorse.pyflow import activity as pyflow_activity  # noqa: E402
 from workhorse.pyflow import driver as pyflow_driver  # noqa: E402
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
+from workhorse.pyflow import registry as registry_mod  # noqa: E402
 from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
@@ -864,7 +866,7 @@ def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
         # a class declared in a test file has none, so borrow a real package's.
         SubFlow.__module__ = "workhorse.pyflow.registry"
         child = Registry("globex").add_blueprints(child_bp)
-        child.main(SubFlow)
+        child.entry_point(SubFlow)
 
         class Parent(Workflow):
             def start(self) -> Transition:
@@ -890,19 +892,38 @@ def test_a_flow_class_may_belong_to_only_one_registry():
 # -------------------------------------------------------------------------- Registry
 
 
-def test_main_returns_the_console_callable_rather_than_running_anything():
+def test_entry_point_declares_the_default_flow_and_chains():
     registry = Registry("acme")
-    entry = registry.main(Linear)
-    assert callable(entry)
-    assert entry.__name__ == "main"
+    assert registry.entry_point(Linear) is registry, "must chain into console_script"
     assert registry.flow(None) is Linear
     assert registry.flow_names() == ["default"]
     assert registry.class_named("Linear") is Linear
     assert registry.class_named("Nope") is None
 
 
+def test_the_registry_does_not_reach_back_into_the_cli_ring():
+    """`workhorse.cli` imports the driver, which imports the registry. When the
+    registry also built the console callable it had to import the CLI from inside a
+    function body to keep both modules loadable — a suppressed cycle, not an optional
+    dependency. Binding now lives in the CLI, so nothing here names it."""
+    tree = ast.parse(Path(registry_mod.__file__).read_text(encoding="utf-8"))
+    imported = {
+        name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+        for name in [node.module]
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    offenders = sorted(m for m in imported if m.startswith("workhorse.cli"))
+    assert not offenders, f"the registry imports the CLI again — the cycle is back: {offenders}"
+
+
 def test_a_registry_without_a_name_cannot_be_a_command():
-    exc = _raises(WorkflowDefinitionError, Registry().main, Linear)
+    exc = _raises(WorkflowDefinitionError, Registry().entry_point, Linear)
     assert "Registry(" in str(exc), exc
 
 

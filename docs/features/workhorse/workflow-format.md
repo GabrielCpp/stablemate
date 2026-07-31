@@ -52,7 +52,7 @@ resolving under that entry point is a hard error naming what it actually found.
 
 ```python
 workflow = Registry("acme").add_blueprints(blueprint)
-main = workflow.main(Build)
+main = console_script(workflow.entry_point(Build))
 ```
 
 - `add_blueprints(*blueprints)` — folds every blueprint's nodes into the one index a run

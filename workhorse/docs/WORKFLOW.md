@@ -188,6 +188,7 @@ becomes
 
 ```python
 from pydantic import BaseModel
+from workhorse.cli import console_script
 from workhorse.pyflow import Blueprint, Done, Registry, Workflow, WorkflowFailed
 
 
@@ -206,7 +207,7 @@ class Example(Workflow):
 
 
 workflow = Registry("example").add_blueprints(Blueprint("example"))
-main = workflow.main(Example)
+main = console_script(workflow.entry_point(Example))
 ```
 
 That pair is a translation, not a runnable file: `prompts/step.md` is whatever prompt the

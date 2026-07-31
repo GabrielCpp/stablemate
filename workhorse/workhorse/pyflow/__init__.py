@@ -3,6 +3,7 @@
 The public surface a workflow module imports:
 
 ```python
+from workhorse.cli import console_script
 from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
 
 blueprint = Blueprint("acme")
@@ -19,7 +20,7 @@ class Build(Workflow):
 
 
 workflow = Registry("acme").add_blueprints(blueprint)
-main = workflow.main(Build)
+main = console_script(workflow.entry_point(Build))
 ```
 
 `run` is deliberately NOT re-exported here: it imports the artifact writer, the agent
