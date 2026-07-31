@@ -95,7 +95,7 @@ def test_sdk_internal_logs_are_kept_out_of_the_otel_handler():
     assert drop.filter(rec("opentelemetry.exporter.otlp")) is False
     # A workhorse or script record must still get through.
     assert drop.filter(rec("script.select_item")) is True
-    assert drop.filter(rec("workhorse.main")) is True
+    assert drop.filter(rec("workhorse.cli")) is True
 
 
 def test_script_logger_is_named_per_node():

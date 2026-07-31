@@ -27,7 +27,7 @@ from workhorse.config_run import RunConfig
 from workhorse.packaged import find_packaged_workflow
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
-from workhorse.pyflow.run import run_pyflow
+from workhorse.pyflow.run import RunInvocation, run_pyflow
 
 from workhorse_workflows.hello_world import workflow as hello_world
 
@@ -51,7 +51,11 @@ def test_the_documented_dry_run_walks_the_machine_green() -> None:
     present — which is what would catch `prompts/greet.md` going missing.
     """
     with tempfile.TemporaryDirectory() as tmp:
-        code = run_pyflow(hello_world.workflow, runs_dir=Path(tmp), dry_run=True)
+        code = run_pyflow(
+            RunInvocation(
+                registry=hello_world.workflow, runs_dir=Path(tmp), dry_run=True
+            )
+        )
     assert code == 0
 
 

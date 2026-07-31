@@ -14,7 +14,16 @@ repository and are working in its `workhorse/` directory, rather than having ins
 ```
 workhorse/                     # this directory, inside the stablemate workspace
 ├── workhorse/                 # The workhorse Python package (entrypoint: workhorse:main)
-│   ├── main.py                # CLI: resolve the workflow, pick the run dir, hand to the driver
+│   ├── cli/                   # The `workhorse` command line — parse argv, dispatch, hand off
+│   │   ├── __init__.py        # main(): argv normalization, the per-workflow console script
+│   │   ├── parser.py          # The Command table and the one parser built from it
+│   │   ├── run.py             # `run`: its arguments, and the RunInvocation it builds
+│   │   ├── test.py            # `test`: run a workflow's own pytest suite
+│   │   ├── dot.py             # `dot`: render a workflow's state graph as Graphviz DOT
+│   │   ├── config.py          # `config`: show / set / list / get the shared config file
+│   │   ├── version.py         # `version`: print the installed workhorse-agent version
+│   │   ├── resolve.py         # A workflow name → its installed Registry (`run` and `dot`)
+│   │   └── params.py          # --params / --params-file → the starting params dict
 │   ├── packaged.py            # Entry-point discovery: what `workhorse run <name>` resolves to
 │   ├── rundir.py              # Run identity: the (workflow, run-id) dir and the resume contract
 │   ├── manifest.py            # The per-repo context manifest (ContextManifest → ManifestContext)
@@ -37,7 +46,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   ├── registry.py        # What an entry point / console script points at
 │   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
 │   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
-│   │   ├── run.py             # run_pyflow(): run dir, dry run, exit code — the CLI's one call
+│   │   ├── run.py             # RunInvocation + run_pyflow(): run dir, dry run, exit code
 │   │   ├── graph.py / dot.py  # Read the states' source; render Graphviz DOT (`workhorse dot`)
 │   │   ├── activity.py        # The flagged-log-record activity tracker (a logging.Filter)
 │   │   ├── errors.py          # WorkflowFailed, NodeNotRunError and the rest of the exceptions

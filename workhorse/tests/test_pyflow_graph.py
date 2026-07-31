@@ -324,7 +324,9 @@ def test_dry_run_reports_problems_and_never_opens_a_run_dir():
     try:
         with tempfile.TemporaryDirectory() as tmp:
             runs = Path(tmp) / "runs"
-            code = pyflow_run.run_pyflow(registry, runs_dir=runs, dry_run=True)
+            code = pyflow_run.run_pyflow(
+                pyflow_run.RunInvocation(registry, runs_dir=runs, dry_run=True)
+            )
             assert code == 1
             assert not runs.exists(), "a failed preflight must not open a run dir"
     finally:
@@ -354,7 +356,9 @@ def test_dry_run_drives_the_machine_without_running_a_node():
     with tempfile.TemporaryDirectory() as tmp:
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
         code = pyflow_run.run_pyflow(
-            registry, runs_dir=Path(tmp) / "runs", run_id="real", dry_run=True
+            pyflow_run.RunInvocation(
+                registry, runs_dir=Path(tmp) / "runs", run_id="real", dry_run=True
+            )
         )
     assert code == 0
     assert ran == [], "a dry run must not execute a node"
@@ -397,7 +401,9 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
         (prompts / "record.md").write_text("hi")
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
         runs = Path(tmp) / "runs"
-        code = pyflow_run.run_pyflow(registry, runs_dir=runs, dry_run=True)
+        code = pyflow_run.run_pyflow(
+            pyflow_run.RunInvocation(registry, runs_dir=runs, dry_run=True)
+        )
         lines = (runs / "acme-dry-run" / "events.jsonl").read_text().splitlines()
 
     assert code == 0
@@ -429,7 +435,11 @@ def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
-        pyflow_run.run_pyflow(registry, runs_dir=runs, run_id="week-long", dry_run=True)
+        pyflow_run.run_pyflow(
+            pyflow_run.RunInvocation(
+                registry, runs_dir=runs, run_id="week-long", dry_run=True
+            )
+        )
         assert not (runs / "acme-week-long").exists()
         assert (runs / "acme-dry-run").is_dir()
 
@@ -471,7 +481,9 @@ def _run_halting(*, dry_run: bool) -> tuple[int, str]:
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
         with contextlib.redirect_stdout(out):
             code = pyflow_run.run_pyflow(
-                registry, runs_dir=Path(tmp) / "runs", run_id="halt", dry_run=dry_run
+                pyflow_run.RunInvocation(
+                    registry, runs_dir=Path(tmp) / "runs", run_id="halt", dry_run=dry_run
+                )
             )
     return code, out.getvalue()
 
@@ -513,11 +525,13 @@ def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
         with contextlib.redirect_stdout(out):
             code = pyflow_run.run_pyflow(
-                registry,
-                runs_dir=Path(tmp) / "runs",
-                run_id="refs",
-                dry_run=dry_run,
-                context_manifest=manifest,
+                pyflow_run.RunInvocation(
+                    registry,
+                    runs_dir=Path(tmp) / "runs",
+                    run_id="refs",
+                    dry_run=dry_run,
+                    context_manifest=manifest,
+                )
             )
     return code, out.getvalue()
 
@@ -549,9 +563,9 @@ def test_a_run_carrying_no_manifest_is_not_warned_about_references():
 
 
 def test_the_run_parser_carries_dry_run():
-    from workhorse.main import _build_parser
+    from workhorse.cli.parser import build_parser
 
-    args = _build_parser().parse_args(["run", "acme", "--dry-run"])
+    args = build_parser().parse_args(["run", "acme", "--dry-run"])
     assert args.dry_run is True
 
 
@@ -561,7 +575,7 @@ def test_the_run_parser_carries_dry_run():
 def _dot_args(**kwargs: Any) -> Any:
     """The `dot` Namespace argparse would have built, with `registry` pre-resolved.
 
-    `registry` is the seam the CLI itself uses: `_run_dot` prefers one already on the
+    `registry` is the seam the CLI itself uses: `dot.run` prefers one already on the
     args over resolving the name through the installed entry points, so a test never
     has to install a distribution to render one.
     """
@@ -581,22 +595,22 @@ def test_dot_renders_a_python_workflow_from_its_registry():
     import io
     from contextlib import redirect_stdout
 
-    from workhorse.main import _run_dot
+    from workhorse.cli.dot import run as run_dot
 
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        _run_dot(_dot_args(positional=["acme"], registry=_sample_registry()))
+        run_dot(_dot_args(positional=["acme"], registry=_sample_registry()))
     assert buffer.getvalue().startswith("digraph acme {")
 
 
 def test_dot_rejects_pin_and_leaf_at_the_parser():
     """`--pin`/`--leaf` collapsed a *declared* YAML branch. A Python workflow's
     branches are code, so there is nothing to pin — the flags are gone, not ignored."""
-    from workhorse.main import _build_parser
+    from workhorse.cli.parser import build_parser
 
     for flag in ("--pin", "--leaf"):
         try:
-            _build_parser().parse_args(["dot", "acme", flag, "mode=epic"])
+            build_parser().parse_args(["dot", "acme", flag, "mode=epic"])
         except SystemExit as exc:
             assert exc.code == 2
         else:

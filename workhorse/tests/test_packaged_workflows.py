@@ -34,7 +34,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 packaged = importlib.import_module("workhorse.packaged")
-main_mod = importlib.import_module("workhorse.main")
+ManifestContext = importlib.import_module("workhorse.manifest").ManifestContext
+cli_mod = importlib.import_module("workhorse.cli")
+parser_mod = importlib.import_module("workhorse.cli.parser")
+run_cmd = importlib.import_module("workhorse.cli.run")
 
 
 # --------------------------------------------------------------------------------
@@ -200,7 +203,7 @@ def test_zip_imported_package_fails_at_resolution(tmp_path: Path) -> None:
 
 
 def test_cli_reports_the_zip_failure_and_exits(tmp_path: Path, capsys) -> None:
-    """`_packaged_registry` asks for the directory while it still owns the error
+    """`packaged_registry` asks for the directory while it still owns the error
     channel, rather than leaving the zip to blow up mid-run as a missing template."""
     archive = _write_zipped_package(tmp_path)
     site = tmp_path / "site"
@@ -211,7 +214,7 @@ def test_cli_reports_the_zip_failure_and_exits(tmp_path: Path, capsys) -> None:
 
     with _OnPath(site, archive):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod._packaged_registry("zipped")
+            run_cmd.packaged_registry("zipped")
     assert excinfo.value.code == 1
     err = capsys.readouterr().err
     assert "not a real directory on disk" in err
@@ -229,7 +232,7 @@ def test_an_entry_point_that_is_not_a_registry_is_a_clear_error(
 
     with _OnPath(site):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod._packaged_registry("demo")
+            run_cmd.packaged_registry("demo")
     assert excinfo.value.code == 1
     err = capsys.readouterr().err
     assert "not a `Registry`" in err
@@ -246,7 +249,7 @@ def test_an_unknown_name_lists_what_is_installed(tmp_path: Path, capsys) -> None
 
     with _OnPath(site):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod._packaged_registry("nobody")
+            run_cmd.packaged_registry("nobody")
     assert excinfo.value.code == 1
     err = capsys.readouterr().err
     assert "no workflow named 'nobody' is installed" in err
@@ -268,36 +271,24 @@ def _capture_run_call(argv: list[str], *, workflow: str | None) -> dict:
     """Drive main() to the driver boundary and return what run_pyflow was handed."""
     seen: dict = {}
 
-    def fake_run_pyflow(
-        registry,
-        flow=None,
-        *,
-        runs_dir,
-        resume_run_dir=None,
-        run_id=None,
-        params=None,
-        no_cache=False,
-        dry_run=False,
-        context_manifest=None,
-        config=None,
-    ):
+    def fake_run_pyflow(invocation):
         seen.update(
-            registry_name=registry.name,
-            run_id=run_id,
-            params=params,
-            flow=flow,
-            no_cache=no_cache,
-            dry_run=dry_run,
+            registry_name=invocation.registry.name,
+            run_id=invocation.run_id,
+            params=invocation.params,
+            flow=invocation.flow,
+            no_cache=invocation.no_cache,
+            dry_run=invocation.dry_run,
         )
         return 0
 
     with (
-        patch.object(main_mod, "_packaged_registry", lambda spec: _StubRegistry()),
-        patch.object(main_mod, "run_pyflow", fake_run_pyflow),
-        patch.object(main_mod, "_load_context_manifest", lambda *a, **k: None),
+        patch.object(run_cmd, "packaged_registry", lambda spec: _StubRegistry()),
+        patch.object(run_cmd, "run_pyflow", fake_run_pyflow),
+        patch.object(run_cmd, "_load_context_manifest", lambda *a, **k: ManifestContext()),
     ):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod.main(argv, workflow=workflow)
+            cli_mod.main(argv, workflow=workflow)
     assert excinfo.value.code == 0, "the run itself should have succeeded"
     return seen
 
@@ -325,16 +316,16 @@ def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
 
 def test_the_console_script_binds_the_name_and_nothing_else(tmp_path: Path) -> None:
     """console_script returns the callable; it does not run at build time."""
-    entry = main_mod.console_script("demo")
+    entry = cli_mod.console_script("demo")
     assert callable(entry)
 
     seen: dict = {}
     with (
-        patch.object(main_mod, "_packaged_registry", lambda spec: _StubRegistry()),
+        patch.object(run_cmd, "packaged_registry", lambda spec: _StubRegistry()),
         patch.object(
-            main_mod, "run_pyflow", lambda *a, **k: seen.update(flow=a[1]) or 0
+            run_cmd, "run_pyflow", lambda invocation: seen.update(flow=invocation.flow) or 0
         ),
-        patch.object(main_mod, "_load_context_manifest", lambda *a, **k: None),
+        patch.object(run_cmd, "_load_context_manifest", lambda *a, **k: ManifestContext()),
     ):
         with pytest.raises(SystemExit):
             entry(["run", "qa"])
@@ -342,9 +333,9 @@ def test_the_console_script_binds_the_name_and_nothing_else(tmp_path: Path) -> N
 
 
 def test_the_two_commands_share_one_argument_definition() -> None:
-    """Same options, same defaults — because they come from one _add_run_args."""
-    plain = main_mod._build_parser()
-    bound = main_mod._build_parser("workhorse-demo")
+    """Same options, same defaults — because they come from one `run.add_arguments`."""
+    plain = parser_mod.build_parser()
+    bound = parser_mod.build_parser("workhorse-demo")
 
     def run_options(parser):
         sub = next(
@@ -360,20 +351,20 @@ def test_the_two_commands_share_one_argument_definition() -> None:
 
 def test_bound_name_rejects_a_contradicting_workflow_flag(tmp_path: Path, capsys) -> None:
     with pytest.raises(SystemExit) as excinfo:
-        main_mod.main(["run", "--workflow", "other"], workflow="demo")
+        cli_mod.main(["run", "--workflow", "other"], workflow="demo")
     assert excinfo.value.code == 2
     assert "--workflow is not accepted here" in capsys.readouterr().err
 
 
 def test_bound_name_rejects_a_stray_second_positional() -> None:
     with pytest.raises(SystemExit) as excinfo:
-        main_mod.main(["run", "qa", "extra"], workflow="demo")
+        cli_mod.main(["run", "qa", "extra"], workflow="demo")
     assert excinfo.value.code == 2
 
 
 def test_bound_name_refuses_other_subcommands(capsys) -> None:
     with pytest.raises(SystemExit) as excinfo:
-        main_mod.main(["dot", "--workflow", "x"], workflow="demo")
+        cli_mod.main(["dot", "--workflow", "x"], workflow="demo")
     assert excinfo.value.code == 2
     assert "workhorse dot" in capsys.readouterr().err
 

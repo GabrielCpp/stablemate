@@ -174,10 +174,10 @@ class Registry:
         self.flows.setdefault("default", entry)
 
         def console_main(argv: list[str] | None = None) -> None:
-            # Imported here, not at module scope: `workhorse.main` imports the driver,
+            # Imported here, not at module scope: `workhorse.cli` imports the driver,
             # which imports this module. This is the one place the cycle is broken, and
             # it is broken at call time so importing a workflow module stays cheap.
-            from workhorse.main import main as workhorse_main
+            from workhorse.cli import main as workhorse_main
 
             workhorse_main(argv, workflow=self.name, registry=self)
 
