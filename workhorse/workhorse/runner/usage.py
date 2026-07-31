@@ -35,6 +35,7 @@ reports nothing still gets ``duration_ms`` stamped by the engine itself (see
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 # Canonical name → the spellings seen in the wild. Order matters only in that the
@@ -71,6 +72,97 @@ _USAGE_CONTAINERS = ("usage", "tokens", "token_usage", "usageMetadata")
 _TOKEN_MARKERS = frozenset(
     alias for aliases in _ALIASES.values() for alias in aliases
 ) | {"total"}
+# The canonical token fields, in the order telemetry stamps them onto a span.
+# Same names as ``_ALIASES``'s keys and ``_CACHE_SUBKEYS``'s values, which is what
+# lets an extracted count dict be splatted straight into ``TurnUsage``.
+_TOKEN_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+    "reasoning_output_tokens",
+)
+
+
+def _add(total: int | None, part: int | None) -> int | None:
+    """Fold one reported count into a running total, keeping "not reported"
+    distinct from a reported zero: absent + absent stays absent."""
+    if part is None:
+        return total
+    return (total or 0) + part
+
+
+@dataclass(frozen=True, slots=True)
+class TurnUsage:
+    """What one turn consumed, in the canonical (Claude) key names.
+
+    Every field is optional and ``None`` means *this harness does not say* —
+    deliberately distinct from a reported zero. A real ``0.0`` (an opencode
+    subscription turn) means "this cost nothing"; a missing value means "not
+    measured", and averaging the two together would understate spend. The same
+    reasoning applies per token field: ``reasoning_output_tokens`` is reported by
+    codex and opencode and absent from Claude's ``result`` event, so it is left
+    off the span rather than zeroed.
+    """
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
+    reasoning_output_tokens: int | None = None
+    total_cost_usd: float | None = None
+    duration_ms: int | None = None
+
+    def token_counts(self) -> dict[str, int]:
+        """The token fields this turn actually reported, canonical name → count.
+        A field the harness did not report is absent here, never zero."""
+        return {
+            name: count
+            for name in _TOKEN_FIELDS
+            if (count := getattr(self, name)) is not None
+        }
+
+    @property
+    def is_empty(self) -> bool:
+        """True when the turn reported neither tokens nor money, i.e. there is
+        nothing to fold and nothing worth stamping. Duration alone does not
+        count: the engine measures that itself (``otel.turn_end``)."""
+        return not self.token_counts() and self.total_cost_usd is None
+
+    def merge(self, part: TurnUsage) -> TurnUsage:
+        """Fold one report into a running per-turn total, as a new value.
+
+        Needed because opencode reports per *step*: a turn that calls three tools
+        emits three ``step_finish`` events, and only their sum is the turn's cost.
+        Backends that report once per turn merge a single value and are
+        unaffected. Counts and cost add; duration is a span of time, not a
+        quantity, so the last report wins rather than summing into nonsense. An
+        empty ``part`` folds to a no-op, leaving the total (and its absences)
+        alone.
+        """
+        if part.is_empty:
+            return self
+        return TurnUsage(
+            input_tokens=_add(self.input_tokens, part.input_tokens),
+            output_tokens=_add(self.output_tokens, part.output_tokens),
+            cache_read_input_tokens=_add(
+                self.cache_read_input_tokens, part.cache_read_input_tokens
+            ),
+            cache_creation_input_tokens=_add(
+                self.cache_creation_input_tokens, part.cache_creation_input_tokens
+            ),
+            reasoning_output_tokens=_add(
+                self.reasoning_output_tokens, part.reasoning_output_tokens
+            ),
+            total_cost_usd=(
+                self.total_cost_usd
+                if part.total_cost_usd is None
+                else (self.total_cost_usd or 0.0) + part.total_cost_usd
+            ),
+            duration_ms=(
+                self.duration_ms if part.duration_ms is None else part.duration_ms
+            ),
+        )
 
 
 def _as_int(value: Any) -> int | None:
@@ -151,47 +243,20 @@ def _find_cost(obj: Any, depth: int = 0) -> float | None:
     return None
 
 
-def normalize(event: dict[str, Any]) -> dict[str, Any]:
-    """Map one backend's completion event onto ``otel.turn_result``'s shape.
+def normalize(event: dict[str, Any]) -> TurnUsage:
+    """Map one backend's completion event onto the canonical ``TurnUsage``.
 
-    Returns ``{"usage": {...canonical...}, "total_cost_usd": float|None,
-    "duration_ms": int|None}``. Absent fields are simply absent — a backend that
-    reports tokens but not money yields no ``total_cost_usd``, and the span goes
-    without rather than carrying a fabricated zero. That distinction matters: a
-    real 0.0 (an opencode subscription turn) means "this cost nothing", while a
-    missing key means "this harness does not say", and averaging the two together
-    would understate spend.
+    The event stays a raw ``dict``: it is a foreign, version-drifting payload we
+    do not own, so it is read tolerantly and whatever is unrecognized is shrugged
+    off. The typed boundary is the value this returns, not the wire shape it came
+    from. Anything the event did not report stays ``None`` — the span then goes
+    without rather than carrying a fabricated zero.
     """
-    result: dict[str, Any] = {"usage": _find_tokens(event)}
-    cost = _find_cost(event)
-    if cost is not None:
-        result["total_cost_usd"] = cost
-    duration = _as_int(event.get("duration_ms"))
-    if duration is not None:
-        result["duration_ms"] = duration
-    return result
-
-
-def accumulate(total: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-    """Fold one event's usage into a running per-turn total, in place.
-
-    Needed because opencode reports per *step*: a turn that calls three tools
-    emits three ``step_finish`` events, and only their sum is the turn's cost.
-    Backends that report once per turn accumulate a single event and are
-    unaffected. Counts and cost add; duration is a span of time, not a quantity,
-    so the last report wins rather than summing into nonsense.
-    """
-    part = normalize(event)
-    if not part["usage"] and "total_cost_usd" not in part:
-        return total  # nothing to fold — leave the total (and its absences) alone
-    usage = total.setdefault("usage", {})
-    for key, count in part["usage"].items():
-        usage[key] = usage.get(key, 0) + count
-    if "total_cost_usd" in part:
-        total["total_cost_usd"] = total.get("total_cost_usd", 0.0) + part["total_cost_usd"]
-    if "duration_ms" in part:
-        total["duration_ms"] = part["duration_ms"]
-    return total
+    return TurnUsage(
+        **_find_tokens(event),
+        total_cost_usd=_find_cost(event),
+        duration_ms=_as_int(event.get("duration_ms")),
+    )
 
 
 # Aider streams plain text and ends with a line like:
@@ -206,24 +271,25 @@ _AIDER_COST = re.compile(r"Cost:\s*\$([\d.]+)\s*message", re.I)
 _SUFFIX = {"": 1, "k": 1_000, "m": 1_000_000}
 
 
-def from_text(transcript: str) -> dict[str, Any]:
+def from_text(transcript: str) -> TurnUsage:
     """Best-effort usage for a text-streaming backend (aider). Last report wins —
     a multi-step turn reprints the line, and the final one is the turn's total."""
-    result: dict[str, Any] = {"usage": {}}
+    counts: dict[str, int] = {}
     matches = _AIDER_TOKENS.findall(transcript or "")
     if matches:
         sent, sent_unit, received, received_unit = matches[-1]
         try:
-            result["usage"] = {
+            counts = {
                 "input_tokens": int(float(sent) * _SUFFIX[sent_unit.lower()]),
                 "output_tokens": int(float(received) * _SUFFIX[received_unit.lower()]),
             }
         except (ValueError, KeyError):
-            result["usage"] = {}
+            counts = {}
+    cost: float | None = None
     costs = _AIDER_COST.findall(transcript or "")
     if costs:
         try:
-            result["total_cost_usd"] = float(costs[-1])
+            cost = float(costs[-1])
         except ValueError:
-            pass
-    return result
+            cost = None
+    return TurnUsage(**counts, total_cost_usd=cost)

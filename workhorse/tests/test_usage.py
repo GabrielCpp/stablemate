@@ -72,19 +72,19 @@ def test_claude_result_keeps_its_own_key_names():
     """Claude's spelling IS the canonical spelling — the store already holds spans
     using it, so normalize must be the identity on these fields."""
     got = usage.normalize(CLAUDE_RESULT)
-    assert got["usage"] == {
+    assert got.token_counts() == {
         "input_tokens": 4,
         "output_tokens": 517,
         "cache_read_input_tokens": 31288,
         "cache_creation_input_tokens": 12034,
     }, got
-    assert got["total_cost_usd"] == 0.0412
-    assert got["duration_ms"] == 8423
+    assert got.total_cost_usd == 0.0412
+    assert got.duration_ms == 8423
 
 
 def test_codex_cached_input_maps_onto_cache_read():
     got = usage.normalize(CODEX_TURN_COMPLETED)
-    assert got["usage"] == {
+    assert got.token_counts() == {
         "input_tokens": 20876,
         "output_tokens": 5,
         "cache_read_input_tokens": 2432,
@@ -92,13 +92,13 @@ def test_codex_cached_input_maps_onto_cache_read():
     }, got
     # Codex reports no money under subscription auth. Absent, not zero — a
     # fabricated 0.0 would average into "this turn was free".
-    assert "total_cost_usd" not in got, got
-    assert "duration_ms" not in got, got
+    assert got.total_cost_usd is None, got
+    assert got.duration_ms is None, got
 
 
 def test_opencode_nested_cache_dict_is_flattened():
     got = usage.normalize(_opencode_step(1200, 340, 8000, 500, 0.0))
-    assert got["usage"] == {
+    assert got.token_counts() == {
         "input_tokens": 1200,
         "output_tokens": 340,
         "reasoning_output_tokens": 0,
@@ -106,7 +106,7 @@ def test_opencode_nested_cache_dict_is_flattened():
         "cache_creation_input_tokens": 500,
     }, got
     # A real 0.0 IS reported — distinct from codex's silence above.
-    assert got["total_cost_usd"] == 0.0, got
+    assert got.total_cost_usd == 0.0, got
 
 
 def test_unknown_shape_yields_nothing_rather_than_raising():
@@ -114,15 +114,16 @@ def test_unknown_shape_yields_nothing_rather_than_raising():
     missing attribute — never an exception on the hot path of every event."""
     for junk in ({}, {"type": "text", "text": "hello"}, {"usage": "n/a"}, {"a": {"b": {}}}):
         got = usage.normalize(junk)
-        assert got["usage"] == {}, (junk, got)
-        assert "total_cost_usd" not in got, (junk, got)
+        assert got.token_counts() == {}, (junk, got)
+        assert got.total_cost_usd is None, (junk, got)
+        assert got.is_empty, (junk, got)
 
 
 def test_booleans_are_not_token_counts():
     """isinstance(True, int) is True in Python; a stray flag must not land in the
     store as a count of 1."""
     got = usage.normalize({"usage": {"input_tokens": True, "output_tokens": 5}})
-    assert got["usage"] == {"output_tokens": 5}, got
+    assert got.token_counts() == {"output_tokens": 5}, got
 
 
 def test_unnamed_container_is_found_by_recursive_search():
@@ -130,57 +131,59 @@ def test_unnamed_container_is_found_by_recursive_search():
     dict itself. This is the path an unverified backend (copilot) would take."""
     got = usage.normalize({"type": "done", "meta": {"stats": {
         "prompt_tokens": 90, "completion_tokens": 12}}})
-    assert got["usage"] == {"input_tokens": 90, "output_tokens": 12}, got
+    assert got.token_counts() == {"input_tokens": 90, "output_tokens": 12}, got
 
 
 def test_search_ignores_dicts_that_are_not_token_shaped():
     """A payload with an `input` that means something else (a tool's argument) must
     not be mistaken for usage."""
     got = usage.normalize({"type": "tool_use", "tool": {"input": "path/to/file.py"}})
-    assert got["usage"] == {}, got
+    assert got.token_counts() == {}, got
 
 
 # --------------------------------------------------------------------------- #
-# accumulate()
+# TurnUsage.merge()
 # --------------------------------------------------------------------------- #
 
 
 def test_opencode_steps_sum_into_one_turn():
-    """The reason accumulate exists: opencode reports per step, and only the sum is
+    """The reason merge exists: opencode reports per step, and only the sum is
     the turn's consumption."""
-    total: dict = {}
-    usage.accumulate(total, _opencode_step(1000, 100, 0, 400, 0.01))
-    usage.accumulate(total, _opencode_step(1500, 200, 900, 0, 0.02))
-    usage.accumulate(total, _opencode_step(1700, 50, 2400, 0, 0.005))
-    assert total["usage"]["input_tokens"] == 4200, total
-    assert total["usage"]["output_tokens"] == 350, total
-    assert total["usage"]["cache_read_input_tokens"] == 3300, total
-    assert total["usage"]["cache_creation_input_tokens"] == 400, total
-    assert abs(total["total_cost_usd"] - 0.035) < 1e-9, total
+    total = usage.TurnUsage()
+    for step in (
+        _opencode_step(1000, 100, 0, 400, 0.01),
+        _opencode_step(1500, 200, 900, 0, 0.02),
+        _opencode_step(1700, 50, 2400, 0, 0.005),
+    ):
+        total = total.merge(usage.normalize(step))
+    assert total.input_tokens == 4200, total
+    assert total.output_tokens == 350, total
+    assert total.cache_read_input_tokens == 3300, total
+    assert total.cache_creation_input_tokens == 400, total
+    assert abs(total.total_cost_usd - 0.035) < 1e-9, total
 
 
-def test_single_report_backend_accumulates_unchanged():
-    total: dict = {}
-    usage.accumulate(total, CODEX_TURN_COMPLETED)
-    assert total["usage"]["input_tokens"] == 20876, total
+def test_single_report_backend_merges_unchanged():
+    total = usage.TurnUsage().merge(usage.normalize(CODEX_TURN_COMPLETED))
+    assert total.input_tokens == 20876, total
 
 
 def test_duration_is_replaced_not_summed():
     """Duration is a span of time, not a quantity — summing two reports of the same
     turn's elapsed time would double it."""
-    total: dict = {}
-    usage.accumulate(total, {"duration_ms": 500, "usage": {"output_tokens": 1}})
-    usage.accumulate(total, {"duration_ms": 900, "usage": {"output_tokens": 1}})
-    assert total["duration_ms"] == 900, total
-    assert total["usage"]["output_tokens"] == 2, total
+    total = usage.TurnUsage()
+    total = total.merge(usage.normalize({"duration_ms": 500, "usage": {"output_tokens": 1}}))
+    total = total.merge(usage.normalize({"duration_ms": 900, "usage": {"output_tokens": 1}}))
+    assert total.duration_ms == 900, total
+    assert total.output_tokens == 2, total
 
 
 def test_empty_event_leaves_the_total_alone():
-    """Most events in a stream are text/tool deltas. Folding one must not create an
-    empty `usage` key that then looks like a turn reporting zero."""
-    total: dict = {}
-    usage.accumulate(total, {"type": "text", "text": "..."})
-    assert total == {}, total
+    """Most events in a stream are text/tool deltas. Folding one must not disturb the
+    total, nor turn an absent count into a zero that looks like a real report."""
+    total = usage.TurnUsage().merge(usage.normalize({"type": "text", "text": "..."}))
+    assert total == usage.TurnUsage(), total
+    assert total.is_empty, total
 
 
 # --------------------------------------------------------------------------- #
@@ -196,19 +199,20 @@ def test_aider_transcript_last_line_wins():
         "Tokens: 3.4k sent, 213 received. Cost: $0.0052 message, $0.0083 session.\n"
     )
     got = usage.from_text(transcript)
-    assert got["usage"] == {"input_tokens": 3400, "output_tokens": 213}, got
-    assert got["total_cost_usd"] == 0.0052, got
+    assert got.token_counts() == {"input_tokens": 3400, "output_tokens": 213}, got
+    assert got.total_cost_usd == 0.0052, got
 
 
 def test_aider_transcript_without_a_usage_line():
     got = usage.from_text("I could not find that file.\n")
-    assert got["usage"] == {}, got
-    assert "total_cost_usd" not in got, got
+    assert got.token_counts() == {}, got
+    assert got.total_cost_usd is None, got
+    assert got.is_empty, got
 
 
 def test_from_text_tolerates_empty_and_none():
-    assert usage.from_text("")["usage"] == {}
-    assert usage.from_text(None)["usage"] == {}
+    assert usage.from_text("").is_empty
+    assert usage.from_text(None).is_empty
 
 
 if __name__ == "__main__":

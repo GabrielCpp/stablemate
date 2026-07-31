@@ -24,6 +24,7 @@ import tempfile
 from pathlib import Path
 
 otel = importlib.import_module("workhorse.otel")
+usage = importlib.import_module("workhorse.runner.usage")
 artifacts = importlib.import_module("workhorse.artifacts")
 
 
@@ -127,7 +128,7 @@ def test_noop_by_default_all_calls_inert():
     otel.gas_level(10, 100)
     otel.gas_refuel("select_story")
     otel.turn_start("a", "sonnet", "high", 600.0)
-    otel.turn_result({"duration_ms": 5, "usage": {"input_tokens": 1}})
+    otel.turn_result(usage.TurnUsage(duration_ms=5, input_tokens=1))
     otel.turn_event("retry", attempt=1)
     otel.heartbeat("a", 120.0)
     otel.turn_heartbeat("a", 3.0, 90.0)
@@ -335,9 +336,7 @@ def test_turn_span_attrs_result_usage_and_fallback_events():
     turn = tracer.by_name("agent_turn")
     assert turn.parent is tracer.by_name("impl")
     assert turn.attrs["model"] == "opus" and turn.attrs["timeout_s"] == 3600
-    t.turn_result(
-        {"duration_ms": 1234, "usage": {"input_tokens": 10, "output_tokens": 20}}
-    )
+    t.turn_result(usage.TurnUsage(duration_ms=1234, input_tokens=10, output_tokens=20))
     assert turn.attrs["duration_ms"] == 1234
     assert turn.attrs["usage.input_tokens"] == 10
     t.turn_event("watchdog_kill", True, {"node": "impl"})

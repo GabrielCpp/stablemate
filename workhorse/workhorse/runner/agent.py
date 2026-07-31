@@ -9,6 +9,7 @@ import signal
 import subprocess
 import threading
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
@@ -1070,12 +1071,10 @@ def _run_claude_cli(
     # timeout behaves identically here and in every other harness. The diagnostics string
     # captures non-event output (e.g. "Spending cap reached") and error-result subtypes
     # so the caller can classify transient failures.
-    result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode = (
-        _stream_events(
-            cmd, node_id, timeout,
-            resilience=resilience,
-            stdin_data=prompt, cwd=cwd or None, env_extra=env_extra,
-        )
+    stream = _stream_events(
+        cmd, node_id, timeout,
+        resilience=resilience,
+        stdin_data=prompt, cwd=cwd or None, env_extra=env_extra,
     )
 
     # Classify the finished turn through the one shared classifier so the Claude
@@ -1086,15 +1085,15 @@ def _run_claude_cli(
     return classify_turn(
         "claude",
         node_id,
-        result_text=result_text,
-        diagnostics=diagnostics,
-        timed_out=timed_out,
-        returncode=returncode,
+        result_text=stream.result_text,
+        diagnostics=stream.diagnostics_text,
+        timed_out=stream.timed_out,
+        returncode=stream.returncode,
         timeout=timeout,
-        session_id=new_session_id,
+        session_id=stream.session_id,
         session_id_path=session_id_path,
-        rate_limited=rate_limited,
-        rate_reset_at=rate_reset_at,
+        rate_limited=stream.rate_limited,
+        rate_reset_at=stream.rate_reset_at,
     )
 
 
@@ -1381,6 +1380,34 @@ def _default_outputs(node: AgentNode) -> dict[str, Any]:
     return {spec.key: spec.default for spec in node.outputs}
 
 
+@dataclass(slots=True)
+class ClaudeTurnStream:
+    """What one Claude turn yielded, as its stream-json went past.
+
+    Mutable by construction: the per-line callback writes into it event by event and
+    the process outcome lands once the stream closes. It replaces a seven-element
+    tuple every caller had to decode by counting positions.
+    """
+
+    result_text: str = ""
+    session_id: str | None = None
+    #: Anything signalling *how* a turn failed — non-event output lines (e.g.
+    #: "Spending cap reached") and error-result subtypes — for ``classify_turn``.
+    diagnostics: list[str] = field(default_factory=list)
+    timed_out: bool = False
+    #: True once any ``rate_limit_event`` reported the limit as hit.
+    rate_limited: bool = False
+    #: The most recent window-reset epoch seen, used only when the failure is
+    #: otherwise determined to be a cap (for precise wait timing).
+    rate_reset_at: float | None = None
+    returncode: int = 0
+
+    @property
+    def diagnostics_text(self) -> str:
+        """The diagnostics as the single string ``classify_turn`` scans."""
+        return "\n".join(self.diagnostics)
+
+
 def _stream_events(
     cmd: list[str],
     node_id: str,
@@ -1390,25 +1417,15 @@ def _stream_events(
     stdin_data: str | None = None,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
-) -> tuple[str, str | None, str, bool, bool, float | None, int]:
+) -> ClaudeTurnStream:
     """Run ``cmd`` through the shared supervised spawn path and parse Claude's
-    stream-json, echoing a concise live view to stdout. Returns ``(result_text,
-    session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode)``.
-
-    ``diagnostics`` accumulates anything that signals *how* a run failed —
-    non-event output lines (e.g. "Spending cap reached") and error-result
-    subtypes — so the caller can classify transient failures.
-
-    ``rate_limited`` is True if any ``rate_limit_event`` reported the limit as hit;
-    ``rate_reset_at`` is the most recent window-reset epoch seen (used only when the
-    failure is otherwise determined to be a cap, for precise wait timing).
+    stream-json, echoing a concise live view to stdout. Returns the finished
+    ``ClaudeTurnStream``.
 
     ``timed_out`` indicates the turn hit its deadline (in-loop or watchdog). The
     timeout/process-group kill all live in ``stream_subprocess`` — this function only
     interprets the lines."""
-    st: dict[str, Any] = {"result_text": "", "session_id": None, "rate_reset_at": None,
-                          "rate_limited": False}
-    diagnostics: list[str] = []
+    stream = ClaudeTurnStream()
 
     def on_line(raw_line: str) -> None:
         line = raw_line.strip()
@@ -1420,39 +1437,39 @@ def _stream_events(
             # Non-JSON line (e.g. merged stderr) — surface it so logs aren't silent
             # and keep it as a diagnostic for failure classification.
             print(f"[{node_id}] {line}", flush=True)
-            diagnostics.append(line)
+            stream.diagnostics.append(line)
             return
 
         etype = event.get("type")
         if etype == "result":
-            st["result_text"] = event.get("result", "") or st["result_text"]
+            stream.result_text = event.get("result", "") or stream.result_text
             # Attach the turn's duration + token usage to the open turn span so
             # per-node latency/cost attribution needs no artifact join. Normalized
             # through the same mapper every other backend uses, so one query shape
-            # reads them all (workhorse/runner/usage.py).
+            # reads them all (workhorse/runner/usage.py). Unconditional: Claude's
+            # result event carries `duration_ms` even when it reports no tokens.
             otel.turn_result(usage.normalize(event))
             # An error result carries the reason in its subtype / is_error flag.
             if event.get("is_error") or event.get("subtype") not in (None, "success"):
-                diagnostics.append(str(event.get("subtype") or "") + " " + str(event.get("result") or ""))
+                stream.diagnostics.append(
+                    str(event.get("subtype") or "") + " " + str(event.get("result") or "")
+                )
         elif etype == "rate_limit_event":
             blocked, reset_at = _rate_limit_info(event)
             if reset_at is not None:
-                st["rate_reset_at"] = reset_at  # last-seen window reset (used only if capped)
+                stream.rate_reset_at = reset_at  # last-seen window reset (only if capped)
             if blocked:
-                st["rate_limited"] = True
+                stream.rate_limited = True
         elif etype == "system" and "session_id" in event:
-            st["session_id"] = event["session_id"]
+            stream.session_id = event["session_id"]
         _emit_event(node_id, event)
 
-    timed_out, returncode = stream_subprocess(
+    stream.timed_out, stream.returncode = stream_subprocess(
         cmd, node_id, timeout, on_line,
         resilience=resilience,
         stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,
     )
-    return (
-        st["result_text"], st["session_id"], "\n".join(diagnostics),
-        timed_out, st["rate_limited"], st["rate_reset_at"], returncode,
-    )
+    return stream
 
 
 def _emit_event(node_id: str, event: dict) -> None:
