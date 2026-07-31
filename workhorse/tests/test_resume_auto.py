@@ -19,7 +19,8 @@ from unittest.mock import patch
 
 from workhorse.rundir import auto_resolve, derive_run_id, find_latest_resumable
 
-m = importlib.import_module("workhorse.main")
+cli_mod = importlib.import_module("workhorse.cli")
+run_cmd = importlib.import_module("workhorse.cli.run")
 
 
 class _StubRegistry:
@@ -161,7 +162,7 @@ def test_auto_flag_is_gone():
     """--auto must not exist anymore (auto is the default, not an opt-in)."""
     with patch("sys.argv", ["workhorse", "--workflow", "research", "--auto"]):
         try:
-            m.main()
+            cli_mod.main()
             raise AssertionError("--auto should no longer be a recognized flag")
         except SystemExit as e:
             assert e.code == 2, "argparse should reject the unknown --auto flag"
@@ -179,14 +180,14 @@ def test_resume_latest_still_errors_when_none():
         runs = Path(tmp) / "runs"
         runs.mkdir()
         exit_code = None
-        with patch.object(m, "run_pyflow", fake_run_pyflow), patch.object(
-            m, "_packaged_registry", lambda spec: _StubRegistry()
+        with patch.object(run_cmd, "run_pyflow", fake_run_pyflow), patch.object(
+            run_cmd, "packaged_registry", lambda spec: _StubRegistry()
         ), patch(
             "sys.argv",
             ["workhorse", "--workflow", "research", "--runs-dir", str(runs), "--resume-latest"],
         ):
             try:
-                m.main()
+                cli_mod.main()
             except SystemExit as e:
                 exit_code = e.code
     assert called["run"] is False, "the driver should not be entered with nothing to resume"

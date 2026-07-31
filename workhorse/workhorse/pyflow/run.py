@@ -12,6 +12,7 @@ same shape whichever engine wrote it.
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,22 +35,43 @@ from workhorse.runner import process as agent_process
 from workhorse.runner.ladder import AgentRunner
 
 
-def run_pyflow(
-    registry: Registry,
-    flow: str | None = None,
-    *,
-    runs_dir: Path,
-    resume_run_dir: Path | None = None,
-    run_id: str | None = None,
-    params: dict[str, Any] | None = None,
-    no_cache: bool = False,
-    dry_run: bool = False,
-    context_manifest: ManifestContext | None = None,
-) -> int:
-    """Run one flow of `registry` and return the process exit code."""
-    params = dict(params or {})
+@dataclass(frozen=True, slots=True)
+class RunInvocation:
+    """Everything one `workhorse run` decided, as one value.
+
+    The fields are the CLI's contract rather than the driver's — which workflow, where
+    its artifacts go, what it was given, and which of the three resume spellings the
+    operator used. They travelled here as nine keyword arguments, which is a record
+    whose fields were never named: every caller had to keep the list in its head, and
+    a test fake mirroring the signature was the only thing keeping the two in step.
+
+    `params` stays an untyped map on purpose. Arbitrary key→value *is* the contract —
+    a workflow's own pydantic fields are what validate it, one layer further in.
+    """
+
+    registry: Registry
+    runs_dir: Path
+    flow: str | None = None
+    run_id: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    resume_run_dir: Path | None = None
+    no_cache: bool = False
+    dry_run: bool = False
+    context_manifest: ManifestContext = field(default_factory=ManifestContext)
+
+
+def run_pyflow(invocation: RunInvocation) -> int:
+    """Run one flow of the invoked registry and return the process exit code."""
+    registry = invocation.registry
+    runs_dir = invocation.runs_dir
+    flow = invocation.flow
+    run_id = invocation.run_id
+    resume_run_dir = invocation.resume_run_dir
+    no_cache = invocation.no_cache
+    dry_run = invocation.dry_run
+    params = dict(invocation.params)
     name = registry.name or "workflow"
-    manifest = (context_manifest or ManifestContext()).as_context()
+    manifest = invocation.context_manifest.as_context()
 
     # Preflight the skill/prompt references the farrier template helpers will have to
     # resolve. An unresolved one does not fail the render — it renders as prose into a
@@ -270,4 +292,4 @@ def _record_interrupt(writer: ArtifactWriter) -> None:
     writer.record_interrupt(_state_of(writer), "KeyboardInterrupt")
 
 
-__all__ = ["run_pyflow"]
+__all__ = ["RunInvocation", "run_pyflow"]

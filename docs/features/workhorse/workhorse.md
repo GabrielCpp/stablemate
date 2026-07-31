@@ -20,7 +20,7 @@ gone, along with its loader — so a path handed to `--workflow` is refused by n
 than misread.
 
 - binary: `workhorse`
-- code: `workhorse/workhorse/main.py::main`
+- code: `workhorse/workhorse/cli/__init__.py::main`
 
 **Flows:** end-to-end journeys across these commands — [install a workflow and run
 it](flows/workhorse-setup-and-run.md), [author, visualize, and run a
@@ -84,13 +84,13 @@ still shows the subcommand listing.
     positional-only (`workhorse run <name> [<flow>]`) or `--workflow` explicit (any one
     remaining positional becomes `<flow>`, more than one is a hard error); a missing
     workflow input under either shape prints to stderr and exits `1`
-  - run: resolve the name to the installed `Registry` it names (`_packaged_registry` →
+  - run: resolve the name to the installed `Registry` it names (`workhorse/workhorse/cli/resolve.py::packaged_registry` →
     `workhorse/workhorse/packaged.py::find_packaged_workflow`), which walks the
     `workhorse.workflows` entry-point group. There is no second mechanism and no fallback:
     - an unresolvable name prints `error: no workflow named '<spec>' is installed.` plus
       the sorted list of installed names (or `(none installed)`), and exits `1`
     - a name that *looks like a path* — contains `os.sep`/`os.altsep`, ends in
-      `.yaml`/`.yml`, or exists on disk (`_looks_like_path`) — adds the line `Workflows are
+      `.yaml`/`.yml`, or exists on disk (`cli/resolve.py::looks_like_path`) — adds the line `Workflows are
       Python packages now, not workflow.yaml files — a path is not a workflow.` This is the
       one place the retired front-end is still named, and it is named to stop a stale
       invocation reading as a merely-unknown workflow
@@ -109,7 +109,7 @@ still shows the subcommand listing.
     before any state runs, rather than failing mid-run
   - run: resolve `runs_dir` (`--runs-dir`, else `<cwd>/.agents/runs`)
   - run: load `--params`/`--params-file` into a starting-params dict via
-    `_load_params` (`workhorse/workhorse/main.py::_load_params`):
+    `load_params` (`workhorse/workhorse/cli/params.py::load_params`):
     - starts from `params = {}`. If `--params-file` is given, reads its path as text
       (`Path(file).read_text()`); an `OSError` (missing file, permission error, …) prints
       `error: cannot read --params-file <file>: <error>` to stderr and exits `1`
@@ -140,12 +140,13 @@ still shows the subcommand listing.
     - a candidate survives only if its `run.json` `terminal` key is `null`/absent — a
       finished run is never returned by `--resume-latest`
     - among the survivors, the one whose `checkpoint.json` has the newest mtime wins; with
-      no survivors, `_run_run` prints `error: no resumable run found under <runs_dir>` to
+      no survivors, `run` prints `error: no resumable run found under <runs_dir>` to
       stderr and exits `1`
     - with neither flag given, `resume_run_dir` stays `None` and the auto-resume-in-place
       rule inside `run_pyflow` decides
-  - run: hand everything to `workhorse/workhorse/pyflow/run.py::run_pyflow` and
-    `sys.exit()` with its return code. That is where the run actually happens:
+  - run: hand everything to the driver as one
+    `workhorse/workhorse/pyflow/run.py::RunInvocation`, and `sys.exit()` with
+    `run_pyflow`'s return code. That is where the run actually happens:
     - **reference preflight** — unresolved skill/prompt references in the manifest are
       *warned* about before the first state, because an unresolved one renders as prose
       into a live agent prompt rather than failing; under `--dry-run` the same list becomes
@@ -170,7 +171,7 @@ still shows the subcommand listing.
       first state
     - **interrupt** — `Ctrl-C` terminates the active agent, records the interrupt against
       the state in flight, prints the `--resume-run` command, and exits `130`
-- code: `workhorse/workhorse/main.py::_run_run`
+- code: `workhorse/workhorse/cli/run.py::run`
 - verify: `workhorse/tests/test_workflow_resolution.py`,
   `workhorse/tests/test_resume_auto.py::test_find_latest_resumable_picks_newest_of_several_unfinished`,
   `workhorse/tests/test_resume_auto.py::test_resume_latest_still_errors_when_none`
@@ -201,7 +202,7 @@ coder pipeline executes before QA and again before commit.
     `--filter` is given and `-v` when `--verbose` is given
   - run: invoke `pytest.main(argv)` in-process and exit with its return code (`0` all
     passed, `1` some failed, other pytest exit codes propagate unchanged)
-- code: `workhorse/workhorse/main.py::_run_test`
+- code: `workhorse/workhorse/cli/test.py::run`
 
 A workflow's `tests/*.py` files are ordinary pytest tests. What they substitute is the
 run's **node index** rather than module attributes — see [the node index is the
@@ -224,7 +225,7 @@ hand-rolling the pytest invocation.
   - run: resolve the workflow spec from `--workflow` or the single positional
     (`_dot_spec`); a second positional prints `error: unexpected argument '<arg>'` and
     neither form given prints `error: dot needs a workflow name`, both to stderr, exit `1`
-  - run: resolve that name to a `Registry` exactly as `run` does (`_packaged_registry`)
+  - run: resolve that name to a `Registry` exactly as `run` does (`packaged_registry`)
   - run: derive one graph per distinct flow class from the registry
     (`registry_graphs`) and render them with `to_dot` — one `subgraph cluster_*` per flow,
     **live state names only**, so an `aliases=[…]` rename never shows up as a second state.
@@ -232,7 +233,7 @@ hand-rolling the pytest invocation.
     graph](concepts/pyflow-state-graph.md)
   - run: if `--output` is given, write the DOT text to that path and print
     `[workhorse] wrote <path>` to stderr; otherwise write the DOT text to stdout
-- code: `workhorse/workhorse/main.py::_run_dot`
+- code: `workhorse/workhorse/cli/dot.py::run`
 - verify: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
 
 There are no `--pin`/`--leaf` flags. They collapsed a *declared* branch node into one
@@ -262,7 +263,7 @@ there is nothing declared to pin.
 - does:
   - run: `argparse` requires exactly one subcommand as the second positional (a required
     sub-subparser); a bare `workhorse config` is a parse error (exit `2`) before
-    `_run_config` ever runs
+    `config.run` ever runs
   - run: the three `set-*` subcommands resolve `<path>` (`~`-expanded, absolute) and call
     [`write_config_key`](concepts/config.md#write_config_key) directly, without loading or
     echoing the rest of the config
@@ -271,7 +272,7 @@ there is nothing declared to pin.
   - run: a config written by a *newer* `stablemate-core` raises `ConfigVersionError`, which
     is caught and re-raised as a clean `SystemExit` message rather than a traceback — the
     failure is deterministic and actionable, so it exits like every other config error here
-- code: `workhorse/workhorse/main.py::_run_config`
+- code: `workhorse/workhorse/cli/config.py::run`
 
 Reads and writes the [shared stablemate config file](concepts/config.md) — **one** TOML
 file at `~/.config/stablemate/config.toml` (platform-appropriate), holding `library_dir`,
@@ -289,7 +290,7 @@ honored so an existing export keeps working.
     import package and CLI command are both `workhorse`) and print it to stdout
   - run: return with no explicit `sys.exit` (exit `0`); raises uncaught if
     `workhorse-agent` isn't installed as a package, since no fallback is attempted
-- code: `workhorse/workhorse/main.py::main`
+- code: `workhorse/workhorse/cli/version.py::run`
 
 ## Flows
 

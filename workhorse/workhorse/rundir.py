@@ -3,7 +3,7 @@
 The rules here — one stable dir per ``(workflow, run-id)``, an id derived from the
 params when none is given, a finished run never resumed in place — are the resume
 contract, which both the CLI and the driver have to obey. They live in their own
-module rather than in :mod:`workhorse.main`, which the driver cannot import (main
+module rather than in :mod:`workhorse.cli`, which the driver cannot import (the CLI
 imports *it*).
 """
 
