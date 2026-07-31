@@ -357,7 +357,7 @@ def test_settings_defaults_match_the_documented_ones():
 def test_append_event_unchanged_with_noop_telemetry():
     with tempfile.TemporaryDirectory() as tmp:
         writer = artifacts.ArtifactWriter("wf", Path(tmp), run_id="r1")
-        writer.write_checkpoint("node_a", {"k": "v"})
+        writer.record_node("node_a", "enter")
         writer.write_step("node_a", "prompt", {"out": 1}, {"k": "v"}, next_node="node_b")
         events = writer.read_events()
         assert [(e.node, e.phase) for e in events] == [
@@ -488,7 +488,7 @@ def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
     t, tracer, _, _ = _telemetry()
     with installed(t), tempfile.TemporaryDirectory() as tmp:
         writer = artifacts.ArtifactWriter("wf", Path(tmp), run_id="r1")
-        writer.write_checkpoint("node_a", {})
+        writer.record_node("node_a", "enter")
         writer.write_step("node_a", "p", {}, {}, next_node="node_b")
         assert tracer.by_name("node_a").ended
         lines = (writer.run_dir / "events.jsonl").read_text().splitlines()

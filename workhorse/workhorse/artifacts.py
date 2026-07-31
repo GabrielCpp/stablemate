@@ -12,7 +12,6 @@ from workhorse import otel
 from workhorse.records import (
     Checkpoint,
     NodeEvent,
-    NodeGraphCheckpoint,
     NodePhase,
     PyflowCheckpoint,
     RunRecord,
@@ -48,7 +47,7 @@ class ArtifactWriter:
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
         self._run_id = run_id
-        # Monotonic checkpoint sequence. Each write_checkpoint bumps it; a node's
+        # Monotonic checkpoint sequence. Each write_state_checkpoint bumps it; a node's
         # completion marker records the seq it ran under, so resume can tell "this
         # node finished under the current checkpoint" (fast-forward) from "stale
         # artifact from an earlier loop visit" (must re-run).
@@ -130,24 +129,6 @@ class ArtifactWriter:
             return ArtifactWriter.resume(sub_dir)
         return ArtifactWriter.at(sub_dir, flow_name, node_id)
 
-    def write_checkpoint(self, current_id: str, context: dict[str, Any]) -> None:
-        """Atomically record the node about to run and the context going into it,
-        so a crashed run can resume from exactly this point. Bumps the checkpoint
-        sequence; the node that runs next records this seq when it completes."""
-        self._seq += 1
-        self._write_checkpoint(
-            NodeGraphCheckpoint(
-                workflow=self._workflow_name,
-                run_id=self._run_id,
-                current_id=current_id,
-                seq=self._seq,
-                context=context,
-                updated_at=datetime.now(timezone.utc).isoformat(),
-            )
-        )
-        # Mirror the node-entry to the append-only event log (history-preserving).
-        self._append_event(node_id=current_id, phase="enter")
-
     def write_state_checkpoint(
         self,
         state: str,
@@ -208,10 +189,10 @@ class ArtifactWriter:
     def record_node(self, node_id: str, phase: NodePhase, **fields: Any) -> None:
         """Public entry to the append-only event log.
 
-        The YAML engine only ever appends via ``write_checkpoint``/``_write_done``,
-        because a node visit there is always bracketed by both. A Python state machine
-        checkpoints per *state* and runs several nodes inside one, so its node entries
-        need a way in that is not a checkpoint write.
+        A state machine checkpoints per *state* and runs several nodes inside one, so
+        its node entries need a way in that is not a checkpoint write. (The retired
+        YAML engine never needed this: a node visit there was always bracketed by a
+        checkpoint and a done marker, so appending was those two calls' side effect.)
         """
         self._append_event(node_id=node_id, phase=phase, **fields)
 
