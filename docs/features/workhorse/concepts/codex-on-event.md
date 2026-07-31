@@ -62,7 +62,7 @@ Dispatches on `event.get("type") or ""` (`etype`):
    beyond the live echo above.
 
 Both `diagnostics` appends feed
-[`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop)'s per-line early-abort
+[`stream_jsonl`](stream-jsonl.md#early-abort)'s per-line early-abort
 scan (run by its caller immediately after `on_event` returns) and, at the end of the stream,
 [`finalize_turn`](finalize-turn.md)'s classification — a codex cap or context-overflow marker
 surfaces through whichever of these two branches captures the event carrying it, same as a raw

@@ -10,13 +10,13 @@ a run directory, the fresh-start vs. resume hygiene (dropping a stale `checkpoin
 `events.jsonl`), and every read/write of the files under it.
 
 [`run_pyflow`](pyflow-driver.md) (`workhorse/workhorse/pyflow/run.py`) constructs one
-writer per top-level run — fresh, or via [`resume`](#resumerun_dir---artifactwriter-classmethod) — and hands it
+writer per top-level run — fresh, or via [`resume`](#resume) — and hands it
 to the run's `RunEnv`. From there [`drive`](pyflow-driver.md) writes the
-[`(state, params)` checkpoint](#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone)
+[`(state, params)` checkpoint](#write_state_checkpoint)
 before every transition, and the engine behind
 [`self.call` / `self.agent` / `self.handoff`](../workflow-format.md#workflow-subclass) records each
 node visit. A `handoff` gets a **nested** writer rooted under the
-calling node's directory (via [`subscope`](#subscopenode_id-flow_name--resumefalse---artifactwriter)).
+calling node's directory (via [`subscope`](#subscope)).
 
 Four methods on this class no longer have a production caller: they served the retired YAML
 front-end's node-at-a-time checkpoint and its `branch` node type. They are still on the class and
@@ -45,7 +45,8 @@ read-only properties; `started_at` is what anchors the run's wall-clock budget
 
 Four ways to obtain a writer, covering fresh start, resume, and nested handoff scopes.
 
-### `__init__(workflow_name, runs_dir, run_id=None)`
+### `__init__`
+`__init__(workflow_name, runs_dir, run_id=None)`
 The top-level, fresh-run constructor.
 1. If `run_id` is `None`, derive one: `<UTC timestamp %Y%m%d-%H%M%S>-<4 hex chars of a uuid4>`. A
    caller-supplied `run_id` instead gives a single stable run dir that is resumed in place across
@@ -61,7 +62,8 @@ The top-level, fresh-run constructor.
 4. Set `_started_at` to now, `_workflow_name`, `_run_id`, `_seq = 0`.
 5. `_write_run_json(terminal=None)`.
 
-### `resume(run_dir) -> ArtifactWriter` (classmethod)
+### `resume`
+`resume(run_dir) -> ArtifactWriter` (classmethod)
 Re-binds to an existing run directory for checkpoint resume, **without** creating a new run or
 touching its step artifacts.
 1. Read `run_dir / "run.json"`; on `FileNotFoundError`/`json.JSONDecodeError` fall back to `{}`.
@@ -78,15 +80,17 @@ checkpoint body. Deciding whether a checkpoint is one this engine may resume fro
 [`read_resume`](pyflow-driver.md)'s job, and a checkpoint whose `engine` key is not `"pyflow"` is
 refused there.
 
-### `at(run_dir, workflow_name, run_id) -> ArtifactWriter` (classmethod)
+### `at`
+`at(run_dir, workflow_name, run_id) -> ArtifactWriter` (classmethod)
 A fresh writer rooted directly at `run_dir` (no `runs_dir/<name>-<id>` derivation). Mirrors
 `__init__`'s fresh-start hygiene — creates `run_dir`, drops any stale `CHECKPOINT_FILE`/
 `EVENTS_FILE`, sets `_started_at`/`_workflow_name`/`_run_id`/`_seq = 0`, and calls
 `_write_run_json(terminal=None)`. Used for a handoff's nested scope (see
-[`subscope`](#subscopenode_id-flow_name--resumefalse---artifactwriter)), where the run dir is a
+[`subscope`](#subscope)), where the run dir is a
 node's own subdirectory rather than a sibling of other runs under `runs_dir`.
 
-### `subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
+### `subscope`
+`subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
 Returns the writer for a child workflow handed off at `node_id`, rooted under this run's node
 directory (`<run_dir>/<node_id>/_flow`).
 - Algorithm: `sub_dir = run_dir / node_id / "_flow"`; if `resume` and `(sub_dir /
@@ -105,7 +109,8 @@ directory (`<run_dir>/<node_id>/_flow`).
 
 ## Writes
 
-### `write_state_checkpoint(state, params, *, inputs, flow=None, ctx=None, waiting_on=None)`
+### `write_state_checkpoint`
+`write_state_checkpoint(state, params, *, inputs, flow=None, ctx=None, waiting_on=None)`
 The resume point of a Python state machine: the state to (re-)enter and the arguments bound for
 it. Written by [`drive`](pyflow-driver.md) **before** dispatching into every state, and a second
 time when a state returns `Await` — with `waiting_on` set — so "blocked on a human at `<path>`" is
@@ -127,7 +132,8 @@ Three fields carry design decisions rather than data:
   `--resume-latest`, and neither can make sense of the other's checkpoint, so a foreign one is
   [refused rather than misread](pyflow-driver.md#a-checkpoint-from-the-retired-engine-is-refused-not-misread).
 
-### `record_node(node_id, phase, **fields)`
+### `record_node`
+`record_node(node_id, phase, **fields)`
 The public entry to the append-only event log — `_append_event` with a name callers may use.
 A YAML node visit was always bracketed by a checkpoint write and a `done` marker, so the engine
 needed no other way in. A Python state machine checkpoints per **state** and runs several nodes
@@ -135,7 +141,8 @@ inside one, so its per-node `enter` events need an entry point that is not a che
 Called by the engine for each `self.call` (with `blueprint=`), each `self.agent` (with `prompt=`),
 and each `self.handoff` (with `flow=`); a dry run adds a stand-in marker.
 
-### `write_step(node_id, prompt, output, context_after, next_node=None)`
+### `write_step`
+`write_step(node_id, prompt, output, context_after, next_node=None)`
 Writes the artifact group for one node visit.
 1. `mkdir(run_dir / node_id, exist_ok=True)`.
 2. Write `prompt.md` (plain text), `output.json` (`json.dumps(output, indent=2)`),
@@ -148,7 +155,8 @@ pyflow calls it for a `self.call` (prompt = a rendered `name(args)` description)
 there is no ambient context to snapshot and no node-graph edge to name — so those two files are
 constant in a pyflow run and only `prompt.md`/`output.json` carry information.
 
-### `record_interrupt(node_id, error)`
+### `record_interrupt`
+`record_interrupt(node_id, error)`
 Records that an operator interrupt (Ctrl-C) stopped the run while `node_id` was in flight.
 1. `_append_event(node_id=node_id, phase="error", error=error)` — closes that node's `enter`
    window, which otherwise dangles exactly as a wedged node's does.
@@ -165,10 +173,11 @@ clears itself on the next `_write_run_json` — a `resume`, or the run finishing
 Called by `run_pyflow`'s `KeyboardInterrupt` handler, which reads the in-flight state name back
 out of the checkpoint.
 
-### `finish(terminal)`
+### `finish`
+`finish(terminal)`
 Ends the run.
 1. Write `context.json` = `"{}"` — a placeholder immediately overwritten by the caller's
-   [`write_final_context`](#write_final_contextcontext); `drive` always calls
+   [`write_final_context`](#write_final_context); `drive` always calls
    `write_final_context` first, so this only guards a caller that doesn't.
 2. `_write_run_json(terminal=terminal)`.
 3. `_append_event(node_id="<run>", phase="terminal", terminal=terminal)`.
@@ -176,12 +185,14 @@ Ends the run.
 `drive` passes `"terminal"` when the entry flow returns `Done`; `run_pyflow` passes `"fail"` when a
 `PyflowError` ends the run.
 
-### `write_final_context(context)`
+### `write_final_context`
+`write_final_context(context)`
 Writes `context.json` = `json.dumps(context, indent=2)`, called right before `finish()`. Under
 pyflow this is the run's **result**, not a context bag: `drive` writes `{"result": …}` carrying
 whatever the entry flow's `Done` returned.
 
-### `_append_event(node_id, phase, **fields)` — private
+### `_append_event`
+`_append_event(node_id, phase, **fields)` — private
 Appends one line to `EVENTS_FILE`: `{ts: <now>, seq: _seq, node: node_id, phase, **fields}` as
 JSON followed by `\n`. Best-effort — any `OSError` is swallowed, since instrumentation must never
 crash a run. The same record is mirrored to the OTel exporter (`otel.record_event`), which is why
@@ -190,7 +201,8 @@ Reached via `write_state_checkpoint` (`phase="enter"`), `record_node` (any phase
 (`phase="done"`, adding `next`), `finish` (`phase="terminal"`, adding `terminal`), and
 `record_interrupt` (`phase="error"`, adding `error`).
 
-### `_write_done(node_id, next_node)` — private
+### `_write_done`
+`_write_done(node_id, next_node)` — private
 Marks `node_id` complete. `mkdir(run_dir / node_id, exist_ok=True)`; write `<node_id>/done.json` =
 `{seq: _seq, next: next_node}`; then `_append_event(node_id=node_id, phase="done",
 next=next_node)`. Called by `write_step` (and by the retired `write_branch`). The recorded `seq`
@@ -198,7 +210,8 @@ was how the YAML engine's fast-forward told "finished under the current checkpoi
 artifact from an earlier loop visit"; pyflow has no fast-forward — it re-enters the checkpointed
 state from the top — so today the field is history rather than a resume input.
 
-### `_write_run_json(terminal, error=None)` — private
+### `_write_run_json`
+`_write_run_json(terminal, error=None)` — private
 Writes `run.json` = `{workflow: _workflow_name, run_id: _run_id, started_at: _started_at, ended_at:
 <now if terminal else null>, terminal, interrupted_at: <now if error and not terminal else null>,
 error, pid: os.getpid()}`. Called by every constructor (`terminal=None`), by `finish`
@@ -209,7 +222,8 @@ survives with telemetry off.
 
 ## Reads
 
-### `read_checkpoint() -> Checkpoint | None`
+### `read_checkpoint`
+`read_checkpoint() -> Checkpoint | None`
 Returns `CHECKPOINT_FILE` parsed into the model that owns it (`PyflowCheckpoint` or, for a run
 directory written by the retired YAML front-end, `NodeGraphCheckpoint` — both in
 [`workhorse/records.py`](#the-records)), or `None` if the file doesn't exist. Unlike the readers
@@ -218,7 +232,8 @@ raises straight through, because a caller about to resume must not proceed on a 
 could not read. `run_pyflow` reads it to name the in-flight state when a Ctrl-C arrives, and
 catches there because it is already on a failure path.
 
-### `read_output(node_id) -> dict | None`
+### `read_output`
+`read_output(node_id) -> dict | None`
 Returns `<node_id>/output.json` parsed, `None` when the file is absent or unparseable, and
 `{"value": data}` when the recorded payload was not a JSON object. Backs
 [`self.output(node)`](../workflow-format.md#workflow-subclass) — a state reading back what an
@@ -227,7 +242,8 @@ recorded, rather than threading the value through every transition in between. D
 "absent" from "empty" is deliberate and is the caller's to act on: `self.output` raises
 `NodeNotRunError` on `None`, where the YAML template helper this replaced returned `""` for both.
 
-### `read_events() -> list[NodeEvent]`
+### `read_events`
+`read_events() -> list[NodeEvent]`
 Reads `EVENTS_FILE` in order; `[]` if the file doesn't exist. Splits on lines, skips blank lines,
 parses each non-blank line into a `NodeEvent` and skips (rather than raising on) any line that
 fails to validate — an append-only log a kill can truncate mid-line must not make *reading*
@@ -263,24 +279,28 @@ files; that module owns their shape and does no I/O of its own.
 Still on the class, still covered by tests, **no production caller**. Listed so the methods are
 identifiable when they turn up in a test or in a run directory written by the old front-end.
 
-### `write_checkpoint(current_id, context)`
+### `write_checkpoint`
+`write_checkpoint(current_id, context)`
 The YAML engine's checkpoint: the *node* about to run plus the whole ambient context bag, at
 `{workflow, run_id, current_id, seq, context, updated_at}` — a `current_id` and no `engine` key,
 which is what lets `NodeGraphCheckpoint` claim it off disk and `read_resume` refuse it by name.
 Superseded by
-[`write_state_checkpoint`](#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone).
+[`write_state_checkpoint`](#write_state_checkpoint).
 
-### `write_branch(node_id, path, value, next_node)`
+### `write_branch`
+`write_branch(node_id, path, value, next_node)`
 Wrote `<node_id>/branch.json` = `{path, value, next: next_node}` for a `branch` node — routing
 only, no prompt/output/context-diff — then `_write_done`. There is no `branch` node type in a
 Python workflow: a branch is an ordinary `if` inside a state method, and the edge it picks is the
 `Continue` that state returns.
 
-### `read_done(node_id) -> dict | None`
+### `read_done`
+`read_done(node_id) -> dict | None`
 Returned `<node_id>/done.json` parsed, or `None` if absent or unparseable. Fed the YAML engine's
 fast-forward decision, which pyflow does not have.
 
-### `read_context_after(node_id) -> dict | None`
+### `read_context_after`
+`read_context_after(node_id) -> dict | None`
 Returned `<node_id>/context_after.json` parsed, or `None`, with the same error handling. Restored
 the ambient context when fast-forwarding past an already-completed node. pyflow restores `ctx` from
 the checkpoint instead, and writes `context_after.json` as a constant `{}`.

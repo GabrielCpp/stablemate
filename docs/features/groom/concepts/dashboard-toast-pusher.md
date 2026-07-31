@@ -12,7 +12,8 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - code: groom/groom/assets/dashboard.js::pushToast
 - code: groom/groom/assets/dashboard.js::onNotify
 - code: groom/groom/assets/dashboard.js::onAnswered
-- code: groom/groom/assets/dashboard.css::#toasts,.toast
+- code: groom/groom/assets/dashboard.css::#toasts
+- code: groom/groom/assets/dashboard.css::.toast
 
 ## Contract
 

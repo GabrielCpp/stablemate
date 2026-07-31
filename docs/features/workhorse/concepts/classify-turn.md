@@ -102,7 +102,7 @@ return result_text
    `"session limit"`, `"quota"`, `"key limit"`, `"daily limit"`). `transient=True`; `reset_at` is
    `rate_reset_at` when `capped` (else `None`, so a non-cap failure can never look like one).
 2. **`timed_out` *with* transient diagnostics → a transient provider failure, not a budget
-   overrun.** [`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop) asks
+   overrun.** [`stream_jsonl`](stream-jsonl.md#early-abort) asks
    `stream_subprocess` to stop the moment a provider error identifies a short transient — and that
    intentional early abort travels on the same `timed_out` flag the wall-clock watchdog uses. This
    branch separates the two: when the diagnostics carry a transient marker, the provider error is
@@ -191,7 +191,7 @@ exits, so the watchdog sets `timed_out=True`) is still classified as a cap and n
 plain timeout — see [Ladder step 1](#ladder-first-match-wins).
 
 It is **public**, and has a second caller besides the classifier:
-[`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop) scans each newly-added
+[`stream_jsonl`](stream-jsonl.md#early-abort) scans each newly-added
 diagnostic line with it so a cap can abort the stream the instant it appears, and
 [`AgentRunner.turn`](agent-turn.md) scans an error's message text with it when no structured
 `reset_at` is present. One predicate, so every layer agrees on what counts as a cap.
@@ -230,7 +230,7 @@ is always also transient — that's what lets [ladder step 5](#ladder-first-matc
 `transient=is_transient(diagnostics) or rate_limited` without needing to special-case a cap marker
 that slipped past to a non-zero exit (the cap branch, step 1, would already have claimed it first if
 `capped` matched). Like `is_cap`, it is public and also called by
-[`stream_jsonl`](stream-jsonl.md#early-abort--stop-the-clis-own-retry-loop)'s early-abort scan.
+[`stream_jsonl`](stream-jsonl.md#early-abort)'s early-abort scan.
 
 ## `is_context_overflow`
 

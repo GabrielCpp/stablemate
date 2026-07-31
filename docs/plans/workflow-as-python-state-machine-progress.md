@@ -2680,6 +2680,44 @@ finding-25 anchor in the `artifact-writer.md` (4) / `stream-jsonl.md` (8) cluste
 bare-heading fix clears next. Zero broken markdown links across 314 tracked files. `ruff check .`,
 `make test` and `make check-public` green.
 
+### Iteration 19 — `ostler doctor` reaches zero, and a correction to iteration 18
+
+The last 12 `missing-anchor` errors were all finding-25 false positives, clustered in two pages.
+Fixed at the source rather than worked around, the same way iteration 17 fixed `scriptutil.md`:
+
+- `stream-jsonl.md`'s `## Early abort — stop the CLI's own retry loop` became `## Early abort`.
+  One heading, eight links (seven inbound from the backend/on-event pages, one self-link).
+- `artifact-writer.md`'s twenty `### <method>(<signature>)` headings became bare symbol names,
+  with the full signature moved to a code line directly beneath — where a reference book's
+  signature belongs anyway, since a heading that carries one cannot also be a stable anchor.
+  Five distinct anchors were rewritten across `run-artifacts.md`, `workhorse-crash-resume.md` and
+  the page itself.
+
+**Finding 31 — ostler splits a `code:` target on commas.** groom's `dashboard-toast-pusher.md`
+declared `dashboard.css::#toasts,.toast`, one bullet naming the two CSS selectors the unit owns.
+ostler read the text after the comma as a second *path* and reported `no such file '.toast'` — the
+one `dangling-code-ref` that had survived every sweep since iteration 12, and never a real dangle.
+Split into one bullet per selector: the workaround and the better documentation are the same edit
+here, so no engine change is needed, but a `code:` target containing a comma is a trap the next
+author will fall into too.
+
+`ostler doctor` totals **13 → 0**. That closes the second clause of this loop's end condition —
+every remaining `code:` target resolves, every anchor resolves, with no waived remainder to list.
+Zero broken markdown links across 314 tracked files. `ruff check .`, `make test` and
+`make check-public` green.
+
+**Correction to iteration 18: `_unwrap` is not at `HEAD`.** The envelope-reading behavior that
+iteration documented — along with the four tests cited for it — lives in the concurrent
+workstream's *uncommitted* tree, not in any commit on this branch. `git show
+HEAD:workhorse/workhorse/runner/extract.py` has `parse_json_from_text` returning the strict parse
+only when `wanted.issubset(strict)`, and no `_unwrap` at all. The prose is accurate about the code
+it describes and that code is real, tested and staged to land; it was read from the working tree
+without checking it against `HEAD` first, which is exactly the mistake this ledger's
+concurrent-workstream note exists to prevent. Left in place rather than reverted and re-added, but
+`concepts/extract-outputs.md` runs ahead of the branch until that workstream commits. Every other
+symbol iteration 18 grounded in — `pyflow/run.py`'s two handlers, `driver.py::_labels`,
+`ladder.py:155` — was verified present at `HEAD`.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

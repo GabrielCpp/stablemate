@@ -72,7 +72,7 @@ state changes:
   entry flow returned [`Done`](workflow-format.md#transition), `fail` when a `PyflowError` ended the
   run.
 - `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
-  [`record_interrupt`](concepts/artifact-writer.md#record_interruptnode_id-error) when an operator
+  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when an operator
   Ctrl-C stops the run. `terminal` stays `null` (an interrupted run must remain auto-resumable), so
   this field is what separates *stopped by a human* from *still in flight, or wedged in a node* —
   which are otherwise the same bytes on disk. Cleared by the next write: a resume, or the run
@@ -87,7 +87,7 @@ state changes:
 
 The resume point: **which state is about to be entered, and the arguments bound for it**.
 Overwritten atomically (write to `checkpoint.json.tmp`, then rename) by
-[`write_state_checkpoint`](concepts/artifact-writer.md#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone)
+[`write_state_checkpoint`](concepts/artifact-writer.md#write_state_checkpoint)
 immediately before that state runs — so a crash mid-state still leaves a valid, complete prior
 checkpoint. Dropped (unlinked) at the start of any *fresh* run (not a resume) so a reused stable
 dir never resurrects a finished run's state.
@@ -135,7 +135,7 @@ the OTel exporter, which is why node spans need no other hook. Each line:
   (type `string | null`, always `null` under pyflow); the run-level `terminal` event adds `terminal`
   (type `enum{terminal,fail}`); an `error` event adds `error` (type `string`) and closes the
   in-flight node's `enter` window when a Ctrl-C stops the run (see
-  [`record_interrupt`](concepts/artifact-writer.md#record_interruptnode_id-error)).
+  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt)).
 
 ### context.json
 - type: `object` — required: no — default: `{}` (present only after the run reaches a terminal
@@ -212,7 +212,7 @@ Completion marker for the node, written by `_write_done` after its step files.
   absent (`self.handoff` only)
 
 The child run tree for one handoff, rooted at `<node-id>/_flow/` instead of a fresh
-`<runs-dir>/<name>-<id>/` — via [`subscope`](concepts/artifact-writer.md#subscopenode_id-flow_name--resumefalse---artifactwriter).
+`<runs-dir>/<name>-<id>/` — via [`subscope`](concepts/artifact-writer.md#subscope).
 A handoff nested inside a handed-off workflow nests one `_flow/` deeper. The engine always enters
 this scope **fresh**: pyflow checkpoints the *parent* state, so a resume re-enters that state and
 re-runs the handoff from the top rather than resuming into the child's own checkpoint.
