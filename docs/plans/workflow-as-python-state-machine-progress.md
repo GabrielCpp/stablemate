@@ -1447,3 +1447,101 @@ that settled it is named so the next reader can go straight there.
   (`kit.git`, `kit.github`, `kit.workspace`) and both the flat importers and `kit`'s own internal
   callers follow. Corollary, and the reason `kit/github.py` says `git_kit.origin_url(...)` rather
   than importing the name: a helper calls across modules **through the module object**.
+
+---
+
+## Loop 3 — the documentation pass
+
+Loop 3 changes no behavior. Where a doc could only be made true by changing code, that is
+recorded here as a finding rather than fixed.
+
+| Iteration | Commit | What |
+|---|---|---|
+| 1 | `96d6e31` | The three stale skills under `base-library/library/skills/stablemate/` |
+| 2 | _this commit_ | `workhorse/docs/WORKFLOW.md` becomes the YAML→Python migration guide |
+
+### Iteration 1 — the skills
+
+`stablemate-workhorse-scripting` was **rewritten**, not edited: its spine was the "stdout
+must be valid JSON matching `outputs:`" protocol, and a node returns a typed value. What
+survived is `main(logger)` (the design chose that contract so scripts port as-is) and the
+separation-of-concerns section, which is about workhorse being generic and is unaffected.
+Its `applyTo` glob moved from `scripts/**/*.py` to
+`**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/workflow.py`, because that is where
+nodes live now. New sections cover the `@blueprint.node` contract, the port recipe from a
+`main(logger)` script, `aliases`/`retries`/`stub` and the deliberate absence of `timeout=`,
+idempotency-not-determinism, `WorkflowFailed` routing, `workhorse_workflows.kit`, and
+substitution-based testing through `Registry.override` / `RunEnv`.
+
+`stablemate-coder-workflow` was largely rewritten: `vars:` became the workflow-inputs
+table, the node topology became the 27-state topology, `get_node_output()` became the
+three tiers, and the standalone-flow section became `Registry.add_flows(...)`.
+
+`stablemate-okf-modeling` needed two lines, not a rewrite — it models *documents*, and only
+its examples named the retired schema.
+
+**Checked before rewriting:** the two copies of each skill (`base-library/library/...` the
+source, `.claude/skills/...` farrier's install) had **not** drifted. The whole diff was
+render artifacts — `applyTo:` folded into the description, a `metadata:` block added,
+`{% raw %}` stripped. Edit the source and re-install; there is nothing to reconcile.
+
+**Findings from iteration 1:**
+
+- `agents/workflows/coder/docs/repo-modes.md`, linked from the coder skill as the
+  authority on mono-repo vs multi-repo, **does not exist anywhere in the tree** and has no
+  successor. The only surviving statement of that contract is the module docstring of
+  `workflows/src/workhorse_workflows/coder/paths.py`, which the skill now points at.
+- `workhorse/otel.py` still defines `gas_level()` / `gas_refuel()`. pyflow has no gas tank
+  and no `refuel:`; the instruments are dead and nothing writes them. Deleting them is a
+  code change, so it stays a finding.
+
+### Iteration 2 — the YAML schema reference
+
+`workhorse/docs/WORKFLOW.md` (500 lines) was a schema reference for a schema that no longer
+exists, carrying a banner that said its successor "has not been written yet". That stopped
+being true: **`workhorse/docs/AUTHORING.md` is the successor**, split out of the 1111-line
+README in `16e971e`, and it already documents `Workflow`/`Blueprint`, states as methods,
+`Continue`/`Done`/`Await`/`WorkflowFailed`, `self.call`/`agent`/`handoff`/`output`,
+`aliases=[…]`, the `(state, params)` checkpoint, the node index as the substitution seam,
+and `labels()`. Nothing was reproduced from it.
+
+So WORKFLOW.md was rewritten as the **migration guide** instead — the public obligation
+owed to anyone still holding a `workflow.yaml`. It keeps its path (links to it do not
+break), and it is a mapping table rather than a schema: top-level keys, node types, values
+between nodes, the flow `vars` contract, invocation, checkpoints. It states what did *not*
+change (prompt rendering and the Jinja context including `node_timeout_s`/`_min`, power
+tiers, the resilience ladder and every `AGENT_*` knob, run artifacts, auto-resume,
+`--dry-run` and `dot`) so a port touches the graph and nothing else.
+
+Retargeted in the same commit, because they named WORKFLOW.md as the *current* engine API:
+both scripting skills' opening pointer, `workhorse/docs/DEVELOPMENT.md`'s file map, and
+AUTHORING.md's own blockquote about it. `workhorse/docs/GUARDRAILS.md` claimed the engine
+narrative logs `agent →`, `script →`, `branch →`, `flow →`, `call →`; three of those node
+types are deleted, and the driver actually logs `state →`, `call →`, `agent →`, `flow →`,
+`await →`, `resume →`.
+
+**Findings from iteration 2:**
+
+- **`requires:`, OutputSpec `default:`, and per-node `activity:` have no Python
+  counterpart.** All three are deliberate — dependencies are `[project.dependencies]` on an
+  installed distribution, the resilience ladder nulls a `returns=` model's keys rather than
+  guessing a value from a key's name, and activity is a flagged log record. The one with a
+  behavioral edge worth naming: a YAML author could declare the *exact* value a defaulted
+  node emitted (`default: {status: blocked}`) and route on it; a Python author cannot, so
+  every branch driven by an agent reply needs a safe arm for the empty reply. Documented,
+  not built.
+- **`workhorse/workhorse/pyflow/__init__.py`'s module docstring showed
+  `Continue(self.review, notes="")`** — a two-argument call to a three-argument transition,
+  which raises `TypeError` if anyone pastes it. `Continue(result, next, /, *args,
+  **kwargs)`. Corrected, along with the dangling `self.review` the example never defined.
+  Docstring only; no behavior.
+
+### The green gate, and a concurrent workstream
+
+`make test` is **red in the working tree and green at `HEAD`** — verified by running
+`workhorse/tests/test_agent_cap.py` in a detached worktree at `HEAD`, where it is 18/18.
+The 13 failures come from an uncommitted, in-flight refactor of
+`workhorse/workhorse/runner/agent.py` (`_invoke_claude(..., resilience=)`) belonging to
+another workstream sharing this checkout, not from loop 3. Loop 3's iterations touch
+Markdown and one docstring, and commit only their own paths. `ruff check .` and
+`make check-public` are both clean.

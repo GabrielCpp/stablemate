@@ -15,7 +15,7 @@ Load this skill when reading, modifying, or debugging the `coder` workflow —
 `flows/` (the eight sub-flows), `nodes/` (the node functions), `schemas/`, `prompts/`.
 
 The engine API those files are written against — states, `Continue`/`Done`/`Await`,
-`self.call`/`agent`/`handoff`/`output` — is `workhorse/docs/WORKFLOW.md`. Node-authoring
+`self.call`/`agent`/`handoff`/`output` — is `workhorse/docs/AUTHORING.md`. Node-authoring
 rules are the `stablemate-workhorse-scripting` skill. This skill is the coder workflow's
 own architecture, and nothing else.
 
