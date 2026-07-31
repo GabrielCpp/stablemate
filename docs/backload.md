@@ -14,4 +14,5 @@
       workflow.py
       nodes.py
 - Paths mangleling for backload, docs, etc.. should be done / provided by ostler. This apply to all workflows.
--
+- We need to stop collecting telemetry on test runs. We should clear telemetly of tests run from groom.
+- We need to stop showing grrom telemetry from workflow which are not currently connected.
