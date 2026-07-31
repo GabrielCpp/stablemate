@@ -1,11 +1,19 @@
 """The `author` workflow, rendered as Python instead of YAML.
 
-A **design artifact, not a running workflow**. It exists so the shape proposed
-in `docs/plans/workflow-as-python-state-machine.md` can be judged against the
-largest thing we actually run: `base-library/workflows/author/` is 2,389 lines
-of YAML over 159 nodes, plus 23 sibling scripts totalling 2,650 lines. Nothing
-under `workhorse/` or `base-library/workflows/` was touched to produce it.
-`workhorse.pyflow` does not exist — that import is the proposal.
+HISTORY — SUPERSEDED. The real `author` workflow is
+`workflows/src/workhorse_workflows/author/`. This file is not it: nothing
+imports it, nothing runs it, it is not installed and no test covers it. Do not
+copy it as an example; the shipped package is the example, and how to write one
+is `workhorse/docs/AUTHORING.md`.
+
+A **design artifact, not a running workflow**. It existed so the shape proposed
+in `docs/plans/workflow-as-python-state-machine.md` could be judged against the
+largest thing we ran at the time: `base-library/workflows/author/` was 2,389
+lines of YAML over 159 nodes, plus 23 sibling scripts totalling 2,650 lines.
+Nothing under `workhorse/` or `base-library/workflows/` was touched to produce
+it. When it was written `workhorse.pyflow` did not exist — that import was the
+proposal. It exists now, and this file's guesses about it are not authoritative
+where they differ.
 
 ## The layout
 

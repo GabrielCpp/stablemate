@@ -2,19 +2,41 @@
 type: feature
 slug: workflow-as-python-state-machine
 title: Workflows as Python — a flow-level state machine
-status: design
+status: implemented
 ---
 # Workflows as Python — a flow-level state machine
 
-> **Related:** [workflow-format](../features/workhorse/workflow-format.md) (the YAML contract this
-> would replace) · [run-artifacts](../features/workhorse/run-artifacts.md) (the checkpoint/resume
-> substrate that survives) · [workhorse-otel](workhorse-otel.md) (span/log emission, unaffected) ·
-> **[author-workflow-python/](author-workflow-python/)** (the whole `author` workflow rendered in
-> this shape — the artifact that settled most of what follows).
-> This is a pre-implementation design brief. Nothing below is built.
+> ## This is history. It shipped.
+>
+> **Status: implemented (2026-07-31).** This was a pre-implementation design brief, written
+> 2026-07-29 and quoted here as it stood. It is kept for the *reasoning* — why the YAML
+> front-end was replaced, what three shapes were weighed, what was rejected and on what
+> grounds. It is **not** a reference for how workflows work today, and nothing in it is
+> outstanding work. It is written in the future tense throughout; read every "would" and
+> "the design proposes" as "does".
+>
+> **Where the shipped answer lives:**
+>
+> | If you want to… | Read |
+> | --- | --- |
+> | write a workflow | [`workhorse/docs/AUTHORING.md`](../../workhorse/docs/AUTHORING.md) |
+> | port a `workflow.yaml` you still hold | [`workhorse/docs/WORKFLOW.md`](../../workhorse/docs/WORKFLOW.md) |
+> | read the four shipped workflows | [`workflows/README.md`](../../workflows/README.md) |
+> | know how the engine models a workflow | [workflow-format](../features/workhorse/workflow-format.md) |
+> | know what each build step actually settled | [the progress ledger](workflow-as-python-state-machine-progress.md) |
+>
+> Where this document and the shipped code disagree, **the code wins** and the ledger
+> records the disagreement.
+>
+> **Also related, and still current:** [run-artifacts](../features/workhorse/run-artifacts.md)
+> (the checkpoint/resume substrate, which survived unchanged) ·
+> [workhorse-otel](workhorse-otel.md) (span/log emission, unaffected).
+> **[author-workflow-python/](author-workflow-python/)** is the companion artifact — the whole
+> `author` workflow rendered in this shape before any of it existed — and is history on the
+> same terms.
 
-Status: **design** (2026-07-29). Reached by working through three candidate shapes; the third is
-the one to build. No code written, no migration started.
+The design was reached by working through three candidate shapes; the third is the one that
+was built.
 
 A second pass then rendered `base-library/workflows/author/` — 2,389 lines of YAML over 159 nodes,
 plus 23 scripts totalling 2,650 — into the proposed shape, and that exercise moved four things:
@@ -1328,6 +1350,9 @@ Two consequences, and neither is work for this design:
 
 ## Still open
 
+> **Settled.** The driver was built and `Await` is a returned transition in it, so the question
+> below was answered in code rather than in the artifact. The artifact was left as it stood.
+
 Nothing in the design. One thing in the artifact: `docs/plans/author-workflow-python/workflow.py`
 still writes `_unblock` as a blocking `self.call(scriptutil.await_operator, …)`, marked SUPERSEDED
 in place rather than converted. Converting it is not a substitution — an `Await` can only be
@@ -1336,6 +1361,9 @@ if the artifact is going to be read as the shape rather than as the census; skip
 about to be built anyway and will settle the question in code.
 
 ## Suggested first step
+
+> **Taken.** `research` was ported first and the driver was built against it, `Await` included
+> from the first version. All four workflows followed. Nothing here is a next step.
 
 Build the driver, `@workflow.main`/`@workflow.node`, `Continue`/`Done`/`Await`, and `--dry-run`
 against a port of `research/workflow.yaml`. It is the smallest workflow that exercises branches, a
@@ -1353,6 +1381,11 @@ Two constraints on that first step, both learned from the `author` rendering:
   `author`'s nine states awkward, that outranks whatever `research` was comfortable with.
 
 ## Execution loops
+
+> **All four ran.** Loops 1, 1.1 and 2 shipped the code; loop 3 is this documentation pass.
+> What each one actually settled — including where it departed from the plan below — is in
+> [the progress ledger](workflow-as-python-state-machine-progress.md), which is the record to
+> trust. The prompts are kept here because they are the plan's own account of the split.
 
 Four `/loop` runs, split at the point where the old front-end must start coming down. The split is
 load-bearing: everything in loops 1 and 1.1 lands **beside** the YAML engine with it still green,

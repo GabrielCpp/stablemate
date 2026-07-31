@@ -6,6 +6,16 @@
 > `stablemate-ostler` / `stablemate-documentation` / `stablemate-okf-modeling` skills
 > teach it. Where this draft and the shipped tooling differ, the shipped behavior wins
 > and is called out inline (see §2.4 and §6 on gating vs "warns, never blocks").
+>
+> **Its worked examples are quoted from the docs as they stood in 2026-06, and several of
+> them are stale as *content*.** §7.6, §7.7, §7.8 and §7.10, plus the `format` bullet in
+> §3, sample `workhorse dot --workflow <path>`, `graph/context.py`, `workflow.yaml` and
+> `load_workflow` — the YAML front-end, which has since been deleted (see
+> [workflow-as-python-state-machine](workflow-as-python-state-machine.md)). They are here
+> to show the *shape* of an OKF node, and are left as they were written so the profile's
+> examples stay legible against the pages that motivated them. Do not copy their bodies;
+> [docs/features/workhorse/workflow-format.md](../features/workhorse/workflow-format.md)
+> is the current page they became.
 
 ## 1. Why this profile exists
 
