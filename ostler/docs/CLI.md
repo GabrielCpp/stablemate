@@ -22,7 +22,23 @@ The commands fall into three surfaces that barely overlap:
 ```bash
 ostler --version
 ostler -C, --chdir DIR <command> …            # operate as if run from DIR
+ostler --handles  <command> …                 # print ids as short handles
+ostler --full-ids <command> …                 # print ids in full
 ```
+
+An id is `<PREFIX>-<26-char ULID>`, which nobody retypes, so ostler abbreviates it git-style to a
+**handle** — `<PREFIX>-<6+ chars>`, the shortest slice unambiguous among the ids in the repo.
+Human-readable output prints handles by default and `--json` prints full ids: a person wants a
+short token, a program wants the identity that never changes. The two flags override either
+default.
+
+Input is not modal. **A handle is accepted wherever a command takes an id** — `trace`, `query`,
+`create story --covers`, `seed add`/`seed remove`, `backlog prune`, `freeze`/`unfreeze` — no matter
+how the run prints, so a token copied out of one command goes straight into the next. Anything that
+is not a handle (a slug, a doc path) passes through untouched.
+
+A handle **lengthens** when a colliding id is later minted. It is a display and input form only:
+what gets written into a document is always the full id.
 
 ## Inspect
 
@@ -42,8 +58,12 @@ ostler search <query> [--type ETYPE] [--json]
 ostler query stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
 ostler next-epic [--json]                     # next queued epic with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
-ostler path spec <slug> | path story <epic> <slug> | path branch <slug> [--epic]
+ostler path epic <epic> | path spec <slug> | path story <epic> <slug> | path branch <slug> [--epic]
 ```
+
+Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/`), so ask
+`path epic` rather than joining `docs/epics/<slug>` yourself. Every command below still takes the
+bare slug — the number orders the listing, it is not the epic's identity.
 
 `--type` accepts the planning types (`epic`, `story`, `knowledge`, `feature`, `spec`,
 `seed`), every UI-profile node type (`screen`, `cli`, `server`, `concept`, `format`, `flow`,
@@ -68,7 +88,9 @@ ostler backlog add <id> <text> [--section S] | backlog prune <id> | backlog list
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
 
-`create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
+`create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>",
+"message": "…"}`. For `create epic` the `name` is the numbered directory that was written
+(`0001-checkout-flow`) — read it back rather than assuming which number the epic got.
 
 ## Repair and approve
 

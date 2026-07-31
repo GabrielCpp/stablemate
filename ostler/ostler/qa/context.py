@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import graph as graph_mod
-from ostler import inventory, markdown, registry
+from ostler import inventory, markdown, refs as refs_mod, registry
 from ostler.model import Graph, _parse_ui_nodes, load
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -120,12 +120,12 @@ def build_context(
         )
         mapped = False
         for node_id, node in nodes_by_id.items():
-            code_refs = _values(node.get("bullets", {}).get("code"))
-            exact = sorted(refs.intersection({_normalize_code_ref(item) for item in code_refs}))
+            cited = refs_mod.code_refs(node.get("bullets", {}).get("code"))
+            exact = sorted(refs.intersection(set(cited)))
             file_owned = [
                 item
-                for item in code_refs
-                if _code_path(item) in {change.base_path, change.head_path}
+                for item in cited
+                if refs_mod.ref_path(item) in {change.base_path, change.head_path}
             ]
             if exact:
                 mapped = True
@@ -252,9 +252,7 @@ def build_context(
     ]
     for node_id in sorted(selected):
         node = nodes_by_id[node_id]
-        code_refs = _values(node.get("bullets", {}).get("code"))
-        for ref in code_refs:
-            normalized = _normalize_code_ref(ref)
+        for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
             if not _grounding_exists(root, base, head, normalized):
                 health.append(
                     {
@@ -622,12 +620,8 @@ def _merge_snapshot_nodes(
     return merged
 
 
-def _normalize_code_ref(value: str) -> str:
-    return value.strip().strip("`, ")
-
-
 def _code_path(value: str) -> str:
-    return _normalize_code_ref(value).partition("::")[0]
+    return refs_mod.ref_path(refs_mod.normalize_ref(value))
 
 
 def _verification_refs(node: dict[str, Any]) -> list[str]:

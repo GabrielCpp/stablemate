@@ -284,31 +284,58 @@ def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
     return True
 
 
-# Managed .gitignore rules for the generated `.agents/` directory. Generated
-# adapter outputs (context manifests, runs/, skills/, prompts/, workflows/) are
-# ignored, but hand-authored files are tracked: the launcher Makefile and prompt
-# *flavor* overrides under `.agents/flavors/`. `/.agents/*` matches only the direct
-# children one level deep, so the negated `flavors/` subtree's deeper files stay
-# tracked. This supersedes a bare `.agents` line, which ignored the whole directory
-# and stopped git descending — making `.agents/flavors/` impossible to track.
+# Managed .gitignore rules for the generated `.agents/` directory.
+#
+# **The block names what to ignore, not what to keep.** It used to be an
+# exclude-everything list — `/.agents/*` plus a negation per survivor — and that
+# shape is wrong by default: anything a *later* tool starts writing under
+# `.agents/` is born ignored, and nobody notices until the file that should have
+# been committed isn't. ostler's `.agents/ids.json` is the case that proved it —
+# the id registry is repo state every clone and worktree has to agree on, and the
+# catch-all silently kept it out of every commit.
+#
+# So each generated or ephemeral path is listed explicitly, and everything else
+# under `.agents/` is tracked by default. The cost is that a new *generated*
+# output has to be added here; that failure is loud (a diff full of machine
+# output at review time) where the old one was silent.
 AGENTS_GITIGNORE_BLOCK = (
+    "/.agents/runs/",              # run logs, pids and copied-out artifacts
+    "/.agents/skills/",            # rendered skill adapters
+    "/.agents/prompts/",           # rendered prompt adapters
+    "/.agents/workflows/",         # legacy rendered workflow trees
+    "/.agents/operator/",          # per-run operator gate context files
+    "/.agents/local.compose.yaml",  # generated compose override
+    "/.agents/agents-context.json",  # generated context manifest
+    "/.agents/agents-context.*.json",  # …and its per-CLI variants
+)
+
+
+#: Lines a previous installer wrote that this block replaces. They are stripped
+#: rather than left in place because every one of them is a catch-all: leaving a
+#: `/.agents/*` behind would keep ignoring the paths the new block deliberately
+#: tracks, and the negations it needed are meaningless without it.
+_SUPERSEDED_GITIGNORE_LINES = (
+    ".agents",
+    ".agents/",
+    "/.agents",
     "/.agents/*",
     "!/.agents/agents.mk",
     "!/.agents/flavors/",
+    ".agents/runs",
 )
 
 
 def ensure_agents_gitignore(repo: Path) -> bool:
     """Install/upgrade the managed `.agents/` ignore block in the repo's .gitignore.
 
-    Idempotent: returns True only when the file was actually modified. Strips any
-    legacy standalone `.agents` wholesale-ignore line (so git descends into
-    `.agents/` and the hand-authored `flavors/` subtree can be tracked) and any
-    prior copy of the managed block, then re-appends the block at the end.
+    Idempotent: returns True only when the file was actually modified. Strips the
+    lines of every earlier spelling of this block — the legacy standalone `.agents`
+    wholesale-ignore line, and the `/.agents/*` + negations exclude-list that
+    replaced it — then re-appends the current block at the end.
     """
     gitignore = repo / ".gitignore"
     existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-    managed = set(AGENTS_GITIGNORE_BLOCK) | {".agents", ".agents/", "/.agents"}
+    managed = set(AGENTS_GITIGNORE_BLOCK) | set(_SUPERSEDED_GITIGNORE_LINES)
     kept = [ln for ln in existing.splitlines() if ln.strip() not in managed]
     body = "\n".join(kept).rstrip("\n")
     prefix = f"{body}\n\n" if body else ""

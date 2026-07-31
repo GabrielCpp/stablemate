@@ -40,5 +40,5 @@ choice), fix everything else and explain the one you left in `notes`.
 Respond with JSON only, after you have re-run lint locally:
 
 ```json
-{"fix_lint_result": {"status": "fixed|failed", "notes": "<what you changed, or why a finding remains>"}}
+{"status": "fixed|failed", "notes": "<what you changed, or why a finding remains>"}
 ```

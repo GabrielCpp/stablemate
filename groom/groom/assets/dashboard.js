@@ -57,7 +57,7 @@ const store = {
     repo: { loading: false, groups: [], query: "", active: 0, container: null, dir: "", label: null },
     files: { status: "idle", paths: [], path: null, view: { status: "idle", path: "", content: "", lang: "" } },
     diff: { status: "idle", files: [], idx: -1 },
-    traces: { status: "idle", runs: [], spans: [] },
+    traces: { status: "idle", runs: [], spans: [], ended: false },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -944,8 +944,10 @@ function Traces() {
     return html`
       ${strip}
       <div class="empty">
-        No spans match — a run exports automatically once this collector is reachable, provided workhorse has the
-        otel extra installed.
+        ${traces.ended || traces.runs.length
+          ? html`No spans match — a run exports automatically once this collector is reachable, provided workhorse
+              has the otel extra installed.`
+          : html`No run is connected right now. Tick <em>show ended</em> to read the runs that already finished.`}
       </div>
     `;
   }
@@ -973,13 +975,17 @@ function Traces() {
   `;
 }
 
+// The `show_ended` checkbox rides along in the FormData when it is checked and
+// is simply absent when it is not — which is exactly the shape /traces reads, so
+// the default view is the connected runs and nothing here has to say so.
 function loadTraces() {
   const form = document.getElementById("traces-filter");
   const params = new URLSearchParams(new FormData(form));
+  const ended = form.elements.show_ended.checked;
   fetch("/traces?" + params.toString())
     .then((r) => r.json())
-    .then((body) => setIn("traces", { status: "ready", runs: body.runs || [], spans: body.spans || [] }))
-    .catch(() => setIn("traces", { status: "error", runs: [], spans: [] }));
+    .then((body) => setIn("traces", { status: "ready", runs: body.runs || [], spans: body.spans || [], ended: ended }))
+    .catch(() => setIn("traces", { status: "error", runs: [], spans: [], ended: ended }));
 }
 
 // --------------------------------------------------------------------------- //

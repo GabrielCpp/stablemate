@@ -60,6 +60,43 @@ title: Item
     assert "tests/test_service.py::test_read" in refs
 
 
+def test_one_code_bullet_citing_two_files_owns_both(tmp_path: Path):
+    """The bullet the book actually writes: two backticked refs, one `code:` key.
+
+    Read as a single ref it normalized to a path with a backtick-comma-backtick in the middle,
+    so the node owned *neither* file and a change to one was reported `unmapped-change` — the
+    silent failure `ostler.refs` exists to prevent.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/shell.md").write_text(
+        "---\ntype: concept\ntitle: Shell\n---\n# Shell\n\n"
+        "- code: `app/config.ts`, `app/package.json`\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "app/config.ts"
+    config.write_text("export const ssr = true\n", encoding="utf-8")
+    (tmp_path / "app/package.json").write_text('{"name": "demo"}\n', encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    config.write_text("export const ssr = false\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    kinds = [f["kind"] for f in packet["healthFindings"]]
+    assert "unmapped-change" not in kinds, kinds  # the node cites it; ownership must be found
+    owners = {node["node"]: node["reasons"] for node in packet["directNodes"]}
+    assert owners, "the node citing the changed file must own it"
+    # The ref proves the parse: undecorated, and the first of the two the bullet cites.
+    assert [r for reasons in owners.values() for r in reasons] == [
+        {"kind": "file-owner", "ref": "app/config.ts"},
+    ]
+
+
 def test_context_reports_unmapped_production_change(tmp_path: Path):
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/item.md").write_text(

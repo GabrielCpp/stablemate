@@ -17,12 +17,29 @@ Plan **only** the story at the story path above. Do NOT search the repository, g
 
 Load the target layer's coding standard files before planning. Use the template references below so generated prompts point at the target adapter's instruction directory (`{{ skill_dir() }}`).
 
-Use the instruction files that match the layer and files touched:
-
-- {{ template.backend_layer_name | default("Go API") }}: `{{ instruction_ref("go") }}`, `{{ instruction_ref("go-architecture") }}`, `{{ instruction_ref("go-di") }}`, `{{ instruction_ref("go-errors") }}`, `{{ instruction_ref("go-openapi") }}`, `{{ instruction_ref("go-repository") }}`, `{{ instruction_ref("go-server") }}`, `{{ instruction_ref("go-storage") }}`, `{{ instruction_ref("go-testing") }}`
-- Go CLI / `{{ template.go_cli_name | default("appctl") }}`: `{{ instruction_ref("go-cli") }}`, `{{ instruction_ref("go-cli-commands") }}`, `{{ instruction_ref("go-testing") }}`
-- {{ template.mobile_layer_name | default("Flutter app") }}: `{{ instruction_ref("flutter") }}`, `{{ instruction_ref("flutter-architecture") }}`, `{{ instruction_ref("flutter-api") }}`, `{{ instruction_ref("flutter-state") }}`, `{{ instruction_ref("flutter-navigation") }}`, `{{ instruction_ref("flutter-forms") }}`, `{{ instruction_ref("flutter-models") }}`, `{{ instruction_ref("flutter-theme") }}`, `{{ instruction_ref("flutter-testing") }}`
-- {{ template.infra_layer_name | default("Pulumi infrastructure") }}: `{{ instruction_ref("pulumi") }}`
+Use the instruction files that match the layer and files touched. Only the layers this
+repository actually installs are listed below — if a layer you expected is absent, this
+repo has no skills for it, so use the shared repo guidance rather than inventing a path.
+{%- set backend_refs = instruction_refs("go", "go-architecture", "go-di", "go-errors", "go-openapi", "go-repository", "go-server", "go-storage", "go-testing") %}
+{%- set cli_refs = instruction_refs("go-cli", "go-cli-commands", "go-testing") %}
+{%- set web_refs = instruction_refs("react-router", "react-router-architecture", "react-router-ssr", "react-router-auth", "react-router-design-system", "react-router-a11y", "react-router-qa") %}
+{%- set mobile_refs = instruction_refs("flutter", "flutter-architecture", "flutter-api", "flutter-state", "flutter-navigation", "flutter-forms", "flutter-models", "flutter-theme", "flutter-testing") %}
+{%- set infra_refs = instruction_refs("pulumi", "pulumi-ci-docker", "pulumi-qa") %}
+{%- if backend_refs %}
+- {{ template.backend_layer_name | default("Go API") }}: {{ backend_refs }}
+{%- endif %}
+{%- if cli_refs %}
+- Go CLI / `{{ template.go_cli_name | default("appctl") }}`: {{ cli_refs }}
+{%- endif %}
+{%- if web_refs %}
+- {{ template.web_layer_name | default("Web app") }}: {{ web_refs }}
+{%- endif %}
+{%- if mobile_refs %}
+- {{ template.mobile_layer_name | default("Mobile app") }}: {{ mobile_refs }}
+{%- endif %}
+{%- if infra_refs %}
+- {{ template.infra_layer_name | default("Infrastructure") }}: {{ infra_refs }}
+{%- endif %}
 - Docs-only work: `AGENTS.md` and `docs/CODEX.md`
 
 Rules:
@@ -120,21 +137,32 @@ dispatcher stages later. Write it as:
 - `services`: one entry per **service** (concrete deployable unit) this story changes. Each has:
   - `repo`: the repo name (must match a folder name in the workspace or the CWD repo name)
   - `path`: relative path from repo root to the service directory (e.g., `cmd/alert`, `packages/discover`, `.` for root)
-  - `type`: the technology, using the key the repo's instructions/prompts gate on — `go`, `go-cli`, the repo's web framework (`react-router` or `svelte`), `flutter`, the repo's infra tool (`pulumi` or `terraform`), or `docs`
+  - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the skill short-names listed under "Instruction Set Resolution" above and from the repo's own `agents.yml`, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
   - `skills`: instruction short-names the implementer must load for this service
   - `plan_file`: the plan file for this service (relative to spec dir)
-- `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first (proto → backend → infra → frontend → mobile).
+- `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it.
 - `shared_packages`: non-service directories that need changes (libs, shared code). These are implemented as part of their dependent service's pass.
 - `required_instructions`: union of all services' skills (for backwards-compatible instruction resolution).
 - `qa_stack`: copy the story's **`## Verification setup`** into machine-readable form.
 
-**How to identify services**: A service is a directory with a marker file. Use the
-repo's own `agents.yml` (`workspace.service_roots`/`service_markers` and the
-`template.*_path` hints) to pin each service `path` and its framework-specific `type`:
-- Go service: has `main.go` or `go.mod` at its root (`cmd/<name>/`, or a module root like `api/`, `report/`)
-- Web app: has `package.json` — `type: react-router` or `type: svelte` per the repo's framework (e.g. Acme's `web/`)
-- Flutter app: has `pubspec.yaml`
-- Infra module: has `Pulumi.yaml`/`index.ts` (`type: pulumi`, e.g. Acme's `pulumi/`) or `main.tf` (`type: terraform`, `tf/modules/apps/<name>/`)
+**How to identify services**: A service is a directory with a marker file. The repo's own
+`agents.yml` (`workspace.service_roots`/`service_markers` and the `template.*_path` hints)
+is authoritative for both the `path` and the `type` — read it first. The markers below are
+listed only for the layers this repo installs skills for; a layer that is absent from this
+list is absent from this repo, so do not go looking for one.
+{%- if backend_refs %}
+- {{ template.backend_layer_name | default("Go service") }}: `main.go` or `go.mod` at its root (`cmd/<name>/`, or a module root)
+{%- endif %}
+{%- if web_refs %}
+- {{ template.web_layer_name | default("Web app") }}: `package.json`
+{%- endif %}
+{%- if mobile_refs %}
+- {{ template.mobile_layer_name | default("Mobile app") }}: `pubspec.yaml`
+{%- endif %}
+{%- if infra_refs %}
+- {{ template.infra_layer_name | default("Infrastructure") }}: `Pulumi.yaml`/`index.ts`, or `main.tf`
+{%- endif %}
+- Docs-only service: the documentation root the repo's book is written under
 
 **Single-service stories** collapse to one entry in `services`, one `plan.md`, and a one-element `implementation_order`.
 
@@ -153,13 +181,13 @@ When a story spans multiple services (across one or more repos), the **plan.md**
 
 #### Implementation Order
 
-Specify which service must be implemented first. Typical order:
+Specify which service must be implemented first, and derive the order from this story's
+own dependencies rather than from a fixed layer ranking:
 
-1. **Proto/API definitions** — Update shared contracts first
-2. **Backend services** — Implement Go services (gRPC handlers, DB, events)
-3. **Infrastructure** — Terraform modules (after application contracts are clear)
-4. **Frontend** — Svelte apps (consume the new API)
-5. **Mobile** — Flutter app (last, depends on stable backend)
+1. **Shared contracts** — schemas, API definitions, generated-code inputs: whatever both sides agree on
+2. **The service that owns the contract** — it has to satisfy the contract before anything can call it
+3. **Infrastructure** — once the application contracts it provisions for are settled
+4. **The services that consume the contract** — client-side last, against a backend that already answers
 
 State the order explicitly using `repo::path` notation in `implementation_order`. Each service is implemented independently in its own repo CWD.
 
@@ -234,8 +262,13 @@ For each shared function, endpoint, model, provider, command, generated type, or
 
 Identify any generated files affected by the changes:
 
-- OpenAPI spec changes → generated {{ template.backend_layer_name | default("Go API") }} files under `{{ template.go_api_generated_path | default("api/pkg/api") }}/` (run the generation command from the Go/OpenAPI instructions)
-- Dart API client changes → generated Dart API files under `{{ template.dart_api_generated_path | default("app/lib/generated/api") }}/` (run the generation command from the Flutter/API instructions)
+{%- if backend_refs %}
+- API contract changes → the generated server/types under `{{ template.go_api_generated_path | default("the path the backend instructions name") }}/` (run the generation command those instructions give)
+{%- endif %}
+{%- if mobile_refs %}
+- API contract changes → the generated client under `{{ template.dart_api_generated_path | default("the path the mobile instructions name") }}/` (run the generation command those instructions give)
+{%- endif %}
+- Any other generated artifact this repo builds from a checked-in input — the command lives in that layer's instruction files, never in this prompt
 - Database migrations (if schema changes)
 
 For each, list the generation command, input files that change, and output files that will be regenerated.
@@ -246,11 +279,11 @@ List the files, directories, or generated artifacts the implementation is expect
 
 For each item, describe the behavioral responsibility of the change, not the exact code edit. If the exact file is not yet knowable without implementation, name the smallest likely directory or package and explain why.
 
-Examples:
+Examples of the shape — with this repo's own paths, not these:
 
-- `{{ template.openapi_path | default("api/pkg/api/openapi.yaml") }}` — add or adjust the API contract needed by this story.
-- `{{ template.api_path | default("api") }}/internal/...` — update the backend behavior that serves the new contract.
-- `{{ template.dart_api_generated_path | default("app/lib/generated/api") }}/...` — regenerate the Flutter API client if the OpenAPI contract changes.
+- `{{ template.openapi_path | default("<the shared contract file>") }}` — add or adjust the contract this story needs.
+- `{{ template.api_path | default("<the owning service>") }}/...` — update the behavior that serves it.
+- `<the generated client, on each side that consumes the contract>` — regenerate when the contract changes.
 - `docs/specs/<story-name>/...` — keep plan, review, and QA artifacts for this story.
 
 ### 4. Implementation Checklist
@@ -283,7 +316,7 @@ For each layer involved, list:
 ## [layer-name] Verification
 
 # Code generation (if applicable)
-[copy from the relevant `{{ instruction_ref("go") }}`, `{{ instruction_ref("go-testing") }}`, `{{ instruction_ref("go-cli") }}`, `{{ instruction_ref("go-cli-commands") }}`, `{{ instruction_ref("flutter") }}`, `{{ instruction_ref("flutter-architecture") }}`, `{{ instruction_ref("flutter-api") }}`, `{{ instruction_ref("flutter-testing") }}`, or `{{ instruction_ref("pulumi") }}` files]
+[copy from the relevant instruction files listed under "Instruction Set Resolution" above]
 
 # Tests
 [copy from relevant layer instructions]
@@ -329,8 +362,8 @@ All items must be checked:
 - [ ] Copied verification commands from each service's instructions files → "Verification Commands" section
 - [ ] Specified a **Local run (smoke)** command + observable success signal for every service with a runnable surface (or "None" for docs-only)
 - [ ] Wrote `docs/specs/<story-name>/plan-context.json` with `services` array (concrete paths with repo, type, skills, plan_file) — drives the implementer's per-service iteration
-- [ ] Listed `services` in the machine-readable result matching exactly `plan-context.json`
-- [ ] Verified service paths are valid: Go services have `main.go`/`go.mod`, web apps have `package.json`, infra has `Pulumi.yaml`/`main.tf`, Flutter has `pubspec.yaml`
+- [ ] Listed every changed service in `plan-context.json`'s `services` array — it is the only place the workflow reads them from
+- [ ] Verified every service path exists and carries the marker file its `type` implies (see "How to identify services")
 - [ ] Added **Given / When / Should** test scenarios for all affected code paths
 - [ ] Confirmed no breaking changes to external APIs
 - [ ] Implementation checklist ends with: codegen → test → lint → verify
@@ -340,21 +373,23 @@ All items must be checked:
 
 ❌ Don't assume "only one place uses this function" — always search.
 ❌ Don't invent verification commands — copy them from the layer's instructions files.
-❌ Don't forget code generation — stale OpenAPI/Dart generated files cause silent failures.
-❌ Don't plan a Flutter change that depends on a {{ template.backend_layer_name | default("Go API") }} change without specifying the implementation order.
+❌ Don't forget code generation — stale generated files cause silent failures.
+❌ Don't plan a consumer-side change against a contract change without specifying the implementation order.
+❌ Don't plan for a layer this repo does not have — the "Instruction Set Resolution" list above is the whole set.
 ✅ Search exact function names (case-sensitive).
 ✅ Copy test/lint/build commands from each layer's instruction files → **"Verification Commands"** section where present.
-✅ Identify generated files (OpenAPI types and Dart client) that must be refreshed after spec changes.
+✅ Identify generated files that must be refreshed after contract changes.
 ✅ For multi-layer stories, document the integration contract so each layer can be implemented independently.
 
 ## Machine-Readable Result (required)
 
-After writing the plan artifacts, return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `plan_result` key — without it the node fails to parse and is retried:
+After writing the plan artifacts, return this exact JSON object as the LAST thing in your final response — these two keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{"plan_result": {"status": "done|blocked", "summary": "<one-line summary of the plan, or the blocker>", "services": ["api-service::cmd/alert", "web-app::packages/discover"]}}
+{"status": "done|blocked", "summary": "<one-line summary of the plan, or the blocker>"}
 ```
 
 - `status`: `"done"` when the plan artifacts are written and ready for review, or `"blocked"` if you could not produce a plan.
 - `summary`: a one-line description of the plan (or the blocker).
-- `services`: the **exact set of services this story changes**, using `repo::path` notation. This drives the implementer's per-service iteration — a frontend-only story lists only `web-app::packages/discover` so the implementer never builds a backend service.
+
+The set of services this story changes is **not** part of this reply — the workflow reads it from the `services` array you wrote into `docs/specs/<story-name>/plan-context.json`, which is what drives the implementer's per-service iteration. Get it right there: a frontend-only story lists only its web service, so the implementer never builds a backend one.

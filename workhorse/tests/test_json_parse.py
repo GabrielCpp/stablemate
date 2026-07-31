@@ -118,6 +118,70 @@ def test_extract_outputs_no_outputs_returns_empty():
     assert m.extract_outputs("anything at all", _node()) == {}
 
 
+# ── an answer wrapped in an envelope ──────────────────────────────────────────
+#
+# The shape a live coder run produced: the prompt's example showed the node's own
+# output name around the object, so the agent returned `{"code_review_result":
+# {"status": ...}}` after a 134-second review, and the whole turn was discarded for a
+# reply that contained every key asked for. Reading through the envelope is generic —
+# "the object with the declared keys, wherever it sits" — so it costs no knowledge of
+# any workflow's names.
+
+def test_wrapped_answer_is_read_through_the_envelope():
+    text = '```json\n{"code_review_result": {"status": "clean", "findings": []}}\n```'
+    assert m.parse_json_from_text(text, ["status", "findings"]) == {
+        "status": "clean",
+        "findings": [],
+    }
+
+
+def test_extract_outputs_accepts_the_wrapped_answer():
+    text = '{"result": {"status": "ok", "notes": "done"}}'
+    assert m.extract_outputs(text, _node("status", "notes")) == {
+        "status": "ok",
+        "notes": "done",
+    }
+
+
+def test_a_top_level_answer_still_wins_over_a_nested_one():
+    """Shallowest match, so an envelope's payload beats a same-shaped list element.
+
+    A findings array whose entries each carry `status` is the realistic way a deep
+    search goes wrong: the answer is the object *holding* the findings, not one of
+    them.
+    """
+    text = (
+        '{"status": "findings", "findings": [{"status": "bad", "findings": []}], '
+        '"detail": {"status": "nested", "findings": []}}'
+    )
+    assert m.parse_json_from_text(text, ["status", "findings"])["status"] == "findings"
+
+
+def test_an_envelope_missing_a_key_still_fails():
+    """Unwrapping widens where the keys may be, not which answers count as complete.
+
+    A wrapped object that answers only half the question must stay on the retry ladder
+    — silently promoting it would turn a recoverable turn into a wrong one.
+    """
+    text = '{"code_review_result": {"status": "clean"}}'
+    with pytest.raises(failure.OutputParseError, match="not found"):
+        m.extract_outputs(text, _node("status", "notes"))
+
+
+def test_nothing_wanted_keeps_the_top_object():
+    """No declared keys means every dict qualifies, so descending would be arbitrary."""
+    assert m.parse_json_from_text('{"outer": {"inner": 1}}') == {"outer": {"inner": 1}}
+
+
+def test_a_wrapped_answer_survives_repair_too():
+    """The envelope is still an envelope after json-repair fixes the syntax around it."""
+    text = "here you go:\n{'code_review_result': {'status': 'clean', 'findings': [],}}"
+    assert m.parse_json_from_text(text, ["status", "findings"]) == {
+        "status": "clean",
+        "findings": [],
+    }
+
+
 # ── selection helper ──────────────────────────────────────────────────────────
 
 def test_select_object_from_list_prefers_wanted():

@@ -151,9 +151,23 @@ def test_run_card_falls_back_to_the_stores_live_ids_when_not_in_the_cache():
 def test_traces_view_passes_live_ids_through_to_every_card():
     view = projection.traces_view(
         [{"run_id": "R7", "workflow": "coder"}, {"run_id": "R8", "workflow": "coder"}],
-        [], {}, {"R7"},
+        [], {}, {"R7"}, connected_only=False,
     )
     assert {r["run_id"]: r["live"] for r in view["runs"]} == {"R7": True, "R8": False}
+
+
+def test_traces_view_shows_only_connected_runs_by_default():
+    # The store keeps two weeks of runs; the pane is for watching, so a card and
+    # its spans are dropped together — a span table full of a hidden run's nodes
+    # is telemetry from nowhere.
+    summaries = [{"run_id": "R7", "workflow": "coder"}, {"run_id": "R8", "workflow": "coder"}]
+    spans = [
+        {"run_id": "R7", "node": "plan", "name": "plan", "start_ts": 1.0, "end_ts": 2.0},
+        {"run_id": "R8", "node": "plan", "name": "plan", "start_ts": 1.0, "end_ts": 2.0},
+    ]
+    view = projection.traces_view(summaries, spans, {}, {"R7"})
+    assert [r["run_id"] for r in view["runs"]] == ["R7"]
+    assert [s["run_id"] for s in view["spans"]] == ["R7"]
 
 
 # ---- filtering ----

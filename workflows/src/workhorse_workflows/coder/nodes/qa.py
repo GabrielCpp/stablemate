@@ -29,7 +29,7 @@ from workhorse_workflows.coder.nodes._blueprint import blueprint
 from workhorse_workflows.coder.schemas.qa import (
     QaCleared,
     QaPlanValidation,
-    QaResult,
+    QaRunResult,
     StackStatus,
 )
 
@@ -125,11 +125,17 @@ def ensure_stack(
         where = result.get("entry_url") or "(no url)"
         return StackStatus(ready="yes", notes=f"Stack {how} and healthy at {where}.", **common)
     step = result.get("failed_step", "unknown")
+    # The step's own message goes in the notes, because the notes are what the setup
+    # fixer is briefed with: told only *which* step failed, it re-derives the failure
+    # from scratch — an expensive turn spent rediscovering a line the stack already had.
+    error = (result.get("error") or "").strip()
     return StackStatus(
         ready="no",
         notes=(
-            f"Stack bring-up failed at step '{step}'. Repair the manifest or its seed "
-            f"recipe (never background the stack in the agent shell)."
+            f"Stack bring-up failed at step '{step}'"
+            + (f": {error}" if error else "")
+            + ". Repair the manifest or its seed recipe (never background the stack in "
+            "the agent shell)."
         ),
         **common,
     )
@@ -158,7 +164,7 @@ def validate_qa_plan(
 
 
 @blueprint.node
-def run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "") -> QaResult:
+def run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "") -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
@@ -173,7 +179,7 @@ def run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "")
         status = "invalid"
     notes = ostler_qa.notes_for(payload, stderr, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)
-    return QaResult(status=status, notes=notes, ostler=payload)
+    return QaRunResult(status=status, notes=notes, ostler=payload)
 
 
 __all__ = ["clear_qa_evidence", "ensure_stack", "run_qa_plan", "validate_qa_plan"]

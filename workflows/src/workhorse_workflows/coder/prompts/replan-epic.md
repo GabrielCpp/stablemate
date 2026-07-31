@@ -8,7 +8,7 @@ Triggering story: `{{ story_path }}`
 Spec/artifact directory: `{{ spec_dir }}`
 Epic: `{{ epic }}`
 Epic queue: the ostler-managed OKF index `docs/epics/index.md` (read with `ostler todo list`,
-edit with `ostler todo add|prune|reorder`). An explicit `{{ epics_todo }}` overrides it when set.
+edit with `ostler todo add|prune|reorder`).
 
 ## Operator answer (authoritative ground truth)
 Treat the following as fact. It overrides any earlier assumption in the epic or its stories. Do NOT re-derive or second-guess it; do NOT re-raise the block it answers.
@@ -24,5 +24,5 @@ Treat the following as fact. It overrides any earlier assumption in the epic or 
 ## Output
 Respond with JSON only after the epic and its stories are updated:
 ```json
-{"replan_result": {"status": "done", "summary": "<one-line summary of what was re-grounded>"}}
+{"status": "done", "notes": "<one-line summary of what was re-grounded>"}
 ```

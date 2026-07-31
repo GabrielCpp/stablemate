@@ -8,6 +8,8 @@ place.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,6 +71,53 @@ DEFAULT_STORY_STATUS = "Not started"
 
 # OKF reserved per-bundle filenames.
 RESERVED_FILES = {"index.md", "log.md"}
+
+
+# ---------------------------------------------------------------------------
+# Epic directory naming — `NNNN-<slug>`
+# ---------------------------------------------------------------------------
+# An epic's directory carries the order it was created in, so a listing of `docs/epics`
+# reads as the work order rather than as an alphabetized set. The number is *not* an
+# identity — identities are ostler-minted ids, which never change — so nothing is ever
+# resolved by it: `0007-checkout-flow` and the bare `checkout-flow` name the same epic
+# everywhere a name is taken. That tolerance is what keeps epics created before the
+# numbering, hand-written `index.md` lines, and prompts that only know the slug valid.
+EPIC_SEQ_WIDTH = 4
+# Four digits minimum, so a slug that merely starts with a short number (`3d-preview`) is
+# not read as a sequence prefix.
+EPIC_DIR_RE = re.compile(r"^(\d{4,})-(.+)$")
+
+
+def epic_seq(name: str) -> int | None:
+    """The sequence number of an epic directory name, or None when it carries no prefix."""
+    m = EPIC_DIR_RE.match(name.strip())
+    return int(m.group(1)) if m else None
+
+
+def epic_slug(name: str) -> str:
+    """The slug half of an epic directory name — the whole name when it has no prefix."""
+    m = EPIC_DIR_RE.match(name.strip())
+    return m.group(2) if m else name.strip()
+
+
+def epic_dir_name(seq: int, slug: str) -> str:
+    """The directory name for the *seq*-th epic: ``0001-checkout-flow``."""
+    return f"{seq:0{EPIC_SEQ_WIDTH}d}-{slug}"
+
+
+def next_epic_seq(names: Iterable[str]) -> int:
+    """The number the next epic directory takes: one past the highest currently on disk.
+
+    Derived, not persisted — there is no counter to keep in sync, and a clone or a merge
+    computes the same answer from the same tree. The consequence is that deleting the last
+    epic frees its number: `0003-` is handed out again once `0003-checkout` is gone. That is
+    tolerable precisely because the number is *not* an identity — identity is the minted id,
+    which is never reused — so the worst case is that two epics occupied the same rank at
+    different times. Gaps in the middle are left alone: survivors are never renumbered, which
+    would invalidate every path already written into a plan, a branch or a link.
+    """
+    taken = [n for n in (epic_seq(x) for x in names) if n is not None]
+    return max(taken, default=0) + 1
 
 
 # ---------------------------------------------------------------------------

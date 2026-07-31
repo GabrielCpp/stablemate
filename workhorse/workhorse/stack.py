@@ -45,6 +45,8 @@ POLL_INTERVAL_S = 0.5
 TERM_GRACE_S = 5.0
 STOP_TIMEOUT_S = 300.0    # ceiling on a documented `stop` recipe
 STEP_TIMEOUT_S = 600.0    # ceiling on one `prepare`/`seed`/`health` step
+HEALTH_WINDOW_S = 120.0   # window for the `health` gates to converge; via `health_timeout`
+HEALTH_RETRY_S = 5.0      # pause between re-attempts of a gate that is not satisfied yet
 
 
 def boot_timeout(raw: str, default: float = BOOT_TIMEOUT_S) -> float:
@@ -232,7 +234,10 @@ def ensure_stack(
       * ``stop`` — the teardown recipe; absent means leave an expensive stack up.
       * ``prepare`` — ordered blocking steps run *before* launch (deps/build/stack-up).
       * ``seed`` — ordered **idempotent** steps run *after* the stack serves (fixtures).
-      * ``health`` — ordered command gates run last (e.g. a ``stack-health`` target).
+      * ``health`` — ordered command gates run last (e.g. a ``stack-health`` target). A
+        gate that fails is re-attempted until the phase's window expires, because boot
+        proves only the entry URL answers and a gate may assert on a slower sibling.
+      * ``health_timeout`` — that window in seconds (default 120), shared by all gates.
 
     **Staleness — why adoption is earned, not automatic.** A stack left serving from a
     prior story was built from *older* code; adopting it blindly runs QA against a stale
@@ -252,7 +257,9 @@ def ensure_stack(
 
     ``prepare``/``seed``/``health``/``fresh`` entries are a bare command string or a mapping
     with ``run`` (+ optional ``working-directory``/``timeout``). Returns
-    ``{ready, adopted, entry_url, app_pid, app_pgid[, failed_step]}``.
+    ``{ready, adopted, entry_url, app_pid, app_pgid[, failed_step, error]}`` — ``error``
+    being the failing step's own message, so a caller routing the failure to a repairer
+    can say what broke and not merely which step did.
     """
     app_cwd = manifest.get("app_cwd") or "."
     repo_root = repo_root or manifest.get("repo_root") or app_cwd
@@ -264,9 +271,13 @@ def ensure_stack(
     launch_cmd = manifest.get("launch", "")
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
 
-    def _fail(step: str, pid: str = "", pgid: str = "") -> dict[str, str]:
+    def _fail(step: str, error: str = "", pid: str = "", pgid: str = "") -> dict[str, str]:
+        # `error` carries the step's own message out with the verdict: the caller's job is
+        # usually to route the failure to whoever repairs it, and a step name alone ("the
+        # health gate") does not say what to repair. Logging it is not enough — the log is
+        # not what crosses the node boundary.
         return {"ready": "no", "adopted": "no", "entry_url": entry_url,
-                "app_pid": pid, "app_pgid": pgid, "failed_step": step}
+                "app_pid": pid, "app_pgid": pgid, "failed_step": step, "error": error}
 
     # Adopt-if-serving — but only when the reuse policy proves the running stack is not
     # stale (built from older code). Otherwise fall through and re-run the (idempotent,
@@ -283,7 +294,7 @@ def ensure_stack(
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
         if not ok:
             logger.warning("prepare[%d] failed: %s", i, err)
-            return _fail(f"prepare[{i}]")
+            return _fail(f"prepare[{i}]", err)
 
     app_pid = app_pgid = ""
     if launch_cmd:
@@ -292,20 +303,32 @@ def ensure_stack(
         res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
                        identity, timeout_s, adopt=False, logger=logger)
         if res["boot_ok"] != "yes":
-            return _fail("launch", res["app_pid"], res["app_pgid"])
+            return _fail("launch", f"the launch command did not serve {health_url or entry_url}",
+                         res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
 
     for i, step in enumerate(manifest.get("seed") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"seed[{i}]")
         if not ok:
             logger.warning("seed[%d] failed: %s", i, err)
-            return _fail(f"seed[{i}]", app_pid, app_pgid)
+            return _fail(f"seed[{i}]", err, app_pid, app_pgid)
 
+    # One window for the whole `health` phase, retried rather than single-shot: boot only
+    # proved the *entry URL* answers, and in a multi-service stack that is the fastest
+    # service, not the last one. A gate asserting on its siblings therefore runs into a
+    # stack that is still coming up — a spurious failure that routes an otherwise healthy
+    # run into repair. Gates are documented as read-only assertions (`seed` owns the side
+    # effects), so re-running one is safe.
+    health_deadline = time.monotonic() + boot_timeout(
+        str(manifest.get("health_timeout", "")), default=HEALTH_WINDOW_S
+    )
     for i, step in enumerate(manifest.get("health") or []):
-        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"health[{i}]")
+        ok, err = _gate_until(
+            step, app_cwd, timeout_s, logger, label=f"health[{i}]", deadline=health_deadline
+        )
         if not ok:
             logger.warning("health[%d] failed: %s", i, err)
-            return _fail(f"health[{i}]", app_pid, app_pgid)
+            return _fail(f"health[{i}]", err, app_pid, app_pgid)
 
     logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
     return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
@@ -350,6 +373,30 @@ def _may_adopt(
     if not ok:
         logger.info("`fresh` probe reports the running stack is stale (%s) — will re-launch", err)
     return ok
+
+
+def _gate_until(
+    step: Any, default_cwd: str, default_timeout: float, logger: logging.Logger,
+    *, label: str, deadline: float,
+) -> tuple[bool, str]:
+    """Run one gate, re-attempting a failure until *deadline*; report the last error.
+
+    A gate that fails is not yet a verdict — a stack whose entry URL answers can still
+    have siblings mid-start, so the first attempt reads "not up **yet**" as often as "not
+    up". Waiting is what tells the two apart, and the deadline is what keeps waiting from
+    becoming a stall. The window is shared by every gate in the phase, so a manifest with
+    five gates waits as long in total as one with a single gate.
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        ok, err = _run_step(step, default_cwd, default_timeout, logger, label=label)
+        remaining = deadline - time.monotonic()
+        if ok or remaining <= 0:
+            return ok, err
+        logger.info("%s not satisfied on attempt %d (%s) — retrying for up to %.0fs more",
+                    label, attempt, err, remaining)
+        time.sleep(HEALTH_RETRY_S)
 
 
 def _run_step(

@@ -99,4 +99,10 @@ include = ["src", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `tests/` on the import path, so `from _fakes import StubRunner` resolves from every
+# suite. Stated rather than inherited: the nested suites are packages (`tests/coder/`
+# has an `__init__.py`), so what pytest prepends for them is `tests/` — but only once
+# something has been collected from there, which makes an implicit version of this
+# depend on collection order.
+pythonpath = ["tests"]
 tmp_path_retention_policy = "failed"

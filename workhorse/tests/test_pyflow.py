@@ -881,6 +881,85 @@ def test_the_agent_ladder_is_a_run_dependency_not_a_module_attribute():
         assert seen == ["review"], seen
 
 
+def _crashing_child(visited: list[str], crashes: list[bool]) -> type[Workflow]:
+    """A two-state sub-flow that dies once, in its second state, then succeeds."""
+
+    class Child(Workflow):
+        subject: str
+
+        def start(self) -> Transition:
+            visited.append(f"start:{self.subject}")
+            return Continue(None, self.finish)
+
+        def finish(self) -> Transition:
+            visited.append(f"finish:{self.subject}")
+            if crashes:
+                crashes.pop()
+                raise WorkflowFailed("killed mid-flow")
+            return Done(self.subject)
+
+    return Child
+
+
+def test_a_resume_re_enters_the_sub_flow_where_it_died_rather_than_at_its_start():
+    """A resume lands in the state that was running — and if that state is a handoff,
+    the run was really inside the child. Restarting the child from `start` replays
+    every agent turn it had already finished, which for a long sub-flow is the whole
+    cost of the run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        visited: list[str] = []
+        Child = _crashing_child(visited, [True])
+
+        class Parent(Workflow):
+            def start(self) -> Transition:
+                return Done(self.handoff(Child, subject="login"))
+
+        _raises(WorkflowFailed, drive, Parent(), _env(tmp))
+        assert visited == ["start:login", "finish:login"], visited
+
+        result = drive(Parent(), _env(tmp), Resume(state="start", params={}, flow="Parent"))
+        assert result == "login", result
+        assert visited == ["start:login", "finish:login", "finish:login"], visited
+
+
+def test_a_flow_entered_a_second_time_starts_clean_despite_the_checkpoint_it_left():
+    """A flow that ran to completion also leaves a checkpoint, so a loop body calling
+    the same flow again must not fast-forward through the previous visit's ending."""
+    with tempfile.TemporaryDirectory() as tmp:
+        visited: list[str] = []
+        Child = _crashing_child(visited, [])
+
+        class Parent(Workflow):
+            def start(self) -> Transition:
+                self.handoff(Child, subject="login")
+                return Done(self.handoff(Child, subject="login"))
+
+        assert drive(Parent(), _env(tmp)) == "login"
+        assert visited == ["start:login", "finish:login"] * 2, visited
+
+
+def test_a_sub_flow_checkpoint_from_a_different_invocation_is_not_adopted():
+    """The guard that makes the one above hold even under a resume: same flow class,
+    different arguments — a per-story loop resumed between stories — is a fresh run of
+    the child, not story A's checkpoint continued as story B."""
+    with tempfile.TemporaryDirectory() as tmp:
+        visited: list[str] = []
+        Child = _crashing_child(visited, [True])
+
+        class Parent(Workflow):
+            subject: str
+
+            def start(self) -> Transition:
+                return Done(self.handoff(Child, subject=self.subject))
+
+        _raises(WorkflowFailed, drive, Parent(subject="login"), _env(tmp))
+        assert visited == ["start:login", "finish:login"], visited
+
+        resumed = Resume(state="start", params={}, inputs={"subject": "signup"}, flow="Parent")
+        assert drive(Parent(subject="signup"), _env(tmp), resumed) == "signup"
+        assert visited[2:] == ["start:signup", "finish:signup"], visited
+
+
 def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
     """A sub-flow is a different program: it renders its own `prompts/` and calls its
     own nodes, so one shipped in another distribution does not look for its templates

@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -436,6 +438,118 @@ def live_run_ids(now: float | None = None) -> set[str]:
     return {
         entry["run_id"] for entry in live_status(now=now) if entry.get("alive")
     }
+
+
+# Path fragments that mark a run dir as a test process's, with no ambiguity:
+# pytest's tmp_path factory roots every case under `pytest-of-<user>/`, and the
+# workhorse/groom suites put their run dirs under `.workhorse-test/`. A path
+# containing one of these is not a run anyone will come back to.
+_TEST_RUN_DIR_MARKERS = ("/pytest-of-", "/.workhorse-test/", "/.groom-test/")
+
+# `tempfile.mkdtemp`'s naming: `tmp` + random suffix, as a directory sitting
+# directly in the temp root. This is the *heuristic* signal — a suite that builds
+# its own scratch dir instead of using pytest's leaves no other trace — and it is
+# why only the explicit purge consults it, never ingest.
+_PY_TEMP_DIR = re.compile(r"^tmp[A-Za-z0-9_]{6,}$")
+
+
+def _temp_roots() -> tuple[str, ...]:
+    """Temp-dir prefixes a throwaway run dir sits under.
+
+    ``/tmp`` is listed unconditionally, not just when it is this host's temp
+    root: the producer may be a container while the collector is the host, and
+    the run dir on the wire is the *producer's* path.
+    """
+    roots = {tempfile.gettempdir().rstrip("/"), "/tmp"}
+    return tuple(f"{root}/" for root in sorted(roots) if root)
+
+
+def is_test_run_dir(run_dir: str) -> bool:
+    """Did this run dir certainly come from a test process?
+
+    Deliberately narrow, because this is the predicate the ingest path drops on
+    and a silent drop of real telemetry is worse than keeping some junk. Only
+    the unambiguous markers count; ``/tmp`` alone does not.
+
+    Workhorse already declines to export from a test process
+    (``workhorse.otel._under_test``), so this is the collector's belt-and-braces
+    half, covering producers on an older version or in a container.
+    """
+    if not run_dir:
+        return False
+    return any(marker in run_dir for marker in _TEST_RUN_DIR_MARKERS)
+
+
+def is_scratch_run_dir(run_dir: str) -> bool:
+    """Does this run dir look throwaway — a certain test dir, or a Python temp one?
+
+    The wider net :func:`purge_test_runs` casts. It catches what
+    :func:`is_test_run_dir` cannot: a suite that calls ``tempfile.mkdtemp``
+    itself, which is how the biggest single junk run in a real store
+    (150k+ spans) was written. It is a heuristic — a genuine run launched from a
+    ``mkdtemp`` directory matches too — so it is confined to a command the
+    operator runs deliberately and can preview with ``--dry-run``, rather than
+    to the ingest path where the same guess would delete evidence unasked.
+    """
+    if is_test_run_dir(run_dir):
+        return True
+    for root in _temp_roots():
+        if run_dir.startswith(root):
+            return bool(_PY_TEMP_DIR.match(run_dir[len(root) :].split("/", 1)[0]))
+    return False
+
+
+def test_run_ids() -> set[str]:
+    """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`).
+
+    Classified in Python rather than SQL because the predicate is a path
+    heuristic, not a LIKE pattern. Only ``spans`` and ``logs`` carry ``run_dir``
+    — ``metrics`` does not — so a run that only ever emitted heartbeats before
+    its first node completed is invisible here and is left alone.
+    """
+    conn = _connection()
+    pairs: set[tuple[str, str]] = set()
+    for table in ("spans", "logs"):
+        pairs.update(
+            (row["run_id"], row["run_dir"])
+            for row in conn.execute(
+                f"SELECT DISTINCT run_id, run_dir FROM {table} WHERE run_dir != ''"  # noqa: S608 - literal table name
+            )
+        )
+    return {run_id for run_id, run_dir in pairs if run_id and is_scratch_run_dir(run_dir)}
+
+
+# Bound on ids per DELETE, so a store holding thousands of test runs does not
+# build one statement with thousands of parameters (SQLite caps them).
+_PURGE_CHUNK = 500
+
+
+def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int]:
+    """Delete every span/metric/log belonging to a test run.
+
+    Returns ``{"runs": n, "spans": n, "metrics": n, "logs": n}`` — with
+    ``dry_run`` the same counts are reported and nothing is deleted.
+
+    ``vacuum`` rewrites the file afterwards: SQLite keeps freed pages for reuse,
+    so a store where test runs were most of the rows stays its old size on disk
+    until it is vacuumed, which is the visible half of the problem this solves.
+    """
+    conn = _connection()
+    run_ids = sorted(test_run_ids())
+    counts = {"runs": len(run_ids), "spans": 0, "metrics": 0, "logs": 0}
+    for start in range(0, len(run_ids), _PURGE_CHUNK):
+        chunk = run_ids[start : start + _PURGE_CHUNK]
+        marks = ",".join("?" * len(chunk))
+        for table in ("spans", "metrics", "logs"):
+            verb = "SELECT COUNT(*) AS n FROM" if dry_run else "DELETE FROM"
+            cursor = conn.execute(f"{verb} {table} WHERE run_id IN ({marks})", chunk)  # noqa: S608 - literal table name, bound values
+            counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
+    if dry_run:
+        return counts
+    conn.commit()
+    if vacuum and counts["runs"]:
+        conn.execute("VACUUM")
+    return counts
 
 
 def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:

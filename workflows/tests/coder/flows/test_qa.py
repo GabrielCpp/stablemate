@@ -709,6 +709,37 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     assert agent.args_for("setup-fix")[0]["stack_manifest"] == "qa-stack.yml"
 
 
+def test_the_setup_fixer_is_briefed_with_why_the_stack_would_not_come_up(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A stack failure is the running verdict, so the failing step's message reaches the fixer.
+
+    The brief is composed from the QA verdict, which a stack that never came up leaves
+    blank: the fixer was dispatched to repair something without being told what about it
+    broke, and spent its turn rediscovering a line the stack supervisor already had.
+    """
+    ostler()
+    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
+    results = [
+        {"ready": "no", "failed_step": "health[0]", "error": "api-test container is not running"},
+        {"ready": "yes", "entry_url": "http://x"},
+    ]
+    monkeypatch.setattr(workhorse_stack, "ensure_stack", lambda *a, **k: results.pop(0))
+    agent = _Agent(docs, setup="fixed")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    notes = agent.args_for("setup-fix")[0]["qa_notes"]
+    assert "health[0]" in notes
+    assert "api-test container is not running" in notes
+
+
 def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     docs: Path,
     ostler: Callable[..., _Ostler],

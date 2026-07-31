@@ -81,7 +81,11 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         rows = crud_generic.find_instance(graph, etype)
 
     if epic is not None:
-        rows = [r for r in rows if r.get("epic") == epic or r.get("name") == epic]
+        # By directory name or by bare slug: epic directories are numbered, and a caller
+        # filtering `epic="checkout-flow"` means `0001-checkout-flow`.
+        want = registry.epic_slug(epic)
+        rows = [r for r in rows
+                if registry.epic_slug(str(r.get("epic") or r.get("name") or "")) == want]
     if status is not None:
         rows = [r for r in rows if str(r.get("status", "")).lower() == status.lower()]
     return rows

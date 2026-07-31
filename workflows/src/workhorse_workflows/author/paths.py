@@ -88,7 +88,13 @@ def feedback_repo_root() -> Path:
 
 
 def epic_dir(epics_dir: str, epic: str) -> str:
-    """Where one epic's artifacts live, under the configured epics directory."""
+    """Where one epic's artifacts live, under the configured epics directory.
+
+    `epic` must be the directory name ostler created — epic folders are numbered
+    (`0001-checkout`), so joining a bare slug here names a folder that does not exist.
+    `select_epic` resolves the queue entry through `ostler path epic` before this is
+    called, and nothing else should be building the name itself.
+    """
     return f"{epics_dir.rstrip('/')}/{epic}"
 
 

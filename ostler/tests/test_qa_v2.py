@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import types
 from pathlib import Path
 
 import yaml
@@ -9,7 +11,7 @@ import yaml
 from ostler.artifact.kinds import _qa_evidence_vet
 from ostler.qa.plan import load_plan, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
-from ostler.qa.drivers import _compile_maestro
+from ostler.qa.drivers import SharedPlaywright, _compile_maestro
 
 
 def _context(spec: Path) -> str:
@@ -218,6 +220,45 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path):
         encoding="utf-8",
     )
     assert cmd_validate(plan, root=tmp_path).status == "passed"
+
+
+def test_two_browser_targets_share_one_playwright(monkeypatch):
+    """A plan with two Playwright targets must not start Playwright twice on one thread.
+
+    The runner starts every target's driver before the first scenario, and the sync API
+    drives an event loop of its own: the second ``sync_playwright().start()`` lands inside
+    the first one's loop and raises, which ended a whole run `invalid` with zero scenarios
+    executed. One shared handle, released by whichever driver stops last.
+    """
+    starts: list[str] = []
+    stops: list[str] = []
+
+    class _Playwright:
+        def stop(self) -> None:
+            stops.append("stop")
+
+    class _Context:
+        def start(self) -> _Playwright:
+            starts.append("start")
+            return _Playwright()
+
+    fake = types.ModuleType("playwright.sync_api")
+    fake.sync_playwright = _Context  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
+    monkeypatch.setattr(SharedPlaywright, "_playwright", None)
+    monkeypatch.setattr(SharedPlaywright, "_users", 0)
+
+    first = SharedPlaywright.acquire()
+    second = SharedPlaywright.acquire()
+
+    assert first is second
+    assert starts == ["start"]
+
+    SharedPlaywright.release()
+    assert stops == [], "still held by the target whose browser is open"
+    SharedPlaywright.release()
+    assert stops == ["stop"]
+    assert SharedPlaywright._playwright is None
 
 
 def test_v1_plan_survives_cleanup_and_uses_static_inputs(tmp_path: Path):

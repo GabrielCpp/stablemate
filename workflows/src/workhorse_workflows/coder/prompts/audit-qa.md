@@ -61,11 +61,9 @@ Return JSON only:
 
 ```json
 {
-  "qa_audit": {
-    "verdict": "stands",
-    "refutation_class": "none",
-    "notes": "Independent review found no contradiction or unsupported coverage claim."
-  }
+  "verdict": "stands",
+  "refutation_class": "none",
+  "notes": "Independent review found no contradiction or unsupported coverage claim."
 }
 ```
 

@@ -319,9 +319,89 @@ def test_ensure_stack_fails_the_step_that_failed_and_stops(monkeypatch) -> None:
     )
     assert out["ready"] == "no"
     assert out["failed_step"] == "seed[0]"
+    # names *what* broke, not only where: the caller routes this to whoever repairs the
+    # stack, and a step label alone does not say what to repair.
+    assert out["error"] == "boom"
     # carries the booted handles so teardown can still act, and stops at the failure.
     assert out["app_pgid"] == "9"
     assert ran == ["seed[0]"]
+
+
+class _Clock:
+    """The `time` the health window is measured against, advanced only by its own waits.
+
+    `stack` reads the wall clock directly, so a test that wants to assert *how many*
+    re-attempts a window buys would otherwise be racing the machine it runs on. Swapping
+    the module's `time` makes the window exact and the waits free.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def test_ensure_stack_retries_a_health_gate_that_is_not_up_yet(monkeypatch) -> None:
+    """A gate failing while a sibling service is still starting is not a verdict.
+
+    Boot proves only that the *entry URL* answers, and in a multi-service stack that is
+    the fastest service. A gate asserting on the slower ones therefore fails on its first
+    attempt against a stack that is coming up fine, and a single-shot gate would route a
+    healthy run into repair.
+    """
+    attempts: list[str] = []
+
+    def run_step(_step, _cwd, _to, _logger, *, label):
+        attempts.append(label)
+        return len(attempts) >= 3, "container is not running"
+
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "_run_step", run_step)
+    monkeypatch.setattr(stack, "time", _Clock())
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "9", "app_pgid": "9"},
+    )
+
+    out = stack.ensure_stack(
+        {"entry_url": "u", "launch": "go", "health": ["make stack-health"]}, logger=LOG,
+    )
+    assert out["ready"] == "yes"
+    assert attempts == ["health[0]", "health[0]", "health[0]"]
+
+
+def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monkeypatch) -> None:
+    """The retry is bounded: a gate that never passes fails the stack, it does not stall."""
+    attempts: list[str] = []
+
+    def run_step(_step, _cwd, _to, _logger, *, label):
+        attempts.append(label)
+        return False, "still down"
+
+    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "_run_step", run_step)
+    monkeypatch.setattr(stack, "time", _Clock())
+    monkeypatch.setattr(stack, "HEALTH_RETRY_S", 5.0)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "9", "app_pgid": "9"},
+    )
+
+    out = stack.ensure_stack(
+        {"entry_url": "u", "launch": "go", "health_timeout": "12",
+         "health": ["make stack-health", "make other-health"]},
+        logger=LOG,
+    )
+    assert out["ready"] == "no"
+    assert out["failed_step"] == "health[0]"
+    assert out["error"] == "still down"
+    assert out["app_pgid"] == "9"   # the booted handles survive, so teardown can act
+    # A 12s window at 5s between attempts: t=0, 5, 10, and the one that finds it expired.
+    assert attempts == ["health[0]"] * 4   # bounded, and the second gate never ran
 
 
 def test_ensure_stack_reports_a_failed_launch(monkeypatch) -> None:

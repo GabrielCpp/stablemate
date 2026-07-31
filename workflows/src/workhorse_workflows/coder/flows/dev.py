@@ -48,13 +48,24 @@ Divergences from the YAML, all deliberate:
 * the three `refine-plan.md` call sites share one node id (the driver ids an agent node by
   its prompt stem), where the YAML had three. Nothing reads that output by node name, and
   each site's *next* state is what distinguished them.
+* **the operator gate is bounded, and the YAML's was not.** `plan_blocks` counts trips
+  through `_gate_plan` and is the only counter that survives an operator answer, which is
+  what makes it the one that terminates. Two cycles need it. A plan that comes back
+  `blocked` from every refine pass laps `_gate_plan → resolve_plan → read_operator →
+  rework_plan → _gate_plan` with nothing counting; and a service path nothing can repair
+  laps the *wider* ring — `validate_paths` spends its three reworks, escalates, and
+  `read_operator` hands back a plan stage whose `plan_rework` has been reset to 0 (see its
+  docstring: the YAML re-emitted `plan_rework_count: 0`, and that reset is deliberate), so
+  the same three reworks are spent again, forever. Both laps run the unbounded-timeout
+  resolver at `power="high"`. `plan_blocks` is therefore threaded through the reuse and
+  path gates too, not just the operator states: a counter the loop resets is not a bound.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder import paths
 from workhorse_workflows.coder.nodes.dev import (
     branch_code_repos,
@@ -111,6 +122,11 @@ class Dev(Workflow):
     #: because the YAML exposed no var for it — see the module docstring.
     MAX_VALIDATE_REWORKS: ClassVar[int] = 3
 
+    #: Trips through the operator gate before the plan stage is declared a dead end.
+    #: `ClassVar` for the same reason: the YAML had no bound at all here, so exposing one
+    #: as an input would invent an operator control the port is not entitled to invent.
+    MAX_PLAN_BLOCKS: ClassVar[int] = 3
+
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths and the workspace to directories.
 
@@ -156,21 +172,37 @@ class Dev(Workflow):
         # the model's memory. Stamp it mechanically instead of trusting the prompt.
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "blocked":
-            return self._gate_plan(result, result.summary)
+            return self._gate_plan(result, result.summary, 0)
         return Continue(result, self.check_reuse, notes=result.summary)
 
-    def _gate_plan(self, result: object, notes: str) -> Continue | Await:
+    def _gate_plan(self, result: object, notes: str, plan_blocks: int) -> Continue | Await:
         """`gate_plan`: hand the block to the auto-operator, or halt for a human.
 
         Not a state — it is the routing half of a branch, called from the two states that
         can decide the plan stage is stuck (`start`/`rework_plan`'s `blocked`, and
         `validate`'s exhausted budget). `_`-prefixed so state discovery does not pick it up.
-        """
-        if self.operator_mode == "human":
-            return Await(self._context, notes, self.read_operator, notes=notes)
-        return Continue(result, self.resolve_plan, notes=notes)
 
-    def resolve_plan(self, notes: str) -> Continue | Await:
+        It is also the one place the plan stage's laps can be counted, because it is the one
+        place both cycles pass through — see the module docstring. Out of trips is a genuine
+        dead end rather than an `exhausted` verdict for the parent: `dev` returning normally
+        means "implemented", the parent's next state is `review`, and there is nothing to
+        review. A block three operators could not clear needs a person, and failing the run
+        with the block in the message is how the flow says so.
+        """
+        if plan_blocks >= self.MAX_PLAN_BLOCKS:
+            raise WorkflowFailed(
+                f"the plan for story {self.ctx.story_slug!r} was still blocked after "
+                f"{plan_blocks} operator resolution(s); giving up rather than looping. "
+                f"Last block: {notes or '(no summary given)'}"
+            )
+        plan_blocks += 1
+        if self.operator_mode == "human":
+            return Await(
+                self._context, notes, self.read_operator, notes=notes, plan_blocks=plan_blocks
+            )
+        return Continue(result, self.resolve_plan, notes=notes, plan_blocks=plan_blocks)
+
+    def resolve_plan(self, notes: str, plan_blocks: int = 0) -> Continue | Await:
         """Stand in for the operator on a plan block, or escalate to a human.
 
         `resolve_plan` + the `await_operator` that followed it unconditionally; see the
@@ -196,10 +228,12 @@ class Dev(Workflow):
             },
         )
         if result.decision == "answered":
-            return Continue(result, self.read_operator, notes=notes)
-        return Await(self._context, notes, self.read_operator, notes=notes)
+            return Continue(result, self.read_operator, notes=notes, plan_blocks=plan_blocks)
+        return Await(
+            self._context, notes, self.read_operator, notes=notes, plan_blocks=plan_blocks
+        )
 
-    def read_operator(self, notes: str) -> Continue | Done:
+    def read_operator(self, notes: str, plan_blocks: int = 0) -> Continue | Done:
         """Consume the answer and route on the scope the answerer chose.
 
         `await_operator`'s consume half + `decide_operator_scope`. The answer may reveal the
@@ -210,28 +244,42 @@ class Dev(Workflow):
 
         `plan_rework` is not threaded past here. The YAML's `await_operator` re-emitted
         `plan_rework_count` as 0, so an answered block restores the full path-validation
-        budget; the reset is the transition below not carrying the counter.
+        budget; the reset is the transition below not carrying the counter. `plan_blocks`
+        *is* carried, and that asymmetry is the point: an operator answer is a fresh licence
+        to re-validate, not a fresh licence to escalate. Reset both and the path gate laps
+        forever.
         """
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("operator scoped the fix to the epic — handing back to replan")
             return Done(DevResult(status="replan", operator_notes=answer.content))
-        return Continue(answer, self.rework_plan, notes=notes, operator_context=answer.content)
+        return Continue(
+            answer,
+            self.rework_plan,
+            notes=notes,
+            operator_context=answer.content,
+            plan_blocks=plan_blocks,
+        )
 
-    def rework_plan(self, notes: str, operator_context: str) -> Continue | Await:
+    def rework_plan(
+        self, notes: str, operator_context: str, plan_blocks: int = 0
+    ) -> Continue | Await:
         """Re-plan with the operator's answer in hand, and re-evaluate the same gate.
 
         A still-blocked re-plan re-gates the operator, which is what makes the loop honest:
-        a resolver that did not actually resolve anything cannot wave the plan through.
+        a resolver that did not actually resolve anything cannot wave the plan through — and
+        bounded, which is what keeps honest from meaning endless.
         """
         result = self._refine(review_notes=notes, operator_context=operator_context)
         if result.status == "blocked":
-            return self._gate_plan(result, result.summary)
-        return Continue(result, self.check_reuse, notes=result.summary)
+            return self._gate_plan(result, result.summary, plan_blocks)
+        return Continue(
+            result, self.check_reuse, notes=result.summary, plan_blocks=plan_blocks
+        )
 
     # --- the reuse gate -----------------------------------------------------
 
-    def check_reuse(self, notes: str, reuse_rework: int = 0) -> Continue:
+    def check_reuse(self, notes: str, reuse_rework: int = 0, plan_blocks: int = 0) -> Continue:
         """Does the approved plan propose to build something that already exists?
 
         `seed_reuse` + `check_code_reuse` + `decide_reuse` + `guard_reuse`. Checked against
@@ -258,10 +306,13 @@ class Dev(Workflow):
                 notes=notes,
                 reuse_rework=reuse_rework,
                 findings=str(result.findings),
+                plan_blocks=plan_blocks,
             )
-        return Continue(result, self.validate_paths, notes=notes)
+        return Continue(result, self.validate_paths, notes=notes, plan_blocks=plan_blocks)
 
-    def rework_reuse(self, notes: str, reuse_rework: int, findings: str) -> Continue:
+    def rework_reuse(
+        self, notes: str, reuse_rework: int, findings: str, plan_blocks: int = 0
+    ) -> Continue:
         """Re-plan to reuse what the check found, then re-check.
 
         `rework_plan_reuse` + `incr_reuse`. No operator context: this is a plan-quality
@@ -277,12 +328,18 @@ class Dev(Workflow):
             operator_context="",
         )
         return Continue(
-            result, self.check_reuse, notes=notes, reuse_rework=reuse_rework + 1
+            result,
+            self.check_reuse,
+            notes=notes,
+            reuse_rework=reuse_rework + 1,
+            plan_blocks=plan_blocks,
         )
 
     # --- the path gate ------------------------------------------------------
 
-    def validate_paths(self, notes: str, plan_rework: int = 0) -> Continue | Await:
+    def validate_paths(
+        self, notes: str, plan_rework: int = 0, plan_blocks: int = 0
+    ) -> Continue | Await:
         """Do the planner's declared service paths point at real services?
 
         `validate_plan` + `decide_validation` + `guard_validate`. A validator that cannot
@@ -296,16 +353,19 @@ class Dev(Workflow):
         if result.status != "invalid":
             return Continue(result, self.dispatch)
         if plan_rework >= self.MAX_VALIDATE_REWORKS:
-            return self._gate_plan(result, notes)
+            return self._gate_plan(result, notes, plan_blocks)
         return Continue(
             result,
             self.rework_paths,
             notes=notes,
             plan_rework=plan_rework,
             errors=str(result.errors),
+            plan_blocks=plan_blocks,
         )
 
-    def rework_paths(self, notes: str, plan_rework: int, errors: str) -> Continue:
+    def rework_paths(
+        self, notes: str, plan_rework: int, errors: str, plan_blocks: int = 0
+    ) -> Continue:
         """Re-plan against the validation errors, then re-validate.
 
         `rework_plan_paths` + `incr_plan_rework`. The counter the YAML bumped in a separate
@@ -319,6 +379,7 @@ class Dev(Workflow):
             self.validate_paths,
             notes=result.summary or notes,
             plan_rework=plan_rework + 1,
+            plan_blocks=plan_blocks,
         )
 
     # --- implementation -----------------------------------------------------

@@ -420,7 +420,9 @@ short TCP connection to the endpoint and enables telemetry only if something ans
 a machine running a collector gets spans with no env var, and one without stays a complete
 no-op. `WORKHORSE_OTEL=1` forces it on, `0` forces it off. That is the default because the
 runs most worth observing are the unattended week-long ones, which are exactly the runs
-nobody remembers to export a variable before launching.
+nobody remembers to export a variable before launching. Auto stays off inside a test
+process regardless of the probe — a suite is not a run anyone revisits, and left on it
+buries the ones that are.
 
 What is emitted, how turn spans are normalized so cost and tokens are comparable across
 harnesses, the cap-wait heartbeat that distinguishes a spending-cap sleep from a hang, and

@@ -5,6 +5,7 @@ Ported from `base-library/workflows/author/scripts/select-epic.py`.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from ostler import Ostler
 from workhorse import worklist as wl
@@ -60,7 +61,10 @@ def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicCh
         logger.info(reason)
         return EpicChoice(reason=reason, progress=snap.progress)
 
-    epic = pick.id
+    # The queue entry may be written as a bare slug while the directory on disk is numbered
+    # (`0001-checkout-flow`), so the name the rest of the run carries is the one ostler
+    # resolves it to. Every path downstream is built from it.
+    epic = Path(okf.epic_path(pick.id)).name or pick.id
     logger.info(
         "selected epic '%s' — missing epic.md, has no stories, or a story is unwritten", epic
     )

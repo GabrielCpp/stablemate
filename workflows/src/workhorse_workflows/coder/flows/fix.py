@@ -294,10 +294,17 @@ class Fix(Workflow):
         return Continue(result, self.document)
 
     def _qa(self) -> QaResult:
-        """`qa-story.md`, which `check_fix` and `recheck_fix` ran with identical arguments."""
+        """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
+
+        Not `qa-story.md`: that prompt assesses a run ostler already executed, and the drain
+        has no runner behind it — it never passes `runner_status`, and it asks back for a
+        `passed | failed | blocked` verdict, not an assessment's disposition. The YAML pointed
+        both here and there, so the turn could not parse and always defaulted to a blank
+        status, which the branch below reads as "not passed".
+        """
         self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
         return self.agent(
-            "prompts/qa-story.md",
+            "prompts/qa-fix-item.md",
             returns=QaResult,
             # high: the drain has no QA plan, no evidence gate and no audit behind it — this
             # turn is the whole verdict on the fix.

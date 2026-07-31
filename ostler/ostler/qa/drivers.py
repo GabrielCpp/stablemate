@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urljoin
 
 import yaml
@@ -129,6 +129,45 @@ class CommandDriver(QaDriver):
         )
 
 
+class SharedPlaywright:
+    """One Playwright per process, lent to every browser target in a run.
+
+    Playwright's *sync* API drives an event loop of its own, and a second
+    ``sync_playwright().start()`` on the same thread lands inside that loop and raises
+    "It looks like you are using Playwright Sync API inside the asyncio loop". The runner
+    starts every target's driver before the first scenario, so a plan with two browser
+    targets (a static build and a dev server, say) hit that on the second one and the whole
+    run ended `invalid` with zero scenarios executed.
+
+    Sharing costs nothing the drivers wanted separately: a Playwright handle is the
+    connection to the driver process, while everything a target configures — the recorder's
+    ``DISPLAY``, headless-ness, the browser itself — is per-``launch``. The count is what
+    keeps the handle alive exactly as long as some driver still holds a browser on it.
+    """
+
+    _playwright: ClassVar[Any] = None
+    _users: ClassVar[int] = 0
+
+    @classmethod
+    def acquire(cls) -> Any:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise DriverBlocked("Playwright Python package is not installed") from exc
+        if cls._playwright is None:
+            cls._playwright = sync_playwright().start()
+        cls._users += 1
+        return cls._playwright
+
+    @classmethod
+    def release(cls) -> None:
+        cls._users = max(0, cls._users - 1)
+        if cls._users or cls._playwright is None:
+            return
+        playwright, cls._playwright = cls._playwright, None
+        playwright.stop()
+
+
 class PlaywrightDriver(QaDriver):  # noqa: C901
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -137,10 +176,6 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         self._window_recorder: DisplayRecorder | None = None
 
     def start(self) -> None:
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as exc:
-            raise DriverBlocked("Playwright Python package is not installed") from exc
         recording = self.target.get("recording", {"required": True})
         mode = recording.get("mode", "window")
         launch_env = None
@@ -154,7 +189,7 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
                 fps=int(recording.get("fps", 30)),
             )
             launch_env = self._window_recorder.start()
-        self._playwright = sync_playwright().start()
+        self._playwright = SharedPlaywright.acquire()
         browser_name = str(self.target.get("browser", "chromium"))
         browser_type = getattr(self._playwright, browser_name, None)
         if browser_type is None:
@@ -318,7 +353,8 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             if self._browser is not None:
                 self._browser.close()
             if self._playwright is not None:
-                self._playwright.stop()
+                self._playwright = None
+                SharedPlaywright.release()
         finally:
             if self._window_recorder is not None:
                 self._window_recorder.stop()

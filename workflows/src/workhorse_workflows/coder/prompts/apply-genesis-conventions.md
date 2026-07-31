@@ -43,8 +43,8 @@ have been given define them.
   already produced. If `{{ workhorse_var('service_root') or '.' }}` looks empty or lacks its
   marker file, the init step failed — say so and return `"blocked"`. Do **not** hand-write a
   plausible-looking tree to fill the gap. This has happened: an agent handed an empty `web/`
-  invented `routes.ts` and `.gitkeep` stubs, producing something that read as a service but
-  was not one, and the real `npm create react-router` never ran. A skeleton nobody generated
+  invented a routes file and `.gitkeep` stubs, producing something that read as a service
+  but was not one, and the stack's real init command never ran. A skeleton nobody generated
   is worse than no skeleton, because every later stage trusts it.
 - **Do not implement any feature.** The backlog has not been authored into stories yet. A
   service skeleton plus conventions is the whole deliverable.
@@ -61,10 +61,8 @@ Return this exact JSON in your **final response**:
 
 ```json
 {
-  "conventions_result": {
-    "status": "applied" | "blocked",
-    "notes": "What you added and which skill/convention each thing came from. If blocked: exactly what was missing or contradictory, and what you would need to proceed."
-  }
+  "status": "applied" | "blocked",
+  "notes": "What you added and which skill/convention each thing came from. If blocked: exactly what was missing or contradictory, and what you would need to proceed."
 }
 ```
 

@@ -334,9 +334,11 @@ def seed_fix_story(
 
     root = find_docs_root(docs_path)
     okf = Ostler(root)
+    # The bucket's directory name is ostler's answer, not the slug asked for: epic
+    # directories are numbered (`0001-fixes`), so joining `epics_dir` with the bare bucket
+    # slug names a directory that does not exist. `epics_dir` still says which root.
+    bucket = _ensure_fixes_epic(okf, bucket)
     epic_dir_rel = f"{epics_rel}/{bucket}"
-
-    _ensure_fixes_epic(okf, epic_dir_rel, bucket)
 
     # Idempotent: if a story already covers this id, reuse it (resumable rerun).
     for story in okf.list("story", epic=bucket):
@@ -405,19 +407,27 @@ def _fix_slug(text: str, *, max_len: int = 60) -> str:
     return slug or "fix"
 
 
-def _ensure_fixes_epic(okf: Ostler, epic_dir_rel: str, epic: str) -> None:
-    """Create the fixes bucket if it is missing. Idempotent both before and after the call.
+def _ensure_fixes_epic(okf: Ostler, epic: str) -> str:
+    """Create the fixes bucket if it is missing; return the directory name it actually has.
 
-    The second existence check is not redundant: a prior or concurrent run may have created
-    the epic between the first check and `create_epic`, and an "already exists" result is
-    success here, not an error.
+    That name is not necessarily the one asked for: ostler numbers epic directories in
+    creation order, so the `fixes` bucket is `0004-fixes` in a repo with three epics before
+    it. Every ostler call still takes the bare slug; it is the *paths* built from it that
+    have to use the real name.
+
+    Idempotent both before and after the call. The second existence check is not redundant:
+    a prior or concurrent run may have created the epic between the first check and
+    `create_epic`, and an "already exists" result is success here, not an error.
     """
-    epic_dir = okf.root / epic_dir_rel
-    if (epic_dir / "epic.md").is_file():
-        return
+    name = Path(okf.epic_path(epic)).name
+    if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
+        return name
     result = okf.create_epic(epic, "Coder-filed fixes")
-    if result.ok or (epic_dir / "epic.md").is_file():
-        return
+    if result.ok:
+        return result.entity_name or name
+    name = Path(okf.reload().epic_path(epic)).name
+    if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
+        return name
     raise WorkflowFailed(
         f"could not self-create the '{epic}' epic bucket: {result.message}"
     )

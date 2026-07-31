@@ -47,10 +47,78 @@ def test_every_helper_alias_is_scanned() -> None:
 def test_calls_inside_blocks_and_filters_are_found() -> None:
     """A call is a call wherever the AST puts it — statement, filter arg, or nested."""
     source = (
-        "{% if isUsingInstruction('x') %}{{ instruction_ref('deep') | upper }}{% endif %}\n"
+        "{% if repo.big %}{{ instruction_ref('deep') | upper }}{% endif %}\n"
         "{% for p in ['1'] %}{{ prompt_ref('looped') }}{% endfor %}\n"
     )
     assert referenced_names(source) == {("skill", "deep"), ("prompt", "looped")}
+
+
+# --- optional references: the plural helpers and the installed-skill guard --------
+
+
+def test_plural_helper_arguments_are_never_required() -> None:
+    """`instruction_refs` asks which of these the repo has; absent IS the answer."""
+    source = "{{ instruction_refs('go', 'flutter', 'pulumi') }}{{ prompt_refs('a', 'b') }}"
+    assert referenced_names(source) == set()
+
+
+def test_plural_aliases_are_optional_too() -> None:
+    source = "{{ instruction_files('x') }}{{ skill_files('y') }}{{ prompt_files('z') }}"
+    assert referenced_names(source) == set()
+
+
+def test_reference_behind_an_installed_skill_guard_is_not_required() -> None:
+    """A Go repo must not fail preflight for the Flutter branch it never renders."""
+    source = "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter') }}{% endif %}"
+    assert referenced_names(source) == set()
+
+
+def test_the_guard_only_covers_its_own_branch() -> None:
+    """`else` renders precisely when the skill is absent, so its refs are required."""
+    source = (
+        "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter-testing') }}"
+        "{% else %}{{ instruction_ref('go-testing') }}{% endif %}"
+    )
+    assert referenced_names(source) == {("skill", "go-testing")}
+
+
+def test_each_elif_is_judged_by_its_own_test() -> None:
+    source = (
+        "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter') }}"
+        "{% elif repo.web %}{{ instruction_ref('react-router') }}{% endif %}"
+    )
+    assert referenced_names(source) == {("skill", "react-router")}
+
+
+def test_a_guard_covers_references_nested_deeper_in_its_branch() -> None:
+    source = (
+        "{% if isUsingInstruction('flutter') %}{% for x in ys %}"
+        "{{ instruction_ref('flutter-state') }}{% endfor %}{% endif %}"
+    )
+    assert referenced_names(source) == set()
+
+
+def test_an_unguarded_reference_beside_a_guarded_one_is_still_required() -> None:
+    """The guard is positional — it must not leak to the rest of the template."""
+    source = (
+        "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter') }}{% endif %}\n"
+        "{{ instruction_ref('developer') }}"
+    )
+    assert referenced_names(source) == {("skill", "developer")}
+
+
+def test_guarded_prompts_are_not_reported_by_the_workflow_preflight(tmp_path: Path) -> None:
+    """End to end: the false positive that made --dry-run fail on a non-Flutter repo."""
+    root = _workflow(
+        tmp_path,
+        plan=(
+            "{% if isUsingInstruction('flutter') %}{{ instruction_ref('flutter') }}{% endif %}\n"
+            "{{ instruction_refs('go', 'flutter', 'pulumi') }}\n"
+            "{{ instruction_ref('developer') }}\n"
+        ),
+    )
+    context = {"_instructions": {"go": "go.md", "developer": "dev.md"}, "_prompts": {}}
+    assert missing_references(root, context) == []
 
 
 def test_non_constant_argument_is_skipped_not_guessed() -> None:
@@ -236,6 +304,44 @@ def test_quiet_render_says_nothing(captured: list[str]) -> None:
     """Telemetry labels re-render before every node; warning there means thousands of lines."""
     render_string("{{ prompt_ref('gone') }}", {"_prompts": {}}, quiet=True)
     assert captured == []
+
+
+# --- the plural helpers at render time ------------------------------------------
+
+
+def test_instruction_refs_renders_only_what_the_repo_installed(captured: list[str]) -> None:
+    """The whole point: a Go repo is never told to read a Flutter skill."""
+    context = {"_instructions": {"go": "skills/go.md", "pulumi": "skills/pulumi.md"}}
+    out = render_string("{{ instruction_refs('go', 'flutter', 'pulumi') }}", context)
+    assert out == "`skills/go.md`, `skills/pulumi.md`"
+    assert "flutter" not in out
+    # …and dropping a name the repo never installed is not worth a warning either.
+    assert captured == []
+
+
+def test_instruction_refs_of_nothing_installed_is_empty_and_falsy() -> None:
+    """Empty is what lets `{% if %}` drop the sentence instead of leaving 'e.g. '."""
+    source = "{% set r = instruction_refs('flutter', 'flutter-testing') %}{% if r %}e.g. {{ r }}{% endif %}"
+    assert render_string(source, {"_instructions": {"go": "g.md"}}) == ""
+
+
+def test_instruction_refs_accepts_a_list_as_well_as_varargs() -> None:
+    context = {"_instructions": {"go": "g.md", "pulumi": "p.md"}}
+    source = "{% set names = ['go', 'flutter', 'pulumi'] %}{{ instruction_refs(names) }}"
+    assert render_string(source, context) == "`g.md`, `p.md`"
+
+
+def test_instruction_refs_dedupes_aliases_of_one_skill() -> None:
+    """Farrier indexes one skill under several names; that is one file, not two."""
+    path = "skills/process-story-docs/SKILL.md"
+    context = {"_instructions": {"process-story-docs": path, "acme-process-story-docs": path}}
+    out = render_string("{{ instruction_refs('process-story-docs', 'story-docs') }}", context)
+    assert out == f"`{path}`"
+
+
+def test_prompt_refs_drops_the_absent_ones() -> None:
+    context = {"_prompts": {"triage": "p/triage.md"}}
+    assert render_string("{{ prompt_refs('triage', 'gone') }}", context) == "`p/triage.md`"
 
 
 if __name__ == "__main__":

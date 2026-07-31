@@ -11,9 +11,12 @@ def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g = load(tmp_path)
     res = crud.create_epic(g, "billing", "Billing at parity", prefix="pred")
     assert res.ok
+    # The directory carries the creation order; the slug still names the epic everywhere.
+    assert res.entity_name == "0001-billing"
     g2 = load(tmp_path)
     assert g2.profile == "full"
-    epic = next(e for e in g2.epics if e.name == "billing")
+    epic = select.epic_by_name(g2, "billing")
+    assert epic is not None
     assert epic.eid.startswith("pred-") and epic.title == "Billing at parity"
     assert len(epic.eid.split("-", 1)[1]) == 26   # a ULID body, not a counter
     # registry pins the prefix (no counter — ULIDs need no persisted sequence)
@@ -29,7 +32,8 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
                             covers=["apercu-body"], depends=[])
     assert res.ok
     g2 = load(tmp_path)
-    epic = next(e for e in g2.epics if e.name == "billing")
+    epic = select.epic_by_name(g2, "billing")
+    assert epic is not None
     story = epic.stories[0]
     assert story.slug == "01-apercu"
     assert story.seed_items == ["apercu-body"]
@@ -66,9 +70,9 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     surrounding text comes back byte-identical.
     """
     g = load(tmp_path)
-    crud.create_epic(g, "billing", "Billing", prefix="pred")
+    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="pred").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
-    story_md = tmp_path / "docs/epics/billing/stories/01-apercu/story.md"
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
     prose = (
         "- The legacy screen's QA passed in 4.2; hold that behaviour.\n"
         "- Status is shown in the header — do not move it.\n"
@@ -92,9 +96,9 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
 def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
     """The read half on its own: prose mentioning "QA passed" must not make a story done."""
     g = load(tmp_path)
-    crud.create_epic(g, "billing", "Billing", prefix="pred")
+    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="pred").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
-    story_md = tmp_path / "docs/epics/billing/stories/01-apercu/story.md"
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),

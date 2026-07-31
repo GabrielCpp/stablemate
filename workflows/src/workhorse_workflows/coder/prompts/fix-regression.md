@@ -25,8 +25,8 @@ You are **not** re-checking this story's ACs.
 
 ## Required Context
 
-- The platform QA skill(s) for how to bring up the **real** stack and which tool runs the suite:
-  web → `{{ instruction_ref("react-router-qa") }}`; mobile → `{{ instruction_ref("flutter-qa") }}`.
+- The platform QA skill(s) for how to bring up the **real** stack and which tool runs the suite —
+  whichever of these this repository installs: {{ instruction_refs("react-router-qa", "flutter-qa", "go-qa", "go-cli-qa", "pulumi-qa") | default("(none installed — follow the repo's own QA documentation)", true) }}
 - The documented journeys under `docs/features/journeys/<platform>/` and their convention
   (`docs/features/journeys/README.md`). Each journey is one flow.
 - `{{ workhorse_var('spec_dir') }}/plan-context.json` (`qa_stack`, `services`) — the stack/fixtures
@@ -80,9 +80,7 @@ is the only source of truth, so do not include a verdict here.
 
 ```json
 {
-  "regression_fix_result": {
-    "notes": "Per-failure summary: what was wrong, what you changed (app code or spec), and how you verified it locally. If a failure could not be fixed, say which one and why."
-  }
+  "notes": "Per-failure summary: what was wrong, what you changed (app code or spec), and how you verified it locally. If a failure could not be fixed, say which one and why."
 }
 ```
 

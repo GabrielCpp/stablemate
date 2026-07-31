@@ -250,6 +250,9 @@ body {
 .traces-filter { margin-left:auto; display:flex; gap:6px; align-items:center; }
 .traces-filter .filter { max-width:130px; }
 .traces-filter select.filter { appearance:none; }
+.traces-filter .traces-toggle { display:flex; align-items:center; gap:4px; cursor:pointer;
+  font-size:11px; color:var(--text-2); white-space:nowrap; }
+.traces-filter .traces-toggle input { accent-color:var(--accent); cursor:pointer; }
 .traces-list { flex:1; overflow:auto; padding:8px 10px; }
 .run-cards { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .run-card { background:var(--bg-1); border:1px solid var(--border); border-radius:5px;

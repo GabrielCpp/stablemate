@@ -9,11 +9,24 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ostler import markdown
+from ostler import markdown, path as path_mod, registry
 from ostler.result import Result
 from ostler.model import Graph
 
 _LINE = re.compile(r"^\s*[-*]\s+(?:\[)?([A-Za-z0-9][\w-]*)")
+
+
+def _queued_as(names: list[str], name: str) -> str | None:
+    """The queue entry naming the same epic as *name*, or None.
+
+    Epic directories are numbered (`0001-checkout-flow`) but the queue is edited by hand
+    and by prompts that know only the slug, so the two spellings have to meet somewhere.
+    They meet here: the exact line wins, then the one with the same slug.
+    """
+    if name in names:
+        return name
+    slug = registry.epic_slug(name)
+    return next((n for n in names if registry.epic_slug(n) == slug), None)
 
 
 def _index_path(graph: Graph) -> Path:
@@ -34,9 +47,9 @@ def list_epics(graph: Graph) -> list[str]:
 
 
 def _title_of(graph: Graph, name: str) -> str:
-    edir = graph.doc_roots["epics"] / name / "epic.md"
-    if edir.exists():
-        fm = markdown.split(edir.read_text(encoding="utf-8")).frontmatter or {}
+    epic_md = path_mod.epic_dir(graph, name) / "epic.md"
+    if epic_md.exists():
+        fm = markdown.split(epic_md.read_text(encoding="utf-8")).frontmatter or {}
         return str(fm.get("title") or name)
     return name
 
@@ -58,8 +71,14 @@ def _write(graph: Graph, names: list[str]) -> Path:
 
 def add(graph: Graph, name: str, *, front: bool = False) -> Result:
     names = list_epics(graph)
-    if name in names:
-        return Result(False, f"epic '{name}' already in the queue")
+    queued = _queued_as(names, name)
+    if queued is not None:
+        return Result(False, f"epic '{queued}' already in the queue")
+    # Queue the directory that exists, not the name that was typed: the index's job is to
+    # point at epic docs, and `[checkout-flow](checkout-flow/epic.md)` points at nothing
+    # once the directory is `0001-checkout-flow`. An epic queued ahead of its doc keeps the
+    # name as given — there is no directory to name yet.
+    name = path_mod.epic_dir(graph, name).name
     names.insert(0, name) if front else names.append(name)
     # Warn — never fail — on an epic with no epic.md: selection silently skips such a name
     # and then reports "every epic is fully authored", which is a no-work run indistinguishable
@@ -73,16 +92,19 @@ def add(graph: Graph, name: str, *, front: bool = False) -> Result:
 
 def prune(graph: Graph, name: str) -> Result:
     names = list_epics(graph)
-    if name not in names:
+    queued = _queued_as(names, name)
+    if queued is None:
         return Result(False, f"epic '{name}' not in the queue")
-    names = [n for n in names if n != name]
-    return Result(True, f"pruned epic '{name}' from the queue", [_write(graph, names)])
+    names = [n for n in names if n != queued]
+    return Result(True, f"pruned epic '{queued}' from the queue", [_write(graph, names)])
 
 
 def reorder(graph: Graph, order: list[str]) -> Result:
-    current = set(list_epics(graph))
-    unknown = [n for n in order if n not in current]
+    current = list_epics(graph)
+    resolved = [(n, _queued_as(current, n)) for n in order]
+    unknown = [n for n, q in resolved if q is None]
     if unknown:
         return Result(False, f"not in queue: {', '.join(unknown)}")
-    tail = [n for n in list_epics(graph) if n not in order]
-    return Result(True, "reordered epics queue", [_write(graph, order + tail)])
+    front = [q for _, q in resolved]
+    tail = [n for n in current if n not in front]
+    return Result(True, "reordered epics queue", [_write(graph, front + tail)])

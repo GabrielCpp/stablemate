@@ -44,7 +44,9 @@ BULLET = "widget-pagination"
 TEXT = "the widget list does not paginate"
 #: `_fix_slug` kebabs the bullet *text*, so the story folder is named after the sentence.
 SLUG = "the-widget-list-does-not-paginate"
-STORY_REL = f"docs/epics/fixes/stories/{SLUG}"
+#: The bucket is self-created by `seed_fix_story`, and ostler numbers epic directories in
+#: creation order — in a fresh docs tree the `fixes` bucket is the first, hence `0001-`.
+STORY_REL = f"docs/epics/0001-fixes/stories/{SLUG}"
 
 BACKLOG = f"""# Backlog
 

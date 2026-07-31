@@ -40,7 +40,8 @@ Ostler creates the *structure and ids*; you author the *content* into the skelet
 # 1. See if the graph is healthy
 ostler doctor
 
-# 2. Scaffold an epic (allocates an id, writes docs/epics/checkout-flow/epic.md)
+# 2. Scaffold an epic (allocates an id, writes docs/epics/0001-checkout-flow/epic.md —
+#    the directory carries the order it was created in; `--json` reports the name it used)
 ostler create epic checkout-flow --title "Checkout Flow at Parity"
 
 # 3. Record a seed (a unit of intended work) in that epic's ## Seeds
@@ -73,11 +74,18 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 
 | `type` | Location (repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
-| `epic` | `docs/epics/<epic>/epic.md` | `<epic>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<epic>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
+| `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
+
+**Epic directories carry their creation order** — `create epic checkout-flow` writes
+`docs/epics/0001-checkout-flow/`, so a listing of `docs/epics` reads as the work order rather than
+as an alphabetized set. The number is *not* an identity (that is the minted `id`, which never
+changes), so the bare slug still names the epic in every command: `ostler todo add checkout-flow`,
+`--epic checkout-flow`, `create story checkout-flow …`. Use `ostler path epic <slug>` when you need
+the directory itself, and read `--json`'s `name` back after `create epic` rather than assuming one.
 
 `spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
@@ -93,7 +101,7 @@ canonical sections back out of the markdown by exact heading:
 ```markdown
 ---
 type: epic
-id: pred-15
+id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC
 title: Account Credits "Aperçu" Billing Body at Legacy Parity
 status: in-progress        # optional: planned | in-progress | done
 ---
@@ -114,7 +122,7 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 
 ### 01-apercu-billing-body
 - title: Account Credits "Aperçu" Billing Body at Legacy Parity
-- id: pred-16
+- id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 - covers: apercu-landing-body, apercu-subscription-change-plan-link
 - depends on: (none)
 - phase: 1
@@ -132,7 +140,9 @@ authoritative, formal definition of every field, status enum, and conformance ru
 
 All read commands accept `--json`. Mutating commands allocate ids as needed and write canonical
 markdown in place. `ostler --version` prints the version; `-C/--chdir DIR` runs any command as if
-from `DIR`.
+from `DIR`; `--handles` / `--full-ids` choose how ids are printed (see
+[Short handles](#short-handles) — human output abbreviates, `--json` does not, and a handle is
+accepted as input either way).
 
 | Verbs | What they do |
 |---|---|
@@ -145,7 +155,9 @@ from `DIR`.
 | `qa` `artifact` | the verification control plane — see below |
 
 `edit` is **dry-run unless `--write`**, so a rename across a whole graph is reviewable before it
-happens; `create … --json` returns `{"ok": true, "id": "<allocated-id>", "message": "…"}`.
+happens; `create … --json` returns
+`{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>", "message": "…"}` — `name` is what
+`create epic` numbered the directory, which is why it is reported rather than assumed.
 
 Every verb, with its real flags and what each one operates on, is in
 [docs/CLI.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/CLI.md).
@@ -239,9 +251,45 @@ not fail the check.
 
 ## Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, counter, frozen}`). `create epic|story|feature` allocates the
-next `<prefix>-<n>` id atomically, scaffolds the canonical markdown, and (for stories) inserts the
-`### <slug>` block into the epic's `## Stories`. There is no external id allocator.
+Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `create epic|story|feature` allocates an id,
+scaffolds the canonical markdown, and (for stories) inserts the `### <slug>` block into the epic's
+`## Stories`. There is no external id allocator.
+
+An id is `<PREFIX>-<ULID>` — the repo prefix (first four letters of the repo name, pinned on first
+use) plus a monotonic ULID: 26 Crockford-Base32 chars encoding a millisecond timestamp and 80 bits
+of randomness. It sorts by mint time and needs **no coordination**, so two worktrees, two processes
+or two clones never collide and there is no counter to lock or merge. (The former `<prefix>-<n>`
+counter could not be distributed; ids minted under it keep resolving — an id is an opaque string.)
+
+### Short handles
+
+A 26-char id is not a thing anyone retypes, so ostler abbreviates it git-style to a **handle** —
+`<PREFIX>-<6+ chars>`, the shortest slice unambiguous among the ids currently in the repo:
+
+```bash
+ostler list --type seed                # ACME-K3XQ7P    ← handles, the default for human output
+ostler list --type seed --json         # ACME-01JB…     ← full ids, the default for --json
+ostler --full-ids list --type seed     # full ids in human output
+ostler --handles  list --type seed --json
+```
+
+The split is the point: a person wants a token short enough to copy, while a program wants the
+identity that never changes. A handle **lengthens** the moment a colliding id is minted, so it is a
+display form — never what gets written into a document.
+
+Input is not modal. A handle is accepted wherever ostler takes an id, in either mode and from either
+surface, so a token copied out of one command goes straight into the next:
+
+```bash
+ostler query stories-covering-seed ACME-K3XQ7P
+ostler seed add checkout ACME-K3XQ7P --status resolved
+ostler backlog prune ACME-K3XQ7P
+```
+
+The slice is of a *hash* of the ULID rather than of the id itself: monotonic ids minted in the same
+millisecond differ only in their low bits, and hashing decorrelates them so even a burst abbreviates
+to six characters. From Python, `okf.handle(id)` / `okf.handles()` render and `okf.expand(token)`
+resolves — though every ostler entry point already expands its own id arguments.
 
 ## Profiles
 

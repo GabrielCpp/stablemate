@@ -73,21 +73,19 @@ captures it under `code_reuse_result`:
 
 ```json
 {
-  "code_reuse_result": {
-    "status": "findings" | "clean" | "skipped",
-    "findings": [
-      {
-        "repo": "<repo directory name>",
-        "file": "<path relative to that repo>",
-        "line": 0,
-        "category": "Code Duplication" | "Missed Utility",
-        "severity": "Critical" | "Major" | "Minor",
-        "issue": "<what is duplicated or reinvented>",
-        "required_fix": "<the existing utility to call, or the single copy to collapse to>"
-      }
-    ],
-    "findings_summary": "<one sentence, or 'No reuse issues found.', or 'No local changes to review.'>"
-  }
+  "status": "findings" | "clean" | "skipped",
+  "findings": [
+    {
+      "repo": "<repo directory name>",
+      "file": "<path relative to that repo>",
+      "line": 0,
+      "category": "Code Duplication" | "Missed Utility",
+      "severity": "Critical" | "Major" | "Minor",
+      "issue": "<what is duplicated or reinvented>",
+      "required_fix": "<the existing utility to call, or the single copy to collapse to>"
+    }
+  ],
+  "findings_summary": "<one sentence, or 'No reuse issues found.', or 'No local changes to review.'>"
 }
 ```
 

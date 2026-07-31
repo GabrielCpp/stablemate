@@ -158,6 +158,30 @@ def logs(
     print(_format_logs(rows))
 
 
+def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
+    """Evict telemetry that test runs wrote into the store.
+
+    Producers no longer export from a test process and the receivers drop what
+    an older one sends, but neither undoes what is already on disk — and on a
+    machine where `groom serve` has been up through a few suite runs that is the
+    bulk of the file. Runs are identified by their run dir
+    (`store.is_test_run_dir`), so a real run is never guessed at from its name.
+    """
+    from groom import store
+
+    counts = store.purge_test_runs(dry_run=dry_run, vacuum=vacuum)
+    verb = "would remove" if dry_run else "removed"
+    if not counts["runs"]:
+        print("no test-run telemetry found.")
+        return
+    print(
+        f"{verb} {counts['runs']} test run(s): {counts['spans']} spans,"
+        f" {counts['metrics']} metrics, {counts['logs']} logs"
+    )
+    if not dry_run and vacuum:
+        print(f"vacuumed {store.db_path()}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="groom", description="Local dashboard for workhorse operator gates.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -199,6 +223,21 @@ def main(argv: list[str] | None = None) -> None:
 
     subparsers.add_parser("db-path", help="Print the telemetry SQLite path and exit.")
 
+    purge_parser = subparsers.add_parser(
+        "purge-tests",
+        help="Delete telemetry written by test runs (run dirs under pytest/temp roots) "
+        "and reclaim the space.",
+    )
+    purge_parser.add_argument(
+        "--dry-run", action="store_true", help="Report what would be deleted, delete nothing."
+    )
+    purge_parser.add_argument(
+        "--no-vacuum",
+        action="store_false",
+        dest="vacuum",
+        help="Skip the VACUUM afterwards (faster, but the file keeps its old size).",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "serve":
         serve(host=args.host, port=args.port, allow_non_loopback=args.allow_non_loopback)
@@ -213,6 +252,8 @@ def main(argv: list[str] | None = None) -> None:
         from groom import store
 
         print(store.db_path())
+    elif args.command == "purge-tests":
+        purge_tests(dry_run=args.dry_run, vacuum=args.vacuum)
 
 
 def sidecar_main(argv: list[str] | None = None) -> None:

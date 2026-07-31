@@ -90,16 +90,15 @@ assertion reported passed; no agent output can directly create a pass.
 
 ## Output
 
-Return JSON only:
+Return this exact JSON object as the LAST thing in your final response — these keys at its top
+level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
 {
-  "qa_assessment": {
-    "disposition": "confirmed",
-    "failure_class": "none",
-    "objective_reached": "yes",
-    "notes": "The asserted precondition, intermediate checkpoints, and terminal objective were observed."
-  }
+  "disposition": "confirmed",
+  "failure_class": "none",
+  "objective_reached": "yes",
+  "notes": "The asserted precondition, intermediate checkpoints, and terminal objective were observed."
 }
 ```
 

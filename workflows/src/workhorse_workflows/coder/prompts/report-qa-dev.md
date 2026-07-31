@@ -77,10 +77,8 @@ Return this exact JSON object in your **final response**:
 
 ```json
 {
-  "qa_report_result": {
-    "status": "reported",
-    "notes": "Jira comment written to <spec_dir>/qa/jira-comment.md — <one-line summary of failures>"
-  }
+  "status": "reported",
+  "notes": "Jira comment written to <spec_dir>/qa/jira-comment.md — <one-line summary of failures>"
 }
 ```
 

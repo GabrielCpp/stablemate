@@ -198,7 +198,8 @@ brings a stack up from a manifest (or adopts one already serving) and
 workflow's schema — a workflow hands it a manifest dict — so any workflow that must
 own a long-lived stack across nodes uses the same lifecycle. (This is what
 okf-builder's walkthrough launcher and the coder QA flow both call; a workflow's own
-node function is where the manifest is read.)
+node function is where the manifest is read.) The manifest keys and the return shape
+are in [AUTHORING.md](AUTHORING.md#a-stack-that-outlives-the-turn-workhorsestack).
 
 ### Logs (OpenTelemetry)
 
@@ -247,8 +248,11 @@ export WORKHORSE_OTEL=0                                    # …unless you opt o
 
 Auto-on is deliberate: the runs most worth observing are the unattended
 week-long ones, and those are exactly the runs where nobody remembers to export a
-variable first. `WORKHORSE_OTEL` remains as an override — truthy forces telemetry
-on and skips the probe, falsy forces it off. The probe is one TCP connect with a
+variable first. Auto declines in one case beyond an unreachable collector: a
+**test process** (`PYTEST_CURRENT_TEST`, `pytest` imported, or an `argv[0]` of
+`test_*.py`), whose short repeated runs would otherwise dominate the collector.
+`WORKHORSE_OTEL` remains as an override — truthy forces telemetry
+on, skips the probe and ignores the test-process guard; falsy forces it off. The probe is one TCP connect with a
 `WORKHORSE_OTEL_PROBE_S` timeout, so a machine with no collector pays microseconds
 on loopback and stays a complete no-op.
 
@@ -346,7 +350,7 @@ artifacts section), so it survives even with telemetry off.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKHORSE_OTEL` | _unset_ | Tri-state override. Unset = auto (probe the endpoint); truthy forces telemetry on without probing; `0`/`false`/`no` forces it off |
+| `WORKHORSE_OTEL` | _unset_ | Tri-state override. Unset = auto (probe the endpoint, and stay off in a test process); truthy forces telemetry on without probing; `0`/`false`/`no` forces it off |
 | `WORKHORSE_OTEL_PROBE_S` | 0.25 | Seconds the auto-mode probe waits for the collector to accept a connection. Only a remote or firewalled endpoint ever pays it in full, once per run |
 | `WORKHORSE_OTEL_HEARTBEAT_S` | 10 | Seconds between liveness ticks (run + agent turn) |
 | `WORKHORSE_OTEL_METRIC_EXPORT_S` | = `WORKHORSE_OTEL_HEARTBEAT_S` (10) | Seconds between metric **exports**. Recording a beat is not sending one, and this is the interval that actually bounds a collector's freshness — so it defaults to the heartbeat rather than to the SDK's 60s, which would have meant beating six times per shipment |

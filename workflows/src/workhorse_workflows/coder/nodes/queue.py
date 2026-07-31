@@ -34,7 +34,7 @@ import logging
 import re
 from pathlib import Path
 
-from ostler import Ostler, markdown, model, select
+from ostler import Ostler, markdown, model, registry, select
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
@@ -804,7 +804,10 @@ def commit_story(
     story un-stamped — retried — rather than marked done with no work behind it.
     """
     slug = story_slug or "story"
-    message = f"{epic}: {slug}" if epic else slug
+    # The epic's sequence number is a folder-ordering device, not part of its name: a subject
+    # line reads `fixes: <story>`, whether the caller handed us `fixes` or `0004-fixes`.
+    epic_name = registry.epic_slug(epic)
+    message = f"{epic_name}: {slug}" if epic_name else slug
 
     root = find_repo_root()
     repos = resolve_workspace("CODER_WORKSPACE")

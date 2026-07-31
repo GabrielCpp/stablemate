@@ -548,6 +548,30 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
         await _broadcast_notify(f"[{alert.rule}] {alert.message}")
 
 
+def _real_runs(records: list[dict]) -> list[dict]:
+    """Drop records a test process produced, before anything stores or alerts on
+    them.
+
+    Workhorse already declines to export from a test process, so on a current
+    producer this filters nothing. It exists for the ones that don't: an older
+    workhorse, or a container image built before that guard. Without it a single
+    `make test` on a machine with `groom serve` up was the collector's largest
+    writer by two orders of magnitude, and the runs worth looking at were buried
+    under scratch dirs nobody would ever open. The run dir is on every decoded
+    record — spans, metrics and logs alike — so one predicate covers all three
+    receivers even though only two of the tables store the column.
+    """
+    return [r for r in records if not store.is_test_run_dir(str(r.get("run_dir", "")))]
+
+
+def _truthy(value: str) -> bool:
+    """A query flag, read the way a checkbox writes it (`1`, `on`) and the way a
+    hand-typed URL does (`true`, `yes`). An absent flag and a bare `?flag` are
+    indistinguishable here — both arrive as the empty default — so the flag must
+    carry a value to mean yes."""
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 @post("/v1/traces", include_in_schema=False)
 async def otlp_traces(request: Request) -> Response:
     """Standard OTLP/HTTP trace receiver — parse → store → eval rules →
@@ -555,7 +579,7 @@ async def otlp_traces(request: Request) -> Response:
     identity in the payload, so native (non-Docker) runs appear here without
     passing the discovery gate."""
     try:
-        spans = otlp.parse_traces(await request.body())
+        spans = _real_runs(otlp.parse_traces(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     store.insert_spans(spans)
@@ -572,7 +596,7 @@ async def otlp_metrics(request: Request) -> Response:
     the liveness signal that suppresses a false STALL during a legitimate
     multi-hour/day spending-cap sleep."""
     try:
-        points = otlp.parse_metrics(await request.body())
+        points = _real_runs(otlp.parse_metrics(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     store.insert_metrics(points)
@@ -596,7 +620,7 @@ async def otlp_logs(request: Request) -> Response:
     *queried* once a metric has told you where to look.
     """
     try:
-        records = otlp.parse_logs(await request.body())
+        records = _real_runs(otlp.parse_logs(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     store.insert_logs(records)
@@ -605,19 +629,31 @@ async def otlp_logs(request: Request) -> Response:
 
 @get("/traces", include_in_schema=False)
 async def traces(
-    run: str = "", node: str = "", status: str = "", slower_than: str = ""
+    run: str = "",
+    node: str = "",
+    status: str = "",
+    slower_than: str = "",
+    show_ended: str = "",
 ) -> dict:
     """Telemetry search over the SQLite spans table — a per-run summary strip
     and the matching spans, as ``{"runs": [...], "spans": [...]}``. Pulled by the
     telemetry pane on demand (the live pushes are the alerts, not this). Raw SQL
-    on groom.db stays the ad-hoc path."""
+    on groom.db stays the ad-hoc path.
+
+    Only runs connected right now are returned, unless ``show_ended`` is truthy
+    or the caller named a ``run``: asking for a run by id is asking for that run,
+    finished or not."""
     try:
         threshold = float(slower_than) if slower_than.strip() else None
     except ValueError:
         threshold = None
     spans = store.query_spans(run=run, node=node, status=status, slower_than=threshold)
     return projection.traces_view(
-        store.run_summaries(), spans, state.RUNS, store.live_run_ids()
+        store.run_summaries(run=run.strip()),
+        spans,
+        state.RUNS,
+        store.live_run_ids(),
+        connected_only=not (run.strip() or _truthy(show_ended)),
     )
 
 

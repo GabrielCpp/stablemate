@@ -98,6 +98,14 @@ from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
 `GROOM_RETENTION_DAYS` (14) are pruned at startup and on a periodic tick.
 
+**The pane shows the runs connected right now.** Two weeks of retention means the
+unfiltered strip is mostly runs that ended days ago, and a dashboard is for
+watching, so a run card (and its spans — a span table listing a hidden run's nodes
+is telemetry from nowhere) appears only while the run is `live` by the same
+heartbeat predicate the fleet rows use. History is one tick of *show ended* away
+(`GET /traces?show_ended=1`), and searching an explicit `run=` always finds it:
+naming a run is asking for that run, finished or not.
+
 **Native runs are first-class dashboard rows, not just telemetry.** A run on
 groom's own host advertises its `run_dir`, workspace path, pid, and per-node
 `wf.activity` on the OTLP resource; groom materializes a fleet row from that
@@ -179,6 +187,30 @@ are worth waking someone for, per workflow. Logs are for reading once a metric h
 told you where to look. They prune on their own shorter window
 (`GROOM_LOG_RETENTION_DAYS`, 3) because they are one row per line rather than one
 per node visit.
+
+### Test runs are not telemetry
+
+A test suite is not a run anyone comes back to, and on a machine where
+`groom serve` is up it is by far the loudest producer: one `make test` of the
+workflows suite wrote a six-figure number of spans, burying every real run in
+the fleet view. So test telemetry is kept out at both ends — workhorse declines
+to auto-enable export from a test process (`WORKHORSE_OTEL=1` still forces it
+on), and the receivers drop any record whose `run_dir` is *certainly* a test
+dir — one containing `pytest-of-` or `.workhorse-test/`. Neither undoes what an
+older producer already wrote:
+
+```bash
+uv run groom purge-tests --dry-run   # what would go
+uv run groom purge-tests             # delete it, then VACUUM to shrink the file
+```
+
+`purge-tests` casts the wider net: it also evicts runs whose dir is a
+`tempfile.mkdtemp` scratch dir (`/tmp/tmpXXXXXXXX/…`), which is how the largest
+single junk run in a real store got there. That one is a guess — a genuine run
+launched from a mkdtemp directory matches too — so it is confined to a command
+you run deliberately and can preview with `--dry-run`, rather than to the ingest
+path, where the same guess would discard evidence unasked. Runs are identified
+by their run dir in both cases, never by name.
 
 ### Querying it yourself
 

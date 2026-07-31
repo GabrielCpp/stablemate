@@ -41,7 +41,7 @@ Read:
 - `review.md` and its resolution section, if present
 - `qa.md`
 - story-local QA evidence under `docs/epics/<epic-short-name>/stories/<story-short-name>/qa/`
-- relevant instruction files for touched layers, for example `{{ instruction_ref("go") }}`, `{{ instruction_ref("go-testing") }}`, `{{ instruction_ref("go-cli") }}`, `{{ instruction_ref("go-cli-commands") }}`, `{{ instruction_ref("flutter") }}`, `{{ instruction_ref("flutter-architecture") }}`, `{{ instruction_ref("flutter-api") }}`, `{{ instruction_ref("flutter-testing") }}`, or `{{ instruction_ref("pulumi") }}`
+- the instruction files for the layers you touched, from those this repository installs: {{ instruction_refs("go", "go-architecture", "go-testing", "go-cli", "go-cli-commands", "react-router", "react-router-architecture", "react-router-qa", "flutter", "flutter-architecture", "flutter-api", "flutter-testing", "pulumi") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
 
 ## Goal
 
@@ -53,9 +53,13 @@ Resolve the observable failures documented in `qa.md` without adding new story s
 - Do not implement optional QA follow-ups unless they are necessary for story acceptance criteria.
 - Do not rewrite the plan or broaden product behavior.
 - Add or update tests for fixes that affect behavior.
-- For Go test changes, load and follow `{{ instruction_ref("go-testing") }}` and relevant {{ template.backend_layer_name | default("Go API") }} or Go CLI instruction files.
-- If skills are available, explicitly use the generated Go testing skill before writing or updating Go tests. Do not rely only on automatic path matching.
-- Treat `{{ instruction_ref("go-testing") }}` as the canonical source for Go test naming, integration-test shape, fixtures, `require` usage, and context rules. Do not introduce or preserve QA-fix test drift from `go.testing`; if this prompt appears to disagree with `go.testing`, follow `go.testing` and update this prompt.
+- Before changing a layer's tests, load and follow **that layer's testing instruction
+  file** from the list above. Load it explicitly; do not rely on automatic path matching.
+- Treat that file as the canonical source for the layer's test naming, fixtures,
+  integration-test shape and assertion conventions, and do not let a QA fix drift from
+  it; where this prompt appears to disagree with it, follow it and say so in the summary.
+  A layer with no testing skill in the list above has none in this repo — follow the
+  conventions its existing tests already establish.
 - Preserve story-local QA evidence; add new evidence only when it helps rerun QA.
 - Preserve unrelated user changes.
 - Stop instead of guessing if a QA failure requires a product decision, missing fixture, unavailable emulator, or non-MVP behavior.
@@ -72,33 +76,20 @@ Resolve the observable failures documented in `qa.md` without adding new story s
 
 ## Structured Output Requirement
 
-Return this exact JSON object in your **final response**. The workflow REQUIRES this exact structure:
+Return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{
-  "qa_result": {
-    "status": "passed" | "failed" | "blocked",
-    "notes": "Summary of QA fixes applied and whether QA now passes or what remains unresolved"
-  }
-}
+{"status": "passed|failed|blocked", "notes": "Summary of QA fixes applied and whether QA now passes or what remains unresolved"}
 ```
 
 **Exact requirements**:
-- Wrap the result under a `qa_result` key (this is how the workflow captures your output)
 - `status` must be one of: `"passed"`, `"failed"`, or `"blocked"` (lowercase, no capital letters)
 - `notes` must be a non-empty string summarizing the fixes applied, verification results, and any remaining issues
-- Return the complete JSON exactly as shown above
 - Include this JSON **after your markdown report** in your final response
-- Do NOT deviate from this structure
 
 Example final response (after markdown report):
 ```json
-{
-  "qa_result": {
-    "status": "passed",
-    "notes": "Fixed issue X by modifying Y. Verified with test Z. All prior failures now resolved."
-  }
-}
+{"status": "passed", "notes": "Fixed issue X by modifying Y. Verified with test Z. All prior failures now resolved."}
 ```
 
 ## QA Fix Resolution Format

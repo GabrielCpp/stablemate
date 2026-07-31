@@ -15,10 +15,18 @@ falsy, every function here is a near-zero-cost no-op — instrumentation must ne
 change how an unattended run behaves, let alone crash it, so every public entry
 point also swallows its own exceptions.
 
+Auto also declines to enable in a **test process** (:func:`_under_test`): a suite
+run on a machine with ``groom serve`` up is otherwise the collector's single
+largest producer, and none of what it writes is a run anyone will come back to.
+
 The instrumentation sites call module-level functions rather than threading a
 tracer object through the engine: there is exactly one run per process, so the
-telemetry state is a module singleton (mirroring the ``AGENT_*`` /
-``_configured_gas()`` env-at-import pattern). What gets emitted:
+telemetry state is a process-wide singleton. What is process-wide is the
+*reference*, not the state — one :class:`TelemetryHost` held in ``_host``, owning
+its settings, its two effects (the collector probe and the SDK build) and the
+active adapter as fields. The entry point reads the environment once, builds a
+host and :func:`install`\\ s it; a test installs its own instead of assigning into
+this module. What gets emitted:
 
 - a **root span** per run (started/ended by ``main.run``),
 - a **node span** per node visit, driven by the ``ArtifactWriter._append_event``
@@ -63,7 +71,8 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlparse
 
@@ -83,42 +92,32 @@ def _tristate(raw: str | None) -> bool | None:
     return value not in ("0", "false", "no")
 
 
-# Read once at import (the AGENT_*/_configured_gas() module-constant pattern).
-# Tri-state, not a bool: True forces telemetry on, False forces it off, and None
-# ("unset") defers to the collector probe in start_run(). The endpoint defaults to
-# groom's local port.
-_OTEL_FORCED = _tristate(os.environ.get("WORKHORSE_OTEL"))
-_OTEL_ENDPOINT = (
-    os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "http://127.0.0.1:8787"
-).rstrip("/")
-# Seconds the auto-mode probe waits for the collector to accept. Deliberately tiny:
-# it sits on the critical path of every run start, and the endpoint it looks for is
-# normally a loopback port that accepts (or refuses) in microseconds. A remote or
-# firewalled endpoint is the only case that pays the full timeout, once per run.
-_PROBE_TIMEOUT_S = float(os.environ.get("WORKHORSE_OTEL_PROBE_S", "0.25"))
-# How often the background thread proves the run's process is alive. Node calls are
-# why this exists: a `self.call` node is ordinary Python that streams nothing a
-# per-line heartbeat could hook, so a wedged one would otherwise be indistinguishable
-# from a fast one until it returned.
-_HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
-# How often recorded metrics are actually shipped. This — not the heartbeat above —
-# is what bounds a collector's freshness, and the SDK's own default is 60s, so
-# unset it meant beating every 10s and *telling anyone* once a minute: a run that
-# died could still look alive for the better part of a minute, and a consumer
-# deriving liveness from beat recency had to keep a minute-wide tolerance to avoid
-# false alarms. Match the heartbeat instead, so one beat is one export and silence
-# is detectable within a couple of ticks. The SDK's own `OTEL_METRIC_EXPORT_INTERVAL`
-# (milliseconds) still wins when set explicitly — that knob is documented and
-# predates this default.
-def _metric_export_every_s() -> float:
+def _seconds(environ: Mapping[str, str], name: str, default: float) -> float:
+    """A seconds-valued knob, or ``default`` when unset. A malformed value raises —
+    it is read at the entry point, so a typo is a loud start-up failure rather than
+    a run that silently ignores what an operator asked for."""
+    return float(environ.get(name, "").strip() or default)
+
+
+def _metric_export_every_s(environ: Mapping[str, str], heartbeat_every_s: float) -> float:
     """Seconds between metric exports: our knob, then the SDK's, then the heartbeat.
 
-    Parsing is tolerant — a malformed value falls through to the next source rather
-    than raising, since this runs on the start-up path of every telemetry-enabled run.
+    This — not the heartbeat — is what bounds a collector's freshness, and the SDK's
+    own default is 60s, so leaving it unset meant beating every 10s and *telling
+    anyone* once a minute: a run that died could still look alive for the better part
+    of a minute, and a consumer deriving liveness from beat recency had to keep a
+    minute-wide tolerance to avoid false alarms. Match the heartbeat instead, so one
+    beat is one export and silence is detectable within a couple of ticks. The SDK's
+    own ``OTEL_METRIC_EXPORT_INTERVAL`` (milliseconds) still wins when set explicitly —
+    that knob is documented and predates this default.
+
+    Parsing is tolerant here, unlike :func:`_seconds`: this is the one knob with a
+    *next source* to fall through to, so a malformed value costs the more specific
+    setting rather than the run.
     """
     for name, scale in (("WORKHORSE_OTEL_METRIC_EXPORT_S", 1.0),
                         ("OTEL_METRIC_EXPORT_INTERVAL", 0.001)):
-        raw = os.environ.get(name, "").strip()
+        raw = environ.get(name, "").strip()
         if not raw:
             continue
         try:
@@ -127,7 +126,90 @@ def _metric_export_every_s() -> float:
             continue
         if value > 0:
             return value
-    return _HEARTBEAT_EVERY_S
+    return heartbeat_every_s
+
+
+@dataclass(frozen=True, slots=True)
+class OtelSettings:
+    """Everything telemetry reads from the environment — read once, at the edge.
+
+    These were four module-scope reads, which froze before any test or caller could
+    influence them: the only way to exercise the other branch of the gate was to
+    reload the module. They are one immutable value now, built by
+    :meth:`from_env` at the entry point and carried by the :class:`TelemetryHost`
+    that uses them.
+    """
+
+    #: ``WORKHORSE_OTEL``, tri-state rather than a bool: True forces telemetry on,
+    #: False forces it off, and None ("unset") defers to the collector probe.
+    forced: bool | None = None
+    #: ``OTEL_EXPORTER_OTLP_ENDPOINT``, defaulting to groom's local port.
+    endpoint: str = "http://127.0.0.1:8787"
+    #: Seconds the auto-mode probe waits for the collector to accept. Deliberately
+    #: tiny: it sits on the critical path of every run start, and the endpoint it
+    #: looks for is normally a loopback port that accepts (or refuses) in
+    #: microseconds. A remote or firewalled endpoint is the only case that pays the
+    #: full timeout, once per run.
+    probe_timeout_s: float = 0.25
+    #: How often the background thread proves the run's process is alive. Node calls
+    #: are why this exists: a ``self.call`` node is ordinary Python that streams
+    #: nothing a per-line heartbeat could hook, so a wedged one would otherwise be
+    #: indistinguishable from a fast one until it returned.
+    heartbeat_every_s: float = 10.0
+    #: How often recorded metrics are actually shipped; see
+    #: :func:`_metric_export_every_s` for why it tracks the heartbeat. The default
+    #: here matches the heartbeat's default; ``from_env`` follows an override of it.
+    metric_export_every_s: float = 10.0
+
+    @classmethod
+    def from_env(cls, environ: Mapping[str, str]) -> OtelSettings:
+        """The one place any of these names is read. Defaults come from the field
+        defaults above, so they are stated exactly once."""
+        default = cls()
+        heartbeat = _seconds(
+            environ, "WORKHORSE_OTEL_HEARTBEAT_S", default.heartbeat_every_s
+        )
+        return cls(
+            forced=_tristate(environ.get("WORKHORSE_OTEL")),
+            endpoint=(
+                environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or default.endpoint
+            ).rstrip("/"),
+            probe_timeout_s=_seconds(
+                environ, "WORKHORSE_OTEL_PROBE_S", default.probe_timeout_s
+            ),
+            heartbeat_every_s=heartbeat,
+            metric_export_every_s=_metric_export_every_s(environ, heartbeat),
+        )
+
+
+#: Basenames a standalone test file is invoked as. This repo's convention (and
+#: workhorse's own rule) is `tests/test_<area>.py`, run as a plain script.
+_TEST_ARGV0 = ("test_", "conftest.py")
+
+
+def _under_test() -> bool:
+    """Is this process a test run rather than a real one?
+
+    A test run is telemetry's worst producer: it is short, it is repeated hundreds
+    of times per suite, its run dirs are temporary, and nobody will ever go back to
+    look at it — one `make test` of the workflows suite wrote a six-figure number of
+    spans into groom.db and buried the real runs the dashboard exists to show. Auto-on
+    is what makes that happen: the runs worth observing are the unattended ones, but
+    the probe cannot tell them from a suite running on the same machine with `groom
+    serve` up. The process can, so it is asked here.
+
+    Three signals, because the suites are run three ways: pytest under a runner
+    (`PYTEST_CURRENT_TEST`), pytest imported at all (its own collection phase, and
+    xdist workers), and this repo's standalone `uv run python tests/test_x.py`
+    convention, which imports no test framework at all and is only visible in argv.
+
+    An explicit ``WORKHORSE_OTEL=1`` still wins — a test *of* telemetry has to be
+    able to turn it on.
+    """
+    if "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules:
+        return True
+    argv0 = os.path.basename(sys.argv[0] or "")
+    return argv0.startswith(_TEST_ARGV0[0]) or argv0 == _TEST_ARGV0[1]
 
 
 _P = ParamSpec("_P")
@@ -232,19 +314,8 @@ class _NullTelemetry:
 #: run in the process.
 _NULL: Telemetry = _NullTelemetry()
 
-# The active per-run telemetry. Set by start_run() when enabled, returned to the
-# null adapter by end_run() — never None, so no caller branches on absence.
-# Module-level because there is one run per process; tests install a fake here
-# instead of standing up an exporter.
-_active: Telemetry = _NULL
 
-
-def enabled() -> bool:
-    """Whether the active telemetry actually exports anything."""
-    return _active.enabled()
-
-
-def _collector_reachable(endpoint: str) -> bool:
+def _collector_reachable(endpoint: str, timeout_s: float) -> bool:
     """True when something accepts a TCP connection at ``endpoint``.
 
     A listening socket is as much as a cheap probe can prove, and it is enough:
@@ -256,148 +327,35 @@ def _collector_reachable(endpoint: str) -> bool:
         parsed = urlparse(endpoint)
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        with socket.create_connection((host, port), _PROBE_TIMEOUT_S):
+        with socket.create_connection((host, port), timeout_s):
             return True
     except Exception:
         return False
 
 
-def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
-    """Configure the SDK and open the run's root span.
+class CollectorProbe(Protocol):
+    """Is anything listening at ``endpoint``? :func:`_collector_reachable` is the
+    implementation; a test is the other one — left live, the gate's answer would
+    depend on whether the machine running the suite happens to have a collector up."""
 
-    On unless ``WORKHORSE_OTEL`` is set falsy: with it set truthy the SDK is built
-    unconditionally, and with it unset (auto) only when the collector answers the
-    probe. Still a no-op if the optional SDK isn't importable.
-    """
-    global _active
-    if _active.enabled() or _OTEL_FORCED is False:
-        return
-    if _OTEL_FORCED is None and not _collector_reachable(_OTEL_ENDPOINT):
-        return
-    try:
-        _active = _build(workflow, run_id, run_dir) or _NULL
-    except Exception as exc:  # instrumentation must never break a run
-        print(f"[workhorse] ⚠ OTel setup failed ({exc}); telemetry disabled", file=sys.stderr)
-        _active = _NULL
+    def __call__(self, endpoint: str, timeout_s: float) -> bool: ...
 
 
-def end_run(status: str, error: str | None = None) -> None:
-    """Close every open span (root last), flush, and shut the SDK down.
-    Idempotent — the finally-backstop in ``main.run`` may call it again."""
-    global _active
-    telemetry, _active = _active, _NULL
-    if not telemetry.enabled():
-        return
-    try:
-        # Unhook logging before the provider below is shut down, so no late
-        # record is handed to a dead exporter.
-        from workhorse import logsetup
+class TelemetryFactory(Protocol):
+    """Build the run's telemetry, or return None when the optional SDK is absent.
+    :func:`_build` is the implementation; a test hands back a fake rather than
+    standing up an exporter."""
 
-        logsetup.detach_otel()
-    except Exception:
-        pass
-    telemetry.end_run(status, error)
+    def __call__(
+        self,
+        workflow: str,
+        run_id: str,
+        run_dir: str | None,
+        settings: OtelSettings,
+    ) -> Telemetry | None: ...
 
 
-def record_event(event: NodeEvent) -> None:
-    """Mirror one ArtifactWriter event-log record (enter/done/terminal) into
-    node spans. Called from ``ArtifactWriter._append_event`` with the same
-    ``NodeEvent`` it writes to ``events.jsonl`` — the model is the contract, so
-    a field renamed there is a type error here rather than a silently absent
-    span attribute."""
-    _active.record_event(event)
-
-
-def gas_level(gas: int, capacity: int) -> None:
-    _active.gas_level(gas, capacity)
-
-
-def gas_refuel(node_id: str) -> None:
-    _active.gas_refuel(node_id)
-
-
-def turn_start(
-    node_id: str,
-    model: str | None,
-    effort: str | None,
-    timeout: float,
-    backend: str | None = None,
-) -> None:
-    _active.turn_start(node_id, model, effort, timeout, backend)
-
-
-def turn_end(error: str | None = None) -> None:
-    _active.turn_end(error)
-
-
-def turn_result(usage: TurnUsage) -> None:
-    """Attach a turn's duration + token usage to the open agent-turn span.
-
-    ``usage`` is already normalized (``runner/usage.py``), so every backend's
-    dialect arrives here in Claude's key names and one query reads them all."""
-    _active.turn_result(usage)
-
-
-def set_labels(labels: dict[str, str]) -> None:
-    """Set the workflow-declared dimensions (`labels:`) stamped on later spans.
-
-    Called once per node with the graph's labels rendered against the live
-    context. Values must already be strings; ``{}`` clears them."""
-    _active.set_labels(labels)
-
-
-def turn_session(session_id: str) -> None:
-    """Tag the open agent-turn span with the backend CLI's session id, so a
-    node's span leads back to that session's transcript (``opencode export <id>``
-    and equivalents) — the agent's reasoning/tool trace, which the node's
-    ``prompt.md`` / ``output.json`` do not carry."""
-    _active.turn_session(session_id)
-
-
-def turn_event(name: str, *, error: bool = False, **attrs: Any) -> None:
-    """Record a recovery-ladder event (retry/reframe/compact/cap_wait/
-    watchdog_kill) on the open turn span, falling back to the node span.
-    Thread-safe: the watchdog calls this from its daemon timer thread."""
-    _active.turn_event(name, error, attrs)
-
-
-def heartbeat(node_id: str, remaining_s: float) -> None:
-    """One cap-wait tick: proof the run is alive inside a legitimate multi-hour
-    spending-cap sleep (silence, by contrast, means a hang)."""
-    _active.heartbeat(node_id, remaining_s)
-
-
-def turn_heartbeat(node_id: str, idle_s: float, elapsed_s: float) -> None:
-    """One liveness tick for the agent turn currently streaming.
-
-    The cap-wait heartbeat above proves a *sleeping* run is alive; this proves a
-    *working* one is, which spans structurally cannot: a span only leaves the
-    process when it ends, so the one node you most want to see — the one that
-    hangs — never exports. Metrics ride the periodic reader instead, so these
-    escape while the turn's span is still open.
-
-    ``idle_s`` (seconds since the agent last wrote a stream line) is the signal
-    that separates the two ways a long turn looks identical from outside: a
-    healthy turn streams, so idle_s stays small however long it runs; a wedged
-    one goes quiet, so idle_s climbs. No heartbeat at all means the process is
-    gone.
-    """
-    _active.turn_heartbeat(node_id, idle_s, elapsed_s)
-
-
-def current_node() -> str:
-    """The node the run is currently inside, or "" — for tagging log records.
-
-    Workhorse opens node spans with ``start_span``, never ``start_as_current_span``,
-    so nothing is in the OTel *context* and a log record would otherwise carry
-    ``trace_id=0``: the SDK's LoggingHandler correlates via the ambient context,
-    which this engine deliberately does not populate. Tagging the node explicitly
-    is what makes ``groom logs --node`` work at all.
-    """
-    return _active.current_node()
-
-
-def _build_logs(resource: Any) -> Any:
+def _build_logs(resource: Any, endpoint: str) -> Any:
     """The OTLP log pipeline, or None if this SDK build can't provide one.
 
     Separate from ``_build`` and independently failure-tolerant because the logs
@@ -419,12 +377,14 @@ def _build_logs(resource: Any) -> Any:
         return None
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(
-        BatchLogRecordProcessor(OTLPLogExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/logs"))
+        BatchLogRecordProcessor(OTLPLogExporter(endpoint=f"{endpoint}/v1/logs"))
     )
     return provider
 
 
-def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry | None:
+def _build(
+    workflow: str, run_id: str, run_dir: str | None, settings: OtelSettings
+) -> _Telemetry | None:
     try:
         from opentelemetry import trace as trace_api
         from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
@@ -442,7 +402,7 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
         # Only worth a word to someone who asked for telemetry. In auto mode the
         # collector merely happens to be up, so this would otherwise print on every
         # run start on any machine without the extra — noise nobody opted into.
-        if _OTEL_FORCED is not None:
+        if settings.forced is not None:
             print(
                 "[workhorse] ⚠ WORKHORSE_OTEL is set but the OTel SDK is not installed; "
                 "telemetry disabled. Install it with: pip install 'workhorse-agent[otel]'",
@@ -477,14 +437,14 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
     )
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/traces"))
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{settings.endpoint}/v1/traces"))
     )
     reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(endpoint=f"{_OTEL_ENDPOINT}/v1/metrics"),
-        export_interval_millis=_metric_export_every_s() * 1000.0,
+        OTLPMetricExporter(endpoint=f"{settings.endpoint}/v1/metrics"),
+        export_interval_millis=settings.metric_export_every_s * 1000.0,
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
-    logger_provider = _build_logs(resource)
+    logger_provider = _build_logs(resource, settings.endpoint)
 
     def _shutdown() -> None:
         tracer_provider.shutdown()
@@ -497,6 +457,7 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
         tracer_provider.get_tracer("workhorse"),
         meter_provider.get_meter("workhorse"),
         _shutdown,
+        settings.heartbeat_every_s,
     )
     telemetry.start_root(workflow)
     telemetry.start_heartbeat()
@@ -508,6 +469,203 @@ def _build(workflow: str, run_id: str, run_dir: str | None = None) -> _Telemetry
     return telemetry
 
 
+@dataclass(slots=True)
+class TelemetryHost:
+    """The run's telemetry, and the three decisions that select it.
+
+    ``start_run``'s gate used to read four module globals and call two module
+    functions by name, which is why every test of it had to assign into this module
+    to set up its scenario. All six are fields now: the settings come from the edge,
+    the probe and the factory are the two effects, and ``active`` is the adapter they
+    choose — never None, so no instrumentation site branches on absence.
+
+    ``slots=True`` is load-bearing, not decoration: the injected callables land in
+    instance slots, so ``self.probe(...)`` is a plain call. Stored as class
+    attributes they would become bound methods and silently take the host as their
+    first argument.
+    """
+
+    settings: OtelSettings = field(default_factory=OtelSettings)
+    probe: CollectorProbe = _collector_reachable
+    build: TelemetryFactory = _build
+    under_test: Callable[[], bool] = _under_test
+    active: Telemetry = _NULL
+
+    def start_run(self, workflow: str, run_id: str, run_dir: str | None = None) -> None:
+        """Configure the SDK and open the run's root span.
+
+        On unless ``WORKHORSE_OTEL`` is set falsy: with it set truthy the SDK is built
+        unconditionally, and with it unset (auto) only when the collector answers the
+        probe **and** this is not a test process (:func:`_under_test`). Still a no-op
+        if the optional SDK isn't importable.
+        """
+        if self.active.enabled() or self.settings.forced is False:
+            return
+        if self.settings.forced is None and (
+            self.under_test()
+            or not self.probe(self.settings.endpoint, self.settings.probe_timeout_s)
+        ):
+            return
+        try:
+            self.active = (
+                self.build(workflow, run_id, run_dir, self.settings) or _NULL
+            )
+        except Exception as exc:  # instrumentation must never break a run
+            print(
+                f"[workhorse] ⚠ OTel setup failed ({exc}); telemetry disabled",
+                file=sys.stderr,
+            )
+            self.active = _NULL
+
+    def end_run(self, status: str, error: str | None = None) -> None:
+        """Close every open span (root last), flush, and shut the SDK down.
+        Idempotent — the finally-backstop in ``main.run`` may call it again."""
+        telemetry, self.active = self.active, _NULL
+        if not telemetry.enabled():
+            return
+        try:
+            # Unhook logging before the provider below is shut down, so no late
+            # record is handed to a dead exporter.
+            from workhorse import logsetup
+
+            logsetup.detach_otel()
+        except Exception:
+            pass
+        telemetry.end_run(status, error)
+
+
+#: The process's host. One run per process, so one reference — held here, and here
+#: only. Built from the defaults rather than from the environment: reading it is the
+#: entry point's job (``pyflow/run.py``), which installs the host it built.
+_host = TelemetryHost()
+
+
+def install(host: TelemetryHost) -> TelemetryHost:
+    """Make ``host`` the one the module-level functions below delegate to, and return
+    the previous one so a caller can put it back.
+
+    This is the injection point the whole module hangs off: the entry point uses it
+    to hand telemetry the environment it read, and a test uses it to install fakes
+    instead of assigning over private names in here.
+    """
+    global _host
+    previous, _host = _host, host
+    return previous
+
+
+def enabled() -> bool:
+    """Whether the active telemetry actually exports anything."""
+    return _host.active.enabled()
+
+
+def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
+    """Open the installed host's run. See :meth:`TelemetryHost.start_run`."""
+    _host.start_run(workflow, run_id, run_dir)
+
+
+def end_run(status: str, error: str | None = None) -> None:
+    """Close the installed host's run. See :meth:`TelemetryHost.end_run`."""
+    _host.end_run(status, error)
+
+
+def record_event(event: NodeEvent) -> None:
+    """Mirror one ArtifactWriter event-log record (enter/done/terminal) into
+    node spans. Called from ``ArtifactWriter._append_event`` with the same
+    ``NodeEvent`` it writes to ``events.jsonl`` — the model is the contract, so
+    a field renamed there is a type error here rather than a silently absent
+    span attribute."""
+    _host.active.record_event(event)
+
+
+def gas_level(gas: int, capacity: int) -> None:
+    _host.active.gas_level(gas, capacity)
+
+
+def gas_refuel(node_id: str) -> None:
+    _host.active.gas_refuel(node_id)
+
+
+def turn_start(
+    node_id: str,
+    model: str | None,
+    effort: str | None,
+    timeout: float,
+    backend: str | None = None,
+) -> None:
+    _host.active.turn_start(node_id, model, effort, timeout, backend)
+
+
+def turn_end(error: str | None = None) -> None:
+    _host.active.turn_end(error)
+
+
+def turn_result(usage: TurnUsage) -> None:
+    """Attach a turn's duration + token usage to the open agent-turn span.
+
+    ``usage`` is already normalized (``runner/usage.py``), so every backend's
+    dialect arrives here in Claude's key names and one query reads them all."""
+    _host.active.turn_result(usage)
+
+
+def set_labels(labels: dict[str, str]) -> None:
+    """Set the workflow-declared dimensions (`labels:`) stamped on later spans.
+
+    Called once per node with the graph's labels rendered against the live
+    context. Values must already be strings; ``{}`` clears them."""
+    _host.active.set_labels(labels)
+
+
+def turn_session(session_id: str) -> None:
+    """Tag the open agent-turn span with the backend CLI's session id, so a
+    node's span leads back to that session's transcript (``opencode export <id>``
+    and equivalents) — the agent's reasoning/tool trace, which the node's
+    ``prompt.md`` / ``output.json`` do not carry."""
+    _host.active.turn_session(session_id)
+
+
+def turn_event(name: str, *, error: bool = False, **attrs: Any) -> None:
+    """Record a recovery-ladder event (retry/reframe/compact/cap_wait/
+    watchdog_kill) on the open turn span, falling back to the node span.
+    Thread-safe: the watchdog calls this from its daemon timer thread."""
+    _host.active.turn_event(name, error, attrs)
+
+
+def heartbeat(node_id: str, remaining_s: float) -> None:
+    """One cap-wait tick: proof the run is alive inside a legitimate multi-hour
+    spending-cap sleep (silence, by contrast, means a hang)."""
+    _host.active.heartbeat(node_id, remaining_s)
+
+
+def turn_heartbeat(node_id: str, idle_s: float, elapsed_s: float) -> None:
+    """One liveness tick for the agent turn currently streaming.
+
+    The cap-wait heartbeat above proves a *sleeping* run is alive; this proves a
+    *working* one is, which spans structurally cannot: a span only leaves the
+    process when it ends, so the one node you most want to see — the one that
+    hangs — never exports. Metrics ride the periodic reader instead, so these
+    escape while the turn's span is still open.
+
+    ``idle_s`` (seconds since the agent last wrote a stream line) is the signal
+    that separates the two ways a long turn looks identical from outside: a
+    healthy turn streams, so idle_s stays small however long it runs; a wedged
+    one goes quiet, so idle_s climbs. No heartbeat at all means the process is
+    gone.
+    """
+    _host.active.turn_heartbeat(node_id, idle_s, elapsed_s)
+
+
+def current_node() -> str:
+    """The node the run is currently inside, or "" — for tagging log records.
+
+    Workhorse opens node spans with ``start_span``, never ``start_as_current_span``,
+    so nothing is in the OTel *context* and a log record would otherwise carry
+    ``trace_id=0``: the SDK's LoggingHandler correlates via the ambient context,
+    which this engine deliberately does not populate. Tagging the node explicitly
+    is what makes ``groom logs --node`` work at all.
+    """
+    return _host.active.current_node()
+
+
 class _Telemetry:
     """The per-run span/metric state behind the module-level facade.
 
@@ -516,10 +674,18 @@ class _Telemetry:
     thread, and end_run must be able to sweep whatever is open at that moment.
     """
 
-    def __init__(self, trace_api: Any, tracer: Any, meter: Any, shutdown: Any) -> None:
+    def __init__(
+        self,
+        trace_api: Any,
+        tracer: Any,
+        meter: Any,
+        shutdown: Any,
+        heartbeat_every_s: float,
+    ) -> None:
         self._trace = trace_api
         self._tracer = tracer
         self._shutdown = shutdown
+        self._heartbeat_every_s = heartbeat_every_s
         self._lock = threading.RLock()
         self._root: Any = None
         # Open node spans, innermost last: [((node_id, seq), span, started_at), ...].
@@ -618,7 +784,7 @@ class _Telemetry:
         self._beat_thread.start()
 
     def _beat_loop(self) -> None:
-        while not self._stop.wait(_HEARTBEAT_EVERY_S):
+        while not self._stop.wait(self._heartbeat_every_s):
             self._beat_once()
 
     def _live_attrs(self, node_id: str) -> dict[str, str]:

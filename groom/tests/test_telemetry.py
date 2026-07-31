@@ -67,15 +67,20 @@ def _metrics_request(
     node: str | None = None,
     gauge: bool = False,
     ts: float = 2000.0,
+    run_dir: str = "",
 ) -> bytes:
     """One metric point. ``gauge=True`` emits a double gauge (node.active,
     node.elapsed_s, turn.idle_s); the default is an int sum (the heartbeat and
     refuel counters). ``ts`` stamps the point, which is what decides whether it
-    is newer than a run's recorded terminal."""
+    is newer than a run's recorded terminal. ``run_dir`` goes on the resource,
+    where the receiver's test-run filter reads it."""
     request = ExportMetricsServiceRequest()
     resource_metrics = request.resource_metrics.add()
     kv = resource_metrics.resource.attributes.add()
     kv.key, kv.value.string_value = "run_id", run_id
+    if run_dir:
+        kv = resource_metrics.resource.attributes.add()
+        kv.key, kv.value.string_value = "run_dir", run_dir
     metric = resource_metrics.scope_metrics.add().metrics.add()
     metric.name = name
     if gauge:
@@ -217,6 +222,92 @@ def test_prune_drops_only_old_rows():
         )
         removed = store.prune(retention_days=1, now=20 + 2 * 86400)
         assert removed == 1 and store.query_spans() == []
+
+
+# --------------------------------------------------------------------------- #
+# test-run telemetry: not collected, and evicted where it already landed
+# --------------------------------------------------------------------------- #
+def test_run_dir_predicates_split_certain_test_dirs_from_merely_scratch_ones():
+    # Certain: what the ingest path is allowed to drop silently.
+    for certain in (
+        "/tmp/pytest-of-gabriel/pytest-1/test_x0/runs/coder",
+        "/home/me/repo/.workhorse-test/runs/coder-default",
+    ):
+        assert store.is_test_run_dir(certain) is True
+        assert store.is_scratch_run_dir(certain) is True
+    # A mkdtemp dir is a guess: purge-worthy, but never dropped at ingest.
+    assert store.is_test_run_dir("/tmp/tmpab12cd34/runs/coder-default") is False
+    assert store.is_scratch_run_dir("/tmp/tmpab12cd34/runs/coder-default") is True
+    # A real run, and a hand-made directory that merely lives under /tmp.
+    for real in ("/home/me/repo/.agents/runs/coder-ACME-1", "/tmp/scratch/runs/coder"):
+        assert store.is_test_run_dir(real) is False
+        assert store.is_scratch_run_dir(real) is False
+    # No run dir on the record is not evidence of anything — leave it alone.
+    assert store.is_test_run_dir("") is False and store.is_scratch_run_dir("") is False
+
+
+def test_receivers_drop_test_run_telemetry_but_keep_real_runs():
+    with _TelemetryEnv():
+        client = _hermetic_client()
+        try:
+            for run_id, run_dir in (
+                ("suite-run", "/tmp/pytest-of-me/pytest-3/test_flow0/runs/coder"),
+                ("real-run", "/home/me/repo/.agents/runs/coder-ACME-1"),
+            ):
+                resource = {"run_id": run_id, "workflow": "coder", "run_dir": run_dir}
+                assert client.post(
+                    "/v1/traces",
+                    content=_trace_request([{"name": "plan", "node": "plan"}], resource),
+                    headers={"content-type": "application/x-protobuf"},
+                ).status_code == 200
+                assert client.post(
+                    "/v1/logs",
+                    content=_logs_request([{"body": "hi"}], resource),
+                    headers={"content-type": "application/x-protobuf"},
+                ).status_code == 200
+                assert client.post(
+                    "/v1/metrics",
+                    content=_metrics_request(
+                        "workhorse.run.heartbeat", run_id=run_id, run_dir=run_dir
+                    ),
+                    headers={"content-type": "application/x-protobuf"},
+                ).status_code == 200
+            assert [s["run_id"] for s in store.query_spans()] == ["real-run"]
+            assert [r["run_id"] for r in store.query_logs()] == ["real-run"]
+            assert store.live_status(now=2000.0)[0]["run_id"] == "real-run"
+            assert len(store.live_status(now=2000.0)) == 1
+        finally:
+            client.__exit__(None, None, None)
+
+
+def test_purge_test_runs_evicts_by_run_dir_across_all_three_tables():
+    with _TelemetryEnv():
+        suite = {"run_id": "suite-run", "workflow": "coder", "run_dir": "/tmp/pytest-of-me/t0/r"}
+        real = {"run_id": "real-run", "workflow": "coder", "run_dir": "/home/me/repo/.agents/runs/x"}
+        for resource in (suite, real):
+            store.insert_spans(
+                otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}], resource))
+            )
+            store.insert_logs(otlp.parse_logs(_logs_request([{"body": "hi"}], resource)))
+            # Metrics carry no run_dir column, so they can only be evicted by the
+            # run_id the spans/logs identified — which is exactly what this pins.
+            store.insert_metrics(
+                otlp.parse_metrics(
+                    _metrics_request("workhorse.run.heartbeat", run_id=resource["run_id"])
+                )
+            )
+        assert store.test_run_ids() == {"suite-run"}
+
+        preview = store.purge_test_runs(dry_run=True)
+        assert preview == {"runs": 1, "spans": 1, "metrics": 1, "logs": 1}
+        assert len(store.query_spans()) == 2  # dry run deleted nothing
+
+        assert store.purge_test_runs() == preview
+        assert [s["run_id"] for s in store.query_spans()] == ["real-run"]
+        assert [r["run_id"] for r in store.query_logs()] == ["real-run"]
+        assert store.test_run_ids() == set()
+        # Nothing left to do: a second pass is a no-op, not an error.
+        assert store.purge_test_runs()["runs"] == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -630,6 +721,11 @@ def test_traces_search_endpoint_returns_json_rows():
                 )
             )
         )
+        # A heartbeat inside the live window: the pane shows connected runs, so a
+        # run with span history alone is history, not a row (see the test below).
+        store.insert_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=now))
+        )
         client = _hermetic_client()
         try:
             resp = client.get("/traces", params={"status": "ERROR"})
@@ -641,6 +737,62 @@ def test_traces_search_endpoint_returns_json_rows():
         assert body["spans"][0]["status"] == "ERROR"
         # The summary strip rides along with the spans, so the pane needs one fetch.
         assert [run["run_id"] for run in body["runs"]] == ["run-1"]
+
+
+def test_traces_endpoint_hides_runs_that_are_not_connected_now():
+    import time as _time
+
+    now = _time.time()
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [{"name": "plan", "node": "plan", "start": now - 20, "end": now - 19}],
+                    resource={"run_id": "ended-run", "workflow": "coder"},
+                )
+            )
+        )
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [{"name": "plan", "node": "plan", "start": now - 10, "end": now - 9}],
+                    resource={"run_id": "live-run", "workflow": "coder"},
+                )
+            )
+        )
+        # Only one of the two is still beating. Both have span history, which is
+        # exactly the distinction the pane could not make before.
+        store.insert_metrics(
+            otlp.parse_metrics(
+                _metrics_request("workhorse.run.heartbeat", run_id="live-run", ts=now)
+            )
+        )
+        store.insert_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.run.heartbeat",
+                    run_id="ended-run",
+                    ts=now - store.LIVE_AFTER_S - 600,
+                )
+            )
+        )
+        client = _hermetic_client()
+        try:
+            default = client.get("/traces").json()
+            everything = client.get("/traces", params={"show_ended": "1"}).json()
+            named = client.get("/traces", params={"run": "ended-run"}).json()
+        finally:
+            client.__exit__(None, None, None)
+
+        # Default: the connected run only, and its spans only.
+        assert [run["run_id"] for run in default["runs"]] == ["live-run"]
+        assert {row["run_id"] for row in default["spans"]} == {"live-run"}
+        # The toggle is the way back to history.
+        assert {run["run_id"] for run in everything["runs"]} == {"live-run", "ended-run"}
+        assert {row["run_id"] for row in everything["spans"]} == {"live-run", "ended-run"}
+        # Naming a run is asking for that run, finished or not — no toggle needed.
+        assert [run["run_id"] for run in named["runs"]] == ["ended-run"]
+        assert {row["run_id"] for row in named["spans"]} == {"ended-run"}
 
 
 def test_traces_view_carries_untrusted_values_verbatim():
@@ -661,6 +813,7 @@ def test_traces_view_carries_untrusted_values_verbatim():
             }
         ],
         {},
+        connected_only=False,
     )
     assert view["spans"][0]["run_id"] == "<img src=x>"
     assert view["spans"][0]["node"] == "<script>alert(1)</script>"
