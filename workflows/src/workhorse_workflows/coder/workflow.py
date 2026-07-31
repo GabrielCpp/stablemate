@@ -55,6 +55,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from workhorse.cli import console_script
 from workhorse.pyflow import (
     Await,
     Continue,
@@ -910,7 +911,7 @@ workflow = (
         }
     )
 )
-main = workflow.main(Coder)
+main = console_script(workflow.entry_point(Coder))
 
 
 __all__ = ["Coder", "main", "workflow"]

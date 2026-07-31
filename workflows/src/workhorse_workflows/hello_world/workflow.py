@@ -18,6 +18,7 @@ from logging import Logger
 
 from pydantic import BaseModel
 
+from workhorse.cli import console_script
 from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
 
 blueprint = Blueprint("hello-world")
@@ -83,4 +84,4 @@ workflow = (
 
 #: `main(...)` RETURNS the console-script callable; it never calls it, so importing this
 #: module stays free — which entry-point discovery depends on.
-main = workflow.main(HelloWorld)
+main = console_script(workflow.entry_point(HelloWorld))

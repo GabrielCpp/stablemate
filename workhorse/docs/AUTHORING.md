@@ -121,6 +121,7 @@ a second state. The runnable counterpart is `hello-world` above — reach for th
 you want something you can execute rather than read.
 
 ```python
+from workhorse.cli import console_script
 from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow
 
 blueprint = Blueprint("acme")
@@ -149,7 +150,7 @@ class Build(Workflow):
 
 
 workflow = Registry("acme").add_blueprints(blueprint)
-main = workflow.main(Build)                        # the `workhorse-<name>` console script
+main = console_script(workflow.entry_point(Build))  # the `workhorse-<name>` console script
 ```
 
 ## The three tiers of state, and no fourth

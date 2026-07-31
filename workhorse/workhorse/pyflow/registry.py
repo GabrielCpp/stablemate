@@ -2,14 +2,18 @@
 
 ```python
 workflow = Registry("coder").add_blueprints(kit.blueprint, blueprint)
-main = workflow.main(Coder)
+main = console_script(workflow.entry_point(Coder))
 ```
 
 Two things resolve to this object, and it is the reason both can share one parser:
 the `workhorse.workflows` entry point names it (so `workhorse run coder …` finds the
-workflow), and `main` — *the callable `main(Entry)` returns*, never a call made at
+workflow), and `main` — *the callable `console_script` returns*, never a call made at
 import — is the `workhorse-coder` console script. A workflow module must stay
 importable without running anything.
+
+`console_script` lives in `workhorse.cli`, not here. A registry that built its own
+console callable had to import the CLI, which imports the driver, which imports this
+module; the arrow points the other way now.
 
 It is also the run's **composition root**. `registry.nodes` is not bookkeeping: it is
 what `self.call` resolves against, so a substituted copy of it (`override(...)`,
@@ -153,13 +157,18 @@ class Registry:
 
     # --- entry point --------------------------------------------------------
 
-    def main(self, entry: type[Workflow]) -> Callable[..., None]:
-        """Declare `entry` the default flow and RETURN the console-script callable.
+    def entry_point(self, entry: type[Workflow]) -> "Registry":
+        """Declare `entry` the flow a bare `workhorse run <name>` starts.
 
-        Returning rather than calling is the whole contract: `main = workflow.main(Coder)`
-        leaves the module importable — which entry-point discovery depends on, since
-        resolving a workflow name imports it — while `[project.scripts]` still has a
-        callable to point at.
+        Returns `self`, so the declaration composes with the binding the CLI ring
+        owns: `main = console_script(workflow.entry_point(Coder))`.
+
+        This method used to *return* that console callable, which meant the registry
+        imported `workhorse.cli` — and `workhorse.cli` imports the driver, which
+        imports this module. The import had to sit in a function body to keep the two
+        modules loadable, and a function-body import with no ImportError beside it is
+        a cycle being suppressed rather than a dependency being optional. The binding
+        belongs to the ring the console script actually starts.
         """
         _require_workflow("entry", entry)
         if not self.name:
@@ -172,18 +181,7 @@ class Registry:
         self._claim(entry)
         self.entry = entry
         self.flows.setdefault("default", entry)
-
-        def console_main(argv: list[str] | None = None) -> None:
-            # Imported here, not at module scope: `workhorse.cli` imports the driver,
-            # which imports this module. This is the one place the cycle is broken, and
-            # it is broken at call time so importing a workflow module stays cheap.
-            from workhorse.cli import main as workhorse_main
-
-            workhorse_main(argv, workflow=self.name, registry=self)
-
-        console_main.__name__ = "main"
-        console_main.__doc__ = f"Console-script entry for the {self.name!r} workflow."
-        return console_main
+        return self
 
     # --- lookup -------------------------------------------------------------
 
@@ -193,7 +191,7 @@ class Registry:
             if self.entry is None:
                 raise WorkflowDefinitionError(
                     f"workflow {self.name!r} declares no entry point — call "
-                    "`workflow.main(SomeWorkflow)` in the workflow module"
+                    "`workflow.entry_point(SomeWorkflow)` in the workflow module"
                 )
             return self.entry
         try:
@@ -233,7 +231,7 @@ class Registry:
         if self.entry is None:
             raise WorkflowDefinitionError(
                 f"workflow {self.name!r} declares no entry point, so it has no "
-                "directory — call `workflow.main(SomeWorkflow)` in the workflow module"
+                "directory — call `workflow.entry_point(SomeWorkflow)` in the workflow module"
             )
         module = sys.modules.get(self.entry.__module__)
         package = getattr(module, "__package__", None) or self.entry.__module__.rpartition(".")[0]

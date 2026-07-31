@@ -48,7 +48,8 @@ unchanged?* If it only makes sense for the coder workflow, it belongs in the wor
 
 ```
 workflows/src/workhorse_workflows/<name>/
-├── workflow.py          # the Workflow subclass + `Registry(...)` + `main = registry.main(Entry)`
+├── workflow.py          # the Workflow subclass + `Registry(...)` +
+│                        #   `main = console_script(registry.entry_point(Entry))`
 ├── schemas.py           # the pydantic models states and nodes exchange
 ├── prompts/*.md         # Jinja prompt templates, addressed by path from self.agent(...)
 └── nodes/

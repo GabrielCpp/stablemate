@@ -35,7 +35,7 @@ def main(
     the drift would only show up as two tools that disagree about a flag.
 
     ``registry`` is the Python workflow the caller already holds. A
-    ``Registry.main(...)`` console script is inside the distribution and so has the
+    ``console_script(registry)`` script is inside the distribution and so has the
     object in hand; passing it skips entry-point discovery, which means the script
     still works when the package is on ``sys.path`` without being installed."""
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -84,15 +84,25 @@ def _bind_workflow_name(
     args.workflow = name
 
 
-def console_script(name: str) -> Callable[..., None]:
+def console_script(workflow: Registry | str) -> Callable[..., None]:
     """Build the callable a ``workhorse-<name>`` console script points at.
 
     ``[project.scripts]`` targets are *called* after import, so this returns the entry
     function rather than running anything — a module-level call would fire on import
-    and could not be a script target at all."""
+    and could not be a script target at all.
+
+    Pass the ``Registry`` when you have it — a workflow distribution binding its own
+    script does — and entry-point discovery is skipped entirely, so the script works
+    with the package merely on ``sys.path``. A bare name is for a front door that has
+    only the name and must go looking. Binding lives *here*, in the CLI ring, because
+    the CLI is what a console script starts: a workflow module importing this is one
+    arrow inward, whereas the registry building the callable itself needed an arrow
+    back out to the CLI, which is a cycle."""
+    registry = workflow if isinstance(workflow, Registry) else None
+    name = registry.name if registry is not None else str(workflow)
 
     def entry(argv: list[str] | None = None) -> None:
-        main(argv, workflow=name)
+        main(argv, workflow=name, registry=registry)
 
     entry.__name__ = f"workhorse_{name.replace('-', '_')}"
     entry.__qualname__ = entry.__name__

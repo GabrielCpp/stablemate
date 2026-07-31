@@ -262,7 +262,7 @@ def _sample_registry() -> Registry:
     global _SAMPLE
     if _SAMPLE is None:
         registry = Registry("acme").add_blueprints(bp)
-        registry.main(Sample)
+        registry.entry_point(Sample)
         registry.add_flows(orphan=Orphan)
         _SAMPLE = registry
     return _SAMPLE
@@ -312,7 +312,7 @@ def test_dry_run_reports_problems_and_never_opens_a_run_dir():
             return Done(None)
 
     registry = Registry("acme")
-    registry.main(Stranded)
+    registry.entry_point(Stranded)
     calls: list[str] = []
     original = pyflow_run.registry_graphs
 
@@ -352,7 +352,7 @@ def test_dry_run_drives_the_machine_without_running_a_node():
             return Done("finished")
 
     registry = Registry("acme").add_blueprints(kit)
-    registry.main(Quick)
+    registry.entry_point(Quick)
     with tempfile.TemporaryDirectory() as tmp:
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
         code = pyflow_run.run_pyflow(
@@ -393,7 +393,7 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
 
     registry = Registry("acme").add_blueprints(kit)
     registry.stub_agents({"review": {"verdict": "ok"}})
-    registry.main(Marked)
+    registry.entry_point(Marked)
     with tempfile.TemporaryDirectory() as tmp:
         prompts = Path(tmp) / "prompts"
         prompts.mkdir()
@@ -431,7 +431,7 @@ def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
             return Done(None)
 
     registry = Registry("acme")
-    registry.main(Quick)
+    registry.entry_point(Quick)
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
@@ -467,7 +467,7 @@ def _halting_registry() -> Registry:
     global _HALTING
     if _HALTING is None:
         registry = Registry("acme").add_blueprints(bp)
-        registry.main(Halts)
+        registry.entry_point(Halts)
         _HALTING = registry
     return _HALTING
 
@@ -514,7 +514,7 @@ def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int
             return Done(None)
 
     registry = Registry("acme")
-    registry.main(Named)
+    registry.entry_point(Named)
     out = io.StringIO()
     with tempfile.TemporaryDirectory() as tmp:
         prompts = Path(tmp) / "prompts"

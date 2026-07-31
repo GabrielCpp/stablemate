@@ -52,6 +52,7 @@ bounds the worklist's lifetime. See `flows/walkthrough_web.py`.
 """
 from __future__ import annotations
 
+from workhorse.cli import console_script
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Registry, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder import paths
 from workhorse_workflows.okf_builder.flows import WalkthroughWeb
@@ -506,7 +507,7 @@ workflow = (
         }
     )
 )
-main = workflow.main(OkfBuilder)
+main = console_script(workflow.entry_point(OkfBuilder))
 
 
 __all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder", "main", "workflow"]

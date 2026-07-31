@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any, NoReturn
 
+from workhorse.cli import console_script
 from workhorse.pyflow import Continue, Done, Registry, Workflow, WorkflowFailed
 from workhorse_workflows.research.nodes import (
     blueprint,
@@ -514,4 +515,4 @@ workflow = Registry("research").add_blueprints(blueprint).stub_agents(
         "lead-goal-review": {"verdict": "reached"},
     }
 )
-main = workflow.main(Research)
+main = console_script(workflow.entry_point(Research))

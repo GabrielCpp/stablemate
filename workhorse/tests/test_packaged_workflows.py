@@ -61,6 +61,7 @@ def _write_dist_info(site: Path, dist_name: str, entry_points: dict[str, str]) -
 #: entry point must point at. Written as source rather than built in-process because
 #: the whole mechanism under test is "import the module the metadata names".
 _WORKFLOW_MODULE = '''
+from workhorse.cli import console_script
 from workhorse.pyflow import Done, Registry, Workflow
 
 
@@ -70,7 +71,7 @@ class Demo(Workflow):
 
 
 workflow = Registry("demo")
-main = workflow.main(Demo)
+main = console_script(workflow.entry_point(Demo))
 '''
 
 
