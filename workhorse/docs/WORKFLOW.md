@@ -1,12 +1,30 @@
-# Authoring a `workflow.yaml`
+# Authoring a `workflow.yaml` — RETIRED
 
-Complete reference for writing workhorse workflows. A workflow is a YAML file
-describing a directed graph of **nodes**; workhorse walks it node-by-node,
-checkpointing after each step so a run can resume exactly where it stopped.
+> **Nothing in this document is current.** The YAML front-end it documents is deleted:
+> there is no loader, no node types, no `requires:` preflight, and no `workflow.yaml`
+> anywhere in this repository. A workflow is a Python state machine now — a `Workflow` of
+> decorated methods returning `Continue`/`Done`/`Await`, resolved by name through the
+> `workhorse.workflows` entry-point group — and `workhorse run <name>` will not read a
+> file you hand it.
+>
+> Its successor, documenting that API, has not been written yet; this file is kept
+> meanwhile as the record of the schema the four shipped workflows were ported *from*,
+> state by state. Read it in the past tense and do not author against it.
+>
+> The runtime resilience knobs in [GUARDRAILS.md](GUARDRAILS.md) — retries, reframes, cap
+> waits, timeouts as environment variables — are the part of this document's surroundings
+> that did **not** change: they sit under the agent turn, which both engines drive the same
+> way.
 
-For the runtime resilience knobs (retries, reframes, cap waits, timeouts as
-environment variables) see [GUARDRAILS.md](GUARDRAILS.md). This document covers
-the **workflow file schema** itself.
+---
+
+Everything below describes the retired schema.
+
+## 0. What this covered
+
+A workflow was a YAML file describing a directed graph of **nodes**; workhorse walked it
+node-by-node, checkpointing after each step so a run could resume where it stopped. The
+checkpointing survives — it is now keyed on `(state, params)` rather than a node id.
 
 ---
 
