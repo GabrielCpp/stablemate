@@ -140,6 +140,12 @@ class RunEnv:
     deadline: float | None = None
     #: Rendered telemetry labels for the state currently running.
     labels: dict[str, str] = field(default_factory=dict)
+    #: The per-repo farrier context manifest (see :mod:`workhorse.manifest`), shaped
+    #: into context keys. The OUTER layer of every agent turn's render context: a
+    #: state's own arguments override it, but it is always there so the farrier
+    #: template helpers (`instruction_ref`/`isUsingInstruction`/`template.*`) resolve.
+    #: Empty = the manifest-free case, where those helpers degrade to placeholders.
+    manifest: dict[str, Any] = field(default_factory=dict)
     #: The run's node implementations, by registered name — `registry.nodes`, or a
     #: substituted copy of it. `self.call` reads the *name* off the function it was
     #: handed and the implementation from here, which is what makes a stand-in a
@@ -313,7 +319,9 @@ class Engine:
         run_agent = self.env.run_agent or agent_runner.run_agent
         rendered, raw = run_agent(
             node,
-            WorkflowContext(jsonable(args)),
+            # The manifest underneath, the state's arguments on top: a state that
+            # binds `repo` means its own, not the manifest's.
+            WorkflowContext({**self.env.manifest, **jsonable(args)}),
             self.env.workflow_dir,
             self.env.session_id_path,
             max_output_retries=config.resilience.max_output_retries,

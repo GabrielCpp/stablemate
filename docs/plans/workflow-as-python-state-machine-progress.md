@@ -95,6 +95,7 @@ okf-builder 8, research 9), every one against real nodes with only the agent tur
 | Step | Commit | What |
 |---|---|---|
 | 0 | `d8b0879` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
+| 0.1 | _(this commit)_ | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
@@ -116,15 +117,35 @@ step 1 is: lift the CLI out of `main.py` into `workhorse/cli.py`, delete `graph/
 base-library workflow test suites and the `test-workflows` make target with them. Then step 2 is
 the rest of `base-library/workflows/` and `requires:`.
 
-**Before that commit, one thing goes to the user** — §4 item 1, the context manifest, which is no
+**Before that commit, one thing went to the user** — §4 item 1, the context manifest, which was no
 longer just a parity gap: 13 ported prompts under `author/` and `coder/` call `instruction_ref`,
 `isUsingInstruction` and `template.*`; only `main.py` ever loaded the manifest that resolves them;
-`run_pyflow`/`RunEnv` have no seat for one; and `templates.py` suppresses its own unresolved
-warning when no manifest is present, so the degradation is **silent** — `instruction_ref('go')`
+`run_pyflow`/`RunEnv` had no seat for one; and `templates.py` suppresses its own unresolved
+warning when no manifest is present, so the degradation was **silent** — `instruction_ref('go')`
 renders as the prose placeholder and every stack-specific guidance block drops out. Deleting
-`main.py` removes the reference implementation and makes `--context-file` permanently inert. This
-is a driver change, which loop 2's work order excludes, so it is the user's call and not a fix to
-improvise.
+`main.py` would have removed the reference implementation and made `--context-file` permanently
+inert. That is a driver change, which loop 2's work order excludes, so it was the user's call and
+not a fix to improvise.
+
+**The user's answer: wire it into pyflow first** — copy `main.py`'s behavior while it still
+exists, then delete. Landed as step 0.1, the one authorized driver change in this loop:
+
+- `workhorse/manifest.py` — `load_context_manifest` / `build_manifest_context` / `BACKEND_SKILL_DIR`,
+  moved verbatim out of `main.py`. Both engines load a manifest, so it belongs above either one; the
+  move is what lets it survive `main.py`. `main.py` binds it back under its old private name, which
+  is also the seam two `test_packaged_workflows.py` tests patch.
+- `RunEnv.manifest` — the **outer** layer of an agent turn's render context, `{**manifest,
+  **args}`. A state that binds `repo` gets its own; an empty manifest adds no keys, so a
+  manifest-free run still renders exactly its arguments. Two tests in `test_pyflow.py` hold both
+  halves.
+- `run_pyflow(context_manifest=…)`, fed from the existing `--context-file` resolution in `main.py`,
+  so `workhorse run <name>` and the `workhorse-<name>` console scripts get it from the one parser.
+- The skill/prompt reference preflight (step 4's, `references.py`) now runs for Python workflows
+  too: a warning on a real run, an exit code under `--dry-run`, and skipped entirely when the run
+  carries no manifest. `test_pyflow_graph.py` covers all three.
+
+Green: `ruff check .`, `make test`, `make check-public`. No port changed — the seat is additive and
+every one of the 372 tests still passes without touching a workflow.
 
 ### Parity — `author`
 
@@ -1023,10 +1044,9 @@ none can be settled by a port. Grouped by what they cost to get wrong:
 
 ### 4. The three engine-side items, which are not deletions
 
-1. **The context manifest never reaches a pyflow prompt** — the largest parity gap in this loop,
-   engine-side, still open. It is a handful of lines in `pyflow/run.py` and `engine.py`, and it
-   re-validates every port, which is why it was reported rather than made. It should land *before*
-   the YAML engine goes, while `main.py` is still there to copy the behavior from.
+1. ~~**The context manifest never reaches a pyflow prompt**~~ — **done**, loop 2 step 0.1, on the
+   user's call. It was the largest parity gap in this loop, and it landed *before* the YAML engine
+   goes, while `main.py` was still there to copy the behavior from. See "Loop 2 — the deletion".
 2. **`refuel:` has no counterpart.** The YAML's progress-metered gas tank distinguishes a
    productive long run from a spin; the driver's flat transition budget does not. A driver-side
    refuel is a design question, and deleting the YAML engine deletes the only implementation.

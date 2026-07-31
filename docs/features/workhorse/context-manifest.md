@@ -11,14 +11,14 @@ the *starting context* for a [workflow](concepts/workflow.md) run. Workflows now
 from the prompt library** rather than being copied/rendered into the repo, so this manifest is
 what lets a library-resident prompt still resolve repo-specific values (template variables, which
 skills/prompts were selected and where they were installed, the active skills directory) without
-farrier touching the workflow files themselves. Loaded by `_load_context_manifest` and reshaped
-into context keys by `_build_manifest_context`, both in the code below; the reshaped keys are then
+farrier touching the workflow files themselves. Loaded by `load_context_manifest` and reshaped
+into context keys by `build_manifest_context`, both in the code below; the reshaped keys are then
 read at render time by the [farrier Jinja helpers](concepts/farrier-globals.md) (`instruction_ref`,
 `prompt_ref`, `skill_dir`, `isUsingInstruction`, `skill_load_ref`, …) that library prompts call.
 
 - file: `.agents/agents-context.json` (or a per-backend override, `.agents/agents-context.<AGENT_CLI>.json`)
-- code: `workhorse/workhorse/main.py::_load_context_manifest`
-- verify: `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error`, `test_absent_auto_detected_manifest_returns_empty`
+- code: `workhorse/workhorse/manifest.py::load_context_manifest`
+- verify: `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error`, `test_absent_auto_detected_manifest_returns_empty`, `workhorse/tests/test_pyflow.py::test_the_context_manifest_is_the_outer_layer_of_an_agent_turn`
 
 ## Resolution
 
@@ -100,10 +100,16 @@ Jinja helper, falling back to the workflow's own directory when empty.
 
 ## Runtime mapping
 
-`_load_context_manifest` parses the file (see [Resolution](#resolution)) and passes the raw dict to
-`_build_manifest_context`, which reshapes it into the context keys above and additionally sets
+`load_context_manifest` parses the file (see [Resolution](#resolution)) and passes the raw dict to
+`build_manifest_context`, which reshapes it into the context keys above and additionally sets
 `_repo_root` — the resolved absolute `$AGENT_REPO_DIR` (or `cwd`), used by the prompt-flavor-override
 lookup, not stored in the manifest itself.
+
+**Both engines load it, which is why it lives outside either one.** The YAML engine seeds the
+reshaped dict as the run's starting context; a [Python state machine](workhorse.md) takes the same
+dict on its `RunEnv` and lays it *under* every agent turn's arguments — a state that binds `repo`
+gets its own, but the farrier helpers resolve either way. An empty manifest adds no keys at all,
+so a manifest-free run renders exactly the arguments its state passed.
 
 **Per-backend instruction rewrite.** When the active `$AGENT_CLI` differs from the backend the
 manifest's own `skill_dir` was generated for, every path in [`instructions`](#instructions) is
