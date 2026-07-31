@@ -32,7 +32,6 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
-from workhorse.runner.ladder import AgentRunner
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,10 +146,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # index rather than a branch inside the engine.
         nodes=stub_nodes(registry.nodes) if dry_run else registry.nodes,
         agent_stubs=registry.agent_stubs if dry_run else None,
-        # The other half of that composition: the recovery ladder, built once from the
-        # run's configuration rather than per agent node. A dry run answers from the
-        # stubs above and must not resolve a backend it will never call.
-        agent_runner=None if dry_run else AgentRunner.from_config(config),
+        # The recovery ladder is the other half of that composition, and `RunEnv` builds
+        # it from `config` — passing one here would be a second construction site, and
+        # the one place that can bind the run's clock to it is the one that holds both.
         # Anchored to the run's ORIGINAL start, restored from run.json, so a resume
         # continues one budget rather than granting a fresh one every relaunch.
         deadline=runtime_deadline(writer.started_at, config.max_runtime_s),
