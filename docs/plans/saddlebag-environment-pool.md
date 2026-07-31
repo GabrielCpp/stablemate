@@ -1,6 +1,6 @@
 # Saddlebag environment pool — packaging a stack's configuration
 
-> **Status:** **phases 1–3 implemented** in [`saddlebag`](../saddlebag/README.md); phase 4
+> **Status:** **phases 1–3 implemented** in [`saddlebag`](../../saddlebag/README.md); phase 4
 > (workflow adoption) is outstanding and lives in `vigilant-octo`. This document extends
 > saddlebag from a pool of *test identities* into the single source of truth for **environment
 > material** — the `.env`-shaped configuration a dev stack needs to boot, secret **and

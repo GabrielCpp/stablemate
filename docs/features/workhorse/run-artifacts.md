@@ -87,7 +87,7 @@ state changes:
 
 The resume point: **which state is about to be entered, and the arguments bound for it**.
 Overwritten atomically (write to `checkpoint.json.tmp`, then rename) by
-[`write_state_checkpoint`](concepts/artifact-writer.md#write_state_checkpointstate-params-inputs-flownone-ctxnone-waiting_onnone)
+[`write_state_checkpoint`](concepts/artifact-writer.md#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone)
 immediately before that state runs — so a crash mid-state still leaves a valid, complete prior
 checkpoint. Dropped (unlinked) at the start of any *fresh* run (not a resume) so a reused stable
 dir never resurrects a finished run's state.
@@ -212,7 +212,7 @@ Completion marker for the node, written by `_write_done` after its step files.
   absent (`self.handoff` only)
 
 The child run tree for one handoff, rooted at `<node-id>/_flow/` instead of a fresh
-`<runs-dir>/<name>-<id>/` — via [`subscope`](concepts/artifact-writer.md#subscopenode_id-flow_name-resumefalse---artifactwriter).
+`<runs-dir>/<name>-<id>/` — via [`subscope`](concepts/artifact-writer.md#subscopenode_id-flow_name--resumefalse---artifactwriter).
 A handoff nested inside a handed-off workflow nests one `_flow/` deeper. The engine always enters
 this scope **fresh**: pyflow checkpoints the *parent* state, so a resume re-enters that state and
 re-runs the handoff from the top rather than resuming into the child's own checkpoint.

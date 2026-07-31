@@ -12,11 +12,11 @@ a run directory, the fresh-start vs. resume hygiene (dropping a stale `checkpoin
 [`run_pyflow`](pyflow-driver.md) (`workhorse/workhorse/pyflow/run.py`) constructs one
 writer per top-level run — fresh, or via [`resume`](#resumerun_dir---artifactwriter-classmethod) — and hands it
 to the run's `RunEnv`. From there [`drive`](pyflow-driver.md) writes the
-[`(state, params)` checkpoint](#write_state_checkpointstate-params-inputs-flownone-ctxnone-waiting_onnone)
+[`(state, params)` checkpoint](#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone)
 before every transition, and the engine behind
 [`self.call` / `self.agent` / `self.handoff`](../workflow-format.md#workflow-subclass) records each
 node visit. A `handoff` gets a **nested** writer rooted under the
-calling node's directory (via [`subscope`](#subscopenode_id-flow_name-resumefalse---artifactwriter)).
+calling node's directory (via [`subscope`](#subscopenode_id-flow_name--resumefalse---artifactwriter)).
 
 Four methods on this class no longer have a production caller: they served the retired YAML
 front-end's node-at-a-time checkpoint and its `branch` node type. They are still on the class and
@@ -83,7 +83,7 @@ A fresh writer rooted directly at `run_dir` (no `runs_dir/<name>-<id>` derivatio
 `__init__`'s fresh-start hygiene — creates `run_dir`, drops any stale `CHECKPOINT_FILE`/
 `EVENTS_FILE`, sets `_started_at`/`_workflow_name`/`_run_id`/`_seq = 0`, and calls
 `_write_run_json(terminal=None)`. Used for a handoff's nested scope (see
-[`subscope`](#subscopenode_id-flow_name-resumefalse---artifactwriter)), where the run dir is a
+[`subscope`](#subscopenode_id-flow_name--resumefalse---artifactwriter)), where the run dir is a
 node's own subdirectory rather than a sibling of other runs under `runs_dir`.
 
 ### `subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
@@ -238,7 +238,7 @@ identifiable when they turn up in a test or in a run directory written by the ol
 The YAML engine's checkpoint: the *node* about to run plus the whole ambient context bag, at
 `{workflow, run_id, current_id, seq, context, updated_at}` — no `engine` key, which is what lets
 `read_resume` recognize and refuse it. Superseded by
-[`write_state_checkpoint`](#write_state_checkpointstate-params-inputs-flownone-ctxnone-waiting_onnone).
+[`write_state_checkpoint`](#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone).
 
 ### `write_branch(node_id, path, value, next_node)`
 Wrote `<node_id>/branch.json` = `{path, value, next: next_node}` for a `branch` node — routing

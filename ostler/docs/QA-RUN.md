@@ -5,7 +5,7 @@ Status: **implemented** (2026-07-14).
 This document describes the original version-1 command runner. The universal
 version-2 plan, OKF impact packet, Playwright and Maestro adapters, recording
 contract, and coder-workflow integration are specified in
-[`../../docs/ostler-qa-verification.md`](../../docs/ostler-qa-verification.md).
+[`docs/plans/ostler-qa-verification.md`](../../docs/plans/ostler-qa-verification.md).
 That document supersedes this one where the contracts differ, especially the
 placement of `qa-plan.yml` and static inputs outside disposable `qa/`.
 

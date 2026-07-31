@@ -62,7 +62,7 @@ CLI. Every Jinja global a rendered prompt can call — [`instruction_ref`, `prom
    keep_trailing_newline=True)` — a **fresh environment per call**, so no globals or loader state
    leaks between renders.
 5. `env.globals.update(_farrier_globals(context, workflow_dir))` — installs the farrier helpers
-   (see [intro](#render-file-based-prompt-rendering)).
+   (see [intro](#render--file-based-prompt-rendering)).
 6. `tmpl = env.get_template(template_name)`; return `tmpl.render(**context)`.
 
 ## `_flavor_override`
@@ -125,7 +125,7 @@ flavor to key off of.
 2. `env = Environment(undefined=ResilientUndefined)` — a **fresh environment per call**, no
    `FileSystemLoader`.
 3. `env.globals.update(_farrier_globals(context, workflow_dir))` — installs the same farrier
-   helpers `render` installs (see [intro](#render-file-based-prompt-rendering)).
+   helpers `render` installs (see [intro](#render--file-based-prompt-rendering)).
 4. `tmpl = env.from_string(template_str)`; return `tmpl.render(**context)`.
 
 ## `ResilientUndefined`

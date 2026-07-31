@@ -2,7 +2,7 @@
 
 > **Status:** implemented (2026-07-14). This document extends the
 > command-oriented `ostler qa` design in
-> [`ostler/docs/QA-RUN.md`](../ostler/docs/QA-RUN.md) into the common, OKF-aware
+> [`ostler/docs/QA-RUN.md`](../../ostler/docs/QA-RUN.md) into the common, OKF-aware
 > runner for command, Playwright, and Maestro verification. It also defines how
 > the coder workflow derives QA scope from the maintained OKF library. Section
 > 5 supersedes the older design's placement of the plan and pre-run payloads
