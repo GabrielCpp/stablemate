@@ -113,7 +113,7 @@ def test_non_claude_backends_registered():
 
 def _fake_stream(canned):
     """Return a _stream_jsonl stand-in that records the cmd/stdin/cwd/env and returns
-    canned (state, diagnostics, timed_out, returncode)."""
+    a canned ``TurnState``."""
     captured = {}
 
     def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
@@ -130,7 +130,7 @@ def test_codex_effort_sets_reasoning_override():
     """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
@@ -148,7 +148,7 @@ def test_codex_effort_clamped_to_high():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     for level in ("xhigh", "max"):
         fake, captured = _fake_stream(
-            ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+            backends.TurnState(result_text="OK", session_id="t")
         )
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
@@ -164,7 +164,7 @@ def test_codex_effort_clamped_to_high():
 def test_codex_no_effort_omits_override():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
@@ -214,7 +214,7 @@ def test_copilot_effort_maps_to_native_flag():
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "s"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="s")
     )
     with patch.object(backends, "_stream_jsonl", fake):
         _run_turn(CopilotBackend(), "BASE PROMPT", "n", sidp, effort="high")
@@ -226,7 +226,7 @@ def test_copilot_effort_maps_to_native_flag():
 def test_codex_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "tid-123"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="tid-123")
     )
 
     prior = os.environ.pop("CODEX_PROFILE", None)  # no profile → bare `codex exec`
@@ -250,7 +250,7 @@ def test_codex_run_turn_fresh_then_resume():
 
     # Second call resumes by the persisted id.
     fake2, captured2 = _fake_stream(
-        ({"result_text": "OK2", "session_id": "tid-123"}, "", False, 0)
+        backends.TurnState(result_text="OK2", session_id="tid-123")
     )
     with patch.object(backends, "_stream_jsonl", fake2):
         _run_turn(CodexBackend(), "P2", "n", sidp)
@@ -264,7 +264,7 @@ def test_codex_profile_from_env():
     still maps to `-m`, overriding the profile's pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "t1"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="t1")
     )
 
     prior = os.environ.get("CODEX_PROFILE")
@@ -287,7 +287,7 @@ def test_codex_profile_from_env():
     assert cmd[cmd.index("-m") + 1] == "deepseek/deepseek-chat-v3.1"
     # Resume also carries the top-level profile ahead of `exec resume`.
     fake2, captured2 = _fake_stream(
-        ({"result_text": "OK2", "session_id": "t1"}, "", False, 0)
+        backends.TurnState(result_text="OK2", session_id="t1")
     )
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
@@ -315,7 +315,7 @@ def test_codex_per_node_profile_overrides_env():
     try:
         sidp = Path(tempfile.mkdtemp()) / ".s"
         fake, captured = _fake_stream(
-            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+            backends.TurnState(result_text="X", session_id="s")
         )
         with patch.object(backends, "_stream_jsonl", fake):
             _run_turn(CodexBackend(), "P", "n", sidp, model="local@qwen2.5-coder:32b")
@@ -325,7 +325,7 @@ def test_codex_per_node_profile_overrides_env():
 
         sidp2 = Path(tempfile.mkdtemp()) / ".s"
         fake2, captured2 = _fake_stream(
-            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+            backends.TurnState(result_text="X", session_id="s")
         )
         with patch.object(backends, "_stream_jsonl", fake2):
             _run_turn(CodexBackend(), "P", "n", sidp2, model="local")  # bare = profile
@@ -344,7 +344,7 @@ def test_codex_profile_at_slug_model_string():
     the provider/auth bundle, the slug overrides its pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "OK", "session_id": "t"}, "", False, 0)
+        backends.TurnState(result_text="OK", session_id="t")
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
@@ -373,7 +373,7 @@ def test_parse_codex_model():
 def test_copilot_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "ANSWER", "session_id": "sess-1"}, "", False, 0)
+        backends.TurnState(result_text="ANSWER", session_id="sess-1")
     )
 
     with patch.object(backends, "_stream_jsonl", fake):
@@ -388,7 +388,7 @@ def test_copilot_run_turn_fresh_then_resume():
     assert sidp.read_text() == "sess-1"
 
     fake2, captured2 = _fake_stream(
-        ({"result_text": "A2", "session_id": "sess-1"}, "", False, 0)
+        backends.TurnState(result_text="A2", session_id="sess-1")
     )
     with patch.object(backends, "_stream_jsonl", fake2):
         _run_turn(CopilotBackend(), "P2", "n", sidp)
@@ -396,61 +396,65 @@ def test_copilot_run_turn_fresh_then_resume():
 
 
 def test_codex_on_event_extracts_text_and_session():
-    state = {"result_text": "", "session_id": None}
-    diag: list[str] = []
-    backends._codex_on_event(
-        {"type": "thread.started", "thread_id": "abc"}, state, "n", diag
-    )
+    state = backends.TurnState()
+    backends._codex_on_event({"type": "thread.started", "thread_id": "abc"}, state, "n")
     backends._codex_on_event(
         {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}},
         state,
         "n",
-        diag,
     )
-    assert state["session_id"] == "abc"
-    assert state["result_text"] == "hi"
+    assert state.session_id == "abc"
+    assert state.result_text == "hi"
 
 
 def test_copilot_on_event_extracts_text_and_session():
-    state = {"result_text": "", "session_id": None}
-    diag: list[str] = []
+    state = backends.TurnState()
     backends._copilot_on_event(
-        {"type": "assistant.message", "data": {"content": "hello"}}, state, "n", diag
+        {"type": "assistant.message", "data": {"content": "hello"}}, state, "n"
     )
     backends._copilot_on_event(
-        {"type": "result", "sessionId": "s9", "exitCode": 0}, state, "n", diag
+        {"type": "result", "sessionId": "s9", "exitCode": 0}, state, "n"
     )
-    assert state["result_text"] == "hello"
-    assert state["session_id"] == "s9"
+    assert state.result_text == "hello"
+    assert state.session_id == "s9"
 
 
 def test_finalize_turn_classifies_failures():
-    base = {"result_text": "x", "session_id": None}
     # Non-zero exit whose output matches a transient marker → transient.
     try:
         backends._finalize_turn(
-            "codex", "n", dict(base), "rate limit hit", False, 1, None, TIMEOUT
+            "codex",
+            "n",
+            backends.TurnState(
+                result_text="x", diagnostics=["rate limit hit"], returncode=1
+            ),
+            None,
+            TIMEOUT,
         )
         raise AssertionError("expected raise on non-zero exit")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Timeout is always transient.
     try:
-        backends._finalize_turn("copilot", "n", dict(base), "", True, 0, None, TIMEOUT)
+        backends._finalize_turn(
+            "copilot",
+            "n",
+            backends.TurnState(result_text="x", timed_out=True),
+            None,
+            TIMEOUT,
+        )
         raise AssertionError("expected raise on timeout")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Empty result is transient.
     try:
-        backends._finalize_turn(
-            "codex", "n", {"result_text": "", "session_id": None}, "", False, 0, None,
-            TIMEOUT,
-        )
+        backends._finalize_turn("codex", "n", backends.TurnState(), None, TIMEOUT)
         raise AssertionError("expected raise on empty result")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Clean success returns the text.
-    assert backends._finalize_turn("codex", "n", dict(base), "", False, 0, None, TIMEOUT) == "x"
+    ok = backends.TurnState(result_text="x")
+    assert backends._finalize_turn("codex", "n", ok, None, TIMEOUT) == "x"
 
 
 def test_classify_turn_records_node_to_session_manifest():
@@ -529,10 +533,7 @@ def test_finalize_turn_non_recoverable_names_each_backend():
             backends._finalize_turn(
                 name,
                 "write_epic",
-                {"result_text": "", "session_id": None},
-                diag,
-                False,
-                1,
+                backends.TurnState(diagnostics=[diag], returncode=1),
                 None,
                 TIMEOUT,
             )
@@ -558,7 +559,7 @@ def test_agentnode_power_is_optional():
 def test_opencode_run_turn_fresh_then_resume():
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
-        ({"result_text": "PONG", "session_id": "ses_1"}, "", False, 0)
+        backends.TurnState(result_text="PONG", session_id="ses_1")
     )
     with patch.object(backends, "_stream_jsonl", fake):
         out = _run_turn(OpenCodeBackend(), 
@@ -586,7 +587,7 @@ def test_opencode_run_turn_fresh_then_resume():
     assert sidp.read_text() == "ses_1"  # session persisted for resume
 
     fake2, captured2 = _fake_stream(
-        ({"result_text": "P2", "session_id": "ses_1"}, "", False, 0)
+        backends.TurnState(result_text="P2", session_id="ses_1")
     )
     with patch.object(backends, "_stream_jsonl", fake2):
         _run_turn(OpenCodeBackend(), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
@@ -598,14 +599,14 @@ def test_opencode_effort_variant_mapping_and_omit():
     cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
     for effort, variant in cases.items():
         fake, captured = _fake_stream(
-            ({"result_text": "X", "session_id": "s"}, "", False, 0)
+            backends.TurnState(result_text="X", session_id="s")
         )
         with patch.object(backends, "_stream_jsonl", fake):
             _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
     # "medium" has no opencode variant → omitted entirely.
     fake, captured = _fake_stream(
-        ({"result_text": "X", "session_id": "s"}, "", False, 0)
+        backends.TurnState(result_text="X", session_id="s")
     )
     with patch.object(backends, "_stream_jsonl", fake):
         _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort="medium")
@@ -613,35 +614,45 @@ def test_opencode_effort_variant_mapping_and_omit():
 
 
 def test_opencode_on_event_text_session_and_error():
-    state = {"result_text": "", "session_id": None}
-    diag: list[str] = []
-    backends._opencode_on_event(
-        {"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n", diag
-    )
-    backends._opencode_on_event(
+    state = backends.TurnState()
+    # The text parts opencode streams live on its own reader, not on the TurnState
+    # every backend shares — one instance per turn, exactly as run_turn builds it.
+    on_event = backends._OpenCodeEvents().on_event
+    on_event({"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n")
+    on_event(
         {"type": "text", "sessionID": "ses_9", "part": {"id": "p1", "text": "PONG"}},
         state,
         "n",
-        diag,
     )
-    assert state["session_id"] == "ses_9"
-    assert state["result_text"] == "PONG"
+    assert state.session_id == "ses_9"
+    assert state.result_text == "PONG"
     # A second distinct text part is appended, preserving order.
-    backends._opencode_on_event(
+    on_event(
         {"type": "text", "sessionID": "ses_9", "part": {"id": "p2", "text": "more"}},
         state,
         "n",
-        diag,
     )
-    assert state["result_text"] == "PONG\nmore"
+    assert state.result_text == "PONG\nmore"
     # An error event is captured as a diagnostic.
-    backends._opencode_on_event(
+    on_event(
         {"type": "error", "sessionID": "ses_9", "error": {"data": {"message": "boom"}}},
         state,
         "n",
-        diag,
     )
-    assert any("boom" in d for d in diag)
+    assert any("boom" in d for d in state.diagnostics)
+
+
+def test_opencode_text_parts_do_not_leak_between_turns():
+    """Each turn gets its own reader, so the previous turn's answer cannot bleed into
+    the next one's — the reason the parts live on the adapter and not on TurnState."""
+    first, second = backends.TurnState(), backends.TurnState()
+    backends._OpenCodeEvents().on_event(
+        {"type": "text", "part": {"id": "p1", "text": "first"}}, first, "n"
+    )
+    backends._OpenCodeEvents().on_event(
+        {"type": "text", "part": {"id": "p1", "text": "second"}}, second, "n"
+    )
+    assert second.result_text == "second"
 
 
 # ── Aider backend (aider --message, plain-text capture) ─────────────────────────
@@ -726,11 +737,9 @@ def test_opencode_cap_attaches_codex_reset_at():
     cap error carries it — so the runner sleeps until the window reopens, not a flat
     default hour."""
     reset = 1782759835.0
-    capped = (
-        {"result_text": "", "session_id": None},
-        'error.error="AI_APICallError: The usage limit has been reached"',
-        True,  # cap_abort flagged timed_out
-        0,
+    capped = backends.TurnState(
+        diagnostics=['error.error="AI_APICallError: The usage limit has been reached"'],
+        timed_out=True,  # cap_abort flagged timed_out
     )
     fake, _ = _fake_stream(capped)
     with (
@@ -755,7 +764,7 @@ def test_opencode_cap_attaches_codex_reset_at():
 
 def test_opencode_non_cap_does_not_probe_codex():
     """A normal (non-cap) opencode turn never touches the Codex reset probe."""
-    ok = ({"result_text": "DONE", "session_id": "s"}, "", False, 0)
+    ok = backends.TurnState(result_text="DONE", session_id="s")
     fake, _ = _fake_stream(ok)
     calls = {"n": 0}
     with (
@@ -774,7 +783,7 @@ def test_opencode_non_cap_does_not_probe_codex():
 def _drive_stream_jsonl(lines, on_event):
     """Run backends._stream_jsonl, feeding ``lines`` to its on_line callback through a
     faked stream_subprocess that stops the moment on_line requests an early abort
-    (mirroring agent.stream_subprocess). Returns (state, diagnostics, timed_out, rc)."""
+    (mirroring agent.stream_subprocess). Returns the finished ``TurnState``."""
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         for raw in lines:
@@ -797,10 +806,10 @@ def test_opencode_cap_log_line_aborts_stream_early():
     for the watchdog while opencode retries internally."""
     consumed = {"n": 0}
 
-    def on_event(event, state, node_id, diagnostics):
+    def on_event(event, state, node_id):
         consumed["n"] += 1  # only real JSON events reach here; the cap line is non-JSON
 
-    state, diag, timed_out, rc = _drive_stream_jsonl(
+    state = _drive_stream_jsonl(
         [
             '{"type":"step","text":"working"}\n',
             'level=ERROR message="stream error" error.error="AI_APICallError: '
@@ -809,18 +818,18 @@ def test_opencode_cap_log_line_aborts_stream_early():
         ],
         on_event,
     )
-    assert timed_out is True, "cap abort must flag timed_out so the turn finalizes"
-    assert "usage limit" in diag.lower()
+    assert state.timed_out is True, "cap abort must flag timed_out so the turn finalizes"
+    assert "usage limit" in state.diagnostics_text.lower()
     assert consumed["n"] == 1, "stream must stop at the cap line — later events unread"
     # The runner's classifier then frames this as a cap, not a timeout.
     try:
         agent.classify_turn(
             "opencode",
             "review_implementation",
-            result_text=state.get("result_text") or None,
-            diagnostics=diag,
-            timed_out=timed_out,
-            returncode=rc,
+            result_text=state.result_text or None,
+            diagnostics=state.diagnostics_text,
+            timed_out=state.timed_out,
+            returncode=state.returncode,
             timeout=3600,
         )
         raise AssertionError("expected a cap BackendInvocationError")
@@ -834,11 +843,11 @@ def test_opencode_cap_structured_error_event_aborts_stream_early():
     """A cap surfaced as a structured JSON error event (not a log line) is caught the
     same way — the on_event-appended diagnostics trip the cap abort."""
 
-    def on_event(event, state, node_id, diagnostics):
+    def on_event(event, state, node_id):
         if event.get("type") == "error":
-            diagnostics.append(event.get("message") or "")
+            state.diagnostics.append(event.get("message") or "")
 
-    state, diag, timed_out, rc = _drive_stream_jsonl(
+    state = _drive_stream_jsonl(
         [
             '{"type":"step","text":"working"}\n',
             '{"type":"error","message":"The usage limit has been reached"}\n',
@@ -846,14 +855,14 @@ def test_opencode_cap_structured_error_event_aborts_stream_early():
         ],
         on_event,
     )
-    assert timed_out is True
-    assert "usage limit" in diag.lower()
+    assert state.timed_out is True
+    assert "usage limit" in state.diagnostics_text.lower()
 
 
 def test_opencode_provider_header_timeout_aborts_into_short_retry():
     """A provider transport timeout must escape opencode's internal retry loop and
     reach Workhorse as a short transient, not as a full node-budget timeout."""
-    state, diag, timed_out, rc = _drive_stream_jsonl(
+    state = _drive_stream_jsonl(
         [
             '{"type":"step_start","sessionID":"ses_1","part":{}}\n',
             'timestamp=2026-07-14T15:43:57.871Z level=ERROR message="stream error" '
@@ -861,20 +870,20 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
             'out after 10000ms"\n',
             '{"type":"text","part":{"text":"SHOULD NOT BE READ"}}\n',
         ],
-        backends._opencode_on_event,
+        backends._OpenCodeEvents().on_event,
     )
 
-    assert timed_out is True
-    assert "ProviderHeaderTimeoutError" in diag
-    assert state["result_text"] == "", "stream must stop before a later result"
+    assert state.timed_out is True
+    assert "ProviderHeaderTimeoutError" in state.diagnostics_text
+    assert state.result_text == "", "stream must stop before a later result"
     try:
         agent.classify_turn(
             "opencode",
             "investigate",
             result_text=None,
-            diagnostics=diag,
-            timed_out=timed_out,
-            returncode=rc,
+            diagnostics=state.diagnostics_text,
+            timed_out=state.timed_out,
+            returncode=state.returncode,
             timeout=3600,
         )
         raise AssertionError("expected a transient BackendInvocationError")

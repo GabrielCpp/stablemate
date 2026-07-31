@@ -62,8 +62,13 @@ import socket
 import sys
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    # Annotation-only: telemetry is imported by everything, so it must not pull
+    # the runner in at runtime just to name the value it is handed.
+    from workhorse.runner.usage import TurnUsage
 
 
 def _tristate(raw: str | None) -> bool | None:
@@ -228,12 +233,12 @@ def turn_end(error: str | None = None) -> None:
     _call("turn_end", error)
 
 
-def turn_result(event: dict[str, Any]) -> None:
+def turn_result(usage: TurnUsage) -> None:
     """Attach a turn's duration + token usage to the open agent-turn span.
 
-    ``event`` is already normalized (``runner/usage.py``), so every backend's
+    ``usage`` is already normalized (``runner/usage.py``), so every backend's
     dialect arrives here in Claude's key names and one query reads them all."""
-    _call("turn_result", event)
+    _call("turn_result", usage)
 
 
 def set_labels(labels: dict[str, str]) -> None:
@@ -694,29 +699,22 @@ class _Telemetry:
                 turn.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
             turn.end()
 
-    def turn_result(self, event: dict[str, Any]) -> None:
+    def turn_result(self, usage: TurnUsage) -> None:
         with self._lock:
             turn = self._turn
             if turn is None:
                 return
-            if event.get("duration_ms") is not None:
-                turn.set_attribute("duration_ms", int(event["duration_ms"]))
+            if usage.duration_ms is not None:
+                turn.set_attribute("duration_ms", int(usage.duration_ms))
                 self._turn_has_duration = True  # turn_end must not overwrite it
-            usage = event.get("usage") or {}
-            for field in (
-                "input_tokens",
-                "output_tokens",
-                "cache_read_input_tokens",
-                "cache_creation_input_tokens",
-                # Reported by codex and opencode; absent from Claude's result event.
-                # Left off the span entirely when unreported rather than zeroed, so
-                # "no reasoning tokens" stays distinguishable from "not measured".
-                "reasoning_output_tokens",
-            ):
-                if usage.get(field) is not None:
-                    turn.set_attribute(f"usage.{field}", int(usage[field]))
-            if event.get("total_cost_usd") is not None:
-                turn.set_attribute("total_cost_usd", float(event["total_cost_usd"]))
+            # `token_counts()` omits whatever the harness did not report — e.g.
+            # `reasoning_output_tokens`, which codex and opencode send and Claude's
+            # result event does not. Left off the span entirely rather than zeroed,
+            # so "no reasoning tokens" stays distinguishable from "not measured".
+            for field, count in usage.token_counts().items():
+                turn.set_attribute(f"usage.{field}", int(count))
+            if usage.total_cost_usd is not None:
+                turn.set_attribute("total_cost_usd", float(usage.total_cost_usd))
 
     def set_labels(self, labels: dict[str, str]) -> None:
         """Replace the workflow-declared dimensions stamped on subsequent spans.

@@ -38,6 +38,7 @@ import os
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from stablemate_core.config import resolve_harness_env
@@ -50,6 +51,37 @@ from workhorse.config_run import AgentResilience
 from workhorse import otel
 from workhorse.runner import agent as _agent
 from workhorse.runner import usage as _usage
+from workhorse.runner.usage import TurnUsage
+
+
+@dataclass(slots=True)
+class TurnState:
+    """What one non-Claude turn yielded, as its output streamed past.
+
+    Mutable by construction: ``_stream_jsonl``'s per-line callback and the
+    per-CLI ``on_event`` adapter write into it event by event, the process
+    outcome lands once the stream closes, and ``_finalize_turn`` reads the
+    finished value. It replaces a bare ``dict`` that four backends
+    ``setdefault``-ed into with no shared declaration, and the four-element tuple
+    that used to carry it back out.
+
+    Every field here is one every backend has. A key only one CLI needs does not
+    belong on the struct they all share — see ``_OpenCodeEvents``.
+    """
+
+    result_text: str = ""
+    session_id: str | None = None
+    usage: TurnUsage = field(default_factory=TurnUsage)
+    #: Anything signalling *how* a turn failed — non-JSON output lines and
+    #: structured error events — for ``classify_turn`` to read.
+    diagnostics: list[str] = field(default_factory=list)
+    timed_out: bool = False
+    returncode: int = 0
+
+    @property
+    def diagnostics_text(self) -> str:
+        """The diagnostics as the single string ``classify_turn`` scans."""
+        return "\n".join(self.diagnostics)
 
 
 class AgentBackend(ABC):
@@ -192,9 +224,9 @@ def _read_session_id(session_id_path: Path | None) -> str | None:
 
 def _stream_jsonl(
     cmd, node_id, timeout, stdin_data, on_event, *, resilience, cwd=None, env_extra=None
-):
+) -> TurnState:
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
-    invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
+    invoking ``on_event(event, state, node_id)`` per parsed object.
 
     Streams through ``agent.stream_subprocess`` so the timeout, hard watchdog, and
     process-group kill behave identically to every other harness. ``cwd`` sets the
@@ -202,31 +234,29 @@ def _stream_jsonl(
     OpenCode nodes always ran in the launching process's CWD regardless of a node's
     ``cwd:``). ``env_extra`` layers the harness's operator-configured environment
     (``[harness.<backend>].env``) over the inherited one.
-    Returns ``(state, diagnostics, timed_out, returncode)`` where ``state``
-    carries ``result_text`` and ``session_id``. Non-JSON lines are echoed and kept as
+    Returns the finished ``TurnState``. Non-JSON lines are echoed and kept as
     diagnostics so failure classification can see them."""
-    state: dict = {"result_text": "", "session_id": None}
-    diagnostics: list[str] = []
+    state = TurnState()
     early_abort = [""]
 
     def on_line(raw: str) -> bool:
         line = raw.strip()
         if not line:
             return False
-        before = len(diagnostics)
+        before = len(state.diagnostics)
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             print(f"[{node_id}] {line}", flush=True)
-            diagnostics.append(line)
+            state.diagnostics.append(line)
         else:
-            on_event(event, state, node_id, diagnostics)
+            on_event(event, state, node_id)
         # As soon as a recoverable provider failure appears — whether as a raw log
         # line or a structured error event — abort the CLI's internal retry loop and
         # hand recovery to Workhorse's bounded backoff policy. Caps retain their
         # separate scheduled-reset path. Scan only newly-added diagnostics so this
         # stays O(n) over the stream.
-        new_diag = "\n".join(diagnostics[before:])
+        new_diag = "\n".join(state.diagnostics[before:])
         if not early_abort[0] and new_diag and _agent._is_cap(new_diag):
             early_abort[0] = "cap"
             return True  # signal stream_subprocess to break and kill the process
@@ -240,16 +270,15 @@ def _stream_jsonl(
         resilience=resilience,
         stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,
     )
-    return state, "\n".join(diagnostics), timed_out or bool(early_abort[0]), returncode
+    state.timed_out = timed_out or bool(early_abort[0])
+    state.returncode = returncode
+    return state
 
 
 def _finalize_turn(
     backend_name,
     node_id,
-    state,
-    diagnostics,
-    timed_out,
-    returncode,
+    state: TurnState,
     session_id_path,
     timeout,
     rate_reset_at=None,
@@ -263,19 +292,18 @@ def _finalize_turn(
     so the runner sleeps until exactly then instead of the blind default wait."""
     # The one place every non-Claude turn ends, so it is where usage reaches the
     # open turn span — no backend needs its own otel call, and a new backend gets
-    # cost/token attribution by populating `state["usage_acc"]` and nothing else.
-    acc = state.get("usage_acc")
-    if acc:
-        otel.turn_result(acc)
+    # cost/token attribution by populating `state.usage` and nothing else.
+    if not state.usage.is_empty:
+        otel.turn_result(state.usage)
     return _agent.classify_turn(
         backend_name,
         node_id,
-        result_text=state.get("result_text"),
-        diagnostics=diagnostics,
-        timed_out=timed_out,
-        returncode=returncode,
+        result_text=state.result_text,
+        diagnostics=state.diagnostics_text,
+        timed_out=state.timed_out,
+        returncode=state.returncode,
         timeout=timeout,
-        session_id=state.get("session_id"),
+        session_id=state.session_id,
         session_id_path=session_id_path,
         rate_reset_at=rate_reset_at,
     )
@@ -307,51 +335,51 @@ def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
     return raw, None
 
 
-def _codex_on_event(event, state, node_id, diagnostics):
+def _codex_on_event(event, state: TurnState, node_id):
     """Codex `exec --json`: thread.started → resume id; item.completed agent_message
     → answer text (last wins); turn.completed → token usage; error/failed →
     diagnostics."""
     etype = event.get("type") or ""
     if etype == "thread.started":
-        state["session_id"] = event.get("thread_id") or state["session_id"]
+        state.session_id = event.get("thread_id") or state.session_id
     elif etype == "turn.completed":
         # Carries `usage` only — codex under subscription auth reports no cost, so
         # these turns land with tokens and no dollars (see usage.normalize).
-        _usage.accumulate(state.setdefault("usage_acc", {}), event)
+        state.usage = state.usage.merge(_usage.normalize(event))
     elif etype == "item.completed":
         item = event.get("item") or {}
         if item.get("type") == "agent_message":
             text = item.get("text") or ""
             if text:
-                state["result_text"] = text
+                state.result_text = text
                 print(f"[{node_id}] {text.strip()[:500]}", flush=True)
         elif item.get("type") == "error" or item.get("error"):
-            diagnostics.append(str(item)[:500])
+            state.diagnostics.append(str(item)[:500])
     elif "error" in etype or "fail" in etype:
-        diagnostics.append(json.dumps(event)[:500])
+        state.diagnostics.append(json.dumps(event)[:500])
 
 
-def _copilot_on_event(event, state, node_id, diagnostics):
+def _copilot_on_event(event, state: TurnState, node_id):
     """Copilot `-p --output-format json`: assistant.message.data.content → answer
     text (last non-empty wins); result → sessionId + exitCode."""
     etype = event.get("type") or ""
     if etype == "assistant.message":
         content = (event.get("data") or {}).get("content") or ""
         if content:
-            state["result_text"] = content
+            state.result_text = content
             print(f"[{node_id}] {content.strip()[:500]}", flush=True)
     elif etype == "result":
         if event.get("sessionId"):
-            state["session_id"] = event["sessionId"]
+            state.session_id = event["sessionId"]
         # Copilot's usage shape is unverified here (see usage.py), so this leans on
         # the tolerant search: if the result event carries counts anywhere, they are
         # found; if not, the turn keeps engine-measured duration and nothing else.
-        _usage.accumulate(state.setdefault("usage_acc", {}), event)
+        state.usage = state.usage.merge(_usage.normalize(event))
         exit_code = event.get("exitCode")
         if exit_code not in (0, None):
-            diagnostics.append(f"copilot exitCode={exit_code}")
+            state.diagnostics.append(f"copilot exitCode={exit_code}")
     elif "error" in etype:
-        diagnostics.append(json.dumps(event)[:500])
+        state.diagnostics.append(json.dumps(event)[:500])
 
 
 class CodexBackend(AgentBackend):
@@ -411,14 +439,12 @@ class CodexBackend(AgentBackend):
             print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
         else:
             cmd = [*head, "exec", *flags, "-"]
-        state, diag, timed_out, rc = _stream_jsonl(
+        state = _stream_jsonl(
             cmd, node_id, timeout, prompt, _codex_on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
-        return _finalize_turn(
-            "codex", node_id, state, diag, timed_out, rc, session_id_path, timeout
-        )
+        return _finalize_turn("codex", node_id, state, session_id_path, timeout)
 
     def compact(
         self,
@@ -484,14 +510,12 @@ class CopilotBackend(AgentBackend):
         if sid:
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
-        state, diag, timed_out, rc = _stream_jsonl(
+        state = _stream_jsonl(
             cmd, node_id, timeout, None, _copilot_on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
-        return _finalize_turn(
-            "copilot", node_id, state, diag, timed_out, rc, session_id_path, timeout
-        )
+        return _finalize_turn("copilot", node_id, state, session_id_path, timeout)
 
     def compact(
         self,
@@ -505,33 +529,50 @@ class CopilotBackend(AgentBackend):
         return False
 
 
-def _opencode_on_event(event, state, node_id, diagnostics):
-    """OpenCode `run --format json`: NDJSON events with a top-level ``type`` and
-    ``sessionID``. ``text`` parts carry the answer (``part.text``); we accumulate
-    them keyed by part id so multiple text blocks are preserved in order. ``error``
-    events go to diagnostics. The top-level ``sessionID`` is the resume handle."""
-    sid = event.get("sessionID")
-    if sid:
-        state["session_id"] = sid
-    etype = event.get("type") or ""
-    if etype == "step_finish":
-        # One per step, not per turn: a turn that calls three tools emits three, and
-        # only their sum is what the turn consumed. `part.cost` is 0 on subscription
-        # auth — a real zero, which accumulate() keeps distinct from "not reported".
-        _usage.accumulate(state.setdefault("usage_acc", {}), event)
-    elif etype == "text":
-        part = event.get("part") or {}
-        text = part.get("text") or ""
-        if text:
-            parts = state.setdefault("_text_parts", {})
-            parts[part.get("id") or len(parts)] = text
-            state["result_text"] = "\n".join(parts.values())
-            print(f"[{node_id}] {text.strip()[:500]}", flush=True)
-    elif etype == "error":
-        err = event.get("error") or {}
-        data = err.get("data") or {}
-        msg = data.get("message") or err.get("name") or json.dumps(event)[:300]
-        diagnostics.append(str(msg)[:500])
+@dataclass(slots=True)
+class _OpenCodeEvents:
+    """OpenCode's per-turn event reader, and the text parts it has to remember.
+
+    It is a class only because it has state no other backend has: opencode streams
+    the answer as several ``text`` parts that must be reassembled in arrival order.
+    That belongs to this adapter, not on the ``TurnState`` every backend shares — a
+    struct shared by N implementations holding one implementation's private key is
+    exactly the shape the shared module must not have. One instance per turn; the
+    bound ``on_event`` is what ``_stream_jsonl`` is handed.
+    """
+
+    #: part id → text. Ids come from opencode; the positional fallback keeps parts
+    #: distinct (and in order) if an event ever arrives without one.
+    parts: dict[str | int, str] = field(default_factory=dict)
+
+    def on_event(self, event, state: TurnState, node_id) -> None:
+        """OpenCode `run --format json`: NDJSON events with a top-level ``type`` and
+        ``sessionID``. ``text`` parts carry the answer (``part.text``); we accumulate
+        them keyed by part id so multiple text blocks are preserved in order.
+        ``error`` events go to diagnostics. The top-level ``sessionID`` is the resume
+        handle."""
+        sid = event.get("sessionID")
+        if sid:
+            state.session_id = sid
+        etype = event.get("type") or ""
+        if etype == "step_finish":
+            # One per step, not per turn: a turn that calls three tools emits three,
+            # and only their sum is what the turn consumed. `part.cost` is 0 on
+            # subscription auth — a real zero, which merge() keeps distinct from
+            # "not reported".
+            state.usage = state.usage.merge(_usage.normalize(event))
+        elif etype == "text":
+            part = event.get("part") or {}
+            text = part.get("text") or ""
+            if text:
+                self.parts[part.get("id") or len(self.parts)] = text
+                state.result_text = "\n".join(self.parts.values())
+                print(f"[{node_id}] {text.strip()[:500]}", flush=True)
+        elif etype == "error":
+            err = event.get("error") or {}
+            data = err.get("data") or {}
+            msg = data.get("message") or err.get("name") or json.dumps(event)[:300]
+            state.diagnostics.append(str(msg)[:500])
 
 
 # OpenCode's `--variant` is its provider-specific reasoning knob; its documented
@@ -676,21 +717,20 @@ class OpenCodeBackend(AgentBackend):
         cmd += ["--", prompt]
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
-        state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _opencode_on_event,
+        state = _stream_jsonl(
+            cmd, node_id, timeout, None, _OpenCodeEvents().on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
         # headless path) so the runner sleeps until the window reopens, not a flat hour.
-        rate_reset_at = _codex_reset_at(model) if _agent._is_cap(diag) else None
+        rate_reset_at = (
+            _codex_reset_at(model) if _agent._is_cap(state.diagnostics_text) else None
+        )
         return _finalize_turn(
             "opencode",
             node_id,
             state,
-            diag,
-            timed_out,
-            rc,
             session_id_path,
             timeout,
             rate_reset_at=rate_reset_at,
@@ -731,19 +771,18 @@ def _run_text_turn(
         resilience=resilience, cwd=cwd, env_extra=env_extra,
     )
     text = "\n".join(lines).strip()
-    # A text backend has no event to carry usage, so the transcript is the only
-    # source: aider prints a "Tokens: … Cost: …" summary. No match → no attributes.
-    state = {"result_text": text, "session_id": None, "usage_acc": _usage.from_text(text)}
-    return _finalize_turn(
-        backend_name,
-        node_id,
-        state,
-        text,
-        timed_out,
-        returncode,
-        session_id_path,
-        timeout,
+    state = TurnState(
+        result_text=text,
+        # The transcript is both the answer and the diagnostics channel: overflow and
+        # transient markers are printed inline, so `classify_turn` scans the same text.
+        diagnostics=[text],
+        # A text backend has no event to carry usage, so the transcript is the only
+        # source: aider prints a "Tokens: … Cost: …" summary. No match → no attributes.
+        usage=_usage.from_text(text),
+        timed_out=timed_out,
+        returncode=returncode,
     )
+    return _finalize_turn(backend_name, node_id, state, session_id_path, timeout)
 
 
 # Aider tops out at "high" for reasoning effort; clamp the Claude-superset levels.
