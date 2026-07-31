@@ -1620,6 +1620,78 @@ have subjects that survive *only* in the sense that `pyflow-driver.md` and
 `pyflow-state-graph.md` already document what replaced them. Rewriting them duplicates those
 two pages; deleting them with links redirected is the honest move, and deletion needs a call.
 
+### Iteration 4 — the four `flows/` walkthroughs
+
+Rewritten, not deleted: all four subjects survive under new mechanics, so the stop rule
+applies. `docs/features/workhorse/flows/` —
+
+- **`workhorse-setup-and-run.md`** — was "set up the prompt library and run a workflow",
+  narrating `config set-library`, `<library_dir>/workflows/<name>/workflow.yaml`,
+  `_resolve_library_dir`, `load_workflow`, `_step_loop` and `OutOfGasError`. Now: *install*
+  a workflow distribution — there is **no configuration step**, because publishing the
+  entry point is what makes the name resolvable — then `workhorse run <name>`, with the
+  path-refusal rule, the eager `Registry.directory()` and the three exit codes (0 / 1 /
+  130). Its two `verify:` citations named tests that no longer exist
+  (`test_library_dir_from_workhorse_config`, `test_bare_name_resolves_against_library`) and
+  were replaced with three that do.
+- **`workhorse-author-test.md`** — was an API tour of `workhorse.testing`'s `WorkflowRun` /
+  `mock_agent` / `mock_agent_sequence` / `mock_command` / `RunResult`, PATH shims under
+  `.workhorse-test/bin/`, and `workhorse --workflow <path>` driven as a subprocess. **None
+  of that exists.** Now: construct the `Workflow`, build a `RunEnv`, substitute through
+  `Registry.override` / `run_agent=` / `stub_agents` / `@blueprint.node(stub=…)`, call
+  `drive(wf, env)`, assert with the four helpers `testing.py` still has. `workhorse test`
+  survives unchanged and is still the runner.
+- **`workhorse-author-visualize-run.md`** — was `--pin`/`--leaf` on `dot --workflow <path>`.
+  `dot` now takes a **name** and only `--name`/`--output`; there is no pinning and no leaf
+  cutting. The rewrite makes the author's two checks explicit and different: `dot` +
+  `preflight` read *every* path off the source, `--dry-run` walks *one* over stand-in
+  values, including the "no declared `stub_agents` ⇒ a fail terminal still exits 0" rule.
+- **`workhorse-crash-resume.md`** — was `write_checkpoint(current_id, context)`,
+  `_should_fast_forward`, `done.json`/`context_after.json`, `resume_interrupted_node`.
+  **The whole fast-forward half is gone**: pyflow re-enters the checkpointed state from the
+  top, so the contract is *idempotency, not determinism* — which the page now says outright,
+  along with `auto_resolve`'s stable dir, the `p<sha1[:8]>` run id, the non-pyflow
+  checkpoint refusal, `aliases=[…]`, and the original-start anchoring of
+  `WORKHORSE_MAX_RUNTIME_S`.
+
+`ostler doctor`: **30 → 27**. The three cleared are the tree's only two
+`unresolved-relation` errors (`workhorse-author-visualize-run.md`'s `steps:` targets
+`#node-types` and `#flows`) plus the `#sample-load-valid` missing anchor. `flows/` is now
+clean; every remaining error is in `concepts/` or `docs/features/farrier/`. (30, not 29:
+the concurrent workstream renamed `_opencode_on_event` between iterations.)
+
+**Learned, and worth not re-discovering:** a link inside a flow's `steps:` bullet is parsed
+as an OKF **relation** and must resolve inside the book — a repo-relative link to
+`workhorse/docs/AUTHORING.md` there is an `unresolved-relation`, and the same link in the
+page's prose is fine.
+
+#### Findings — code the docs cannot describe truthfully (no code changed)
+
+1. **`workhorse/workhorse/testing.py`'s module docstring example does not run.** It imports
+   `drive` and `stub_nodes` from `workhorse.pyflow`, which exports neither; `drive` is
+   `pyflow.driver.drive(wf, env, resume=None)` and is called there without its required
+   `env`; `stub_nodes` is `pyflow.engine.stub_nodes(index) -> index`, a pure function, used
+   there as a context manager. Deferred to item 4 ("every runnable example"), where it
+   belongs.
+2. **`pyflow/run.py:139` prints an invalid resume hint** —
+   `workhorse --resume-run <dir>`, which exits with "workflow is required". The working
+   form is `workhorse run <name> --resume-run <dir>`.
+3. **Three module docstrings still speak of the YAML engine in the present tense**:
+   `pyflow/run.py`, `pyflow/driver.py:65` ("The two engines share a runs directory"), and
+   `runner/spec.py`.
+4. **`main.py:341`** — `workhorse test`'s help still reads "Directory containing
+   workflow.yaml and a tests/ subdirectory".
+5. **`artifacts.py` has four production-dead methods** — `write_checkpoint`, `write_branch`,
+   `read_done`, `read_context_after`. Only `tests/test_idempotency.py` and
+   `tests/test_otel.py` call them, which means `test_idempotency.py` tests a fast-forward
+   mechanism **no engine uses**. Correspondingly, `concepts/artifact-writer.md` documents
+   all four and does **not** document `write_state_checkpoint`, the one pyflow actually
+   calls — a live page describing a dead API, which `ostler` cannot see because both
+   symbols exist.
+6. **`config set-library` / `set-stablemate` still exist** and still write `library_dir` /
+   `stablemate_dir`, but `library_dir` no longer participates in workflow resolution. The
+   command persists a key nothing reads.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

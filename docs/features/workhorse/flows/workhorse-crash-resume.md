@@ -5,60 +5,66 @@ title: Crash and resume in place
 ---
 # Crash and resume in place
 
-The headline resilience path: [`workhorse run`](../workhorse.md#run) checkpoints after every node
-so an unattended run that dies mid-graph (process killed, machine reboot, `OutOfGasError`, an
-unrecovered `BackendInvocationError`) is never re-launched from scratch — re-issuing the **identical
-command line** finds the stable run dir's [`checkpoint.json`](../run-artifacts.md#checkpointjson)
-and continues from exactly where it stopped, per
-[Workflow execution](../concepts/workflow.md#execution) steps 4-5.
+The headline resilience path. [`drive`](../concepts/pyflow-driver.md) checkpoints
+`(state, params)` **before** entering every state, so an unattended run that dies
+mid-machine — process killed, machine reboot, an unrecovered `BackendInvocationError`, an
+operator Ctrl-C — is never relaunched from scratch: re-issuing the **identical command
+line** finds the stable run dir's [`checkpoint.json`](../run-artifacts.md#checkpointjson)
+and re-enters the state it stopped in.
 
-- start: an in-progress `workhorse run <workflow> [<flow>]` invocation dies after at least one
-  [`write_checkpoint`](../concepts/artifact-writer.md#write_checkpointcurrent_id-context) call for
-  its stable run dir `<runs-dir>/<workflow-name>-<run-id>`, before the run reached a
-  `terminal`/`fail` node — so `run.json`'s `terminal` key is still `null`. An operator Ctrl-C
-  qualifies and resumes identically: `run()`'s `KeyboardInterrupt` handler records the stop via
-  [`record_interrupt`](../concepts/artifact-writer.md#record_interruptnode_id-error) —
-  `interrupted_at`/`error` on [`run.json`](../run-artifacts.md#runjson) plus an `error` event
-  closing the in-flight node's window — and deliberately leaves `terminal` `null` so step 2 below
-  still sees an unfinished run.
+Resume is deliberately **coarse**: the checkpointed state is re-entered *from the top*, and
+whatever it had already done inside itself is done again. There is no intra-state memo and
+no fast-forward. What that buys is that the contract a state must satisfy is
+**idempotency, not determinism** — a state may branch on a fresh read of the world, and
+still resume correctly — and it is why a state should be sized around the work it can
+afford to repeat.
+
+- start: an in-progress `workhorse run <name> [<flow>]` dies after at least one checkpoint
+  write, before any state returned [`Done`](../workflow-format.md#transition) — so
+  [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`. An operator Ctrl-C
+  qualifies and resumes identically: `run_pyflow`'s `KeyboardInterrupt` handler terminates
+  the active agent turn, records the stop via
+  [`record_interrupt`](../concepts/artifact-writer.md#record_interruptnode_id-error), prints
+  the pause, and exits `130` — deliberately leaving `terminal` `null` so step 2 still sees
+  an unfinished run. A `PyflowError` (exit `1`) marks the run `fail` but leaves the same dir
+  on disk to be resumed explicitly once the cause is fixed.
 - steps:
-  1. [`workhorse run <workflow> [<flow>]`](../workhorse.md#run) — re-run the exact same command
-     (same workflow/path, same `--run-id` or default, same `--runs-dir`), with none of
-     `--resume-run`/`--resume-latest`/`--no-cache` given. `_run_run` resolves the same
-     `workflow_path`, `runs_dir`, and `run_id` as the crashed invocation and calls `run(...,
-     auto=True)` with `resume_run_dir=None` — auto-resume-in-place, not an explicit resume flag,
-     drives this path.
-  2. [Auto-resolve the run dir](../concepts/workflow.md#execution) (`_auto_resolve`, step 4) —
-     computes the one stable dir for `(graph.name, run_id or "default")`, the same directory the
-     crashed run was writing to. Because it holds an unfinished
-     [`checkpoint.json`](../run-artifacts.md#checkpointjson) (`run.json`'s `terminal` still `null`,
-     since the crash pre-empted `finish()`), that dir becomes this invocation's `resume_run_dir`
-     instead of triggering a fresh start.
-  3. [Resume the writer and checkpoint](../concepts/workflow.md#execution) (step 5, resume branch)
-     — [`ArtifactWriter.resume`](../concepts/artifact-writer.md#resumerun_dir---artifactwriter-classmethod)
-     re-binds to that dir and reads back [`checkpoint.json`](../run-artifacts.md#checkpointjson):
-     `current_id` (the node that was about to run, or had just finished, when the crash hit) and the
-     full context at that point. `ctx` restarts from `{manifest, checkpoint["context"]}`.
-  4. [`_should_fast_forward`](../concepts/workflow.md#execution) — checks `current_id`'s
-     [`done.json`](../run-artifacts.md#node-iddonejson): if it exists, its `seq` matches the
-     checkpoint's `seq`, and it names a `next` — the node finished its side effects and wrote its
-     completion marker, but the crash landed in the gap before the walk's next
-     `write_checkpoint` advanced the cursor — restore `ctx` from that node's
-     [`context_after.json`](../run-artifacts.md#node-idcontext_afterjson) and jump `current_id`
-     straight to `done["next"]`, so the finished node's side effects (a git commit, a PROGRESS
-     append, an agent turn) are never re-run. Otherwise `current_id` re-enters as-is with
-     `resume_interrupted_node = True`, the one case where an `agent` node continues its prior
-     backend session instead of starting fresh.
-  5. [Node-walk engine](../concepts/workflow.md#node-walk-engine) (`_step_loop`) — steps the graph
-     forward from that `current_id` exactly as a fresh run would: burn gas, `write_checkpoint`,
-     dispatch by node type, merge outputs, `write_step`/`write_branch`, advance to `next` — until it
-     reaches a `terminal`/`fail` node.
-- end: the walk reaches a `terminal` node — `write_final_context` then `finish(terminal="terminal")`
-  stamp [`context.json`](../run-artifacts.md#contextjson) and
-  [`run.json`](../run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits `0`. (A
-  `fail` node, or dying again with an unrecovered `OutOfGasError`/`BackendInvocationError`, exits `1`
-  and leaves the same stable dir resumable for another retry of this same journey.)
-- verify: `workhorse/tests/test_idempotency.py::test_should_fast_forward_matches_only_current_checkpoint`,
-  `workhorse/tests/test_resume_auto.py::test_auto_resolve_skips_terminal_run`,
-  `workhorse/tests/test_resume_auto.py::test_auto_resolve_single_stable_dir_per_program`
-
+  1. **Re-run the exact same command** — same name, same `--run-id` or default, same
+     `--runs-dir`, and none of `--resume-run` / `--resume-latest` / `--no-cache`.
+     Auto-resume-in-place is the default path, not a flag.
+  2. **Resolve the run dir** (`auto_resolve`) — the run id is the explicit `--run-id`, else
+     a digest of `--params` (`p<sha1[:8]>`, so distinct parameters get distinct dirs and
+     never collide), else `default`; that names one stable dir per `(workflow, run-id)`,
+     the same directory the dead run was writing to. It is adopted as this invocation's
+     resume target **unless** its `run.json` already carries a `terminal` — a finished run
+     starts over rather than resuming into its own ending. `--resume-run <dir>` targets a
+     dir explicitly; `--resume-latest` picks the newest unfinished one via
+     `find_latest_resumable`; `--no-cache` forces a fresh dir.
+  3. **Read the checkpoint back** (`read_resume`) — the state name, the `params` bound for
+     it, the run's frozen `inputs`, `ctx`, the flow class name, and `waiting_on` for a run
+     paused in an [`Await`](../workflow-format.md#transition). A checkpoint whose `engine`
+     key is not `"pyflow"` is
+     [refused by name](../concepts/pyflow-driver.md#a-checkpoint-from-the-retired-engine-is-refused-not-misread)
+     rather than misread — the YAML front-end shared this runs directory, and one of its
+     node ids that happened to match a state name would otherwise resume the wrong thing. A
+     checkpoint naming a state the class no longer has fails loudly instead of silently
+     restarting the run; `@workflow.state(aliases=[…])` is how a
+     [renamed state](../concepts/pyflow-driver.md#renaming-a-state-without-stranding-a-run)
+     keeps its old runs resumable.
+  4. **Re-enter the machine there** — `setup()` does **not** run again; `ctx` is restored
+     from the checkpoint and re-sealed, the params are coerced back into the state's
+     declared types, and the driver dispatches into that state exactly as a fresh
+     transition would. A param the state does not have is reported by name. The run's
+     wall-clock budget (`WORKHORSE_MAX_RUNTIME_S`) is anchored to the run's **original**
+     start read back from `run.json`, so a resume continues one budget rather than granting
+     a fresh one every relaunch.
+  5. **Walk on** — one state method per transition, checkpointing before each, until a state
+     returns `Done`.
+- end: the entry flow returns `Done`, `finish(terminal="terminal")` stamps
+  [`run.json`](../run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits
+  `0`. Dying again leaves the same stable dir resumable for another retry of this same
+  journey; a `--dry-run` never participates, since it neither resumes nor is resumable.
+- verify: `workhorse/tests/test_pyflow.py::test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup`,
+  `workhorse/tests/test_pyflow.py::test_a_checkpoint_naming_a_dead_state_fails_rather_than_starting_over`,
+  `workhorse/tests/test_pyflow.py::test_read_resume_refuses_a_yaml_checkpoint`,
+  `workhorse/tests/test_resume_auto.py::test_auto_resolve_skips_terminal_run`

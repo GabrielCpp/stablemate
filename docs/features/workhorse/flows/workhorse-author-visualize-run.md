@@ -5,49 +5,58 @@ title: Author, visualize, and run a workflow
 ---
 # Author, visualize, and run a workflow
 
-The design-time path from a hand-authored `workflow.yaml` to a live run: write the graph per the
-[workflow file format](../workflow-format.md), sanity-check its shape with
-[`workhorse dot`](../workhorse.md#dot) — optionally carving out one mode's view with `--pin`/
-`--leaf` — before committing to a real, unattended [`workhorse run`](../workhorse.md#run) of the
-same file.
+The design-time path from an empty package to a live run: write the state machine per the
+[workflow format](../workflow-format.md), read its shape back with
+[`workhorse dot`](../workhorse.md#dot), rehearse it with
+[`workhorse run <name> --dry-run`](../workhorse.md#run), and only then commit to a real,
+unattended [`workhorse run`](../workhorse.md#run). The two checks are deliberately different
+tools: `dot` and `--dry-run`'s preflight read **every** path off the source, while the
+rehearsal walks **one** — the path a machine of stand-in values happens to take.
 
-- start: a `workflow.yaml` on disk (a `start` node id, a `nodes:` list, optionally `vars`/`env`/
-  `flows:`) that has never been executed — authored directly or copied from
-  [the format's sample](../workflow-format.md#sample-load-valid).
+- start: a Python package that is installed (`pip install -e .`) and publishes a name in the
+  `workhorse.workflows` entry-point group, but has never been executed.
 - steps:
-  1. **Author the graph** against [the workflow file format](../workflow-format.md) — pick a
-     `start` node, add `agent`/`script`/`branch`/`flow`/`call`/`terminal`/`fail`
-     [nodes](../workflow-format.md#node-types) with resolvable `next`/`cases`/`conditions`/
-     `default` targets, and any `vars`/`env`/[`flows:`](../workflow-format.md#flows) the graph
-     needs. [`load_workflow`](../concepts/load-workflow.md) is the parser that will later validate
-     it; nothing runs yet.
-  2. **Sanity-check the shape** with [`workhorse dot --workflow <path>`](../workhorse.md#dot) —
-     `_run_dot` resolves the path, parses it via
-     [`load_workflow`](../concepts/load-workflow.md) (a `ValueError` here means the graph is
-     malformed and the journey stops before any node runs), then renders it to Graphviz DOT via
-     [`to_dot`](../concepts/dot-renderer.md). A multi-mode graph (a `branch` node whose value picks
-     between subgraphs) can be carved down to one mode's view with repeated
-     `--pin path=value` — collapsing that branch to its single resolved edge and pruning the
-     unreachable side by [`to_dot`'s reachability walk](../concepts/dot-renderer.md#algorithm) — and
-     `--leaf <node>` cuts off a specific node's outgoing edges to stop the walk at a cross-view
-     bridge not gated by any pinned branch. The DOT text is written to stdout (or `-o <file>`) for
-     visual inspection with any Graphviz renderer — a step outside workhorse itself. Bad node
-     references, an unreachable node, or a graph that doesn't collapse the way `--pin` intended
-     surface here as a visibly wrong diagram, before an agent turn or script has run.
-  3. **Iterate.** Steps 1-2 repeat until the rendered graph's shape matches intent — no runtime
-     cost to re-running `dot`, since it never executes a node.
-  4. **Run it for real** with [`workhorse run --workflow <path> [<flow>]`](../workhorse.md#run) —
-     `_run_run` resolves the same `workflow_path` (verbatim, since it's a path not a bare library
-     name), selects the `--cli` [AgentBackend](../concepts/agent-backend.md), resolves fresh-start
-     vs. resume, and hands the graph to
-     [Workflow execution](../concepts/workflow.md#execution), which walks it node by node —
-     checkpointing after each — exactly as diagrammed in step 2 (`--pin`'s collapsed branch is a
-     rendering aid only; the live run still evaluates every `branch` node against the real
-     context).
-- end: the process exits `0` (reached a `terminal` node) or `1` (reached a `fail` node, hit a
-  malformed workflow at load, or died unrecovered per
-  [Workflow execution](../concepts/workflow.md#resilience-fail-soft)); on a genuine run,
-  [run artifacts](../run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome and
-  make it resumable, continuing the [crash-and-resume](workhorse-crash-resume.md) journey if it
-  dies mid-graph.
-
+  1. **Author the machine** — a [`Registry`](../workflow-format.md#registry) under the
+     workflow's name, one or more [`Workflow`](../workflow-format.md#workflow-subclass)
+     subclasses whose methods are its [states](../workflow-format.md#state), the
+     [`@blueprint.node`](../workflow-format.md#node) functions those states call, and the
+     `prompts/` each [agent turn](../workflow-format.md#the-agent-turn) renders. Nothing
+     declares the graph: an edge *is* a
+     [`Continue`/`Await`](../workflow-format.md#transition) a state returns, so there is no
+     separate document to keep in sync and nothing to validate before the package imports.
+  2. **Read the shape back** with [`workhorse dot <name>`](../workhorse.md#dot) — the same
+     name resolution `run` uses, then
+     [`state_graph`](../concepts/pyflow-state-graph.md) parses each state's own source and
+     [`to_dot`](../concepts/pyflow-state-graph.md#rendering) emits Graphviz DOT to stdout (or
+     `--output <file>`, with `--name` overriding the digraph identifier). One
+     `subgraph cluster_*` per flow; a state's label lists what it runs (`call …`, `agent …`,
+     `handoff …`). Because it is a static read it **over-approximates** — both arms of an
+     `if` are drawn — and it cannot drift from the code the way a hand-maintained edge list
+     can. A dangling target, an unreachable state, or a dynamic target that is only known at
+     runtime is visible in the diagram (`<name>?`, lightcoral, `shape=note`) before anything
+     has run.
+  3. **Rehearse it** with [`workhorse run <name> --dry-run`](../workhorse.md#run) — first
+     [`preflight`](../concepts/pyflow-state-graph.md#preflight) reports everything a static
+     read can see (a missing `start`, a machine that can never return `Done`, a state whose
+     source cannot be read, a transition to a name that is not a state, an unreachable
+     state, a prompt path that does not exist) and **errors out** rather than warning; then
+     the driver walks the machine over a substituted node index — declared
+     `@blueprint.node(stub=…)` bodies and `Registry.stub_agents({stem: reply})` replies — so
+     no node body runs and no agent CLI is launched. A workflow that declares no agent
+     stand-ins gets a blank reply for every turn, so reaching a fail terminal there is
+     reported and still exits `0`; one that *has* said what the happy path answers exits `1`
+     when it fails anyway.
+  4. **Iterate.** Steps 1–3 repeat until both reads match intent. Neither costs an agent
+     turn.
+  5. **Run it for real** with [`workhorse run <name> [<flow>]`](../workhorse.md#run) —
+     the same resolution, the same driver, the real node bodies and the `--cli`
+     [agent backend](../concepts/agent-backend.md), checkpointing `(state, params)` before
+     every transition.
+- end: the process exits `0` (the entry flow returned `Done`) or `1` (a `PyflowError`, or a
+  dry run whose declared stand-ins still walked into a failure). On a genuine run the
+  [run artifacts](../run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome
+  and make it resumable, continuing the [crash-and-resume](workhorse-crash-resume.md)
+  journey if it dies mid-machine.
+- verify: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`,
+  `workhorse/tests/test_pyflow.py::test_dry_run_records_the_calls_without_making_them`,
+  `workhorse/tests/test_pyflow.py::test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared`
