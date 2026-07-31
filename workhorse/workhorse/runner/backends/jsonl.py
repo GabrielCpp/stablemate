@@ -4,19 +4,64 @@ Codex, Copilot and OpenCode all stream NDJSON on stdout. The loop below is gener
 each backend supplies an ``on_event`` callback that pulls the final answer text and
 the resumable session id out of its own event vocabulary into the shared
 ``TurnState``.
+
+It is also those backends' one dependency on a live subprocess, so it is declared as
+a port (``JsonlStream``) and held as a field (``JsonlBackend.stream``) rather than
+reached for as a module global. A test that wants to see the argv an adapter built,
+or hand it a canned turn, constructs the adapter with its own stream.
 """
 
 from __future__ import annotations
 
 import json
+from typing import Any, Protocol
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
+from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.turn import TurnState
 
 
+class OnEvent(Protocol):
+    """One parsed NDJSON object, folded into the turn's accumulating state.
+
+    ``event`` stays a plain mapping on purpose: it is another tool's output, read
+    tolerantly for the handful of keys this adapter knows and shrugged at otherwise.
+    What gets *owned* is the far side — ``TurnState``.
+    """
+
+    def __call__(self, event: dict[str, Any], state: TurnState, node_id: str) -> None: ...
+
+
+class JsonlStream(Protocol):
+    """Run one CLI turn and stream its NDJSON stdout. ``stream_jsonl`` is the
+    implementation; a test is the other one."""
+
+    def __call__(
+        self,
+        cmd: list[str],
+        node_id: str,
+        timeout: float,
+        stdin_data: str | None,
+        on_event: OnEvent,
+        *,
+        resilience: AgentResilience,
+        cwd: str | None = None,
+        env_extra: dict[str, str] | None = None,
+    ) -> TurnState: ...
+
+
 def stream_jsonl(
-    cmd, node_id, timeout, stdin_data, on_event, *, resilience, cwd=None, env_extra=None
+    cmd: list[str],
+    node_id: str,
+    timeout: float,
+    stdin_data: str | None,
+    on_event: OnEvent,
+    *,
+    resilience: AgentResilience,
+    cwd: str | None = None,
+    env_extra: dict[str, str] | None = None,
 ) -> TurnState:
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id)`` per parsed object.
@@ -66,3 +111,20 @@ def stream_jsonl(
     state.timed_out = timed_out or bool(early_abort[0])
     state.returncode = returncode
     return state
+
+
+class JsonlBackend(AgentBackend):
+    """An ``AgentBackend`` whose CLI speaks NDJSON, holding the loop it speaks it with.
+
+    The one field is the point. Codex, Copilot and OpenCode differ in argv and in
+    event vocabulary, and share the streaming; three adapters each writing
+    ``self.stream = stream`` is the repetition this exists to remove. It stays
+    abstract — ``run_turn`` and ``compact`` are still each adapter's own.
+
+    Assigned in ``__init__`` rather than declared as a class attribute so it lands on
+    the instance: a plain function stored on a class becomes a bound method, and
+    ``self.stream(cmd, ...)`` would quietly pass the backend as ``cmd``.
+    """
+
+    def __init__(self, stream: JsonlStream = stream_jsonl) -> None:
+        self.stream = stream

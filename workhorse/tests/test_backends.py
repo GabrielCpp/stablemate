@@ -145,8 +145,7 @@ def test_codex_effort_sets_reasoning_override():
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(codex, "stream_jsonl", fake):
-            _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort="high")
+        _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5", effort="high")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -163,8 +162,7 @@ def test_codex_effort_clamped_to_high():
         )
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
-            with patch.object(codex, "stream_jsonl", fake):
-                _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort=level)
+            _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5", effort=level)
         finally:
             if prior is not None:
                 os.environ["CODEX_PROFILE"] = prior
@@ -179,8 +177,7 @@ def test_codex_no_effort_omits_override():
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(codex, "stream_jsonl", fake):
-            _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5")
+        _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -227,8 +224,7 @@ def test_copilot_effort_maps_to_native_flag():
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="s")
     )
-    with patch.object(copilot, "stream_jsonl", fake):
-        _run_turn(CopilotBackend(), "BASE PROMPT", "n", sidp, effort="high")
+    _run_turn(CopilotBackend(fake), "BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
     assert cmd[cmd.index("--effort") + 1] == "high"
     assert "BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
@@ -242,9 +238,8 @@ def test_codex_run_turn_fresh_then_resume():
 
     prior = os.environ.pop("CODEX_PROFILE", None)  # no profile → bare `codex exec`
     try:
-        with patch.object(codex, "stream_jsonl", fake):
-            # Leading '@' = model only, no profile (default provider).
-            out = _run_turn(CodexBackend(), "PROMPT", "n", sidp, model="@gpt-5.5")
+        # Leading '@' = model only, no profile (default provider).
+        out = _run_turn(CodexBackend(fake), "PROMPT", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -263,8 +258,7 @@ def test_codex_run_turn_fresh_then_resume():
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="OK2", session_id="tid-123")
     )
-    with patch.object(codex, "stream_jsonl", fake2):
-        _run_turn(CodexBackend(), "P2", "n", sidp)
+    _run_turn(CodexBackend(fake2), "P2", "n", sidp)
     assert captured2["cmd"][:3] == ["codex", "exec", "resume"]
     assert "tid-123" in captured2["cmd"]
 
@@ -281,11 +275,11 @@ def test_codex_profile_from_env():
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        with patch.object(codex, "stream_jsonl", fake):
-            # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
-            _run_turn(CodexBackend(),
-                "PROMPT", "n", sidp, model="@deepseek/deepseek-chat-v3.1"
-            )
+        # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
+        _run_turn(
+            CodexBackend(fake), "PROMPT", "n", sidp,
+            model="@deepseek/deepseek-chat-v3.1",
+        )
     finally:
         if prior is None:
             os.environ.pop("CODEX_PROFILE", None)
@@ -302,8 +296,7 @@ def test_codex_profile_from_env():
     )
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        with patch.object(codex, "stream_jsonl", fake2):
-            _run_turn(CodexBackend(), "P2", "n", sidp)
+        _run_turn(CodexBackend(fake2), "P2", "n", sidp)
     finally:
         if prior is None:
             os.environ.pop("CODEX_PROFILE", None)
@@ -328,8 +321,7 @@ def test_codex_per_node_profile_overrides_env():
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(codex, "stream_jsonl", fake):
-            _run_turn(CodexBackend(), "P", "n", sidp, model="local@qwen2.5-coder:32b")
+        _run_turn(CodexBackend(fake), "P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
         assert cmd[:4] == ["codex", "--profile", "local", "exec"]  # node profile wins
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
@@ -338,8 +330,7 @@ def test_codex_per_node_profile_overrides_env():
         fake2, captured2 = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(codex, "stream_jsonl", fake2):
-            _run_turn(CodexBackend(), "P", "n", sidp2, model="local")  # bare = profile
+        _run_turn(CodexBackend(fake2), "P", "n", sidp2, model="local")  # bare = profile
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
         assert "-m" not in captured2["cmd"]  # model pinned by the profile
     finally:
@@ -359,8 +350,7 @@ def test_codex_profile_at_slug_model_string():
     )
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        with patch.object(codex, "stream_jsonl", fake):
-            _run_turn(CodexBackend(), "P", "n", sidp, model="mimo@mimo-pro")
+        _run_turn(CodexBackend(fake), "P", "n", sidp, model="mimo@mimo-pro")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -387,8 +377,7 @@ def test_copilot_run_turn_fresh_then_resume():
         turn.TurnState(result_text="ANSWER", session_id="sess-1")
     )
 
-    with patch.object(copilot, "stream_jsonl", fake):
-        out = _run_turn(CopilotBackend(), "PROMPT", "n", sidp)
+    out = _run_turn(CopilotBackend(fake), "PROMPT", "n", sidp)
 
     assert out == "ANSWER"
     cmd = captured["cmd"]
@@ -401,8 +390,7 @@ def test_copilot_run_turn_fresh_then_resume():
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="A2", session_id="sess-1")
     )
-    with patch.object(copilot, "stream_jsonl", fake2):
-        _run_turn(CopilotBackend(), "P2", "n", sidp)
+    _run_turn(CopilotBackend(fake2), "P2", "n", sidp)
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
 
 
@@ -572,10 +560,10 @@ def test_opencode_run_turn_fresh_then_resume():
     fake, captured = _fake_stream(
         turn.TurnState(result_text="PONG", session_id="ses_1")
     )
-    with patch.object(opencode, "stream_jsonl", fake):
-        out = _run_turn(OpenCodeBackend(),
-            "PROMPT", "n", sidp, model="openrouter/xiaomi/mimo-v2.5", effort="high"
-        )
+    out = _run_turn(
+        OpenCodeBackend(fake), "PROMPT", "n", sidp,
+        model="openrouter/xiaomi/mimo-v2.5", effort="high",
+    )
     assert out == "PONG"
     cmd = captured["cmd"]
     # --print-logs --log-level ERROR routes opencode's quota/limit errors to stderr so
@@ -600,8 +588,7 @@ def test_opencode_run_turn_fresh_then_resume():
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="P2", session_id="ses_1")
     )
-    with patch.object(opencode, "stream_jsonl", fake2):
-        _run_turn(OpenCodeBackend(), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
+    _run_turn(OpenCodeBackend(fake2), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
 
 
@@ -612,15 +599,13 @@ def test_opencode_effort_variant_mapping_and_omit():
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
-        with patch.object(opencode, "stream_jsonl", fake):
-            _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort=effort)
+        _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
     # "medium" has no opencode variant → omitted entirely.
     fake, captured = _fake_stream(
         turn.TurnState(result_text="X", session_id="s")
     )
-    with patch.object(opencode, "stream_jsonl", fake):
-        _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort="medium")
+    _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
 
 
@@ -753,15 +738,11 @@ def test_opencode_cap_attaches_codex_reset_at():
         timed_out=True,  # cap_abort flagged timed_out
     )
     fake, _ = _fake_stream(capped)
-    with (
-        patch.object(opencode, "stream_jsonl", fake),
-        patch.object(
-            opencode, "_codex_reset_at", lambda model, *a, **k: reset
-        ),
-    ):
+    with patch.object(opencode, "_codex_reset_at", lambda model, *a, **k: reset):
         try:
-            _run_turn(OpenCodeBackend(),
-                "P", "review_implementation", None, model="openai/gpt-5.5"
+            _run_turn(
+                OpenCodeBackend(fake), "P", "review_implementation", None,
+                model="openai/gpt-5.5",
             )
             raise AssertionError("expected a cap BackendInvocationError")
         except failure.BackendInvocationError as exc:
@@ -778,15 +759,12 @@ def test_opencode_non_cap_does_not_probe_codex():
     ok = turn.TurnState(result_text="DONE", session_id="s")
     fake, _ = _fake_stream(ok)
     calls = {"n": 0}
-    with (
-        patch.object(opencode, "stream_jsonl", fake),
-        patch.object(
-            opencode,
-            "_codex_reset_at",
-            lambda *a, **k: calls.__setitem__("n", calls["n"] + 1),
-        ),
+    with patch.object(
+        opencode,
+        "_codex_reset_at",
+        lambda *a, **k: calls.__setitem__("n", calls["n"] + 1),
     ):
-        out = _run_turn(OpenCodeBackend(), "P", "n", None, model="openai/gpt-5.5")
+        out = _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.5")
     assert out == "DONE"
     assert calls["n"] == 0, "no cap → no probe"
 
