@@ -1,48 +1,31 @@
-"""Tests for "what is the run working on right now" — both engines' spellings of it.
+"""Tests for "what is the run working on right now".
 
-The YAML engine says it with a per-node ``activity:`` field; ``pyflow`` says it with a
-flagged log record (``logger.info(msg, extra={"activity": True})``), because a state is
-one method that may do several things and the interesting one is whichever it is doing
-now. Five seams:
+A workflow says it with a flagged log record (``logger.info(msg, extra={"activity":
+True})``), because a state is one method that may do several things and the interesting
+one is whichever it is doing now. Three seams:
 
-- the node models parse an ``activity`` off ``agent``/``script``/``flow``/``call``
-  nodes (and the loader passes it through — a field on the model but dropped by the
-  loader would be silently lost);
-- the graph walk renders it per node and folds it into the labels dict as
-  ``wf.activity`` (reusing ``main._render_labels``);
 - ``pyflow.activity.ActivityLog`` publishes the last flagged message as the
   ``activity`` label, unprefixed, and keeps it across a transition's ``rebase``;
 - unlike most labels, activity and work_id also ride the LIVE liveness metrics
   (``workhorse.node.active`` and the run heartbeat), so a monitor can show what the run
   is doing while the node span is still open — and only those two keys do, to keep
   metric attribute cardinality bounded;
-- both spellings of those two ride, prefixed and not, because neither engine's keys
-  are translated on the way out.
+- they ride prefixed and unprefixed alike: the ``wf.``-prefixed spelling outlived the
+  YAML front-end that minted it, because the spans already in a collector's store use
+  it and are still queried alongside the new ones.
 
-Run: ./.venv/bin/python tests/test_activity.py   (or via pytest)
+Run: uv run python workhorse/tests/test_activity.py   (or via pytest)
 """
 from __future__ import annotations
 
 import contextlib
 import importlib
-import json
 import logging
-import tempfile
-from pathlib import Path
 
 from workhorse import otel
-from workhorse.graph.loader import load_workflow
 from workhorse.pyflow import activity as pyflow_activity
 
-main = importlib.import_module("workhorse.main")
 test_otel = importlib.import_module("tests.test_otel")
-
-
-def _load(raw: dict):
-    with tempfile.TemporaryDirectory() as d:
-        p = Path(d) / "workflow.yaml"
-        p.write_text(json.dumps(raw))  # JSON is valid YAML
-        return load_workflow(p)
 
 
 @contextlib.contextmanager
@@ -69,68 +52,6 @@ def _logger(name: str) -> logging.Logger:
     log.setLevel(logging.INFO)
     log.filters.clear()
     return log
-
-
-# --------------------------------------------------------------------------- #
-# The node field parses (and survives the loader) on every work-doing node type
-# --------------------------------------------------------------------------- #
-def test_activity_parses_on_agent_script_flow_and_call():
-    raw = {
-        "name": "acts",
-        "start": "ag",
-        "flows": {
-            "sub": {
-                "start": "s2",
-                "nodes": [{"id": "s2", "type": "terminal"}],
-            }
-        },
-        "nodes": [
-            {"id": "ag", "type": "agent", "prompt": "p.md",
-             "activity": "reviewing {{ story_slug }}", "next": "sc"},
-            {"id": "sc", "type": "script", "script": "s.py",
-             "activity": "selecting next item", "next": "cl"},
-            {"id": "cl", "type": "call", "fn": "seed",
-             "activity": "seeding", "next": "fl"},
-            {"id": "fl", "type": "flow", "name": "sub",
-             "activity": "running sub", "next": "done"},
-            {"id": "done", "type": "terminal"},
-        ],
-    }
-    g = _load(raw)
-    nodes = g.nodes  # keyed by node id (the walk does graph.nodes[current_id])
-    assert nodes["ag"].activity == "reviewing {{ story_slug }}"
-    assert nodes["sc"].activity == "selecting next item"
-    assert nodes["cl"].activity == "seeding"
-    assert nodes["fl"].activity == "running sub"
-
-
-def test_activity_is_optional():
-    raw = {
-        "name": "acts",
-        "start": "sc",
-        "nodes": [
-            {"id": "sc", "type": "script", "script": "s.py", "next": "done"},
-            {"id": "done", "type": "terminal"},
-        ],
-    }
-    assert _load(raw).nodes["sc"].activity is None
-
-
-# --------------------------------------------------------------------------- #
-# Rendering — a per-node activity string lands as wf.activity via the shared helper
-# --------------------------------------------------------------------------- #
-def test_activity_renders_under_wf_namespace():
-    got = main._render_labels(
-        {"activity": "reviewing {{ story_slug }}"}, {"story_slug": "PRED-A2JX"}
-    )
-    assert got == {"wf.activity": "reviewing PRED-A2JX"}, got
-
-
-def test_unresolved_activity_is_dropped():
-    # A pure-expression activity that resolves to nothing is dropped, not stamped
-    # blank (early in a run, before a story is selected).
-    got = main._render_labels({"activity": "{{ story_slug }}"}, {})
-    assert got == {}, got
 
 
 # --------------------------------------------------------------------------- #

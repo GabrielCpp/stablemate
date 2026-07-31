@@ -1,19 +1,19 @@
-"""Tests for resume idempotency: a node that completed under the current checkpoint
-is fast-forwarded (not re-run), while a stale completion marker from an earlier loop
-visit is correctly ignored so the node re-runs.
+"""Tests for the checkpoint bookkeeping resume rests on.
 
-Run: ./.venv/bin/python tests/test_idempotency.py   (or via pytest)
+Every checkpoint carries a monotonic `seq`, and a completion marker records the seq it
+completed under. That pairing is what tells a marker left by *this* visit to a node from
+a stale one left by an earlier loop visit — the distinction any resume rule needs, and
+the reason the counter is restored rather than restarted when a run resumes.
+
+Run: uv run python tests/test_idempotency.py   (or via pytest)
 """
 from __future__ import annotations
 
-import importlib
 import json
 import tempfile
 from pathlib import Path
 
 from workhorse.artifacts import ArtifactWriter
-
-m = importlib.import_module("workhorse.main")
 
 
 def _writer(tmp):
@@ -59,27 +59,19 @@ def test_resume_restores_seq_so_new_checkpoints_dont_collide():
         assert json.loads((w2.run_dir / "checkpoint.json").read_text())["seq"] == 3
 
 
-def test_should_fast_forward_matches_only_current_checkpoint():
+def test_done_marker_pins_the_seq_it_completed_under():
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
-        # node 'record' completed under checkpoint seq 1
+        # 'record' completed under checkpoint seq 1.
         w.write_checkpoint("record", {})
         w.write_step("record", "p", {"r": 1}, {"r": 1}, next_node="publish")
-        done = w.read_done("record")               # {seq:1, next:publish}
+        assert w.read_done("record") == {"seq": 1, "next": "publish"}
 
-        # killed AFTER record finished but before the cursor advanced:
-        # checkpoint still points at 'record' with the SAME seq -> fast-forward.
-        assert m._should_fast_forward(done, {"current_id": "record", "seq": 1}) is True
-
-        # killed DURING a LATER visit to 'record' (checkpoint seq advanced to 5,
-        # done marker is the stale seq 1) -> must re-run, not fast-forward.
-        assert m._should_fast_forward(done, {"current_id": "record", "seq": 5}) is False
-
-        # no marker at all (node never completed) -> re-run.
-        assert m._should_fast_forward(None, {"current_id": "x", "seq": 1}) is False
-
-        # marker without a next -> re-run (defensive).
-        assert m._should_fast_forward({"seq": 1}, {"seq": 1}) is False
+        # A later visit to the same node checkpoints again, so the marker written
+        # before is recognisably stale: its seq no longer matches the checkpoint's.
+        w.write_checkpoint("record", {})
+        cp = json.loads((w.run_dir / "checkpoint.json").read_text())
+        assert cp["seq"] == 2 and w.read_done("record")["seq"] == 1
 
 
 if __name__ == "__main__":

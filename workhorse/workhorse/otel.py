@@ -87,10 +87,10 @@ _OTEL_ENDPOINT = (
 # normally a loopback port that accepts (or refuses) in microseconds. A remote or
 # firewalled endpoint is the only case that pays the full timeout, once per run.
 _PROBE_TIMEOUT_S = float(os.environ.get("WORKHORSE_OTEL_PROBE_S", "0.25"))
-# How often the background thread proves the run's process is alive. Script nodes are
-# why this exists: they run as a buffered child (``SubprocessScriptRunner``), so they
-# stream nothing a per-line heartbeat could hook, and a wedged one would otherwise be
-# indistinguishable from a fast one until it returned.
+# How often the background thread proves the run's process is alive. Node calls are
+# why this exists: a `self.call` node is ordinary Python that streams nothing a
+# per-line heartbeat could hook, so a wedged one would otherwise be indistinguishable
+# from a fast one until it returned.
 _HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
 # How often recorded metrics are actually shipped. This — not the heartbeat above —
 # is what bounds a collector's freshness, and the SDK's own default is 60s, so

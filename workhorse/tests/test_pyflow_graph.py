@@ -567,8 +567,6 @@ def _dot_args(**kwargs: Any) -> Any:
     defaults = {
         "workflow": None,
         "positional": [],
-        "pin": None,
-        "leaf": None,
         "name": None,
         "output": None,
         "registry": None,
@@ -588,15 +586,18 @@ def test_dot_renders_a_python_workflow_from_its_registry():
     assert buffer.getvalue().startswith("digraph acme {")
 
 
-def test_dot_declines_pin_and_leaf_on_a_python_workflow():
-    from workhorse.main import _run_dot
+def test_dot_rejects_pin_and_leaf_at_the_parser():
+    """`--pin`/`--leaf` collapsed a *declared* YAML branch. A Python workflow's
+    branches are code, so there is nothing to pin — the flags are gone, not ignored."""
+    from workhorse.main import _build_parser
 
-    try:
-        _run_dot(_dot_args(positional=["acme"], registry=_sample_registry(), pin=["mode=epic"]))
-    except SystemExit as exc:
-        assert exc.code == 1
-    else:
-        raise AssertionError("--pin should be declined, not ignored")
+    for flag in ("--pin", "--leaf"):
+        try:
+            _build_parser().parse_args(["dot", "acme", flag, "mode=epic"])
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError(f"{flag} should no longer parse")
 
 
 if __name__ == "__main__":

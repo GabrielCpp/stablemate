@@ -1,5 +1,9 @@
 """Workflows that arrive as an installed distribution.
 
+This is now the *only* way a workflow reaches workhorse, which is why the error paths
+below get as much attention as the happy one: with the library layers gone there is no
+second mechanism for a failed resolution to fall through to.
+
 Three properties, each of which fails silently or late if left untested:
 
 1. A name registered in the ``workhorse.workflows`` entry-point group resolves to that
@@ -9,7 +13,7 @@ Three properties, each of which fails silently or late if left untested:
    deep inside a run, because the prompt renderer is a filesystem template loader.
 3. ``workhorse run <name> <flow> …`` and ``workhorse-<name> run <flow> …`` go through
    one parser with the name bound differently. Two commands with two parsers is the
-   failure this shape invites, so the test compares what the engine actually receives.
+   failure this shape invites, so the test compares what the driver actually receives.
 
 Standalone and dependency-free: the distributions here are written into tmp_path and put
 on ``sys.path``, so nothing is installed and no network is touched.
@@ -50,15 +54,30 @@ def _write_dist_info(site: Path, dist_name: str, entry_points: dict[str, str]) -
     (info / "entry_points.txt").write_text("\n".join(lines) + "\n")
 
 
-def _write_package(site: Path, workflow_yaml: str | None = "name: demo\n") -> None:
+#: A ``demo_flows.demo.workflow`` module holding a real `Registry`, which is what an
+#: entry point must point at. Written as source rather than built in-process because
+#: the whole mechanism under test is "import the module the metadata names".
+_WORKFLOW_MODULE = '''
+from workhorse.pyflow import Done, Registry, Workflow
+
+
+class Demo(Workflow):
+    def start(self):
+        return Done(None)
+
+
+workflow = Registry("demo")
+main = workflow.main(Demo)
+'''
+
+
+def _write_package(site: Path, module_source: str = _WORKFLOW_MODULE) -> None:
     """A minimal ``demo_flows.demo`` workflow package."""
     pkg = site / "demo_flows" / "demo"
     pkg.mkdir(parents=True)
     (site / "demo_flows" / "__init__.py").write_text("")
     (pkg / "__init__.py").write_text("")
-    (pkg / "workflow.py").write_text("workflow = object()\n")
-    if workflow_yaml is not None:
-        (pkg / "workflow.yaml").write_text(workflow_yaml)
+    (pkg / "workflow.py").write_text(module_source)
 
 
 class _OnPath:
@@ -99,7 +118,7 @@ def test_entry_point_resolves_to_package_directory(tmp_path: Path) -> None:
         assert found.value == "demo_flows.demo.workflow:workflow"
         assert found.distribution == "demo-flows"
         # The workflow dir is the package the entry-point MODULE lives in, not the
-        # module itself: prompts/ and workflow.yaml sit beside workflow.py.
+        # module itself: prompts/ sits beside workflow.py.
         assert found.workflow_dir() == site / "demo_flows" / "demo"
         assert found.load() is not None
 
@@ -151,8 +170,9 @@ def _write_zipped_package(tmp_path: Path) -> Path:
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("zipped_flows/__init__.py", "")
         zf.writestr("zipped_flows/demo/__init__.py", "")
-        zf.writestr("zipped_flows/demo/workflow.py", "workflow = object()\n")
-        zf.writestr("zipped_flows/demo/workflow.yaml", "name: demo\n")
+        zf.writestr(
+            "zipped_flows/demo/workflow.py", _WORKFLOW_MODULE.replace('"demo"', '"zipped"')
+        )
     return archive
 
 
@@ -180,6 +200,8 @@ def test_zip_imported_package_fails_at_resolution(tmp_path: Path) -> None:
 
 
 def test_cli_reports_the_zip_failure_and_exits(tmp_path: Path, capsys) -> None:
+    """`_packaged_registry` asks for the directory while it still owns the error
+    channel, rather than leaving the zip to blow up mid-run as a missing template."""
     archive = _write_zipped_package(tmp_path)
     site = tmp_path / "site"
     site.mkdir()
@@ -187,74 +209,48 @@ def test_cli_reports_the_zip_failure_and_exits(tmp_path: Path, capsys) -> None:
         site, "zipped-flows", {"zipped": "zipped_flows.demo.workflow:workflow"}
     )
 
-    with _OnPath(site, archive), patch.object(main_mod, "_library_layers", list):
+    with _OnPath(site, archive):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod._resolve_workflow_path("zipped")
+            main_mod._packaged_registry("zipped")
     assert excinfo.value.code == 1
     err = capsys.readouterr().err
     assert "not a real directory on disk" in err
 
 
-def test_packaged_workflow_without_yaml_is_a_clear_error(tmp_path: Path, capsys) -> None:
+def test_an_entry_point_that_is_not_a_registry_is_a_clear_error(
+    tmp_path: Path, capsys
+) -> None:
+    """The group's contract is `Registry`, and a distribution can get that wrong —
+    pointing at the `Workflow` subclass, or at the `main` callable beside it."""
     site = tmp_path / "site"
     site.mkdir()
-    _write_package(site, workflow_yaml=None)
+    _write_package(site, module_source="workflow = object()\n")
     _write_dist_info(site, "demo-flows", {"demo": "demo_flows.demo.workflow:workflow"})
 
-    with _OnPath(site), patch.object(main_mod, "_library_layers", list):
+    with _OnPath(site):
         with pytest.raises(SystemExit) as excinfo:
-            main_mod._resolve_workflow_path("demo")
+            main_mod._packaged_registry("demo")
     assert excinfo.value.code == 1
-    assert "ships no workflow.yaml" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "not a `Registry`" in err
+    assert "demo_flows.demo.workflow:workflow" in err
 
 
-# --------------------------------------------------------------------------------
-# resolution order: an installed package wins, and says so when it shadows
-# --------------------------------------------------------------------------------
-
-
-def _library_layer(tmp_path: Path, name: str) -> Path:
-    layer = tmp_path / "library"
-    wf = layer / "workflows" / name
-    wf.mkdir(parents=True)
-    (wf / "workflow.yaml").write_text("name: from-library\n")
-    return layer
-
-
-def test_installed_package_wins_over_a_library_layer(tmp_path: Path, capsys) -> None:
+def test_an_unknown_name_lists_what_is_installed(tmp_path: Path, capsys) -> None:
+    """The only resolution mechanism left is the entry-point group, so the error has
+    to be the whole answer: there is no library layer to go looking in next."""
     site = tmp_path / "site"
     site.mkdir()
     _write_package(site)
     _write_dist_info(site, "demo-flows", {"demo": "demo_flows.demo.workflow:workflow"})
-    layer = _library_layer(tmp_path, "demo")
 
-    with _OnPath(site), patch.object(main_mod, "_library_layers", lambda: [layer]):
-        resolved = main_mod._resolve_workflow_path("demo")
-
-    assert resolved == (site / "demo_flows" / "demo" / "workflow.yaml").resolve()
-    # Shadowing is announced. Silent shadowing is the one way this ordering hurts.
+    with _OnPath(site):
+        with pytest.raises(SystemExit) as excinfo:
+            main_mod._packaged_registry("nobody")
+    assert excinfo.value.code == 1
     err = capsys.readouterr().err
-    assert "also present in a library layer" in err
-
-
-def test_library_layer_still_resolves_when_nothing_is_installed(tmp_path: Path) -> None:
-    layer = _library_layer(tmp_path, "solo")
-    with patch.object(main_mod, "_library_layers", lambda: [layer]):
-        resolved = main_mod._resolve_workflow_path("solo")
-    assert resolved == (layer / "workflows" / "solo" / "workflow.yaml").resolve()
-
-
-def test_explicit_path_never_consults_entry_points(tmp_path: Path) -> None:
-    """A path is a path — the packaged copy must not hijack it."""
-    target = tmp_path / "elsewhere" / "workflow.yaml"
-    target.parent.mkdir(parents=True)
-    target.write_text("name: by-path\n")
-
-    def _explode() -> list[object]:
-        raise AssertionError("entry points consulted for a path")
-
-    with patch.object(packaged, "_entry_points", _explode):
-        assert main_mod._resolve_workflow_path(str(target)) == target.resolve()
+    assert "no workflow named 'nobody' is installed" in err
+    assert "demo" in err
 
 
 # --------------------------------------------------------------------------------
@@ -262,26 +258,31 @@ def test_explicit_path_never_consults_entry_points(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------------
 
 
-def _capture_run_call(argv: list[str], *, workflow: str | None, layer: Path) -> dict:
-    """Drive main() to the engine boundary and return what run() was handed."""
+class _StubRegistry:
+    """Stands in for the resolved Registry: the CLI only passes it through."""
+
+    name = "demo"
+
+
+def _capture_run_call(argv: list[str], *, workflow: str | None) -> dict:
+    """Drive main() to the driver boundary and return what run_pyflow was handed."""
     seen: dict = {}
 
-    def fake_run(
-        workflow_path,
+    def fake_run_pyflow(
+        registry,
+        flow=None,
+        *,
         runs_dir,
         resume_run_dir=None,
-        auto=True,
         run_id=None,
         params=None,
-        context_manifest=None,
-        flow=None,
         no_cache=False,
-        *,
-        config=None,
         dry_run=False,
+        context_manifest=None,
+        config=None,
     ):
         seen.update(
-            workflow_path=Path(workflow_path),
+            registry_name=registry.name,
             run_id=run_id,
             params=params,
             flow=flow,
@@ -291,8 +292,8 @@ def _capture_run_call(argv: list[str], *, workflow: str | None, layer: Path) -> 
         return 0
 
     with (
-        patch.object(main_mod, "_library_layers", lambda: [layer]),
-        patch.object(main_mod, "run", fake_run),
+        patch.object(main_mod, "_packaged_registry", lambda spec: _StubRegistry()),
+        patch.object(main_mod, "run_pyflow", fake_run_pyflow),
         patch.object(main_mod, "_load_context_manifest", lambda *a, **k: None),
     ):
         with pytest.raises(SystemExit) as excinfo:
@@ -302,18 +303,15 @@ def _capture_run_call(argv: list[str], *, workflow: str | None, layer: Path) -> 
 
 
 def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
-    layer = _library_layer(tmp_path, "demo")
     params = json.dumps({"story": "AUTH-12"})
 
     through_workhorse = _capture_run_call(
         ["run", "demo", "qa", "--run-id=test123", "--params", params, "--dry-run"],
         workflow=None,
-        layer=layer,
     )
     through_script = _capture_run_call(
         ["run", "qa", "--run-id=test123", "--params", params, "--dry-run"],
         workflow="demo",
-        layer=layer,
     )
 
     assert through_workhorse == through_script
@@ -327,14 +325,15 @@ def test_both_front_doors_reach_the_engine_identically(tmp_path: Path) -> None:
 
 def test_the_console_script_binds_the_name_and_nothing_else(tmp_path: Path) -> None:
     """console_script returns the callable; it does not run at build time."""
-    layer = _library_layer(tmp_path, "demo")
     entry = main_mod.console_script("demo")
     assert callable(entry)
 
     seen: dict = {}
     with (
-        patch.object(main_mod, "_library_layers", lambda: [layer]),
-        patch.object(main_mod, "run", lambda *a, **k: seen.update(flow=k.get("flow")) or 0),
+        patch.object(main_mod, "_packaged_registry", lambda spec: _StubRegistry()),
+        patch.object(
+            main_mod, "run_pyflow", lambda *a, **k: seen.update(flow=a[1]) or 0
+        ),
         patch.object(main_mod, "_load_context_manifest", lambda *a, **k: None),
     ):
         with pytest.raises(SystemExit):
@@ -381,8 +380,7 @@ def test_bound_name_refuses_other_subcommands(capsys) -> None:
 
 def test_run_is_injected_for_the_bound_form_too(tmp_path: Path) -> None:
     """`workhorse-demo qa` is `workhorse-demo run qa`, same as the unbound rule."""
-    layer = _library_layer(tmp_path, "demo")
-    seen = _capture_run_call(["qa"], workflow="demo", layer=layer)
+    seen = _capture_run_call(["qa"], workflow="demo")
     assert seen["flow"] == "qa"
 
 

@@ -408,27 +408,6 @@ def test_read_resume_refuses_a_yaml_checkpoint():
     assert "plan" in str(exc), exc
 
 
-def test_the_yaml_engine_refuses_a_pyflow_checkpoint():
-    workflow_yaml = """\
-name: acme
-start: done
-nodes:
-  - id: done
-    type: terminal
-"""
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        (root / "workflow.yaml").write_text(workflow_yaml)
-        writer = ArtifactWriter("acme", root / "runs", run_id="t")
-        writer.write_state_checkpoint("qa", {"story": "login"}, inputs={}, flow="Coder")
-
-        main = __import__("workhorse.main", fromlist=["main"])
-        code = main.run(
-            root / "workflow.yaml", root / "runs", resume_run_dir=writer.run_dir, auto=False
-        )
-        assert code == 1, code
-
-
 # ------------------------------------------------------------------------ self.output
 
 

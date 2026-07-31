@@ -69,9 +69,9 @@ class AgentBackend(ABC):
         edit at its next node instead of needing a restart.
 
         A backend knows its own ``name``, so it resolves its own env and hands it to
-        the spawn helper. That keeps ``run_turn``'s signature — implemented five
-        times and faked in ``workhorse.testing`` — free of a parameter every
-        implementation would only pass straight through.
+        the spawn helper. That keeps ``run_turn``'s signature — implemented five times
+        and faked once more per test that supplies a mock backend — free of a parameter
+        every implementation would only pass straight through.
         """
         return resolve_harness_env(self.name)
 

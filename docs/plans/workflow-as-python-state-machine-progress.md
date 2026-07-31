@@ -40,9 +40,14 @@ okf-builder → workhorse_workflows.okf_builder.workflow:workflow
 research → workhorse_workflows.research.workflow:workflow
 ```
 
-Each has a parity section below. Nothing was deleted: the YAML engine and all four
-`base-library/workflows/*/workflow.yaml` are untouched and green — `make test && make check-public`
-passes with both engines present, which was the whole point of splitting the port out of loop 2.
+Each has a parity section below.
+
+**Loop 2 is in progress, and the YAML engine is gone as of step 1.** There is one engine now:
+`graph/`, `runner/{script,branch,call}.py`, `builtins.py` and `requirements.py` are deleted,
+`main.py` is 670 lines of CLI over `run_pyflow`, and a workflow name resolves only through the
+`workhorse.workflows` entry-point group. What remains of the front-end is inert data — the four
+`base-library/workflows/*/workflow.yaml` and their `scripts/`, which nothing can now load. They go
+in step 2.
 
 The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
 `author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
@@ -53,9 +58,11 @@ Ported, counting every graph and sub-graph: **559 YAML nodes → 178 states**, a
 `author` 166 → 46 across three flows, `coder` 308 → 102 across nine, `okf-builder` 48 → 17 across
 two, `research` 37 → 13. **291 end-to-end tests** in `workflows/tests/` (author 155, coder 119,
 okf-builder 8, research 9), every one against real nodes with only the agent turn scripted, plus
-81 cross-cutting ones — 372 in total, on top of the YAML engine's own suite.
+81 cross-cutting ones — 372 in total. (The YAML engine's own suite is no longer under them; step 1
+took it.)
 
-**Next is loop 2, and loop 2 is deletion.** Its starting state is at the bottom of this file.
+**Loop 2's starting state is at the bottom of this file, and what it has done so far is under
+"Loop 2 — the deletion" below.**
 
 ## What landed
 
@@ -96,6 +103,7 @@ okf-builder 8, research 9), every one against real nodes with only the agent tur
 |---|---|---|
 | 0 | `d8b0879` | **Prep, no deletion.** The two types `pyflow` borrowed from the YAML engine move out of `graph/` ahead of it: `graph/context.py` → `workhorse/context.py`, and `AgentNode`/`OutputSpec` → `workhorse/runner/spec.py` (`graph/nodes.py` re-exports them while the YAML node union still exists). This is blocker (1) of §2 below, cleared. Also fixes a red baseline inherited from loop 1.1 — see below |
 | 0.1 | `e1f92f5` | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
+| 1 | *this commit* | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
@@ -108,14 +116,12 @@ to test. Renamed to `acme-flow`, a name no distribution ships. Worth knowing bec
 shape of the next such break: *any* test that uses a real workflow's name as a fixture now tests
 the entry-point branch.
 
-**Next: the engine deletion (list item 1), and it cannot be one commit.** `make test` runs
+**The engine deletion could not be one commit, and it was not.** `make test` ran
 `base-library/workflows/*/tests` **in-process against the YAML engine** via
 `workhorse.testing.WorkflowRun`, so deleting the engine is only green if those suites go with it —
 they are on the deletion list (§1, "…their `tests/`"), just one bullet later than the engine. So
-step 1 is: lift the CLI out of `main.py` into `workhorse/cli.py`, delete `graph/` and
-`runner/{script,branch,call}.py`, trim `testing.py`, and take the YAML-engine tests, the
-base-library workflow test suites and the `test-workflows` make target with them. Then step 2 is
-the rest of `base-library/workflows/` and `requires:`.
+step 1 took the engine, the YAML-engine tests, the base-library workflow test suites and the
+`test-workflows` make target together. Step 2 is the rest of `base-library/workflows/`.
 
 **Before that commit, one thing went to the user** — §4 item 1, the context manifest, which was no
 longer just a parity gap: 13 ported prompts under `author/` and `coder/` call `instruction_ref`,
@@ -146,6 +152,93 @@ exists, then delete. Landed as step 0.1, the one authorized driver change in thi
 
 Green: `ruff check .`, `make test`, `make check-public`. No port changed — the seat is additive and
 every one of the 372 tests still passes without touching a workflow.
+
+#### Step 1 — the engine
+
+**The CLI was not lifted.** §2 said the CLI has to move out of `main.py` into `workhorse/cli.py`
+before `main.py` can go. It does not: `main.py` can lose its engine half and keep its name, and
+keeping it is strictly cheaper — the alternative repoints `workhorse/__init__.py:1`,
+`pyflow/registry.py:180`, four console-script entry points and a `"workhorse.main"` string in
+`test_logsetup.py`, all for a rename. `main.py` is now 670 lines and holds only argument parsing,
+run-id/resume resolution, `dot`, `config` and `version`; every `run` invocation ends in
+`sys.exit(run_pyflow(...))`.
+
+Deleted outright: `graph/{loader,nodes,dot}.py` (537 lines), `runner/{script,branch,call}.py` (445),
+`builtins.py` (20), `requirements.py` (228), `workhorse/tests/test_requirements.py`, and 10 dead
+workhorse test files (`test_dot`, `test_branch_guardrail`, `test_call_node`, `test_flows`,
+`test_forbid_shell`, `test_gas_tank`, `test_labels`, `test_library_layers`, `test_script_inprocess`,
+`test_interrupt`). On the base-library side: 63 files — the `tests/` trees of `author` (incl.
+`author/surveyor/`), `coder` and `okf-builder`, plus three `pytest.ini`. The root `Makefile` loses
+the `test-workflows` target that ran them.
+
+**`graph/dot.py` was deleted, not rewritten.** The work order says "rewrite `graph/dot.py` against
+the new model", but the new model already had one: `pyflow/dot.py` + `pyflow/graph.py` landed in
+step 6 of loop 1. `workhorse dot` now renders through those, and the YAML renderer is a second
+implementation of a thing that exists.
+
+**What the deletion took with it, none of it on the list:**
+
+- `runner/call.py` **is** the `call:` node and imports `graph/nodes.py::CallNode`; `builtins.py`'s
+  only importer was `runner/call.py`. Both die *because* `graph/nodes.py` does — forced, not chosen.
+- `requirements.py` implements `Graph.requires`, which the loader parsed. It could not outlive the
+  loader, so **list item 2's `requires:` half landed here, one commit early.**
+- `RunConfig.script_runner` / `get_script_runner()` / `ScriptRunner` and `RunConfig.gas` /
+  `_configured_gas()` / `WORKHORSE_GAS`. Both looked like driver API and neither was: a repo-wide
+  grep puts every consumer inside the `script:` dispatch, `testing.py`, `_GasTank` and the deleted
+  tests. `config_run.py` is 147 lines and keeps `AgentResilience`, `resilience`, `max_runtime_s`,
+  `backend_factory`, `get_backend()`.
+- `testing.py` 575 → 103: `WorkflowRun`, `RunResult`, `InProcessScriptRunner`, `_MockBackend`,
+  `assert_step_output`, `assert_prompt_contains`, `assert_command_called`. What a callable flow
+  still needs is `make_git_repo`, `assert_file`, `assert_file_contains`, `assert_json_file`.
+
+**Visible CLI surface that changed** — the operator-facing part of this commit:
+
+- `--workflow <path>` is gone. A workflow is a Python package, so `--workflow` takes a **name**, and
+  a name resolves in exactly one place: the `workhorse.workflows` entry-point group. The library is
+  no longer consulted for workflows at all, which is what makes list item 4 (the sparse checkout of
+  `library/`) true rather than aspirational.
+- An unknown name is answered with the sorted list of installed ones (`packaged.installed_workflow_names`).
+- `--pin` / `--leaf` no longer parse. A state machine's branches are ordinary Python; there is no
+  declared branch variable to pin. Give a mode its own flow if its diagram should stand alone.
+- The "an installed package shadows a library layer" stderr warning is gone with the shadowing.
+- **One regression, found and fixed inside this commit.** Refusing a zip-imported workflow used to
+  happen at resolution, in `PackagedWorkflow.workflow_dir()`; under the driver it lives in
+  `Registry.directory()`, which is called lazily at the first prompt render. Deleting the old path
+  would have turned "this wheel is packed wrong" into a `TemplateNotFound` several nodes into a run.
+  `_packaged_registry` now calls `target.directory()` eagerly and exits 1 with the message. Judged an
+  error-handling hole opened by the deletion, not a driver-API question, so it was not escalated.
+
+**Deliberately kept, all loop-3 cleanup, none of it on this loop's list:** otel's `workhorse.gas`
+instruments and `gas_level()` (collector-facing, tested, now inert); `ArtifactWriter.read_done` and
+`write_branch`; `PackagedWorkflow.workflow_dir()`. Also `scriptutil.py` — §1 lists it as deletable
+and it is not: ~20 modules under `workflows/src/workhorse_workflows/**` still import it.
+
+**Docs corrected, not rewritten**, per the work order's last bullet — `workhorse/README.md`
+(the whole `workflow.yaml` schema section replaced with the Python-package layout, the project-layout
+tree and "how the controller works" rewritten around `pyflow/driver.py::drive`, the `WorkflowRun`
+testing story replaced with `RunEnv.run_agent` + `Registry.override`, every stale
+`--pin`/`--leaf`/`--workflow <path>`/`requires:`/library-layer reference removed) and
+`workhorse/CLAUDE.md` (the graph-walk description). `docs/GUARDRAILS.md` got the env-var table
+(`WORKHORSE_SCRIPT_INPROCESS` and `WORKHORSE_GAS` out) and the node→turn vocabulary. The four
+remaining "YAML" mentions across both are two historical "the retired YAML engine" sentences and two
+`compose.yaml` filenames.
+
+**Known-dangling references this commit creates**, to sweep in loop 3 — they break no test, because
+ostler's own suite uses fixtures: `docs/features/workhorse/concepts/{gas-tank,workflow,run-flow,
+testing,artifact-writer,stream-subprocess,run-agent,pyflow-driver}.md`,
+`docs/features/workhorse/flows/*.md`, `docs/features/workhorse/run-artifacts.md`,
+`docs/plans/workhorse-otel.md`, `workhorse/docs/WORKFLOW.md` (now unlinked from the README, still
+linked from GUARDRAILS), and both copies of the scripting skill
+(`.claude/skills/stablemate-workhorse-scripting/SKILL.md`,
+`base-library/library/skills/stablemate/stablemate-workhorse-scripting/SKILL.md`), which still show
+`from workhorse.testing import WorkflowRun, assert_step_output`.
+
+**Next: step 2**, the rest of `base-library/workflows/` — four `workflow.yaml` (7,719 lines),
+`scripts/` (15,820 lines across 131 scripts), and `prompts/` **only after diffing** against the
+ports' copies. Then list items 3–6: narrow `is_library_dir` (and `main.py`'s `set-base` error, which
+still says "library/ or workflows/"), drop the workflow clause from `check_base_stands_alone`, drop
+farrier's `.agents/workflows` cleanup, narrow the fetch to `library/`, and delete both
+`await-operator.py`.
 
 ### Parity — `author`
 
@@ -997,14 +1090,14 @@ parity claim in this file is against real nodes with the agent turn scripted.
 |---|---|---|
 | `base-library/workflows/{author,coder,okf-builder,research}/workflow.yaml` | 7,719 lines | The four graphs, now ported |
 | …their `scripts/` | 15,820 lines across 131 scripts | Includes `author/surveyor/scripts/` (25 of them) |
-| …their `tests/` | 56 files | They test the scripts, not the graphs |
+| ~~…their `tests/`~~ | ~~56 files~~ | **Done, step 1** — 63 files in the end, plus three `pytest.ini`. They had to go with the engine they ran on |
 | …their `prompts/` | — | **Not** deletable wholesale: the ports copied what they render, and the two sets have drifted (see the `CONSUMED` finding). Diff before deleting. |
 | Both `await-operator.py` | 555 lines of ctypes inotify | The loop's headline non-port; `Await` replaced it |
 | `init_counter.py` / `incr_counter.py` | — | Counters are state parameters now |
 | `commit-multi-repo.py`, `branch-multi-repo.py`, `open-multi-repo-pr.py` | — | Graph-unreferenced *before* the port, plus `test_multi_repo_git.py` and the claims in `coder/docs/multi-repo.md` |
 | `board.py`, `checkout-workspace.py`, `gh-token.py` | — | Unreferenced |
-| `workhorse/workhorse/main.py` and `graph/`, `runner/{script,branch}.py` | ~1,760 + graph | The YAML engine proper — **last**, and see the coupling below |
-| `workhorse/workhorse/scriptutil.py` | 154 lines | The residue of the split; `kit` replaced it |
+| ~~`graph/`, `runner/{script,branch,call}.py`, `main.py`'s engine half~~ | ~~~1,760 + graph~~ | **Done, step 1**, and *first* rather than last — the base-library test suites were the only thing pinning it, and they went in the same commit. `main.py` survives as the CLI |
+| ~~`workhorse/workhorse/scriptutil.py`~~ | ~~154 lines~~ | **Wrong — do not delete.** ~20 modules under `workflows/src/workhorse_workflows/**` import it. `kit` replaced the *split-out* half, not the file |
 | `paths.OPERATOR_DIR` | 1 line | Stranded by the port |
 
 ### 2. What the engine deletion is actually blocked on
@@ -1018,14 +1111,17 @@ parity claim in this file is against real nodes with the agent turn scripted.
   described to `runner.agent` with — both front-ends build one. So they moved *out* of `graph/`
   (to `workhorse/context.py` and `workhorse/runner/spec.py`) rather than being copied into
   `pyflow`, and `graph/` now depends on them rather than the reverse.
-- `registry.py:180` calls `workhorse.main.main(...)` for the console script — the entire CLI
+- ~~`registry.py:180` calls `workhorse.main.main(...)` for the console script — the entire CLI
   (params, run ids, resume, `dot`, `config`) lives in the YAML engine's `main.py`. **This is the
   real work of loop 2**: the CLI has to be lifted out of `main.py` before `main.py` can go, and
-  that is a refactor, not a deletion. Sequence it first and the rest is `git rm`.
+  that is a refactor, not a deletion.~~ **Cleared in step 1, by not doing it.** The CLI does not
+  have to move: `main.py` is not the YAML engine's, it is the CLI's, and the engine was the half
+  that left. Nothing was renamed and nothing was repointed.
 
-Also on the way: `workhorse.testing.WorkflowRun` (575 lines) is the YAML whole-workflow harness and
+Also on the way: ~~`workhorse.testing.WorkflowRun` (575 lines) is the YAML whole-workflow harness and
 `workhorse/tests/` is largely YAML-engine tests. They are the safety net for every step above, so
-they are deleted *after* the thing they test, not before.
+they are deleted *after* the thing they test, not before.~~ **Done in step 1**, in the same commit
+rather than after it — a test whose subject is deleted is not a safety net, it is a red suite.
 
 ### 3. The behavior decisions this loop deferred
 
@@ -1047,9 +1143,12 @@ none can be settled by a port. Grouped by what they cost to get wrong:
 1. ~~**The context manifest never reaches a pyflow prompt**~~ — **done**, loop 2 step 0.1, on the
    user's call. It was the largest parity gap in this loop, and it landed *before* the YAML engine
    goes, while `main.py` was still there to copy the behavior from. See "Loop 2 — the deletion".
-2. **`refuel:` has no counterpart.** The YAML's progress-metered gas tank distinguishes a
-   productive long run from a spin; the driver's flat transition budget does not. A driver-side
-   refuel is a design question, and deleting the YAML engine deletes the only implementation.
+2. **`refuel:` has no counterpart, and as of step 1 there is no implementation left to read.** The
+   YAML's progress-metered gas tank distinguished a productive long run from a spin; the driver's
+   flat transition budget does not. A driver-side refuel is a design question, so step 1 deleted
+   `_GasTank` rather than porting it — the shape is recoverable from `git show <step-1>^` if the
+   answer is "yes". The otel instruments (`workhorse.gas`, `gas.capacity`, `gas.refuels`) were kept
+   and are now inert, so a future refuel has somewhere to report to.
 3. **A state that shadows a `dir(Workflow)` name is silently not a state.** It has bitten twice out
    of four workflows (`validate`, twice). A `__init_subclass__` check is a small driver change and
    the trap is a rate, not a coincidence.

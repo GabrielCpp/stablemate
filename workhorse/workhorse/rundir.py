@@ -1,11 +1,10 @@
-"""Run identity and run-directory selection, shared by both engines.
+"""Run identity and run-directory selection.
 
 The rules here — one stable dir per ``(workflow, run-id)``, an id derived from the
 params when none is given, a finished run never resumed in place — are the resume
-contract, not the YAML engine's implementation detail. The Python driver has to obey
-exactly the same ones or ``--resume-latest`` would mean two different things depending
-on which engine wrote the run, so they live in their own module rather than in
-:mod:`workhorse.main`, which the driver cannot import (main imports *it*).
+contract, which both the CLI and the driver have to obey. They live in their own
+module rather than in :mod:`workhorse.main`, which the driver cannot import (main
+imports *it*).
 """
 
 from __future__ import annotations

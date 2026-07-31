@@ -70,13 +70,12 @@ through three layers before it can ever crash the run (see
    prompt is rephrased from scratch in a *fresh session* and the node is retried,
    up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt simplifies the ask
    further (`_rephrase_prompt`).
-4. **Default to the next node** — when every reframing fails, the node emits the
-   fallback outputs **declared by the workflow** (`OutputSpec.default` per output,
-   defaulting to `null`) so the controller moves on to `node.next` instead of
-   aborting the whole run. The runner is generic and does **not** guess values
-   from output names — the safe fallback is workflow-specific, so it is declared
-   in `workflow.yaml` (see the README's "Unattended resilience" section). Set
-   `AGENT_USE_DEFAULT_OUTPUTS=false` to hard-fail (and resume manually) instead.
+4. **Default the turn's outputs** — when every reframing fails, the node emits its
+   declared output keys as nulls so the state that asked for the turn gets a reply
+   object and the run advances instead of aborting. The keys come from the model the
+   state declared in `self.agent(..., returns=…)`; the runner is generic and does
+   **not** guess values from their names. Set `AGENT_USE_DEFAULT_OUTPUTS=false` to
+   hard-fail (and resume manually) instead.
 
 ## Implemented Solutions
 
@@ -103,7 +102,7 @@ Errors are now classified as:
 ### 4. Prompt Reframing & Default Outputs
 
 - **Reframe**: A node Claude can't answer as-phrased is re-asked from scratch in a fresh session, simplifying each time.
-- **Default to next**: After reframing is exhausted, the node emits the workflow-declared `OutputSpec.default` for each output (null if unset) so an unattended run advances rather than crashing.
+- **Default the outputs**: After reframing is exhausted, the node emits each declared output key as null so an unattended run advances rather than crashing.
 
 ### 5. Enhanced Logging
 
@@ -150,44 +149,33 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_EXEC_RETRY_CAP_S` | 8 | Upper bound on a single exec-retry delay |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
 
-### Engine-level guards (workhorse/main.py)
+### Driver-level guards (workhorse/pyflow)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKHORSE_SCRIPT_INPROCESS` | 1 | Run `script:` nodes **in the engine's own process** (import the module, call `main(logger)`). Set `0` to spawn them as child processes as before — see the trade-off below. |
-| `WORKHORSE_FRESH_IMPORT` | 1 | Whether `scriptutil.fresh_import` really purges `sys.modules` and re-imports from disk, so a fix landed mid-run reaches the nodes still ahead in the graph. Set `0` to return the cached module instead — the re-import builds a *new module object*, which discards every `monkeypatch` a test applied to the old one. `workhorse.testing.WorkflowRun` sets it for the duration of a run; nothing rewrites a package on disk there, so the behavior it exists for cannot occur. |
-| `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and its in-process script nodes. |
-| `WORKHORSE_GAS` | 5000 | Progress-metered loop guard: units burned per node step, refilled on real forward progress (a refuel node's value changing). 0 disables. A cycle that never progresses burns one tank and fails loudly (`OutOfGasError`). |
-| `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between nodes; trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the gas tank: gas catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |
+| `WORKHORSE_FRESH_IMPORT` | 1 | Whether `scriptutil.fresh_import` really purges `sys.modules` and re-imports from disk, so a fix landed mid-run reaches the nodes still ahead of it. Set `0` to return the cached module instead — the re-import builds a *new module object*, which discards every `monkeypatch` a test applied to the old one. Nothing rewrites a package on disk under test, so the behavior it exists for cannot occur there. |
+| `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and the node functions it calls. |
+| `WORKHORSE_AWAIT_POLL_S` | 15 | How often an `Await` re-checks the file it is waiting on. A portable polling loop rather than an inotify watch, so it behaves the same in a container, over NFS, and on a laptop that sleeps. |
+| `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between states; trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the transition budget: that catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |
 
-### Script nodes run in-process (and what that costs)
+### Node functions run in the driver's own process (and what that costs)
 
-A `script:` node is imported and its `main(logger)` called inside the engine's own
-process, rather than spawned as `python <script.py> <args>`. The reason is
-observability: a child process has no `otel._active`, so its spans were inert, and
-its stdout was consumed whole as the node's JSON — meaning a script's diagnostics
-were, by construction, unrecoverable after the fact. In-process, a script's log
-records ride the engine's own root logger: same handlers, same `run_id`, same
-collector, no per-script SDK init.
+`self.call(node, ...)` invokes an ordinary Python function inside the driver's own
+process. The reason is observability: a child process has no `otel._active`, so its
+spans would be inert and its stdout consumed whole as the node's JSON — meaning a
+node's diagnostics would be, by construction, unrecoverable after the fact.
+In-process, a node's log records ride the driver's own root logger: same handlers,
+same `run_id`, same collector, no per-node SDK init.
 
-A script cannot tell the difference — `sys.argv`, the cwd, `os.environ` and
-`sys.path[0]` are all set the way CPython sets them for `python script.py`, and
-restored afterwards, and `SystemExit` still becomes the node's return code (so
-`await_operator`'s exit 2 still means "operator input required").
+**The trade-off is real and one-directional: a node shares the driver's fate.** A
+node that calls `os._exit`, segfaults a C extension, or exhausts memory takes the run
+down with it — losing the checkpoint write and the telemetry flush a raised exception
+would have gone through. The blast radius is bounded by what was already true: a
+failing node ends the run (the retry → reframe → default ladder covers *agent* turns
+only). What is lost is the *clean* ending.
 
-**The trade-off is real and one-directional: a script now shares the engine's
-fate.** A child process could only ever return a bad exit code; an imported one
-that calls `os._exit`, segfaults a C extension, or exhausts memory takes the run
-down with it — losing the checkpoint write and the telemetry flush that a raised
-`ScriptExitError` would have gone through. Note the blast radius is bounded by
-what was already true: a failing script node has always ended the run (the
-retry → reframe → default ladder covers *agent* nodes only). What is new is
-losing the *clean* ending. `WORKHORSE_SCRIPT_INPROCESS=0` restores isolation at
-the cost of the logs and telemetry this exists to provide.
-
-Script nodes still have **no timeout and no watchdog** — a wedged script hangs
-forever. This is unchanged, not introduced here; the run heartbeat below makes it
-*visible* (groom's STUCK rule) but nothing kills it.
+Node calls have **no timeout and no watchdog** — a wedged node hangs forever. The run
+heartbeat below makes it *visible* (groom's STUCK rule) but nothing kills it.
 
 #### Long-lived processes must be owned, not backgrounded
 
@@ -207,15 +195,15 @@ brings a stack up from a manifest (or adopts one already serving) and
 workflow's schema — a workflow hands it a manifest dict — so any workflow that must
 own a long-lived stack across nodes uses the same lifecycle. (This is what
 okf-builder's walkthrough launcher and the coder QA flow both call; a workflow's own
-`script:` node is where the manifest is read.)
+node function is where the manifest is read.)
 
 ### Logs (OpenTelemetry)
 
 Whenever telemetry is on, the root logger also ships to the collector's `/v1/logs`,
 carrying the same `run_id`/`workflow`/`run_dir` resource as the spans. Console
 output is unaffected — the console handler binds the real stderr at setup, so log
-records reach the terminal even while a script node's stdout/stderr are redirected
-for JSON capture.
+records reach the terminal even while a node's stdout/stderr are redirected for JSON
+capture.
 
 Two details worth knowing when reading them:
 
@@ -264,7 +252,7 @@ on loopback and stays a complete no-op.
 With no collector reachable, telemetry adds zero dependencies and does
 nothing. When enabled, workhorse emits a root span per run, a span per
 node visit, a span per agent-CLI turn (with duration + token usage + cost),
-retry/reframe/compact/watchdog span events, and the gas gauge.
+and retry/reframe/compact/watchdog span events.
 Exports are best-effort: a down collector never slows or crashes a run
 (`events.jsonl` on disk remains the durable record).
 
@@ -297,31 +285,30 @@ there are deliberate and worth not undoing:
 used; when it doesn't, `turn_end` stamps the engine's own wall clock. Latency is
 therefore comparable across harnesses even where tokens are not.
 
-#### `labels:` — the workflow's own dimensions
+#### `labels()` — the workflow's own dimensions
 
-Spans carry run, node, backend and model automatically. What the engine cannot know is
+Spans carry run, state, backend and model automatically. What the driver cannot know is
 what the run is *working on* — workhorse is workflow-agnostic by design, so "a story"
 and "an epic" are vocabulary it must never learn. A workflow declares those dimensions
-itself:
+itself, by overriding `labels()`:
 
-```yaml
-labels:
-  work_id: "{{ story.id or epic }}"
+```python
+    def labels(self) -> dict[str, str]:
+        return {"work_id": self.story_id}
 ```
 
-Values are Jinja templates re-rendered against the live context **before every node**
-and stamped as `wf.`-prefixed span attributes. The prefix is the engine's, so a label
-can never collide with `workhorse.*` or an OTel convention; an expression that renders
-empty is dropped rather than stamped blank; a label that throws costs one attribute and
-nothing else. Flows inherit the parent's rendered labels (a flow's context holds only
-its rendered args, so it usually cannot re-derive them) and may layer their own on top.
-Full reference: [WORKFLOW.md §1.2](WORKFLOW.md#12-labels--tagging-telemetry-with-the-unit-of-work).
+It is re-read **before every transition**, so it sees whatever the instance can already
+see — inputs, `self.ctx`, and `self.output(node)` for anything a node recorded. A value
+that renders empty is dropped rather than stamped blank, and a `labels()` that raises
+costs the labels for that transition and nothing else — never the run. A sub-flow gets
+its own class's `labels()`.
 
-A Python state machine says the same thing with a `labels()` method and, for the "what is
-it doing *now*" dimension, a flagged log record (`logger.info(msg, extra={"activity":
-True})`) — and it does **not** `wf.`-prefix its keys, so a collector reads them raw. Both
-spellings ride the live gauges below. See the README's "Labels, and saying what the run is
-doing".
+For the "what is it doing *now*" dimension there is a flagged log record instead
+(`logger.info(msg, extra={"activity": True})`) — the rendered message *is* the activity,
+so it is never written twice. Both ride the live gauges below. Keys are **not**
+`wf.`-prefixed; a collector reads them raw. The `wf.`-prefixed spelling still appears on
+spans already in a store, written by the YAML front-end this replaced, and the gauges
+promote both. See the README's "Labels, and saying what the run is doing".
 
 #### Watching a run that has not finished
 
@@ -343,8 +330,8 @@ Together they separate the three states a long-running node can be in, which are
 indistinguishable from the trace alone: *streaming* (heartbeat + low idle),
 *wedged* (heartbeat + climbing idle), and *dead* (no heartbeat at all). The run
 heartbeat comes from a daemon thread, so it keeps proving liveness even while the
-main thread is blocked in a buffered script node or a multi-hour cap sleep — the
-cases with no stream to observe.
+main thread is blocked in a long node call or a multi-hour cap sleep — the cases
+with no stream to observe.
 
 Each run's root/node spans also carry a `run_dir` resource attribute, so a span
 leads straight back to that run's `prompt.md` / `output.json` on disk. Each
@@ -369,7 +356,7 @@ artifacts section), so it survives even with telemetry off.
 For workflows with long-running operations:
 ```bash
 export AGENT_RESULT_TIMEOUT_S=1200  # 20 minutes
-workhorse --workflow ./workflows/epic-coder/workflow.yaml
+workhorse run coder
 ```
 
 ### Aggressive Retries for Unstable Networks
@@ -377,7 +364,7 @@ workhorse --workflow ./workflows/epic-coder/workflow.yaml
 ```bash
 export AGENT_MAX_INVOKE_RETRIES=10
 export AGENT_INVOKE_BACKOFF_BASE_S=30
-workhorse --workflow ./workflows/story-coder/workflow.yaml
+workhorse run coder story
 ```
 
 ### Hard-Stop Instead of Defaulting
@@ -395,17 +382,17 @@ When defaulting is disabled and a workflow fails with a transient error:
 1. **Check the error message**: The enhanced logging will indicate if it's transient
 2. **Resume the workflow**: Use the provided resume command
    ```bash
-   workhorse --workflow ./workflows/<name>/workflow.yaml --resume-run runs/workflow-name-default
+   workhorse run <name> --resume-run runs/<name>-default
    ```
 
 ## Testing
 
 Run the test suite (each file is standalone, no pytest required):
 ```bash
-cd /mnt/data/workspace/stablemate/workhorse
-.venv/bin/python tests/test_agent_cap.py
-.venv/bin/python tests/test_agent_recovery.py
-.venv/bin/python tests/test_guardrails.py
+cd workhorse
+uv run python tests/test_agent_cap.py
+uv run python tests/test_agent_recovery.py
+uv run python tests/test_guardrails.py
 ```
 
 ## Best Practices

@@ -1,13 +1,12 @@
 """Workflows that arrive as an installed Python distribution.
 
-A workflow reaches workhorse one of two ways: as a ``workflow.yaml`` under a library
-directory (``_library_layers`` in :mod:`workhorse.main`), or as a package that
-advertises itself in the ``workhorse.workflows`` entry-point group::
+A workflow reaches workhorse exactly one way: as a package that advertises itself in
+the ``workhorse.workflows`` entry-point group::
 
     [project.entry-points."workhorse.workflows"]
     research = "workhorse_workflows.research.workflow:workflow"
 
-This module owns the second. It knows nothing about any particular workflow — it
+This module owns that resolution. It knows nothing about any particular workflow — it
 maps a NAME to the package that claims it, and hands back that package's directory
 on disk.
 
@@ -96,8 +95,7 @@ class PackagedWorkflow:
         """The workflow's own directory: the package the entry-point module lives in.
 
         ``workhorse_workflows.research.workflow:workflow`` resolves to the
-        ``research/`` directory, which is what holds ``prompts/`` and (while the YAML
-        engine still runs them) ``workflow.yaml``."""
+        ``research/`` directory, which is what holds ``prompts/``."""
         package, sep, _ = self.module.rpartition(".")
         if not sep:
             raise PackagedWorkflowError(
@@ -184,3 +182,15 @@ def find_packaged_workflow(name: str) -> PackagedWorkflow | None:
         if workflow.name == name:
             return workflow
     return None
+
+
+def installed_workflow_names() -> list[str]:
+    """Every installed workflow's name, sorted — the "did you mean" list.
+
+    Used only to build an error message, so a duplicate-registration ambiguity is
+    swallowed here: the operator is already being told their name did not resolve,
+    and a second exception raised while explaining the first helps nobody."""
+    try:
+        return [workflow.name for workflow in iter_packaged_workflows()]
+    except PackagedWorkflowError:
+        return sorted({entry_point.name for entry_point in _entry_points()})

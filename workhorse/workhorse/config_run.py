@@ -1,11 +1,10 @@
-"""Immutable per-run configuration for the workhorse engine.
+"""Immutable per-run configuration for the workhorse driver.
 
-Everything the engine used to read ad-hoc from ``os.environ`` at run time is
-captured ONCE here, at the CLI boundary, in a frozen ``RunConfig``. The graph
-walk (``Workhorse`` in ``main.py``) and the agent ladder then read from this
-object rather than the environment, so a run's configuration is immutable by
-design and a test can drive the engine in-process with explicit values instead
-of mutating global state.
+Everything the driver used to read ad-hoc from ``os.environ`` at run time is
+captured ONCE here, at the CLI boundary, in a frozen ``RunConfig``. The driver
+and the agent ladder then read from this object rather than the environment, so a
+run's configuration is immutable by design and a test can drive a workflow
+in-process with explicit values instead of mutating global state.
 
 The env-var names and defaults mirror the module constants in
 ``runner/agent.py`` (which remain for direct callers of ``run_agent`` and are
@@ -22,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
-    from workhorse.runner.script import ScriptRunner
 
 
 def _int(environ: Mapping[str, str], key: str, default: int) -> int:
@@ -57,10 +55,10 @@ class AgentResilience:
     """The agent-node recovery ladder's tuning knobs (see runner/agent.py).
 
     One field per ``AGENT_*`` env var. Built by :meth:`from_env` at the CLI
-    boundary; the ``Workhorse`` engine threads it into ``run_agent`` so the
-    reframe/retry/cap behavior is set explicitly rather than by import-time
-    module constants — which is what lets an in-process test neutralize the
-    recovery sleeps without touching the environment.
+    boundary; the driver threads it into ``run_agent`` so the reframe/retry/cap
+    behavior is set explicitly rather than by import-time module constants — which
+    is what lets an in-process test neutralize the recovery sleeps without touching
+    the environment.
     """
 
     max_output_retries: int = 2
@@ -106,39 +104,27 @@ class AgentResilience:
         return replace(self, **kwargs)
 
 
-# Progress-metered loop-guard default (see main.py `_GasTank`); mirrors the old
-# module constant so `WORKHORSE_GAS` behaves identically.
-_DEFAULT_GAS = 5000
-
-
 @dataclass(frozen=True)
 class RunConfig:
-    """Immutable configuration for one engine run.
+    """Immutable configuration for one run.
 
-    Built once by :meth:`from_env` (the CLI boundary in ``main()``), then read by
-    the ``Workhorse`` engine instead of ``os.environ``. Tests construct it directly
-    with a ``backend_factory`` (a mock backend) and a ``script_runner`` (the
-    in-process runner) to drive the engine hermetically.
+    Built once by :meth:`from_env` (the CLI boundary in ``main()``), then read by the
+    driver instead of ``os.environ``. Tests construct it directly with a
+    ``backend_factory`` (a mock backend) to drive a workflow hermetically.
     """
 
     resilience: AgentResilience = field(default_factory=AgentResilience)
-    #: Loop-guard tank size (WORKHORSE_GAS); 0 disables the guard.
-    gas: int = _DEFAULT_GAS
     #: Absolute wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S); 0 = unbounded.
     max_runtime_s: float = 0.0
     #: Resolves the active agent backend by name. Overridden by the test harness to
     #: return a mock backend; ``None`` means "use runner.backends.get_backend".
     backend_factory: Callable[[str | None], AgentBackend] | None = None
-    #: Executes a script node. ``None`` means the default subprocess runner; the test
-    #: harness supplies an in-process runner so scriptutil calls are monkeypatchable.
-    script_runner: ScriptRunner | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
         e = os.environ if environ is None else environ
         return cls(
             resilience=AgentResilience.from_env(e),
-            gas=_configured_gas(e),
             max_runtime_s=_configured_max_runtime_s(e),
         )
 
@@ -149,23 +135,6 @@ class RunConfig:
         from workhorse.runner.backends import get_backend
 
         return get_backend()
-
-    def get_script_runner(self) -> ScriptRunner:
-        if self.script_runner is not None:
-            return self.script_runner
-        from workhorse.runner.script import default_script_runner
-
-        return default_script_runner()
-
-
-def _configured_gas(environ: Mapping[str, str]) -> int:
-    raw = (environ.get("WORKHORSE_GAS") or "").strip()
-    if raw:
-        try:
-            return max(0, int(raw))
-        except ValueError:
-            pass
-    return _DEFAULT_GAS
 
 
 def _configured_max_runtime_s(environ: Mapping[str, str]) -> float:
