@@ -15,7 +15,16 @@ call sites are in the AST — which also means every alias of the helper
 (``instruction_file``/``skill_file``, ``prompt_file``) is covered for free, and a
 mention inside a comment or a string is not mistaken for a call.
 
-Two deliberate limits. Only *constant* arguments are checkable — ``instruction_ref(
+Only *required* references are reported, and a prompt has two ways to say a reference
+is optional. ``instruction_refs("go", "flutter", ...)`` — plural — asks which of a set
+this repo actually installed and renders just those, so an absent one is the answer
+rather than a defect; and a reference written inside
+``{% if isUsingInstruction('flutter') %}`` cannot render on a repo without that skill,
+so reporting it is a false positive. Both are what a prompt enumerating per-stack
+skills needs: a Go repo must not be told to go read a Flutter skill, and must not fail
+preflight for not having one.
+
+Two further limits. Only *constant* arguments are checkable — ``instruction_ref(
 skill)`` names something known at render time only, and is skipped rather than
 guessed at. And a run with **no** manifest (hello-world, most tests) is skipped
 whole: there, unresolved is the normal state, not a symptom.
@@ -29,9 +38,24 @@ from typing import Any
 
 from jinja2 import Environment, TemplateSyntaxError, nodes
 
+from workhorse.manifest import ManifestContext
+
 # The helper names exposed by workhorse.templates, grouped by what they look up.
 SKILL_HELPERS = frozenset({"instruction_ref", "instruction_file", "skill_file"})
 PROMPT_HELPERS = frozenset({"prompt_ref", "prompt_file"})
+
+# …and their plural counterparts, which ask "which of these does this repo have?".
+# Every name they take is a candidate, so an absent one is the expected answer rather
+# than a finding — they render the resolved subset and drop the rest.
+OPTIONAL_SKILL_HELPERS = frozenset({"instruction_refs", "instruction_files", "skill_files"})
+OPTIONAL_PROMPT_HELPERS = frozenset({"prompt_refs", "prompt_files"})
+
+# `{% if isUsingInstruction('flutter') %}` is a prompt saying, in the only vocabulary
+# available to it, "only when this repo has that skill". A reference inside such a
+# branch therefore cannot render on a repo that lacks it, and reporting it is a false
+# positive — the exact one that made `--dry-run` fail on every repo that legitimately
+# does not install some stack.
+GUARD_HELPERS = frozenset({"isUsingInstruction", "is_using_instruction"})
 
 # Where a workflow keeps the templates rendered as node prompts. Scoped on purpose:
 # a workflow's own docs may show `{{ instruction_ref(...) }}` in a fenced example,
@@ -78,8 +102,70 @@ def resolve_instruction(instructions: Mapping[str, str], name: str) -> str | Non
     return next(iter(hits)) if len(hits) == 1 else None
 
 
+def _is_guard(test: nodes.Node) -> bool:
+    """Whether an ``{% if %}`` test asks whether a skill is installed.
+
+    The test node itself is checked alongside its descendants: ``find_all`` yields only
+    the latter, and the commonest guard of all — ``{% if isUsingInstruction('x') %}`` —
+    *is* the call, with nothing below it to find.
+    """
+    candidates = [test, *test.find_all(nodes.Call)]
+    return any(
+        isinstance(call, nodes.Call)
+        and isinstance(call.node, nodes.Name)
+        and call.node.name in GUARD_HELPERS
+        for call in candidates
+    )
+
+
+def _collect(node: nodes.Node, guarded: bool, found: set[tuple[str, str]]) -> None:
+    """Walk the AST, carrying whether this subtree sits behind an installed-skill guard.
+
+    A hand-rolled descent rather than ``find_all`` because the guard is *positional*:
+    whether a call is a required reference depends on which branch of which ``{% if %}``
+    it is written in, and a flat iterator has thrown that away by the time it yields.
+    """
+    if isinstance(node, nodes.If):
+        # The test's own subtree is not conditional — it is what decides the condition.
+        _collect(node.test, guarded, found)
+        body_guarded = guarded or _is_guard(node.test)
+        for child in node.body:
+            _collect(child, body_guarded, found)
+        # `elif_` holds further `If` nodes with tests of their own, and `else_` renders
+        # precisely when the guard did NOT hold. Neither inherits this branch's guard.
+        for child in [*node.elif_, *node.else_]:
+            _collect(child, guarded, found)
+        return
+
+    if isinstance(node, nodes.Call) and isinstance(node.node, nodes.Name):
+        name = node.node.name
+        if name in SKILL_HELPERS or name in PROMPT_HELPERS:
+            kind = "skill" if name in SKILL_HELPERS else "prompt"
+            # Only the first argument names the reference; the rest are formatting.
+            first = node.args[0] if node.args else None
+            if (
+                not guarded
+                and isinstance(first, nodes.Const)
+                and isinstance(first.value, str)
+            ):
+                found.add((kind, first.value))
+        elif name in OPTIONAL_SKILL_HELPERS or name in OPTIONAL_PROMPT_HELPERS:
+            # Every argument is a candidate, and a candidate that is absent is the
+            # answer, not a defect. Recorded nowhere, and its arguments are not
+            # descended into as references.
+            return
+
+    for child in node.iter_child_nodes():
+        _collect(child, guarded, found)
+
+
 def referenced_names(source: str) -> set[tuple[str, str]]:
-    """Return ``{(kind, name)}`` for every helper call with a constant argument.
+    """Return ``{(kind, name)}`` for every REQUIRED reference with a constant argument.
+
+    Required means: a singular ``*_ref``/``*_file`` helper, called outside any
+    ``isUsingInstruction`` guard. Those are the references whose absence really does
+    put placeholder prose in front of an agent. The plural ``*_refs`` helpers and the
+    bodies of installed-skill guards are deliberately excluded — see the constants above.
 
     A template that will not parse yields nothing: the syntax error is the render's
     to report, and swallowing it here would only turn one clear failure into two.
@@ -91,21 +177,7 @@ def referenced_names(source: str) -> set[tuple[str, str]]:
         return set()
 
     found: set[tuple[str, str]] = set()
-    for call in ast.find_all(nodes.Call):
-        target = call.node
-        if not isinstance(target, nodes.Name):
-            continue
-        if target.name in SKILL_HELPERS:
-            kind = "skill"
-        elif target.name in PROMPT_HELPERS:
-            kind = "prompt"
-        else:
-            continue
-        if not call.args:
-            continue
-        first = call.args[0]
-        if isinstance(first, nodes.Const) and isinstance(first.value, str):
-            found.add((kind, first.value))
+    _collect(ast, False, found)
     return found
 
 
@@ -119,8 +191,9 @@ def missing_references(
     """
     if not context:
         return []
-    instructions: Mapping[str, str] = context.get("_instructions") or {}
-    prompts: Mapping[str, str] = context.get("_prompts") or {}
+    manifest = ManifestContext.from_context(context)
+    instructions: Mapping[str, str] = manifest.instructions
+    prompts: Mapping[str, str] = manifest.prompts
 
     root = Path(workflow_dir)
     missing: set[MissingReference] = set()

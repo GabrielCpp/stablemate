@@ -35,6 +35,7 @@ from workhorse.pyflow import (  # noqa: E402
     WorkflowFailed,
     state,
 )
+from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow.dot import to_dot  # noqa: E402
 from workhorse.pyflow.graph import preflight, registry_graphs, state_graph  # noqa: E402
 
@@ -492,7 +493,7 @@ def test_a_real_run_still_fails_on_the_same_fail_terminal():
     assert "ERROR: budget exhausted" in out, out
 
 
-def _run_with_manifest(manifest: dict[str, Any], *, dry_run: bool) -> tuple[int, str]:
+def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int, str]:
     """Drive a trivial workflow whose one prompt names a skill, under `manifest`."""
     from workhorse.pyflow import run as pyflow_run
 
@@ -526,7 +527,9 @@ def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
     of prose into a live agent prompt, so the only way it becomes visible is by being
     said. The driver says it before the first state, and `--dry-run` is where the same
     list becomes an exit code — the YAML engine's contract, kept."""
-    manifest = {"_instructions": {"go": ".claude/skills/acme-go/SKILL.md"}}
+    manifest = ManifestContext(
+        present=True, instructions={"go": ".claude/skills/acme-go/SKILL.md"}
+    )
 
     code, out = _run_with_manifest(manifest, dry_run=False)
     assert code == 0, out
@@ -540,7 +543,7 @@ def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
 def test_a_run_carrying_no_manifest_is_not_warned_about_references():
     """Unresolved is the normal state for a manifest-free run (hello-world, tests);
     warning there would train the operator to ignore the warning that matters."""
-    code, out = _run_with_manifest({}, dry_run=True)
+    code, out = _run_with_manifest(ManifestContext(), dry_run=True)
     assert code == 0, out
     assert "story-docs" not in out, out
 

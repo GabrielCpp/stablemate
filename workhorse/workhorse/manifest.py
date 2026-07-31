@@ -6,11 +6,17 @@ against it — `instruction_ref("story-docs")`, `isUsingInstruction(...)`,
 `template.*` — so a workflow can name a skill without knowing the repo's layout or
 which agent CLI it was installed for.
 
-Lives at the top level rather than inside either engine because both load one: the
-YAML front-end reads it from `--context-file` into the outer layer of every node's
-context, and the Python driver takes the same dict on its `RunEnv`. The reshaping
-below (`_`-prefixed reserved keys) is read by the helpers in
-:mod:`workhorse.templates`.
+Two types, because the file and the render context are two different shapes:
+:class:`ContextManifest` is farrier's file, read tolerantly; :class:`ManifestContext`
+is what a run carries — the same information projected onto the render context, with
+the per-backend path rewrite applied. The reserved ``_``-prefixed context keys are
+spelled in this module and nowhere else: :meth:`ManifestContext.as_context` writes
+them and :meth:`ManifestContext.from_context` reads them back, which is what the
+helpers in :mod:`workhorse.templates` and :mod:`workhorse.references` call.
+
+Lives at the top level rather than inside the engine because the run loads one: the
+CLI reads it from `--context-file` and the Python driver takes it on its `RunEnv`,
+laid under every agent turn's arguments.
 """
 
 from __future__ import annotations
@@ -18,8 +24,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Canonical skill directory per backend — must match farrier's install layout.
 BACKEND_SKILL_DIR: dict[str, str] = {
@@ -28,57 +38,194 @@ BACKEND_SKILL_DIR: dict[str, str] = {
     "copilot": ".github/skills",
 }
 
+# The reserved context keys. A run's context is one flat bag shared with the
+# workflow's own variables, so the manifest's half is namespaced by a leading
+# underscore. Naming them here — rather than as literals at each read — is what makes
+# the convention checkable: `_SKILL_DIR` has usages, `"_skill_dir"` has occurrences.
+_INSTRUCTIONS = "_instructions"
+_PROMPTS = "_prompts"
+_USED_SKILLS = "_used_skills"
+_SKILL_DIR = "_skill_dir"
+_REPO_ROOT = "_repo_root"
 
-def build_manifest_context(raw: dict[str, Any]) -> dict[str, Any]:
-    """Shape a farrier context manifest into starting-context keys.
 
-    The manifest's ``template``/``repo``/``vars`` become top-level context values
-    (so ``{{ template.x }}`` / ``{{ repo.y }}`` resolve), while the path maps and
-    the selected-skills set are stashed under reserved ``_``-prefixed keys read by
-    the template helpers in workhorse/templates.py.
+def _mapping(value: Any) -> dict[str, Any]:
+    """A dict, or an empty one — see :class:`ContextManifest` on tolerance."""
+    return dict(value) if isinstance(value, Mapping) else {}
 
-    When the active backend (``AGENT_CLI``) differs from the backend the manifest
-    was generated for, instruction paths are rewritten from the manifest's
-    ``skill_dir`` prefix to the active backend's directory.  All three backends
-    share the ``{skill_dir}/{prefix}-{name}/SKILL.md`` structure, so a simple
-    prefix substitution is sufficient.
+
+def _str_map(value: Any) -> dict[str, str]:
+    """The string→string pairs of a mapping, dropping anything else."""
+    if not isinstance(value, Mapping):
+        return {}
+    return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def _str_list(value: Any) -> list[str]:
+    """The strings of a sequence, dropping anything else."""
+    if isinstance(value, str) or not isinstance(value, (list, tuple, set, frozenset)):
+        return []
+    return [v for v in value if isinstance(v, str)]
+
+
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+class ContextManifest(BaseModel):
+    """The `.agents/agents-context.json` farrier writes, as we read it.
+
+    Tolerant on purpose: this is another tool's file, so an unknown key is ignored
+    and a wrong-typed one degrades to its default rather than raising. A manifest
+    that grows a field workhorse has never heard of must not end a week-long run,
+    and neither must one whose `used_skills` arrived as a string.
     """
-    ctx: dict[str, Any] = {}
-    for key in ("template", "repo", "vars"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            ctx[key] = value
 
-    backend = os.environ.get("AGENT_CLI", "claude")
-    manifest_skill_dir = raw.get("skill_dir") or ""
-    target_skill_dir = BACKEND_SKILL_DIR.get(backend, manifest_skill_dir)
+    model_config = ConfigDict(extra="ignore")
 
-    raw_instructions: dict[str, str] = raw.get("instructions") or {}
-    if (
-        manifest_skill_dir
-        and target_skill_dir
-        and target_skill_dir != manifest_skill_dir
-    ):
-        ctx["_instructions"] = {
-            k: v.replace(manifest_skill_dir, target_skill_dir, 1)
-            for k, v in raw_instructions.items()
+    #: Rendered straight into the context, so `{{ template.x }}` / `{{ repo.y }}`
+    #: resolve. Their contents are the *repo's* vocabulary, not workhorse's.
+    template: dict[str, Any] = Field(default_factory=dict)
+    repo: dict[str, Any] = Field(default_factory=dict)
+    vars: dict[str, Any] = Field(default_factory=dict)
+
+    #: name → repo-root-relative path, for `instruction_ref` / `prompt_ref`.
+    instructions: dict[str, str] = Field(default_factory=dict)
+    prompts: dict[str, str] = Field(default_factory=dict)
+    #: The skills selected for this repo, behind `isUsingInstruction`.
+    used_skills: list[str] = Field(default_factory=list)
+    #: Repo-root-relative directory the manifest's own skills were installed under.
+    skill_dir: str = ""
+
+    @field_validator("template", "repo", "vars", mode="before")
+    @classmethod
+    def _tolerate_mapping(cls, value: Any) -> dict[str, Any]:
+        return _mapping(value)
+
+    @field_validator("instructions", "prompts", mode="before")
+    @classmethod
+    def _tolerate_str_map(cls, value: Any) -> dict[str, str]:
+        return _str_map(value)
+
+    @field_validator("used_skills", mode="before")
+    @classmethod
+    def _tolerate_str_list(cls, value: Any) -> list[str]:
+        return _str_list(value)
+
+    @field_validator("skill_dir", mode="before")
+    @classmethod
+    def _tolerate_text(cls, value: Any) -> str:
+        return _text(value)
+
+    def project(self, *, backend: str, repo_root: Path) -> ManifestContext:
+        """Project the file onto the render context for one backend and repo.
+
+        When the active backend (``AGENT_CLI``) differs from the backend the manifest
+        was generated for, instruction paths are rewritten from the manifest's
+        ``skill_dir`` prefix to the active backend's directory. All three backends
+        share the ``{skill_dir}/{prefix}-{name}/SKILL.md`` structure, so a simple
+        prefix substitution is sufficient.
+        """
+        target_skill_dir = BACKEND_SKILL_DIR.get(backend, self.skill_dir)
+        instructions = self.instructions
+        if self.skill_dir and target_skill_dir and target_skill_dir != self.skill_dir:
+            instructions = {
+                k: v.replace(self.skill_dir, target_skill_dir, 1)
+                for k, v in instructions.items()
+            }
+        values = {
+            key: value
+            for key, value in (
+                ("template", self.template),
+                ("repo", self.repo),
+                ("vars", self.vars),
+            )
+            if value
         }
-    else:
-        ctx["_instructions"] = raw_instructions
-
-    ctx["_prompts"] = raw.get("prompts") or {}
-    ctx["_used_skills"] = raw.get("used_skills") or []
-    if target_skill_dir or manifest_skill_dir:
-        ctx["_skill_dir"] = target_skill_dir or manifest_skill_dir
-
-    # Absolute repo root, so the renderer can locate hand-authored prompt flavor
-    # overrides at <repo>/.agents/flavors/<workflow>/<node>.md (see templates.render).
-    # The agent runs with its cwd at the repo root (AGENT_REPO_DIR); default to cwd.
-    ctx["_repo_root"] = str(Path(os.environ.get("AGENT_REPO_DIR") or ".").resolve())
-    return ctx
+        return ManifestContext(
+            present=True,
+            values=values,
+            instructions=instructions,
+            prompts=dict(self.prompts),
+            used_skills=tuple(self.used_skills),
+            skill_dir=target_skill_dir or self.skill_dir,
+            # Absolute, so the renderer can locate hand-authored prompt flavor
+            # overrides at <repo>/.agents/flavors/<workflow>/<node>.md.
+            repo_root=str(repo_root.resolve()),
+        )
 
 
-def load_context_manifest(context_file: str | None) -> dict[str, Any]:
+@dataclass(frozen=True, slots=True)
+class ManifestContext:
+    """What a run carries: the manifest, resolved for this backend and this repo.
+
+    The default instance is the manifest-free case — hello-world and most tests —
+    and it is a real value rather than ``None`` so no caller branches on absence.
+    ``present`` is what tells the two apart: a run with no manifest adds no context
+    keys at all, and its unresolved references are normal rather than a symptom.
+    """
+
+    present: bool = False
+    #: The manifest's own `template`/`repo`/`vars`, destined for Jinja by name.
+    values: dict[str, Any] = field(default_factory=dict)
+    instructions: dict[str, str] = field(default_factory=dict)
+    prompts: dict[str, str] = field(default_factory=dict)
+    used_skills: tuple[str, ...] = ()
+    skill_dir: str = ""
+    repo_root: str = ""
+
+    def as_context(self) -> dict[str, Any]:
+        """The context layer a run lays under every agent turn's arguments."""
+        if not self.present:
+            return {}
+        ctx: dict[str, Any] = dict(self.values)
+        ctx[_INSTRUCTIONS] = dict(self.instructions)
+        ctx[_PROMPTS] = dict(self.prompts)
+        ctx[_USED_SKILLS] = list(self.used_skills)
+        if self.skill_dir:
+            ctx[_SKILL_DIR] = self.skill_dir
+        ctx[_REPO_ROOT] = self.repo_root
+        return ctx
+
+    @classmethod
+    def from_context(cls, context: Mapping[str, Any]) -> ManifestContext:
+        """Read the manifest half back out of a render context.
+
+        The reader half of :meth:`as_context`, and the only one: every helper that
+        needs the manifest at render time goes through here rather than reaching for
+        a reserved key by name. ``values`` is not recovered — once merged, those are
+        ordinary context variables the templates read by their own names.
+        """
+        return cls(
+            present=_INSTRUCTIONS in context or _PROMPTS in context,
+            instructions=_str_map(context.get(_INSTRUCTIONS)),
+            prompts=_str_map(context.get(_PROMPTS)),
+            used_skills=tuple(_str_list(context.get(_USED_SKILLS))),
+            skill_dir=_text(context.get(_SKILL_DIR)),
+            repo_root=_text(context.get(_REPO_ROOT)),
+        )
+
+
+def build_manifest_context(
+    raw: dict[str, Any], *, backend: str | None = None, repo_root: str | None = None
+) -> ManifestContext:
+    """Parse a farrier context manifest and project it onto the render context.
+
+    ``backend`` and ``repo_root`` default to ``None`` and are resolved from
+    ``AGENT_CLI`` / ``AGENT_REPO_DIR`` here — the edge — rather than deeper down,
+    where a caller could not influence them and a test would have to set the
+    environment to reach the other branch.
+    """
+    if backend is None:
+        backend = os.environ.get("AGENT_CLI", "claude")
+    if repo_root is None:
+        repo_root = os.environ.get("AGENT_REPO_DIR") or "."
+    return ContextManifest.model_validate(raw).project(
+        backend=backend, repo_root=Path(repo_root)
+    )
+
+
+def load_context_manifest(context_file: str | None) -> ManifestContext:
     """Load the per-repo farrier context manifest that library prompts render against.
 
     Resolution order: an explicit ``--context-file`` (which MUST exist — a typo'd
@@ -87,7 +234,7 @@ def load_context_manifest(context_file: str | None) -> dict[str, Any]:
     ``$AGENT_REPO_DIR/.agents/agents-context.json``. The per-assistant file makes a
     Codex/Copilot run resolve ``instruction_ref`` to its own adapter files
     (``.github/skills`` etc.) rather than Claude's. When none is present the run
-    proceeds with an empty manifest (the farrier helpers degrade to placeholders /
+    proceeds with an absent manifest (the farrier helpers degrade to placeholders /
     ``False``) — manifest-free workflows like hello-world need no repo context.
     Workflows that DO need it (e.g. coder) always pass ``--context-file`` via the
     generated Makefile, so the miss is caught there."""
@@ -107,7 +254,7 @@ def load_context_manifest(context_file: str | None) -> dict[str, Any]:
         per_cli = agents_dir / f"agents-context.{cli}.json"
         path = per_cli if per_cli.is_file() else agents_dir / "agents-context.json"
         if not path.is_file():
-            return {}
+            return ManifestContext()
     try:
         raw = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -119,4 +266,10 @@ def load_context_manifest(context_file: str | None) -> dict[str, Any]:
     return build_manifest_context(raw)
 
 
-__all__ = ["BACKEND_SKILL_DIR", "build_manifest_context", "load_context_manifest"]
+__all__ = [
+    "BACKEND_SKILL_DIR",
+    "ContextManifest",
+    "ManifestContext",
+    "build_manifest_context",
+    "load_context_manifest",
+]

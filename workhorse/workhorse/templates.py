@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from jinja2 import (
     make_logging_undefined,
 )
 
+from workhorse.manifest import ManifestContext
 from workhorse.references import resolve_instruction
 
 # Template references are routinely filled from upstream agent (LLM) output, so a
@@ -35,6 +37,22 @@ ResilientUndefined = make_logging_undefined(
 )
 
 
+def _flatten(names: Iterable[Any]) -> Iterator[str]:
+    """Yield reference names from either calling convention, skipping empties.
+
+    `instruction_refs("go", "pulumi")` reads best inline; `instruction_refs(stack_skills)`
+    is what a `{% set %}`-built list or a node's own output needs. Supporting both costs
+    one isinstance and spares every prompt a `*`-unpacking dance. Strings are deliberately
+    NOT treated as iterables of characters.
+    """
+    for name in names:
+        if isinstance(name, str):
+            if name:
+                yield name
+        elif isinstance(name, Iterable):
+            yield from _flatten(name)
+
+
 def _farrier_globals(
     context: dict[str, Any], workflow_dir: Path, *, quiet: bool = False
 ) -> dict[str, Any]:
@@ -43,22 +61,20 @@ def _farrier_globals(
     Workflows (and their prompts) now run **directly from the agent library** —
     farrier no longer renders/copies them into a repo. Instead it emits a per-repo
     **context manifest** (``.agents/agents-context.json``) that the runner loads and
-    merges into the workflow context under reserved keys:
-
-      - ``_instructions``: ``{name: repo-root-relative skill path}``
-      - ``_prompts``:      ``{name: repo-root-relative prompt path}``
-      - ``_used_skills``:  the set of skills selected for this repo
-      - ``_skill_dir``:    repo-root-relative skills directory
+    merges into the workflow context; :class:`workhorse.manifest.ManifestContext`
+    reads it back out — the instruction/prompt path maps, the selected skills and the
+    skills directory.
 
     These helpers reproduce what farrier used to resolve at install time, but from
     the manifest in ``context``. Paths are repo-root-relative because the agent runs
     with its working directory at the repo root (``AGENT_REPO_DIR``); the library
     prompt's physical location is irrelevant.
     """
-    instructions: dict[str, str] = context.get("_instructions") or {}
-    prompts: dict[str, str] = context.get("_prompts") or {}
-    used_skills = set(context.get("_used_skills") or [])
-    skill_dir_value = context.get("_skill_dir")
+    manifest = ManifestContext.from_context(context)
+    instructions = manifest.instructions
+    prompts = manifest.prompts
+    used_skills = set(manifest.used_skills)
+    skill_dir_value = manifest.skill_dir
 
     run_dir_value = context.get("_run_dir", "")
 
@@ -84,7 +100,7 @@ def _farrier_globals(
     # A run with no context manifest at all (hello-world, most tests) resolves nothing
     # by design, so "unresolved" is its normal state and not worth a word. A manifest
     # that IS present and still misses a name is the failure this warns about.
-    manifest_present = "_instructions" in context or "_prompts" in context
+    manifest_present = manifest.present
 
     def unresolved(kind: str, name: str) -> None:
         """Report a reference that rendered as prose instead of a path.
@@ -114,6 +130,34 @@ def _farrier_globals(
             return prompts[name]
         unresolved("prompt", name)
         return f"generated {name} prompt when installed"
+
+    # `*_ref` asks for ONE reference the prompt cannot do without, so not resolving it
+    # is a defect and says so. `*_refs` asks a different question — "of these, which
+    # does this repo actually have?" — and the honest answer for a name the repo never
+    # installed is to say nothing about it. A prompt that enumerates the skills for
+    # every stack the workflow has ever met (go, react-router, flutter, pulumi) is
+    # naming a menu, not a dependency; rendering the absent half as
+    # "generated flutter instruction file when installed" tells a Go repo's agent to go
+    # find a Flutter skill. So the unresolved names are DROPPED, not placeheld, and the
+    # result is empty — hence falsy — when none of them resolve, which is what lets the
+    # surrounding sentence disappear with `{% if %}` instead of dangling after "e.g.".
+    def _rendered(names: Iterable[Any], lookup: Any) -> str:
+        seen: set[str] = set()
+        out: list[str] = []
+        for name in _flatten(names):
+            path = lookup(name)
+            # Deduped on the resolved PATH: farrier indexes one skill under several
+            # aliases, and a prompt listing two of them means one file, said twice.
+            if path is not None and path not in seen:
+                seen.add(path)
+                out.append(f"`{path}`")
+        return ", ".join(out)
+
+    def instruction_refs(*names: Any) -> str:
+        return _rendered(names, lambda n: resolve_instruction(instructions, n))
+
+    def prompt_refs(*names: Any) -> str:
+        return _rendered(names, prompts.get)
 
     def is_using_instruction(name: str = "", *_args: Any, **_kwargs: Any) -> bool:
         return name in used_skills
@@ -147,6 +191,11 @@ def _farrier_globals(
         "skill_file": instruction_ref,
         "prompt_file": prompt_ref,
         "prompt_ref": prompt_ref,
+        "instruction_refs": instruction_refs,
+        "instruction_files": instruction_refs,
+        "skill_files": instruction_refs,
+        "prompt_refs": prompt_refs,
+        "prompt_files": prompt_refs,
         "isUsingInstruction": is_using_instruction,
     }
 
@@ -164,12 +213,12 @@ def _flavor_override(
     when an override exists, else ``None``.
 
     When the agent node declares a ``cwd`` (e.g. to run in a specific repo), the
-    flavor is looked up relative to that per-node CWD rather than the global
-    ``_repo_root`` — so each repo in a multi-repo workflow can provide its own
-    flavor independently of the orchestrating repo.
+    flavor is looked up relative to that per-node CWD rather than the manifest's
+    repo root — so each repo in a multi-repo workflow can provide its own flavor
+    independently of the orchestrating repo.
     """
     node_cwd = context.get("_node_cwd")
-    repo_root = node_cwd if node_cwd else context.get("_repo_root")
+    repo_root = node_cwd if node_cwd else ManifestContext.from_context(context).repo_root
     if not repo_root:
         return None
     node_name = template_path.name
@@ -231,7 +280,7 @@ def render_string(
     missing variable really does indicate a broken prompt or arg, leave it off.
     """
     env = Environment(undefined=ChainableUndefined if quiet else ResilientUndefined)
-    workflow_dir = Path(context.get("_skill_dir") or ".")
+    workflow_dir = Path(ManifestContext.from_context(context).skill_dir or ".")
     env.globals.update(_farrier_globals(context, workflow_dir, quiet=quiet))
     tmpl = env.from_string(template_str)
     return tmpl.render(**context)

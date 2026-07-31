@@ -140,8 +140,9 @@ class RunEnv:
     deadline: float | None = None
     #: Rendered telemetry labels for the state currently running.
     labels: dict[str, str] = field(default_factory=dict)
-    #: The per-repo farrier context manifest (see :mod:`workhorse.manifest`), shaped
-    #: into context keys. The OUTER layer of every agent turn's render context: a
+    #: The per-repo farrier context manifest as context keys — what
+    #: :meth:`workhorse.manifest.ManifestContext.as_context` returns. The OUTER
+    #: layer of every agent turn's render context: a
     #: state's own arguments override it, but it is always there so the farrier
     #: template helpers (`instruction_ref`/`isUsingInstruction`/`template.*`) resolve.
     #: Empty = the manifest-free case, where those helpers degrade to placeholders.
@@ -159,6 +160,12 @@ class RunEnv:
     #: resilience knobs and clock, bound together. None = build the real one from
     #: `config` at call time, so a run with no agent node never resolves a backend.
     agent_runner: AgentRunner | None = None
+    #: True while the *resumed* state's own body is running, and false everywhere
+    #: else. `handoff` consumes it to tell "we are re-entering the sub-flow this run
+    #: was killed inside" from "this flow is being invoked again", which is the one
+    #: distinction the presence of a child checkpoint cannot make. The driver owns
+    #: both the setting and the clearing; nothing else writes it.
+    resume_pending: bool = False
 
     @property
     def run_dir(self) -> Path:
@@ -359,11 +366,21 @@ class Engine:
         writer = self.env.writer
         writer.record_node(node_id, "enter", flow=type(child).__name__)
         self.env.log.info("[workhorse] flow   → %s", node_id)
-        sub_writer = writer.subscope(node_id, type(child).__name__)
+        # A resume re-enters the state that was running when the run was killed — and
+        # if that state is a handoff, the sub-flow it was inside is where the run
+        # actually was. Started fresh, the child replays from its own `start`, which
+        # for a long sub-flow (the coder's QA flow: context, plan, review, then a
+        # half-hour suite) throws away hours of finished agent turns on every restart.
+        # The token is one-shot and set only for the resumed state's own body, so an
+        # ordinary re-entry — a loop calling the same flow a second time — still
+        # starts the child clean, which is what `subscope`'s `resume` contract asks for.
+        resuming = self.env.resume_pending
+        self.env.resume_pending = False
+        sub_writer = writer.subscope(node_id, type(child).__name__, resume=resuming)
         sub_env = dataclasses.replace(
             self.env, writer=sub_writer, **_sub_scope(type(child), self.env)
         )
-        result = self.env.driver(child, sub_env)
+        result = self.env.driver(child, sub_env, resume_in_place=resuming)
         writer.write_step(node_id, f"handoff → {type(child).__name__}", _payload(result), {})
         return result
 
