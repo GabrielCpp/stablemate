@@ -42,6 +42,8 @@ from pathlib import Path
 
 from stablemate_core.config import resolve_harness_env
 
+from workhorse.config_run import AgentResilience
+
 # Import the module (not its names) so test monkeypatches of e.g.
 # ``agent._run_claude_cli`` are resolved at call time. agent.py imports this
 # module only lazily (inside run_agent/_invoke_claude), so there is no import cycle.
@@ -82,7 +84,9 @@ class AgentBackend(ABC):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -105,7 +109,9 @@ class AgentBackend(ABC):
         session_id_path: Path | None,
         node_id: str,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ) -> bool:
         """Best-effort: compact the node's session to free context so it can
         continue. Return True when compaction ran, False when it could not (no
@@ -127,7 +133,9 @@ class ClaudeBackend(AgentBackend):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -138,6 +146,7 @@ class ClaudeBackend(AgentBackend):
             node_id,
             session_id_path,
             model,
+            resilience=resilience,
             timeout=timeout,
             cwd=cwd,
             add_dirs=add_dirs,
@@ -150,13 +159,20 @@ class ClaudeBackend(AgentBackend):
         session_id_path: Path | None,
         node_id: str,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ) -> bool:
         # Same harness, same environment: a knob that shapes the turn must also shape
         # the /compact turn, or compaction runs under a different CLI configuration
         # than the conversation it is compacting.
         return _agent._compact_session(
-            session_id_path, node_id, model, env_extra=self.harness_env()
+            session_id_path,
+            node_id,
+            model,
+            resilience=resilience,
+            timeout=timeout,
+            env_extra=self.harness_env(),
         )
 
 
@@ -174,7 +190,9 @@ def _read_session_id(session_id_path: Path | None) -> str | None:
     return None
 
 
-def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None, env_extra=None):
+def _stream_jsonl(
+    cmd, node_id, timeout, stdin_data, on_event, *, resilience, cwd=None, env_extra=None
+):
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout,
     invoking ``on_event(event, state, node_id, diagnostics)`` per parsed object.
 
@@ -218,7 +236,9 @@ def _stream_jsonl(cmd, node_id, timeout, stdin_data, on_event, cwd=None, env_ext
         return False
 
     timed_out, returncode = _agent.stream_subprocess(
-        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd, env_extra=env_extra
+        cmd, node_id, timeout, on_line,
+        resilience=resilience,
+        stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,
     )
     return state, "\n".join(diagnostics), timed_out or bool(early_abort[0]), returncode
 
@@ -231,7 +251,7 @@ def _finalize_turn(
     timed_out,
     returncode,
     session_id_path,
-    timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+    timeout,
     rate_reset_at=None,
 ) -> str:
     """Classify a finished turn through the one shared classifier, so the JSONL/text
@@ -355,7 +375,9 @@ class CodexBackend(AgentBackend):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -390,7 +412,8 @@ class CodexBackend(AgentBackend):
         else:
             cmd = [*head, "exec", *flags, "-"]
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, prompt, _codex_on_event, cwd=cwd,
+            cmd, node_id, timeout, prompt, _codex_on_event,
+            resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
         return _finalize_turn(
@@ -402,7 +425,9 @@ class CodexBackend(AgentBackend):
         session_id_path,
         node_id,
         model=None,
-        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ):
         return False
 
@@ -426,7 +451,9 @@ class CopilotBackend(AgentBackend):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -458,7 +485,8 @@ class CopilotBackend(AgentBackend):
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _copilot_on_event, cwd=cwd,
+            cmd, node_id, timeout, None, _copilot_on_event,
+            resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
         return _finalize_turn(
@@ -470,7 +498,9 @@ class CopilotBackend(AgentBackend):
         session_id_path,
         node_id,
         model=None,
-        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ):
         return False
 
@@ -612,7 +642,9 @@ class OpenCodeBackend(AgentBackend):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -645,7 +677,8 @@ class OpenCodeBackend(AgentBackend):
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
         state, diag, timed_out, rc = _stream_jsonl(
-            cmd, node_id, timeout, None, _opencode_on_event, cwd=cwd,
+            cmd, node_id, timeout, None, _opencode_on_event,
+            resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
@@ -668,12 +701,16 @@ class OpenCodeBackend(AgentBackend):
         session_id_path,
         node_id,
         model=None,
-        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ):
         return False
 
 
-def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path, env_extra=None):
+def _run_text_turn(
+    backend_name, cmd, node_id, timeout, cwd, session_id_path, *, resilience, env_extra=None
+):
     """Run a NON-JSONL agent CLI (aider) that streams plain text to stdout: echo and
     accumulate every line as the turn result. Mirrors ``_stream_jsonl``'s timeout /
     live-echo loop, but these CLIs have no event protocol and no resumable session id
@@ -690,7 +727,8 @@ def _run_text_turn(backend_name, cmd, node_id, timeout, cwd, session_id_path, en
         lines.append(line)
 
     timed_out, returncode = _agent.stream_subprocess(
-        cmd, node_id, timeout, on_line, cwd=cwd, env_extra=env_extra
+        cmd, node_id, timeout, on_line,
+        resilience=resilience, cwd=cwd, env_extra=env_extra,
     )
     text = "\n".join(lines).strip()
     # A text backend has no event to carry usage, so the transcript is the only
@@ -734,7 +772,9 @@ class AiderBackend(AgentBackend):
         node_id: str,
         session_id_path: Path | None,
         model: str | None = None,
-        timeout: float = _agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -761,6 +801,7 @@ class AiderBackend(AgentBackend):
             cmd += ["--reasoning-effort", _aider_effort(effort)]
         return _run_text_turn(
             "aider", cmd, node_id, timeout, cwd, session_id_path,
+            resilience=resilience,
             env_extra=self.harness_env(),
         )
 
@@ -769,7 +810,9 @@ class AiderBackend(AgentBackend):
         session_id_path,
         node_id,
         model=None,
-        timeout=_agent.DEFAULT_RESULT_TIMEOUT_S,
+        *,
+        timeout: float,
+        resilience: AgentResilience,
     ):
         return False
 

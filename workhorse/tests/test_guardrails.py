@@ -6,13 +6,12 @@ Test script for verifying guardrail improvements in the agent worker.
 import os
 import sys
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner.agent import (
     BackendInvocationError,
     _is_transient,
     _is_cap,
     _parse_reset_seconds,
-    DEFAULT_MAX_INVOKE_RETRIES,
-    DEFAULT_RESULT_TIMEOUT_S,
 )
 
 
@@ -132,10 +131,15 @@ def test_environment_variables():
     print(f"  RESULT_TIMEOUT_S: {os.environ.get('AGENT_RESULT_TIMEOUT_S', '600')}")
     print(f"  INVOKE_BACKOFF_BASE_S: {os.environ.get('AGENT_INVOKE_BACKOFF_BASE_S', '15')}")
     print(f"  INVOKE_BACKOFF_CAP_S: {os.environ.get('AGENT_INVOKE_BACKOFF_CAP_S', '300')}")
-    
-    # Verify defaults are loaded
-    assert DEFAULT_MAX_INVOKE_RETRIES >= 0, "Should have valid retry count"
-    assert DEFAULT_RESULT_TIMEOUT_S > 0, "Should have valid timeout"
+
+    # AgentResilience.from_env is the single reader of these names — the ladder
+    # holds no import-time constants of its own.
+    resilience = AgentResilience.from_env()
+    assert resilience.max_invoke_retries >= 0, "Should have valid retry count"
+    assert resilience.result_timeout_s > 0, "Should have valid timeout"
+    # An explicit environment must reach the dataclass, and only through it.
+    overridden = AgentResilience.from_env({"AGENT_MAX_INVOKE_RETRIES": "7"})
+    assert overridden.max_invoke_retries == 7, "from_env ignored the environment"
     print("✓ Environment variables tests passed!\n")
 
 

@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent, backends
 from workhorse.runner.backends import (
     AgentBackend,
@@ -26,6 +27,16 @@ from workhorse.runner.backends import (
     get_backend,
 )
 from workhorse.runner.spec import AgentNode
+
+#: A turn's budget and the ladder's knobs are INJECTED into every backend — nothing
+#: below the CLI edge reads configuration, so a test states what it drives with.
+RESILIENCE = AgentResilience()
+TIMEOUT = RESILIENCE.result_timeout_s
+
+
+def _run_turn(backend, *args, **kwargs):
+    """Call a backend turn with the injected budget/knobs every backend now requires."""
+    return backend.run_turn(*args, timeout=TIMEOUT, resilience=RESILIENCE, **kwargs)
 
 
 def _without_agent_cli():
@@ -105,11 +116,11 @@ def _fake_stream(canned):
     canned (state, diagnostics, timed_out, returncode)."""
     captured = {}
 
-    def fake(cmd, node_id, timeout, stdin_data, on_event, cwd=None, env_extra=None):
+    def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
         captured["cmd"] = cmd
         captured["stdin"] = stdin_data
-        captured["cwd"] = cwd
-        captured["env_extra"] = env_extra
+        captured["cwd"] = kwargs.get("cwd")
+        captured["env_extra"] = kwargs.get("env_extra")
         return canned
 
     return fake, captured
@@ -124,7 +135,7 @@ def test_codex_effort_sets_reasoning_override():
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
-            CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5", effort="high")
+            _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort="high")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -142,7 +153,7 @@ def test_codex_effort_clamped_to_high():
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
             with patch.object(backends, "_stream_jsonl", fake):
-                CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5", effort=level)
+                _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5", effort=level)
         finally:
             if prior is not None:
                 os.environ["CODEX_PROFILE"] = prior
@@ -158,7 +169,7 @@ def test_codex_no_effort_omits_override():
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
-            CodexBackend().run_turn("P", "n", sidp, model="@gpt-5.5")
+            _run_turn(CodexBackend(), "P", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -179,7 +190,7 @@ def _capture_claude_cmd(**run_turn_kwargs):
 
     with patch("subprocess.Popen", fake_popen):
         try:
-            ClaudeBackend().run_turn("P", "n", None, **run_turn_kwargs)
+            _run_turn(ClaudeBackend(), "P", "n", None, **run_turn_kwargs)
         except Exception:
             pass
     return captured["cmd"]
@@ -206,7 +217,7 @@ def test_copilot_effort_maps_to_native_flag():
         ({"result_text": "OK", "session_id": "s"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake):
-        CopilotBackend().run_turn("BASE PROMPT", "n", sidp, effort="high")
+        _run_turn(CopilotBackend(), "BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
     assert cmd[cmd.index("--effort") + 1] == "high"
     assert "BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
@@ -222,7 +233,7 @@ def test_codex_run_turn_fresh_then_resume():
     try:
         with patch.object(backends, "_stream_jsonl", fake):
             # Leading '@' = model only, no profile (default provider).
-            out = CodexBackend().run_turn("PROMPT", "n", sidp, model="@gpt-5.5")
+            out = _run_turn(CodexBackend(), "PROMPT", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -242,7 +253,7 @@ def test_codex_run_turn_fresh_then_resume():
         ({"result_text": "OK2", "session_id": "tid-123"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake2):
-        CodexBackend().run_turn("P2", "n", sidp)
+        _run_turn(CodexBackend(), "P2", "n", sidp)
     assert captured2["cmd"][:3] == ["codex", "exec", "resume"]
     assert "tid-123" in captured2["cmd"]
 
@@ -261,7 +272,7 @@ def test_codex_profile_from_env():
     try:
         with patch.object(backends, "_stream_jsonl", fake):
             # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
-            CodexBackend().run_turn(
+            _run_turn(CodexBackend(), 
                 "PROMPT", "n", sidp, model="@deepseek/deepseek-chat-v3.1"
             )
     finally:
@@ -281,7 +292,7 @@ def test_codex_profile_from_env():
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         with patch.object(backends, "_stream_jsonl", fake2):
-            CodexBackend().run_turn("P2", "n", sidp)
+            _run_turn(CodexBackend(), "P2", "n", sidp)
     finally:
         if prior is None:
             os.environ.pop("CODEX_PROFILE", None)
@@ -307,7 +318,7 @@ def test_codex_per_node_profile_overrides_env():
             ({"result_text": "X", "session_id": "s"}, "", False, 0)
         )
         with patch.object(backends, "_stream_jsonl", fake):
-            CodexBackend().run_turn("P", "n", sidp, model="local@qwen2.5-coder:32b")
+            _run_turn(CodexBackend(), "P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
         assert cmd[:4] == ["codex", "--profile", "local", "exec"]  # node profile wins
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
@@ -317,7 +328,7 @@ def test_codex_per_node_profile_overrides_env():
             ({"result_text": "X", "session_id": "s"}, "", False, 0)
         )
         with patch.object(backends, "_stream_jsonl", fake2):
-            CodexBackend().run_turn("P", "n", sidp2, model="local")  # bare = profile
+            _run_turn(CodexBackend(), "P", "n", sidp2, model="local")  # bare = profile
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
         assert "-m" not in captured2["cmd"]  # model pinned by the profile
     finally:
@@ -338,7 +349,7 @@ def test_codex_profile_at_slug_model_string():
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         with patch.object(backends, "_stream_jsonl", fake):
-            CodexBackend().run_turn("P", "n", sidp, model="mimo@mimo-pro")
+            _run_turn(CodexBackend(), "P", "n", sidp, model="mimo@mimo-pro")
     finally:
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
@@ -366,7 +377,7 @@ def test_copilot_run_turn_fresh_then_resume():
     )
 
     with patch.object(backends, "_stream_jsonl", fake):
-        out = CopilotBackend().run_turn("PROMPT", "n", sidp)
+        out = _run_turn(CopilotBackend(), "PROMPT", "n", sidp)
 
     assert out == "ANSWER"
     cmd = captured["cmd"]
@@ -380,7 +391,7 @@ def test_copilot_run_turn_fresh_then_resume():
         ({"result_text": "A2", "session_id": "sess-1"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake2):
-        CopilotBackend().run_turn("P2", "n", sidp)
+        _run_turn(CopilotBackend(), "P2", "n", sidp)
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
 
 
@@ -418,27 +429,28 @@ def test_finalize_turn_classifies_failures():
     # Non-zero exit whose output matches a transient marker → transient.
     try:
         backends._finalize_turn(
-            "codex", "n", dict(base), "rate limit hit", False, 1, None
+            "codex", "n", dict(base), "rate limit hit", False, 1, None, TIMEOUT
         )
         raise AssertionError("expected raise on non-zero exit")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Timeout is always transient.
     try:
-        backends._finalize_turn("copilot", "n", dict(base), "", True, 0, None)
+        backends._finalize_turn("copilot", "n", dict(base), "", True, 0, None, TIMEOUT)
         raise AssertionError("expected raise on timeout")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Empty result is transient.
     try:
         backends._finalize_turn(
-            "codex", "n", {"result_text": "", "session_id": None}, "", False, 0, None
+            "codex", "n", {"result_text": "", "session_id": None}, "", False, 0, None,
+            TIMEOUT,
         )
         raise AssertionError("expected raise on empty result")
     except agent.BackendInvocationError as e:
         assert e.transient is True
     # Clean success returns the text.
-    assert backends._finalize_turn("codex", "n", dict(base), "", False, 0, None) == "x"
+    assert backends._finalize_turn("codex", "n", dict(base), "", False, 0, None, TIMEOUT) == "x"
 
 
 def test_classify_turn_records_node_to_session_manifest():
@@ -459,6 +471,7 @@ def test_classify_turn_records_node_to_session_manifest():
             diagnostics="",
             timed_out=False,
             returncode=0,
+            timeout=TIMEOUT,
             session_id="ses_first",
             session_id_path=sidp,
         )
@@ -472,6 +485,7 @@ def test_classify_turn_records_node_to_session_manifest():
         diagnostics="",
         timed_out=False,
         returncode=0,
+        timeout=TIMEOUT,
         session_id="ses_second",
         session_id_path=sidp,
     )
@@ -495,6 +509,7 @@ def test_classify_turn_without_session_writes_no_manifest():
             diagnostics="",
             timed_out=False,
             returncode=0,
+            timeout=TIMEOUT,
             session_id=None,
             session_id_path=sidp,
         )
@@ -519,6 +534,7 @@ def test_finalize_turn_non_recoverable_names_each_backend():
                 False,
                 1,
                 None,
+                TIMEOUT,
             )
             raise AssertionError(f"{name}: expected raise on a hard CLI exit")
         except agent.BackendInvocationError as e:
@@ -545,7 +561,7 @@ def test_opencode_run_turn_fresh_then_resume():
         ({"result_text": "PONG", "session_id": "ses_1"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake):
-        out = OpenCodeBackend().run_turn(
+        out = _run_turn(OpenCodeBackend(), 
             "PROMPT", "n", sidp, model="openrouter/xiaomi/mimo-v2.5", effort="high"
         )
     assert out == "PONG"
@@ -573,7 +589,7 @@ def test_opencode_run_turn_fresh_then_resume():
         ({"result_text": "P2", "session_id": "ses_1"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake2):
-        OpenCodeBackend().run_turn("P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
+        _run_turn(OpenCodeBackend(), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
 
 
@@ -585,14 +601,14 @@ def test_opencode_effort_variant_mapping_and_omit():
             ({"result_text": "X", "session_id": "s"}, "", False, 0)
         )
         with patch.object(backends, "_stream_jsonl", fake):
-            OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort=effort)
+            _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
     # "medium" has no opencode variant → omitted entirely.
     fake, captured = _fake_stream(
         ({"result_text": "X", "session_id": "s"}, "", False, 0)
     )
     with patch.object(backends, "_stream_jsonl", fake):
-        OpenCodeBackend().run_turn("P", "n", sidp, model="m", effort="medium")
+        _run_turn(OpenCodeBackend(), "P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
 
 
@@ -635,10 +651,10 @@ def _fake_text_turn():
     """Stand-in for _run_text_turn that records the cmd and returns canned text."""
     captured = {}
 
-    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path, env_extra=None):
+    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path, **kwargs):
         captured["cmd"] = cmd
         captured["cwd"] = cwd
-        captured["env_extra"] = env_extra
+        captured["env_extra"] = kwargs.get("env_extra")
         return "AIDER OK"
 
     return fake, captured
@@ -647,7 +663,7 @@ def _fake_text_turn():
 def test_aider_run_turn_builds_noninteractive_cmd():
     fake, captured = _fake_text_turn()
     with patch.object(backends, "_run_text_turn", fake):
-        out = AiderBackend().run_turn(
+        out = _run_turn(AiderBackend(), 
             "PROMPT", "n", None, model="openrouter/xiaomi/mimo-v2.5", cwd="/repo"
         )
     assert out == "AIDER OK"
@@ -676,7 +692,7 @@ def test_aider_effort_clamped_to_high():
     ):
         fake, captured = _fake_text_turn()
         with patch.object(backends, "_run_text_turn", fake):
-            AiderBackend().run_turn("P", "n", None, model="m", effort=level)
+            _run_turn(AiderBackend(), "P", "n", None, model="m", effort=level)
         assert (
             captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
         )
@@ -685,7 +701,7 @@ def test_aider_effort_clamped_to_high():
 def test_aider_no_effort_omits_flag():
     fake, captured = _fake_text_turn()
     with patch.object(backends, "_run_text_turn", fake):
-        AiderBackend().run_turn("P", "n", None, model="m")
+        _run_turn(AiderBackend(), "P", "n", None, model="m")
     assert "--reasoning-effort" not in captured["cmd"]
 
 
@@ -724,7 +740,7 @@ def test_opencode_cap_attaches_codex_reset_at():
         ),
     ):
         try:
-            OpenCodeBackend().run_turn(
+            _run_turn(OpenCodeBackend(), 
                 "P", "review_implementation", None, model="openai/gpt-5.5"
             )
             raise AssertionError("expected a cap BackendInvocationError")
@@ -750,7 +766,7 @@ def test_opencode_non_cap_does_not_probe_codex():
             lambda *a, **k: calls.__setitem__("n", calls["n"] + 1),
         ),
     ):
-        out = OpenCodeBackend().run_turn("P", "n", None, model="openai/gpt-5.5")
+        out = _run_turn(OpenCodeBackend(), "P", "n", None, model="openai/gpt-5.5")
     assert out == "DONE"
     assert calls["n"] == 0, "no cap → no probe"
 
@@ -770,7 +786,8 @@ def _drive_stream_jsonl(lines, on_event):
 
     with patch.object(agent, "stream_subprocess", fake_stream):
         return backends._stream_jsonl(
-            ["opencode"], "review_implementation", 3600, None, on_event
+            ["opencode"], "review_implementation", 3600, None, on_event,
+            resilience=RESILIENCE,
         )
 
 

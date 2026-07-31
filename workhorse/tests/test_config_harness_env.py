@@ -25,6 +25,7 @@ import os
 from unittest.mock import patch
 
 from stablemate_core.config import resolve_harness_env
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent, backends
 from workhorse.runner.backends import (
     AiderBackend,
@@ -96,6 +97,10 @@ def test_non_string_values_are_dropped():
 
 # ── Delivery to the subprocess ────────────────────────────────────────────────
 
+#: The turn budget and the ladder's knobs are injected at the CLI edge; a test that
+#: drives a backend directly states them rather than relying on a module constant.
+RESILIENCE = AgentResilience()
+
 
 def _spawn_env(backend, **run_turn_kwargs):
     """Drive ``backend.run_turn`` with the spawn path faked, returning the ``env_extra``
@@ -120,7 +125,12 @@ def _spawn_env(backend, **run_turn_kwargs):
         patch.object(backends, "_finalize_turn", lambda *a, **k: "ok"),
         patch.object(agent, "classify_turn", lambda *a, **k: "ok"),
     ):
-        backend.run_turn("P", "n", None, **run_turn_kwargs)
+        backend.run_turn(
+            "P", "n", None,
+            timeout=RESILIENCE.result_timeout_s,
+            resilience=RESILIENCE,
+            **run_turn_kwargs,
+        )
     return seen.get("env_extra")
 
 
@@ -181,7 +191,11 @@ def test_compaction_runs_under_the_same_env():
             _with_config(CONFIG),
             patch.object(agent, "stream_subprocess", fake_stream),
         ):
-            assert ClaudeBackend().compact(sid_path, "n") is True
+            assert ClaudeBackend().compact(
+                sid_path, "n",
+                timeout=RESILIENCE.result_timeout_s,
+                resilience=RESILIENCE,
+            ) is True
     assert seen.get("env_extra") == {"MAX_THINKING_TOKENS": "31999"}
 
 
@@ -199,6 +213,7 @@ def test_harness_env_wins_over_the_inherited_shell():
             try:
                 agent.stream_subprocess(
                     ["true"], "n", 1.0, lambda line: None,
+                    resilience=RESILIENCE,
                     env_extra={"HARNESS_KNOB": "from-config"},
                 )
             except RuntimeError:

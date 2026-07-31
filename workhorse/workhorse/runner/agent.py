@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from workhorse import otel
+from workhorse.config_run import AgentResilience
 from workhorse.runner import usage
 from stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.runner.spec import AgentNode
@@ -73,72 +74,12 @@ def terminate_active() -> None:
         proc.wait()
 
 
-# Number of additional attempts when Claude's response can't be parsed into the
-# node's declared outputs. Overridable via env for ops without a code change.
-DEFAULT_MAX_OUTPUT_RETRIES = int(os.environ.get("AGENT_MAX_OUTPUT_RETRIES", "2"))
-
-# Number of additional attempts when the Claude CLI call itself fails for a
-# *transient* reason (spending cap, rate limit, overload, network blip). Each
-# retry waits min(base * 2**attempt, cap) seconds. All overridable via env.
-DEFAULT_MAX_INVOKE_RETRIES = int(os.environ.get("AGENT_MAX_INVOKE_RETRIES", "4"))
-
-# When invocation + output parsing still fail after the transient retries above,
-# REFRAME the prompt from scratch in a fresh session and try the node again, up
-# to this many times. This is the second resilience layer for unattended runs:
-# a node Claude can't answer as-phrased often succeeds when re-asked more simply.
-DEFAULT_MAX_REPHRASE_ATTEMPTS = int(os.environ.get("AGENT_MAX_REPHRASE_ATTEMPTS", "3"))
-
-# When a node's run exhausts the model's context window and the headless CLI
-# returns instead of auto-compacting, the runner first tries to COMPACT the
-# session and continue (preserving the node's progress) this many times before
-# falling through to the generic reframe ladder. Compaction reuses the same
-# session, so it keeps what the node has done so far; reframing would throw it
-# away. 0 disables compaction recovery (straight to reframe).
-DEFAULT_MAX_COMPACT_ATTEMPTS = int(os.environ.get("AGENT_MAX_COMPACT_ATTEMPTS", "2"))
-
-# Final resilience layer: when every reframing fails, return safe default outputs
-# so the controller advances to the node's `next` instead of crashing the run.
-# This worker is built to run autonomously for days — a single unanswerable node
-# must degrade to "continue" rather than abort the whole program. Disable
-# (AGENT_USE_DEFAULT_OUTPUTS=false) only when a hard stop on failure is wanted.
-USE_DEFAULT_OUTPUTS = os.environ.get("AGENT_USE_DEFAULT_OUTPUTS", "true").lower() == "true"
-
-# Default per-node wall-clock budget for a single agent turn when the workflow node
-# does not set its own ``timeout:`` (in seconds). 1h is the normalized default: long
-# enough for a heavy QA / build / browser node to finish, short enough that a wedged
-# turn is force-killed and retried within the hour on an unattended run. Nodes may
-# override per-node (incl. ``timeout: infinity`` to opt out); env overrides globally.
-DEFAULT_RESULT_TIMEOUT_S = float(os.environ.get("AGENT_RESULT_TIMEOUT_S", "3600"))
-_INVOKE_BACKOFF_BASE_S = float(os.environ.get("AGENT_INVOKE_BACKOFF_BASE_S", "15"))
-_INVOKE_BACKOFF_CAP_S = float(os.environ.get("AGENT_INVOKE_BACKOFF_CAP_S", "300"))
-
-# Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout`` check in
-# _stream_events can only fire BETWEEN reads — if the agent writes a partial line and
-# then its socket wedges (a stalled API stream or a hung MCP server), the reader
-# blocks inside readline() and the wall-clock check never runs again, so the turn can
-# hang forever. This watchdog runs on a SEPARATE thread and SIGKILLs the whole process
-# group once the turn overruns its budget by this grace, regardless of stream state —
-# the guarantee that no single wedged turn can freeze a week-long unattended run.
-_WATCHDOG_GRACE_S = float(os.environ.get("AGENT_WATCHDOG_GRACE_S", "120"))
-# Optional idle cutoff: treat a turn that has produced no stream event for this long as
-# stalled (caught at select granularity, so it does NOT fire while blocked inside a
-# single readline). Default 0 = disabled, because a legitimate long tool call (e.g. a
-# multi-minute `make test`) emits nothing until it returns and must not be killed; the
-# watchdog above is the always-on backstop. Set >0 to fail stalls faster.
-_DEFAULT_IDLE_TIMEOUT_S = float(os.environ.get("AGENT_IDLE_TIMEOUT_S", "0"))
-
-# How often the streaming loop emits a turn-liveness heartbeat metric. This only
-# REPORTS the idleness the loop already tracks for the cutoff above — it never kills
-# anything, so it is safe to leave on by default (and is a no-op when telemetry is
-# off). Kept well under groom's stall window so a live turn is provably alive long
-# before the alerter would consider paging.
-_HEARTBEAT_EVERY_S = float(os.environ.get("WORKHORSE_OTEL_HEARTBEAT_S", "10"))
-
-
 def _arm_watchdog(
     proc: subprocess.Popen,
     node_id: str,
     timeout: float,
+    *,
+    resilience: AgentResilience,
     on_fire: "Callable[[], None] | None" = None,
 ) -> threading.Timer | None:
     """Arm an out-of-band timer that force-kills ``proc``'s process group after
@@ -154,7 +95,7 @@ def _arm_watchdog(
             return
         print(
             f"[{node_id}] ⏱ watchdog: turn exceeded {int(timeout)}s + "
-            f"{int(_WATCHDOG_GRACE_S)}s grace — SIGKILLing process group",
+            f"{int(resilience.watchdog_grace_s)}s grace — SIGKILLing process group",
             flush=True,
         )
         # Runs on the watchdog's daemon thread — otel.turn_event is the one
@@ -166,27 +107,18 @@ def _arm_watchdog(
             on_fire()
         _kill_process_group(proc, signal.SIGKILL)
 
-    timer = threading.Timer(timeout + _WATCHDOG_GRACE_S, _fire)
+    timer = threading.Timer(timeout + resilience.watchdog_grace_s, _fire)
     timer.daemon = True
     timer.start()
     return timer
 
 
-# The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native binary
-# and self-updates by default (autoUpdates), and a manual `npm i -g` / package refresh
-# does the same. While that in-place rewrite is in flight, exec of the very same path
-# fails for a sub-second window in one of three ways: ETXTBSY ("text file busy", a native
-# binary overwritten while running), ENOENT during the updater's rename (the path is
-# momentarily absent), or ENOEXEC ("exec format error", the file is present but only
-# half-written so its header is not yet a valid executable). That is NOT a missing tool — the
-# shim still resolves on PATH — so a few short retries ride the update out instead of
-# crashing an otherwise-healthy turn. It is deliberately distinguished from a genuinely
-# absent CLI (a non-interactive PATH with no nvm shim, the classic launch-context bug):
-# there ENOENT persists and shutil.which() returns None, so we fail FAST rather than burn
-# the retry budget on a binary that will never appear.
-_EXEC_RETRY_MAX = int(os.environ.get("AGENT_EXEC_RETRY_MAX", "5"))
-_EXEC_RETRY_BASE_S = float(os.environ.get("AGENT_EXEC_RETRY_BASE_S", "1"))
-_EXEC_RETRY_CAP_S = float(os.environ.get("AGENT_EXEC_RETRY_CAP_S", "8"))
+# The agent CLI can be replaced ON DISK mid-run — see ``AgentResilience.exec_retry_max``
+# for why exec of the very same path fails for a sub-second window and why that is NOT a
+# missing tool. It is deliberately distinguished from a genuinely absent CLI (a
+# non-interactive PATH with no nvm shim, the classic launch-context bug): there ENOENT
+# persists and shutil.which() returns None, so we fail FAST rather than burn the retry
+# budget on a binary that will never appear.
 # errnos that mean "the executable is momentarily un-exec'able", not "absent":
 # ETXTBSY = native binary being overwritten; ENOEXEC = binary present but half-written
 # (invalid header) mid-update; ESTALE = NFS handle gone stale (flaky home mount). All three
@@ -196,7 +128,13 @@ _EXEC_RETRY_CAP_S = float(os.environ.get("AGENT_EXEC_RETRY_CAP_S", "8"))
 _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
 
 
-def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subprocess.Popen:
+def _spawn_streaming(
+    cmd: list[str],
+    node_id: str,
+    *,
+    resilience: AgentResilience,
+    **popen_kwargs: Any,
+) -> subprocess.Popen:
     """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window.
 
     A transient exec failure (the CLI binary being rewritten in place by its own
@@ -223,12 +161,16 @@ def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subpr
             # EACCES (permission) — are permanent, so they go terminal immediately.
             retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
             attempt += 1
-            if retryable and attempt <= _EXEC_RETRY_MAX:
-                delay = min(_EXEC_RETRY_BASE_S * (2 ** (attempt - 1)), _EXEC_RETRY_CAP_S)
+            if retryable and attempt <= resilience.exec_retry_max:
+                delay = min(
+                    resilience.exec_retry_base_s * (2 ** (attempt - 1)),
+                    resilience.exec_retry_cap_s,
+                )
                 code = errno.errorcode.get(exc.errno, str(exc.errno))
                 print(
                     f"[{node_id}] ⏳ agent CLI '{cmd[0]}' unavailable ({code}) — likely "
-                    f"self-updating; retry {attempt}/{_EXEC_RETRY_MAX} in {int(delay)}s",
+                    f"self-updating; retry {attempt}/{resilience.exec_retry_max} "
+                    f"in {int(delay)}s",
                     flush=True,
                 )
                 otel.turn_event(
@@ -244,8 +186,8 @@ def _spawn_streaming(cmd: list[str], node_id: str, **popen_kwargs: Any) -> subpr
             resolves = shutil.which(cmd[0]) is not None
             if retryable and resolves:
                 raise BackendInvocationError(
-                    f"agent CLI '{cmd[0]}' still not exec'able after {_EXEC_RETRY_MAX} "
-                    f"retries ({exc}); likely a slow self-update",
+                    f"agent CLI '{cmd[0]}' still not exec'able after "
+                    f"{resilience.exec_retry_max} retries ({exc}); likely a slow self-update",
                     transient=True,
                 ) from exc
             hint = (
@@ -265,6 +207,7 @@ def stream_subprocess(
     timeout: float,
     on_line: "Callable[[str], None]",
     *,
+    resilience: AgentResilience,
     stdin_data: str | None = None,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
@@ -291,6 +234,7 @@ def stream_subprocess(
     proc = _spawn_streaming(
         cmd,
         node_id,
+        resilience=resilience,
         stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
@@ -313,7 +257,11 @@ def stream_subprocess(
 
     fired = {"v": False}
     watchdog = _arm_watchdog(
-        proc, node_id, timeout, on_fire=lambda: fired.__setitem__("v", True)
+        proc,
+        node_id,
+        timeout,
+        resilience=resilience,
+        on_fire=lambda: fired.__setitem__("v", True),
     )
     timed_out = False
     assert proc.stdout is not None
@@ -330,7 +278,7 @@ def stream_subprocess(
             # Liveness telemetry, emitted here at the top so it also ticks while the
             # stream is SILENT — the wedged case, and the only one worth paging on.
             # The turn's own span cannot report this: it does not export until it ends.
-            if now - last_beat_at >= _HEARTBEAT_EVERY_S:
+            if now - last_beat_at >= resilience.heartbeat_every_s:
                 otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
                 last_beat_at = now
             # Short select slices keep the in-loop wall-clock check live for a cleanly
@@ -391,19 +339,12 @@ _CAP_MARKERS = (
     "spending cap", "usage limit", "weekly limit", "session limit", "quota",
     "key limit", "daily limit",
 )
-# Fallback wait when the reset time can't be parsed from the message, then re-probe.
-_CAP_DEFAULT_WAIT_S = float(os.environ.get("AGENT_CAP_DEFAULT_WAIT_S", "3600"))
-# Added after a parsed reset so we wake just AFTER the window reopens.
-_CAP_WAIT_MARGIN_S = float(os.environ.get("AGENT_CAP_WAIT_MARGIN_S", "120"))
-# Emit a "still paused" line every this many seconds so a long wait isn't mistaken
-# for a hang.
-_CAP_TICK_S = float(os.environ.get("AGENT_CAP_TICK_S", "600"))
-# Safety bound on consecutive cap waits (each up to ~a day) before giving up.
-_MAX_CAP_WAITS = int(os.environ.get("AGENT_MAX_CAP_WAITS", "48"))
-# Upper bound on a single structured (resetsAt-derived) cap sleep. A genuine
-# weekly reset is ~7 days, so the default leaves headroom; anything larger is
-# treated as bogus and we re-probe sooner instead of sleeping for it.
-_CAP_MAX_STRUCTURED_WAIT_S = float(os.environ.get("AGENT_CAP_MAX_WAIT_S", str(8 * 24 * 3600)))
+# The cap ladder's own knobs — the fallback wait when the reset time can't be parsed,
+# the margin added after a parsed reset so we wake just AFTER the window reopens, the
+# "still paused" tick, the bound on consecutive waits, and the upper bound on a single
+# structured (resetsAt-derived) sleep — are fields on ``AgentResilience``
+# (``cap_default_wait_s`` / ``cap_wait_margin_s`` / ``cap_tick_s`` / ``max_cap_waits`` /
+# ``cap_max_wait_s``), injected into the functions below.
 # Substrings (case-insensitive) in a rate_limit_event's status that mark the limit
 # as actually HIT (vs the normal "allowed"). Conservative on purpose: an unknown
 # benign status must not be mistaken for a cap. Text markers remain the primary
@@ -557,7 +498,7 @@ def classify_turn(
     diagnostics: str,
     timed_out: bool,
     returncode: int,
-    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    timeout: float,
     session_id: str | None = None,
     session_id_path: Path | None = None,
     rate_limited: bool = False,
@@ -694,15 +635,11 @@ def run_agent(
     context: WorkflowContext,
     workflow_dir: Path,
     session_id_path: Path | None = None,
-    max_output_retries: int = DEFAULT_MAX_OUTPUT_RETRIES,
-    max_rephrase_attempts: int = DEFAULT_MAX_REPHRASE_ATTEMPTS,
-    max_compact_attempts: int = DEFAULT_MAX_COMPACT_ATTEMPTS,
     resume_session: bool = False,
     run_dir: Path | None = None,
     *,
     backend: "AgentBackend | None" = None,
-    use_default_outputs: bool | None = None,
-    result_timeout: float | None = None,
+    resilience: AgentResilience | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Render the prompt, invoke Claude, and parse its declared outputs — resiliently.
@@ -716,11 +653,11 @@ def run_agent(
     2. **Compact & continue** (here): if the node exhausts the model's context
        window (the headless CLI returns instead of auto-compacting), the session
        is compacted and the node retried on it — preserving the node's progress —
-       up to ``max_compact_attempts`` times before reframing.
+       up to ``resilience.max_compact_attempts`` times before reframing.
     3. **Reframe** (here): if invocation or output parsing still fails, the prompt
        is rephrased from scratch in a fresh session and the node is retried, up to
-       ``max_rephrase_attempts`` times. A node Claude can't answer as-phrased
-       often succeeds when re-asked more simply.
+       ``resilience.max_rephrase_attempts`` times. A node Claude can't answer
+       as-phrased often succeeds when re-asked more simply.
     4. **Default to next** (here): when every reframing fails, return safe default
        outputs so the controller advances to ``node.next`` instead of aborting.
        Set ``AGENT_USE_DEFAULT_OUTPUTS=false`` to hard-fail instead.
@@ -737,17 +674,16 @@ def run_agent(
     """
     ctx = context.as_dict()
 
-    # The engine may inject its resilience config explicitly (in-process, no env);
-    # fall back to the module defaults for direct callers.
-    if use_default_outputs is None:
-        use_default_outputs = USE_DEFAULT_OUTPUTS
-    default_timeout = result_timeout if result_timeout is not None else DEFAULT_RESULT_TIMEOUT_S
+    # The engine resolves the ladder's knobs from the environment ONCE, at the CLI
+    # boundary, and injects them here. A direct caller that passes nothing gets the
+    # declared defaults — this function reads no configuration of its own.
+    resilience = resilience or AgentResilience()
 
     # The wall-clock budget for this node's turn: the node's own timeout when set,
     # else the engine default. Surfaced to the prompt (node_timeout_s/min) so the
     # agent can size its commands to finish — a turn killed at the budget restarts
     # the node from scratch with no memory, wasting the whole budget.
-    effective_timeout = node.timeout if node.timeout else default_timeout
+    effective_timeout = node.timeout if node.timeout else resilience.result_timeout_s
     # An unbounded budget (timeout: infinity) means "never kill this turn". The stream
     # loops compare `elapsed > timeout`, so float('inf') naturally never trips; only the
     # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
@@ -828,7 +764,7 @@ def run_agent(
     # ``rephrase`` advances only on a genuine reframe; a context-compaction retry
     # re-runs the SAME prompt on the compacted session without consuming a reframe.
     rephrase = 0
-    compact_attempts = max_compact_attempts
+    compact_attempts = resilience.max_compact_attempts
     while True:
         prompt = (
             rendered_prompt
@@ -842,12 +778,13 @@ def run_agent(
                 session_id_path.unlink()
             print(
                 f"[{node.id}] 🔄 reframing prompt "
-                f"(attempt {rephrase}/{max_rephrase_attempts})",
+                f"(attempt {rephrase}/{resilience.max_rephrase_attempts})",
                 flush=True,
             )
         try:
             outputs = _invoke_and_parse(
-                prompt, node, session_id_path, model, max_output_retries,
+                prompt, node, session_id_path, model,
+                resilience=resilience,
                 timeout=effective_timeout,
                 cwd=rendered_cwd, add_dirs=rendered_add_dirs,
                 effort=node_effort, backend=backend,
@@ -864,14 +801,21 @@ def run_agent(
                 and compact_attempts > 0
             ):
                 compact_attempts -= 1
-                attempt_no = max_compact_attempts - compact_attempts
+                attempt_no = resilience.max_compact_attempts - compact_attempts
                 print(
                     f"[{node.id}] 🗜 context window exhausted; compacting session "
-                    f"and continuing (attempt {attempt_no}/{max_compact_attempts})",
+                    f"and continuing "
+                    f"(attempt {attempt_no}/{resilience.max_compact_attempts})",
                     flush=True,
                 )
                 otel.turn_event("compact", node=node.id, attempt=attempt_no)
-                if backend.compact(session_id_path, node.id, model):
+                if backend.compact(
+                    session_id_path,
+                    node.id,
+                    model,
+                    timeout=resilience.result_timeout_s,
+                    resilience=resilience,
+                ):
                     continue  # retry same prompt on the compacted session
                 print(
                     f"[{node.id}] ⚠ compaction unavailable/ineffective; "
@@ -898,7 +842,7 @@ def run_agent(
                 raise
 
             # Layer 3: reframe in a fresh session.
-            if rephrase < max_rephrase_attempts:
+            if rephrase < resilience.max_rephrase_attempts:
                 print(
                     f"[{node.id}] ⚠ node failed ({exc}); will reframe and retry",
                     flush=True,
@@ -911,9 +855,10 @@ def run_agent(
                 continue
 
             # Layer 4: don't crash an unattended run on one unanswerable node.
-            if use_default_outputs:
+            if resilience.use_default_outputs:
                 print(
-                    f"[{node.id}] ⏭ all {max_rephrase_attempts} reframings failed "
+                    f"[{node.id}] ⏭ all {resilience.max_rephrase_attempts} "
+                    f"reframings failed "
                     f"({exc}); using default outputs to advance to the next node",
                     flush=True,
                 )
@@ -927,8 +872,9 @@ def _invoke_and_parse(
     node: AgentNode,
     session_id_path: Path | None,
     model: str | None,
-    max_output_retries: int,
-    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    *,
+    resilience: AgentResilience,
+    timeout: float,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
@@ -937,12 +883,15 @@ def _invoke_and_parse(
     """Invoke Claude and parse the node's declared outputs.
 
     When the response can't be parsed into the declared outputs, re-prompt within
-    the SAME session up to ``max_output_retries`` times with a corrective message
+    the SAME session up to ``resilience.max_output_retries`` times with a corrective
+    message
     before giving up (raising ``OutputParseError`` for the caller's reframe layer).
     """
+    max_output_retries = resilience.max_output_retries
     for attempt in range(max_output_retries + 1):
         result_text = _invoke_claude(
-            prompt, node.id, session_id_path, model=model, timeout=timeout,
+            prompt, node.id, session_id_path, model=model,
+            resilience=resilience, timeout=timeout,
             cwd=cwd, add_dirs=add_dirs, effort=effort, backend=backend,
         )
         try:
@@ -969,8 +918,9 @@ def _invoke_claude(
     session_id_path: Path | None,
     model: str | None = None,
     backend: "AgentBackend | None" = None,
-    max_invoke_retries: int = DEFAULT_MAX_INVOKE_RETRIES,
-    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    *,
+    resilience: AgentResilience,
+    timeout: float,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
@@ -993,6 +943,7 @@ def _invoke_claude(
         from workhorse.runner.backends import get_backend
         backend = get_backend()
 
+    max_invoke_retries = resilience.max_invoke_retries
     short_attempt = 0
     cap_waits = 0
     # The prompt sent on the current attempt. After a budget timeout we prepend a
@@ -1005,7 +956,8 @@ def _invoke_claude(
             # duration/usage attach via otel.turn_result (see _stream_events).
             otel.turn_start(node_id, model, effort, timeout, backend=backend.name)
             result = backend.run_turn(
-                attempt_prompt, node_id, session_id_path, model, timeout=timeout,
+                attempt_prompt, node_id, session_id_path, model,
+                timeout=timeout, resilience=resilience,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
             otel.turn_end()
@@ -1032,10 +984,10 @@ def _invoke_claude(
             else:
                 attempt_prompt = prompt
             if is_cap_hit:
-                if cap_waits >= _MAX_CAP_WAITS:
+                if cap_waits >= resilience.max_cap_waits:
                     raise
                 cap_waits += 1
-                delay, when = _cap_delay_seconds(exc)
+                delay, when = _cap_delay_seconds(exc, resilience=resilience)
                 print(
                     f"[{node_id}] ⏸ spending/usage cap reached — pausing ~{int(delay)}s "
                     f"(resuming around {when}). The cap clears only when the window "
@@ -1045,12 +997,15 @@ def _invoke_claude(
                 otel.turn_event(
                     "cap_wait", node=node_id, delay_s=int(delay), resume_around=when
                 )
-                _sleep_with_notice(delay, node_id, "cap reset")
+                _sleep_with_notice(delay, node_id, "cap reset", resilience=resilience)
                 print(f"[{node_id}] ▶ cap wait elapsed — resuming node", flush=True)
                 continue
             if short_attempt >= max_invoke_retries:
                 raise
-            delay = min(_INVOKE_BACKOFF_BASE_S * (2 ** short_attempt), _INVOKE_BACKOFF_CAP_S)
+            delay = min(
+                resilience.invoke_backoff_base_s * (2 ** short_attempt),
+                resilience.invoke_backoff_cap_s,
+            )
             short_attempt += 1
             print(
                 f"[{node_id}] ⚠ transient {backend.name} CLI failure "
@@ -1069,7 +1024,9 @@ def _run_claude_cli(
     node_id: str,
     session_id_path: Path | None,
     model: str | None = None,
-    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    *,
+    resilience: AgentResilience,
+    timeout: float,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
     effort: str | None = None,
@@ -1115,7 +1072,9 @@ def _run_claude_cli(
     # so the caller can classify transient failures.
     result_text, new_session_id, diagnostics, timed_out, rate_limited, rate_reset_at, returncode = (
         _stream_events(
-            cmd, node_id, timeout, stdin_data=prompt, cwd=cwd or None, env_extra=env_extra
+            cmd, node_id, timeout,
+            resilience=resilience,
+            stdin_data=prompt, cwd=cwd or None, env_extra=env_extra,
         )
     )
 
@@ -1143,7 +1102,9 @@ def _compact_session(
     session_id_path: Path | None,
     node_id: str,
     model: str | None = None,
-    timeout: float = DEFAULT_RESULT_TIMEOUT_S,
+    *,
+    resilience: AgentResilience,
+    timeout: float,
     env_extra: dict[str, str] | None = None,
 ) -> bool:
     """Best-effort: resume the node's session and run the CLI's ``/compact`` command
@@ -1207,7 +1168,9 @@ def _compact_session(
         # Shares the supervised spawn path (own process group, hard watchdog, group
         # reap), so a wedged /compact turn can't hang the run either.
         stream_subprocess(
-            cmd, node_id, timeout, on_line, stdin_data="/compact", env_extra=env_extra
+            cmd, node_id, timeout, on_line,
+            resilience=resilience,
+            stdin_data="/compact", env_extra=env_extra,
         )
     except Exception as exc:  # noqa: BLE001 — compaction is best-effort
         print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
@@ -1287,39 +1250,51 @@ def _rate_limit_info(event: dict) -> tuple[bool, float | None]:
     return blocked, reset_at
 
 
-def _cap_delay_seconds(exc: BackendInvocationError, now: float | None = None) -> tuple[float, str]:
+def _cap_delay_seconds(
+    exc: BackendInvocationError,
+    now: float | None = None,
+    *,
+    resilience: AgentResilience,
+) -> tuple[float, str]:
     """How long to sleep for a cap, and a human 'resuming around' label.
 
     Prefers the structured ``reset_at`` epoch (precise, timezone-correct) when the
-    error carries one, bounded by ``_CAP_MAX_STRUCTURED_WAIT_S``; otherwise parses
+    error carries one, bounded by ``resilience.cap_max_wait_s``; otherwise parses
     a reset time from the message text; otherwise uses the default wait.
     """
     now = now if now is not None else time.time()
     if exc.reset_at is not None:
         secs = exc.reset_at - now
         if secs > 0:
-            delay = min(secs, _CAP_MAX_STRUCTURED_WAIT_S) + _CAP_WAIT_MARGIN_S
+            delay = min(secs, resilience.cap_max_wait_s) + resilience.cap_wait_margin_s
             when = datetime.fromtimestamp(now + delay).strftime("%a %H:%M")
             return delay, when
         # Reset already passed (stale event / clock skew) → retry promptly.
-        return _CAP_WAIT_MARGIN_S, "reset already passed — retrying shortly"
+        return resilience.cap_wait_margin_s, "reset already passed — retrying shortly"
 
     parsed = _parse_reset_seconds(str(exc))
     if parsed is None:
-        return _CAP_DEFAULT_WAIT_S, "unknown reset — using default wait"
-    delay = parsed + _CAP_WAIT_MARGIN_S
+        return resilience.cap_default_wait_s, "unknown reset — using default wait"
+    delay = parsed + resilience.cap_wait_margin_s
     return delay, (datetime.now() + timedelta(seconds=delay)).strftime("%a %H:%M")
 
 
-def _sleep_with_notice(total_s: float, node_id: str, label: str) -> None:
-    """Sleep ``total_s`` seconds, printing a 'still paused' line every _CAP_TICK_S
+def _sleep_with_notice(
+    total_s: float,
+    node_id: str,
+    label: str,
+    *,
+    resilience: AgentResilience,
+) -> None:
+    """Sleep ``total_s`` seconds, printing a 'still paused' line every
+    ``resilience.cap_tick_s``
     so a long, legitimate wait can't be mistaken for a hang. Each tick also emits
     the cap-wait heartbeat metric — the external liveness proof that lets a
     collector tell a legitimate multi-day cap sleep from an actual hang."""
     remaining = total_s
     otel.heartbeat(node_id, remaining)
     while remaining > 0:
-        chunk = min(remaining, _CAP_TICK_S)
+        chunk = min(remaining, resilience.cap_tick_s)
         time.sleep(chunk)
         remaining -= chunk
         otel.heartbeat(node_id, remaining)
@@ -1411,6 +1386,7 @@ def _stream_events(
     node_id: str,
     timeout: float,
     *,
+    resilience: AgentResilience,
     stdin_data: str | None = None,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
@@ -1469,7 +1445,9 @@ def _stream_events(
         _emit_event(node_id, event)
 
     timed_out, returncode = stream_subprocess(
-        cmd, node_id, timeout, on_line, stdin_data=stdin_data, cwd=cwd, env_extra=env_extra
+        cmd, node_id, timeout, on_line,
+        resilience=resilience,
+        stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,
     )
     return (
         st["result_text"], st["session_id"], "\n".join(diagnostics),

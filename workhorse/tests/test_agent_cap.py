@@ -10,8 +10,13 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import patch
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
+
+#: The cap ladder's knobs are injected, never read from the module — so a test states
+#: the wait budget it asserts against instead of patching a global (rule 5).
+RESILIENCE = AgentResilience()
 
 CAP_MSG = "Claude CLI exited with code 1 for node 'select_gate': success Spending cap reached resets 3:50am"
 
@@ -126,12 +131,15 @@ def test_cap_hang_pauses_then_resumes_same_node():
         return fake_cli(prompt, *a, **k)
 
     with patch.object(agent, "_run_claude_cli", record_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("DO THE TASK", "review_implementation", None, timeout=3600)
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = agent._invoke_claude(
+            "DO THE TASK", "review_implementation", None,
+            resilience=RESILIENCE, timeout=3600,
+        )
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should re-run the same node after the cap wait"
-    assert len(slept) == 1 and slept[0] == agent._CAP_DEFAULT_WAIT_S, \
+    assert len(slept) == 1 and slept[0] == RESILIENCE.cap_default_wait_s, \
         "opencode's cap error carries no reset time → default wait"
     assert seen_prompts[1] == "DO THE TASK", "cap retry must reuse the prompt verbatim (no budget warning)"
 
@@ -149,12 +157,15 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("p", "resolve_epics", None)
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = agent._invoke_claude(
+            "p", "resolve_epics", None,
+            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+        )
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should re-run the same node after the daily-limit wait"
-    assert len(slept) == 1 and slept[0] == agent._CAP_DEFAULT_WAIT_S, \
+    assert len(slept) == 1 and slept[0] == RESILIENCE.cap_default_wait_s, \
         "no reset time in the message → falls back to the default cap wait"
 
 
@@ -170,8 +181,11 @@ def test_session_limit_pauses_until_reset_then_resumes():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("p", "review_plan", None)
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = agent._invoke_claude(
+            "p", "review_plan", None,
+            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+        )
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should retry the node after the session-limit wait"
@@ -198,18 +212,18 @@ def test_cap_delay_prefers_structured_reset_at():
     """A structured reset_at epoch drives the wait time precisely (+ margin)."""
     now = 1_000_000.0
     exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
-    delay, _when = agent._cap_delay_seconds(exc, now=now)
-    assert abs(delay - (3600 + agent._CAP_WAIT_MARGIN_S)) < 1
+    delay, _when = agent._cap_delay_seconds(exc, now=now, resilience=RESILIENCE)
+    assert abs(delay - (3600 + RESILIENCE.cap_wait_margin_s)) < 1
 
     # A past reset → retry promptly (just the margin).
     exc_past = BackendInvocationError("blocked", transient=True, reset_at=now - 50)
-    delay_past, _ = agent._cap_delay_seconds(exc_past, now=now)
-    assert delay_past == agent._CAP_WAIT_MARGIN_S
+    delay_past, _ = agent._cap_delay_seconds(exc_past, now=now, resilience=RESILIENCE)
+    assert delay_past == RESILIENCE.cap_wait_margin_s
 
     # An absurd far-future reset is bounded.
     exc_far = BackendInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
-    delay_far, _ = agent._cap_delay_seconds(exc_far, now=now)
-    assert delay_far == agent._CAP_MAX_STRUCTURED_WAIT_S + agent._CAP_WAIT_MARGIN_S
+    delay_far, _ = agent._cap_delay_seconds(exc_far, now=now, resilience=RESILIENCE)
+    assert delay_far == RESILIENCE.cap_max_wait_s + RESILIENCE.cap_wait_margin_s
 
 
 def test_cap_delay_falls_back_to_text_then_default():
@@ -219,12 +233,12 @@ def test_cap_delay_falls_back_to_text_then_default():
         dt.now.return_value = now_dt
         dt.fromtimestamp.side_effect = lambda ts: datetime.fromtimestamp(ts)
         exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
-        delay, _ = agent._cap_delay_seconds(exc, now=0)  # no reset_at → text path
-        assert abs(delay - (100 * 60 + agent._CAP_WAIT_MARGIN_S)) < 1
+        delay, _ = agent._cap_delay_seconds(exc, now=0, resilience=RESILIENCE)  # no reset_at → text path
+        assert abs(delay - (100 * 60 + RESILIENCE.cap_wait_margin_s)) < 1
 
     exc_none = BackendInvocationError("overloaded somehow", transient=True)
-    delay_none, _ = agent._cap_delay_seconds(exc_none, now=0)
-    assert delay_none == agent._CAP_DEFAULT_WAIT_S
+    delay_none, _ = agent._cap_delay_seconds(exc_none, now=0, resilience=RESILIENCE)
+    assert delay_none == RESILIENCE.cap_default_wait_s
 
 
 def test_structured_reset_at_drives_invoke_wait():
@@ -241,11 +255,14 @@ def test_structured_reset_at_drives_invoke_wait():
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
          patch.object(agent.time, "time", lambda: now), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("p", "n", None)
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = agent._invoke_claude(
+            "p", "n", None,
+            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+        )
 
     assert out == "OK"
-    assert len(slept) == 1 and abs(slept[0] - (7200 + agent._CAP_WAIT_MARGIN_S)) < 1
+    assert len(slept) == 1 and abs(slept[0] - (7200 + RESILIENCE.cap_wait_margin_s)) < 1
 
 
 def test_budget_timeout_warns_retry_with_time_budget():
@@ -265,7 +282,10 @@ def test_budget_timeout_warns_retry_with_time_budget():
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
          patch.object(agent.time, "sleep", lambda s: None):
-        out = agent._invoke_claude("DO THE TASK", "implement", None, timeout=1200)
+        out = agent._invoke_claude(
+            "DO THE TASK", "implement", None,
+            resilience=RESILIENCE, timeout=1200,
+        )
 
     assert out == "RESULT_OK"
     assert len(seen_prompts) == 2
@@ -290,7 +310,10 @@ def test_non_timeout_transient_retries_prompt_unchanged():
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
          patch.object(agent.time, "sleep", lambda s: None):
-        out = agent._invoke_claude("DO THE TASK", "implement", None, timeout=1200)
+        out = agent._invoke_claude(
+            "DO THE TASK", "implement", None,
+            resilience=RESILIENCE, timeout=1200,
+        )
 
     assert out == "OK"
     assert seen_prompts == ["DO THE TASK", "DO THE TASK"]
@@ -308,14 +331,17 @@ def test_cap_sleeps_until_reset_then_resumes():
 
     slept = []
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: slept.append(s)):
-        out = agent._invoke_claude("prompt", "select_gate", None)
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = agent._invoke_claude(
+            "prompt", "select_gate", None,
+            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+        )
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should retry the node after the cap wait"
     assert len(slept) == 1, "should pause exactly once"
     # waited a positive, scheduled amount (parsed reset + margin), never longer than a day
-    assert 0 < slept[0] <= 24 * 3600 + agent._CAP_WAIT_MARGIN_S + 1
+    assert 0 < slept[0] <= 24 * 3600 + RESILIENCE.cap_wait_margin_s + 1
 
 
 def test_cap_waits_do_not_consume_short_retry_budget():
@@ -329,23 +355,30 @@ def test_cap_waits_do_not_consume_short_retry_budget():
         return "OK_AFTER_CAPS"
 
     with patch.object(agent, "_run_claude_cli", fake_cli), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: None):
-        out = agent._invoke_claude("p", "n", None, max_invoke_retries=1)  # short budget = 1
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
+        out = agent._invoke_claude(
+            "p", "n", None,
+            resilience=RESILIENCE.with_overrides(max_invoke_retries=1),  # short budget = 1
+            timeout=RESILIENCE.result_timeout_s,
+        )
 
     assert out == "OK_AFTER_CAPS"
     assert calls["n"] == 4, "3 caps + 1 success, despite max_invoke_retries=1"
 
 
 def test_cap_wait_safety_bound():
-    """A cap that never clears gives up after _MAX_CAP_WAITS instead of looping forever."""
+    """A cap that never clears gives up after ``max_cap_waits`` instead of looping forever."""
     def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise BackendInvocationError(CAP_MSG, transient=True)
 
     with patch.object(agent, "_run_claude_cli", always_cap), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a: None), \
-         patch.object(agent, "_MAX_CAP_WAITS", 3):
+         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
         try:
-            agent._invoke_claude("p", "n", None)
+            agent._invoke_claude(
+                "p", "n", None,
+                resilience=RESILIENCE.with_overrides(max_cap_waits=3),
+                timeout=RESILIENCE.result_timeout_s,
+            )
             raise AssertionError("expected BackendInvocationError after exhausting cap waits")
         except BackendInvocationError:
             pass
@@ -362,7 +395,11 @@ def test_short_transient_uses_bounded_backoff_then_fails():
     with patch.object(agent, "_run_claude_cli", always_overloaded), \
          patch.object(agent.time, "sleep", lambda s: None):
         try:
-            agent._invoke_claude("p", "n", None, max_invoke_retries=2)
+            agent._invoke_claude(
+                "p", "n", None,
+                resilience=RESILIENCE.with_overrides(max_invoke_retries=2),
+                timeout=RESILIENCE.result_timeout_s,
+            )
             raise AssertionError("expected BackendInvocationError after retries")
         except BackendInvocationError as e:
             assert "overloaded" in str(e)
@@ -378,7 +415,10 @@ def test_non_transient_fails_immediately():
 
     with patch.object(agent, "_run_claude_cli", hard_fail):
         try:
-            agent._invoke_claude("p", "n", None)
+            agent._invoke_claude(
+                "p", "n", None,
+                resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
+            )
             raise AssertionError("expected immediate raise on non-transient error")
         except BackendInvocationError:
             pass

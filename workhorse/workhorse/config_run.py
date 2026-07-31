@@ -6,10 +6,11 @@ and the agent ladder then read from this object rather than the environment, so 
 run's configuration is immutable by design and a test can drive a workflow
 in-process with explicit values instead of mutating global state.
 
-The env-var names and defaults mirror the module constants in
-``runner/agent.py`` (which remain for direct callers of ``run_agent`` and are
-documented in ``docs/GUARDRAILS.md``); ``from_env`` is the single authoritative
-place the engine resolves them.
+``from_env`` is the *only* place these variables are read: ``runner/agent.py``
+holds no import-time constants of its own, so the names and defaults documented in
+``docs/GUARDRAILS.md`` have exactly one implementation and a caller that passes no
+config gets the dataclass defaults rather than whatever the environment said when
+the module happened to be imported.
 """
 
 from __future__ import annotations
@@ -61,21 +62,67 @@ class AgentResilience:
     the environment.
     """
 
+    #: Additional attempts when Claude's response can't be parsed into the node's
+    #: declared outputs.
     max_output_retries: int = 2
+    #: Additional attempts when the agent-CLI call itself fails for a *transient*
+    #: reason (rate limit, overload, network blip). Each retry waits
+    #: min(base * 2**attempt, cap) seconds.
     max_invoke_retries: int = 4
+    #: When invocation + output parsing still fail after the transient retries,
+    #: REFRAME the prompt from scratch in a fresh session and try the node again, up
+    #: to this many times. A node Claude can't answer as-phrased often succeeds when
+    #: re-asked more simply.
     max_rephrase_attempts: int = 3
+    #: When a node exhausts the model's context window and the headless CLI returns
+    #: instead of auto-compacting, COMPACT the session and continue (preserving the
+    #: node's progress) this many times before falling through to the reframe
+    #: ladder. 0 disables compaction recovery (straight to reframe).
     max_compact_attempts: int = 2
+    #: Final resilience layer: when every reframing fails, return safe default
+    #: outputs so the controller advances to the node's ``next`` instead of crashing
+    #: the run. This worker runs autonomously for days — a single unanswerable node
+    #: must degrade to "continue". Disable only when a hard stop is wanted.
     use_default_outputs: bool = True
+    #: Default per-node wall-clock budget for a single agent turn when the node does
+    #: not set its own ``timeout`` (seconds). 1h is long enough for a heavy QA /
+    #: build / browser node, short enough that a wedged turn is force-killed and
+    #: retried within the hour. Nodes may override per-node (incl. ``infinity``).
     result_timeout_s: float = 3600.0
     invoke_backoff_base_s: float = 15.0
     invoke_backoff_cap_s: float = 300.0
+    #: Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout``
+    #: check can only fire BETWEEN reads — if the agent writes a partial line and
+    #: then its socket wedges (a stalled API stream, a hung MCP server), the reader
+    #: blocks inside readline() and the wall-clock check never runs again. A watchdog
+    #: on a SEPARATE thread SIGKILLs the whole process group once the turn overruns
+    #: its budget by this grace, regardless of stream state.
     watchdog_grace_s: float = 120.0
+    #: Optional idle cutoff: treat a turn that has produced no stream event for this
+    #: long as stalled. Default 0 = disabled, because a legitimate long tool call
+    #: (e.g. a multi-minute ``make test``) emits nothing until it returns and must
+    #: not be killed; the watchdog above is the always-on backstop.
     idle_timeout_s: float = 0.0
     cap_default_wait_s: float = 3600.0
     cap_wait_margin_s: float = 120.0
     cap_tick_s: float = 600.0
     max_cap_waits: int = 48
     cap_max_wait_s: float = float(8 * 24 * 3600)
+    #: The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native
+    #: binary and self-updates by default, and a manual ``npm i -g`` does the same.
+    #: While that in-place rewrite is in flight, exec of the very same path fails for
+    #: a sub-second window (ETXTBSY / ENOENT during the rename / ENOEXEC on a
+    #: half-written header). That is NOT a missing tool, so a few short retries ride
+    #: the update out instead of crashing an otherwise-healthy turn.
+    exec_retry_max: int = 5
+    exec_retry_base_s: float = 1.0
+    exec_retry_cap_s: float = 8.0
+    #: How often the streaming loop emits a turn-liveness heartbeat metric. It only
+    #: REPORTS the idleness the loop already tracks — it never kills anything — so it
+    #: is safe on by default (and a no-op when telemetry is off). Kept well under
+    #: groom's stall window so a live turn is provably alive long before the alerter
+    #: would page. Shares ``WORKHORSE_OTEL_HEARTBEAT_S`` with the metric exporter.
+    heartbeat_every_s: float = 10.0
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> AgentResilience:
@@ -96,6 +143,10 @@ class AgentResilience:
             cap_tick_s=_float(e, "AGENT_CAP_TICK_S", 600.0),
             max_cap_waits=_int(e, "AGENT_MAX_CAP_WAITS", 48),
             cap_max_wait_s=_float(e, "AGENT_CAP_MAX_WAIT_S", float(8 * 24 * 3600)),
+            exec_retry_max=_int(e, "AGENT_EXEC_RETRY_MAX", 5),
+            exec_retry_base_s=_float(e, "AGENT_EXEC_RETRY_BASE_S", 1.0),
+            exec_retry_cap_s=_float(e, "AGENT_EXEC_RETRY_CAP_S", 8.0),
+            heartbeat_every_s=_float(e, "WORKHORSE_OTEL_HEARTBEAT_S", 10.0),
         )
 
     def with_overrides(self, **kwargs: Any) -> AgentResilience:

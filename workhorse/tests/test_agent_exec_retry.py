@@ -15,8 +15,13 @@ import errno
 import os
 from unittest.mock import MagicMock, patch
 
+from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
+
+#: The ladder's knobs are injected, never read from the module — so a test states
+#: the exec-retry budget it is asserting against instead of patching a global.
+RESILIENCE = AgentResilience()
 
 
 def _popen_failing(n_failures: int, code: int, ok: object | None = None):
@@ -40,7 +45,7 @@ def test_self_update_etxtbsy_is_retried_then_succeeds():
     with patch.object(agent.subprocess, "Popen", fake), \
          patch.object(agent.time, "sleep") as slept, \
          patch.object(agent.shutil, "which", return_value="/x/claude"):
-        got = agent._spawn_streaming(["claude", "-p"], "n")
+        got = agent._spawn_streaming(["claude", "-p"], "n", resilience=RESILIENCE)
     assert got is proc
     assert fake.calls["n"] == 4          # 3 busy attempts + 1 success
     assert slept.call_count == 3         # one short backoff before each retry
@@ -56,13 +61,13 @@ def test_absent_cli_fails_nontransient_after_bounded_retries():
          patch.object(agent.time, "sleep") as slept, \
          patch.object(agent.shutil, "which", return_value=None):   # ...never resolves
         try:
-            agent._spawn_streaming(["claude", "-p"], "n")
+            agent._spawn_streaming(["claude", "-p"], "n", resilience=RESILIENCE)
             raise AssertionError("expected BackendInvocationError for an absent CLI")
         except BackendInvocationError as exc:
             assert exc.transient is False
             assert "does not load nvm" in str(exc)   # the actionable launch-context hint
-    assert fake.calls["n"] == agent._EXEC_RETRY_MAX + 1   # bounded, not a spin
-    assert slept.call_count == agent._EXEC_RETRY_MAX
+    assert fake.calls["n"] == RESILIENCE.exec_retry_max + 1   # bounded, not a spin
+    assert slept.call_count == RESILIENCE.exec_retry_max
 
 
 def test_self_update_enoexec_half_written_binary_is_retried_then_succeeds():
@@ -86,7 +91,7 @@ def test_self_update_enoexec_half_written_binary_is_retried_then_succeeds():
     with patch.object(agent.subprocess, "Popen", fake), \
          patch.object(agent.time, "sleep"), \
          patch.object(agent.shutil, "which", return_value="/x/claude"):
-        got = agent._spawn_streaming(["claude", "-p"], "n")
+        got = agent._spawn_streaming(["claude", "-p"], "n", resilience=RESILIENCE)
     assert got is proc                    # rode out the update; the turn is NOT failed
     assert calls["n"] == 3
 
@@ -101,7 +106,7 @@ def test_self_update_enoent_rename_recovers_even_when_which_is_blind():
     with patch.object(agent.subprocess, "Popen", fake), \
          patch.object(agent.time, "sleep"), \
          patch.object(agent.shutil, "which", return_value=None):   # blind, like exec
-        got = agent._spawn_streaming(["claude", "-p"], "n")
+        got = agent._spawn_streaming(["claude", "-p"], "n", resilience=RESILIENCE)
     assert got is proc                    # recovered, not misclassified as absent
     assert fake.calls["n"] == 3
 
@@ -113,11 +118,11 @@ def test_exhausted_retries_escalate_as_transient():
          patch.object(agent.time, "sleep"), \
          patch.object(agent.shutil, "which", return_value="/x/claude"):
         try:
-            agent._spawn_streaming(["claude", "-p"], "n")
+            agent._spawn_streaming(["claude", "-p"], "n", resilience=RESILIENCE)
             raise AssertionError("expected BackendInvocationError after exhausting retries")
         except BackendInvocationError as exc:
             assert exc.transient is True   # transient → outer ladder gives it more time
-    assert fake.calls["n"] == agent._EXEC_RETRY_MAX + 1
+    assert fake.calls["n"] == RESILIENCE.exec_retry_max + 1
 
 
 if __name__ == "__main__":
