@@ -2225,6 +2225,71 @@ does not supply. The remaining 16 backend pages are a different shape — a near
 `backends.py` → `backends/<cli>.py` split with the symbol names largely intact — and are the
 better candidate for an okf-builder run.
 
+### Iteration 13 — the backend port and the shared turn machinery
+
+Item 3, the `runner/` remainder, second slice. Six pages, all grounded in modules read in
+full first (`runner/failure.py`, `runner/backends/__init__.py`, `runner/backends/registry.py`,
+`runner/backends/turn.py`, `runner/backends/jsonl.py` — 625 lines): `classify-turn`,
+`finalize-turn`, `read-session-id`, `stream-jsonl`, `agent-backend`, `get-backend`. The
+subset was chosen as "everything CLI-agnostic": the five adapter modules stay for
+iterations 14–15, so no page here had to describe a CLI it had not read.
+
+**Five flat falsifications, none of them a rename.**
+
+1. **`classify_turn`'s ladder has seven branches, not six.** A new branch sits between cap and
+   timeout: `timed_out and is_transient(diagnostics)` raises a transient
+   `BackendInvocationError` carrying the *provider's* error rather than a timeout message.
+   It exists because `stream_jsonl`'s early abort now sets `timed_out=True` for a reason that
+   is not a budget overrun, and reporting that as one would have told an operator to raise
+   `AGENT_RESULT_TIMEOUT_S` for a problem that had nothing to do with the timeout.
+2. **`classify_turn` writes a second sink.** New `record_session_map(session_id_path, node_id,
+   session_id)` puts the id on the open turn span (`otel.turn_session`) *and* appends
+   `{"node":…, "session_id":…}` to `sessions.jsonl` beside `.session_id`, swallowing `OSError`
+   — so a run's node→session map survives with telemetry off. The page claimed a lone
+   `write_text`.
+3. **The three marker predicates are public and have second callers.** `is_cap`,
+   `is_transient`, `is_context_overflow`, `rate_limit_info` — no leading underscore, and
+   `stream_jsonl`'s early abort plus `AgentRunner.turn`'s message scan both call them. The
+   page presented them as private helpers of one function, which is exactly the framing that
+   would let a future edit change one without checking the other. Renaming the four section
+   anchors broke six inbound links, fixed in the same commit.
+4. **`finalize_turn` takes a `TurnState`, not four positional accumulators**, and now emits
+   `otel.turn_result(state.usage)` under an `is_empty` guard — one emission point for every
+   non-Claude turn's cost, and *absent ≠ zero* enforced there rather than per backend.
+5. **`stream_jsonl` returns a `TurnState`, not a 4-tuple**, takes `on_event(event, state,
+   node_id)` with **three** args, has **two** abort paths (`"cap"` then `"transient"`), and
+   now actually honours `cwd` — previously accepted and silently dropped, so Codex, Copilot
+   and OpenCode nodes ran in the launching process's working directory regardless of the
+   node's `cwd:`. It also layers `env_extra` from `[harness.<backend>].env`.
+
+The port page gained what the module docstrings argue and the old page never said: `AgentBackend`
+is an **ABC, not a `Protocol`** (it carries real shared behavior — `harness_env()` — and an
+unimplemented method should fail at construction); `backends/__init__.py` declares the port and
+nothing else so importing the type drags in no adapter; and `registry.py` is deliberately *not*
+`__init__.py` for the same reason. `harness_env()` is read **per turn**, not captured at startup.
+
+**Answering iteration 12's open call: no.** That entry predicted the remaining backend pages
+were "a near-mechanical split with the symbol names largely intact" and therefore the better
+candidate for an okf-builder run. For this subset that prediction is wrong — `classify_turn`
+gained a ladder branch and a session-manifest sink, `finalize_turn` changed arity and gained
+telemetry, `stream_jsonl` changed its return type and fixed a silent `cwd` bug. Loop 2 rewrote
+these units, it did not move them, and hand-grounding was again the only way to catch it. The
+prediction may still hold for the five *adapter* pages; it does not hold for shared machinery,
+and the distinction is worth carrying into iteration 14 rather than re-testing blind.
+
+Four public symbols also lost their documented underscore across the whole book
+(`stream_jsonl`, `finalize_turn`, `read_session_id`, `classify_turn` — 14 files), so no page
+names a symbol that does not exist even where the rest of the page is still iteration-14 work.
+
+`dangling-code-ref` **24 → 24** (this slice's six pages were already correctly pointed at their
+new modules by loop 2's own edits, or were re-pointed here without changing the count: the 23
+book entries are the still-unported adapter/stream pages plus groom's pre-existing `.toast`);
+`missing-code-symbol` 9 → 8; `missing-anchor` 19 → 21, all finding 25 — ostler's slugifier
+collapses runs of hyphens where GitHub's does not, and the new
+`#early-abort--stop-the-clis-own-retry-loop` heading has two. Zero broken markdown links across
+all 313 tracked files by the GitHub-accurate checker. `ruff check .`, `make test` and
+`make check-public` all green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

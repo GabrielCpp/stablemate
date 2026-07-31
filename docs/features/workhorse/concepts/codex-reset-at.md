@@ -102,9 +102,9 @@ backend's Responses-API endpoint this probe posts its minimal ping request to.
 
 - [`OpenCodeBackend.run_turn`](opencode-backend.md#contract) — the sole caller: invokes this only
   when [`_agent._is_cap(diagnostics)`](classify-turn.md) found the turn hit a usage cap, and passes
-  the result through as `rate_reset_at` to [`_finalize_turn`](finalize-turn.md), which carries it
+  the result through as `rate_reset_at` to [`finalize_turn`](finalize-turn.md), which carries it
   onto the raised `BackendInvocationError.reset_at` (see [`_cap_delay_seconds`](cap-delay-seconds.md#algorithm),
   which prefers a structured `reset_at` over parsing reset text).
-- [`_finalize_turn`](finalize-turn.md) — receives `rate_reset_at` from the caller and threads it
+- [`finalize_turn`](finalize-turn.md) — receives `rate_reset_at` from the caller and threads it
   onto the classified error.
 

@@ -13,7 +13,7 @@ unpacks. It delegates the actual spawn/timeout/kill mechanics to
 accumulates turn state and echoes a concise live view via [`_emit_event`](emit-event.md).
 
 Unlike the Codex/Copilot/OpenCode backends — which split the generic event loop
-([`_stream_jsonl`](stream-jsonl.md)) from a CLI-specific vocabulary adapter
+([`stream_jsonl`](stream-jsonl.md)) from a CLI-specific vocabulary adapter
 ([`_codex_on_event`](codex-on-event.md) and siblings) — `_stream_events` fuses both roles into one
 function and calls [`stream_subprocess`](stream-subprocess.md) directly, since Claude is the only
 backend with this exact protocol shape and there is no second caller to share the split with.
@@ -65,7 +65,7 @@ backend with this exact protocol shape and there is no second caller to share th
        `"success"`, append `f"{subtype} {result}"` to `diagnostics` — an error result carries its
        reason in `subtype`/`result`, and this is how that reason reaches
        [`classify_turn`](classify-turn.md#ladder-first-match-wins).
-     - **`"rate_limit_event"`** — call [`_rate_limit_info`](classify-turn.md#_rate_limit_info)`(event)`
+     - **`"rate_limit_event"`** — call [`rate_limit_info`](classify-turn.md#rate_limit_info)`(event)`
        → `(blocked, reset_at)`. If `reset_at is not None`, overwrite `st["rate_reset_at"]` (last-seen
        window wins, used only if the turn is later classified as a cap). If `blocked`, set
        `st["rate_limited"] = True` (sticky — once `True`, later non-blocked events don't clear it).
@@ -82,7 +82,7 @@ backend with this exact protocol shape and there is no second caller to share th
 
 ## Cap detection differs from the JSONL backends
 
-[`_stream_jsonl`](stream-jsonl.md) (Codex/Copilot/OpenCode) scans each line for a cap marker and
+[`stream_jsonl`](stream-jsonl.md) (Codex/Copilot/OpenCode) scans each line for a cap marker and
 returns `True` from its `on_line` to trigger `stream_subprocess`'s early-abort contract, ending the
 turn the instant a cap is detected. `_stream_events`'s `on_line` never does this — a Claude cap
 surfaces only as an error-`result` event's `subtype`/`result` text (folded into `diagnostics` per
@@ -101,11 +101,11 @@ mid-stream.
 - [`classify_turn`](classify-turn.md#ladder-first-match-wins) — the consumer of this function's
   output tuple; turns `diagnostics`/`timed_out`/`rate_limited`/`rate_reset_at` into either the
   returned result text or a classified `BackendInvocationError`.
-- [`_rate_limit_info`](classify-turn.md#_rate_limit_info) — reads a `rate_limit_event` into
+- [`rate_limit_info`](classify-turn.md#rate_limit_info) — reads a `rate_limit_event` into
   `(blocked, reset_at)`; called once per such event inside `on_line`.
 - [`_emit_event`](emit-event.md) — the live-echo printer called once per successfully-parsed
   event, independent of the state accumulation above.
-- [`_stream_jsonl`](stream-jsonl.md) / [`_codex_on_event`](codex-on-event.md) — the
+- [`stream_jsonl`](stream-jsonl.md) / [`_codex_on_event`](codex-on-event.md) — the
   generic-loop-plus-vocabulary-adapter split the other three backends use instead of this
   function's fused approach; see [Cap detection](#cap-detection-differs-from-the-jsonl-backends)
   for the resulting behavioral difference.

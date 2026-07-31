@@ -88,7 +88,7 @@ loop:
 2. **Non-transient → re-raise now.** A crashed CLI or a hard server error goes straight to
    [the ladder's non-recoverable fast path](run-agent.md#the-ladder); nothing here can help it.
 3. **Classify the transient as cap or not.** `is_cap_hit` is true when the error carries a
-   structured `reset_at` epoch **or** [`is_cap`](classify-turn.md#_is_cap) recognises the message
+   structured `reset_at` epoch **or** [`is_cap`](classify-turn.md#is_cap) recognises the message
    text. This one boolean decides both of the next two steps.
 4. **Budget-overrun warning — only for a real overrun.** When `exc.timed_out` and it is *not* a cap
    hit, the next attempt's prompt becomes

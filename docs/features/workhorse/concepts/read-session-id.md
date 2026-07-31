@@ -1,26 +1,27 @@
 ---
 type: concept
 slug: read-session-id
-title: _read_session_id — the persisted session-id reader
+title: read_session_id — the persisted session-id reader
 ---
-# _read_session_id — the persisted session-id reader
+# read_session_id — the persisted session-id reader
 
 The one-line lookup every JSONL backend's `run_turn` opens with: read the node's persisted
 `.session_id` file, if any, and hand back the id to resume with. Shared by
 [CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md), and
 [OpenCodeBackend](opencode-backend.md) — the three backends that resume a session by id (`codex exec
 resume <sid>`, `copilot --session-id <sid>`, `opencode run --session <sid>`). `ClaudeBackend` and
-[AiderBackend](aider-backend.md) don't call it: Claude resumes through its own inline check in
-`agent.py` (`_run_claude_cli`), and Aider has no session-resume concept at all (single-message coder,
-ladder reframes on failure).
+[AiderBackend](aider-backend.md) don't call it: Claude reads the same file through its own inline
+check in `runner/backends/claude.py` (it needs the id in two places, including the `/compact` turn),
+and aider has no session-resume concept at all (single-message coder, ladder reframes on failure).
 
-`session_id_path` itself is a per-node `Path` the caller (`runner/agent.py::run_agent`) computes and
+`session_id_path` itself is a per-node `Path` the caller ([`AgentRunner`](run-agent.md)) computes and
 threads through every backend call; the file at that path is written by
-[`classify_turn`](classify-turn.md) (via [`_finalize_turn`](finalize-turn.md)) on a successful turn
-and by `_compact_session`, so `_read_session_id` only ever reads what a prior turn on the same node
-already persisted.
+[`classify_turn`](classify-turn.md) (via [`finalize_turn`](finalize-turn.md)) on a successful or
+overflowing turn and by [`_compact_session`](compact-session.md), so `read_session_id` only ever
+reads what a prior turn on the same node already persisted. It lives beside `finalize_turn` in
+`runner/backends/turn.py` because they are the two ends of the same loop.
 
-- code: `workhorse/workhorse/runner/backends.py::_read_session_id`
+- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id`
 
 ## Contract
 
@@ -42,11 +43,11 @@ already persisted.
 
 - [CodexBackend](codex-backend.md) / [CopilotBackend](copilot-backend.md) /
   [OpenCodeBackend](opencode-backend.md) — the three `run_turn` implementations that open with
-  `sid = _read_session_id(session_id_path)` and append their CLI's own resume flag
+  `sid = read_session_id(session_id_path)` and append their CLI's own resume flag
   (`exec resume <sid>` / `--session-id <sid>` / `--session <sid>`) only when `sid` is not `None`.
-- [`_finalize_turn`](finalize-turn.md) → [`classify_turn`](classify-turn.md) — writes the session id
-  this function later reads, persisting `state["session_id"]` to `session_id_path` on a successful or
-  overflow turn.
-- [`_stream_jsonl`](stream-jsonl.md) — each backend calls `_read_session_id` once, before building the
-  argv that `_stream_jsonl` then runs.
-
+- [`finalize_turn`](finalize-turn.md) → [`classify_turn`](classify-turn.md) — writes the session id
+  this function later reads, persisting `TurnState.session_id` to `session_id_path` on a successful
+  or overflow turn, and recording the node→session mapping in
+  [`sessions.jsonl`](classify-turn.md#record_session_map) alongside it.
+- [`stream_jsonl`](stream-jsonl.md) — each backend calls `read_session_id` once, before building the
+  argv that `stream_jsonl` then runs.

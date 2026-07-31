@@ -39,7 +39,7 @@ reset time.
            [-m <model>] [--variant <_OPENCODE_VARIANT[effort]>] [--session <sid>]
            -- <prompt>
   ```
-  1. Read a persisted session id via [`_read_session_id(session_id_path)`](read-session-id.md)
+  1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
      (shared with the other JSONL backends).
   2. `--print-logs --log-level ERROR` are always present: they route OpenCode's ERROR-level log
      lines (which carry quota/limit errors, e.g. `"The usage limit has been reached"`) onto stdout
@@ -56,7 +56,7 @@ reset time.
      `[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...`.
   7. `-- <prompt>` — `--` ends option parsing so a prompt beginning with `-` is still read as the
      positional message, never as a flag. `add_dirs` has no OpenCode equivalent and is ignored.
-  8. Stream the command through [`_stream_jsonl`](stream-jsonl.md) with
+  8. Stream the command through [`stream_jsonl`](stream-jsonl.md) with
      [`_opencode_on_event`](opencode-on-event.md) as the vocabulary callback and `stdin_data=None`
      (OpenCode reads its message from argv, not stdin), forwarding `cwd` →
      `(state, diagnostics, timed_out, returncode)`.
@@ -66,7 +66,7 @@ reset time.
      the wait — see [`_codex_reset_at`](codex-reset-at.md)'s own guards (non-`openai/*` models,
      missing OAuth, disabled probe, or any error all yield `None` with no observable effect on a
      non-cap turn).
-  10. Return [`_finalize_turn`](finalize-turn.md)`("opencode", node_id, state, diagnostics,
+  10. Return [`finalize_turn`](finalize-turn.md)`("opencode", node_id, state, diagnostics,
       timed_out, returncode, session_id_path, timeout, rate_reset_at=rate_reset_at)` — raises
       `agent.BackendInvocationError` on failure, carrying `rate_reset_at` through to the runner's
       cap-wait so it sleeps until the actual window reopens instead of a blind default wait.
@@ -91,14 +91,14 @@ variant levels don't line up one-to-one with the Claude-superset effort vocabula
 
 ## Related pieces
 
-- [`_read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared
+- [`read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared
   by every JSONL backend's `run_turn`.
-- [`_stream_jsonl`](stream-jsonl.md) — the shared JSONL event loop `run_turn` streams the `opencode`
+- [`stream_jsonl`](stream-jsonl.md) — the shared JSONL event loop `run_turn` streams the `opencode`
   invocation through; owns the process spawn, timeout, and per-line dispatch to `on_event`.
 - [`_opencode_on_event`](opencode-on-event.md) — the `on_event` callback that knows OpenCode's own
   NDJSON event vocabulary (`text`/`error`/other, keyed by `sessionID`) and populates
   `state`/`diagnostics`.
-- [`_finalize_turn`](finalize-turn.md) — the shared classifier `run_turn` hands the finished stream
+- [`finalize_turn`](finalize-turn.md) — the shared classifier `run_turn` hands the finished stream
   (plus the optional `rate_reset_at`) to, turning it into the turn's result text or a raised
   `BackendInvocationError`.
 - [`_codex_reset_at`](codex-reset-at.md) — the best-effort probe that fetches the ChatGPT/Codex
@@ -106,5 +106,5 @@ variant levels don't line up one-to-one with the Claude-superset effort vocabula
   hit through OpenCode is waited out until its exact reset instead of a flat default.
 - [`get_backend`](get-backend.md) — resolves `"opencode"` to a cached `OpenCodeBackend()` instance.
 - [`CodexBackend`](codex-backend.md) / [`CopilotBackend`](copilot-backend.md) — the other two JSONL
-  backends sharing `_stream_jsonl`/`_finalize_turn`; [`AiderBackend`](aider-backend.md) is the
+  backends sharing `stream_jsonl`/`finalize_turn`; [`AiderBackend`](aider-backend.md) is the
   plain-text sibling and the other OpenRouter-native backend.
