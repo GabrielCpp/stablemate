@@ -11,12 +11,23 @@ first — it needs no repository and, under `--dry-run`, no agent CLI at all:
 workhorse run hello-world --dry-run
 ```
 
-Its whole source is one ~60-line file,
+Its whole source is one commented ~90-line file,
 [`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py),
 carrying one of each thing this document describes: a node, two states, an agent turn and
-a registry. **Copy that file** and edit it — every example below is a variation on it.
+a registry. **Copy its directory** — that file plus the `prompts/` beside it — and edit
+the copy; every example below is a variation on it. Copying `workflow.py` alone leaves the
+agent turn with no template, and a dry run says so before it runs anything:
+`state 'greet' renders 'prompts/greet.md', which does not exist`.
+
+Which is the habit to form: `--dry-run` is the check to run after **every** edit below, not
+only the first. Before it drives anything it reads your states' own source and fails on a
+prompt path that does not resolve, a state unreachable from the start state, a transition
+naming something that is not a state, and a machine no state can end. That is the
+branch-independent half of correctness, and one run down one path cannot cover it.
+[Checking a workflow before you run it](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md#checking-a-workflow-before-you-run-it---dry-run)
+is what each finding means, and when reaching a failure terminal is one.
 [README.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md) covers
-install, the CLI and `--dry-run` in full. The resilience knobs the failure paths below land in are
+install and the CLI in full. The resilience knobs the failure paths below land in are
 in
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md),
 and the `power=` tiers a turn asks for are mapped to models in
@@ -36,6 +47,12 @@ my_workflow/
 └── prompts/            # Jinja2 .md templates
     └── step.md
 ```
+
+`nodes.py` there is a *split*, not a requirement — `hello_world` keeps its one node in
+`workflow.py`, and when the split stops being taste is
+[workflows/README.md](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#layout),
+where that rule is stated normatively. `prompts/` is not optional in the same way: a state
+that renders a template needs the template on disk beside its package.
 
 Its **states** are methods on a `Workflow` subclass, each returning the next state;
 its **nodes** are plain functions collected into a `Blueprint`; a `Registry` names the
@@ -75,9 +92,13 @@ Two details are load-bearing rather than taste:
 - **The entry point names the `Registry`, not the entry function.** Discovery needs the
   registry object — `main` is the console script, and pointing the entry point at it fails
   at resolution rather than at run time.
-- **It must install unpacked.** Prompts are rendered by a filesystem template loader rooted
-  at the package directory, so a zip-imported install is refused. Nothing special is needed
-  for this — it is what wheels do by default — but do not set `zip-safe`-style options.
+- **It must install unpacked, with the prompts inside it.** Prompts are rendered by a
+  filesystem template loader rooted at the package directory, so a zip-imported install is
+  refused, and a `prompts/*.md` left out of the wheel is a workflow that resolves and then
+  cannot render. The `[tool.hatch.build.targets.wheel]` above needs nothing further —
+  hatchling ships every file under `packages=`, markdown included — but a backend that
+  takes only `.py` unless told otherwise (setuptools without `package_data`) will drop
+  them. Do not set `zip-safe`-style options either way.
 
 Then install it **into workhorse's own interpreter**, because a workflow's code and its
 tools are imported in-process:
@@ -195,6 +216,44 @@ These are **real values, not templates**: the state computes the path in Python 
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a
 no-op render and a template string would also work — but nothing needs one.)
 
+## A stack that outlives the turn (`workhorse.stack`)
+
+A process an agent turn backgrounds is dead by the next state — the runner reaps the
+turn's process tree. Anything that must survive across states (a dev server, a compose
+stack, an emulator) is therefore brought up by a `script` node calling
+`workhorse.stack.ensure_stack`, and reaped by `teardown_stack`. Both take a **manifest
+dict** the workflow supplies, so the primitive stays workflow-agnostic:
+
+```python
+status = ensure_stack(manifest, repo_root=self.ctx.repo_root, logger=log)
+```
+
+| Key | What it does |
+|---|---|
+| `entry_url` / `health_path` | the HTTP readiness probe (path defaults to `/`) |
+| `identity` | a marker string expected in the served body — the readiness signal, and a precondition for reuse |
+| `reuse` | when adopting an already-serving stack is safe: `if-fresh` (default), `always`, `never` |
+| `fresh` | a probe command (exit 0 ⇔ the running stack reflects current code) that gates `if-fresh` adoption |
+| `app_cwd` / `repo_root` / `boot_timeout` | launch context, and the ceiling on boot |
+| `launch` / `stop` | the **idempotent** bring-up command, and the teardown recipe (absent ⇒ leave an expensive stack up) |
+| `prepare` / `seed` / `health` | ordered steps run before launch / after it serves / last |
+| `health_timeout` | the window in seconds the `health` gates get to converge (default 120) |
+
+**Health gates retry inside that window.** Booting proves only that the entry URL
+answers, and a gate typically asserts on a *slower sibling* — a migration, a queue, a
+second container. A gate that fails is re-attempted every few seconds until
+`health_timeout` expires, so a multi-service stack is not failed for coming up in the
+order it always comes up in.
+
+`ensure_stack` returns `{ready, adopted, entry_url, app_pid, app_pgid}`, plus
+`failed_step` and **`error`** when it could not get there. `error` is the failing step's
+own message, and it is there because a caller's usual next move is to hand the failure
+to whoever repairs it: the step name alone ("the health gate") says which thing broke,
+not what to fix. Log lines don't cross the node boundary — the return value does.
+
+Nothing here raises. A stack that will not come up returns `ready: "no"`, which is what
+lets the workflow decide between repairing, re-planning and asking an operator.
+
 ## Transitions
 
 A state returns one of three things, or raises:
@@ -242,6 +301,14 @@ node.
 A checkpoint left behind by the retired YAML engine is refused by name rather than
 misread: it shares the runs directory and `--resume-latest` with live runs, and a node
 id that happens to match a state name would otherwise resume the wrong thing.
+
+**A sub-flow resumes too.** A `handoff` writes the child's own checkpoint under
+`<run>/<flow-node>/_flow/`, and a resume that re-enters the handoff state continues the
+child from it — a run killed six states into the QA flow does not replay them. The child
+is only continued when it is the flow the run was *inside*: the checkpoint has to name
+the same class and carry the same inputs, and the offer expires with the resumed state,
+so a loop that hands off to the same flow once per story still starts each story's child
+clean. Anything that disagrees starts fresh with a line in the log, never an error.
 
 ## The node index is the substitution seam
 

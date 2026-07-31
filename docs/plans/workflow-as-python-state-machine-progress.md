@@ -2786,6 +2786,67 @@ brief", carries `status: implemented`, and annotates its own design-time file li
 document** node types, not workflow-YAML nodes. A grep for the retired vocabulary hits them and
 they are current.
 
+### Iteration 21 — the cold-reader walk (work-order item 5, first bullet)
+
+The end condition's third clause — *"someone who has never seen this repo can install it, run
+the shipped example, and write a new workflow from the docs alone"* — is the only one that
+cannot be settled by reading. So it was **walked**, command by command, doing only what a
+tracked doc says and nothing an insider would know.
+
+**It holds.** Every advertised step ran:
+
+| Step, as the docs give it | Result |
+| --- | --- |
+| `make sync` → `uv run workhorse run hello-world --dry-run` (README, "the whole install check") | exit 0, and the transcript at README:156-164 matches the real output line for line |
+| `ls .agents/runs/hello-world-dry-run/` | the six entries the README lists, exactly |
+| `uv run workhorse dot hello-world` | valid DOT, both states and the `letters` edge |
+| the `pyproject.toml` at AUTHORING.md:51-71, typed out verbatim into a directory **outside the checkout** | builds and installs |
+| `uv pip install ./acme-workflows` → `uv run workhorse run greeter --dry-run` | exit 0 — a workflow of my own, running |
+| the optional second front door, `workhorse-greeter run --dry-run` | identical output |
+
+Two claims worth recording because they are the ones a reader has no way to check:
+
+- **The wheel really does carry the prompts.** `prompts/greet.md` landed in
+  `site-packages/acme_workflows/greeter/`, and rendering it through `templates.render` from
+  the *installed* path produced the filled-in prompt. A dry run alone would not have proved
+  this — it stubs the agent turn and never opens the file.
+- **`__init__.py` is not required.** The layout in AUTHORING.md shows none, and the install
+  works without them (namespace packages). The diagram is not lying by omission.
+
+**What the walk broke on, and what was corrected:**
+
+- `README.md:202` and `AUTHORING.md:14` both sized `hello_world/workflow.py` at **60 lines**.
+  It is **87**. Both now say "under 90" / "~90".
+- `AUTHORING.md:17` said **"Copy that file"** — singular. Copying `workflow.py` alone gives a
+  workflow that resolves and cannot render, because `prompts/` stayed behind. Now "copy its
+  directory", with the error it produces quoted. (`README.md:204` already said *directory*;
+  the two disagreed.)
+- **`AUTHORING.md` never told a new author their machine is statically checked.** `--dry-run`
+  is a preflight (`workhorse/workhorse/pyflow/graph.py:329-390`) over the states' own source —
+  missing prompt file, unreachable state, dangling transition, no terminal, opaque state — and
+  it is the only check that sees the branches one run does not take. `workhorse/README.md:210-252`
+  documents it well; the authoring reference did not link it. It does now, framed as the check
+  to run after every edit.
+- **`AUTHORING.md`'s layout diagram lists `nodes.py`, and the file it tells you to copy has
+  none.** Reconciled: the split is taste until `workflows/README.md`'s rule bites; `prompts/`
+  is not.
+- **The wheel-contents trap is now stated.** hatchling under `packages=` ships the markdown;
+  a backend that ships only `.py` unless told otherwise does not, and the failure is
+  "resolves, then cannot render" rather than an install error.
+
+**Verified, not merely re-read:** every `github.com/GabrielCpp/stablemate/blob/main/<path>`
+link in the tree — 25 distinct targets, the ones work-order item 5 warns "break silently"
+because no relative-link checker sees them — resolves to a tracked file, on `main`, with every
+`#anchor` matching a real heading. **0 broken.** That bullet is closed.
+
+**Nothing was found that needs code.** The one thing that could have been a finding — a
+`--dry-run` that goes green on a workflow with no prompt file — is already caught, by name,
+before anything runs.
+
+With this, all three end-condition clauses hold: no tracked file describes the YAML front-end
+as current; `ostler doctor` reports 0 errors and 0 warnings with no waived remainder; and the
+install → run → author-your-own path has been walked end to end from the docs alone.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
@@ -2808,3 +2869,17 @@ from it — 11 failures in `test_agent_cap.py`. In a detached worktree at `HEAD`
 At iteration 6 it is **green again in the working tree**, with no worktree needed: `e68067f`
 committed that `runner/backends/` package, which is what the untracked copy had been
 shadowing. `make test`, `make check-public` and `ruff check .` all pass.
+
+At iteration 21 it is **red again, and red at `HEAD` too** — the first time the two agree.
+`benchmarks/tests/test_bench.py` fails 5 of 13 on `'FakeBackend' object has no attribute
+'backend'`: the benchmark harness's fake is a version behind the backend refactor the
+concurrent workstream has been landing. Re-run in a detached worktree at `HEAD`, the same 5
+fail with the same cause, so it is neither this loop's doing nor an artifact of an
+uncommitted tree. `ruff check .`, `make check-public`, `ostler doctor` (0/0) and both link
+checkers are clean. Fixing the fake is code, and this loop does not write code.
+
+**A trap in the loop's own green-gate command, worth writing down.**
+`make test && make check-public >/tmp/wf-loop3-test.log 2>&1 || tail -80 /tmp/wf-loop3-test.log`
+short-circuits when `make test` fails — so `check-public` never runs, and the `||` branch
+tails **the previous iteration's log**, which reads green. It looked like a pass. Delete the
+log first, or run `make check-public` on its own line, as this iteration did.
