@@ -11,11 +11,12 @@ help: ## Show this help
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: test
-test: ## Run the standalone test suite (no network, no real sleeps)
-	@for t in tests/test_*.py; do \
-		[ -e "$$t" ] || continue; \
-		echo ">> $$t"; uv run python $$t || exit 1; \
-	done
+test: ## Run the test suite (no network, no real sleeps)
+	# pytest over the whole tree, not a `for` loop over tests/test_*.py: that glob is
+	# top-level only, so it ran 5 of the 26 test files and the author/coder/okf_builder/
+	# research suites — the bulk of the coverage — never reached the gate at all.
+	# `testpaths = ["tests"]` in pyproject.toml is what points pytest at them.
+	uv run pytest -q
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/
