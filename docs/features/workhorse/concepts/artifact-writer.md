@@ -209,10 +209,14 @@ survives with telemetry off.
 
 ## Reads
 
-### `read_checkpoint() -> dict | None`
-Returns `CHECKPOINT_FILE`'s parsed contents, or `None` if it doesn't exist. Unlike the readers
-below, a malformed `checkpoint.json` is **not** caught — `json.loads` raises straight through.
-`run_pyflow` reads it to name the in-flight state when a Ctrl-C arrives.
+### `read_checkpoint() -> Checkpoint | None`
+Returns `CHECKPOINT_FILE` parsed into the model that owns it (`PyflowCheckpoint` or, for a run
+directory written by the retired YAML front-end, `NodeGraphCheckpoint` — both in
+[`workhorse/records.py`](#the-records)), or `None` if the file doesn't exist. Unlike the readers
+below, a malformed or unrecognizable `checkpoint.json` is **not** caught — the `ValidationError`
+raises straight through, because a caller about to resume must not proceed on a checkpoint it
+could not read. `run_pyflow` reads it to name the in-flight state when a Ctrl-C arrives, and
+catches there because it is already on a failure path.
 
 ### `read_output(node_id) -> dict | None`
 Returns `<node_id>/output.json` parsed, `None` when the file is absent or unparseable, and
@@ -223,11 +227,36 @@ recorded, rather than threading the value through every transition in between. D
 "absent" from "empty" is deliberate and is the caller's to act on: `self.output` raises
 `NodeNotRunError` on `None`, where the YAML template helper this replaced returned `""` for both.
 
-### `read_events() -> list[dict]`
+### `read_events() -> list[NodeEvent]`
 Reads `EVENTS_FILE` in order; `[]` if the file doesn't exist. Splits on lines, skips blank lines,
-`json.loads`-parses each non-blank line and skips (rather than raising on) any line that fails to
-parse. Consumers (e.g. a cost/spend scorecard) join the returned records against timestamped
-provider spend and git commit history.
+parses each non-blank line into a `NodeEvent` and skips (rather than raising on) any line that
+fails to validate — an append-only log a kill can truncate mid-line must not make *reading*
+instrumentation the thing that fails. The per-node-kind extras ride along on `model_extra`.
+Consumers (e.g. a cost/spend scorecard) join the returned records against timestamped provider
+spend and git commit history.
+
+## The records
+
+`checkpoint.json` and `events.jsonl` are the two files that survive the process, so they are the
+two that are parsed rather than trusted: one pydantic model owns each in both directions, in
+[`workhorse/records.py`](../../../../workhorse/workhorse/records.py). `ArtifactWriter` owns the
+files; that module owns their shape and does no I/O of its own.
+
+- **`PyflowCheckpoint`** — what `write_state_checkpoint` writes and a resume reads. `engine:
+  Literal["pyflow"]` is a fail-closed discriminator, and `state` is required and non-empty, so a
+  checkpoint that cannot name a state is refused on the way off disk instead of failing later on a
+  key lookup. `params` / `inputs` / `ctx` stay opaque — they are a *workflow's* data, and workhorse
+  never learns its vocabulary. `workflow`, `run_id` and `updated_at` carry defaults on purpose:
+  they are annotations nothing reads back, and an operator hand-trimming the file at hour 30 to
+  unstick a run must still be able to resume it.
+- **`NodeGraphCheckpoint`** — the retired YAML engine's shape (`current_id` + `context`), kept as a
+  union member so `read_resume` can still recognize such a run directory and refuse it *by name*
+  rather than by coincidence.
+- **`NodeEvent`** — one `events.jsonl` line: `ts`, `seq`, `node`, and a `phase` closed to
+  `enter`/`done`/`terminal`/`error`. Everything else a caller passes (`next`, `waiting_on`,
+  `blueprint`, `model`, …) is `extra="allow"` and stays a **top-level** key on disk, because
+  scorecards outside this repo join these lines — nesting them under an `extra` object would be a
+  format change wearing a refactor's clothes.
 
 ## Retired with the YAML engine
 
@@ -236,8 +265,9 @@ identifiable when they turn up in a test or in a run directory written by the ol
 
 ### `write_checkpoint(current_id, context)`
 The YAML engine's checkpoint: the *node* about to run plus the whole ambient context bag, at
-`{workflow, run_id, current_id, seq, context, updated_at}` — no `engine` key, which is what lets
-`read_resume` recognize and refuse it. Superseded by
+`{workflow, run_id, current_id, seq, context, updated_at}` — a `current_id` and no `engine` key,
+which is what lets `NodeGraphCheckpoint` claim it off disk and `read_resume` refuse it by name.
+Superseded by
 [`write_state_checkpoint`](#write_state_checkpointstate-params--inputs-flownone-ctxnone-waiting_onnone).
 
 ### `write_branch(node_id, path, value, next_node)`

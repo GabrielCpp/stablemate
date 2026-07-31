@@ -40,6 +40,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
 from workhorse_workflows.author.flows.parity_surveyor import ParitySurveyor
@@ -317,7 +318,7 @@ def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
     assert first.counts() == {INVOICES: 1, STATEMENTS: 1}, first.counts()
     assert _units(surveyed) == {INVOICES: "assessed", STATEMENTS: "pending"}
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "assess", resume
     assert resume.params["unit_id"] == STATEMENTS, resume.params

@@ -6,7 +6,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from workhorse import otel
+from workhorse.records import (
+    Checkpoint,
+    NodeEvent,
+    NodeGraphCheckpoint,
+    NodePhase,
+    PyflowCheckpoint,
+    parse_checkpoint,
+)
 
 
 class ArtifactWriter:
@@ -70,8 +80,10 @@ class ArtifactWriter:
         # don't collide with the completion markers already on disk.
         self._seq = 0
         try:
-            self._seq = json.loads((run_dir / cls.CHECKPOINT_FILE).read_text()).get("seq", 0)
-        except (FileNotFoundError, json.JSONDecodeError):
+            self._seq = parse_checkpoint((run_dir / cls.CHECKPOINT_FILE).read_text()).seq
+        # `validate_json` reports malformed JSON as a ValidationError too, so the two
+        # ways a stale run dir can disappoint us are the two caught here.
+        except (OSError, ValidationError):
             pass
         # Re-mark the run as in-progress (terminal=None) until it finishes.
         self._write_run_json(terminal=None)
@@ -119,18 +131,16 @@ class ArtifactWriter:
         so a crashed run can resume from exactly this point. Bumps the checkpoint
         sequence; the node that runs next records this seq when it completes."""
         self._seq += 1
-        data = {
-            "workflow": self._workflow_name,
-            "run_id": self._run_id,
-            "current_id": current_id,
-            "seq": self._seq,
-            "context": context,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        path = self.run_dir / self.CHECKPOINT_FILE
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2))
-        tmp.replace(path)  # atomic rename on the same filesystem
+        self._write_checkpoint(
+            NodeGraphCheckpoint(
+                workflow=self._workflow_name,
+                run_id=self._run_id,
+                current_id=current_id,
+                seq=self._seq,
+                context=context,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+        )
         # Mirror the node-entry to the append-only event log (history-preserving).
         self._append_event(node_id=current_id, phase="enter")
 
@@ -166,26 +176,32 @@ class ArtifactWriter:
         other's checkpoint. Better to refuse than to misread.
         """
         self._seq += 1
-        data = {
-            "engine": "pyflow",
-            "workflow": self._workflow_name,
-            "run_id": self._run_id,
-            "flow": flow,
-            "state": state,
-            "params": params,
-            "waiting_on": waiting_on,
-            "inputs": inputs,
-            "ctx": ctx,
-            "seq": self._seq,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        path = self.run_dir / self.CHECKPOINT_FILE
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2))
-        tmp.replace(path)
+        self._write_checkpoint(
+            PyflowCheckpoint(
+                workflow=self._workflow_name,
+                run_id=self._run_id,
+                flow=flow,
+                state=state,
+                params=params,
+                waiting_on=waiting_on,
+                inputs=inputs,
+                ctx=ctx,
+                seq=self._seq,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+        )
         self._append_event(node_id=state, phase="enter", waiting_on=waiting_on)
 
-    def record_node(self, node_id: str, phase: str, **fields: Any) -> None:
+    def _write_checkpoint(self, checkpoint: Checkpoint) -> None:
+        """Put the checkpoint on disk in one indivisible step. Write-then-rename, so a
+        kill mid-write leaves the previous checkpoint intact rather than half of this
+        one — the resume path must never meet a truncated file."""
+        path = self.run_dir / self.CHECKPOINT_FILE
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(checkpoint.model_dump_json(indent=2))
+        tmp.replace(path)  # atomic rename on the same filesystem
+
+    def record_node(self, node_id: str, phase: NodePhase, **fields: Any) -> None:
         """Public entry to the append-only event log.
 
         The YAML engine only ever appends via ``write_checkpoint``/``_write_done``,
@@ -210,44 +226,48 @@ class ArtifactWriter:
             return None
         return data if isinstance(data, dict) else {"value": data}
 
-    def _append_event(self, node_id: str, phase: str, **fields: Any) -> None:
+    def _append_event(self, node_id: str, phase: NodePhase, **fields: Any) -> None:
         """Append one timestamped line to the per-node event log. Best-effort:
         instrumentation must never crash a run, so I/O errors are swallowed.
-        ``phase`` is one of "enter" | "done" | "terminal"; extra ``fields`` (e.g.
-        a resolved model name, passed by the runner) are merged into the record."""
-        record = {
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "seq": self._seq,
-            "node": node_id,
-            "phase": phase,
+        Extra ``fields`` (e.g. a resolved model name, passed by the runner) ride along
+        top-level on the record, which is why ``NodeEvent`` allows them."""
+        event = NodeEvent(
+            ts=datetime.now(timezone.utc).isoformat(),
+            seq=self._seq,
+            node=node_id,
+            phase=phase,
             **fields,
-        }
+        )
         try:
             with (self.run_dir / self.EVENTS_FILE).open("a") as f:
-                f.write(json.dumps(record) + "\n")
+                f.write(event.model_dump_json() + "\n")
         except OSError:
             pass
         # Mirror the record to the OTel exporter — this is the one choke point
         # every enter/done/terminal already funnels through (root run and nested
         # flow scopes alike), so node spans need no other hook. A no-op when
         # telemetry is off; never raises (see workhorse/otel.py).
-        otel.record_event(record)
+        otel.record_event(event.model_dump())
 
-    def read_events(self) -> list[dict[str, Any]]:
+    def read_events(self) -> list[NodeEvent]:
         """Read the append-only event log in order (empty if absent/unwritten).
         Consumers (e.g. a cost-per-node scorecard) join these node windows against
-        timestamped provider spend and git commits."""
+        timestamped provider spend and git commits.
+
+        A line that will not parse is skipped rather than raised on: this reads an
+        append-only log that a kill can leave half-written, and a reader of
+        instrumentation must not be the thing that fails."""
         path = self.run_dir / self.EVENTS_FILE
         if not path.exists():
             return []
-        events: list[dict[str, Any]] = []
+        events: list[NodeEvent] = []
         for line in path.read_text().splitlines():
             line = line.strip()
             if not line:
                 continue
             try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
+                events.append(NodeEvent.model_validate_json(line))
+            except ValidationError:
                 continue
         return events
 
@@ -279,11 +299,14 @@ class ArtifactWriter:
         except json.JSONDecodeError:
             return None
 
-    def read_checkpoint(self) -> dict[str, Any] | None:
+    def read_checkpoint(self) -> Checkpoint | None:
+        """The run's checkpoint, or None when it has not written one yet. Raises
+        ``ValidationError`` on a file that is neither engine's checkpoint — callers
+        already on a failure path catch it; callers about to resume must not."""
         path = self.run_dir / self.CHECKPOINT_FILE
         if not path.exists():
             return None
-        return json.loads(path.read_text())
+        return parse_checkpoint(path.read_text())
 
     def write_step(
         self,

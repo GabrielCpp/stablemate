@@ -35,6 +35,7 @@ from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.research import workflow as research
 from workhorse_workflows.research.schemas import RecordResult, RepoSetup
@@ -418,8 +419,8 @@ def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
             except WorkflowFailed:
                 pass  # the cap; this run exists only to write the checkpoints
 
-        mid = json.loads(json.dumps([c for c in seen if c["state"] == "check_gate"][1]))
-        assert mid["params"]["budget"] == {
+        mid = parse_checkpoint(json.dumps([c for c in seen if c["state"] == "check_gate"][1]))
+        assert mid.params["budget"] == {
             "reworks": 1,
             "lead_reviews": 0,
             "extensions": 0,

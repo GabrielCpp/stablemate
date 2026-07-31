@@ -11,7 +11,6 @@ same shape whichever engine wrote it.
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,7 @@ from workhorse.pyflow.errors import PyflowError, WorkflowFailed
 from workhorse.pyflow.graph import preflight, registry_graphs
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
+from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
@@ -226,11 +226,9 @@ def _open_run(
 def _read_resume(run_dir: Path) -> Resume:
     path = run_dir / ArtifactWriter.CHECKPOINT_FILE
     try:
-        checkpoint = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+        checkpoint = parse_checkpoint(path.read_text())
+    except (OSError, ValidationError) as exc:
         raise WorkflowFailed(f"cannot read checkpoint {path}: {exc}") from exc
-    if not isinstance(checkpoint, dict):
-        raise WorkflowFailed(f"checkpoint {path} is not a JSON object")
     return read_resume(checkpoint)
 
 
@@ -257,9 +255,9 @@ def _state_of(writer: ArtifactWriter) -> str:
     """
     try:
         checkpoint = writer.read_checkpoint()
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValidationError):
         checkpoint = None
-    return (checkpoint or {}).get("state") or "<run>"
+    return checkpoint.state if isinstance(checkpoint, PyflowCheckpoint) else "<run>"
 
 
 def _record_interrupt(writer: ArtifactWriter) -> None:

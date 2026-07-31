@@ -35,6 +35,7 @@ import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.fix_ci import FixCi
 from workhorse_workflows.coder.nodes import ci as ci_nodes
@@ -389,7 +390,7 @@ def test_a_run_killed_in_the_fixer_resumes_on_that_turn_alone(
 
     assert github.polls == 1
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "fix", resume
     assert resume.flow == "FixCi", resume

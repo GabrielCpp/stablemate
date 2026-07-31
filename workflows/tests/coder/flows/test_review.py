@@ -34,6 +34,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.review import Review
 from workhorse_workflows.coder.nodes.review import resolve_review_context
@@ -622,7 +623,7 @@ def test_a_run_killed_mid_review_resumes_on_the_review_state(
             Review(story=STORY), run_env, _Agent(docs, explode={"review-implementation"})
         )
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "review", resume
     assert resume.flow == "Review", resume

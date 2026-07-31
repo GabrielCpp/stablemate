@@ -53,6 +53,7 @@ from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
 from workhorse_workflows.author.nodes.survey import record_slug
@@ -728,7 +729,7 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     assert first.counts()["write-story"] == 2, first.counts()
     assert _stories(backlogged) == {"01-sign-in": True, "02-reset-password": False}
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "write_story", resume
     assert resume.params["story_slug"] == "02-reset-password", resume.params

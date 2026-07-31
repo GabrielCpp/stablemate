@@ -35,6 +35,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.flows.genesis import Genesis
 from workhorse_workflows.coder.nodes import genesis as genesis_nodes
@@ -414,7 +415,7 @@ def test_a_run_killed_in_the_repair_turn_resumes_on_that_turn_alone(
     with pytest.raises(RuntimeError, match="killed while repairing"):
         _run(drive_flow, run_env, _Killed(), target)
 
-    checkpoint = json.loads((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "fix", resume
     assert resume.params == {"reworks": 0}, resume.params
