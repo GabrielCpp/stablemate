@@ -31,8 +31,11 @@ The narrative version of the seam, with a worked example, is
        **copy** of the index with those names rebound, so a substitution cannot outlive the
        run that asked for it and a typo names the registered nodes instead of silently
        adding one.
-     - `RunEnv(run_agent=scripted)` — the agent backend as a run dependency rather than a
-       module attribute, so a test scripts a turn's reply without a CLI on `PATH`.
+     - `RunEnv(agent_runner=StubRunner(scripted))` — the recovery ladder as a run dependency
+       rather than a module attribute, so a test scripts a turn's reply without a CLI on
+       `PATH`. The supplied object needs one `run(...)` method with the port's own shape;
+       left `None`, the real ladder is built from `config` at the first turn, so a workflow
+       with no agent node never resolves a backend.
      - `Registry.stub_agents({stem: reply})` and `@blueprint.node(stub=…)` — declared
        stand-ins, shared with [`--dry-run`](../workhorse.md#run) rather than written twice.
   4. **Drive it: `result = drive(MyWorkflow(subject="login"), env)`.** The return value is

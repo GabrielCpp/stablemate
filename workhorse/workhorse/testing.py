@@ -1,23 +1,41 @@
 """Test utilities for workflow authors.
 
 A workflow is a Python state machine, so testing one needs no harness: a test
-constructs the :class:`~workhorse.pyflow.workflow.Workflow`, stubs its states or
-agent turns with ``stub_nodes`` / ``Registry.stub_agents``, and drives it with
-``drive``. What that leaves over — and what lives here — are the two things a
-callable flow still cannot do for itself: stand up a real throwaway git repo to
-act on, and assert on the files it wrote.
+constructs the :class:`~workhorse.pyflow.workflow.Workflow`, substitutes the
+dependencies it wants to control on the run's ``RunEnv``, and drives it with
+:func:`workhorse.pyflow.driver.drive`. What that leaves over — and what lives
+here — are the two things a callable flow still cannot do for itself: stand up a
+real throwaway git repo to act on, and assert on the files it wrote.
 
 Example::
 
-    from workhorse.pyflow import drive, stub_nodes
+    from workhorse.artifacts import ArtifactWriter
+    from workhorse.config_run import RunConfig
+    from workhorse.pyflow.driver import drive
+    from workhorse.pyflow.engine import RunEnv
     from workhorse.testing import assert_json_file, make_git_repo
 
     def test_select_story(tmp_path):
-        repo = make_git_repo(tmp_path)
-        flow = MyWorkflow(env_for(repo))
-        with stub_nodes(flow, plan={"status": "done"}):
-            drive(flow)
+        repo = make_git_repo(tmp_path / "acme")
+        writer = ArtifactWriter("acme", tmp_path / "runs", run_id="t")
+        result = drive(
+            MyWorkflow(subject="login"),
+            RunEnv(
+                writer=writer,
+                workflow_dir=Path(my_workflow.__file__).parent,
+                session_id_path=writer.run_dir / ".session_id",
+                config=RunConfig(backend_factory=lambda cli=None: None),
+                # The seams: rebind a node, script a turn, or leave either out to
+                # get the real one. `nodes=` takes `registry.nodes` or a copy from
+                # `registry.override(...)`.
+                nodes=my_workflow.workflow.nodes,
+                agent_runner=StubRunner(scripted_turn),
+            ),
+        )
         assert_json_file(repo, "docs/state.json", {"status": "done"})
+
+See ``docs/features/workhorse/flows/workhorse-author-test.md`` for the walkthrough,
+and ``workflows/tests/test_hello_world.py`` for this example as running code.
 """
 
 from __future__ import annotations

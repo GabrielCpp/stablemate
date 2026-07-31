@@ -13,14 +13,17 @@
 #                                       discovery, the base-library cache)
 #
 # base-library/ is NOT a package and NOT a workspace member: it is the base library
-# itself — plain data (library/, scaffolds/, workflows/) that the tools locate on disk
-# or fetch from git into ~/.cache/stablemate. Nothing imports it.
+# itself — plain data (library/, packs/) that the tools locate on disk or fetch from
+# git into ~/.cache/stablemate. Nothing imports it.
 #
 # Library content resolves across two layers: the base (base-library/, above) and an
 # optional private overlay that shadows it, pointed at with
 # `farrier config set-library <path>`. The base is data with nothing to import, so no
 # dependency runs in either direction — which is what lets content version on its own
-# clock. Each workflow.yaml declares the tools it needs in a `requires:` block instead.
+# clock. A workflow is a Python distribution, so the tools it needs are ordinary
+# [project.dependencies] that pip/uv resolve at install time — the library declares
+# nothing. (The retired YAML front-end used a per-workflow `requires:` block instead,
+# because data cannot have dependencies.)
 #
 # This root is the workspace anchor and a member (per uv's "every workspace needs
 # a root, which is also a workspace member"). It declares [project] but NO
