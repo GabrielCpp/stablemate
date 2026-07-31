@@ -163,8 +163,9 @@ class RunEnv:
     #: callable taking the render args. Unlisted stems fall back to a blank model.
     agent_stubs: dict[str, Any] | None = None
     #: The recovery ladder this run drives agent turns through — the run's backend,
-    #: resilience knobs and clock, bound together. None = build the real one from
-    #: `config` at call time, so a run with no agent node never resolves a backend.
+    #: resilience knobs and clock, bound together. Passing one substitutes it (a
+    #: scripted runner, in a workflow author's test); leaving it None builds the real
+    #: one from `config` in `__post_init__`, which is the only place it is built.
     agent_runner: AgentRunner | None = None
     #: True while the *resumed* state's own body is running, and false everywhere
     #: else. `handoff` consumes it to tell "we are re-entering the sub-flow this run
