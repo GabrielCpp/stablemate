@@ -198,21 +198,23 @@ invisible to `--check`.
 
 ## `workflows/<name>/` — workhorse workflows
 
-Each workflow is a directory consumed by
-[`workhorse-agent`](https://pypi.org/project/workhorse-agent/):
+A library no longer ships workflows. A workflow used to be a directory of YAML
+(`workflow.yaml` plus `prompts/`, `scripts/`, `docs/`) that farrier copied into
+`.agents/workflows/<name>/`; the YAML front-end has been retired, and a workflow is
+now a Python package [`workhorse-agent`](https://pypi.org/project/workhorse-agent/)
+resolves through the `workhorse.workflows` entry-point group — a distribution's
+business, installed with `pip`/`uv`, not rendered out of a library.
 
-```
-workflows/coder/
-  workflow.yaml     # the workflow graph (see workhorse docs/WORKFLOW.md)
-  prompts/          # prompts the workflow steps invoke
-  scripts/          # helper scripts the workflow shells out to
-  docs/
-```
+What survives here is the *selection*: a pack or `agents.yml` still names workflows
+with `workflows: [coder]`, and farrier uses that list to emit the launcher scaffolding
+(`.agents/agents.mk`, the local compose override, the context manifest) for the named
+workflows. Nothing is copied into `.agents/workflows/` any more, and `--check` no longer
+scans it.
 
-A pack opts into a workflow with `workflows: [coder]`. farrier copies the
-workflow tree into `.agents/workflows/<name>/` and auto-pulls any skills/prompts
-the workflow's prompts reference via `instruction_ref("…")` / `prompt_ref("…")`,
-so a workflow's dependencies install even if a pack lists only the workflow.
+Selection is still *validated* against a `workflows/<name>/` directory in some library
+layer, which the base library no longer has — so today only an overlay that still ships
+one can be named here. Reconciling that validation with entry-point discovery is
+[the migration plan](../../docs/plans/workflow-as-python-state-machine.md)'s, not done.
 
 ## Templating
 

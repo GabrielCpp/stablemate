@@ -22,8 +22,8 @@ __all__ = ["BASE_DIR_ENV", "CHECKOUT_SUBPATH", "base_library_dir", "is_library_d
 BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
 
 # Where the library sits inside a stablemate checkout. The base library is data laid out
-# directly under this directory — `library/`, `scaffolds/`, `workflows/` — not nested in
-# a Python package.
+# directly under this directory — `library/` and `scaffolds/` — not nested in a Python
+# package.
 CHECKOUT_SUBPATH = "base-library"
 
 

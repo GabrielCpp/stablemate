@@ -46,8 +46,9 @@ Each has a parity section below.
 `graph/`, `runner/{script,branch,call}.py`, `builtins.py` and `requirements.py` are deleted,
 `main.py` is 670 lines of CLI over `run_pyflow`, and a workflow name resolves only through the
 `workhorse.workflows` entry-point group. `base-library/workflows/` is deleted too — all 7,719 lines
-of graph YAML, its 127 scripts and its 61 prompts. What is left of loop 2 is plumbing that outlived
-its subject: the library-directory predicate, the base-library fetch, and one doc.
+of graph YAML, its 127 scripts and its 61 prompts. Step 3 took the plumbing that outlived it: a
+library is `library/` and nothing else, and farrier no longer owns `.agents/workflows`. What
+remains of loop 2 is the base-library fetch and one doc.
 
 The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
 `author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
@@ -105,6 +106,7 @@ took it.)
 | 0.1 | `e1f92f5` | **The one authorized driver change, and still no deletion.** The context manifest reaches a pyflow prompt: `workhorse/manifest.py` (moved out of `main.py`), a `manifest` seat on `RunEnv`, `run_pyflow(context_manifest=…)`, and the `--context-file` passthrough. §4 item 1, cleared |
 | 2 | `cc8b850` | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
+| 3 | `PENDING` | **The plumbing.** `is_library_dir` is now `(path/"library").is_dir()` — `workflows/` is no longer a library's content — and farrier stopped owning `.agents/workflows`: gone from `remove_targets` and from the `--check` extra-file scan, taking `should_skip_workflow_file`/`WORKFLOW_SKIP_PARTS` with them. List item 3, done |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
@@ -268,7 +270,7 @@ base ships no workflows" as a *failure*, so deleting the directory turns `make c
 That clause is list item 3's first half, pulled forward for exactly the reason `requires:` was
 pulled into step 1 — a green tree does not wait for its own bullet. The check now reports
 `ok: 9 base skills resolve with no overlay configured`; the second half of that item
-(`is_library_dir`, farrier's `.agents/workflows` cleanup) is still step 3's.
+(`is_library_dir`, farrier's `.agents/workflows` cleanup) landed as step 3.
 `workflows/pyproject.toml`'s entry-point comment, which claimed the base kept a runnable YAML
 `research`, was corrected in the same commit.
 
@@ -283,9 +285,47 @@ loop's list.
 inotify, deleted unported as loop 1.1 intended, with the driver's polling `Await` as the
 replacement.
 
-**Next: list items 3, 4 and 6.** Narrow `is_library_dir` (and `main.py:635`'s `set-base` error,
-which still says "library/ or workflows/"), drop farrier's `.agents/workflows` legacy cleanup;
-narrow the base-library fetch to a sparse checkout of `library/`; correct
+#### Step 3 — the plumbing
+
+Two small deletions with one meaning: a library is `library/`, and `.agents/workflows` is nobody's.
+
+**`is_library_dir` accepted "contains `library/` OR `workflows/`".** That "or" was written when a
+workflow was a directory of YAML a library could ship, so a base holding only `workflows/` was a
+usable base. It cannot be one now — a workflow is a Python package resolved through an entry-point
+group, and a directory holding only `workflows/` carries no library content at all. Left as-is it
+was worse than stale: `set-base` would have silently accepted such a directory and handed every
+tool an empty layer. It is now `return (path / "library").is_dir()`, and the three error strings
+that recited the old rule (`workhorse/main.py`, `farrier/cli.py`, `farrier/layers.py`) say
+`library/`. Two tests asserted the old "or" directly — `core/tests/test_discovery.py` and
+`farrier/tests/test_config_resolution.py` — and both now assert its opposite; core's shared
+`_make_base` helper and `test_base_cache.py`'s `_fake_clone` were building their fixture libraries
+out of `workflows/`, which is what made this a seven-test failure rather than a one-line change.
+
+**Farrier's `.agents/workflows` cleanup.** Farrier rendered a workflow's tree there until the
+front-end retired; grep confirms it has written nothing into it since, so both remaining mentions
+were legacy. `remove_targets` no longer deletes it, and `check_outputs` no longer scans it — that
+scan was the worse of the two, since a leftover from an older install would be reported `extra:`
+and no amount of re-rendering would clear it. `should_skip_workflow_file` and
+`WORKFLOW_SKIP_PARTS` existed only to make that scan tolerable and went with it, along with their
+`install.py` re-exports.
+
+**A finding, recorded rather than fixed.** `renderer.py:439-449` still validates a `workflows:`
+selection against `find_in_layers("workflows", name)`. The mechanism works, but the base ships no
+`workflows/` directory any more, so a base-only install can no longer name a workflow at all — the
+launcher scaffolding it gates (`agents.mk`, the compose override, the context manifest) is
+unreachable without an overlay that still has one. That row of the plan's table is not on loop 2's
+list, so it stays; `farrier/docs/LAYOUT.md` now says so plainly instead of describing a copy step
+that no longer happens.
+
+Corrected in the same commit, all of it prose that had gone false: `docs/features/farrier/farrier.md`'s
+`--check` description, `farrier/docs/LAYOUT.md`'s `workflows/<name>/` section, and the three places
+in `core/` (`base_cache.py`'s module docstring, its `BASE_SUBPATH` comment and its stale-cache
+warning; `discovery.py`'s `CHECKOUT_SUBPATH` comment) that listed `workflows/` as part of the
+library payload.
+
+**Next: list items 4 and 6.** Narrow the base-library fetch to a sparse checkout of `library/` —
+`base_cache.py` is already half-corrected for it, and its "clone the repo" shape is the last thing
+treating the base as a repository rather than documents. Then correct
 `docs/features/workhorse/workflow-format.md`. (`base-library/workflows/README.md`, also on the
 docs-correction bullet, was deleted with its directory — the strongest correction available.)
 

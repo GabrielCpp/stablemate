@@ -14,14 +14,6 @@ from farrier.git import get_default_branch, get_git_remote
 from farrier.launcher import DEFAULT_AGENTS_DIR
 
 
-WORKFLOW_SKIP_PARTS = {
-    "__pycache__",
-    ".runs",
-    ".state",
-    ".codex-home",
-}
-
-
 def collect_template_values(config: dict[str, Any]) -> dict[str, Any]:
     values: dict[str, Any] = {}
     for key in ["vars", "template"]:
@@ -74,10 +66,3 @@ def resolve_workflow_meta(
         "env_passthrough": env_passthrough,
         "remote_checkout": remote_checkout,
     }
-
-
-def should_skip_workflow_file(path: Path, root: Path) -> bool:
-    rel = path.relative_to(root)
-    return (
-        any(part in WORKFLOW_SKIP_PARTS for part in rel.parts) or path.suffix == ".pyc"
-    )

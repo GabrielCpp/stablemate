@@ -32,7 +32,6 @@ from farrier.sources import (
 from farrier.workflows import (
     collect_template_values,
     resolve_workflow_meta,
-    should_skip_workflow_file,
 )
 
 
@@ -68,7 +67,6 @@ def remove_targets(repo: Path) -> None:
     for rel in [
         ".github/copilot-instructions.md",
         ".github/agents/copilot-instructions.md",
-        ".agents/workflows",
         # Generated launcher scaffolding (always owned by the installer). The
         # root Makefile is intentionally NOT listed: a user may hand-author it,
         # and the installer must never delete or overwrite it.
@@ -228,14 +226,17 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
         elif path.read_text(encoding="utf-8") != expected:
             changed.append(path.relative_to(repo).as_posix())
 
+    # `.agents/workflows` is not scanned. Farrier rendered a workflow's YAML tree there
+    # until the front-end was retired; it has emitted nothing into it since, so scanning
+    # it would only report a leftover from an older install as `extra:` — a --check
+    # failure the operator cannot fix by re-rendering. Nothing writes it, nothing owns
+    # it, and an unowned directory is not the installer's to police.
     expected_paths = set(outputs)
-    for rel in TARGET_DIRS + [".agents/workflows"]:
+    for rel in TARGET_DIRS:
         target = repo / rel
         if not target.exists():
             continue
         for path in sorted(item for item in target.rglob("*") if item.is_file()):
-            if rel == ".agents/workflows" and should_skip_workflow_file(path, target):
-                continue
             if path not in expected_paths:
                 extra.append(path.relative_to(repo).as_posix())
     for rel in [

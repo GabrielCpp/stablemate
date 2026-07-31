@@ -70,11 +70,18 @@ def test_is_library_dir():
         assert install.is_library_dir(root)
         assert not install.is_library_dir(Path(tmp))
 
-        # packs/ is NOT required: the base library ships workflows and skills with
+        # packs/ is NOT required: the base library ships skills and scaffolds with
         # no packs at all, and a repo selects from it directly in agents.yml.
+        packs_only = Path(tmp) / "packs-only"
+        (packs_only / "packs").mkdir(parents=True)
+        assert not install.is_library_dir(packs_only)
+
+        # `workflows/` used to be an accepted alternative to `library/`, back when a
+        # workflow was a directory of YAML a library could ship. It is a Python package
+        # now, so a directory holding only `workflows/` carries no library content.
         workflows_only = Path(tmp) / "base"
         (workflows_only / "workflows").mkdir(parents=True)
-        assert install.is_library_dir(workflows_only)
+        assert not install.is_library_dir(workflows_only)
     print("ok: is_library_dir")
 
 
@@ -153,7 +160,7 @@ def test_bad_library_path_errors():
         try:
             install.resolve_library_dir(not_a_lib)
         except SystemExit as exc:
-            assert "library/ or workflows/" in str(exc)
+            assert "library/" in str(exc)
             return
         raise AssertionError("expected SystemExit for a non-library path")
 

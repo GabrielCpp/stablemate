@@ -24,7 +24,7 @@ from stablemate_core.discovery import (
 
 def _make_base(root: Path) -> Path:
     """A directory shaped like a usable library."""
-    (root / "workflows").mkdir(parents=True)
+    (root / "library").mkdir(parents=True)
     return root
 
 
@@ -45,11 +45,9 @@ def cfg(tmp_path, monkeypatch):
 # --- the predicate -----------------------------------------------------------
 
 
-def test_is_library_dir_accepts_either_content_dir(tmp_path):
-    for name in ("library", "workflows"):
-        root = tmp_path / name
-        (root / name).mkdir(parents=True)
-        assert is_library_dir(root)
+def test_is_library_dir_accepts_the_content_dir(tmp_path):
+    (tmp_path / "library").mkdir()
+    assert is_library_dir(tmp_path)
 
 
 def test_is_library_dir_rejects_an_empty_or_wrong_dir(tmp_path):
@@ -58,13 +56,24 @@ def test_is_library_dir_rejects_an_empty_or_wrong_dir(tmp_path):
     assert not is_library_dir(tmp_path), "packs/ alone is not a library"
 
 
+def test_is_library_dir_rejects_a_workflows_only_dir(tmp_path):
+    """`workflows/` used to be an accepted alternative to `library/`.
+
+    A workflow is a Python package now, resolved through the `workhorse.workflows`
+    entry-point group, so a directory holding only `workflows/` ships no library
+    content — pointing `set-base` at one should be an error, not a silent empty layer.
+    """
+    (tmp_path / "workflows").mkdir()
+    assert not is_library_dir(tmp_path)
+
+
 def test_is_library_dir_rejects_the_pre_flattening_layout(tmp_path):
     """base-library/ used to hold a Python package, not the payload.
 
     A cache fetched before the flattening looks exactly like this, and accepting it
-    would hand callers a directory with no workflows in it.
+    would hand callers a directory with no library content in it.
     """
-    (tmp_path / "stablemate_library" / "workflows").mkdir(parents=True)
+    (tmp_path / "stablemate_library" / "library").mkdir(parents=True)
     (tmp_path / "pyproject.toml").write_text("")
     assert not is_library_dir(tmp_path)
 

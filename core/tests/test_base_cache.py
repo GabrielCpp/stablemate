@@ -25,7 +25,7 @@ def _isolate_cache(tmp_path, monkeypatch):
 def _fake_clone(dest: Path, *, commit: str = "abc123") -> bool:
     """Build what a real clone would leave behind."""
     lib = dest / bc.BASE_SUBPATH
-    (lib / "workflows").mkdir(parents=True)
+    (lib / "library").mkdir(parents=True)
     (dest / ".git").mkdir(parents=True)
     (dest / ".git" / "COMMIT").write_text(commit)
     return True
