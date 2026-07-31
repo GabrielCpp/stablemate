@@ -10,7 +10,7 @@ library-resident prompt can resolve repo-specific values (which skill/prompt fil
 whether a skill was selected, the active skills directory, a prior node's recorded output) without
 farrier copying or rewriting the workflow's own files. Called once per render by both
 [`render`](render-prompt.md) (file-based prompt rendering, with flavor-override support) and
-[`render_string`](render-prompt.md#render_string-sibling) (inline args/cwd/command rendering) — the
+[`render_string`](render-prompt.md#render_string) (inline args/cwd rendering) — the
 module's other two public entry points, `workhorse/workhorse/templates.py::render` and
 `::render_string` — and installed via `env.globals.update(...)` before the template is
 rendered/instantiated, so every helper is visible to `{{ ... }}` expressions in the prompt body,

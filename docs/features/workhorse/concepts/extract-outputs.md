@@ -1,19 +1,25 @@
 ---
 type: concept
 slug: extract-outputs
-title: _extract_outputs — parse agent JSON into declared outputs
+title: extract_outputs — parse an agent's answer into the declared returns
 ---
-# _extract_outputs — parse agent JSON into declared outputs
+# extract_outputs — parse an agent's answer into the declared returns
 
-Turns one agent-CLI turn's raw text into the [node](../workflow-format.md#the-agent-turn)'s declared
-`outputs` dict. Called once per attempt by [`_invoke_and_parse`](invoke-and-parse.md#algorithm)
-(step 2), which treats a raised `OutputParseError` as a same-session-retry signal, and ultimately by
-[`run_agent`](run-agent.md)'s ladder, which treats an escaped `OutputParseError` as a reframe
-trigger. Delegates the actual text→JSON recovery to `_parse_json_from_text`, a hardened,
-strict-then-tolerant pipeline built to survive the ways a model's response breaks a naive
-`json.loads` (prose around the object, multiple embedded objects, lenient syntax, truncated braces).
+Turns one agent-CLI turn's raw text into the dict of keys the state
+[declared](../workflow-format.md#returns) on `self.agent(..., returns=…)`. Called once per attempt by
+[`_invoke_and_parse`](invoke-and-parse.md#algorithm) (step 2), which treats a raised
+`OutputParseError` as a same-session-retry signal, and ultimately by
+[`AgentRunner.run`](run-agent.md)'s ladder, which treats an escaped `OutputParseError` as a reframe
+trigger. Delegates the actual text→JSON recovery to [`parse_json_from_text`](#parse_json_from_text),
+a hardened, strict-then-tolerant pipeline built to survive the ways a model's response breaks a naive
+`json.loads` (prose around the object, an envelope around the answer, multiple embedded objects,
+lenient syntax, truncated braces).
 
-- code: `workhorse/workhorse/runner/agent.py::_extract_outputs`
+Both entry points are **public names in `workhorse.runner.extract`**. They carried a leading
+underscore while they lived inside the monolithic agent runner; the module split gave them a module
+of their own, and a function another module imports is not private.
+
+- code: `workhorse/workhorse/runner/extract.py::extract_outputs`
 - verify: `workhorse/tests/test_json_parse.py::test_extract_outputs_happy_path`,
   `workhorse/tests/test_json_parse.py::test_extract_outputs_no_json_raises`,
   `workhorse/tests/test_json_parse.py::test_extract_outputs_missing_key_raises`,
@@ -24,10 +30,12 @@ strict-then-tolerant pipeline built to survive the ways a model's response break
 - **Input:**
   - `text: str` — the raw turn text returned by `AgentRunner.turn` (a completed CLI turn's result
     text; not empty — an empty result is retried as transient before this function ever runs).
-  - `node: AgentNode` — supplies `node.id` (error messages) and `node.outputs: list[OutputSpec]`
-    (the [output keys](../workflow-format.md#returns) to extract).
+  - `node: AgentNode` — the runner's internal description of the turn
+    (`workhorse/workhorse/runner/spec.py`), supplying `node.id` (error messages) and
+    `node.outputs: list[OutputSpec]` (the keys to extract, one per field of the state's declared
+    return model).
 - **Output:** `dict[str, Any]` — one entry per `spec.key` in `node.outputs`, valued from the parsed
-  JSON. `{}` when `node.outputs` is empty (a node that declares no outputs never needs to parse).
+  JSON. `{}` when `node.outputs` is empty (a turn that declares no returns never needs to parse).
 - **Raises:** `OutputParseError` (a `RuntimeError` subclass, distinct so the runner's ladder retries
   only this recoverable, re-promptable mistake and not e.g. a CLI crash) when:
   - no JSON object could be recovered from `text` at all — message: `"Node '{node.id}' declared
@@ -39,10 +47,10 @@ strict-then-tolerant pipeline built to survive the ways a model's response break
 ## Algorithm
 
 ```
-def _extract_outputs(text, node):
+def extract_outputs(text, node):
     if not node.outputs: return {}
     wanted = [o.key for o in node.outputs]
-    parsed = _parse_json_from_text(text, wanted)
+    parsed = parse_json_from_text(text, wanted)
     if parsed is None: raise OutputParseError("... no parseable JSON")
     result = {}
     for spec in node.outputs:
@@ -51,9 +59,9 @@ def _extract_outputs(text, node):
     return result
 ```
 
-1. **Short-circuit.** A node with no declared `outputs` returns `{}` without inspecting `text` —
-   there is nothing to extract.
-2. **Recover a JSON object.** `_parse_json_from_text(text, wanted)` runs the strict-then-tolerant
+1. **Short-circuit.** A turn with no declared returns yields `{}` without inspecting `text` — there
+   is nothing to extract.
+2. **Recover a JSON object.** `parse_json_from_text(text, wanted)` runs the strict-then-tolerant
    pipeline below and returns the best dict it could find, or `None`.
 3. **No object at all → raise.** `parsed is None` means neither pass could locate anything
    dict-shaped; this is the "no parseable JSON" error.
@@ -62,12 +70,12 @@ def _extract_outputs(text, node):
    on the first `spec.key` missing rather than silently omitting it, so a partial answer trips a
    retry instead of silently defaulting fields downstream.
 5. **Return the declared subset.** Only `node.outputs`' keys are copied into `result` — any extra
-   keys the model's JSON happened to include are dropped, so the context merge never picks up
-   unrequested state.
+   keys the model's JSON happened to include are dropped, so what the state receives is exactly the
+   shape it asked for.
 
-### `_parse_json_from_text(text, wanted_keys)` — strict-then-tolerant recovery
+## `parse_json_from_text`
 
-- code: `workhorse/workhorse/runner/agent.py::_parse_json_from_text`
+- code: `workhorse/workhorse/runner/extract.py::parse_json_from_text`
 - verify: `workhorse/tests/test_json_parse.py::test_strict_fenced_block`,
   `workhorse/tests/test_json_parse.py::test_prose_with_stray_brace_picks_real_object`,
   `workhorse/tests/test_json_parse.py::test_multiple_objects_prefers_one_with_wanted_keys`,
@@ -76,15 +84,23 @@ def _extract_outputs(text, node):
   `workhorse/tests/test_json_parse.py::test_truncated_object_closed`,
   `workhorse/tests/test_json_parse.py::test_pure_prose_returns_none`
 
-Strict is tried first and returned **unchanged, with no coercion**, so genuinely-malformed output
-still trips the retry/reframe ladder even when strict parsing alone would have sufficed — the
-tolerant pass only runs when strict can't yield an object carrying every wanted key.
+- **Input:** `text: str`; `wanted_keys: list[str] | None = None` — the declared keys, or nothing
+  when the caller just wants "the JSON in this text" (the parameter is optional, so the function is
+  usable outside `extract_outputs`).
+- **Output:** `dict | None` — the object carrying every wanted key if one was found; else the best
+  strict effort (a dict missing some of them, or `None`) so the caller can raise the precise error.
+
+Strict parsing is tried first and its result returned **unchanged, with no coercion**, so genuinely
+malformed output still trips the retry/reframe ladder even when strict parsing alone would have
+sufficed — the tolerant pass only runs when strict can't yield an object carrying every wanted key.
 
 ```
 wanted = set(wanted_keys or ())
 strict = _parse_json_strict(text)
-if strict is not None and wanted.issubset(strict):
-    return strict
+if strict is not None:
+    unwrapped = _unwrap(strict, wanted)
+    if unwrapped is not None:
+        return unwrapped
 tolerant = _parse_json_tolerant(text, wanted)
 if tolerant is not None:
     return tolerant
@@ -98,21 +114,64 @@ return strict   # best strict effort (dict missing keys, or None) for the caller
       `re.DOTALL`), parsed with `json.loads`.
    - Either regex matching but failing `json.loads` (a `JSONDecodeError`) falls through silently to
      the next attempt, then to `None`.
-2. **Strict success + has every wanted key → return it immediately**, unmodified.
+2. **Strict success → look for the answer inside it** with [`_unwrap`](#_unwrap), which returns the
+   object itself when it already carries every wanted key. A hit is returned immediately, unmodified.
 3. **Otherwise fall back to `_parse_json_tolerant(text, wanted)`** — see below. Its result, if any,
    wins over the strict result (even if strict found *something*, a tolerant pass carrying the
    wanted keys is preferred).
 4. **Both fail → return `strict`** (whatever `_parse_json_strict` produced — a keys-incomplete dict,
-   or `None`) so `_extract_outputs` can raise the precise "no parseable JSON" vs. "key not found"
+   or `None`) so `extract_outputs` can raise the precise "no parseable JSON" vs. "key not found"
    error instead of a generic one.
 
-### `_parse_json_tolerant(text, wanted)` — `json-repair` fallback
+## `_unwrap`
 
-- code: `workhorse/workhorse/runner/agent.py::_parse_json_tolerant`
+- code: `workhorse/workhorse/runner/extract.py::_unwrap`
+- verify: `workhorse/tests/test_json_parse.py::test_wrapped_answer_is_read_through_the_envelope`,
+  `workhorse/tests/test_json_parse.py::test_a_top_level_answer_still_wins_over_a_nested_one`,
+  `workhorse/tests/test_json_parse.py::test_an_envelope_missing_a_key_still_fails`,
+  `workhorse/tests/test_json_parse.py::test_nothing_wanted_keeps_the_top_object`
 
-Repairs the four break modes strict parsing can't survive: prose surrounding the object, multiple
-embedded objects (e.g. an example plus the real answer), lenient syntax (trailing commas, single
-quotes, comments), and truncated/unclosed braces.
+`obj` itself if it carries every wanted key, else the nested object that does — a
+**breadth-first** search, so the shallowest match wins.
+
+```
+if not wanted or wanted.issubset(obj): return obj
+queue = [v for v in obj.values() if isinstance(v, dict)]
+while queue:
+    nxt = []
+    for cand in queue:
+        if wanted.issubset(cand): return cand
+        nxt.extend(v for v in cand.values() if isinstance(v, dict))
+    queue = nxt
+return None
+```
+
+Agents wrap their answers for a living: a prompt whose example shows the enclosing name, a model
+narrating "here is the `code_review_result`", and a state whose declared keys were once the
+envelope's own name all produce `{"code_review_result": {"status": …}}`. Every key asked for is
+present, in one object, so rejecting it costs a whole turn's work to be told the same thing again —
+the run that prompted this threw away 134 seconds of a finished code review. Nothing here knows what
+any envelope is *called*; the rule is only "the object carrying every declared key, wherever it
+sits".
+
+Three properties keep that from widening into guessing:
+
+- **Breadth-first, not depth-first.** A `findings` list whose entries each happen to carry a
+  `status` must not outrank the envelope's own payload — the answer is the object *holding* the
+  findings, not one of them.
+- **`None` when nothing carries the full set.** Unwrapping widens *where* the keys may be, not
+  *which* answers count as complete: a wrapped object that answers half the question stays on the
+  retry ladder rather than being quietly promoted.
+- **Nothing wanted → the top object.** Every dict trivially contains the empty set, so descending
+  would be arbitrary.
+
+## `_parse_json_tolerant`
+
+- code: `workhorse/workhorse/runner/extract.py::_parse_json_tolerant`
+
+The `json-repair` fallback. Repairs the break modes strict parsing can't survive: prose surrounding
+the object, multiple embedded objects (an example plus the real answer), lenient syntax (trailing
+commas, single quotes, comments), and truncated/unclosed braces.
 
 1. **Optional dependency.** `_repair_json` is `json_repair.repair_json` if the `json-repair` package
    is importable at module load, else `None`. If `None`, this function returns `None` immediately —
@@ -121,12 +180,12 @@ quotes, comments), and truncated/unclosed braces.
    object, a `list` when the text embedded more than one, or a scalar (e.g. `''`) when nothing
    JSON-like was found. Any exception during repair is swallowed (`except Exception`) and treated as
    no result — repair is best-effort and must never itself crash a turn.
-3. **Select.** `_select_object(obj, wanted)` (below) picks the best candidate dict from the repair
-   output.
+3. **Select.** [`_select_object(obj, wanted)`](#_select_object) picks the best candidate dict from
+   the repair output.
 
-### `_select_object(obj, wanted)` — best-candidate picker
+## `_select_object`
 
-- code: `workhorse/workhorse/runner/agent.py::_select_object`
+- code: `workhorse/workhorse/runner/extract.py::_select_object`
 - verify: `workhorse/tests/test_json_parse.py::test_select_object_from_list_prefers_wanted`,
   `workhorse/tests/test_json_parse.py::test_select_object_empty_string_is_none`
 
@@ -139,18 +198,19 @@ def walk(o):
 walk(obj)
 if not candidates: return None
 for cand in reversed(candidates):
-    if wanted.issubset(cand): return cand
+    found = _unwrap(cand, wanted)
+    if found is not None: return found
 return candidates[-1]
 ```
 
 1. **Flatten.** `walk` recurses through `obj` collecting every `dict` it finds, descending into
    `list`s (so a repair result of several embedded objects yields one candidate per object) but not
-   into dict values (a dict's own nested dicts are not separately considered — only the top-level
-   objects `json-repair` recovered).
+   into dict values — nesting is [`_unwrap`](#_unwrap)'s job, not this one's.
 2. **No candidates → `None`.** `obj` was a scalar (e.g. `json-repair`'s `''` for unparseable text).
-3. **Prefer the last dict carrying every wanted key**, scanning in reverse — the real answer usually
-   comes after any examples/scratch objects earlier in the response.
-4. **Else fall back to the last candidate seen**, regardless of its keys — `_extract_outputs` will
+3. **Prefer the last candidate that yields an unwrap hit**, scanning in reverse — the real answer
+   usually comes after any examples or scratch objects earlier in the response, and a wrapped answer
+   is as wrapped after repair as it was before it.
+4. **Else fall back to the last candidate seen**, regardless of its keys — `extract_outputs` will
    then raise the precise "key not found" error rather than "no parseable JSON" for this case.
 
 ## Related pieces
@@ -160,6 +220,11 @@ return candidates[-1]
 - [`AgentRunner.run`](run-agent.md) — the outer ladder; treats an `OutputParseError` that survives
   all of `_invoke_and_parse`'s same-session retries as [the reframe layer's](run-agent.md#the-ladder)
   trigger.
-- [`OutputSpec`](../workflow-format.md#returns) — the per-output declaration (`key`/`default`)
-  this function reads `node.outputs` from; `default` itself is only consumed later, by
-  [`run_agent`](run-agent.md#the-ladder)'s Layer 4 (`_default_outputs`), not by this function.
+- [the declared returns](../workflow-format.md#returns) — where `node.outputs` comes from:
+  `pyflow/engine.py::_outputs_for` derives one `OutputSpec` per field of the model a state passed to
+  `self.agent(..., returns=…)`, or a single `OutputSpec(key="value")` when `returns` is a plain
+  scalar type with no `model_fields` (the engine unwraps that lone `value` back to a bare scalar
+  after this module has extracted it). `OutputSpec.default` still exists and is still read by
+  [`AgentRunner.run`](run-agent.md#the-ladder)'s Layer 4, but nothing sets it any more: the engine
+  constructs every spec with `key=` alone, so a defaulted turn emits `None` for every key. It was
+  the YAML front-end that let an author write a per-key fallback value.

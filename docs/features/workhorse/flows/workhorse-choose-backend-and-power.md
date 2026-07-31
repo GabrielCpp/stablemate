@@ -63,8 +63,8 @@ edit to the workflow itself.
      `get_backend` caches one stateless instance per key, reused for every node of the run.
   4. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
      [agent turn](../workflow-format.md#the-agent-turn) a state reaches is driven by
-     [`run_agent`](../concepts/run-agent.md).
-  5. **Resolve this turn's power to a concrete model/effort.** Inside `run_agent`'s setup (before
+     [`AgentRunner.run`](../concepts/run-agent.md).
+  5. **Resolve this turn's power to a concrete model/effort.** Inside `AgentRunner.run`'s setup (before
      the resilience ladder), `_resolve_power_settings(node.power, backend.name, os.environ)` maps
      the turn's `power` tier through [`resolve_power`](../concepts/config.md#resolve_power) against
      the *same* `backend.name` chosen in step 3 — so `power.high.claude` and `power.high.codex` are
@@ -78,10 +78,10 @@ edit to the workflow itself.
        `AGENT_CLAUDE_MODEL` (both env vars), then the config's `[default.<backend>]` table via
        [`resolve_backend_default`](../concepts/config.md#resolve_backend_default); `effort` falls
        through to that same table directly (it has no env override).
-     - back in `run_agent`, a still-unset `model` finally falls through to `backend.default_model`
+     - back in `AgentRunner.run`, a still-unset `model` finally falls through to `backend.default_model`
        (`sonnet` for claude; `None` for the others, which leaves the harness to pick) so a node
        without any configuration still runs.
-  6. **Drive the turn with the resolved settings.** `run_agent` calls
+  6. **Drive the turn with the resolved settings.** `AgentRunner.run` calls
      [`AgentBackend.run_turn`](../concepts/agent-backend.md#contract)`(prompt, session_id_path,
      model=model, effort=node_effort, …)` on the step-3 backend instance; each concrete backend
      ([claude](../concepts/claude-backend.md), [codex](../concepts/codex-backend.md),

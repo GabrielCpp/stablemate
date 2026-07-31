@@ -214,7 +214,7 @@ Every keyword past `returns=` is optional and defaults to whatever the engine de
 so a state that says nothing behaves as before. These are **real Python values, not
 template strings** — the state computes them and passes them.
 
-Underneath, the turn goes through [render_prompt](concepts/render-prompt.md), the
+Underneath, the turn goes through [`render`](concepts/render-prompt.md), the
 [resilience ladder](concepts/run-agent.md), and [output
 extraction](concepts/extract-outputs.md), all unchanged by the port.
 

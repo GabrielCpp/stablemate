@@ -155,7 +155,7 @@ combination is a no-op override, not an error.
 ## Consumers
 
 - [`workhorse config`](../workhorse.md#config) — `show`/`get`/`list`/`set-*`.
-- [`run_agent`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn.
+- [`AgentRunner.run`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn.
 - the [agent backend](agent-backend.md) — `resolve_harness_env` for the harness subprocess's
   environment.
 - `stablemate_core.discovery` and farrier's installer — `library_dir`/`stablemate_dir`/`base_dir`,
