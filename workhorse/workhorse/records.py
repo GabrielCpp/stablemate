@@ -1,7 +1,7 @@
 """The records a run writes to disk and reads back.
 
-`checkpoint.json` and `events.jsonl` are the two files that survive the process, so
-they are the two that get parsed rather than trusted. Provenance is not the axis: a
+`checkpoint.json`, `run.json` and `events.jsonl` are the files that survive the process,
+so they are the ones that get parsed rather than trusted. Provenance is not the axis: a
 checkpoint written by this engine and read an hour later has, in between, been through
 a version change, a partial write, and — the docstring on `write_state_checkpoint` says
 so out loud — an operator editing it by hand to unstick a run. One model owns each
@@ -81,6 +81,44 @@ def parse_checkpoint(text: str) -> Checkpoint:
     return _CHECKPOINT.validate_json(text)
 
 
+class RunRecord(BaseModel):
+    """`run.json` — what a run directory says about itself between processes.
+
+    Small, and load-bearing anyway: `terminal` is what `--auto` and `--resume-latest`
+    consult to tell a run that crashed from one that finished, and `started_at` is the
+    anchor `WORKHORSE_MAX_RUNTIME_S` counts from, so a resumed run keeps the original
+    deadline instead of restarting the clock.
+
+    Every field carries a default because the writer is not the only thing that has
+    touched this file by the time it is read: a resume meets whatever the previous
+    process left, and a stopped run is one an operator is expected to inspect. A record
+    with nothing in it is a legitimate parse — `started_at` empty means "no anchor
+    recorded", which the reader turns into now, exactly as the `.get(...)` default it
+    replaces did.
+    """
+
+    workflow: str = ""
+    run_id: str = ""
+    started_at: str = ""
+    ended_at: str | None = None
+    terminal: str | None = None
+    #: Set only by an operator interrupt, and cleared by the next write. "terminal null
+    #: AND interrupted_at set" reads as stopped-by-a-human, distinct from "terminal
+    #: null, no stamp", which is a run still in flight (or wedged in one).
+    interrupted_at: str | None = None
+    error: str | None = None
+    #: Advertised on telemetry too; recorded here as well so it survives with telemetry
+    #: off.
+    pid: int | None = None
+
+
+def parse_run_record(text: str) -> RunRecord:
+    """Parse a `run.json` body. Raises `ValidationError` on anything that is not one —
+    the callers are all deciding whether a directory is resumable, and a directory
+    whose `run.json` will not parse is one they skip."""
+    return RunRecord.model_validate_json(text)
+
+
 class NodeEvent(BaseModel):
     """One line of `events.jsonl`.
 
@@ -107,5 +145,7 @@ __all__ = [
     "NodeGraphCheckpoint",
     "NodePhase",
     "PyflowCheckpoint",
+    "RunRecord",
     "parse_checkpoint",
+    "parse_run_record",
 ]
