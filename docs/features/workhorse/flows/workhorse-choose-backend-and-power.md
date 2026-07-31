@@ -11,19 +11,21 @@ in the [workhorse config file](../concepts/config.md), pick the harness for the 
 [`workhorse run`](../workhorse.md#run)'s `--cli`, and let each [agent
 node](../workflow-format.md#the-agent-turn)'s `power:` resolve through that table for whichever
 [AgentBackend](../concepts/agent-backend.md) got selected via
-[`get_backend`](../concepts/get-backend.md). The same `workflow.yaml` — same `power: high` on a
-node — thus runs against `opus` under `--cli claude` or a `@gpt-5.5` profile under `--cli codex`
-with no edit to the workflow itself.
+[`get_backend`](../concepts/get-backend.md). The same workflow — same `power="high"` on a turn —
+thus runs against `opus` under `--cli claude` or a `@gpt-5.5` profile under `--cli codex` with no
+edit to the workflow itself.
 
 - start: a `workhorse` install with a config file (possibly empty — no `library_dir`/`power`
-  table yet required) and a workflow whose `agent` nodes carry an optional
-  [`power:`](../workflow-format.md#power) tier (`low`/`medium`/`high`, default unset).
+  table yet required) and a workflow whose [agent turns](../workflow-format.md#the-agent-turn)
+  carry an optional [`power`](../workflow-format.md#power) tier (`low`/`medium`/`high`, default
+  unset).
 - steps:
   1. **Populate the power table.** There is no `workhorse config set` for the nested `power` table
-     — [`write_config_key`](../concepts/config.md#write_config_key) only round-trips flat top-level
-     string keys (`library_dir`, `stablemate_dir`) and would corrupt a hand-written `[table]`
-     section if pointed at one. An operator instead edits the [config file](../concepts/config.md)
-     directly at its [resolved path](../concepts/config.md#location) (`$WORKHORSE_CONFIG`, else the
+     — [`write_config_key`](../concepts/config.md#write_config_key) sets one top-level key at a
+     time (`library_dir`, `stablemate_dir`, `base_dir`); it preserves nested tables it did not
+     write, but it has no path syntax for reaching into one. An operator instead edits the
+     [config file](../concepts/config.md) directly at its
+     [resolved path](../concepts/config.md#location) (`$STABLEMATE_CONFIG`, else the
      platform default), adding one `[power.<tier>.<backend>]` section per tier/backend pair it
      wants to override, each with `model = "…"` and/or `effort = "…"` string keys, e.g.:
      ```toml
@@ -59,11 +61,12 @@ with no edit to the workflow itself.
      failing mid-run. `<name>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`,
      each the registry key of one [AgentBackend](../concepts/agent-backend.md) implementation.
      `get_backend` caches one stateless instance per key, reused for every node of the run.
-  4. **Run the graph.** [Workflow execution](../concepts/workflow.md#execution) walks the nodes;
-     each [`agent` node](../workflow-format.md#the-agent-turn) is driven by [`run_agent`](../concepts/run-agent.md).
-  5. **Resolve this node's power to a concrete model/effort.** Inside `run_agent`'s setup (before
+  4. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
+     [agent turn](../workflow-format.md#the-agent-turn) a state reaches is driven by
+     [`run_agent`](../concepts/run-agent.md).
+  5. **Resolve this turn's power to a concrete model/effort.** Inside `run_agent`'s setup (before
      the resilience ladder), `_resolve_power_settings(node.power, backend.name, os.environ)` maps
-     the node's `power:` tier through [`resolve_power`](../concepts/config.md#resolve_power) against
+     the turn's `power` tier through [`resolve_power`](../concepts/config.md#resolve_power) against
      the *same* `backend.name` chosen in step 3 — so `power.high.claude` and `power.high.codex` are
      independent entries and only the one matching the run's active backend applies:
      - `power` unset/`None`/`""` short-circuits to an empty `PowerMapping` (no override) —
@@ -94,7 +97,7 @@ with no edit to the workflow itself.
 ## Missing element noticed
 
 `workhorse config` has no subcommand to *write* a `power.<tier>.<backend>` entry (only
-`show`/`get`/`list` read it back; `set-library`/`set-stablemate` only ever touch flat top-level
-keys) — populating the power table is a manual TOML edit, not a CLI round-trip. Worth a
+`show`/`get`/`list` read it back; `set-library`/`set-stablemate`/`set-base` each set one flat
+top-level key) — populating the power table is a manual TOML edit, not a CLI round-trip. Worth a
 `workhorse config set power.<tier>.<backend> model=… effort=…` command, but out of scope here
 (this item documents current behavior, not a proposal).
