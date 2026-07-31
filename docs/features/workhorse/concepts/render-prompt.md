@@ -138,5 +138,5 @@ back as a bare string — a routine shape an upstream LLM output can take) rende
 instead of raising and aborting the run, while still logging a `[template] ⚠ …` warning to stdout
 so the bad reference stays visible. This replaces Jinja's default `StrictUndefined`, which would
 raise and abort a node over a single malformed template reference — inconsistent with
-[workhorse's fail-soft posture](workflow.md#resilience-fail-soft) for unattended runs.
+[workhorse's fail-soft posture](run-agent.md) for unattended runs.
 

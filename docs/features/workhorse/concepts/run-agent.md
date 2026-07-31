@@ -8,9 +8,9 @@ title: run_agent — the agent-node resilience ladder
 Runs one [`agent` node](../workflow-format.md#the-agent-turn): renders its Jinja2 prompt, drives the
 active [AgentBackend](agent-backend.md) through a turn, and extracts the node's declared
 `outputs` — escalating through a four-layer resilience ladder instead of raising, because
-[workflow execution](workflow.md#execution) calls it once per `agent` node of a run built to
-survive unattended for days. [Workflow — Resilience](workflow.md#resilience-fail-soft) is the short summary
-consumed by every reader of the graph; this node is the authoritative spec of that ladder.
+[`drive`](pyflow-driver.md) reaches it once per agent turn of a run built to survive unattended
+for days. Every other page that says workhorse is "fail-soft" is summarising this one; this node
+is the authoritative spec of that ladder.
 
 The ladder delegates to a set of lower-level concept nodes documented on their own: a finished
 turn is classified by [`classify_turn`](classify-turn.md) (called directly for Claude, or via the

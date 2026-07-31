@@ -1766,6 +1766,65 @@ the anchor with `ostler.model.anchor_of` rather than by hand.
     `concepts/opencode-on-event.md` → `runner/backends.py::_opencode_on_event`. Both are
     renames in files loop 3 is not touching.
 
+### Iteration 6 — retiring the graph-engine `concepts/` pages
+
+Nine `concepts/` pages documented symbols the port deleted outright, so they were removed
+rather than rewritten — `load-workflow.md`, `evaluate-branch.md`, `run-call.md`,
+`run-script.md`, `run-flow.md`, `gas-tank.md`, `builtins-registry.md`, `dot-renderer.md`,
+`workflow.md`. The loop's STOP rule covers "a doc whose subject survives under a new name";
+none of these has one. `graph/loader.py`, `runner/branch.py`, `runner/call.py`,
+`runner/script.py`, `main.py::_run_flow`, `main.py::_GasTank`, `builtins.py::REGISTRY` and
+`graph/nodes.py::Graph` are gone with no successor, and the two arguable cases already have
+complete replacements in the book: `dot-renderer.md` → `pyflow-state-graph.md#rendering`,
+`workflow.md` → `pyflow-driver.md`.
+
+Five surviving pages pointed into them and were re-pointed at what is actually true now:
+
+- `run-agent.md` — "`[workflow execution](workflow.md#execution)` calls it once per `agent`
+  node" → `drive` reaches it once per agent *turn*; the `workflow.md#resilience-fail-soft`
+  back-reference is dropped, since this page is the authoritative spec and nothing else
+  documents the ladder any more.
+- `render-prompt.md` — `ResilientUndefined`'s "inconsistent with workhorse's fail-soft
+  posture" now links to `run-agent.md`.
+- `agent-backend.md` — "the `[workflow](workflow.md)` execution loop calls it per `agent`
+  node" → `run_agent` drives it once per agent turn.
+- `context-manifest.md` — `concepts/workflow.md` → `workflow-format.md`.
+- `scriptutil.md` — the two `../workflow-format.md#script` links (a node type that no longer
+  exists) → `#node`, and "before the graph starts" → "before the run starts". The rest of
+  that page is still a later iteration's work.
+
+`concepts/workflow-context.md` was **rewritten**, not patched: its subject survives
+(`workhorse/workhorse/context.py::WorkflowContext` is still constructed by
+`pyflow/engine.py`'s `self.agent`), but three of its four link targets were deleted pages and
+most of its body described the graph walk. See findings 13–15.
+
+`ostler doctor`: **45 → 27 errors, 0 warnings.** (It read 45 rather than iteration 5's 26
+because `e68067f` — the concurrent workstream — landed between the two runs and split
+`runner/backends.py` into a package, breaking 12 `code:` refs at a stroke.) **Every one of
+the 27 remaining errors is a `code:` target the concurrent workstream moved, or a
+pre-existing farrier one — none is the port's.** Catalogue: 12 × `runner/backends.py::…`
+(the `e68067f` split), 5 × `runner/agent.py::_…` (symbols that moved with it), 6 × farrier's
+`install.py` (pre-existing, unrelated to this loop), 1 × `scriptutil.py::_read_workspace_file`,
+and `farrier.md#version` counted twice. Re-grounding the backend/agent pages on the new
+`runner/backends/` port package is the next iteration's work, not this one's.
+
+**Findings 13–15 (this loop changes no behavior; these are reported, not fixed):**
+
+13. **`WorkflowContext.merge`, `get_dotpath` and `has_dotpath` have no caller left in
+    workhorse.** Their callers were the graph walk (folding a node's `outputs:` into the
+    running context) and `runner/branch.py::evaluate`'s unresolvable-path guardrail. Only
+    `as_dict()` — read once by `runner/agent.py:679` — is live. The class is now a one-way
+    render bag: built by `pyflow/engine.py` from `{manifest, args}`, unwrapped immediately.
+14. **The name `WorkflowContext` now collides misleadingly with pyflow's `self.ctx`**, which
+    is an unrelated thing (the object a workflow's `setup()` returned, restored from the
+    checkpoint on resume). Under the YAML engine they were the same idea. The page now says
+    so explicitly, because the docs cannot rename the class.
+15. **`workflow-context.md`'s `verify:` pointed at `tests/test_branch_guardrail.py`, a file
+    that no longer exists** — the same class of miss as finding 10, and the same cause:
+    `ostler` does not check `verify:` targets. Repointed at
+    `test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`.
+    Worth noting that two of three `verify:` misses found so far were only found by hand.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
@@ -1784,3 +1843,7 @@ At iteration 5 the failure had moved again: an **untracked** `workhorse/workhors
 package now shadows the tracked `runner/backends.py`, and `get_backend` is not importable
 from it — 11 failures in `test_agent_cap.py`. In a detached worktree at `HEAD`,
 `test_agent_cap.py` + `test_backends.py` are **57/57**.
+
+At iteration 6 it is **green again in the working tree**, with no worktree needed: `e68067f`
+committed that `runner/backends/` package, which is what the untracked copy had been
+shadowing. `make test`, `make check-public` and `ruff check .` all pass.

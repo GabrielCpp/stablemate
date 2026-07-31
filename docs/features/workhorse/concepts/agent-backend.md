@@ -7,8 +7,8 @@ title: AgentBackend — the harness backend abstraction
 
 The abstract base every agent harness implements: one agent CLI behind a uniform interface,
 **stateless** (safe to share/cache one instance). [get_backend](get-backend.md) returns the
-concrete one whose registry key matches [workhorse run](../workhorse.md#run)'s `--cli` value; the
-[workflow](workflow.md) execution loop calls it per `agent` node. Implementations extend it —
+concrete one whose registry key matches [workhorse run](../workhorse.md#run)'s `--cli` value;
+[`run_agent`](run-agent.md) drives it once per agent turn. Implementations extend it —
 [claude](claude-backend.md) (default), [codex](codex-backend.md), [copilot](copilot-backend.md),
 [aider](aider-backend.md), [opencode](opencode-backend.md).
 
