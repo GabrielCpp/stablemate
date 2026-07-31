@@ -18,10 +18,10 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends.null import NullBackend
 
 
 def _int(environ: Mapping[str, str], key: str, default: int) -> int:
@@ -175,14 +175,17 @@ class RunConfig:
 
     Built once by :meth:`from_env` (the CLI boundary in ``main()``), then read by the
     driver instead of ``os.environ``. Tests construct it directly — with a fake
-    ``backend``, or with none at all — to drive a workflow hermetically.
+    ``backend``, or with the null one the default supplies — to drive a workflow
+    hermetically.
 
-    The backend is a *field* rather than something this class resolves. Resolving one
-    means importing the registry, which imports every adapter, and every adapter
+    The backend is a *field* rather than something this class *resolves*. Resolving
+    one means importing the registry, which imports every adapter, and every adapter
     imports this module for :class:`AgentResilience` — a real cycle, which used to be
     hidden inside a method-body import. Being handed the adapter breaks it: the CLI
     already had to name and validate the backend, so it is the ring that owns the
-    choice, and nothing here needs to know an adapter exists.
+    choice, and nothing here needs to know a *selectable* adapter exists. The one
+    adapter named here is the null one, which no operator can select and which
+    imports nothing beyond the port.
     """
 
     resilience: AgentResilience = field(default_factory=AgentResilience)
@@ -206,9 +209,12 @@ class RunConfig:
     model_override: str | None = None
     #: The agent CLI this run drives, already resolved. The CLI boundary picks it —
     #: ``--cli`` else ``AGENT_CLI`` — and validates it there, so an unknown name fails
-    #: before the first state rather than at the first agent node. ``None`` is a run
-    #: with no agent in it: a dry run, or a test driving nodes only.
-    backend: AgentBackend | None = None
+    #: before the first state rather than at the first agent node. A run with no agent
+    #: in it — a dry run, or a test driving script nodes only — gets the
+    #: :class:`~workhorse.runner.backends.null.NullBackend`, never ``None``: absence is
+    #: an implementation of the port, so nothing downstream branches on it and
+    #: ``AgentRunner.backend`` can honestly claim to hold an ``AgentBackend``.
+    backend: AgentBackend = field(default_factory=NullBackend)
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
