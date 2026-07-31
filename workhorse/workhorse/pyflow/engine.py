@@ -295,9 +295,9 @@ class Engine:
             budget["power"] = power
         if timeout is not None:
             budget["timeout"] = timeout
-        # `cwd`/`add_dirs` are the same fields the YAML node carries, and the runner
-        # Jinja-renders them — a literal path is a no-op render, so real values pass
-        # through unchanged and the cwd de-dupe and `--add-dir` flags come for free.
+        # The runner Jinja-renders `cwd`/`add_dirs` — a literal path is a no-op render,
+        # so real values pass through unchanged and the cwd de-dupe and `--add-dir`
+        # flags come for free.
         if cwd is not None:
             budget["cwd"] = str(cwd)
         if add_dirs is not None:

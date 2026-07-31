@@ -164,8 +164,8 @@ def test_concurrent_fetch_loser_discards_its_clone(monkeypatch):
 def test_cached_base_never_fetches(monkeypatch):
     """A lookup that downloads 16M is a trap — `config show` would trigger it.
 
-    This split is why test_library_layers' resolution-order test can assert None
-    without touching the network.
+    This split is why a resolution-order test can assert None without touching the
+    network.
     """
     monkeypatch.setattr(
         bc, "_clone_into", lambda dest: pytest.fail("lookup must never fetch")

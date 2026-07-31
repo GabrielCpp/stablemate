@@ -25,7 +25,6 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C ostler test
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
-	$(MAKE) test-workflows
 	$(MAKE) test-bench
 	$(MAKE) check-public
 
@@ -34,18 +33,6 @@ test-bench: ## Run the benchmark harness's own tests (its scoring must be trustw
 	# A benchmark whose scoring is wrong is worse than no benchmark: it reports a number
 	# that nobody re-derives. These cover the properties that number rests on.
 	uv run pytest benchmarks/tests -q
-
-.PHONY: test-workflows
-test-workflows: ## Run each workflow's own test suite (the base library is data; its workflows are tested)
-	# One pytest per workflow, from inside the workflow dir, because each owns its
-	# pytest.ini (coder's sets `-n auto`) and a config only applies from its own
-	# directory. Collecting them together would also collide: author/ and coder/ ship
-	# same-named test modules, which pytest cannot import side by side.
-	@for d in base-library/workflows/*/; do \
-		[ -d "$$d/tests" ] || continue; \
-		echo ">> $$d"; \
-		( cd "$$d" && uv run pytest tests -q ) || exit 1; \
-	done
 
 .PHONY: okf-verify
 okf-verify: ## Verify every OKF book's coverage against its source (non-zero = incomplete)

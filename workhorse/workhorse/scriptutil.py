@@ -109,10 +109,10 @@ def fresh_import(name: str, *, also_purge: tuple[str, ...] = ()) -> ModuleType:
 
     ``WORKHORSE_FRESH_IMPORT=0`` disables the purge and returns the cached module.
     Reimporting builds a *new module object*, so every ``monkeypatch.setattr`` a test
-    applied to the old one is silently discarded — which defeats the documented way to
-    fake a script's seams (see ``workhorse.testing``). Nothing edits a package on disk
-    mid-run under the test harness, so the behavior this exists for cannot occur there;
-    ``WorkflowRun`` sets the variable for the duration of a run.
+    applied to the old one is silently discarded — the mock stays in place, just no
+    longer on the thing the caller reaches. A test that patches a seam this function
+    would re-import should set the variable for the duration of the run; nothing edits
+    a package on disk under test, so the behavior it exists for cannot occur there.
     """
     if (os.environ.get("WORKHORSE_FRESH_IMPORT") or "1").strip().lower() in (
         "0", "false", "no", "off",

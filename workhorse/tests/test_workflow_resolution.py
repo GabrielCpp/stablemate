@@ -1,11 +1,14 @@
-"""Tests for --workflow library-name resolution and the cwd-based runs-dir default.
+"""Tests for what `workhorse run` resolves around a workflow name.
 
-Covers two operator-ergonomics features of `workhorse run`:
-  * `--workflow <name>` (a bare name, no path) resolves against the configured
-    prompt library as <library_dir>/workflows/<name>/workflow.yaml; an explicit
-    path is used verbatim.
-  * `--runs-dir` defaults to <cwd>/.agents/runs — deduced from the launch dir,
-    independent of where the workflow file lives.
+A name resolves in exactly one place — an installed `workhorse.workflows` entry point
+(covered in test_packaged_workflows.py). What is left for the CLI to decide, and what
+these cover, is everything *around* that name, which is the CLI's contract rather than
+the driver's:
+
+  * `--runs-dir` defaults to <cwd>/.agents/runs — deduced from the launch dir, not from
+    wherever the workflow package happens to be installed;
+  * `AGENT_REPO_DIR` defaults to the launch cwd for the same reason, and an explicit
+    value wins.
 """
 from __future__ import annotations
 
@@ -18,77 +21,10 @@ from unittest.mock import patch
 m = importlib.import_module("workhorse.main")
 
 
-# ── library-dir resolution ──────────────────────────────────────────────────
+class _StubRegistry:
+    """Stands in for the resolved Registry — the CLI only passes it through."""
 
-def test_library_dir_from_env_override():
-    with patch.dict(os.environ, {"WORKHORSE_LIBRARY_DIR": "/tmp/lib"}, clear=False):
-        assert m._resolve_library_dir() == Path("/tmp/lib")
-
-
-def test_library_dir_from_workhorse_config():
-    # library_dir falls back to workhorse's own config.toml (resolved via config_path();
-    # STABLEMATE_CONFIG points it at a temp file here) when the env override is unset.
-    with tempfile.TemporaryDirectory() as d:
-        cfg = Path(d) / "config.toml"
-        cfg.write_text('library_dir = "/srv/agents"\n')
-        env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        env["STABLEMATE_CONFIG"] = str(cfg)
-        with patch.dict(os.environ, env, clear=True):
-            assert m._resolve_library_dir() == Path("/srv/agents")
-
-
-def test_library_dir_none_when_unconfigured_and_no_base():
-    # The base library is the floor under the overlay, so "nothing configured" only
-    # means "nothing at all" when the stablemate-library wheel is absent too.
-    # Layered resolution itself is covered in test_library_layers.py.
-    with tempfile.TemporaryDirectory() as home:  # no config.toml inside
-        env = {k: v for k, v in os.environ.items() if k != "WORKHORSE_LIBRARY_DIR"}
-        env["STABLEMATE_CONFIG"] = str(Path(home) / "config.toml")
-        with patch.dict(os.environ, env, clear=True), patch.object(
-            m, "_base_library_dir", lambda: None
-        ):
-            assert m._resolve_library_dir() is None
-
-
-# ── --workflow resolution ───────────────────────────────────────────────────
-
-# The fixture name is deliberately one no distribution ships. A name that IS an
-# installed workflow package resolves through the entry point instead — that is the
-# documented precedence, so using `author` here tested the packaged path by accident
-# the moment the author port added its entry point.
-def test_bare_name_resolves_against_library():
-    with tempfile.TemporaryDirectory() as tmp:
-        lib = Path(tmp) / "agents"
-        wf = lib / "workflows" / "layered-only" / "workflow.yaml"
-        wf.parent.mkdir(parents=True)
-        wf.write_text("name: layered-only\n")
-        with patch.object(m, "_library_layers", lambda: [lib]):
-            assert m._resolve_workflow_path("layered-only") == wf.resolve()
-
-
-def test_explicit_absolute_path_passes_through():
-    with tempfile.TemporaryDirectory() as tmp:
-        wf = Path(tmp) / "workflow.yaml"
-        wf.write_text("name: x\n")
-        # Even with a library configured, a path-like value is used verbatim.
-        with patch.object(m, "_library_layers", lambda: [Path("/srv/agents")]):
-            assert m._resolve_workflow_path(str(wf)) == wf.resolve()
-
-
-def test_relative_path_is_not_treated_as_library_name():
-    # Contains a separator → path, resolved against cwd, never the library.
-    with patch.object(m, "_library_layers", lambda: [Path("/srv/agents")]):
-        got = m._resolve_workflow_path("sub/workflow.yaml")
-    assert got == (Path.cwd() / "sub" / "workflow.yaml").resolve()
-
-
-def test_bare_name_without_library_errors():
-    with patch.object(m, "_library_layers", list):
-        try:
-            m._resolve_workflow_path("layered-only")
-            raise AssertionError("expected SystemExit when no library is available")
-        except SystemExit as e:
-            assert e.code == 1
+    name = "acme-flow"
 
 
 # ── runs-dir default = <cwd>/.agents/runs ───────────────────────────────────
@@ -96,26 +32,22 @@ def test_bare_name_without_library_errors():
 def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     captured = {}
 
-    # Mirrors run()'s real signature so a new engine argument shows up here as a
-    # TypeError rather than silently going unpassed.
-    def fake_run(workflow_path, runs_dir, resume_run_dir=None, auto=True,
-                 run_id=None, params=None, context_manifest=None, flow=None, no_cache=False,
-                 *, config=None, dry_run=False):
+    # Mirrors run_pyflow()'s real signature so a new driver argument shows up here as
+    # a TypeError rather than silently going unpassed.
+    def fake_run_pyflow(registry, flow=None, *, runs_dir, resume_run_dir=None,
+                        run_id=None, params=None, no_cache=False, dry_run=False,
+                        context_manifest=None, config=None):
         captured["runs_dir"] = runs_dir
         return 0
 
     with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        launch = tmp / "repo"
+        launch = Path(tmp) / "repo"
         launch.mkdir()
-        # Workflow lives somewhere ELSE — runs-dir must follow cwd, not the wf dir.
-        wfdir = tmp / "elsewhere"
-        wfdir.mkdir()
-        wf = wfdir / "workflow.yaml"
-        wf.write_text("name: research\n")
-        with patch.object(m, "run", fake_run), patch.object(
+        with patch.object(m, "run_pyflow", fake_run_pyflow), patch.object(
+            m, "_packaged_registry", lambda spec: _StubRegistry()
+        ), patch.object(
             m.Path, "cwd", staticmethod(lambda: launch)
-        ), patch("sys.argv", ["workhorse", "--workflow", str(wf)]):
+        ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
             try:
                 m.main()
             except SystemExit:
@@ -126,24 +58,19 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
 # ── AGENT_REPO_DIR default = launch cwd ──────────────────────────────────────
 
 def test_agent_repo_dir_defaults_to_launch_cwd():
-    # Library scripts run with cwd = the workflow dir; AGENT_REPO_DIR must be
-    # pinned to the launch dir so they resolve the consuming repo, not the library.
-    def fake_run(*a, **k):
-        return 0
-
+    # A workflow's scripts run with a cwd that is not necessarily the consuming repo,
+    # so AGENT_REPO_DIR is pinned to the launch dir for them to resolve it from.
     with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        launch = tmp / "repo"
+        launch = Path(tmp) / "repo"
         launch.mkdir()
-        wf = tmp / "elsewhere" / "workflow.yaml"
-        wf.parent.mkdir()
-        wf.write_text("name: research\n")
         env = {k: v for k, v in os.environ.items() if k != "AGENT_REPO_DIR"}
         with patch.dict(os.environ, env, clear=True), patch.object(
-            m, "run", fake_run
+            m, "run_pyflow", lambda *a, **k: 0
+        ), patch.object(
+            m, "_packaged_registry", lambda spec: _StubRegistry()
         ), patch.object(
             m.Path, "cwd", staticmethod(lambda: launch)
-        ), patch("sys.argv", ["workhorse", "--workflow", str(wf)]):
+        ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
             try:
                 m.main()
             except SystemExit:
@@ -153,20 +80,15 @@ def test_agent_repo_dir_defaults_to_launch_cwd():
 
 def test_agent_repo_dir_respects_explicit_value():
     # An explicitly-set AGENT_REPO_DIR (e.g. from the farrier Makefile) wins.
-    def fake_run(*a, **k):
-        return 0
-
     with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        launch = tmp / "repo"
+        launch = Path(tmp) / "repo"
         launch.mkdir()
-        wf = tmp / "elsewhere" / "workflow.yaml"
-        wf.parent.mkdir()
-        wf.write_text("name: research\n")
         with patch.dict(os.environ, {"AGENT_REPO_DIR": "/pinned/repo"}, clear=False), \
-                patch.object(m, "run", fake_run), patch.object(
+                patch.object(m, "run_pyflow", lambda *a, **k: 0), patch.object(
+                    m, "_packaged_registry", lambda spec: _StubRegistry()
+                ), patch.object(
                     m.Path, "cwd", staticmethod(lambda: launch)
-                ), patch("sys.argv", ["workhorse", "--workflow", str(wf)]):
+                ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
             try:
                 m.main()
             except SystemExit:
@@ -174,7 +96,26 @@ def test_agent_repo_dir_respects_explicit_value():
             assert os.environ["AGENT_REPO_DIR"] == "/pinned/repo"
 
 
+# ── a path is no longer a workflow ───────────────────────────────────────────
+
+def test_a_path_is_reported_as_a_path_not_as_an_unknown_name(capsys):
+    """`--workflow ./workflows/coder/workflow.yaml` was the documented invocation for
+    years. Reporting it as merely "no workflow named ..." would read as a bad install."""
+    with patch.object(m, "find_packaged_workflow", lambda name: None), patch.object(
+        m, "installed_workflow_names", list
+    ):
+        try:
+            m._packaged_registry("./workflows/coder/workflow.yaml")
+        except SystemExit as exc:
+            assert exc.code == 1
+        else:
+            raise AssertionError("a path should not resolve to a workflow")
+    err = capsys.readouterr().err
+    assert "not workflow.yaml files" in err, err
+
+
 if __name__ == "__main__":
     import sys
+
     import pytest
     sys.exit(pytest.main([__file__, "-v"]))

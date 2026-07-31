@@ -14,7 +14,7 @@ import importlib
 import pytest
 
 m = importlib.import_module("workhorse.runner.agent")
-nodes = importlib.import_module("workhorse.graph.nodes")
+nodes = importlib.import_module("workhorse.runner.spec")
 
 
 def _node(*keys: str):

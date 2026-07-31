@@ -1,22 +1,23 @@
+"""The `workhorse` command line — argument parsing, resolution, and dispatch.
+
+This module used to be the YAML graph walk *and* the CLI around it. The graph walk
+is gone; what remains is the front door. It resolves a workflow name to the Python
+state machine registered for it, assembles the things a run needs that are the
+CLI's contract rather than any engine's (the repo dir, the backend, the runs dir,
+params, the context manifest, the resume flags), and hands them to
+:func:`workhorse.pyflow.run.run_pyflow`. The other subcommands — `test`, `dot`,
+`config`, `version` — are here for the same reason: one parser, one front door.
+"""
 from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
-import logging
 import os
-import shutil
 import sys
-import time
-from collections import Counter, deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from workhorse import logsetup, otel
-from workhorse.artifacts import ArtifactWriter
-from stablemate_core import base_cache
-from stablemate_core.base_cache import BASE_REPO_URL, ensure_cached_base
-from stablemate_core.discovery import base_library_dir as _base_library_dir
 from stablemate_core.discovery import is_library_dir as _is_base_library_dir
 from stablemate_core.config import (
     ConfigVersionError,
@@ -25,794 +26,19 @@ from stablemate_core.config import (
     load_config,
     write_config_key,
 )
-from workhorse.config_run import RunConfig
-from workhorse.context import WorkflowContext
-from workhorse.graph.loader import load_workflow
-# Both engines load the manifest, so it lives outside either one. Bound under its
-# historical private name, which is also what lets a test patch the loader on this
-# module and have the CLI see it.
+# Bound under its historical private name, which is also what lets a test patch the
+# loader on this module and have the CLI see it.
 from workhorse.manifest import load_context_manifest as _load_context_manifest
-from workhorse.requirements import UnmetRequirementsError, check_requirements
-from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode
-from workhorse.packaged import PackagedWorkflow, PackagedWorkflowError, find_packaged_workflow
+from workhorse.packaged import (
+    PackagedWorkflowError,
+    find_packaged_workflow,
+    installed_workflow_names,
+)
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import run_pyflow
-from workhorse.references import format_missing, missing_references
-# Re-imported under their historical private names: the run-identity rules moved to
-# `rundir` so the Python driver could obey the same ones without importing main (main
-# imports it, not the other way round), and both engines resolve a run dir identically.
-from workhorse.rundir import auto_resolve as _auto_resolve
-from workhorse.rundir import derive_run_id as _derive_run_id
+# Re-imported under its historical private name: the run-identity rules live in
+# `rundir` so the driver can obey them without importing this module.
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
-from workhorse.rundir import runtime_deadline as _runtime_deadline
-from workhorse.runner import agent as agent_runner
-from workhorse.runner import branch as branch_runner
-from workhorse.runner import call as call_runner
-from workhorse.runner import script as script_runner
-from workhorse.runner.agent import BackendInvocationError
-from workhorse.runner.script import ScriptExitError
-from workhorse.templates import render_string
-
-# The engine's own narrative (node dispatch, per-node errors). Routed through the
-# root logger — not print — so that whenever telemetry is on it ships to the
-# collector's /v1/logs alongside the script nodes' records, making the run's own
-# progress visible in `groom logs` / the dashboard, not just the local console. The
-# console handler (logsetup) still writes it to the terminal.
-logger = logging.getLogger("workhorse.engine")
-
-class Workhorse:
-    """The workflow engine handle: walks a graph node by node, driven by an
-    immutable :class:`RunConfig`. The config (resilience knobs, gas/runtime budgets,
-    backend and script-runner factories) is read from ``self.config`` rather than the
-    environment, so a run's behavior is fixed at construction and an in-process test
-    can drive the engine hermetically with explicit values instead of mutating global
-    state. The graph walk itself lives in module-level helpers that take ``config``
-    explicitly (``run``/``_step_loop``/``_run_flow``); this class is the public
-    object callers construct."""
-
-    def __init__(self, config: RunConfig | None = None) -> None:
-        self.config = config or RunConfig.from_env()
-
-    def run(
-        self,
-        workflow_path: Path,
-        runs_dir: Path,
-        *,
-        resume_run_dir: Path | None = None,
-        auto: bool = True,
-        run_id: str | None = None,
-        params: dict[str, Any] | None = None,
-        context_manifest: dict[str, Any] | None = None,
-        flow: str | None = None,
-        no_cache: bool = False,
-    ) -> int:
-        return run(
-            workflow_path,
-            runs_dir,
-            resume_run_dir,
-            auto=auto,
-            run_id=run_id,
-            params=params,
-            context_manifest=context_manifest,
-            flow=flow,
-            no_cache=no_cache,
-            config=self.config,
-        )
-
-
-def run(
-    workflow_path: Path,
-    runs_dir: Path,
-    resume_run_dir: Path | None = None,
-    auto: bool = True,
-    run_id: str | None = None,
-    params: dict[str, Any] | None = None,
-    context_manifest: dict[str, Any] | None = None,
-    flow: str | None = None,
-    no_cache: bool = False,
-    *,
-    config: RunConfig | None = None,
-    dry_run: bool = False,
-) -> int:
-    cfg = config or RunConfig.from_env()
-    graph = load_workflow(workflow_path)
-
-    # Preflight the tools the workflow declares, before any node runs. Deliberately
-    # outside the retry/reframe/default ladder: a missing tool is deterministic, so
-    # retrying can't help and defaulting past it would just move the crash later.
-    problems = check_requirements(graph.requires, graph.name)
-    if problems:
-        detail = "\n".join(f"  - {p}" for p in problems)
-        raise UnmetRequirementsError(
-            f"workflow '{graph.name}' cannot run; unmet requirements:\n{detail}"
-        )
-
-    workflow_dir = workflow_path.parent
-
-    # `workhorse run <workflow> <flow>`: run a named sub-graph standalone (the re-QA
-    # entrypoint). The flow's `vars` are its parameter contract; treat the sub-graph
-    # as the top graph for this run so it gets its own run dir, checkpoint, and
-    # resume — independent of the parent workflow's run, so a story from a merged or
-    # already-finished epic re-qualifies fine.
-    if flow is not None:
-        if flow not in graph.flows:
-            available = ", ".join(sorted(graph.flows)) or "(none)"
-            print(
-                f"error: workflow '{graph.name}' has no flow '{flow}'. "
-                f"Available flows: {available}",
-                file=sys.stderr,
-            )
-            return 1
-        supplied = params or {}
-        missing = [
-            k
-            for k, v in graph.flows[flow].vars.items()
-            if v is None and not supplied.get(k)
-        ]
-        if missing:
-            contract = ", ".join(
-                f"{k}={v!r}" for k, v in graph.flows[flow].vars.items()
-            )
-            print(
-                f"error: flow '{flow}' requires params: {', '.join(missing)}\n"
-                f"  contract (var=default): {contract}\n"
-                f'  supply via --params \'{{"<var>": "<value>"}}\'',
-                file=sys.stderr,
-            )
-            return 1
-        graph = graph.flows[flow]
-
-    # The per-repo context manifest (template values, instruction/prompt path maps,
-    # selected-skills set) is the OUTER layer of every context: the workflow's own
-    # vars, --params, and node outputs all override it, but it is always present so
-    # the farrier template helpers (instruction_ref/isUsingInstruction/template.*)
-    # resolve at render time. See workhorse/templates.py.
-    manifest = context_manifest or {}
-
-    # Preflight the skill/prompt references those helpers will have to resolve. An
-    # unresolved one does not fail the render — it renders as prose into a live agent
-    # prompt — so the only way it ever becomes visible is by being said out loud, and
-    # the only useful moment to say it is before the first node instead of six hours
-    # in. Warned, not raised: the run is degraded, not impossible, and this engine
-    # fails soft. `--dry-run` is where the same list becomes an error.
-    unresolved_refs = missing_references(workflow_dir, manifest)
-    if unresolved_refs:
-        print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}", file=sys.stderr)
-
-    # `--dry-run` stops here, before any run directory exists: everything checkable
-    # without running has been checked, and the reference list that only warns above
-    # is what this mode exists to turn into an exit code a CI job can read.
-    if dry_run:
-        if unresolved_refs:
-            print(f"[workhorse] ERROR: {format_missing(unresolved_refs)}", file=sys.stderr)
-            return 1
-        nodes = ", ".join(graph.nodes) or "(none)"
-        print(f"[workhorse] dry-run ok: '{graph.name}' starts at '{graph.start}'")
-        print(f"[workhorse] {len(graph.nodes)} nodes: {nodes}")
-        return 0
-
-    # Default (auto): one stable run dir per (workflow, program) that we resume in
-    # place. The run *is* the research session — its full context (counters, gate
-    # selection, ladder position) lives in the checkpoint, so we continue the same
-    # graph with the same state rather than re-deriving it. Delete the dir to start
-    # over. If it has no checkpoint yet, start fresh IN that same stable dir. An
-    # explicit resume_run_dir (manual --resume-*) overrides this.
-    # No explicit --run-id but --params given → key the stable run dir on a digest
-    # of the params, so distinct targets don't collide on one 'default' (and the
-    # same params still resume in place). See _derive_run_id.
-    effective_run_id = _derive_run_id(run_id, params)
-    if run_id is None and effective_run_id is not None:
-        print(
-            f"[workhorse] run id '{effective_run_id}' derived from --params "
-            f"(re-run these same params to resume; pass --run-id to override)"
-        )
-    fresh_run_id = effective_run_id
-    if no_cache and resume_run_dir is None:
-        rid = effective_run_id or "default"
-        stable = runs_dir / f"{graph.name}-{rid}"
-        if stable.is_dir():
-            shutil.rmtree(stable)
-            print(f"[workhorse] --no-cache: cleared run dir {stable.name}")
-    if resume_run_dir is None and auto:
-        fresh_run_id, resume_run_dir = _auto_resolve(
-            runs_dir, graph.name, effective_run_id
-        )
-
-    # Set only when we re-enter a node that was interrupted mid-run, so that one
-    # node resumes its Claude session; every other node starts from a clean context.
-    resume_interrupted_node = False
-
-    if resume_run_dir is not None:
-        writer = ArtifactWriter.resume(resume_run_dir)
-        checkpoint = writer.read_checkpoint()
-        if checkpoint is None:
-            print(
-                f"error: no checkpoint found in {resume_run_dir}; cannot resume",
-                file=sys.stderr,
-            )
-            return 1
-        # The reciprocal of `pyflow.driver.read_resume`'s guard. Both engines share a
-        # runs directory and one `--resume-latest`, so each has to recognise the
-        # other's checkpoint and say so — a state name is not a node id, and the worst
-        # outcome is not the KeyError but a name that collides by coincidence.
-        if checkpoint.get("engine") == "pyflow":
-            print(
-                f"error: {resume_run_dir} holds a checkpoint from the Python state-machine "
-                f"engine (state '{checkpoint.get('state')}'), not a YAML graph. Resume it "
-                "with the workflow that wrote it.",
-                file=sys.stderr,
-            )
-            return 1
-        current_id = checkpoint["current_id"]
-        if current_id not in graph.nodes:
-            print(
-                f"error: checkpoint node '{current_id}' not found in workflow "
-                f"'{graph.name}' (did the workflow change?)",
-                file=sys.stderr,
-            )
-            return 1
-        ctx = WorkflowContext(initial={**manifest, **checkpoint["context"]})
-        print(
-            f"[workhorse] resuming '{graph.name}' at node '{current_id}' "
-            f"(run: {writer.run_dir.name})"
-        )
-        # Idempotency: if this node ALREADY completed under the current checkpoint
-        # (its done-marker seq matches), it was killed in the gap between finishing
-        # and the cursor advancing — fast-forward past it instead of re-running its
-        # side effects (e.g. a git commit or a PROGRESS append). A non-matching/absent
-        # seq means it was killed mid-run (or the marker is a stale earlier visit), so
-        # we re-run it as normal.
-        done = writer.read_done(current_id)
-        if _should_fast_forward(done, checkpoint):
-            after = writer.read_context_after(current_id)
-            if after is not None:
-                ctx = WorkflowContext(initial={**manifest, **after})
-            print(
-                f"[workhorse] node '{current_id}' already completed under this "
-                f"checkpoint — fast-forwarding to '{done['next']}'"
-            )
-            current_id = done["next"]
-        else:
-            # We're re-entering a node that was killed mid-run. It (and only it)
-            # should resume its Claude session to continue where it left off; the
-            # fast-forward case above lands on the NEXT node, which is a fresh start.
-            resume_interrupted_node = True
-    else:
-        # Workflow params (a generic key→value map from --params/--params-file)
-        # override the workflow's own `vars` in the starting context, so callers
-        # can parameterize a run without editing the workflow (e.g. pick a research
-        # program). They apply only on a fresh start; a resume restores the context
-        # from the checkpoint, which already captured them.
-        ctx = WorkflowContext(initial={**manifest, **graph.vars, **(params or {})})
-        writer = ArtifactWriter(graph.name, runs_dir, run_id=fresh_run_id)
-        current_id = graph.start
-        print(f"[workhorse] starting '{graph.name}' (run: {writer.run_dir.name})")
-
-    ctx.merge({"_run_dir": str(writer.run_dir)})
-
-    session_id_path = writer.run_dir / ".session_id"
-
-    tank = _GasTank(cfg.gas)
-
-    # Console logging first, so a script node's main(logger) has somewhere to
-    # write even when telemetry is off; start_run then also hangs the OTel log
-    # handler off the same root logger when it is on.
-    logsetup.setup()
-    # Telemetry decides here whether it is on at all (collector probe / WORKHORSE_OTEL);
-    # the run's root span opens here and every node/turn span nests under it, and
-    # end_run flushes on every exit path below.
-    otel.start_run(graph.name, writer.run_id, str(writer.run_dir))
-
-    try:
-        terminal_type = _step_loop(
-            graph,
-            writer,
-            ctx,
-            current_id,
-            resume_interrupted_node,
-            manifest=manifest,
-            workflow_dir=workflow_dir,
-            session_id_path=session_id_path,
-            tank=tank,
-            deadline=_runtime_deadline(writer.started_at, cfg.max_runtime_s),
-            config=cfg,
-        )
-    except KeyboardInterrupt:
-        agent_runner.terminate_active()
-        _record_interrupt(writer)
-        print("\n[workhorse] interrupted — run paused.", file=sys.stderr)
-        print(
-            f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
-            file=sys.stderr,
-        )
-        otel.end_run("interrupted", error="KeyboardInterrupt")
-        sys.exit(130)
-    except OutOfGasError as e:
-        # A never-terminating cycle: fail the run loudly (non-zero) instead of letting
-        # it spin forever. The run dir is left intact for inspection.
-        agent_runner.terminate_active()
-        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
-        writer.finish(terminal="fail")
-        otel.end_run("fail", error=str(e))
-        return 1
-    except RunBudgetExceeded as e:
-        # The engine wall-clock budget (WORKHORSE_MAX_RUNTIME_S) ran out — the
-        # self-defense backstop for a run nothing is watching. Fail loudly like
-        # OutOfGasError; the run dir stays resumable if the operator raises the
-        # budget (the clock counts from the ORIGINAL start, surviving --resume).
-        agent_runner.terminate_active()
-        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
-        writer.finish(terminal="fail")
-        otel.end_run("fail", error=str(e))
-        return 1
-    except BackendInvocationError as e:
-        # An agent-CLI turn failed in a way the resilience ladder couldn't recover
-        # (a non-recoverable backend/CLI crash, or a transient that exhausted its
-        # budget with defaulting disabled). End the run cleanly — a clear message
-        # and a resume command — instead of letting it surface as a raw traceback.
-        agent_runner.terminate_active()
-        kind = "transient" if e.transient else "non-recoverable"
-        print(f"[workhorse] ERROR: {kind} agent failure — {e}", file=sys.stderr)
-        print(
-            f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}",
-            file=sys.stderr,
-        )
-        writer.finish(terminal="fail")
-        otel.end_run("fail", error=str(e))
-        return 1
-    else:
-        writer.write_final_context(ctx.as_dict())
-        writer.finish(terminal=terminal_type)
-        otel.end_run(
-            terminal_type, error=None if terminal_type == "terminal" else terminal_type
-        )
-        success = terminal_type == "terminal"
-        print(f"[workhorse] {terminal_type.upper()} — run artifacts: {writer.run_dir}")
-        return 0 if success else 1
-    finally:
-        # Backstop for exits that bypass the handlers above (e.g. a script node's
-        # sys.exit propagating as SystemExit): close and flush whatever telemetry
-        # is still open. A no-op when a handler (or the success path) already did.
-        otel.end_run("aborted", error="run aborted before finalize")
-
-
-# Hard ceiling on flow nesting (a flow calling a flow calling a flow …). Real
-# compositions are shallow; this is a runaway-recursion backstop, not a design limit.
-_MAX_FLOW_DEPTH = 16
-
-# Gas-tank infinite-loop guard. A workflow that never reaches a terminal — a cycle
-# whose exit branch never trips (e.g. a story loop whose "done" condition is never
-# satisfied) — would otherwise spin FOREVER, silently burning an unattended week-long
-# run with no failure ever surfaced. A hang reads as "still working", which is the
-# worst outcome. Rather than a flat global step ceiling (which a legitimately long run
-# could trip), the guard is PROGRESS-METERED: the run burns one unit of gas per node
-# step and refuels to full whenever it makes real forward progress (a refuel node's
-# tracked value changes — a new story, a new epic). A healthy run tops up at every
-# progress point and never runs dry no matter how long it is; a loop that reprocesses
-# the SAME unit forever burns exactly one tank and then halts LOUDLY with diagnostics.
-# So the tank is sized to ONE unit of progress (one story), NOT the whole run. Override
-# with WORKHORSE_GAS; set it to 0 to disable the guard entirely (not recommended).
-# The configured size lives in RunConfig.gas (config_run._DEFAULT_GAS).
-
-
-class OutOfGasError(RuntimeError):
-    """Raised when a run burns a full gas tank without forward progress — a loop."""
-
-
-class RunBudgetExceeded(RuntimeError):
-    """Raised when the run outlives its wall-clock budget (WORKHORSE_MAX_RUNTIME_S).
-
-    A self-defense backstop complementary to the gas tank: gas catches a cycle
-    that never progresses, this catches a run that progresses forever (or crawls)
-    past the operator's absolute time ceiling with nothing watching it. Counted
-    from the run's ORIGINAL start (writer.started_at), so it survives --resume.
-    Unset/0 disables it (the default — most runs are bounded by their graph).
-    """
-
-
-class _GasTank:
-    """Progress-metered loop guard shared across the root graph AND every nested flow
-    (one tank per run). ``burn`` spends a unit per node step and raises once the tank
-    is empty; ``refuel`` refills it to full when a progress marker advances (a refuel
-    node's tracked value changed). A sliding window of recent node ids lets the failure
-    name the hottest nodes — the cycle whose exit condition never trips."""
-
-    def __init__(self, capacity: int) -> None:
-        self.capacity = capacity
-        self.gas = capacity
-        self._last_refuel: dict[str, Any] = {}
-        self._recent: deque[str] = deque(maxlen=2000)
-
-    def refuel(self, node_id: str, value: Any) -> None:
-        """Top the tank back up when this refuel node's tracked value has changed
-        since we last saw it (forward progress), or on its first visit."""
-        if self.capacity <= 0:
-            return
-        sentinel = self._last_refuel.get(node_id, _UNSEEN)
-        if value != sentinel:
-            self._last_refuel[node_id] = value
-            self.gas = self.capacity
-            otel.gas_refuel(node_id)
-            otel.gas_level(self.gas, self.capacity)
-
-    def burn(self, node_id: str) -> None:
-        if self.capacity <= 0:  # guard disabled
-            return
-        self._recent.append(node_id)
-        self.gas -= 1
-        otel.gas_level(self.gas, self.capacity)
-        if self.gas < 0:
-            hot = ", ".join(
-                f"{nid}×{n}" for nid, n in Counter(self._recent).most_common(8)
-            )
-            raise OutOfGasError(
-                f"workflow ran out of gas — burned a full tank of {self.capacity} node "
-                f"steps without forward progress (no new story/epic). Almost certainly "
-                f"an infinite loop: the exit condition on the cycle is never tripping. "
-                f"Hottest nodes in the last {len(self._recent)} steps: {hot}. The tank "
-                f"refuels on real progress (a refuel node's value changing); if this run "
-                f"legitimately needs more steps between progress points, raise "
-                f"WORKHORSE_GAS."
-            )
-
-
-# Sentinel for "this refuel node has never been visited" (distinct from any real
-# value, including None, so the first visit always counts as progress).
-_UNSEEN = object()
-
-
-def _step_loop(
-    graph: Graph,
-    writer: ArtifactWriter,
-    ctx: WorkflowContext,
-    current_id: str,
-    resume_interrupted_node: bool,
-    *,
-    manifest: dict[str, Any],
-    workflow_dir: Path,
-    session_id_path: Path,
-    tank: _GasTank,
-    config: RunConfig,
-    depth: int = 0,
-    deadline: float | None = None,
-    inherited_labels: dict[str, str] | None = None,
-) -> str:
-    """Step ``graph`` from ``current_id`` until a TerminalNode, mutating ``ctx`` in
-    place. Returns the terminal node's type ("terminal" | "fail") WITHOUT finalizing
-    the writer — the caller (top-level run, or a flow handler) decides what to do with
-    that result. This is the shared engine for both the root graph and every flow
-    sub-graph (see the FlowNode branch). ``tank`` is the run-wide gas guard, shared
-    across the root and all flows so a non-progressing cycle anywhere fails loudly;
-    ``deadline`` is the run-wide wall-clock budget (unix epoch, None = unbounded),
-    likewise shared so a flow can't outlive the run's ceiling.
-
-    ``inherited_labels`` are the caller's already-rendered telemetry labels. A flow's
-    child context holds only its rendered args, so a flow usually *cannot* re-derive
-    which story the parent is on; inheriting the parent's rendered values keeps spans
-    inside a flow attributable to the same unit of work. A flow that declares its own
-    ``labels:`` layers them on top."""
-    while True:
-        node = graph.nodes[current_id]
-
-        if isinstance(node, TerminalNode):
-            return node.type
-
-        # Engine wall-clock budget: checked between nodes (not mid-turn) so a
-        # node always finishes cleanly and the run dir stays resumable.
-        if deadline is not None and time.time() > deadline:
-            raise RunBudgetExceeded(
-                f"run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget "
-                f"(deadline passed {int(time.time() - deadline)}s ago, counted from "
-                f"the run's original start). Raise the budget and resume, or "
-                f"inspect the run dir for why it is still going."
-            )
-
-        # Infinite-loop guard: spend one unit of gas for this step (across root +
-        # flows). Refuel happens below, after a progress-marking node advances.
-        tank.burn(current_id)
-
-        # Re-render the workflow's telemetry labels against the context as it is
-        # NOW, before the checkpoint below emits this node's `enter` event (which is
-        # what opens the node span). Re-rendered every step rather than once per run
-        # because the values they track — which story, which epic — are exactly what
-        # a long run moves through.
-        labels = {
-            **(inherited_labels or {}),
-            **_render_labels(graph.labels, ctx.as_dict()),
-        }
-        # A node's own `activity:` — "what this step is doing" — layered on top of the
-        # workflow labels. Unlike the graph labels it is per-node, not inherited: it
-        # describes THIS node, so it is rendered from the current node only and lands
-        # as `wf.activity` through the same resilient render (empty → dropped).
-        node_activity = getattr(node, "activity", None)
-        if node_activity:
-            labels.update(_render_labels({"activity": node_activity}, ctx.as_dict()))
-        otel.set_labels(labels)
-
-        # Checkpoint the node we're about to run and the context going into it.
-        # If this node crashes (e.g. spending cap), `--resume-run` re-enters here.
-        writer.write_checkpoint(current_id, ctx.as_dict())
-
-        if isinstance(node, AgentNode):
-            logger.info("[workhorse] agent  → %s", node.id)
-            try:
-                # run_agent is self-healing: it retries transient failures, reframes
-                # the prompt, and finally defaults the node's outputs so the run
-                # advances rather than crashing. A BackendInvocationError only
-                # escapes when the failure is non-recoverable (the backend/CLI
-                # itself crashed) or defaulting is disabled (AGENT_USE_DEFAULT_OUTPUTS=false).
-                prompt, outputs = agent_runner.run_agent(
-                    node,
-                    ctx,
-                    workflow_dir,
-                    session_id_path,
-                    max_output_retries=config.resilience.max_output_retries,
-                    max_rephrase_attempts=config.resilience.max_rephrase_attempts,
-                    max_compact_attempts=config.resilience.max_compact_attempts,
-                    run_dir=writer.run_dir,
-                    resume_session=resume_interrupted_node,
-                    backend=config.get_backend(),
-                    use_default_outputs=config.resilience.use_default_outputs,
-                    result_timeout=config.resilience.result_timeout_s,
-                )
-                # The resume only applies to the first re-entered node; every node
-                # the run advances to afterward is a fresh prompt / clean context.
-                resume_interrupted_node = False
-
-                ctx.merge(outputs)
-                if node.next is None:
-                    raise RuntimeError(
-                        f"AgentNode '{node.id}' has no 'next' and is not terminal"
-                    )
-                writer.write_step(
-                    node.id, prompt, outputs, ctx.as_dict(), next_node=node.next
-                )
-                current_id = node.next
-
-            except BackendInvocationError as e:
-                logger.error("[workhorse] ERROR in node '%s': %s", node.id, e)
-                if e.transient:
-                    logger.error(
-                        "[workhorse] This is a transient error - the workflow can be "
-                        "resumed"
-                    )
-                    logger.error(
-                        "[workhorse] Resume command: --resume-run %s", writer.run_dir
-                    )
-                else:
-                    logger.error("[workhorse] This is a non-recoverable agent failure")
-                raise
-
-        elif isinstance(node, ScriptNode):
-            # A re-entered script/branch carries no Claude session; clear the flag
-            # so a later agent node isn't mistaken for an interrupted continuation.
-            resume_interrupted_node = False
-            logger.info("[workhorse] script → %s", node.id)
-            try:
-                cmd_str, outputs = script_runner.run_script(
-                    node, ctx, workflow_dir, graph.env or None,
-                    runner=config.get_script_runner(),
-                )
-                ctx.merge(outputs)
-                # Refuel the gas tank on forward progress: when a node declares a
-                # `refuel` key (e.g. select_story → story_slug), a CHANGED value means
-                # a new unit of work began, so top the tank back up. Reprocessing the
-                # same story/epic leaves the value unchanged → no refuel → the loop
-                # eventually runs dry and halts.
-                if node.refuel:
-                    tank.refuel(node.id, ctx.get_dotpath(node.refuel, None))
-                if node.next is None:
-                    raise RuntimeError(
-                        f"ScriptNode '{node.id}' has no 'next' and is not terminal"
-                    )
-                writer.write_step(
-                    node.id, cmd_str, outputs, ctx.as_dict(), next_node=node.next
-                )
-                current_id = node.next
-            except ScriptExitError as e:
-                # Propagate the script's own exit code so callers can distinguish
-                # expected halts (e.g. await_operator exits 2 for "blocked") from
-                # genuine crashes (exit 1).
-                logger.error("[workhorse] ERROR in script node '%s': %s", node.id, e)
-                sys.exit(e.exit_code)
-            except Exception as e:
-                # Log script errors with context
-                logger.error("[workhorse] ERROR in script node '%s': %s", node.id, e)
-                logger.error(
-                    "[workhorse] Script execution failed - workflow can be resumed "
-                    "after fixing"
-                )
-                logger.error(
-                    "[workhorse] Resume command: --resume-run %s", writer.run_dir
-                )
-                raise
-
-        elif isinstance(node, CallNode):
-            resume_interrupted_node = False
-            logger.info("[workhorse] call   → %s", node.id)
-            label, outputs = call_runner.run_call(node, ctx, workflow_dir)
-            ctx.merge(outputs)
-            if node.refuel:
-                tank.refuel(node.id, ctx.get_dotpath(node.refuel, None))
-            if node.next is None:
-                raise RuntimeError(
-                    f"CallNode '{node.id}' has no 'next' and is not terminal"
-                )
-            writer.write_step(node.id, label, outputs, ctx.as_dict(), next_node=node.next)
-            current_id = node.next
-
-        elif isinstance(node, BranchNode):
-            resume_interrupted_node = False
-            logger.info("[workhorse] branch → %s", node.id)
-            next_id, value = branch_runner.evaluate(node, ctx)
-            writer.write_branch(node.id, node.path, value, next_id)
-            current_id = next_id
-
-        elif isinstance(node, FlowNode):
-            # Capture whether THIS entry is a genuine mid-flow resume (the parent was
-            # killed inside this flow node) BEFORE clearing the flag. Only a real
-            # resume reuses the child's checkpoint; a fresh re-entry (a loop body
-            # invoking the flow again) must re-run the flow from its start.
-            is_flow_resume = resume_interrupted_node
-            resume_interrupted_node = False
-            outputs = _run_flow(
-                node,
-                graph,
-                writer,
-                ctx,
-                manifest=manifest,
-                workflow_dir=workflow_dir,
-                session_id_path=session_id_path,
-                tank=tank,
-                config=config,
-                depth=depth,
-                deadline=deadline,
-                resume=is_flow_resume,
-                labels=labels,
-            )
-            ctx.merge(outputs)
-            if node.next is None:
-                raise RuntimeError(
-                    f"FlowNode '{node.id}' has no 'next' and is not terminal"
-                )
-            writer.write_step(
-                node.id,
-                f"flow:{node.name}",
-                outputs,
-                ctx.as_dict(),
-                next_node=node.next,
-            )
-            current_id = node.next
-
-        else:
-            raise RuntimeError(f"Unknown node type: {type(node)}")
-
-
-def _enter(
-    writer: ArtifactWriter,
-    graph: Graph,
-    manifest: dict[str, Any],
-    initial: dict[str, Any],
-) -> tuple[str, WorkflowContext, bool]:
-    """Decide resume-vs-fresh for ``writer``'s run dir and return
-    ``(current_id, ctx, resume_interrupted_node)``. With no checkpoint, start fresh
-    from ``graph.start`` with ``initial`` context. With one, restore the context and
-    either fast-forward past an already-completed node or re-enter the interrupted
-    one. This is the same logic the root uses inline (kept separate there for its
-    friendly messages); flows reuse it for resume across a flow boundary."""
-    checkpoint = writer.read_checkpoint()
-    if checkpoint is None:
-        return graph.start, WorkflowContext(initial=initial), False
-    current_id = checkpoint["current_id"]
-    if current_id not in graph.nodes:
-        raise ValueError(
-            f"checkpoint node '{current_id}' not found in flow '{graph.name}' "
-            f"(did the flow change?)"
-        )
-    ctx = WorkflowContext(initial={**manifest, **checkpoint["context"]})
-    done = writer.read_done(current_id)
-    if _should_fast_forward(done, checkpoint):
-        after = writer.read_context_after(current_id)
-        if after is not None:
-            ctx = WorkflowContext(initial={**manifest, **after})
-        return done["next"], ctx, False
-    return current_id, ctx, True
-
-
-def _record_interrupt(writer: ArtifactWriter, error: str = "KeyboardInterrupt") -> None:
-    """Stamp an operator interrupt onto ``writer``'s run, attributed to whichever
-    node was in flight (the checkpoint's ``current_id`` — written immediately before
-    that node runs). Best-effort like every other instrumentation write: this runs on
-    the way out of a Ctrl-C, where a second traceback would bury the resume hint."""
-    try:
-        checkpoint = writer.read_checkpoint()
-    except (OSError, json.JSONDecodeError):
-        checkpoint = None
-    writer.record_interrupt((checkpoint or {}).get("current_id") or "<run>", error)
-
-
-def _run_flow(
-    node: FlowNode,
-    graph: Graph,
-    writer: ArtifactWriter,
-    parent_ctx: WorkflowContext,
-    *,
-    manifest: dict[str, Any],
-    workflow_dir: Path,
-    session_id_path: Path,
-    tank: _GasTank,
-    config: RunConfig,
-    depth: int,
-    deadline: float | None = None,
-    resume: bool = False,
-    labels: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Run the flow named by ``node`` as a child graph and return its declared
-    outputs. The child context is ``{manifest, flow.vars, rendered_args}`` — only the
-    rendered ``args`` cross from the parent, so the boundary is explicit. The child
-    runs under a nested artifact scope so a kill inside it resumes mid-flow.
-
-    ``resume`` is the parent's "we were killed inside this flow node" signal; it gates
-    whether the child reuses its checkpoint (true resume) or starts clean. A fresh
-    re-entry (the same flow node reached again by normal forward stepping — e.g. a
-    per-story loop calling the qa flow each iteration) must run the flow from scratch,
-    NOT fast-forward through the previous invocation's completed checkpoint."""
-    if depth + 1 > _MAX_FLOW_DEPTH:
-        raise RuntimeError(
-            f"flow nesting exceeded depth {_MAX_FLOW_DEPTH} at flow node '{node.id}' "
-            f"(flow '{node.name}') — likely a flow cycle"
-        )
-    flow = graph.flows[node.name]  # existence validated at load time
-    rendered = {k: render_string(v, parent_ctx.as_dict()) for k, v in node.args.items()}
-    logger.info("[workhorse] flow   → %s (%s)", node.id, node.name)
-
-    child_writer = writer.subscope(node.id, flow.name, resume=resume)
-    initial = {**manifest, **flow.vars, **rendered}
-    current_id, child_ctx, resume_interrupted_node = _enter(
-        child_writer, flow, manifest, initial
-    )
-    try:
-        term = _step_loop(
-            flow,
-            child_writer,
-            child_ctx,
-            current_id,
-            resume_interrupted_node,
-            manifest=manifest,
-            workflow_dir=workflow_dir,
-            session_id_path=child_writer.run_dir / ".session_id",
-            tank=tank,
-            config=config,
-            depth=depth + 1,
-            deadline=deadline,
-            inherited_labels=labels,
-        )
-    except KeyboardInterrupt:
-        # Same gap one scope down: the flow's own events.jsonl would otherwise end on
-        # a dangling `enter`. Stamp the child, then let the parent handle its own.
-        _record_interrupt(child_writer)
-        raise
-    child_writer.write_final_context(child_ctx.as_dict())
-    child_writer.finish(terminal=term)
-
-    # Lift the declared outputs out of the child's terminal context (missing key →
-    # the spec's declared default, mirroring the agent/script output contract).
-    return {
-        spec.key: child_ctx.get_dotpath(spec.key, spec.default) for spec in node.outputs
-    }
-
-
-def _should_fast_forward(done: dict | None, checkpoint: dict) -> bool:
-    """True iff the checkpoint node already completed under THIS checkpoint — i.e.
-    its done-marker seq matches the checkpoint seq and names a next node. A missing
-    marker, a mismatched seq (a stale earlier-visit run), or no next means re-run."""
-    return bool(
-        done is not None
-        and done.get("seq") is not None
-        and done.get("seq") == checkpoint.get("seq")
-        and done.get("next")
-    )
-
 
 def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:
     """Merge workflow params from --params-file then --params (inline wins).
@@ -846,41 +72,14 @@ def _load_params(inline: str | None, file: str | None) -> dict[str, Any]:
     return params
 
 
-def _render_labels(labels: dict[str, str], ctx: dict[str, Any]) -> dict[str, str]:
-    """Render a graph's `labels:` against the live context, for telemetry.
-
-    Prefixes every key with ``wf.`` so a workflow can never shadow ``workhorse.*``,
-    ``model``, or an OTel semantic-convention attribute — the workflow chooses the
-    name, but not the namespace.
-
-    Empty renders are dropped. Jinja here is the resilient dialect (a missing
-    variable renders empty rather than raising), so an expression naming a key the
-    context does not have yet — the common case early in a run, before a story is
-    selected — would otherwise stamp every span with a blank attribute that looks
-    like data. Nothing raises: a bad expression costs one missing label, never the
-    run.
-    """
-    out: dict[str, str] = {}
-    for key, template in (labels or {}).items():
-        try:
-            value = render_string(template, ctx, quiet=True).strip()
-        except Exception:  # instrumentation must never break a run
-            continue
-        if value:
-            out[f"wf.{key}"] = value
-    return out
-
 
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workflow",
         default=None,
-        help="Path to a workflow.yaml, OR a bare workflow NAME (e.g. 'coder'). A name "
-        "resolves first to an installed package registering it in the "
-        "'workhorse.workflows' entry-point group, then to the configured prompt "
-        "library as <library_dir>/workflows/<name>/workflow.yaml. The library dir "
-        "comes from $WORKHORSE_LIBRARY_DIR or library_dir in "
-        "~/.config/farrier/config.toml. May also be given as the first positional "
+        help="The workflow NAME (e.g. 'coder') — an installed package registering it "
+        "in the 'workhorse.workflows' entry-point group. Not a path: a workflow is a "
+        "Python package, not a file. May also be given as the first positional "
         "argument: `workhorse run coder` or `workhorse run coder qa`.",
     )
     parser.add_argument(
@@ -964,174 +163,71 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         "from scratch. Mutually exclusive with --resume-run and --resume-latest.",
     )
 
-def _library_layers() -> list[Path]:
-    """The library search path for a bare workflow NAME, highest precedence first.
+def _packaged_registry(spec: str) -> Registry:
+    """The installed Python :class:`Registry` a workflow name resolves to.
 
-    1. ``$WORKHORSE_LIBRARY_DIR`` env var (explicit override), else the ``library_dir``
-       key in workhorse's own config.toml (``workhorse config set-library <path>``) —
-       the overlay.
-    2. The base library shipped as the `stablemate-library` wheel.
+    A name resolves in exactly one place: an installed distribution registering it in
+    the ``workhorse.workflows`` entry-point group, whose entry point is a ``Registry``.
+    There is no second mechanism. Until the YAML front-end was removed a name could
+    also name a `workflow.yaml` under a library layer, and a path could be passed
+    verbatim; both are gone with the loader that read them, so the errors below say so
+    rather than reporting the name as merely unknown."""
+    try:
+        packaged = find_packaged_workflow(spec)
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    An overlay shadows the base name-for-name, so a private library can override a
-    base workflow by defining one with the same name. Empty when neither exists."""
-    layers: list[Path] = []
-    env = os.environ.get("WORKHORSE_LIBRARY_DIR")
-    if env:
-        layers.append(Path(env).expanduser())
-    else:
-        lib = get_config_value("library_dir")
-        if isinstance(lib, str) and lib:
-            layers.append(Path(lib).expanduser())
-    base = _base_library_dir()
-    if base is not None:
-        layers.append(base)
-    return layers
+    if packaged is None:
+        known = ", ".join(sorted(installed_workflow_names())) or "(none installed)"
+        hint = (
+            "\nWorkflows are Python packages now, not workflow.yaml files — a path is "
+            "not a workflow.\n"
+            if _looks_like_path(spec)
+            else ""
+        )
+        print(
+            f"error: no workflow named '{spec}' is installed.{hint}"
+            f"Installed workflows: {known}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
+    try:
+        target = packaged.load()
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-def _resolve_library_dir() -> Path | None:
-    """The highest-precedence library root, or None when there is none.
+    if not isinstance(target, Registry):
+        print(
+            f"error: workflow '{packaged.name}' resolves to {packaged.origin}, whose "
+            f"entry point is a {type(target).__name__}, not a `Registry`.\n"
+            f"Check what '{packaged.value}' actually points at.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    Kept for callers that want a single directory; name resolution goes through
-    :func:`_library_layers` so a base workflow is still found when an overlay is
-    configured but does not define it."""
-    layers = _library_layers()
-    return layers[0] if layers else None
+    # Ask for the directory now, while the operator is still being told about
+    # resolution. `Registry.directory` is what refuses a zip-imported package, and
+    # deferring it to the first prompt render turns "this wheel is packed wrong" into a
+    # TemplateNotFound several nodes into a run.
+    try:
+        target.directory()
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    return target
 
 
 def _looks_like_path(spec: str) -> bool:
-    """Whether a ``--workflow`` value is a path rather than a bare workflow name."""
+    """Whether a ``--workflow`` value was written as a path rather than a bare name."""
     return (
         os.sep in spec
         or (os.altsep is not None and os.altsep in spec)
         or spec.endswith((".yaml", ".yml"))
         or Path(spec).exists()
     )
-
-
-def _packaged_registry(spec: str) -> Registry | None:
-    """The installed Python :class:`Registry` a bare workflow name resolves to, if any.
-
-    The same entry point serves both engines — it names the object a workflow module
-    exposes, and *what that object is* decides which engine runs. A ``Registry`` is a
-    Python state machine and is driven here; anything else falls through to the YAML
-    resolution below, so a package shipping a ``workflow.yaml`` is unaffected."""
-    if _looks_like_path(spec):
-        return None
-    try:
-        packaged = find_packaged_workflow(spec)
-        if packaged is None:
-            return None
-        target = packaged.load()
-    except PackagedWorkflowError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    return target if isinstance(target, Registry) else None
-
-
-def _resolve_workflow_path(spec: str) -> Path:
-    """Resolve ``--workflow`` as an explicit path, an installed package, or a library name.
-
-    A value that looks like a path — contains a separator, ends in ``.yaml``/
-    ``.yml``, or names an existing filesystem entry — is used verbatim. Otherwise it is
-    a bare workflow NAME, and the two name-resolving mechanisms are tried in order:
-
-    1. An installed distribution registering the name in the ``workhorse.workflows``
-       entry-point group.
-    2. ``<layer>/workflows/<name>/workflow.yaml`` against each library layer in turn
-       (overlay, then the base library wheel).
-
-    Installed packages win because installing one is a deliberate act aimed at a
-    specific name, while a library layer is the content store a name falls back to —
-    and because a workflow that has been packaged is the packaged one's successor, not
-    its sibling. A YAML copy that survives the move stays reachable by path. When both
-    exist, say so on stderr: silent shadowing is the one way this ordering hurts."""
-    if _looks_like_path(spec):
-        return Path(spec).resolve()
-
-    try:
-        packaged = find_packaged_workflow(spec)
-    except PackagedWorkflowError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    if packaged is not None:
-        return _packaged_workflow_path(packaged)
-
-    layers = _library_layers()
-    if not layers:
-        # Nothing configured and nothing cached: this is the one moment the library is
-        # genuinely needed, so it is the one place allowed to fetch it. Populating the
-        # cache makes the retry below resolve; offline, it returns None and we fall
-        # through to the error, exactly as before this layer existed.
-        if ensure_cached_base() is not None:
-            layers = _library_layers()
-    if not layers:
-        print(
-            f"error: '{spec}' is not a path and no prompt library is available.\n"
-            f"The base library could not be fetched from {BASE_REPO_URL} either — if "
-            "this host is offline or the fetch is disabled "
-            f"(${base_cache.FETCH_ENV}), point workhorse at a base directly:\n"
-            "    workhorse config set-base <path>   (or export STABLEMATE_BASE_DIR)\n"
-            "or configure an overlay (`workhorse config set-library <path>` / export "
-            "WORKHORSE_LIBRARY_DIR), or pass --workflow as a path to a workflow.yaml.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    found = _library_workflow_path(spec, layers)
-    if found is not None:
-        return found
-
-    searched = "\n".join(f"  - {layer}" for layer in layers)
-    print(
-        f"error: no workflow named '{spec}' in any library layer.\nSearched:\n{searched}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-
-def _library_workflow_path(spec: str, layers: list[Path]) -> Path | None:
-    """``<layer>/workflows/<spec>/workflow.yaml`` from the first layer that has it."""
-    for layer in layers:
-        candidate = layer / "workflows" / spec / "workflow.yaml"
-        if candidate.is_file():
-            return candidate.resolve()
-    return None
-
-
-def _packaged_workflow_path(packaged: PackagedWorkflow) -> Path:
-    """The ``workflow.yaml`` inside an installed workflow package.
-
-    The package directory is resolved here rather than at render time so a package
-    that cannot be a directory (a zip import) fails at the seam, with an explanation,
-    instead of as a missing Jinja template mid-run."""
-    try:
-        root = packaged.workflow_dir()
-    except PackagedWorkflowError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    shadowed = _library_workflow_path(packaged.name, _library_layers())
-    if shadowed is not None:
-        print(
-            f"note: workflow '{packaged.name}' is installed as {packaged.origin} and "
-            f"also present in a library layer ({shadowed}). Running the installed one; "
-            "pass the path to run the other.",
-            file=sys.stderr,
-        )
-
-    candidate = root / "workflow.yaml"
-    if candidate.is_file():
-        return candidate.resolve()
-
-    print(
-        f"error: workflow '{packaged.name}' resolves to {packaged.origin}, whose "
-        f"package directory ({root}) ships no workflow.yaml.\n"
-        "A packaged workflow is either a workflow.yaml in that directory or a "
-        "`Registry` object at the entry point; this one is neither. Check what "
-        f"'{packaged.value}' actually points at.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 
 def _run_run(args: argparse.Namespace) -> None:
@@ -1164,30 +260,22 @@ def _run_run(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
 
-    # Which engine runs is decided here and nowhere else. A `workhorse-<name>` console
-    # script already holds its Registry (it never went through discovery), so it hands
-    # it in; a bare name resolves one from the entry point. Everything after this point
-    # — the repo dir, the backend, the runs dir, params, the resume flags — is resolved
-    # identically for both, because it is the CLI's contract, not an engine's.
-    registry: Registry | None = getattr(args, "registry", None)
-    if registry is None:
-        registry = _packaged_registry(workflow_spec)
+    # A `workhorse-<name>` console script already holds its Registry (it never went
+    # through discovery), so it hands it in; a bare name resolves one from the entry
+    # point. Everything after this point — the repo dir, the backend, the runs dir,
+    # params, the resume flags — is the CLI's contract rather than the driver's, which
+    # is why it is assembled here and not in `run_pyflow`.
+    registry: Registry = getattr(args, "registry", None) or _packaged_registry(
+        workflow_spec
+    )
 
-    workflow_path: Path | None = None
-    if registry is None:
-        workflow_path = _resolve_workflow_path(workflow_spec)
-        if not workflow_path.exists():
-            print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
-            sys.exit(1)
-
-    # The consuming repo is the directory workhorse is launched in — same <cwd>
-    # rule as the runs-dir default below. Library scripts (load-config,
-    # await-operator, …) resolve the repo root from AGENT_REPO_DIR first and only
-    # fall back to walking up from their cwd; but a library-installed workflow runs
-    # its scripts with cwd = the workflow's own dir (inside the prompt library, a
-    # different repo), so that walk would find the library, not the target repo.
-    # Pin AGENT_REPO_DIR to the launch dir when the caller hasn't set it, so every
-    # subprocess agrees on the repo without needing the farrier Makefile.
+    # The consuming repo is the directory workhorse is launched in — same <cwd> rule
+    # as the runs-dir default below. A workflow's scripts resolve the repo root from
+    # AGENT_REPO_DIR first and only fall back to walking up from their cwd, and that
+    # walk finds whatever directory the installed workflow package happens to sit in
+    # rather than the target repo. Pin AGENT_REPO_DIR to the launch dir when the
+    # caller hasn't set it, so every subprocess agrees on the repo without needing
+    # the farrier Makefile.
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
     # --cli (else AGENT_CLI, else default claude) selects the backend for the run.
@@ -1231,42 +319,20 @@ def _run_run(args: argparse.Namespace) -> None:
     # in place (continuing the same session/context), or started fresh in that dir
     # if absent. The explicit --resume-run/--resume-latest flags above are manual
     # overrides that target a specific dir instead. auto stays on either way — when
-    # resume_run_dir is set, run() uses it directly and skips auto resolution.
-    if registry is not None:
-        sys.exit(
-            run_pyflow(
-                registry,
-                flow,
-                runs_dir=runs_dir,
-                resume_run_dir=resume_run_dir,
-                run_id=args.run_id,
-                params=params,
-                no_cache=getattr(args, "no_cache", False),
-                dry_run=getattr(args, "dry_run", False),
-                context_manifest=context_manifest,
-            )
-        )
-
-    assert workflow_path is not None  # set together with `registry is None` above
-    try:
-        code = run(
-            workflow_path,
-            runs_dir,
-            resume_run_dir,
-            auto=True,
+    # resume_run_dir is set, the driver uses it directly and skips auto resolution.
+    sys.exit(
+        run_pyflow(
+            registry,
+            flow,
+            runs_dir=runs_dir,
+            resume_run_dir=resume_run_dir,
             run_id=args.run_id,
             params=params,
-            context_manifest=context_manifest,
-            flow=flow,
             no_cache=getattr(args, "no_cache", False),
             dry_run=getattr(args, "dry_run", False),
+            context_manifest=context_manifest,
         )
-    except UnmetRequirementsError as e:
-        # Raised before the run dir exists, so there is nothing to finalize — just
-        # report what's missing and how to fix it, rather than a traceback.
-        print(f"[workhorse] ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(code)
+    )
 
 
 def _add_test_args(parser: argparse.ArgumentParser) -> None:
@@ -1316,32 +382,13 @@ def _add_dot_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workflow",
         default=None,
-        help="Path to a workflow.yaml, OR a bare workflow NAME resolved the same way "
-        "`run` resolves one. A name registering a Python state machine is rendered "
-        "from its states; anything else is rendered from its YAML graph.",
+        help="The workflow NAME, resolved the same way `run` resolves one. Rendered "
+        "from its states, one cluster per flow.",
     )
     parser.add_argument(
         "positional",
         nargs="*",
-        help="Positional form of --workflow: `workhorse dot <name-or-path>`.",
-    )
-    parser.add_argument(
-        "--pin",
-        action="append",
-        default=None,
-        metavar="KEY=VALUE",
-        help="Pin a branch variable so any branch on that path collapses to its "
-        "single resolved edge (and the unreachable subgraph is pruned). Repeatable. "
-        "For the coder workflow: --pin mode=epic or --pin mode=story.",
-    )
-    parser.add_argument(
-        "--leaf",
-        action="append",
-        default=None,
-        metavar="NODE",
-        help="Render NODE as a dead-end: suppress its outgoing edges so reachability "
-        "stops there. Use to cut a cross-view bridge not gated by a pinned branch. "
-        "Repeatable. For the coder story view: --leaf replan_epic.",
+        help="Positional form of --workflow: `workhorse dot <name>`.",
     )
     parser.add_argument(
         "--name",
@@ -1358,18 +405,6 @@ def _add_dot_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _parse_pins(raw: list[str] | None) -> dict[str, str]:
-    """Parse repeated --pin KEY=VALUE flags into a dict (exits on a malformed entry)."""
-    pins: dict[str, str] = {}
-    for item in raw or []:
-        key, sep, value = item.partition("=")
-        if not sep or not key:
-            print(f"error: --pin must be KEY=VALUE (got '{item}')", file=sys.stderr)
-            sys.exit(1)
-        pins[key] = value
-    return pins
-
-
 def _dot_spec(args: argparse.Namespace) -> str:
     """The workflow `dot` was asked for, from --workflow or the positional form."""
     positional = list(getattr(args, "positional", None) or [])
@@ -1378,15 +413,19 @@ def _dot_spec(args: argparse.Namespace) -> str:
         print(f"error: unexpected argument '{positional[0]}'", file=sys.stderr)
         sys.exit(1)
     if not spec:
-        print("error: dot needs a workflow (name or path to workflow.yaml)", file=sys.stderr)
+        print("error: dot needs a workflow name", file=sys.stderr)
         sys.exit(1)
     return spec
 
 
 def _run_dot(args: argparse.Namespace) -> None:
+    """Render a workflow's state machine as DOT, one cluster per flow."""
+    from workhorse.pyflow.dot import to_dot
+    from workhorse.pyflow.graph import registry_graphs
+
     spec = _dot_spec(args)
     registry = getattr(args, "registry", None) or _packaged_registry(spec)
-    dot = _pyflow_dot(args, registry) if registry is not None else _yaml_dot(args, spec)
+    dot = to_dot(registry_graphs(registry), name=args.name or registry.name)
 
     if args.output:
         Path(args.output).write_text(dot)
@@ -1395,47 +434,11 @@ def _run_dot(args: argparse.Namespace) -> None:
         sys.stdout.write(dot)
 
 
-def _pyflow_dot(args: argparse.Namespace, registry: Registry) -> str:
-    """Render a Python state machine, one cluster per flow.
-
-    `--pin`/`--leaf` are declined rather than ignored: they collapse a *declared*
-    branch, and a Python workflow's branches are code — there is nothing to pin.
-    """
-    from workhorse.pyflow.dot import to_dot
-    from workhorse.pyflow.graph import registry_graphs
-
-    if args.pin or args.leaf:
-        print(
-            "error: --pin/--leaf apply to YAML branch nodes; "
-            f"'{registry.name}' is a Python state machine, whose branches are code",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return to_dot(registry_graphs(registry), name=args.name or registry.name)
-
-
-def _yaml_dot(args: argparse.Namespace, spec: str) -> str:
-    from workhorse.graph.dot import to_dot
-
-    workflow_path = _resolve_workflow_path(spec)
-    if not workflow_path.exists():
-        print(f"error: workflow file not found: {workflow_path}", file=sys.stderr)
-        sys.exit(1)
-    try:
-        graph = load_workflow(workflow_path)
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    pins = _parse_pins(args.pin)
-    leaves = set(args.leaf or [])
-    return to_dot(graph, pins=pins, name=args.name, leaves=leaves)
-
-
 def _build_parser(prog: str = "workhorse") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
-        description="Fail-soft runner for YAML-defined agent workflows.",
+        description="Fail-soft runner for agent workflows written as Python state "
+        "machines.",
     )
     sub = parser.add_subparsers(dest="command")
 
