@@ -5,8 +5,8 @@ title: scriptutil — shared utilities for workflow scripts
 ---
 # scriptutil — shared utilities for workflow scripts
 
-A library of standalone helper functions for workflow **[script](../workflow-format.md#script)**
-nodes: workspace resolution, relaxed-JSON/YAML file loading, and `git`/`gh` plumbing. Workspace
+A library of standalone helper functions for workflow **[node functions](../workflow-format.md#node)**:
+workspace resolution, relaxed-JSON/YAML file loading, and `git`/`gh` plumbing. Workspace
 resolution centers on the [.code-workspace file](../code-workspace-file.md) — the on-disk shape
 [`resolve_workspace`](#resolve_workspace-build-the-repo-map) and
 [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) each parse (via the
@@ -229,9 +229,9 @@ drive a dispatch/fan-out step.
 
 ## Consumers
 
-- Every workflow **[script](../workflow-format.md#script)** node's script may import from this
-  module (available because workhorse is installed editable).
-- `entrypoint.sh` invokes [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) once, before the graph starts.
+- Every workflow **[node function](../workflow-format.md#node)** may import from this module
+  (available because workhorse is installed editable).
+- `entrypoint.sh` invokes [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) once, before the run starts.
 - `farrier/farrier/install.py` references [`checkout_workspace`](#checkout_workspace-cloneupdate-every-url-bearing-folder) in a comment
   (the pattern a generated workflow launcher's checkout step should follow) but does not import this
   module itself — farrier and workhorse stay independent packages.
