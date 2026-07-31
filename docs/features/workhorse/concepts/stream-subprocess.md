@@ -6,7 +6,8 @@ title: stream_subprocess — the supervised-spawn path
 # stream_subprocess — the supervised-spawn path
 
 The one supervised-spawn path every agent harness streams a CLI turn through — Claude
-(`_invoke_claude`, via [run_agent](run-agent.md)'s ladder), Codex/Copilot/OpenCode
+(via [`AgentRunner.turn`](agent-turn.md), layer 1 of [the ladder](run-agent.md#the-ladder)),
+Codex/Copilot/OpenCode
 (`_stream_jsonl`), and aider (`_run_text_turn`), all in `workhorse/workhorse/runner/backends.py`.
 It owns process-group spawning, line-by-line streaming, the dual in-loop + out-of-band timeout,
 and group-kill cleanup, so every backend gets identical per-node timeout and orphan-reaping
@@ -41,7 +42,7 @@ process on the way out.
 - **Output:** `tuple[bool, int]` — `(timed_out, returncode)`. `timed_out` is `True` when the
   in-loop wall-clock check tripped, `on_line` requested an early abort, or the out-of-band
   watchdog fired (see below) — callers treat all three as "the turn didn't finish cleanly" and
-  classify accordingly (`_finalize_turn`/`_invoke_claude` map a watchdog-killed turn to a timeout,
+  classify accordingly (`finalize_turn`/`AgentRunner.turn` map a watchdog-killed turn to a timeout,
   not a hard crash). `returncode` is the child's exit code (negative when killed by a signal).
 - **Raises:** nothing turn-specific — a `Popen` failure (bad argv, missing executable) propagates
   as its normal `OSError`/`FileNotFoundError`.
@@ -141,8 +142,8 @@ killed right at the in-loop boundary.
 
 ## Related pieces
 
-- [run_agent](run-agent.md) drives `_invoke_claude`, which streams a Claude turn through
-  `stream_subprocess` (see run_agent's "Related pieces").
+- [`AgentRunner.run`](run-agent.md) drives [`AgentRunner.turn`](agent-turn.md), which streams a
+  Claude turn through `stream_subprocess` (see that page's "Related pieces").
 - [`_stream_events`](stream-events.md) — the Claude backend's own per-line callback, called
   directly (not through `_stream_jsonl`) with the argv [`_run_claude_cli`](run-claude-cli.md)
   builds.

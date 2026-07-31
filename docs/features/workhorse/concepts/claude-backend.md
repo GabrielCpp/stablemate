@@ -54,7 +54,7 @@ resilience ladder's reframe step instead.
 - [`_compact_session`](compact-session.md) — the real implementation `compact` delegates to.
 - [`get_backend`](get-backend.md) — resolves `"claude"` (or no `--cli`/`AGENT_CLI` at all) to a
   cached `ClaudeBackend()` instance.
-- [`_invoke_claude`](invoke-claude.md) — Layer 1 of [run_agent](run-agent.md)'s resilience ladder;
+- [`AgentRunner.turn`](agent-turn.md) — layer 1 of [the resilience ladder](run-agent.md#the-ladder);
   the caller of `run_turn` for every backend, Claude included.
 - [CodexBackend](codex-backend.md) / [CopilotBackend](copilot-backend.md) /
   [OpenCodeBackend](opencode-backend.md) / [AiderBackend](aider-backend.md) — the four sibling

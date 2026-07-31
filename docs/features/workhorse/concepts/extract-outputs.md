@@ -22,7 +22,7 @@ strict-then-tolerant pipeline built to survive the ways a model's response break
 ## Contract
 
 - **Input:**
-  - `text: str` — the raw turn text returned by `_invoke_claude` (a completed CLI turn's result
+  - `text: str` — the raw turn text returned by `AgentRunner.turn` (a completed CLI turn's result
     text; not empty — an empty result is retried as transient before this function ever runs).
   - `node: AgentNode` — supplies `node.id` (error messages) and `node.outputs: list[OutputSpec]`
     (the [output keys](../workflow-format.md#returns) to extract).
@@ -155,10 +155,10 @@ return candidates[-1]
 
 ## Related pieces
 
-- [`_invoke_and_parse`](invoke-and-parse.md) — the caller; treats `OutputParseError` as a
-  same-session-retry signal via `_retry_prompt`.
-- [`run_agent`](run-agent.md) — the outer ladder; treats an `OutputParseError` that survives all of
-  `_invoke_and_parse`'s same-session retries as [Layer 3](run-agent.md#the-ladder)'s reframe
+- [`AgentRunner._invoke_and_parse`](invoke-and-parse.md) — the caller; treats `OutputParseError` as
+  a same-session-retry signal via [`retry_prompt`](retry-prompt.md).
+- [`AgentRunner.run`](run-agent.md) — the outer ladder; treats an `OutputParseError` that survives
+  all of `_invoke_and_parse`'s same-session retries as [the reframe layer's](run-agent.md#the-ladder)
   trigger.
 - [`OutputSpec`](../workflow-format.md#returns) — the per-output declaration (`key`/`default`)
   this function reads `node.outputs` from; `default` itself is only consumed later, by
