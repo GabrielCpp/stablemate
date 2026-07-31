@@ -6,8 +6,8 @@ status: implemented
 ---
 # workhorse OpenTelemetry, collected by groom
 
-> **Related:** [groom](groom.md) (the collector host) · [sidecar-protocol](groom/sidecar-protocol.md)
-> (the push path this partly subsumes) · [operator-inbox](groom/operator-inbox.md) (the answer
+> **Related:** [groom](../features/groom/groom.md) (the collector host) · [sidecar-protocol](../features/groom/sidecar-protocol.md)
+> (the push path this partly subsumes) · [operator answers a blocked gate](../features/groom/flows/operator-answers-blocked-gate.md) (the answer
 > write-back OTel does *not* replace). This doc is a pre-implementation design brief.
 
 Status: **implemented** (2026-07-13) — phases 1–3 plus the Plane-3 guards landed as designed:

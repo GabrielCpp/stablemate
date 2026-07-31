@@ -1940,6 +1940,63 @@ paths — `hello-world-dry-run` is fixed and reused, while a real run gets
 it means consecutive dry runs overwrite each other's artifacts. Fine for a quick start,
 worth knowing before anyone treats a dry-run artifact directory as durable.
 
+### Iteration 9 — the link sweep, and what `ostler` will and will not tell you
+
+Work-order item 5: *"Check the cross-repo links (`workhorse/README.md` points at
+`github.com/... blob/main` paths); files moved in loop 2, and those break silently."*
+
+**That specific worry is not true.** Every
+`https://github.com/GabrielCpp/stablemate/blob|tree/main/...` link in the tree resolves —
+path *and* anchor — including the three deep ones into `workhorse/docs/AUTHORING.md`
+(`#the-node-index-is-the-substitution-seam`, `#checkpoints-and-renaming`) and
+`BACKENDS.md#initial-setup`. Loop 2 moved code, not the docs those links point at.
+
+**The real breakage was two other classes, 58 broken links across 313 tracked Markdown
+files, now zero.**
+
+- **50 anchors with a collapsed hyphen run.** GitHub's slugger lowercases, strips
+  `[^\w\s-]`, then replaces **each** space with a hyphen **without collapsing runs**. So a
+  heading `## X — Y` slugs to `x--y`, with a *double* hyphen, because the em-dash is
+  removed and both surrounding spaces survive as separate hyphens. Fifty links in
+  `docs/features/workhorse/**` wrote the single-hyphen form and silently landed at the top
+  of the page instead of the section. Repaired in `code-workspace-file.md` (14),
+  `concepts/scriptutil.md` (17), `concepts/testing.md` (7), `concepts/artifact-writer.md`
+  (4), `run-artifacts.md` (2), `concepts/render-prompt.md` (2), and one each in
+  `concepts/codex-on-event.md`, `copilot-on-event.md`, `opencode-on-event.md`,
+  `stream-jsonl.md`.
+- **8 wrong-target paths**, seven of them wrong-depth `../` from `docs/plans/**` (which is
+  two levels down, not one) — `okf-runbook.md`, `ostler-qa-verification.md`,
+  `saddlebag-environment-pool.md`, `okf-ui-profile.md`, `workhorse-otel.md` (×2), and
+  `ostler/docs/QA-RUN.md` pointing into a `docs/` that no longer holds that file. The
+  eighth was not a depth error: `workhorse-otel.md` linked `groom/operator-inbox.md`, which
+  **exists nowhere in the tree** — re-pointed at
+  `docs/features/groom/flows/operator-answers-blocked-gate.md`, the surviving page that
+  documents the answer write-back.
+
+**Finding 20 — `ostler` cannot report this class, and the work order asked to be told.**
+It says *"use `ostler` to find what dangles … and if it cannot report this, say so instead
+of grepping around it."* `ostler doctor` checks **`code:` target integrity only**. It does
+not check `verify:` targets, and it does not look at Markdown link targets or anchors at
+all. So none of the 58 above were visible to it, and a purpose-built checker was used
+instead. That checker was deliberately **not** added to the tree — it is unasked-for
+tooling — but without one this fix will rot silently again, and a repeatable gate is worth
+a decision.
+
+**Finding 21 — what `ostler doctor` *does* report is exactly item 3's remaining work.**
+39 errors, 0 warnings: **31 `dangling-code-ref`**, every one a
+`workhorse/workhorse/runner/agent.py::…` or `runner/backends.py::…` citation in
+`docs/features/workhorse/concepts/` left dangling by the concurrent split (`c284e0a`), plus
+**8 `missing-code-symbol`** (6 in `docs/features/farrier/**` against
+`farrier/farrier/install.py`, 1 at `workhorse/workhorse/scriptutil.py::_read_workspace_file`).
+That enumerates the backend re-grounding item 3 deferred, so it no longer needs scoping.
+
+**Finding 22 — the skills have not drifted.** Item 1 said to check whether
+`.claude/skills/**` and `base-library/library/skills/stablemate/**` had diverged and to
+*say so* rather than hand-edit both. All nine pairs differ, and the difference is **only
+farrier's injected `metadata:` frontmatter** (`generated_by`, `source`, `resolve`,
+`do_not_edit`) — 5–8 lines per file. Zero content drift; the installed copy faithfully
+mirrors the source.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

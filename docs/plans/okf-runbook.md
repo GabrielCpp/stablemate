@@ -256,7 +256,7 @@ The schema is validated to fill, without force-fitting, across a deliberately di
 
 ## 9. Ostler change surface
 
-The type additions are registry-driven and small ([ostler registry](../ostler/ostler/registry.py)):
+The type additions are registry-driven and small ([ostler registry](../../ostler/ostler/registry.py)):
 add `environment`, `runbook` (file-level), and `step` (section-level, heading `Steps`) to
 `UI_TYPES`; update the vocabulary table in [okf-ui-profile.md §3](okf-ui-profile.md); add the
 names to the `test_ui_profile.py` type-set assertion; add scaffold/list tests. Formatting,

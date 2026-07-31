@@ -623,7 +623,7 @@ than the alternative — the inventory was taught to emit it, not the other way 
 > sections nest, and how the links wire a graph together. None of that changed.
 > Groom's own book did: its dashboard is now one screen whose panes are rendered in
 > the browser from JSON. Read §7 for the grammar and
-> [the groom dashboard screen](features/groom/gui/screens/groom-dashboard.md) for
+> [the groom dashboard screen](../features/groom/gui/screens/groom-dashboard.md) for
 > what a current, maintained book looks like. Where a `code:` bullet below names a
 > file, treat it as showing the *form* of a target, not a path to open.
 
