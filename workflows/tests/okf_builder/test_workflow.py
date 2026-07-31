@@ -7,7 +7,7 @@ here exercises ostler's real `fmt` and `doctor`, the real source walk, and the r
 coverage join. The verdicts under test are arithmetic and ostler's, not a script's.
 
 The agent seam is patched where the engine reads it
-(`workhorse.pyflow.engine.agent_runner.run_agent`) and dispatches on the prompt's stem,
+(`RunEnv.agent_runner`) and dispatches on the prompt's stem,
 the same key the engine derives its node id from. Unlike author's stub this one mostly
 does *not* write artifacts: the book is the fixture, and the point of most drives here is
 that the deterministic gates rule on a book the agent did not touch. The one handler that
@@ -40,16 +40,17 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
-from workhorse.pyflow import engine as pyflow_engine
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 
@@ -163,12 +164,7 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
 
 def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     inputs.setdefault("service", SERVICE)
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = agent
-    try:
-        return drive(OkfBuilder(**inputs), env)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    return drive(OkfBuilder(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
 def _worklist(repo: Path) -> list[dict[str, Any]]:
@@ -370,14 +366,11 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     assert resume.flow == "OkfBuilder", resume
 
     second = _Agent(booked)
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = second
-    try:
-        result = drive(
-            OkfBuilder(**resume.inputs), _env(tmp_path, run_dir=run_dir), resume
-        )
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    result = drive(
+        OkfBuilder(**resume.inputs),
+        replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
+        resume,
+    )
 
     # Nothing upstream re-ran: not the enumeration, not the first item.
     assert second.counts() == {"investigate": 1}, second.counts()

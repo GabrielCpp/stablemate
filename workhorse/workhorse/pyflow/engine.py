@@ -32,7 +32,7 @@ from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
-from workhorse.runner import ladder as agent_ladder
+from workhorse.runner.ladder import AgentRunner
 
 logger = logging.getLogger("workhorse.engine")
 
@@ -155,9 +155,10 @@ class RunEnv:
     #: Canned agent replies for `--dry-run`, keyed by prompt stem. A value, or a
     #: callable taking the render args. Unlisted stems fall back to a blank model.
     agent_stubs: dict[str, Any] | None = None
-    #: The agent backend. None = the real `agent_ladder.run_agent`, looked up at call
-    #: time so the default can never be a stale binding.
-    run_agent: Callable[..., Any] | None = None
+    #: The recovery ladder this run drives agent turns through — the run's backend,
+    #: resilience knobs and clock, bound together. None = build the real one from
+    #: `config` at call time, so a run with no agent node never resolves a backend.
+    agent_runner: AgentRunner | None = None
 
     @property
     def run_dir(self) -> Path:
@@ -315,9 +316,8 @@ class Engine:
             **budget,
         )
         self.env.log.info("[workhorse] agent  → %s", node_id)
-        config = self.env.config
-        run_agent = self.env.run_agent or agent_ladder.run_agent
-        rendered, raw = run_agent(
+        runner = self.env.agent_runner or AgentRunner.from_config(self.env.config)
+        rendered, raw = runner.run(
             node,
             # The manifest underneath, the state's arguments on top: a state that
             # binds `repo` means its own, not the manifest's.
@@ -325,8 +325,6 @@ class Engine:
             self.env.workflow_dir,
             self.env.session_id_path,
             run_dir=writer.run_dir,
-            backend=config.get_backend(),
-            resilience=config.resilience,
         )
         writer.write_step(node_id, rendered, raw, {}, next_node=None)
         return _coerce(raw, returns, node_id)

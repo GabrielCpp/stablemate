@@ -1,8 +1,8 @@
-"""Tests for run_agent's resilience ladder: transient retry → reframe → default.
+"""Tests for AgentRunner.run's resilience ladder: transient retry → reframe → default.
 
 The worker runs unattended for days, so a node Claude can't answer must never
-crash the run. These tests patch _run_turn_with_recovery (no CLI, no real sleeping) and
-assert the escalation order and the workflow-advancing fallback.
+crash the run. These tests script the runner's own ``turn`` (no CLI) over a fake clock
+(no real sleeping) and assert the escalation order and the workflow-advancing fallback.
 
     ./.venv/bin/python tests/test_agent_recovery.py
     ./.venv/bin/python -m pytest tests/test_agent_recovery.py
@@ -16,7 +16,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from _fakes import FakeBackend
+from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure, ladder
 from workhorse.runner.failure import BackendInvocationError
@@ -39,27 +39,39 @@ def _node() -> AgentNode:
     )
 
 
-def _run(node, backend=None, **kw):
-    """Drive one node with the ladder's knobs INJECTED (``AgentResilience`` fields),
-    not patched onto the module — the ladder reads no configuration of its own. The
-    backend is injected for the same reason: ``run_agent`` resolves no CLI of its own,
-    so a test that wants a particular compaction outcome hands one over."""
+def _runner(script, backend=None, **kw) -> ladder.AgentRunner:
+    """The ladder with every collaborator INJECTED and one turn scripted.
+
+    The knobs arrive as ``AgentResilience`` fields, the CLI as an ``AgentBackend``, the
+    waiting as a ``Clock`` — the runner reads no configuration, resolves no CLI and owns
+    no clock of its own, so a test states all three rather than patching module
+    attributes (rule 5). ``script`` stands in for the runner's own *public* ``turn``,
+    leaving the compact / reframe / default layers above it real.
+    """
+
+    class ScriptedRunner(ladder.AgentRunner):
+        def turn(self, prompt, node_id, session_id_path, model=None, **kwargs):
+            return script(prompt, node_id, session_id_path, model, **kwargs)
+
+    return ScriptedRunner(
+        backend=backend or FakeBackend(),
+        resilience=AgentResilience(**kw),
+        clock=FakeClock(),
+    )
+
+
+def _run(node, script, backend=None, **kw):
+    """Drive one node through a scripted ladder (see :func:`_runner`)."""
     # node.prompt is normally a template FILE path; render it inline for the test.
     with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
-        return ladder.run_agent(
-            node,
-            WorkflowContext(initial={}),
-            Path("."),
-            None,
-            backend=backend or FakeBackend(),
-            resilience=AgentResilience(**kw),
+        return _runner(script, backend=backend, **kw).run(
+            node, WorkflowContext(initial={}), Path("."), None,
         )
 
 
 def test_success_on_first_attempt_returns_outputs():
     payload = json.dumps({"decision": "approve", "review": "looks good"})
-    with patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: payload):
-        _, outputs = _run(_node())
+    _, outputs = _run(_node(), lambda *a, **k: payload)
     assert outputs == {"decision": "approve", "review": "looks good"}
 
 
@@ -75,15 +87,13 @@ def test_rendered_prompt_is_written_and_only_path_is_printed():
 
     stdout = io.StringIO()
     with redirect_stdout(stdout), \
-         patch.object(ladder, "render", lambda tmpl, ctx, wdir: f"Hello {ctx['secret']}"), \
-         patch.object(ladder, "_run_turn_with_recovery", fake_invoke):
-        _, outputs = ladder.run_agent(
+         patch.object(ladder, "render", lambda tmpl, ctx, wdir: f"Hello {ctx['secret']}"):
+        _, outputs = _runner(fake_invoke).run(
             _node(),
             WorkflowContext(initial={"secret": "hunter2"}),
             Path("."),
             None,
             run_dir=run_dir,
-            backend=FakeBackend(),
         )
 
     assert outputs == {"decision": "approve", "review": "looks good"}
@@ -108,9 +118,7 @@ def test_empty_result_then_reframe_succeeds():
             )
         return good
 
-    with patch.object(ladder, "_run_turn_with_recovery", fake_invoke), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(_node())
+    _, outputs = _run(_node(), fake_invoke)
 
     assert outputs == {"decision": "continue", "review": "ok"}
     assert calls["n"] == 2, "should reframe once then succeed"
@@ -122,9 +130,7 @@ def test_persistent_failure_defaults_to_next_node():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(_node(), max_rephrase_attempts=3)
+    _, outputs = _run(_node(), always_fail, max_rephrase_attempts=3)
 
     # Heuristic defaults keep the workflow moving.
     assert outputs["decision"] == "continue"
@@ -139,9 +145,7 @@ def test_reframe_count_then_default():
         calls["n"] += 1
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _run(_node(), max_rephrase_attempts=2)
+    _run(_node(), always_fail, max_rephrase_attempts=2)
 
     assert calls["n"] == 3, "initial + 2 reframes, then default (no further invoke)"
 
@@ -152,9 +156,7 @@ def test_unparseable_output_reframes_then_defaults():
     def junk(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         return "I cannot produce JSON, sorry."
 
-    with patch.object(ladder, "_run_turn_with_recovery", junk), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(_node(), max_output_retries=1, max_rephrase_attempts=1)
+    _, outputs = _run(_node(), junk, max_output_retries=1, max_rephrase_attempts=1)
 
     assert outputs["decision"] == "continue"
 
@@ -173,9 +175,7 @@ def test_default_outputs_use_declared_defaults_else_none():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(node, max_rephrase_attempts=1)
+    _, outputs = _run(node, always_fail, max_rephrase_attempts=1)
 
     assert outputs == {"decision": "continue", "notes": None}
 
@@ -188,11 +188,9 @@ def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
     sid_path.write_text("prev-node-session-abc")  # left by an earlier node
 
     good = json.dumps({"decision": "continue", "review": "ok"})
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: good):
-        ladder.run_agent(
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        _runner(lambda *a, **k: good).run(
             _node(), WorkflowContext(initial={}), Path("."), sid_path,
-            backend=FakeBackend(),
         )
 
     # The stub never re-wrote it, so a cleared file means "started clean".
@@ -207,11 +205,9 @@ def test_interrupted_node_keeps_session_for_resume(tmp_path=None):
     sid_path.write_text("this-node-session-xyz")
 
     good = json.dumps({"decision": "continue", "review": "ok"})
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(ladder, "_run_turn_with_recovery", lambda *a, **k: good):
-        ladder.run_agent(
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        _runner(lambda *a, **k: good).run(
             _node(), WorkflowContext(initial={}), Path("."), sid_path,
-            backend=FakeBackend(),
             resume_session=True,
         )
 
@@ -246,12 +242,12 @@ def test_overflow_compacts_then_continues_same_prompt():
         compacted["n"] += 1
         return True  # compaction succeeded
 
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(ladder, "_run_turn_with_recovery", fake_invoke), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(
-            _node(), backend=FakeBackend(compact=fake_compact), max_rephrase_attempts=2
-        )
+    _, outputs = _run(
+        _node(),
+        fake_invoke,
+        backend=FakeBackend(compact=fake_compact),
+        max_rephrase_attempts=2,
+    )
 
     assert outputs == {"decision": "approve", "review": "done"}
     assert compacted["n"] == 1, "should compact exactly once"
@@ -266,15 +262,13 @@ def test_overflow_falls_back_to_reframe_when_compaction_fails():
     def failed_compact(session_id_path, node_id, model=None, **kwargs):
         return False  # /compact unavailable/ineffective
 
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(ladder, "_run_turn_with_recovery", always_overflow), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(
-            _node(),
-            backend=FakeBackend(compact=failed_compact),
-            max_rephrase_attempts=1,
-            max_compact_attempts=1,
-        )
+    _, outputs = _run(
+        _node(),
+        always_overflow,
+        backend=FakeBackend(compact=failed_compact),
+        max_rephrase_attempts=1,
+        max_compact_attempts=1,
+    )
 
     # Compaction failed → reframe exhausted → declared defaults.
     assert outputs["decision"] == "continue"
@@ -291,15 +285,13 @@ def test_overflow_compaction_attempts_are_bounded():
         compacted["n"] += 1
         return True  # succeeds but the node keeps overflowing anyway
 
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         patch.object(ladder, "_run_turn_with_recovery", always_overflow), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _run(
-            _node(),
-            backend=FakeBackend(compact=ok_compact),
-            max_rephrase_attempts=1,
-            max_compact_attempts=2,
-        )
+    _run(
+        _node(),
+        always_overflow,
+        backend=FakeBackend(compact=ok_compact),
+        max_rephrase_attempts=1,
+        max_compact_attempts=2,
+    )
 
     assert compacted["n"] == 2, "compaction must be bounded by max_compact_attempts"
 
@@ -319,13 +311,11 @@ def test_non_recoverable_backend_error_aborts_without_reframe():
             transient=False,
         )
 
-    with patch.object(ladder, "_run_turn_with_recovery", fatal), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        try:
-            _run(_node(), max_rephrase_attempts=3)
-            raise AssertionError("expected re-raise on a non-recoverable backend failure")
-        except BackendInvocationError:
-            pass
+    try:
+        _run(_node(), fatal, max_rephrase_attempts=3)
+        raise AssertionError("expected re-raise on a non-recoverable backend failure")
+    except BackendInvocationError:
+        pass
 
     assert calls["n"] == 1, "non-recoverable failure must not reframe or default"
 
@@ -339,9 +329,7 @@ def test_transient_failure_still_reframes_not_aborts():
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    with patch.object(ladder, "_run_turn_with_recovery", transient_fail), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        _, outputs = _run(_node(), max_rephrase_attempts=2)
+    _, outputs = _run(_node(), transient_fail, max_rephrase_attempts=2)
 
     assert calls["n"] == 3, "transient failure should reframe (initial + 2) then default"
     assert outputs["decision"] == "continue"
@@ -352,13 +340,11 @@ def test_default_outputs_disabled_raises():
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    with patch.object(ladder, "_run_turn_with_recovery", always_fail), \
-         patch.object(ladder.time, "sleep", lambda s: None):
-        try:
-            _run(_node(), max_rephrase_attempts=1, use_default_outputs=False)
-            raise AssertionError("expected raise when defaulting is disabled")
-        except BackendInvocationError:
-            pass
+    try:
+        _run(_node(), always_fail, max_rephrase_attempts=1, use_default_outputs=False)
+        raise AssertionError("expected raise when defaulting is disabled")
+    except BackendInvocationError:
+        pass
 
 
 if __name__ == "__main__":

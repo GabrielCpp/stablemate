@@ -42,8 +42,9 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   ├── errors.py          # WorkflowFailed, NodeNotRunError and the rest of the exceptions
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
-│       ├── ladder.py          # Render the prompt, drive the retry → cap-wait → compact →
-│       │                      #   reframe → default ladder, return the node's outputs
+│       ├── ladder.py          # AgentRunner: render the prompt, drive the retry → cap-wait →
+│       │                      #   compact → reframe → default ladder, return the outputs
+│       ├── clock.py           # The Clock port and the system one — what the ladder waits on
 │       ├── failure.py         # The turn's error types, its markers and its classifier
 │       ├── process.py         # Spawn an agent CLI: process group, watchdog, stream loop
 │       ├── caps.py            # How long to wait out a scheduled-reset cap, and how to sleep it
@@ -93,24 +94,24 @@ workhorse/                     # this directory, inside the stablemate workspace
 
 `Done` ends the flow and `WorkflowFailed` ends the run; `Await` checkpoints first and
 then polls for the answer file. The resilience for agent turns lives entirely in
-`runner/ladder.py::run_agent` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
+`runner/ladder.py`'s `AgentRunner` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 ## Sessions (per-turn clean context)
 
 **Each agent turn runs as a fresh prompt with a clean Claude context.** The controller
 does *not* chain one turn's conversation into the next — turn N does not inherit
-turn N‑1's messages. Concretely, `run_agent` drops any persisted `.session_id`
+turn N‑1's messages. Concretely, `AgentRunner.run` drops any persisted `.session_id`
 before a turn's first attempt, and a reframed attempt also starts fresh.
 
 The persisted session is `--resume`d in exactly one situation: **continuing the
 same turn that was interrupted.** When the controller resumes from a checkpoint and
 re-enters the state that was killed mid-run, that turn calls
-`run_agent(..., resume_session=True)` so Claude picks up where it left off; every turn
+`AgentRunner.run(..., resume_session=True)` so Claude picks up where it left off; every turn
 the run then reaches starts clean again.
 
 **Context overflow → compact & continue.** If a turn exhausts the model's
 context window mid-run (the headless CLI returns instead of auto-compacting),
-`run_agent` runs `/compact` on that turn's session and retries the *same* prompt
+`AgentRunner` runs `/compact` on that turn's session and retries the *same* prompt
 on it, preserving the turn's progress (bounded by `AGENT_MAX_COMPACT_ATTEMPTS`;
 falls back to a fresh-session reframe if `/compact` can't help). Verified against
 Claude Code 2.1.x. See the recovery ladder in [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
@@ -138,15 +139,15 @@ If a `.venv` isn't present, create one with `uv sync` (or `make install`).
 
 **Where to put tests.** There are two styles. Controller-internal tests add a
 `tests/test_<area>.py` that injects the CLI boundary (a fake `AgentBackend` from
-`tests/_fakes.py`, or a stub `_run_turn_with_recovery`) and patches sleeping so nothing hits
-the network or waits in real time:
+`tests/_fakes.py`) and injects the clock (a `FakeClock` from the same module) so nothing
+hits the network or waits in real time:
 `test_agent_cap.py` (cap/transient handling), `test_agent_recovery.py` (reframe →
 default ladder), `test_resume_auto.py`, `test_idempotency.py`,
 `test_templates_resilient.py`.
 
 **Whole-workflow tests** drive a real workflow through `drive()` in the current
 process — no `workhorse` CLI subprocess and no PATH shims. They substitute rather than
-patch: agent turns are answered by a `run_agent` handed to the `RunEnv`, and node
+patch: agent turns are answered by an `agent_runner` handed to the `RunEnv`, and node
 functions by `Registry.override(...)`, so neither stand-in can outlive the run (see
 [The node index is the substitution seam](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam)).
 Local `git` runs for **real** against a throwaway repo built with

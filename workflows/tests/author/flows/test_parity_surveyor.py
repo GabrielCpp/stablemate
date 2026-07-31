@@ -7,7 +7,7 @@ exercises the freeze, the worklist, the record ruleset, the coverage gate and th
 — which is what makes the parity claim checkable rather than asserted.
 
 The agent seam is patched where the engine reads it
-(`workhorse.pyflow.engine.agent_runner.run_agent`), and the stub **writes the finding
+(`RunEnv.agent_runner`), and the stub **writes the finding
 record** the way a real assessor would. That matters: the loop's state lives in the
 inventory file and the records on disk, not in the machine, so an agent that only replied
 would leave every node downstream of it with nothing to read.
@@ -27,16 +27,17 @@ import json
 import subprocess
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
-from workhorse.pyflow import engine as pyflow_engine
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 
@@ -167,12 +168,10 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
 
 
 def _drive(env: RunEnv, agent: _Assessor, **inputs: Any) -> Any:
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = agent
-    try:
-        return drive(ParitySurveyor(baseline_inventory=BASELINE, **inputs), env)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    return drive(
+        ParitySurveyor(baseline_inventory=BASELINE, **inputs),
+        replace(env, agent_runner=StubRunner(agent)),
+    )
 
 
 def _units(repo: Path) -> dict[str, str]:
@@ -325,14 +324,11 @@ def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
     assert resume.flow == "ParitySurveyor", resume
 
     second = _Assessor(surveyed)
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = second
-    try:
-        result = drive(
-            ParitySurveyor(**resume.inputs), _env(tmp_path, run_dir=run_dir), resume
-        )
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    result = drive(
+        ParitySurveyor(**resume.inputs),
+        replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
+        resume,
+    )
 
     # Only the interrupted unit ran again; `invoices` was never re-assessed.
     assert second.counts() == {STATEMENTS: 1}, second.counts()

@@ -1,8 +1,9 @@
 """Tests for the Python state-machine engine (`workhorse.pyflow`).
 
 Dependency-free and standalone, like the rest of `tests/`: nothing here touches the
-network, the agent CLI or the clock. The agent seam is patched at
-`workhorse.pyflow.engine.agent_ladder.run_agent` and the `Await` wait at
+network, the agent CLI or the clock. The agent seam is the run's own
+`RunEnv.agent_runner` — a scripted stand-in for the recovery ladder, handed to the run
+rather than assigned onto a module — and the `Await` wait is patched at
 `workhorse.pyflow.driver._sleep`, so a test that exercises a week-long wait costs
 microseconds.
 
@@ -55,6 +56,21 @@ Transition = Any  # states are annotated loosely here; the driver checks the run
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+class ScriptedRunner:
+    """A stand-in for the recovery ladder, whose `run` is whatever the test supplies.
+
+    The ladder is the run's own dependency (`RunEnv.agent_runner`), so a test states
+    what an agent turn replies by handing the run a different one — never by
+    reassigning a function onto `pyflow.engine` (rule 5: a monkeypatched name is a
+    missing injection point).
+    """
+
+    def __init__(self, run: Any) -> None:
+        # An attribute, not a method: `env.agent_runner.run(...)` must call the
+        # supplied function with the ladder's own arguments, unbound.
+        self.run = run
 
 
 def _env(tmp: str, *, name: str = "acme", **kwargs: Any) -> RunEnv:
@@ -531,27 +547,22 @@ def test_handoff_drives_a_sub_flow_in_its_own_scope_and_returns_its_result():
 
 def test_agent_validates_the_reply_into_the_declared_model():
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(tmp)
         calls: list[Any] = []
 
         def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
             calls.append((node.id, [o.key for o in node.outputs], ctx.as_dict()))
             return "rendered prompt", {"kind": "reviewed", "count": 2}
 
-        real = pyflow_engine.agent_ladder.run_agent
-        pyflow_engine.agent_ladder.run_agent = fake_run_agent
-        try:
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
 
-            class Asks(Workflow):
-                def start(self) -> Transition:
-                    reply = self.agent(
-                        "prompts/review.md", returns=Payload, args={"subject": "login"}
-                    )
-                    return Done((reply.kind, reply.count))
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                reply = self.agent(
+                    "prompts/review.md", returns=Payload, args={"subject": "login"}
+                )
+                return Done((reply.kind, reply.count))
 
-            assert drive(Asks(), env) == ("reviewed", 2)
-        finally:
-            pyflow_engine.agent_ladder.run_agent = real
+        assert drive(Asks(), env) == ("reviewed", 2)
 
         assert calls[0][0] == "review", calls
         assert calls[0][1] == ["kind", "count"], calls
@@ -565,33 +576,28 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
     They land on the same `AgentNode` the YAML engine builds, so the render, the
     de-dupe and the `--add-dir` flags are the runner's existing behavior."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(tmp)
         nodes: list[Any] = []
 
         def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
             nodes.append(node)
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_ladder.run_agent
-        pyflow_engine.agent_ladder.run_agent = fake_run_agent
-        try:
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
 
-            class Asks(Workflow):
-                def start(self) -> Transition:
-                    self.agent(
-                        "prompts/review.md",
-                        returns=Payload,
-                        cwd=Path("/repos/acme"),
-                        add_dirs=["/repos/docs", Path("/repos/api-service")],
-                    )
-                    # Saying nothing must leave the model's own defaults in place
-                    # rather than overwrite them with None.
-                    self.agent("prompts/plain.md", returns=Payload)
-                    return Done(None)
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent(
+                    "prompts/review.md",
+                    returns=Payload,
+                    cwd=Path("/repos/acme"),
+                    add_dirs=["/repos/docs", Path("/repos/api-service")],
+                )
+                # Saying nothing must leave the model's own defaults in place
+                # rather than overwrite them with None.
+                self.agent("prompts/plain.md", returns=Payload)
+                return Done(None)
 
-            drive(Asks(), env)
-        finally:
-            pyflow_engine.agent_ladder.run_agent = real
+        drive(Asks(), env)
 
         assert nodes[0].cwd == "/repos/acme", nodes[0]
         assert nodes[0].add_dirs == ["/repos/docs", "/repos/api-service"], nodes[0]
@@ -605,34 +611,30 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
     always present so they resolve, always overridable by the state's own arguments,
     which is the same precedence the YAML engine gives it."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(
-            tmp,
-            manifest={
-                "_instructions": {"go": ".claude/skills/acme-go/SKILL.md"},
-                "template": {"backend_layer_name": "Go gateway"},
-                "unit": "from-the-manifest",
-            },
-        )
         seen: list[Any] = []
 
         def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
             seen.append(ctx.as_dict())
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_ladder.run_agent
-        pyflow_engine.agent_ladder.run_agent = fake_run_agent
-        try:
+        env = _env(
+            tmp,
+            agent_runner=ScriptedRunner(fake_run_agent),
+            manifest={
+                "_instructions": {"go": ".claude/skills/acme-go/SKILL.md"},
+                "template": {"backend_layer_name": "Go gateway"},
+                "unit": "from-the-manifest",
+            },
+        )
 
-            class Asks(Workflow):
-                def start(self) -> Transition:
-                    self.agent(
-                        "prompts/review.md", returns=Payload, args={"unit": "CASE-1"}
-                    )
-                    return Done(None)
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent(
+                    "prompts/review.md", returns=Payload, args={"unit": "CASE-1"}
+                )
+                return Done(None)
 
-            drive(Asks(), env)
-        finally:
-            pyflow_engine.agent_ladder.run_agent = real
+        drive(Asks(), env)
 
         ctx = seen[0]
         assert ctx["_instructions"] == {"go": ".claude/skills/acme-go/SKILL.md"}
@@ -644,25 +646,20 @@ def test_a_run_with_no_manifest_renders_exactly_its_arguments():
     """The manifest-free case (hello-world, most tests) must add no keys at all —
     an empty seat, not a placeholder one."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(tmp)
         seen: list[Any] = []
 
         def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
             seen.append(ctx.as_dict())
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_ladder.run_agent
-        pyflow_engine.agent_ladder.run_agent = fake_run_agent
-        try:
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
 
-            class Asks(Workflow):
-                def start(self) -> Transition:
-                    self.agent("prompts/p.md", returns=Payload, args={"unit": "CASE-1"})
-                    return Done(None)
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/p.md", returns=Payload, args={"unit": "CASE-1"})
+                return Done(None)
 
-            drive(Asks(), env)
-        finally:
-            pyflow_engine.agent_ladder.run_agent = real
+        drive(Asks(), env)
 
         assert seen[0] == {"unit": "CASE-1"}
 
@@ -829,7 +826,7 @@ def test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared():
         assert drive(Asks(), env) == ("approved", 3, "?")
 
 
-def test_the_run_agent_backend_is_a_run_dependency_not_a_module_attribute():
+def test_the_agent_ladder_is_a_run_dependency_not_a_module_attribute():
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[str] = []
 
@@ -841,7 +838,7 @@ def test_the_run_agent_backend_is_a_run_dependency_not_a_module_attribute():
             def start(self) -> Transition:
                 return Done(self.agent("prompts/review.md", returns=Payload).kind)
 
-        env = _env(tmp, run_agent=scripted)
+        env = _env(tmp, agent_runner=ScriptedRunner(scripted))
         assert drive(Asks(), env) == "injected"
         assert seen == ["review"], seen
 

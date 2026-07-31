@@ -56,10 +56,10 @@ class AgentResilience:
     """The agent-node recovery ladder's tuning knobs (see runner/ladder.py).
 
     One field per ``AGENT_*`` env var. Built by :meth:`from_env` at the CLI
-    boundary; the driver threads it into ``run_agent`` so the reframe/retry/cap
-    behavior is set explicitly rather than by import-time module constants — which
-    is what lets an in-process test neutralize the recovery sleeps without touching
-    the environment.
+    boundary and held as a field of the :class:`~workhorse.runner.ladder.AgentRunner`
+    the run is given, so the reframe/retry/cap behavior is set explicitly rather than
+    by import-time module constants — which is what lets an in-process test state a
+    one-attempt budget without touching the environment.
     """
 
     #: Additional attempts when Claude's response can't be parsed into the node's
@@ -167,6 +167,13 @@ class RunConfig:
     resilience: AgentResilience = field(default_factory=AgentResilience)
     #: Absolute wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S); 0 = unbounded.
     max_runtime_s: float = 0.0
+    #: Echo the path of each node's rendered prompt to the console
+    #: (WORKHORSE_PRINT_PROMPT); the path only, never the rendered variables.
+    print_prompt: bool = True
+    #: Run-level model override (AGENT_MODEL, else AGENT_CLAUDE_MODEL), used when the
+    #: node's power tier maps to no model. None = no override, so the backend's
+    #: ``[default.<backend>]`` entry and then its built-in decide.
+    model_override: str | None = None
     #: Resolves the active agent backend by name. Overridden by the test harness to
     #: return a mock backend; ``None`` means "use runner.backends.registry.get_backend".
     backend_factory: Callable[[str | None], AgentBackend] | None = None
@@ -177,6 +184,8 @@ class RunConfig:
         return cls(
             resilience=AgentResilience.from_env(e),
             max_runtime_s=_configured_max_runtime_s(e),
+            print_prompt=_bool(e, "WORKHORSE_PRINT_PROMPT", True),
+            model_override=(e.get("AGENT_MODEL") or e.get("AGENT_CLAUDE_MODEL") or None),
         )
 
     def get_backend(self, cli: str | None = None) -> AgentBackend:

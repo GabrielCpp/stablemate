@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from _fakes import FakeBackend
+from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import ladder
 from workhorse.context import WorkflowContext
@@ -43,10 +43,13 @@ def _run_capturing(node):
         seen["timeout"] = timeout
         return json.dumps({})
 
-    with patch.object(ladder, "render", fake_render), \
-         patch.object(ladder, "_run_turn_with_recovery", fake_invoke):
-        ladder.run_agent(
-            node, WorkflowContext(initial={}), Path("."), None, backend=FakeBackend()
+    class ScriptedRunner(ladder.AgentRunner):
+        def turn(self, prompt, node_id, session_id_path, model=None, **kwargs):
+            return fake_invoke(prompt, node_id, session_id_path, model, **kwargs)
+
+    with patch.object(ladder, "render", fake_render):
+        ScriptedRunner(backend=FakeBackend(), clock=FakeClock()).run(
+            node, WorkflowContext(initial={}), Path("."), None
         )
     return seen["ctx"], seen["timeout"]
 

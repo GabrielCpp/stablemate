@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
@@ -101,7 +102,7 @@ class _Agent:
 def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
     """The run's dependencies, handed over rather than patched in.
 
-    `run_agent` and the node index are fields of `RunEnv`, which is the whole point of
+    `agent_runner` and the node index are fields of `RunEnv`, which is the whole point of
     the registry being a composition root: the scripted agent and the substituted clone
     are *inputs to this run*, so they cannot leak into another test and there is nothing
     to restore afterwards.
@@ -115,7 +116,7 @@ def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
         workflow_dir=Path(research.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
         config=RunConfig(backend_factory=lambda cli=None: None),
-        run_agent=agent,
+        agent_runner=StubRunner(agent),
         # In-place mode — what `clone_repo` does when a checkout is already in front of
         # it — is this return plus `allow_all_directories()`, which writes
         # `safe.directory=*` into the developer's **global** git config. That is the
