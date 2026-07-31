@@ -23,10 +23,9 @@ still names exactly one commit.
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
-from ostler import Ostler
+from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.author.nodes._blueprint import blueprint
@@ -37,9 +36,6 @@ from workhorse_workflows.author.shared.schemas.main import Committed, Defects, P
 from workhorse_workflows.kit import branch_exists, commit_paths, remote_urls, show_file
 from workhorse_workflows.kit import github as github_kit
 
-_H2_RE = re.compile(r"^##\s+(.*\S)\s*$")
-_H3_RE = re.compile(r"^###\s+(.*\S)\s*$")
-
 #: Story statuses that mean the coder has nothing left to do with it.
 _DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
 
@@ -48,18 +44,16 @@ _DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
 
 
 def _subsection_ids(text: str, heading: str) -> set[str]:
-    """The `### <id>` titles directly under the `## <heading>` section of an epic.md."""
+    """The `### <id>` titles directly under the `## <heading>` section of an epic.md.
+
+    Read off the parsed heading tree, so a `##`-looking line inside a fenced example is not a
+    section and the nesting is the parser's rather than a "still inside it" flag.
+    """
     ids: set[str] = set()
-    in_section = False
-    for line in (text or "").splitlines():
-        h2 = _H2_RE.match(line)
-        if h2:
-            in_section = h2.group(1).strip().lower() == heading.lower()
-            continue
-        if in_section:
-            h3 = _H3_RE.match(line)
-            if h3:
-                ids.add(h3.group(1).strip())
+    for root in markdown.split(text or "").sections:
+        for section in root.walk():
+            if section.level == 2 and section.title.strip().lower() == heading.lower():
+                ids.update(c.title.strip() for c in section.children if c.level == 3)
     return ids
 
 

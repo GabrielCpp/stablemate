@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
 
 from ostler import Ostler, markdown, model, path as okf_path, registry, select
@@ -47,6 +46,7 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     EpicPick,
     EpicPruned,
     QaFlagged,
+    RunScope,
     StoryBranch,
     StoryCommitted,
     StoryPick,
@@ -71,10 +71,6 @@ from workhorse_workflows.kit import (
     show_file,
 )
 
-#: What a real queue looks like, so a git hiccup that returns an empty file cannot
-#: silently wipe the local copy during reconciliation.
-QUEUE_BULLET_RE = re.compile(r"^\s*[-*]\s+\[", re.MULTILINE)
-
 #: The legacy JSON queue's filename, kept as a fallback for repos and sandboxes with no
 #: doc graph. It sits beside `index.md`, wherever ostler puts that.
 LEGACY_QUEUE_NAME = "epics-todo.json"
@@ -83,6 +79,17 @@ LEGACY_QUEUE_NAME = "epics-todo.json"
 def legacy_queue(root: Path) -> Path:
     """The legacy JSON queue for *root*, beside the ostler-managed `index.md`."""
     return okf_path.epics_root_in(root) / LEGACY_QUEUE_NAME
+
+
+def _has_queue_bullet(content: str) -> bool:
+    """Whether *content* holds at least one `- [epic](…)` queue entry.
+
+    What a real queue looks like, so a git hiccup that returns some other file cannot
+    silently wipe the local copy during reconciliation. Parsed, so an index whose only
+    bullet-shaped line sits inside a fenced example does not qualify as a queue.
+    """
+    return any(b.bracketed[0] for b in markdown.split(content).walk_bullets())
+
 
 #: Epics set aside for the rest of THIS run, one name per line, inside the run dir.
 BLOCKED_FILE = "blocked-epics.txt"
@@ -108,6 +115,36 @@ def _resolve_trunk(root: Path) -> str:
     if branch_exists(root, "master"):
         return "master"
     return "main"
+
+
+@blueprint.node
+def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
+    """Drop the skip state a previous run left behind in this run dir.
+
+    `blocked-epics.txt` and `qa-skip-stories.txt` say "set aside for the rest of THIS run",
+    and both live in the run dir — which is fine while a run dir belongs to one run. It does
+    not: workhorse derives the run id from `--params`, so the same command lands in the same
+    stable dir every time, and a *fresh* run there inherits the last one's verdicts. The
+    contradiction was visible in the log — a run ended with "all 1 queued epic(s) were set
+    aside this run … start a new run to retry them", and the new run read that same file and
+    ended on the same sentence before reaching a single node. Every retry was a no-op, which
+    for an unattended queue reads as "nothing left to do".
+
+    So the lifecycle is the workflow's to own, not the dir's: whatever a resume keeps (a
+    resume never re-enters `start`), a new run starts with an empty skip set.
+    """
+    if not run_dir:
+        return RunScope()
+    path = Path(run_dir)
+    cleared = []
+    for name in (BLOCKED_FILE, SKIP_FILE):
+        stale = path / name
+        if stale.exists():
+            stale.unlink()
+            cleared.append(name)
+    if cleared:
+        logger.info("cleared %s left by a previous run in this run dir", ", ".join(cleared))
+    return RunScope(cleared=cleared)
 
 
 @blueprint.node
@@ -195,18 +232,38 @@ def branch_story(
     return StoryBranch(base_branch=base_branch, story_branch=branch, repos=branched)
 
 
+def _archive_name(root: Path, branch: str) -> str:
+    """A free `archive/<epic>-<sha>` name, suffixed until it collides with nothing.
+
+    The bare name collides whenever a run is retried at the same commit, which is exactly
+    what a retry after a failure *is*. Refusing to archive there used to leave the stale
+    `feat/<epic>` in place for `checkout -b` to fail on — deliberately, on the reasoning
+    that losing a ref is worse than failing loudly. But it fails loudly the same way on
+    every subsequent attempt, because nothing about the repo has changed: the run could
+    not start again until a human renamed a branch. An unattended queue cannot get past
+    that, and "failed to create epic branch" is a dead end, not a diagnosis.
+
+    Suffixing keeps the property that motivated the refusal — no ref is ever overwritten
+    or deleted, both commits stay reachable — while letting the rename always succeed.
+    """
+    base = f"archive/{branch[len('feat/'):]}-{short_sha(root, branch) or 'unknown'}"
+    if not branch_exists(root, base):
+        return base
+    # Bounded: a hundred retries at one commit is a broken loop, not a naming problem.
+    for n in range(2, 100):
+        if not branch_exists(root, f"{base}-{n}"):
+            return f"{base}-{n}"
+    return f"{base}-{short_sha(root, 'HEAD') or 'x'}"
+
+
 def _archive_stale_branch(logger: logging.Logger, root: Path, branch: str) -> None:
     """Rename an existing epic branch aside instead of resuming it.
 
     Renaming rather than deleting means the old work stays fully reachable under the
-    archive name. An archive name that already exists (a re-run at the exact same commit)
-    is left alone: losing either ref is worse than leaving a stale branch for the
-    `checkout -b` below to fail loudly on.
+    archive name — see :func:`_archive_name` for how a name is chosen when the obvious
+    one is taken.
     """
-    archive = f"archive/{branch[len('feat/'):]}-{short_sha(root, branch) or 'unknown'}"
-    if branch_exists(root, archive):
-        logger.warning("archive name %s already exists — leaving %s in place", archive, branch)
-        return
+    archive = _archive_name(root, branch)
     if rename_branch(root, branch, archive):
         logger.info("archived stale epic branch %s -> %s (renamed, not deleted)", branch, archive)
     else:
@@ -224,7 +281,7 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
         return
     queue_rel = paths.epics_index(root)
     content = show_file(root, base, queue_rel)
-    if content is None or not content.strip() or not QUEUE_BULLET_RE.search(content):
+    if content is None or not content.strip() or not _has_queue_bullet(content):
         return
     (root / queue_rel).write_text(content, encoding="utf-8")
     logger.info("reconciled index.md to %s", base)
@@ -252,9 +309,8 @@ def branch_epic(
         branch = f"feat/{epic}"
         if branch_exists(root, branch):
             _archive_stale_branch(logger, root, branch)
-        # Always cut fresh from current HEAD — even when archiving above left the old
-        # branch in place (an archive-name collision), so a diverged branch is never
-        # silently reused.
+        # Always cut fresh from current HEAD — even when the archive above could not rename
+        # and left the old branch in place, so a diverged branch is never silently reused.
         if not checkout(root, branch, create=True):
             raise WorkflowFailed(f"failed to create epic branch {branch}")
 

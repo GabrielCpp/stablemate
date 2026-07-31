@@ -10,11 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from unidiff import PatchSet
+from unidiff.errors import UnidiffParseError
+
 from ostler import graph as graph_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry
 from ostler.model import Graph, _parse_ui_nodes, load
 
-_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+#: The last-resort declaration shape, for a language with no parser and no entry in
+#: `inventory` — and for a Python file `ast` could not read. Declared in
+#: `scripts/check_parsers.py` for that reason: it is the fallback, never the first answer.
 _SYMBOL_RE = re.compile(
     r"^\s*(?:async\s+)?(?:def|class|function|func|fn)\s+([A-Za-z_$][\w$]*)"
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
@@ -90,6 +95,7 @@ def build_context(
             for prefix in excluded_doc_roots
         )
         and not _is_non_production_path(change.path)
+        and not _is_generated_unit(root, change)
     ]
     base_nodes, base_edges = _serialized_graph(base_graph)
     head_nodes, head_edges = _serialized_graph(head_graph)
@@ -416,21 +422,16 @@ def _changed_units(
         args.extend(["--", *configured])
     diff = _git(root, *args)
     units: dict[str, dict[str, Any]] = {}
-    old_path = new_path = ""
-    for line in diff.splitlines():
-        if line.startswith("--- "):
-            old_path = line[4:].removeprefix("a/")
-        elif line.startswith("+++ "):
-            new_path = line[4:].removeprefix("b/")
-            path = new_path if new_path != "/dev/null" else old_path
-            units.setdefault(path, {"base": set(), "head": set(), "old": old_path, "new": new_path})
-        elif match := _HUNK_RE.match(line):
-            path = new_path if new_path != "/dev/null" else old_path
-            unit = units[path]
-            base_start, base_count = int(match[1]), int(match[2] or 1)
-            head_start, head_count = int(match[3]), int(match[4] or 1)
-            unit["base"].update(range(base_start, base_start + base_count))
-            unit["head"].update(range(head_start, head_start + head_count))
+    for patched in _patch_set(diff):
+        old_path = patched.source_file.removeprefix("a/")
+        new_path = patched.target_file.removeprefix("b/")
+        path = new_path if new_path != "/dev/null" else old_path
+        unit = units.setdefault(
+            path, {"base": set(), "head": set(), "old": old_path, "new": new_path}
+        )
+        for hunk in patched:
+            unit["base"].update(range(hunk.source_start, hunk.source_start + hunk.source_length))
+            unit["head"].update(range(hunk.target_start, hunk.target_start + hunk.target_length))
     name_args = ["diff", "--find-renames", "--name-status", base]
     if head != "WORKTREE":
         name_args.append(head)
@@ -493,13 +494,37 @@ def _changed_units(
     return output
 
 
+def _patch_set(diff: str) -> PatchSet:
+    """The diff, parsed. A malformed patch yields no units rather than a traceback.
+
+    `unidiff` replaces a hand-written `@@ -a,b +c,d @@` matcher plus a pair of `--- `/`+++ `
+    line prefixes, which between them carried the file's identity in loop-scoped variables:
+    a hunk header appearing before any `+++ ` line — a stray `@@` in a *deleted line's own
+    content*, which `--unified=0` still emits — indexed `units` with whatever path the
+    previous file left behind, and raised `KeyError` on the very first diff. The parser knows
+    a hunk body from a hunk header, so the association is structural.
+    """
+    try:
+        return PatchSet(diff)
+    except UnidiffParseError:
+        return PatchSet("")
+
+
 def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
+    """The symbols whose bodies span any of *lines* — the diff's changed units.
+
+    Python is parsed (`ostler.inventory`'s front end), which is what makes a symbol's *extent*
+    real: an `ast` node knows where its body ends, so a hunk landing in the middle of a
+    function is attributed to that function rather than to "the last declaration seen above
+    it", which is all the line scan below can offer. The parse is attempted only for Python —
+    letting every language fall through to `ast.parse` and relying on `SyntaxError` to reject
+    it means a `.js` file that happens to be valid Python (`x = 1`) parses as an empty module
+    and silently reports no changed symbols at all.
+    """
     if not text or not lines:
         return []
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        tree = None
+    suffix = Path(path).suffix
+    tree = inventory.parse_python(text) if suffix in {".py", ".pyi", ""} else None
     symbols: list[tuple[int, int, str]] = []
     if tree is not None:
         def visit(node: ast.AST, prefix: str = "") -> None:
@@ -516,7 +541,6 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
         current = ""
         text_lines = text.splitlines()
         declarations: list[tuple[int, str]] = []
-        suffix = Path(path).suffix
         if suffix == ".go":
             for match in inventory.GO_DECL.finditer(text):
                 star, receiver, method, func, typename = match.groups()
@@ -716,6 +740,79 @@ def _is_non_production_path(path: str) -> bool:
     if name.startswith("pulumi.") and name.endswith((".yaml", ".yml")):
         return True
     return bool(parts and parts[0] in {".github", ".gitlab"})
+
+
+#: How a code generator announces itself. Go standardized the wording and everything that
+#: emits Go copies it — protoc, oapi-codegen, mockery, sqlc, ent — and enough tools in other
+#: ecosystems copied it too that matching the sentence beats keeping a table of generators.
+_GENERATED_MARKER = re.compile(r"^\s*(?://|#|/\*|--|<!--)\s*Code generated .*DO NOT EDIT", re.M)
+
+#: Filename conventions that say the same thing without a marker line, by ecosystem.
+_GENERATED_SUFFIXES = (
+    ".gen.go",
+    ".pb.go",
+    ".pb.gw.go",
+    ".gen.ts",
+    ".gen.tsx",
+    ".generated.ts",
+    ".g.dart",
+    ".gr.dart",
+    ".gen.dart",
+    ".freezed.dart",
+    "_pb2.py",
+    "_pb2_grpc.py",
+    "_generated.go",
+    "_generated.py",
+    "_generated.ts",
+)
+
+#: Directories whose whole contents are machine-authored.
+_GENERATED_DIRS = {"mocks", "__mocks__", "generated", "node_modules", "vendor"}
+
+#: How much of a file to read looking for the marker. It is a header line by convention —
+#: the point of the marker is that an editor sees it first — so this is generous already,
+#: and bounded because the files it runs against are exactly the enormous ones.
+_MARKER_SCAN_BYTES = 4096
+
+
+def _is_generated_unit(root: Path, change: ChangedUnit) -> bool:
+    """Is this changed unit machine-authored, and therefore owned by its generator?
+
+    Generated code is production code — it ships, it serves traffic — but it is not a
+    *documentable* unit, and treating it as one is what makes the coder's documentation gate
+    unwinnable. `oapi-codegen` alone contributed 26 symbols to one benchmark story's diff,
+    among them `UnescapedCookieParamError` and `TooManyValuesForParamError`; grounding those
+    means writing OKF nodes for a code generator's internal error types and calling them
+    product contracts. The author cannot do it honestly, so it burns every rework pass and
+    the story fails on a demand no correct answer satisfies. The contract these files encode
+    lives in the thing they were generated *from* — the OpenAPI document, the proto, the
+    interface the mock stands in for — and that source is in the diff too, as a real unit.
+
+    Same reasoning as `_is_non_production_path` and the same remedy, kept separate because
+    the categories are different: that one is scaffolding that never runs, this one runs and
+    is simply not authored by a person.
+
+    The marker scan reads the **worktree**, so a packet built between two revisions relies on
+    the naming conventions alone. That is why the conventions are listed rather than left to
+    the marker: they cover the generators that dominate real diffs, and a miss here is only
+    ever conservative — the unit stays production and the author is asked to ground it.
+    """
+    lowered = change.path.lower()
+    parts = Path(lowered).parts
+    if any(part in _GENERATED_DIRS for part in parts[:-1]):
+        return True
+    if lowered.endswith(_GENERATED_SUFFIXES):
+        return True
+    # A deletion carries the `/dev/null` sentinel rather than a path; joining it onto `root`
+    # would read straight out of the repo, and there is no head file to sniff either way.
+    if not change.head_path or Path(change.head_path).is_absolute():
+        return False
+    try:
+        with (root / change.head_path).open("rb") as handle:
+            head = handle.read(_MARKER_SCAN_BYTES).decode("utf-8", "replace")
+    except OSError:
+        return False
+    return bool(_GENERATED_MARKER.search(head))
 
 
 def _obligations(

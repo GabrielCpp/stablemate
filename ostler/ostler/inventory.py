@@ -15,9 +15,13 @@ citation whose definition had moved away. A book could cite a symbol its file no
 declared and `doctor` stayed green — the exact drift §4.4 exists to catch. One grammar, defined
 once, is the fix.
 
-**Regexes are adequate here** for the same reason they are in the inventory: what is needed is
-*the set of declared names*, not a parse tree. Real symbol resolution (tree-sitter/LSP) would be
-more accurate and costs a large dependency the coverage diff does not need.
+**Python is read with the stdlib `ast`**, because a real parse is free there. The regexes it
+replaces could not tell a declaration from the same words inside a docstring or a commented-out
+block, and matched only what a single line spelled — a signature wrapped across lines, or a
+tuple-unpacked module constant, was invisible. For the other five languages there is no stdlib
+parser, and real symbol resolution (tree-sitter/LSP) costs a large dependency the coverage diff
+does not need — so those stay on regex as a declared exemption, and the Python regexes stay only
+as the fallback for a file that does not parse.
 
 **Two questions, two answers, deliberately.** ``symbols()`` reports the *documented surface* —
 it applies each language's export/visibility filter, because an unexported helper is not a unit
@@ -29,6 +33,7 @@ so is its visibility, and only the first question cares.
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -37,6 +42,12 @@ from pathlib import Path
 # documented one.
 SOURCE_SUFFIXES = {".go", ".py", ".ts", ".tsx", ".php", ".twig"}
 
+# ── the Python fallback, for a file `ast` cannot parse ────────────────────────────────
+#
+# These are what `_py_*` below used to be. They remain only for the unparseable case: a file
+# mid-edit, or one written for a newer Python than the interpreter reading it. A file that does
+# not parse is not a file we can be *right* about, so approximating beats reporting nothing.
+#
 # The inventory's Python surface: module-level `class`/`def` only, anchored at column 0. The
 # anchor is what keeps a method out of the denominator — widening it would change what
 # "complete" means and make every existing book instantly less complete.
@@ -88,6 +99,74 @@ TWIG_DECL = re.compile(r"\{%-?\s*block\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 # An identifier inside a qualified symbol: `(*Writer).SetRoleClaims` → Writer, SetRoleClaims.
 SYMBOL_PART = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
+_DEF_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def parse_python(text: str) -> ast.Module | None:
+    """The parsed module, or None when *text* is not Python this interpreter can read."""
+    try:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):  # ValueError: a source containing NUL bytes
+        return None
+
+
+def _py_surface(text: str) -> list[str]:
+    """The inventory's Python denominator: module-level `class`/`def`, in source order.
+
+    "Module-level" is now a structural fact rather than a column-0 match, which keeps the
+    denominator exactly where it was while dropping the two ways the anchor lied: a `def` at
+    the left margin of a docstring or a commented-out block counted, and a class body's methods
+    did not (correctly) — but neither did a decorated declaration's *own* line matter, so a
+    signature the formatter wrapped read as a declaration named after its first argument.
+    A conditionally-defined function (inside `if TYPE_CHECKING:`) stays out, as before.
+    """
+    module = parse_python(text)
+    if module is None:
+        return [m.group(1) for m in PY_DECL.finditer(text) if not m.group(1).startswith("_")]
+    return [
+        node.name
+        for node in module.body
+        if isinstance(node, _DEF_NODES) and not node.name.startswith("_")
+    ]
+
+
+def _py_declared(text: str) -> set[str]:
+    """Every name the module *binds* — grounding's question.
+
+    Classes, functions and methods at any depth, plus assignment targets. Imports are absent
+    by construction, which is the property the whole module exists for: a facade that
+    re-exports `Renderer` must not ground a citation whose definition moved away.
+
+    Augmented assignment (`count += 1`) binds nothing new and is excluded; tuple unpacking
+    (`a, b = ...`) binds both, which the line regex could not see.
+    """
+    module = parse_python(text)
+    if module is None:
+        return ({m.group(1) for m in PY_ANY_DECL.finditer(text)}
+                | {m.group(1) for m in PY_ASSIGN.finditer(text)})
+    names: set[str] = set()
+    for node in ast.walk(module):
+        if isinstance(node, _DEF_NODES):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                names.update(_binding_names(target))
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
+            names.update(_binding_names(node.target))
+    return names
+
+
+def _binding_names(target: ast.expr) -> set[str]:
+    """The plain names an assignment target binds. `self.x = …` binds no module-level name."""
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {name for item in target.elts for name in _binding_names(item)}
+    if isinstance(target, ast.Starred):
+        return _binding_names(target.value)
+    return set()
 
 
 def _php_symbols(text: str, *, public_only: bool) -> list[str]:
@@ -146,7 +225,7 @@ def symbols(path: str | Path, text: str) -> list[str]:
     """
     suffix = Path(path).suffix
     if suffix == ".py":
-        return [m.group(1) for m in PY_DECL.finditer(text) if not m.group(1).startswith("_")]
+        return _py_surface(text)
     if suffix == ".go":
         return _go_symbols(text, exported_only=True)
     if suffix in {".ts", ".tsx"}:
@@ -168,8 +247,7 @@ def declared_names(path: str | Path, text: str) -> set[str]:
     """
     suffix = Path(path).suffix
     if suffix == ".py":
-        return ({m.group(1) for m in PY_ANY_DECL.finditer(text)}
-                | {m.group(1) for m in PY_ASSIGN.finditer(text)})
+        return _py_declared(text)
     if suffix == ".go":
         return set(_go_symbols(text, exported_only=False))
     if suffix in {".ts", ".tsx"}:

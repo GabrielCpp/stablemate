@@ -13,7 +13,9 @@ from ostler import markdown, path as path_mod, registry
 from ostler.result import Result
 from ostler.model import Graph
 
-_LINE = re.compile(r"^\s*[-*]\s+(?:\[)?([A-Za-z0-9][\w-]*)")
+#: An epic name is an identifier, not markdown — the leading run of one is what a
+#: hand-edited entry that dropped the link still yields a usable name from.
+_NAME = re.compile(r"\A[A-Za-z0-9][\w-]*")
 
 
 def _queued_as(names: list[str], name: str) -> str | None:
@@ -34,15 +36,21 @@ def _index_path(graph: Graph) -> Path:
 
 
 def list_epics(graph: Graph) -> list[str]:
-    """Ordered epic names from index.md; empty list if the index does not exist."""
+    """Ordered epic names from index.md; empty list if the index does not exist.
+
+    Each entry is ``- [<name>](<name>/epic.md) — <title>``, so the name is the bullet's
+    bracket. Reading it off the parsed list rather than a line regex is what keeps a
+    fenced example of the format out of the work queue.
+    """
     p = _index_path(graph)
     if not p.exists():
         return []
+    doc = markdown.split(p.read_text(encoding="utf-8"))
     names: list[str] = []
-    for line in p.read_text(encoding="utf-8").splitlines():
-        m = _LINE.match(line)
-        if m:
-            names.append(m.group(1))
+    for bullet in doc.walk_bullets():
+        ident, _rest = bullet.bracketed
+        if match := _NAME.match(ident or bullet.text):
+            names.append(match.group(0))
     return names
 
 

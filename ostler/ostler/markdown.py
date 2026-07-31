@@ -1,13 +1,21 @@
 """Markdown(+YAML frontmatter) parsing.
 
+Everything here goes through the **parser** — ``markdown-it-py`` for the document,
+``front_matter_plugin`` for the frontmatter fence, ``yaml`` for its payload. No regex
+matches a markdown or YAML construct: see the ``stablemate-structured-parsing`` skill for
+why (in short, a regex that "finds" a link also finds one inside a code fence, and a
+regex that fences off frontmatter silently finds *none* in a CRLF file).
+
 Two layers, deliberately kept separate:
 
 * **Byte-exact layer** — ``split`` returns a :class:`MarkdownDoc` whose ``raw_frontmatter`` and
   ``body`` are the original text. Edits operate here so round-tripping never reflows the file.
-* **Hierarchical view** — :attr:`MarkdownDoc.sections` lazily parses the body with a CommonMark
-  parser (``markdown-it-py``) into a tree of :class:`Section` (by heading level) and :class:`Bullet`
-  (list items, nested). Every node keeps its **source line span** into ``body`` so a semantic node
-  can always be mapped back to exact bytes for editing.
+  The one normalization is line endings: CRLF/CR become LF, matching what the parser sees, so
+  a Windows-authored doc has frontmatter at all (the regex this replaced saw none).
+* **Hierarchical view** — :attr:`MarkdownDoc.sections` lazily parses the body into a tree of
+  :class:`Section` (by heading level), :class:`Bullet` (list items, nested) and :class:`Table`.
+  Every node keeps its **source line span** into ``body`` so a semantic node can always be
+  mapped back to exact bytes for editing.
 """
 
 from __future__ import annotations
@@ -17,31 +25,129 @@ from dataclasses import dataclass, field
 
 import yaml
 from markdown_it import MarkdownIt
+from markdown_it import rules_inline
 from markdown_it.tree import SyntaxTreeNode
+from mdit_py_plugins.front_matter import front_matter_plugin
 
 _FENCE = "---"
 
+#: A repo-relative path mentioned in prose. Not a markdown construct — no grammar to parse,
+#: so this one stays a regex (declared in scripts/check_parsers.py).
 KNOWLEDGE_PATH_RE = re.compile(r"docs/knowledge/[^\s)\]'\"`]+\.(?:json|md)")
-LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)  # fenced code blocks
-_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")        # inline code spans
 
-_MD = MarkdownIt("commonmark")
+#: `table` is off in the bare commonmark preset, so a table used to arrive as an
+#: undifferentiated paragraph; the library's docs are full of them. `front_matter_plugin`
+#: makes a leading `---` fence a token of its own rather than a setext-h2 underline.
+_MD = MarkdownIt("commonmark").enable("table").use(front_matter_plugin)
 
 
-def _mask_code(text: str) -> str:
-    """Blank out fenced blocks and inline-code spans (same length, newlines kept) so a link/ref
-    regex never matches *inside code* — e.g. `strategies[idx](x)` in a snippet is not a link. Byte
-    offsets and line numbers are preserved for locating the real links that remain."""
-    blank = lambda m: re.sub(r"[^\n]", " ", m.group(0))  # noqa: E731
-    return _INLINE_CODE_RE.sub(blank, _FENCE_RE.sub(blank, text))
+def _remembering_source_pos(rule):
+    """Wrap an inline rule so the ``link_open`` it pushes records where in the source it began.
+
+    Inline tokens carry no line map — only the containing block does — and the obvious
+    workaround, walking a cursor forward over the children and counting newlines, cannot work:
+    CommonMark converts a line ending *inside a code span* to a space, so a wrapped
+    `` `a REFERENCES b(id) ON\\nDELETE CASCADE` `` arrives as one ``code_inline`` token whose
+    content holds no newline at all. Every link after it in the paragraph then reads one line
+    early — 332 of them across one real book. The parser knows the offset; this asks it.
+    """
+
+    def wrapped(state, silent):
+        start, mark = state.pos, len(state.tokens)
+        ok = rule(state, silent)
+        if ok and not silent:
+            # Not ``tokens[mark]``: text accrues in ``state.pending`` and is flushed as its own
+            # token just before ``link_open``, so the link is the first *link_open* from here.
+            for tok in state.tokens[mark:]:
+                if tok.type == "link_open":
+                    tok.meta["srcpos"] = start
+                    break
+        return ok
+
+    return wrapped
+
+
+# `link` covers both `[text](href)` and the reference forms; `autolink` covers `<https://…>`.
+_MD.inline.ruler.at("link", _remembering_source_pos(rules_inline.link))
+_MD.inline.ruler.at("autolink", _remembering_source_pos(rules_inline.autolink))
+
+
+def _normalize(text: str) -> str:
+    """Line endings as the parser sees them — token line spans index *these* lines."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _iter_inline(tokens):
+    """Yield every ``inline`` token in a flat token stream, with its block line span."""
+    for tok in tokens:
+        if tok.type == "inline" and tok.map:
+            yield tok
 
 
 def iter_links(text: str):
-    """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based."""
-    masked = _mask_code(text)
-    for m in LINK_RE.finditer(masked):
-        yield m.group(1), m.group(2), masked.count("\n", 0, m.start()) + 1
+    """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based.
+
+    A link inside a fenced block or an inline-code span is not a ``link_open`` token, so the
+    exclusion is structural rather than the blank-out-the-code-first approximation it replaces
+    (which could not tell ``strategies[idx](x)`` in a snippet from a link).
+    """
+    for tok in _iter_inline(_MD.parse(_normalize(text))):
+        depth, line = 0, tok.map[0]
+        label: list[str] = []
+        href = ""
+        for child in tok.children or ():
+            if child.type == "link_open":
+                if not depth:
+                    href, label = child.attrGet("href") or "", []
+                    # `srcpos` indexes the block's own source, which is what the inline rules
+                    # were handed, so the newlines before it are the lines before it.
+                    pos = child.meta.get("srcpos")
+                    line = tok.map[0] + (tok.content[:pos].count("\n") if pos else 0)
+                depth += 1
+            elif child.type == "link_close":
+                depth -= 1
+                if not depth:
+                    yield "".join(label), href, line + 1
+            elif depth:
+                # A break inside a link's own text is part of that text: `[Document\nparser]`
+                # reads "Document parser", not "Documentparser".
+                label.append("\n" if child.type in ("softbreak", "hardbreak") else child.content)
+
+
+def leading_code_spans(text: str) -> list[str]:
+    """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose.
+
+    ``code:`` bullets cite targets as `` `path::symbol` `` runs. Reading them off
+    ``code_inline`` tokens rather than a backtick regex is what makes ``` ``a `b` c`` ``` and
+    a backslash-escaped fence come out right, and it is the parser that decides where a span
+    ends rather than the next backtick character.
+    """
+    spans: list[str] = []
+    for child in _MD.parseInline(_normalize(text))[0].children or ():
+        if child.type == "code_inline":
+            spans.append(child.content)
+        elif child.type == "text" and not child.content.strip(" \t,"):
+            continue  # the separator between two spans
+        elif child.type in ("softbreak", "hardbreak"):
+            # A wrapped bullet. The newline between two spans is whitespace like any other,
+            # but the parser hands it back as its own token rather than as text — so reading
+            # only `text` for the separator closed the run at the line break and silently
+            # dropped every target after the first, which is how a long `code:` bullet lost
+            # its second citation and a real ungrounded symbol stopped being reported.
+            continue
+        else:
+            break     # prose — the run is over (and never started, if spans is empty)
+    return spans
+
+
+def code_line_spans(text: str) -> list[tuple[int, int]]:
+    """0-indexed ``[start, end)`` line spans of every code block — fenced or indented.
+
+    For the mutating commands, which rewrite *prose* and must leave a snippet alone: a
+    wikilink or a status line inside a fence is sample text, not the document's own.
+    """
+    return [tok.map for tok in _MD.parse(_normalize(text))
+            if tok.type in ("fence", "code_block") and tok.map]
 
 
 @dataclass
@@ -72,7 +178,7 @@ class References:
 def extract_refs(text: str) -> References:
     return References(
         knowledge_paths=sorted(set(KNOWLEDGE_PATH_RE.findall(text))),
-        links=LINK_RE.findall(_mask_code(text)),  # links inside code are not links
+        links=[(label, href) for label, href, _line in iter_links(text)],
     )
 
 
@@ -103,6 +209,19 @@ class Bullet:
         return self.text.partition(":")[2].strip()
 
     @property
+    def bracketed(self) -> tuple[str, str]:
+        """``("id", "rest")`` for a ``- [id] rest`` bullet; ``("", text)`` when unbracketed.
+
+        The backlog and the epics queue are both lists of these. Reading the id off a
+        *parsed* bullet is what keeps a ``- [x] …`` line inside a fenced example, or an
+        indented continuation line that merely looks like one, out of the queue.
+        """
+        if not self.text.startswith("["):
+            return "", self.text
+        ident, sep, rest = self.text[1:].partition("]")
+        return (ident.strip(), rest.strip()) if sep else ("", self.text)
+
+    @property
     def refs(self) -> References:
         return extract_refs(self.text)
 
@@ -110,6 +229,38 @@ class Bullet:
         yield self
         for c in self.children:
             yield from c.walk()
+
+
+@dataclass
+class Table:
+    """A GFM pipe table: header cells, body rows, and its source line span.
+
+    Tables are how the library's docs carry most of their tabular contract (placeholder
+    tables, parser-per-format tables, matrices). Before ``table`` was enabled the parser
+    handed every one of them back as an undifferentiated paragraph, so a caller wanting a
+    row had no option but to split on ``|`` itself.
+    """
+
+    headers: list[str]
+    rows: list[list[str]]
+    line_start: int          # 0-indexed, body-relative
+    line_end: int            # exclusive
+
+    @property
+    def records(self) -> list[dict[str, str]]:
+        """Rows keyed by header. Short rows pad, long rows truncate — as the renderer does."""
+        return [
+            {h: (row[i] if i < len(row) else "") for i, h in enumerate(self.headers)}
+            for row in self.rows
+        ]
+
+    def column(self, header: str) -> list[str]:
+        """Every cell under ``header`` (case-insensitive), or ``[]`` if there is no such column."""
+        want = header.strip().lower()
+        for i, h in enumerate(self.headers):
+            if h.strip().lower() == want:
+                return [row[i] if i < len(row) else "" for row in self.rows]
+        return []
 
 
 @dataclass
@@ -121,6 +272,7 @@ class Section:
     body_lines: list[str] = field(default_factory=list, repr=False)
     children: list["Section"] = field(default_factory=list)
     bullets: list[Bullet] = field(default_factory=list)
+    tables: list[Table] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -221,6 +373,20 @@ class MarkdownDoc:
         for root in self.sections:
             yield from root.walk()
 
+    def walk_bullets(self) -> list[Bullet]:
+        """Every bullet in the body, nested ones included, in **source order**.
+
+        Sections nest by heading level, so walking them yields tree order rather than file
+        order; a list that *is* an ordering (the backlog, the epics queue) needs the latter.
+        """
+        found = [b for s in self.walk_sections() for top in s.bullets for b in top.walk()]
+        return sorted(found, key=lambda b: b.line_start)
+
+    def walk_tables(self) -> list[Table]:
+        """Every table in the body, in source order."""
+        return sorted((t for s in self.walk_sections() for t in s.tables),
+                      key=lambda t: t.line_start)
+
     def find_section(self, title: str) -> Section | None:
         for root in self.sections:
             if root.title.strip() == title.strip():
@@ -247,25 +413,32 @@ class MarkdownDoc:
 
 
 def split(text: str) -> MarkdownDoc:
-    """Split Markdown text into frontmatter + body, tolerant of files with neither."""
-    if not text.startswith(_FENCE + "\n") and text.strip() != _FENCE:
+    """Split Markdown text into frontmatter + body, tolerant of files with neither.
+
+    The fence is located by ``front_matter_plugin``, not by scanning for a ``---`` line.
+    That difference is not cosmetic: the line scan returned *no frontmatter at all* for a
+    CRLF file, for a file whose closing fence carried a trailing space, and for one with no
+    newline after the closing fence — three silent total losses. It also read an **indented**
+    ``---`` as the terminator, splitting a document in the wrong place.
+    """
+    text = _normalize(text)
+    tokens = _MD.parse(text)
+    if not tokens or tokens[0].type != "front_matter":
+        # A bare `---` with nothing to close it is a horizontal rule, and the parser says so.
         return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
 
-    lines = text.split("\n")
-    for i in range(1, len(lines)):
-        if lines[i].strip() == _FENCE:
-            raw_fm = "\n".join(lines[1:i])
-            raw_fm = raw_fm + "\n" if raw_fm else ""
-            body = "\n".join(lines[i + 1:])
-            try:
-                data = yaml.safe_load(raw_fm) or {}
-            except yaml.YAMLError:
-                data = {}
-            if not isinstance(data, dict):
-                data = {}
-            return MarkdownDoc(frontmatter=data, raw_frontmatter=raw_fm, body=body)
-
-    return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
+    fm = tokens[0]
+    raw_fm = fm.content + "\n" if fm.content else ""
+    body = "\n".join(text.split("\n")[fm.map[1]:])
+    try:
+        # `raw_fm`, not `fm.content`: the token drops the block's final newline, and a
+        # folded scalar's trailing-newline semantics depend on it.
+        data = yaml.safe_load(raw_fm) or {}
+    except yaml.YAMLError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return MarkdownDoc(frontmatter=data, raw_frontmatter=raw_fm, body=body)
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +467,34 @@ def _parse_bullets(node: SyntaxTreeNode) -> list[Bullet]:
         span = item.map or [0, 0]
         items.append(Bullet(text=text, line_start=span[0], line_end=span[1], children=children))
     return items
+
+
+def _parse_tables(tokens) -> list[Table]:
+    """Collect every pipe table from a flat token stream.
+
+    Cell tokens carry no line map of their own, so the row's ``tr_open`` supplies the span
+    and the cell's ``inline`` child supplies the text — already unescaped and with the
+    trailing/leading padding the renderer strips.
+    """
+    tables: list[Table] = []
+    cells: list[str] | None = None
+    for i, tok in enumerate(tokens):
+        if tok.type == "table_open":
+            span = tok.map or [0, 0]
+            tables.append(Table(headers=[], rows=[], line_start=span[0], line_end=span[1]))
+        elif tok.type == "tr_open":
+            cells = []
+        elif tok.type in ("th_open", "td_open") and cells is not None:
+            nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+            cells.append(nxt.content.strip() if nxt is not None and nxt.type == "inline" else "")
+        elif tok.type == "tr_close" and cells is not None and tables:
+            # The first row of a table is its header; every later one is data.
+            if tables[-1].headers:
+                tables[-1].rows.append(cells)
+            else:
+                tables[-1].headers = cells
+            cells = None
+    return tables
 
 
 def _top_level_bullets(tree: SyntaxTreeNode) -> list[Bullet]:
@@ -339,14 +540,22 @@ def _build_sections(body: str) -> list[Section]:
         preamble = Section(level=0, title="", line_start=0, line_end=first_start, body_lines=lines)
         roots.insert(0, preamble)
 
-    # attach top-level bullets to the deepest section that contains them
+    # attach top-level bullets and tables to the deepest section that contains them
     flat = [s for r in roots for s in r.walk()]
-    for bullet in _top_level_bullets(tree):
-        container = max(
-            (s for s in flat if s.line_start <= bullet.line_start < s.line_end),
+
+    def _container(line_start: int) -> Section | None:
+        return max(
+            (s for s in flat if s.line_start <= line_start < s.line_end),
             key=lambda s: s.line_start,
             default=None,
         )
+
+    for bullet in _top_level_bullets(tree):
+        container = _container(bullet.line_start)
         (container.bullets if container else roots and roots[0].bullets).append(bullet)
+
+    for table in _parse_tables(tokens):
+        container = _container(table.line_start)
+        (container.tables if container else roots and roots[0].tables).append(table)
 
     return roots

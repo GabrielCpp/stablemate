@@ -79,6 +79,7 @@ from pathlib import Path
 import tomli_w
 import yaml
 
+from ostler import markdown
 from stablemate_core.config import load_config
 # The judge runs on whatever agent CLI the rest of the workspace runs on — `AGENT_CLI`
 # picks the backend, and workhorse's cap classification/sleep helpers are reused so a
@@ -136,8 +137,13 @@ ESCALATION_NODES = {
 # initial line is authoritative for the whole sleep.
 PAUSE_RE = re.compile(r"\[([a-zA-Z0-9_.-]+)\]\s*⏸[^\n]*pausing\s*~?(\d+)\s*s")
 
-# `- [kebab-id] A person does something observable.` — the benchmark's unit of input.
-BULLET_RE = re.compile(r"^- \[([a-z0-9][a-z0-9-]*)\]\s+(.*\S)\s*$", re.MULTILINE)
+# `- [kebab-id] A person does something observable.` — the benchmark's unit of input. The
+# bullet itself is read off `ostler.markdown`; this only says whether the handle it carries
+# is one of ours, which is an identifier validator rather than a format parser.
+KEBAB_ID = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
+
+# The heading under which an epic records the backlog bullets it claims.
+COVERED_HEADING = "Backlog bullets covered"
 
 BOLD, RED, DIM, RESET = "\033[1m", "\033[31m", "\033[2m", "\033[0m"
 
@@ -389,7 +395,7 @@ def cmd_backlog(spec: Spec) -> None:
 
 
 def resume_flags(spec: Spec, phase: str, resume: bool) -> list[str]:
-    """``--resume-latest``, once there is something to resume.
+    """``--resume-run`` pointed at the newest run of this phase that has a checkpoint.
 
     The two workflow phases are *not* idempotent the way genesis is. Genesis keys each
     skeleton step on that service's marker file, so re-running it re-derives where it got
@@ -398,15 +404,25 @@ def resume_flags(spec: Spec, phase: str, resume: bool) -> list[str]:
     after a crash therefore redoes the work rather than continuing it — which is why this
     is an explicit flag and not a default.
 
-    Guarded on an existing run because ``--resume-latest`` errors when it finds no
-    unfinished run, and a benchmark whose resume switch is fatal on a clean target is one
-    you cannot put in a script.
+    Deliberately **not** ``--resume-latest``, which resolves through
+    ``rundir.find_latest_resumable`` and skips any run carrying a ``terminal``. That is the
+    right default for an operator — a run that reached an end state is over — but it is the
+    wrong one here, because this harness exists to debug workflows and its central move is
+    *fix the bug the run failed on, then continue that run*. A failed run has a checkpoint
+    and hours of work in it; refusing to resume it would mean re-running the whole story to
+    reach the state under test. Naming the dir is how the operator says the verdict is stale.
+
+    Guarded on there being a checkpoint at all, because a benchmark whose resume switch is
+    fatal on a clean target is one you cannot put in a script.
     """
     if not resume:
         return []
-    if not any(spec.artifacts.glob(f"{phase}-*/run.json")):
-        die(f"--resume: no {phase} run under {spec.artifacts} to resume")
-    return ["--resume-latest"]
+    checkpoints = sorted(
+        spec.artifacts.glob(f"{phase}-*/checkpoint.json"), key=lambda p: p.stat().st_mtime
+    )
+    if not checkpoints:
+        die(f"--resume: no {phase} run with a checkpoint under {spec.artifacts} to resume")
+    return ["--resume-run", str(checkpoints[-1].parent)]
 
 
 def phase_rc(phase: str, rc: int, log: Path) -> int:
@@ -706,11 +722,19 @@ def git_commits(target: Path) -> int:
 
 
 def parse_backlog(path: Path) -> list[dict]:
-    """The `- [kebab-id] text` bullets, in file order. The benchmark's unit of input."""
+    """The `- [kebab-id] text` bullets, in file order. The benchmark's unit of input.
+
+    Parsed rather than matched line by line: a backlog that shows its own grammar in a
+    fenced example must not have that example scored as work the run was asked to do.
+    """
     if not path.is_file():
         return []
-    return [{"id": m.group(1), "text": m.group(2)}
-            for m in BULLET_RE.finditer(path.read_text(encoding="utf-8"))]
+    out = []
+    for bullet in markdown.split(path.read_text(encoding="utf-8")).walk_bullets():
+        bid, text = bullet.bracketed
+        if KEBAB_ID.fullmatch(bid) and text.strip():
+            out.append({"id": bid, "text": " ".join(text.split())})
+    return out
 
 
 def find_epics(target: Path) -> list[Path]:
@@ -718,21 +742,16 @@ def find_epics(target: Path) -> list[Path]:
 
 
 def frontmatter(md: Path) -> dict[str, str]:
-    """The `---`-delimited YAML header, as flat strings. Missing/malformed → empty."""
+    """The `---`-delimited YAML header, as flat strings. Missing/malformed → empty.
+
+    The fence is located by the same parser the doc graph uses, so a `---` inside a block
+    scalar closes nothing and this reads the header the tooling wrote.
+    """
     try:
         text = md.read_text(encoding="utf-8")
     except OSError:
         return {}
-    if not text.startswith("---"):
-        return {}
-    _, _, rest = text.partition("---")
-    body, sep, _ = rest.partition("\n---")
-    if not sep:
-        return {}
-    try:
-        data = yaml.safe_load(body) or {}
-    except yaml.YAMLError:
-        return {}
+    data = markdown.split(text).frontmatter
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
@@ -750,14 +769,25 @@ def trace_bullets(spec: Spec) -> list[dict]:
 
     claims: dict[str, list[dict]] = defaultdict(list)
     for epic_md in find_epics(spec.target):
-        text = epic_md.read_text(encoding="utf-8")
+        doc = markdown.split(epic_md.read_text(encoding="utf-8"))
         stories = [
             {"slug": s.parent.name, "status": frontmatter(s).get("status", "unknown")}
             for s in sorted(epic_md.parent.glob("stories/*/story.md"))
         ]
         info = {"epic": epic_md.parent.name, "stories": stories}
-        for bid in {m.group(1) for m in re.finditer(r"\[([a-z0-9][a-z0-9-]*)\]", text)}:
-            claims[bid].append(info)
+        # The claim is the `## Backlog bullets covered` list, read as a list. An epic that
+        # never wrote the section falls back to every IDed bullet in the file, which is
+        # what the old whole-text scan approximated — minus the prose and fenced mentions
+        # it also counted, which is the point of parsing.
+        section = doc.find_section(COVERED_HEADING)
+        claimed = (
+            [b for top in section.bullets for b in top.walk()]
+            if section is not None
+            else doc.walk_bullets()
+        )
+        for bid in {b.bracketed[0] for b in claimed}:
+            if KEBAB_ID.fullmatch(bid):
+                claims[bid].append(info)
 
     for b in bullets:
         owners = claims.get(b["id"], [])

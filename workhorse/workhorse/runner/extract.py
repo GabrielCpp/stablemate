@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from workhorse.runner.failure import OutputParseError
@@ -62,9 +61,9 @@ def parse_json_from_text(text: str, wanted_keys: list[str] | None = None) -> dic
     which case we again prefer the object that carries the declared output keys.
     """
     wanted = set(wanted_keys or ())
-    strict = _parse_json_strict(text)
-    if strict is not None:
-        unwrapped = _unwrap(strict, wanted)
+    objects = _json_objects(text)
+    for obj in objects:
+        unwrapped = _unwrap(obj, wanted)
         if unwrapped is not None:
             return unwrapped
 
@@ -74,7 +73,7 @@ def parse_json_from_text(text: str, wanted_keys: list[str] | None = None) -> dic
 
     # Best strict effort (a dict missing some keys, or None) so the caller can
     # raise the precise "key not found" / "no parseable JSON" error.
-    return strict
+    return objects[0] if objects else None
 
 
 def _unwrap(obj: dict, wanted: set[str]) -> dict | None:
@@ -102,25 +101,38 @@ def _unwrap(obj: dict, wanted: set[str]) -> dict | None:
     return None
 
 
-def _parse_json_strict(text: str) -> dict | None:
-    """Stdlib-only extraction: fenced ```json block, then first/last brace span."""
-    # Try fenced code block first
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
+def _json_objects(text: str) -> list[dict]:
+    """Every syntactically-complete JSON object embedded in *text*, in source order.
 
-    # Try first top-level JSON object
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
+    Stdlib-only, and a real parse: `json.JSONDecoder().raw_decode` is asked to decode at
+    each `{` and reports where the object it found ends. That is what makes fenced blocks
+    need no fence-matching of their own — the block's content is simply the next complete
+    object — and what fixes the two ways the pair of regexes here used to miss:
 
-    return None
+    * ``re.search(r"\\{.*\\}", DOTALL)`` spans the *first* brace to the *last* one, so an
+      answer that closed with prose containing a `}`, or held an example object as well as
+      the real one, parsed as neither;
+    * the fenced-block pattern required the object to be the block's whole content, and a
+      `}` in a string could end the non-greedy match early.
+
+    Only outermost objects are returned: once one decodes, the scan resumes past its end,
+    so `_unwrap` decides which nested object answers rather than the scan order.
+    """
+    decoder = json.JSONDecoder()
+    found: list[dict] = []
+    idx = 0
+    while (idx := text.find("{", idx)) != -1:
+        try:
+            obj, end = decoder.raw_decode(text, idx)
+        except ValueError:
+            idx += 1
+            continue
+        if isinstance(obj, dict):
+            found.append(obj)
+            idx = end
+        else:
+            idx += 1
+    return found
 
 
 def _parse_json_tolerant(text: str, wanted: set[str]) -> dict | None:

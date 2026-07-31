@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -320,3 +321,422 @@ def test_v1_plan_and_inputs_are_rejected_under_disposable_qa(tmp_path: Path):
     result = cmd_validate(plan, spec, root=tmp_path)
     assert any("qa-plan.yml cannot live" in item for item in result.data["problems"])
     assert any("input 'payload'" in item for item in result.data["problems"])
+
+
+def test_a_command_ready_check_polls_until_the_daemon_says_it_is_up(tmp_path: Path):
+    """`ready_check` accepts a `{cmd, assert_contains}` mapping, not just a URL.
+
+    A URL cannot express every service's notion of "up": the plan that surfaced this ran an
+    API whose only route was a `POST`, so no `GET` answered 200 and the string form could
+    not probe it at all. The mapping used to be handed straight to `urlopen`, which set
+    `.timeout` on it — an `AttributeError`, which the poll's `URLError`/`OSError` guard did
+    not catch, so it aborted the run before its first scenario.
+
+    The daemon here is slow on purpose: the check must fail once and be retried, which is
+    the whole point of a readiness probe, and it must run in the daemon's own directory.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            "cmd": "sleep 0.4; printf listening > ready.txt; sleep 30",
+            "ready_check": {"cmd": "cat ready.txt", "assert_contains": "listening"},
+            "timeout": 10,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    assert not [row for row in records if row.get("kind") == "runner_error"], records
+    (started,) = [row for row in records if row.get("kind") == "daemon_start"]
+    assert started["ready_check"]["assert_contains"] == "listening"
+    # `cat ready.txt` resolved against the daemon's cwd, which is the repo root here.
+    assert (tmp_path / "ready.txt").read_text(encoding="utf-8") == "listening"
+
+
+def test_a_run_that_dies_before_its_scenarios_reports_why(tmp_path: Path):
+    """The caller must be told the cause, not just that nothing ran.
+
+    The ledger has always carried a `runner_error` record, but the returned message carried
+    only counts — so a crash in the runner surfaced to the coder workflow's QA gate as
+    "0 scenarios" with no cause. Having nothing to route around, the gate sent a valid,
+    reviewer-approved plan back to be re-planned until its rework guard ran out. A gate can
+    only act on a failure it can read.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            "cmd": "sleep 30",
+            "ready_check": {"cmd": "false"},  # never ready
+            "timeout": 1,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "invalid", outcome.message
+    assert "0 scenarios" in outcome.message
+    assert "TimeoutError" in outcome.message, outcome.message
+    assert "ready_check" in outcome.message, outcome.message
+    assert outcome.data["runner_errors"], outcome.data
+
+
+def test_a_daemon_that_dies_on_startup_is_reported_as_dead_with_what_it_printed(tmp_path: Path):
+    """"Timed out" describes a slow service. A daemon that never started is a different fault.
+
+    A service that cannot bind, compile or migrate exits in under a second, and the poll used
+    to keep probing the corpse for the rest of the timeout and then report `ready_check timed
+    out after 30s` — true of a slow daemon, misleading about a dead one, and silent on the
+    cause. The run that prompted this had `listen tcp :8080: bind: address already in use`
+    sitting in `qa/daemon-api-server.log` while the QA verdict said only "timed out"; the
+    agent had to go find it and a gate deciding whether to retry could not see it at all.
+
+    So both halves are asserted: the exit code (this is death, not slowness) and the daemon's
+    own last words. The wall clock is asserted too — the whole point is not waiting out a
+    timeout that cannot end any other way.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            "cmd": "echo 'listen tcp :8080: bind: address already in use' >&2; exit 1",
+            "ready_check": {"cmd": "false"},  # never ready, because nothing is listening
+            "timeout": 30,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    started = time.monotonic()
+    outcome = cmd_run(plan, root=tmp_path)
+    elapsed = time.monotonic() - started
+
+    assert outcome.status == "invalid", outcome.message
+    assert "exited with code 1" in outcome.message, outcome.message
+    assert "address already in use" in outcome.message, outcome.message
+    # Failed on the exit, not by waiting out the 30s the plan asked for.
+    assert elapsed < 15, f"polled a dead daemon for {elapsed:.1f}s"
+
+
+def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path):
+    """A readiness probe asks "is anything answering", never "is it mine".
+
+    This is the observed false pass, reproduced. A previous run's server was still bound to
+    the port, so the daemon this run started died instantly on `address already in use` —
+    and the probe got its `201` from the orphan. The session recorded `passed` with zero
+    runner errors, and the suite validated a binary built five minutes earlier instead of
+    the code under test. Silent, and worse than any false failure.
+
+    The stand-in for the orphan is a file the check reads: the daemon fails to create it
+    (something already did), the check finds it anyway, and the run must still fail. A
+    non-zero exit outranks a passing check; `test_a_launcher_that_forks...` pins the other
+    half, that exit 0 does not.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    (tmp_path / "ready.txt").write_text("listening", encoding="utf-8")  # the orphan
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            "cmd": "echo 'bind: address already in use' >&2; exit 1",
+            "ready_check": {"cmd": "cat ready.txt", "assert_contains": "listening"},
+            "timeout": 10,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "invalid", outcome.message
+    assert "exited with code 1" in outcome.message, outcome.message
+    # The message must name the actual fault, or the reader concludes the check is flaky.
+    assert "something other than this run's daemon is answering" in outcome.message
+    assert "address already in use" in outcome.message, outcome.message
+
+
+def test_a_launcher_that_forks_and_exits_zero_still_counts_as_ready(tmp_path: Path):
+    """Exit 0 is a hand-off, not a death — the other half of the rule above.
+
+    `docker compose up -d`, a wrapper that backgrounds the real server, an `npm start` that
+    execs and detaches: all exit 0 while the service they started comes up behind them. If a
+    clean exit stopped the poll, none of them could ever be a daemon here.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            # Hands off to a child that becomes ready after the launcher is already gone.
+            "cmd": "(sleep 1; printf listening > ready.txt) & exit 0",
+            "ready_check": {"cmd": "cat ready.txt", "assert_contains": "listening"},
+            "timeout": 10,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+
+
+def test_an_unrunnable_ready_check_is_caught_at_validation(tmp_path: Path):
+    """Where a bad daemon shape should fail: at validate, with a diagnostic naming it.
+
+    `background` was the one top-level block nobody validated, and its entries are the ones
+    that reach a subprocess. A failure at run time gets a status and a sentence; a failure
+    here is handed to the plan agent as a field-level diagnostic it can act on.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {"name": "api", "cmd": "go run ./cmd/server", "ready_check": "localhost:8080/health"},
+        {"name": "web", "cmd": "npm start", "ready_check": {"assert_contains": "201"}},
+        {"name": "web", "cmd": "", "ready_check": {"cmd": "curl -s /", "url": "/"}},
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    problems = cmd_validate(plan, root=tmp_path).data["problems"]
+
+    assert any("must be an http(s) URL" in item for item in problems), problems
+    assert any("requires a non-empty 'cmd'" in item for item in problems), problems
+    assert any("duplicate background daemon 'web'" in item for item in problems), problems
+    assert any("cmd is required and must be non-empty" in item for item in problems), problems
+    assert any("unknown keys ['url']" in item for item in problems), problems
+
+
+def test_a_step_that_writes_into_qa_steps_itself_finds_the_directory_there(tmp_path: Path):
+    """`qa/steps/` is a layout ostler publishes, so ostler has to be the one that creates it.
+
+    Nothing here needed it early for ostler's own sake: the `out:` sidecar mkdirs its parent
+    after the subprocess returns, and `qa/asserts/` is made just before the first assertion is
+    written. But the plan prompt tells agents to put evidence under `qa/steps/`, and a plan took
+    it literally with a `curl -o .../qa/steps/create-fixture.json` fixture step — which runs
+    before ostler has written any sidecar, and so before anything has made the directory. curl
+    cannot create it, exits 23, and the capture that step was to feed comes back empty. The
+    request that reads the capture then goes somewhere unrelated and gets a plausible wrong
+    answer: a 404 that reads as a product defect rather than as a missing directory.
+
+    So the step here is deliberately a plain shell redirect rather than an `out:` — `out:` was
+    never broken, and asserting on it would test the wrong half. It bites only the first run
+    against a fresh spec dir, which is exactly the run least likely to be doubted.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    fixture = spec / "qa/steps/create-fixture.json"
+    data["scenarios"][0]["actions"].insert(
+        0,
+        {
+            "do": "command",
+            "id": "create-fixture",
+            "cmd": f"printf '{{\"code\":\"abc\"}}' > {fixture}",
+        },
+    )
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert not fixture.parent.exists()  # fresh spec dir: the first run is the one that breaks
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    assert json.loads(fixture.read_text(encoding="utf-8")) == {"code": "abc"}
+
+
+def test_an_out_sidecar_never_blanks_a_file_the_command_wrote_itself(tmp_path: Path):
+    """`out:` is a capture of stdout, and an empty capture is not a reason to delete evidence.
+
+    A plan step that redirects its own stdout — `curl -w '%{http_code}' … > qa/steps/x.txt` —
+    and also declares `out: qa/steps/x.txt` leaves nothing on the pipe for ostler to capture.
+    The sidecar write then landed 0 bytes on top of the bytes curl had just written, and the
+    assertion reading that file compared a status code against an empty string. It failed, and
+    it failed *as a product defect*: a run reported three acceptance criteria broken while its
+    own per-step ledger recorded the correct 404/201/302 for every request. The one criterion
+    that passed was the one whose oracle read a `-D` header dump instead.
+
+    Naming both is redundant, and a validator could say so — but the harm here is that ostler
+    destroys output it did not produce, so the guard belongs at the write. `qa/` is wiped at
+    session start, so a non-empty file at that path is always this run's own evidence.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    status = spec / "qa/steps/status.txt"
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "probe",
+            "cmd": f"printf '404' > {status}",
+            "out": "qa/steps/status.txt",
+        },
+        {
+            "do": "command",
+            "id": "assert-404",
+            "cmd": f"printf 'status=%s' \"$(cat {status})\"",
+            "assert_contains": "status=404",
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    assert status.read_text(encoding="utf-8") == "404"
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    probe = next(row for row in records if row.get("id") == "probe")
+    # The ledger says why the sidecar holds bytes ostler did not capture.
+    assert probe["stdout_file_written_by_cmd"] is True
+    assert probe["stdout_file"] == str(status)
+
+
+def test_expect_http_reads_a_status_the_command_redirected_to_its_own_out_file(tmp_path: Path):
+    """The redirect that hid the file's contents hid the status code with it.
+
+    `expect_http` reads the trailing `%{http_code}` that curl appends to stdout. A step that
+    sends that stdout to a file has an empty pipe, so the status parsed as None and the check
+    compared it against the code the plan expected — failing on every request the plan made,
+    while the header dumps beside it showed the server had answered correctly all along.
+
+    Keeping the file (the sibling guard) is not enough on its own: the four `assert_contains`
+    oracles that re-read those files went green while four `expect_http` checks on the same
+    steps stayed red, which is a worse state to leave a run in than uniformly failing. If the
+    file is the step's stdout, everything derived from stdout has to come from it.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    body = spec / "qa/steps/response.txt"
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "request",
+            # What `curl -s -w '\n%{http_code}' … > file` leaves behind: body, then the code.
+            "cmd": f"printf 'served\\n302' > {body}",
+            "out": "qa/steps/response.txt",
+            "expect_http": 302,
+            "assert_contains": "served",
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    # The file is untouched — the status was parsed out of it, not written back over it.
+    assert body.read_text(encoding="utf-8") == "served\n302"
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    request = next(row for row in records if row.get("id") == "request")
+    assert request["http_status"] == 302
+    assert request["stdout_file_written_by_cmd"] is True
+
+
+def test_expect_http_reads_the_status_line_of_a_curl_header_dump(tmp_path: Path):
+    """`-D` is the other way a plan hands ostler a status, and it was the unreadable one.
+
+    `curl -o body -D headers` sends the body one way and the response head another, leaving
+    stdout empty — so there is no trailing `%{http_code}` for ostler to find, and `expect_http`
+    compared None to 201 while the step's own sibling assertion read the same number off the
+    same file with `head -1 | awk '{print $2}'`. Reporting an acceptance criterion broken over
+    a status code sitting in a file ostler already captured is the worst answer available: it
+    reads as a product defect and sends the loop off repairing working code.
+
+    The redirect chain here is the reason the *last* status line wins rather than the first —
+    with `-L` curl dumps every hop, and the expectation is about the response that came back,
+    not the 302 that pointed at it.
+    """
+    spec = tmp_path / "docs/specs/demo"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    headers = spec / "qa/steps/create-headers.txt"
+    dump = "HTTP/1.1 302 Found\r\nLocation: /final\r\n\r\nHTTP/1.1 201 Created\r\nContent-Type: application/json\r\n\r\n"
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "create",
+            # What `curl -s -o body.json -D headers.txt -L …` leaves in the dump.
+            "cmd": f"printf '{dump}' > {headers}",
+            "out": "qa/steps/create-headers.txt",
+            "expect_http": 201,
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    # The head is evidence in its own right — nothing is stripped out of it.
+    assert "Location: /final" in headers.read_text(encoding="utf-8")
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    create = next(row for row in records if row.get("id") == "create")
+    assert create["http_status"] == 201
+
+
+def test_a_trailing_write_out_code_still_beats_a_body_that_looks_like_headers(tmp_path: Path):
+    """The header-dump read is a fallback, and it has to stay one.
+
+    A body can legitimately begin with `HTTP/` — a proxy log, a captured transcript, a fixture
+    describing a response. If the dump scan ran first it would quietly win over the code curl
+    was actually asked to write out, and the step would assert against a number from the payload
+    instead of from the request. Ordering is the whole guarantee here, so it gets its own test.
+    """
+    spec = tmp_path / "docs/specs/demo"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "transcript",
+            "cmd": "printf 'HTTP/1.1 500 Internal Server Error\\nrecorded upstream\\n200'",
+            "expect_http": 200,
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message

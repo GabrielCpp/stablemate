@@ -182,6 +182,29 @@ def test_a_wrapped_answer_survives_repair_too():
     }
 
 
+# ── the object ends where the parser says, not at the last brace in the reply ─
+
+def test_prose_after_the_object_containing_a_brace():
+    """The old first-brace-to-last-brace span swallowed the trailing prose and parsed
+    as nothing, dropping a perfectly good answer onto the retry ladder."""
+    text = '{"status": "ok"}\n\nNote: the `}` above closes the object.'
+    assert m.parse_json_from_text(text, ["status"]) == {"status": "ok"}
+
+
+def test_an_example_object_then_the_real_one():
+    """Two complete objects: the one carrying the declared keys wins, whichever came first."""
+    text = 'For reference the shape is {"status": "…"}. My answer:\n{"status": "clean", "n": 1}'
+    assert m.parse_json_from_text(text, ["status", "n"]) == {"status": "clean", "n": 1}
+
+
+def test_a_brace_inside_a_string_does_not_end_the_object():
+    text = '```json\n{"status": "ok", "note": "use } to close"}\n```'
+    assert m.parse_json_from_text(text, ["status", "note"]) == {
+        "status": "ok",
+        "note": "use } to close",
+    }
+
+
 # ── selection helper ──────────────────────────────────────────────────────────
 
 def test_select_object_from_list_prefers_wanted():

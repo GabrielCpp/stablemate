@@ -28,6 +28,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) test-bench
 	$(MAKE) check-public
 	$(MAKE) check-no-env
+	$(MAKE) check-parsers
 
 .PHONY: test-bench
 test-bench: ## Run the benchmark harness's own tests (its scoring must be trustworthy)
@@ -54,6 +55,13 @@ check-no-env: ## Guard the no-environment rule (a workflow's inputs are paramete
 	# A value read from os.environ is in no checkpoint and no telemetry, so a resume
 	# silently takes a different one and nobody can tell what the run worked on.
 	uv run python scripts/check_no_env.py
+
+.PHONY: check-parsers
+check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets its parser)
+	# A regex over a structured document is that format's parser rewritten without its
+	# cases, and it fails silently in both directions — a `//` inside a JSON string read
+	# as a comment, a link matched inside a fenced code block.
+	uv run python scripts/check_parsers.py
 
 .PHONY: build
 build: ## Build sdists + wheels (into each package's dist/)

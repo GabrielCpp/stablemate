@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ostler import Ostler, markdown, registry
 from ostler.model import section_gaps, status_bullet
+from workhorse import gates
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.nodes._blueprint import blueprint
@@ -29,8 +30,9 @@ from workhorse_workflows.author.shared.schemas.main import (
     StoryChoice,
 )
 
-#: The backlog scope-item contract, shared with the coverage validator: `- [id] …`.
-_BACKLOG_ID_RE = re.compile(r"^\s*-\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]\s*(.*)$")
+#: The backlog scope-item contract, shared with the coverage validator: `- [id] …`, read off
+#: the parsed list rather than matched line by line, so a bullet inside a fenced example is
+#: not a scope item and a wrapped one is still whole.
 
 #: Multi-word phrases that signal an UNRESOLVED decision shipped to the coder. A story must
 #: RESOLVE every decision or escalate it via the writer's `blocked` status — it must not write
@@ -60,9 +62,6 @@ _OPEN_QUESTION_PHRASES = [
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
 
-_STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
-_SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
-
 
 # ── story mode's single story ───────────────────────────────────────────────
 
@@ -90,15 +89,20 @@ def _resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str
 
     if backlog_path.is_file():
         try:
-            for line in backlog_path.read_text(encoding="utf-8").splitlines():
-                m = _BACKLOG_ID_RE.match(line)
-                if not m:
-                    continue
-                bid, btext = m.group(1).strip(), m.group(2).strip()
-                if bare == bid or raw == line.strip() or (btext and btext == raw):
-                    return bid, line.strip().lstrip("-").strip(), True
+            text = backlog_path.read_text(encoding="utf-8")
         except OSError:
-            pass
+            text = ""
+        for item in markdown.split(text).walk_bullets():
+            bid, btext = item.bracketed
+            # The operator names the bullet by its id, by its text, or by pasting the whole
+            # line back — with or without the list marker, which the parse has already taken
+            # off, so `raw` is stripped of one here rather than compared against a line.
+            if bid and (
+                bare == bid
+                or raw.lstrip("-").strip() == item.text.strip()
+                or (btext and btext == raw)
+            ):
+                return bid, item.text.strip(), True
 
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bare):
         return bare, bare, False
@@ -492,8 +496,8 @@ def record_attempt(
 
 
 def _scope_of(text: str) -> str:
-    m = _SCOPE_RE.search(text)
-    return "epic" if (m.group(1).lower() if m else "story") == "epic" else "story"
+    """The inbox's `SCOPE:` line. Only `epic` is honoured; anything else reworks one story."""
+    return "epic" if gates.scope_of(text) == "epic" else "story"
 
 
 @blueprint.node
@@ -523,17 +527,18 @@ def check_story_feedback(
         return Feedback()
 
     current = inbox.read_text()
-    m = _STATUS_RE.search(current)
-    state = m.group(1).upper() if m else ""
+    state = gates.status_of(current)
 
     if state == "NEW":
-        inbox.write_text(_STATUS_RE.sub("STATUS: CONSUMED", current, count=1))
+        inbox.write_text(gates.set_status(current, "CONSUMED"))
         logger.info("feedback present (scope=%s)", _scope_of(current))
         return Feedback(present=True, scope=_scope_of(current), content=current)
 
     if state == "":
         if current.strip():
-            inbox.write_text("STATUS: CONSUMED\n\n" + current)
+            # `set_status` prepends the header when there is none — the same bytes this
+            # arm used to write by hand, now from the one implementation of the format.
+            inbox.write_text(gates.set_status(current, "CONSUMED"))
             logger.info("untagged feedback content treated as NEW (scope=%s)", _scope_of(current))
             return Feedback(present=True, scope=_scope_of(current), content=current)
         logger.info("no unconsumed feedback")
@@ -571,28 +576,36 @@ def prune_bullet(
         return Pruned()
 
     try:
-        lines = backlog_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        raw = backlog_path.read_text(encoding="utf-8")
     except OSError:
         logger.warning("could not read backlog %s — nothing to prune", backlog_path)
         return Pruned()
 
-    kept: list[str] = []
-    removed = 0
-    remaining = 0
-    # One predicate for both halves: a line is a scope item iff it carries an `[id]` handle.
+    # One predicate for both halves: an item is a scope item iff it carries an `[id]` handle.
     # The count used to run off a looser bullet regex, which counted a backlog's prose
     # bullets — its surfaces list, say — as outstanding work, so an emptied backlog reported
     # work left in it. Removing by id and counting by anything else is two contracts.
-    for line in lines:
-        m = _BACKLOG_ID_RE.match(line)
-        if not m:
-            kept.append(line)
+    doc = markdown.split(raw)
+    offset = doc.body_offset
+    drop: set[int] = set()
+    removed = 0
+    remaining = 0
+    for item in doc.walk_bullets():
+        if item.line_start + offset in drop:
+            continue  # a sub-bullet already carried off inside the matched item's span
+        bid = item.bracketed[0]
+        if not bid:
             continue
-        if m.group(1).strip() == bullet_id:
+        if bid == bullet_id:
             removed += 1
-            continue
-        remaining += 1
-        kept.append(line)
+            # The span, not the first line: an item with a continuation or sub-bullets goes
+            # whole, rather than leaving its tail under whatever bullet follows.
+            drop.update(range(item.line_start + offset, item.line_end + offset))
+        else:
+            remaining += 1
+
+    lines = raw.splitlines(keepends=True)
+    kept = [line for i, line in enumerate(lines) if i not in drop]
 
     if removed:
         try:

@@ -39,14 +39,9 @@ book wins; a tool that cannot parse it is the defect.
 """
 from __future__ import annotations
 
-import re
 from typing import Any
 
-#: A leading run of inline-code spans separated by nothing but commas and whitespace. Anchored,
-#: so a value that opens with prose matches nothing; non-greedy inside each span so adjacent
-#: refs stay separate; the fences are outside the capture so the content needs no stripping.
-_REF_LIST = re.compile(r"\A\s*(`[^`]+`)(\s*,\s*`[^`]+`)*")
-_SPAN = re.compile(r"`([^`]+)`")
+from ostler.markdown import leading_code_spans
 
 
 def normalize_ref(value: str) -> str:
@@ -71,8 +66,10 @@ def code_refs(value: Any) -> list[str]:
 
     out: list[str] = []
     for item in raw:
-        leading = _REF_LIST.match(item)
-        parts = _SPAN.findall(leading.group(0)) if leading else item.split(",")
+        # A value that opens with inline code is a run of `path::symbol` spans; one that
+        # opens with prose is a bare comma-separated list. The parser decides which, and
+        # where each span ends — a backtick regex could not read ``a `b` c``.
+        parts = leading_code_spans(item) or item.split(",")
         out.extend(ref for ref in (normalize_ref(part) for part in parts) if ref)
     return list(dict.fromkeys(out))
 

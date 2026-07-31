@@ -121,6 +121,16 @@ still gets ostler's resolution rules applied inside it, via the `*_under` family
 Two probes look like exceptions and are not: the repo-root resolvers test for a `docs/epics/`
 directory, and that is how a *root* is recognized before there is a root to ask ostler about.
 
+**And what is *in* the document is ostler's answer too.** A node that reads a backlog entry,
+an epic's stories, a gate's frontmatter or a table in the book goes through
+`ostler.markdown` — `find_section` / `Section.bullets` / `Bullet.bracketed` /
+`walk_tables` — not a `^\s*-\s*\[(\w+)\]` of its own. Same failure mode as a hand-built
+path, one layer down: a bullet regex matches inside a fenced example, misses the
+`- **Status**:` spelling of the field it wants, and reports a confident wrong answer rather
+than raising. Agent *output* is different — a CLI's log line has no grammar, and regex is
+what reads it. The boundary, the parser for each format, and how to declare an exemption
+are in the `stablemate-structured-parsing` skill; `make check-parsers` enforces it.
+
 ## A prompt does not name a skill (load-bearing)
 
 **Which skill teaches a subject is the repo's answer, asked for by tag.** A prompt in here

@@ -104,6 +104,12 @@ ceiling is a *total*, not a per-attempt allowance: resume a 1200s-budget run wit
 again and it meets an expired deadline on its first transition check and stops having done
 nothing. Pass the new total — 3600 above buys 2400 more seconds, not 3600.
 
+`--resume` points at the newest run of that phase **that has a checkpoint**, including one
+that ended on `fail`. Workhorse's own `--resume-latest` would skip that run — a `terminal`
+means the run is over, which is the right default for an operator — but this harness exists
+to fix the workflow a run failed on and then continue it, and that run holds hours of story
+work behind its checkpoint. Naming the dir is how you say the verdict is stale.
+
 A budget stop is a **diagnostic, not a target**. Read `watch` before raising one: the
 question it answers is whether the run was progressing when the clock caught it or already
 stuck, and only the first is worth more time.
@@ -130,6 +136,13 @@ rather than needing to be read. What it looks for:
   goes false (a guard).
 - **Stale code** — the run's newest event predates the workflow source it ran. A verdict
   about code that no longer exists is worse than no verdict.
+
+The `progress:` row is context, not one of the three — deliberately, and it is the row most
+likely to be misread. It counts stories whose **live, uncommitted** frontmatter says done, so
+it can go *down*: a story that reached `QA passed` and then failed review is rewritten to
+`Review fixes applied`, and 1/3 becomes 0/3. That is the workflow working. Chase it only when
+it falls with no review verdict to explain it — otherwise read the story's `## Implementation
+Status` block, which names the review that demoted it.
 
 ### `babysit` — the loop that closes over it
 

@@ -20,6 +20,8 @@ import logging
 import re
 from pathlib import Path
 
+from unidiff import PatchSet
+from unidiff.errors import UnidiffParseError
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult, ScreenshotFlush
@@ -171,30 +173,34 @@ def _base_ref(root: Path) -> str:
 
 
 def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
-    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`."""
+    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`.
+
+    Parsed rather than scanned. The hand-written version this replaces tracked the current
+    file and line number in loop variables and re-derived the line number from
+    `re.search(r"\\+(\\d+)", line)` on the hunk header — which reads the *first* `+N` in
+    `@@ -12,0 +34 @@`, and so read the pre-image start for any header whose old side happens
+    to be spelled without a comma. Worse, every one of its `startswith` tests is a claim
+    about a *line's position in the file*, which a hunk body can forge: a diff of a diff —
+    which this repo contains, in its own test fixtures — carries added lines whose own
+    content begins `+++ b/` or `@@ `, silently re-pointing the filename and line counter at
+    whatever that fixture happened to say. `unidiff` knows a hunk body from a hunk header,
+    and reads the target line number the format already states.
+    """
     diff = diff_text(root, "--unified=0", base_ref, "HEAD", "--")
     if not diff:
         return []
 
-    current_file = ""
-    current_lineno = 0
-    added: list[tuple[str, int, str]] = []
-    for line in diff.splitlines():
-        if line.startswith("diff --git "):
-            current_file = ""
-            current_lineno = 0
-        elif line.startswith("+++ b/"):
-            current_file = line[6:]
-            current_lineno = 0
-        elif line.startswith("@@ "):
-            match = re.search(r"\+(\d+)", line)
-            current_lineno = int(match.group(1)) - 1 if match else 0
-        elif line.startswith("+") and not line.startswith("+++"):
-            current_lineno += 1
-            added.append((current_file, current_lineno, line[1:]))
-        elif not line.startswith("-"):
-            current_lineno += 1
-    return added
+    try:
+        patch = PatchSet(diff)
+    except UnidiffParseError:
+        return []
+    return [
+        (patched.path, line.target_line_no, line.value.rstrip("\n"))
+        for patched in patch
+        for hunk in patched
+        for line in hunk
+        if line.is_added
+    ]
 
 
 def _is_test_file(filename: str) -> bool:

@@ -24,6 +24,26 @@ def test_one_bullet_may_cite_several_targets():
     ]
 
 
+def test_a_bullet_wrapped_across_lines_still_cites_both():
+    """Found by diffing `ostler doctor` over a real book before and after this pass.
+
+    Two refs do not fit on one line at the width books are written to, so the second lands on
+    a continuation line. The parser hands that newline back as a `softbreak` token rather
+    than as text, and reading only `text` for the separator ended the run there — dropping
+    the second target, and with it a genuinely ungrounded symbol the book had been reporting.
+    """
+    value = "`report/services/render.go::buildHTML`,\n`report/services/render.go::tmpl`"
+    assert refs.code_refs(value) == [
+        "report/services/render.go::buildHTML", "report/services/render.go::tmpl",
+    ]
+
+
+def test_prose_on_a_continuation_line_still_ends_the_run():
+    """The line break is whitespace, not an exemption: what follows it is judged as before."""
+    value = "`api/a.py`,\n`api/b.py`\nread by the `save` handler"
+    assert refs.code_refs(value) == ["api/a.py", "api/b.py"]
+
+
 def test_a_trailing_gloss_is_dropped_not_glued_on():
     """Prose after a ref is prose — a single-ref case that was mangled too."""
     value = "`web/app/components/navbar/Navbar.tsx::Navbar` (inline JSX, not a named export)"

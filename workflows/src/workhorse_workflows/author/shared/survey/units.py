@@ -16,11 +16,11 @@ import json
 import logging
 from pathlib import Path
 
-import yaml
+from ostler import markdown
 from workhorse import worklist as wl
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey.inventory import record_slug
-from workhorse_workflows.author.shared.survey.records import FRONT_MATTER_RE, RECORD_STATUSES
+from workhorse_workflows.author.shared.survey.records import RECORD_STATUSES
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import MarkResult, UnitPick
 
@@ -103,14 +103,8 @@ def _record_status(path: Path) -> str | None:
     """
     if not path.is_file():
         return None
-    m = FRONT_MATTER_RE.match(path.read_text(encoding="utf-8"))
-    if not m:
-        return None
-    try:
-        data = yaml.safe_load(m.group(1))
-    except yaml.YAMLError:
-        return None
-    status = data.get("status") if isinstance(data, dict) else None
+    doc = markdown.split(path.read_text(encoding="utf-8"))
+    status = (doc.frontmatter or {}).get("status")
     return status if status in RECORD_STATUSES else None
 
 

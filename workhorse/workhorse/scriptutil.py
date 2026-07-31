@@ -25,19 +25,24 @@ import importlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import NoReturn
 
+import json5
+
 
 def load_jsonc(text: str) -> dict:
-    """Parse JSON with Comments (trailing commas, // comments) as used by VSCode."""
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r",\s*([}\]])", r"\1", text)
-    return json.loads(text)
+    """Parse JSON with Comments (trailing commas, // comments) as used by VSCode.
+
+    A real JSON5 parse, not a strip-then-`json.loads`. The stripping version deleted from
+    `//` to end of line without knowing what a string literal is, so any workspace file
+    holding a URL — `{"url": "https://example.com"}` — was truncated mid-string and then
+    reported as invalid JSON. `.code-workspace` files routinely hold URLs and `//` paths.
+    """
+    return json5.loads(text)
 
 
 def load_json(path: Path, label: str, logger: logging.Logger) -> dict:

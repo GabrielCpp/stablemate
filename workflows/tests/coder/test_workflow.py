@@ -30,6 +30,7 @@ tokenless run would, and that pass-through is itself asserted rather than mocked
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -48,7 +49,15 @@ from workhorse_workflows.coder import workflow as coder_workflow
 from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
 from workhorse_workflows.coder.nodes.pr import flag_ci_failure, merge_pr, open_pr, open_story_pr
-from workhorse_workflows.coder.shared.queue import branch_story, commit_story, select_epic
+from workhorse_workflows.coder.shared.queue import (
+    BLOCKED_FILE,
+    SKIP_FILE,
+    begin_run,
+    branch_epic,
+    branch_story,
+    commit_story,
+    select_epic,
+)
 from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
@@ -371,6 +380,41 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
 
 
+def test_a_fresh_run_drops_the_skip_state_a_previous_run_left_in_the_run_dir(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run dir outlives the run that made it, and the two skip files must not.
+
+    Workhorse derives the run id from the params digest, so the same command lands in the
+    same directory every time. `blocked-epics.txt` and `qa-skip-stories.txt` both mean "set
+    aside for the rest of THIS run", and both live there — so before `begin_run` existed, a
+    retry read the previous run's verdicts and ended on `select_epic`'s "all 1 queued
+    epic(s) were set aside this run" before doing any work. Every retry was a no-op, which
+    to an unattended queue is indistinguishable from "nothing left to do".
+
+    So the run dir is seeded here with exactly what the previous run would have written —
+    the only epic in the queue, and the only story in it — and the assertion is that the
+    story still builds.
+    """
+    repo = epic()
+    _Sub(repo).install(monkeypatch)
+    run_env = env()
+    run_env.writer.run_dir.mkdir(parents=True, exist_ok=True)
+    (run_env.writer.run_dir / BLOCKED_FILE).write_text(f"{EPIC}\n", encoding="utf-8")
+    (run_env.writer.run_dir / SKIP_FILE).write_text("STORY-1\n", encoding="utf-8")
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert _output(run_env, begin_run)["cleared"] == [BLOCKED_FILE, SKIP_FILE]
+    # The story the previous run gave up on built, and its epic was never set aside.
+    assert (repo / "src" / "STORY-1.py").is_file()
+    assert "set aside" not in _output(run_env, select_epic)["reason"]
+    assert result.has_epic is False, result
+
+
 def test_the_story_is_stamped_and_the_next_selection_reads_it_as_done(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -422,6 +466,47 @@ def test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue(
     assert _output(run_env, merge_pr)["merge_status"] == "unavailable"
     # The merge was a no-op, so HEAD is left on the epic branch for a manual push.
     assert _head(repo) == f"feat/{EPIC}"
+
+
+# --------------------------------------------------------------------------- epic branch
+
+
+def test_retrying_at_the_same_commit_archives_again_instead_of_dead_ending(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A retry after a failure *is* a second attempt at an unchanged HEAD.
+
+    `branch_epic` archives a leftover `feat/<epic>` to `archive/<epic>-<sha>`, and that name
+    is a function of the commit — so the second retry wants a name the first retry already
+    took. It used to decline the rename there, on the reasoning that losing a ref is worse
+    than failing loudly, and then fail on the `checkout -b` that the branch it had just
+    declined to move was still in the way of. Loudly, and identically, on every subsequent
+    attempt: nothing about the repo changes between them, so the queue could not start again
+    until a human renamed a branch by hand. An unattended run does not have one, and
+    "failed to create epic branch" is a dead end rather than a diagnosis.
+
+    Three calls at one commit, because two is not enough to reach the collision. The
+    property that motivated the refusal is asserted too — every archive still exists and
+    still points at the commit it was cut from, so suffixing bought the retry without
+    trading away a single ref.
+    """
+    repo = epic()
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    for _ in range(3):
+        result = branch_epic(logger, epic=EPIC, repo_dir=str(repo))
+        assert result.epic_branch == f"feat/{EPIC}"
+
+    branches = git(repo, "branch", "--format=%(refname:short) %(objectname)").stdout.split("\n")
+    archives = sorted(b for b in branches if b.startswith("archive/"))
+    assert _head(repo) == f"feat/{EPIC}"
+    # Two retries archived two branches, under names that had to differ from each other.
+    assert len(archives) == 2, archives
+    assert len({a.split()[0] for a in archives}) == 2, archives
+    # Nothing was overwritten or deleted: both still resolve, and to the right commit.
+    assert all(a.split()[1] == head for a in archives), archives
 
 
 # --------------------------------------------------------------------------- story mode

@@ -4,11 +4,12 @@ Ports `append-backlog-item.py` (the filing end) and the fix loop's four drain sc
 `select-next-fix-item.py`, `seed-fix-story.py`, `prune-fix-item.py` and
 `mark-fix-blocked.py`.
 
-**The five are one module because they are one contract.** `BACKLOG_ID_RE` is declared
+**The five are one module because they are one contract.** The bullet pattern was declared
 identically in four of the five scripts and `## Filed by coder` in two, and that repetition
 is not incidental — a drain that parsed bullets differently from the filer would silently
-skip items the filer wrote. The port has one definition of each, which is the only way to
-make that class of drift impossible rather than merely unlikely.
+skip items the filer wrote. The port has one definition of each (`backlog_bullets`,
+`FILED_HEADING`), which is the only way to make that class of drift impossible rather than
+merely unlikely.
 
 *Filing*: when implement, review or QA finds work that is genuinely *separate* scope, it
 writes the item to `<spec_dir>/backlog-items.json`; `file_backlog_items` appends it to
@@ -37,6 +38,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -53,16 +55,56 @@ from workhorse_workflows.coder.shared.schemas.backlog import (
 )
 from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
-#: The backlog's bullet grammar: `- [kebab-id] one self-contained line`.
-BACKLOG_ID_RE = re.compile(r"^\s*-\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]\s*(.*)$")
-
 #: Where an item lands when it names no section of its own, created once per backlog.
 FILED_HEADING = "## Filed by coder"
+#: The heading's own title, as the parser reports it (no `##`, no surrounding space).
+FILED_TITLE = FILED_HEADING.lstrip("#").strip()
 
 #: A trailing `(blocked: …)` annotation is `mark-fix-blocked.py`'s, not part of the item's
 #: identity — stripped before comparing descriptions so a re-file still de-dups against it.
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
 
+
+@dataclass(frozen=True)
+class BacklogBullet:
+    """One `- [id] text` backlog item, located in the file it came from.
+
+    `line` is 0-based and file-absolute (front matter included) because both drains edit
+    the bullet in place — annotating it `(blocked: …)` or dropping it.
+    """
+
+    line: int
+    id: str
+    text: str
+
+    @property
+    def blocked(self) -> bool:
+        """Whether `mark_fix_blocked` has already annotated this item."""
+        return "(blocked" in self.text.lower()
+
+
+def backlog_bullets(text: str, *, section: str = "") -> list[BacklogBullet]:
+    """Every `- [id] …` item in a backlog, in file order; optionally one section's only.
+
+    Parsed by `ostler.markdown` rather than matched line-by-line, which is what keeps a
+    bullet inside a fenced example — a backlog that documents its own grammar has one —
+    out of the drain, and what makes "the lines under `## Filed by coder`" the section's
+    parsed span instead of a scan for the next `#`.
+    """
+    doc = markdown.split(text)
+    if section:
+        found = doc.find_section(section)
+        if found is None:
+            return []
+        bullets = [b for top in found.bullets for b in top.walk()]
+    else:
+        bullets = doc.walk_bullets()
+    out: list[BacklogBullet] = []
+    for bullet in sorted(bullets, key=lambda b: b.line_start):
+        ident, rest = bullet.bracketed
+        if ident:
+            out.append(BacklogBullet(bullet.line_start + doc.body_offset, ident, rest))
+    return out
 
 
 def kebab(raw: str) -> str:
@@ -90,14 +132,12 @@ class Seen:
     gate depends on filed items existing.
     """
 
-    def __init__(self, lines: list[str]) -> None:
+    def __init__(self, text: str) -> None:
         self.ids: set[str] = set()
         self.descs: set[str] = set()
         self.idsets: set[frozenset[str]] = set()
-        for line in lines:
-            match = BACKLOG_ID_RE.match(line)
-            if match:
-                self.add(match.group(1), match.group(2))
+        for bullet in backlog_bullets(text):
+            self.add(bullet.id, bullet.text)
 
     def add(self, item_id: str, desc: str) -> None:
         """Record an item so the rest of the batch de-dups against it too."""
@@ -196,8 +236,9 @@ def file_backlog_items(
                 ),
             )
 
-    lines = backlog_path.read_text(encoding="utf-8").splitlines()
-    seen = Seen(lines)
+    raw = backlog_path.read_text(encoding="utf-8")
+    lines = raw.splitlines()
+    seen = Seen(raw)
 
     appended = 0
     skipped = 0
@@ -249,46 +290,30 @@ def select_fix_item(
         return FixPick(reason=f"no backlog file at {rel} — nothing to drain")
 
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        raw = path.read_text(encoding="utf-8")
     except OSError as exc:
         logger.warning("could not read %s: %s", rel, exc)
         return FixPick(reason=f"could not read {rel}: {exc}")
 
-    section = _filed_section(lines)
-    if not section:
+    if markdown.split(raw).find_section(FILED_TITLE) is None:
         logger.info("no '%s' section — nothing to drain", FILED_HEADING)
         return FixPick(reason=f"no '{FILED_HEADING}' section — nothing to drain")
 
-    for line in section:
-        match = BACKLOG_ID_RE.match(line)
-        if not match or "(blocked" in line:
+    for bullet in backlog_bullets(raw, section=FILED_TITLE):
+        if bullet.blocked or not bullet.text:
             continue
-        bullet_id, text = match.group(1).strip(), match.group(2).strip()
-        if not bullet_id or not text:
-            continue
-        logger.info("drew '%s' from '%s'", bullet_id, FILED_HEADING)
+        logger.info("drew '%s' from '%s'", bullet.id, FILED_HEADING)
         return FixPick(
             has_fix=True,
-            fix_bullet_id=bullet_id,
-            fix_bullet_text=text,
-            reason=f"drew '{bullet_id}' from '{FILED_HEADING}'",
+            fix_bullet_id=bullet.id,
+            fix_bullet_text=bullet.text,
+            reason=f"drew '{bullet.id}' from '{FILED_HEADING}'",
         )
 
     logger.info("'%s' has no drainable bullet (empty or all blocked)", FILED_HEADING)
     return FixPick(
         reason=f"'{FILED_HEADING}' has no drainable bullet (empty or all blocked)"
     )
-
-
-def _filed_section(lines: list[str]) -> list[str]:
-    """The lines under `## Filed by coder`, heading excluded, up to the next `#` or EOF."""
-    for index, line in enumerate(lines):
-        if line.strip() == FILED_HEADING:
-            end = index + 1
-            while end < len(lines) and not lines[end].lstrip().startswith("#"):
-                end += 1
-            return lines[index + 1 : end]
-    return []
 
 
 @blueprint.node
@@ -497,10 +522,11 @@ def prune_fix_item(
 ) -> FixPruned:
     """Remove a shipped fix's bullet from the backlog. Ostler first, direct edit second.
 
-    `okf.backlog_prune` already matches `- [<id>] …` anywhere in the file and rewrites it
-    without the line, so it is the primary path. The regex fallback covers a custom
-    `backlog_path` layout ostler does not know to look at — a mechanical removal it could
-    do itself should never hard-stop the drain loop.
+    `okf.backlog_prune` already finds the `- [<id>] …` bullet anywhere in the file and
+    rewrites it without the line, so it is the primary path. The direct-edit fallback
+    covers a custom `backlog_path` layout ostler does not know to look at — a mechanical
+    removal it could do itself should never hard-stop the drain loop. Both ends read the
+    bullet off the same parse, so the fallback cannot remove a line ostler would have kept.
     """
     bullet_id = bullet_id.strip()
 
@@ -516,7 +542,7 @@ def prune_fix_item(
             pruned=True, bullet_id=bullet_id, reason=f"pruned '{bullet_id}' via ostler"
         )
 
-    if _prune_via_regex(root / rel, bullet_id):
+    if _prune_directly(root / rel, bullet_id):
         logger.info("pruned '%s' via direct edit", bullet_id)
         return FixPruned(
             pruned=True,
@@ -530,21 +556,19 @@ def prune_fix_item(
     )
 
 
-def _prune_via_regex(path: Path, bullet_id: str) -> bool:
+def _prune_directly(path: Path, bullet_id: str) -> bool:
     """Drop every `- [bullet_id] …` line from the file. False when there was nothing to drop."""
     if not path.is_file():
         return False
-    kept: list[str] = []
-    removed = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = BACKLOG_ID_RE.match(line)
-        if match and match.group(1).strip() == bullet_id:
-            removed = True
-            continue
-        kept.append(line)
-    if removed:
-        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    return removed
+    lines = path.read_text(encoding="utf-8").splitlines()
+    drop = {b.line for b in backlog_bullets("\n".join(lines)) if b.id == bullet_id}
+    if not drop:
+        return False
+    path.write_text(
+        "\n".join(line for i, line in enumerate(lines) if i not in drop) + "\n",
+        encoding="utf-8",
+    )
+    return True
 
 
 @blueprint.node
@@ -581,18 +605,13 @@ def mark_fix_blocked(
         return FixBlocked(bullet_id=bullet_id, reason=f"no backlog file at {rel}")
 
     lines = path.read_text(encoding="utf-8").splitlines()
-    changed = False
-    found = False
-    for index, line in enumerate(lines):
-        match = BACKLOG_ID_RE.match(line)
-        if not match or match.group(1).strip() != bullet_id:
-            continue
-        found = True
-        if "(blocked" in line:
-            break  # already annotated — idempotent no-op
-        lines[index] = f"{line.rstrip()} (blocked: {reason_note})"
-        changed = True
-        break
+    target = next(
+        (b for b in backlog_bullets("\n".join(lines)) if b.id == bullet_id), None
+    )
+    found = target is not None
+    changed = found and not target.blocked
+    if changed:
+        lines[target.line] = f"{lines[target.line].rstrip()} (blocked: {reason_note})"
 
     if not found:
         logger.warning("no backlog bullet '%s' found to mark", bullet_id)
@@ -618,8 +637,9 @@ def mark_fix_blocked(
 
 
 __all__ = [
-    "BACKLOG_ID_RE",
+    "BacklogBullet",
     "Seen",
+    "backlog_bullets",
     "file_backlog_items",
     "id_token_set",
     "kebab",

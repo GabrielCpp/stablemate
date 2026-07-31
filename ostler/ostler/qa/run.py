@@ -12,6 +12,7 @@ import re
 import shutil
 import signal
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,12 +59,13 @@ def cmd_start(
     spec_dir: Path,
     *,
     env: dict[str, str] | None = None,
-    daemons: list[tuple[str, str, str | None]] | None = None,
+    daemons: list[tuple[str, str, str | Mapping[str, Any] | None]] | None = None,
     secret_values: dict[str, str] | None = None,
 ) -> QaOutcome:
     """Open a new QA session and optionally start background daemons.
 
-    *daemons*: list of (name, cmd, ready_check_url) tuples.
+    *daemons*: list of (name, cmd, ready_check) tuples, where the readiness check is
+    either a URL polled for a 200 or a ``{cmd, assert_contains}`` mapping.
     """
     env = env or {}
     try:
@@ -83,7 +85,7 @@ def cmd_start(
         try:
             pid = session.start_daemon(name, cmd, ready_check=ready_check)
             pids[name] = pid
-        except (OSError, TimeoutError) as exc:
+        except (OSError, TimeoutError, ValueError) as exc:
             session.close(status="blocked")
             session.finalize_log_artifact()
             return QaOutcome(

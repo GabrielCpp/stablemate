@@ -274,19 +274,30 @@ def drive(
     activity = activity_log.install(env.log)
 
     for _ in range(budget):
-        if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
-            raise RunBudgetExceeded(
-                "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
-                "from the run's original start. Raise the budget and resume."
-            )
         spec = type(wf).resolve_state(state)
         bound = getattr(wf, spec.name)
         kwargs = coerce_params(bound, params, state=spec.name)
 
         activity.rebase({**env.labels, **_labels(wf, env.log)})
+        # Commit the position *before* the budget check, not after. A `Continue`'s params
+        # are only durable once some iteration checkpoints them, and this is that write —
+        # so a check that raises first discards the transition that produced them, and the
+        # resume replays the state it already ran with the arguments it had on entry. That
+        # is not merely wasted work: the replayed state is handed *stale* arguments, so a
+        # gate's findings vanish and the next turn is told there were none. (Seen for real:
+        # a QA plan turn spent nine minutes, its validator emitted 24 diagnostics, the clock
+        # ran out on the transition carrying them, and the resumed turn — told the loop was
+        # clean — reported "no changes needed" and burned another pass.) Writing first costs
+        # one checkpoint on the aborting iteration and keeps the module's own invariant:
+        # state parameters *are* the checkpoint.
         env.writer.write_state_checkpoint(
             spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
+        if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
+            raise RunBudgetExceeded(
+                "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
+                "from the run's original start. Raise the budget and resume."
+            )
         env.log.info("[workhorse] state  → %s", spec.name)
         # Armed for the resumed state only — see `RunEnv.resume_pending`. A state
         # further along the run is being entered for the first time, and a handoff it

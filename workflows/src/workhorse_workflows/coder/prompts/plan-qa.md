@@ -132,6 +132,18 @@ least one machine-executed terminal assertion. `mechanism` is provenance
 - Payload files referenced in a step command must be written to `qa/payloads/` **before** the plan runs — include a `fixture` step or note them as pre-existing files.
 - `assert_count: 1` is the no-duplicate check — use it on queries where exactly one result is expected.
 - Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
+- Each `background:` daemon takes an optional `ready_check` — what the executor polls before scenario 1, plus a `timeout:` in seconds (default 30). Two forms, and picking the wrong one blocks the whole run: a **string** is fetched and must answer HTTP 200, so use it only when the service really has a `GET` that does; otherwise use a **mapping** `{cmd, assert_contains}`, which is ready when the command exits 0 and its stdout contains the needle. A service whose only route is a `POST` has no 200-answering URL, so it needs the mapping. The command runs in the daemon's own working directory.
+{% raw %}  ```yaml
+  background:
+    - name: api-server
+      cmd: cd api && go run ./cmd/server
+      timeout: 60
+      ready_check:
+        cmd: >
+          curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/links
+          -H 'Content-Type: application/json' -d '{"longUrl":"https://example.com/probe"}'
+        assert_contains: "201"
+  ```{% endraw %}
 - The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and `qa/asserts/` as sub-directories.
 - **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{% raw %}{{key}}{% endraw %}` in all steps that need it:
 {% raw %}  ```yaml
@@ -199,8 +211,15 @@ Use the OKF graph as a cross-layer test specification, not as a list of titles:
   the asserted result. A passing exit code with no criterion-specific artifact is insufficient.
 
 A green test suite alone never decides a pass. The observable behavior and runner-owned evidence
-are the oracle. Do not put verdicts in the plan, write under `qa/`, or invoke `ostler qa validate`
-or `ostler qa run`; workflow script nodes do that after you return.
+are the oracle. Do not put verdicts in the plan or write under `qa/`.
+
+Do not validate the plan yourself, by any route: not `ostler qa validate`, not `ostler qa run`,
+and not by importing `ostler.qa` from Python. A workflow script node validates it the moment you
+return and hands you its diagnostics if it fails, so a self-check can only repeat a verdict that
+is one call away. The Python route is named explicitly because forbidding the two commands alone
+left it open, and a run took it: four Bash turns rediscovering `load_plan`'s signature, inside a
+turn that spent ten minutes and a quarter of the run's whole wall-clock budget arriving where the
+node arrived immediately afterwards.
 
 ## Output
 

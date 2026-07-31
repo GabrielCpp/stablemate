@@ -34,10 +34,10 @@ when the caller passes an empty one. `open_story_pr` is the one that coerces (`b
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from github import GithubException
+from ostler import markdown
 from workhorse.scriptutil import find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -70,8 +70,10 @@ from workhorse_workflows.kit import (
 #: Image suffixes counted as QA evidence when building a UI repo's PR body.
 SCREENSHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
 
-#: The plan section quoted into a story PR's body, and where it stops.
-PLAN_SUMMARY_RE = re.compile(r"^## 1\. Summary\s*\n(.*?)(?=\n## |\Z)", re.DOTALL | re.MULTILINE)
+#: The plan section quoted into a story PR's body. Where it stops is the parser's answer —
+#: the next heading of the same level or shallower — not a lookahead for the next `## `,
+#: which also stopped at a `## ` line inside a fenced code block.
+PLAN_SUMMARY_HEADING = "1. Summary"
 
 #: A repo whose QA runs a browser or a device driver gets screenshots in its PR body.
 UI_QA_MODES = ("playwright", "maestro")
@@ -514,10 +516,10 @@ def _plan_summary(spec_dir: Path) -> str:
         text = plan_file.read_text(encoding="utf-8")
     except OSError:
         return ""
-    match = PLAN_SUMMARY_RE.search(text)
-    if not match:
+    section = markdown.split(text).find_section(PLAN_SUMMARY_HEADING)
+    if section is None:
         return ""
-    paragraphs = [p.strip() for p in match.group(1).strip().split("\n\n") if p.strip()]
+    paragraphs = [p.strip() for p in section.body.strip().split("\n\n") if p.strip()]
     return "\n\n".join(paragraphs[:2])
 
 
