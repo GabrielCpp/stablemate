@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-cli
-description: "Generic Python CLI conventions — Python 3.12+, type hints, code organization, logging, subprocess, pathlib, exit codes. Applies to all Python files."
+description: "Generic Python CLI conventions — Python 3.12+, type hints, absolute imports, uv, entry points, exit codes, logging, subprocess, pathlib, JSON I/O, error handling, naming. Package structure, interfaces, typed values, and dependency injection live in python-architecture. Applies to all Python files."
 metadata:
   generated_by: farrier
   source: library/skills/stacks/python/python-cli/SKILL.md
@@ -206,33 +206,22 @@ def write_json(path: Path, data: dict) -> None:
 
 Always specify `encoding="utf-8"` — never rely on platform default.
 
-## Structured data — Pydantic for parsing, dataclasses for trusted records
+## Structured data and code organization → `python-architecture`
 
-Any model that parses, validates, coerces, or accepts data from outside the current function must use Pydantic. This includes CLI config, JSON/YAML/TOML files, environment-derived settings, API payloads, and workflow/script input.
+Which typed value to reach for (Pydantic vs frozen dataclass vs `TypedDict`), when a group of
+functions becomes a class, how services are wired, and where interfaces and their implementations
+live are all in
+[`../stablemate-python-architecture/SKILL.md`](../stablemate-python-architecture/SKILL.md).
+They are not repeated here, because they were losing to the CLI mechanics around them.
 
-Use frozen dataclasses or `TypedDict` for trusted in-memory records that only store values and do not need validation.
+The three that decide most day-to-day calls:
 
-```python
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
-class ServiceRecord:
-    repo: str
-    path: str
-    type: str
-    plan_file: str
-```
-
-Prefer frozen dataclasses for records that shouldn't mutate.
-
-## Code organization and object boundaries
-
-- Group stateless functions by module around the capability they provide, the same way related methods would be grouped on a class. For example, path construction for configuration files belongs in a config/path module rather than scattered as ad hoc string assembly at call sites.
-- Prefer small modules with cohesive tools over broad utility modules. A module should have a clear noun or capability: config paths, manifest parsing, GitHub PR lookup, workflow output formatting.
-- Use `Path` composition for filesystem logic; avoid manually assembling paths with plain strings.
-- If an object holds state and has defined ways that state can change or be updated, model it as a class. This assumes there is meaningful behavior around the state, not just storage.
-- If an object is primarily behavior or orchestration rather than value storage, name and treat it as a service. Services may depend on other services and should be instantiated through dependency injection rather than hidden global construction.
-- If multiple implementations can provide the same behavior, put them behind an interface. In Python, prefer `typing.Protocol` for structural interfaces; use an abstract base class only when inheritance or shared base behavior is required.
+- **Anything parsed, validated, or coerced from outside the current function uses Pydantic** — CLI
+  config, JSON/YAML/TOML files, environment-derived settings, API payloads, script input. *And
+  anything we serialize and read back later counts as outside data*, whoever wrote it.
+- **Trusted in-memory records are `@dataclass(frozen=True, slots=True)`.** Never
+  `-> dict[str, Any]` with the keys listed in the docstring.
+- **Use `Path` composition for filesystem logic**; never assemble paths from plain strings.
 
 ## Error handling
 
