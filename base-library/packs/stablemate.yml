@@ -1,0 +1,10 @@
+description: Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), and groom's operator-gate dashboard. (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
+skills:
+  - stablemate/stablemate-coder-workflow
+  - stablemate/stablemate-code-review
+  - stablemate/stablemate-workhorse-scripting
+  - stablemate/stablemate-farrier-setup
+  - stablemate/stablemate-ostler
+  - stablemate/stablemate-groom
+  - stablemate/stablemate-documentation
+  - stablemate/stablemate-okf-modeling
