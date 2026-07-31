@@ -39,7 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 # pytest-xdist: the workflow integration suites (e.g. the coder workflow's tests,
 # which drive the real CLI as a subprocess per test) are subprocess/CPU-bound and
-# shard cleanly across cores — their pytest.ini sets `-n auto`, which needs xdist.
+# shard cleanly across cores — running them with `-n auto` needs xdist.
 test = ["pytest>=8.0", "pytest-xdist>=3.0"]
 # OpenTelemetry instrumentation (see workhorse/otel.py). Telemetry turns itself on
 # when a collector answers, but only if this extra is installed: without it — or

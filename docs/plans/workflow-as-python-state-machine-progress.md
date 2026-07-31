@@ -47,8 +47,9 @@ Each has a parity section below.
 `main.py` is 670 lines of CLI over `run_pyflow`, and a workflow name resolves only through the
 `workhorse.workflows` entry-point group. `base-library/workflows/` is deleted too — all 7,719 lines
 of graph YAML, its 127 scripts and its 61 prompts. Step 3 took the plumbing that outlived it: a
-library is `library/` and nothing else, and farrier no longer owns `.agents/workflows`. What
-remains of loop 2 is the base-library fetch and one doc.
+library is `library/` and nothing else, and farrier no longer owns `.agents/workflows`. Step 4
+narrowed the fetch: the cache now holds a sparse checkout of `base-library/` with no `.git`, which
+is markdown and YAML and not a line of Python. What remains of loop 2 is one doc.
 
 The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
 `author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
@@ -107,6 +108,7 @@ took it.)
 | 2 | `cc8b850` | **The YAML itself.** `base-library/workflows/` deleted — 213 tracked files, the four `workflow.yaml` (7,719 lines) and 127 remaining scripts. One thing was carried out first: `research`'s program scaffolder. List item 2, done |
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
 | 3 | `81287c4` | **The plumbing.** `is_library_dir` is now `(path/"library").is_dir()` — `workflows/` is no longer a library's content — and farrier stopped owning `.agents/workflows`: gone from `remove_targets` and from the `--check` extra-file scan, taking `should_skip_workflow_file`/`WORKFLOW_SKIP_PARTS` with them. List item 3, done |
+| 4 | `PENDING` | **The fetch.** `_clone_into` is a sparse `base-library/`-only checkout (`--filter=blob:none --sparse`, `sparse-checkout set --no-cone`) that records HEAD in a `.commit` sidecar and deletes `.git`. 628K→240K, and nothing fetched is executable. Fails closed: no fallback to a full clone. List item 4, done |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
@@ -323,11 +325,55 @@ in `core/` (`base_cache.py`'s module docstring, its `BASE_SUBPATH` comment and i
 warning; `discovery.py`'s `CHECKOUT_SUBPATH` comment) that listed `workflows/` as part of the
 library payload.
 
-**Next: list items 4 and 6.** Narrow the base-library fetch to a sparse checkout of `library/` —
-`base_cache.py` is already half-corrected for it, and its "clone the repo" shape is the last thing
-treating the base as a repository rather than documents. Then correct
-`docs/features/workhorse/workflow-format.md`. (`base-library/workflows/README.md`, also on the
-docs-correction bullet, was deleted with its directory — the strongest correction available.)
+#### Step 4 — the fetch
+
+The last thing treating the base as a repository. `_clone_into` cloned the whole of stablemate into
+`~/.cache/stablemate/library` and left `.git` behind, so `cached_commit` could `rev-parse` it. That
+put every `.py` in this repo — and its git history — inside the cache of anyone who ran a workflow
+without a checkout. It now clones `--depth=1 --filter=blob:none --sparse`, sets
+`sparse-checkout set --no-cone /base-library/`, checks out, writes HEAD to a `.commit` sidecar and
+`rmtree`s `.git`. Verified against the real remote: **628K → 240K**, exactly `base-library/` plus
+`.commit`, no `.git`, and `find base-library -type f ! -name '*.md' ! -name '*.yml'` is empty —
+**nothing fetched is executable.** That claim is the point of the narrowing and it is what step 2
+earned; while the base shipped 127 `scripts/*.py` that ran under `sys.executable`, a narrow fetch
+would have been a false reassurance.
+
+Three details that are load-bearing rather than incidental:
+
+- **`--no-cone`, not the default cone mode.** Cone mode always materialises the repository root as
+  well — `pyproject.toml`, `Makefile`, `uv.lock`, `.mcp.json`. Inert, but not documents, and the
+  first real fetch produced exactly that (628K) before the switch. "Only the library" should mean
+  it.
+- **`--filter=blob:none` is what makes it a *transfer* saving.** Without it git sends every blob in
+  the commit and the sparse checkout merely declines to write them.
+- **It fails closed.** A git too old for `sparse-checkout` (< 2.25) gets no library at all rather
+  than a full clone, because a silent fallback would drop the posture without saying so.
+  `test_a_failed_sparse_checkout_does_not_fall_back_to_a_full_clone` pins that.
+
+`cached_commit` reads the sidecar instead of shelling out, which also makes a hand-assembled cache
+(an air-gapped host copying the directory in) able to say what it holds; a pre-narrowing cache with
+`.git` but no sidecar reads as unknown rather than as a stale sha. `core/tests/test_base_cache.py`
+is 25 tests, two of them new and specifically about the posture — its `_fake_clone` now builds what
+a real fetch leaves rather than a repo.
+
+The plan says "a sparse checkout of `library/`"; the target here is `base-library/`, the whole
+payload. `scaffolds/` lives beside `library/` under it and the same plan keeps scaffolds a
+farrier/library concern, so narrowing to `base-library/library/` would have deleted a feature under
+cover of a fetch change.
+
+Corrected in the same commit, all of it prose the narrowing or the earlier deletions had made
+false: the root `README.md` (workhorse "drives a YAML workflow graph"; the base-library row listing
+`workflows/`; the whole `requires:` section, which now says the tools are `[project.dependencies]`
+on `workhorse-workflows` and that `requires:` has no successor), plus a `workhorse-workflows` row
+in the package table and the `pipx inject` line that makes `workhorse run <name>` actually resolve.
+`base-library/README.md` was the worst of them — it advertised `workflows/` as the payload,
+"the Python scripts workflow nodes run", `git rev-parse` against the cache, and a `requires:`
+schema link to a deleted doc. Also the two `pytest-xdist` comments naming a `pytest.ini` that went
+with the YAML tree, and `workhorse/README.md`'s per-workflow-docs path.
+
+**Next: list item 6, the last one.** Correct `docs/features/workhorse/workflow-format.md`.
+(`base-library/workflows/README.md`, also on the docs-correction bullet, was deleted with its
+directory — the strongest correction available.)
 
 ### Parity — `author`
 

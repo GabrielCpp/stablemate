@@ -40,9 +40,10 @@ members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "sadd
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
-    # The coder workflow's suite drives the real workhorse CLI as a subprocess per
-    # node, so it is CPU-bound and shards across cores (`addopts = -n auto` in
-    # base-library/.../workflows/coder/pytest.ini). Came in with the workflows.
+    # The workflow suites drive real subprocesses per test, so they are CPU-bound and
+    # shard cleanly across cores. Came in with the workflows, and kept: the `-n auto`
+    # pytest.ini that asked for it lived in the YAML tree, but the suites did not go
+    # with it.
     "pytest-xdist>=3.6",
     "ruff>=0.15.20",
     # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the

@@ -5,7 +5,8 @@ packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
-| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives the Claude CLI through a YAML workflow graph, unattended for days. |
+| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives the Claude CLI through a checkpointed Python state machine, unattended for days. |
+| [`workflows/`](workflows/) | `workhorse-workflows` | The workflows themselves — `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
 | [`core/`](core/) | [`stablemate-core`](https://pypi.org/project/stablemate-core/) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. Not installed directly. |
@@ -14,7 +15,7 @@ And one directory that is **not** a package:
 
 | Directory | Role |
 | --- | --- |
-| [`base-library/`](base-library/) | The **base library**: the skills, workflows and scaffolds that farrier renders and workhorse runs. Plain data — `library/`, `scaffolds/`, `workflows/` — with nothing to import and no dependencies. Tools find it on disk or fetch it from git. |
+| [`base-library/`](base-library/) | The **base library**: the skills and scaffolds farrier renders. Plain data — `library/`, `scaffolds/` — markdown and YAML, with nothing to import and no dependencies. Tools find it on disk or fetch it from git. |
 
 Library content resolves across two layers: the **base** (`base-library/`, above) and an
 optional private **overlay** that shadows it name-for-name. Point a repo at an overlay
@@ -26,8 +27,7 @@ farrier config set-library /path/to/the/overlay
 
 You never install the base — see [Installing](#installing). Because it is data rather
 than a distribution, nothing depends on it in either direction, so content versions on
-its own clock; each `workflow.yaml` declares the tools it needs in a `requires:` block
-instead.
+its own clock; the tools a workflow needs are declared by the workflow's own package.
 
 ## Installing
 
@@ -36,22 +36,33 @@ and the tools fetch it themselves:
 
 ```bash
 pipx install workhorse-agent
+pipx inject workhorse-agent workhorse-workflows   # the four workflows
 pipx install farrier
 pipx install ostler
 ```
+
+The workflows go *into* workhorse's venv rather than beside it: `workhorse run <name>`
+finds them through the `workhorse.workflows` entry-point group, which only sees
+distributions installed in the same interpreter.
 
 `groom` and `saddlebag` are optional add-ons (`pipx install groom` /
 `pipx install saddlebag`); no base workflow requires them.
 
 ### The base library fetches itself
 
-The first time workhorse resolves a workflow by name and finds no library, it clones
+The first time workhorse resolves a workflow by name and finds no library, it fetches
 one into your cache and uses it from there:
 
 ```
-[stablemate] fetching base library: https://github.com/GabrielCpp/stablemate.git (main)
+[stablemate] fetching base library: https://github.com/GabrielCpp/stablemate.git (main, base-library/ only)
 [stablemate] base library cached at ~/.cache/stablemate/library (420e421…)
 ```
+
+**Nothing fetched is executable.** It is a sparse checkout of `base-library/` — markdown
+and YAML, no `.py` anywhere — and the `.git` directory is dropped once the commit is
+recorded, so the cache holds documents rather than a repository. Code reaches you only
+as a wheel from an index, under whatever supply-chain posture you already apply to
+`pip`/`uv`.
 
 **It is fetched once and then frozen.** Nothing refreshes it in the background — to
 move to a newer library, delete the cache and let the next run re-fetch:
@@ -61,10 +72,10 @@ rm -rf ~/.cache/stablemate          # the upgrade path
 ```
 
 That is deliberate. A run is meant to survive a week unattended and to resume into a
-checkpointed graph after a crash; a cache that tracked `main` live could resume a run
-into a different workflow than it started. The trade is that two machines can hold
-different commits of `main` — `git -C ~/.cache/stablemate/library rev-parse HEAD` says
-which. Set `STABLEMATE_FETCH_BASE=0` to forbid the fetch (air-gapped hosts), or
+checkpointed state machine after a crash; a cache that tracked `main` live could resume a
+run into a different library than it started with. The trade is that two machines can
+hold different commits of `main` — `cat ~/.cache/stablemate/library/.commit` says which.
+Set `STABLEMATE_FETCH_BASE=0` to forbid the fetch (air-gapped hosts), or
 `STABLEMATE_CACHE_DIR` to relocate it.
 
 The cache is a **mirror, not a workspace**: deleting it is routine, so never edit it in
@@ -82,23 +93,18 @@ last, so it can never shadow a checkout you are editing:
 
 The base library declares **no dependencies** — it is content, and importing it pulls in
 nothing. The tools its workflows need are a property of *running* a workflow, not of
-having the library, so each `workflow.yaml` declares its own and workhorse checks them
-before the first node runs:
+having the library, and a workflow is a distribution now, so they are ordinary
+`[project.dependencies]` on `workhorse-workflows`. `pipx inject` above installs them
+with it; there is no second manifest to satisfy.
 
-```
-[workhorse] ERROR: workflow 'okf-builder' cannot run; unmet requirements:
-  - ostler is not installed in the interpreter that runs script nodes. Install it there:
-    ~/.local/share/pipx/venvs/workhorse-agent/bin/python -m pip install ostler>=0.1.0
-```
+That matters because workflow code runs **in workhorse's own interpreter** and imports
+its tools in-process. `ostler` being on your `PATH` is not enough — it must be
+importable *there*, which is exactly what installing into that venv arranges.
 
-Script nodes run under workhorse's own interpreter and import their tools in-process, so
-`ostler` being on your `PATH` is not enough — it must be importable *there*:
-
-```bash
-pipx inject workhorse-agent ostler
-```
-
-See [workhorse/docs/WORKFLOW.md](workhorse/docs/WORKFLOW.md) for the `requires:` schema.
+Until this loop, a workflow was YAML with no way to declare a dependency, so it carried a
+hand-rolled `requires:` block that workhorse checked before the first node. It has no
+successor and needs none: a manifest that can disagree with the install is worse than
+none.
 
 ### Config
 
