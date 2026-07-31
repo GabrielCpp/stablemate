@@ -16,7 +16,6 @@ going through the seam is what earns it a span, a recorded `output.json` — whi
 from __future__ import annotations
 
 import inspect
-import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from logging import Logger
@@ -42,8 +41,6 @@ START_STATE = "start"
 #: registry reference on purpose: it has to be usable in a class body that is defined
 #: before the module-level `Registry` object exists.
 STATE_ATTR = "__workhorse_state__"
-
-_DEFAULT_MAX_TRANSITIONS = 1000
 
 
 @dataclass(frozen=True)
@@ -102,7 +99,11 @@ class Workflow(BaseModel):
     #: than a run. Per-subclass; `states` on the base itself stays empty.
     states: ClassVar[NameIndex[StateSpec]]
     start_state: ClassVar[str] = START_STATE
-    max_transitions: ClassVar[int] = 0  # 0 → read the env default at drive time
+    #: Transitions this workflow may make before it is declared stuck. 0 = defer to the
+    #: run's own budget (``RunConfig.max_transitions``); a class that sets it overrides
+    #: the operator's setting, because a flow that legitimately needs 4000 hops knows
+    #: that about itself and the operator does not.
+    max_transitions: ClassVar[int] = 0
 
     # --- registration -------------------------------------------------------
 
@@ -300,24 +301,6 @@ class Workflow(BaseModel):
                 "survives a resume."
             )
         super().__setattr__(name, value)
-
-    # --- budget -------------------------------------------------------------
-
-    @classmethod
-    def transition_budget(cls) -> int:
-        """How many transitions a run may make before it is declared stuck.
-
-        The gas tank already bounds node work; this bounds the state machine itself,
-        so a two-state ping-pong that burns no gas still ends.
-        """
-        if cls.max_transitions:
-            return cls.max_transitions
-        raw = os.environ.get("WORKHORSE_MAX_TRANSITIONS", "")
-        try:
-            value = int(raw)
-        except ValueError:
-            return _DEFAULT_MAX_TRANSITIONS
-        return value if value > 0 else _DEFAULT_MAX_TRANSITIONS
 
 
 # The base class itself has no states; giving it an empty index keeps `Workflow.states`

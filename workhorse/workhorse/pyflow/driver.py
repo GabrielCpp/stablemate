@@ -15,8 +15,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import os
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, get_type_hints
@@ -29,18 +27,12 @@ from workhorse.pyflow.errors import WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import Checkpoint, PyflowCheckpoint
+from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
 
-#: How often the `Await` poll re-stats the file it is waiting on. The wait is measured
-#: in days, so this is about not spinning, not about latency.
-DEFAULT_POLL_S = 15.0
 #: How often a still-waiting run says so, in seconds.
 HEARTBEAT_S = 300.0
-
-#: Patched by tests so a wait costs no wall-clock. Module-level on purpose — the same
-#: seam convention the agent runner's sleeping uses.
-_sleep = time.sleep
 
 
 @dataclass
@@ -170,7 +162,8 @@ def poll_until_touched(
     path: Path,
     *,
     since: float | None,
-    interval: float | None = None,
+    interval: float,
+    clock: Clock = SYSTEM_CLOCK,
     log: logging.Logger | None = None,
     deadline: float | None = None,
 ) -> None:
@@ -180,32 +173,27 @@ def poll_until_touched(
     human on macOS is not portable — and it was the single most fragile thing in the
     library it replaces (raw kernel API over `ctypes`). At a latency budget measured in
     days the two are indistinguishable.
+
+    `interval` and `clock` are both arguments because this is a decision function that
+    waits: it used to sleep through a module-level `_sleep` a test reassigned and read
+    its own interval out of `os.environ`. Both are dependencies, and a test that
+    exercises a week-long wait should cost microseconds with nothing patched.
     """
     log = log or logger
-    interval = interval if interval is not None else _poll_interval()
     waited = 0.0
     while True:
         current = _mtime(path)
         if current is not None and (since is None or current > since):
             log.info("[workhorse] await  → %s changed; resuming", path)
             return
-        if deadline is not None and time.time() > deadline:
+        if deadline is not None and clock.now().timestamp() > deadline:
             raise WorkflowFailed(
                 f"run exceeded its wall-clock budget while waiting on {path}"
             )
-        _sleep(interval)
+        clock.sleep(interval)
         waited += interval
         if waited % HEARTBEAT_S < interval:
             log.info("[workhorse] await  → still waiting on %s (%ds)", path, int(waited))
-
-
-def _poll_interval() -> float:
-    raw = os.environ.get("WORKHORSE_AWAIT_POLL_S", "")
-    try:
-        value = float(raw)
-    except ValueError:
-        return DEFAULT_POLL_S
-    return value if value > 0 else DEFAULT_POLL_S
 
 
 def _ask(path: Path, questions: str, log: logging.Logger) -> float | None:
@@ -233,13 +221,13 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
     inputs = wf.model_dump(mode="json")
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
-    budget = type(wf).transition_budget()
+    budget = type(wf).max_transitions or env.config.max_transitions
     # One tracker per logger, so an activity a sub-flow sets survives the parent's
     # next transition instead of being published over by a second instance.
     activity = activity_log.install(env.log)
 
     for _ in range(budget):
-        if env.deadline is not None and time.time() > env.deadline:
+        if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
             raise WorkflowFailed(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
                 "from the run's original start. Raise the budget and resume."
@@ -272,7 +260,12 @@ def drive(wf: Workflow, env: RunEnv, resume: Resume | None = None) -> Any:
             )
             env.log.info("[workhorse] await  → blocked on %s", outcome.path)
             poll_until_touched(
-                outcome.path, since=baseline, log=env.log, deadline=env.deadline
+                outcome.path,
+                since=baseline,
+                interval=env.config.await_poll_s,
+                clock=env.clock,
+                log=env.log,
+                deadline=env.deadline,
             )
         elif not isinstance(outcome, Continue):
             raise WorkflowFailed(
