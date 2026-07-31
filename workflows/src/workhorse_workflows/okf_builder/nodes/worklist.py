@@ -50,15 +50,16 @@ def select_item(
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
-    items = data.get("items", [])
     # One worklist snapshot drives both the budget math (counts.done for the per-run cap)
     # and the dashboard (progress "3/12" + the kinds line "5 surface · 3 layer" — okf's
     # items are multi-kind, so that composition is the natural activity subtitle). The
-    # items already carry `kind`/`status`, so they are handed to the stateless functions
-    # as-is (no Backend; this node owns the JSON read/write and the budget cap the
-    # primitive knows nothing about). See workhorse.worklist.
+    # rows already carry `kind`/`status`, so they parse straight into the primitive's
+    # `WorkItem` (no Backend; this node owns the JSON read/write and the budget cap the
+    # primitive knows nothing about). okf's own fields — `target`, `context` — ride
+    # top-level and survive the round trip untouched. See workhorse.worklist.
+    items = [wl.WorkItem.model_validate(row) for row in data.get("items", [])]
     snap = wl.snapshot(items)
-    done = snap["counts"]["done"]
+    done = snap.counts.done
     # Clamp: a baseline above the count means the worklist shrank under the run (a reset
     # mid-flight). Trusting it would make `done_this_run` negative and the cap unreachable.
     this_run = max(0, done - min(done_baseline, done))
@@ -73,15 +74,15 @@ def select_item(
         logger.warning(
             "over budget — %d done this run reaches the cap of %d; handing out no more "
             "work with %d still pending (resume to continue)",
-            this_run, max_items, snap["counts"]["pending"],
+            this_run, max_items, snap.counts.pending,
         )
         return Pick(
             over_budget=True,
-            pending_count=snap["counts"]["pending"],
+            pending_count=snap.counts.pending,
             done_count=done,
             done_this_run=this_run,
-            progress=snap["progress"],
-            kinds=snap["kinds"],
+            progress=snap.progress,
+            kinds=snap.kinds,
         )
 
     pick = wl.select_next(items)  # active-first crash-safe re-pick, then first pending
@@ -90,30 +91,34 @@ def select_item(
         return Pick(
             done_count=done,
             done_this_run=this_run,
-            progress=snap["progress"],
-            kinds=snap["kinds"],
+            progress=snap.progress,
+            kinds=snap.kinds,
         )
 
-    resumed = pick.get("status") == "active"
-    pick["status"] = "active"
+    resumed = pick.status == "active"
+    pick.status = "active"
+    # `exclude_unset` so writing the file back adds no key okf never wrote — the worklist
+    # is the workflow's document, and this node only flips one status in it.
+    data["items"] = [it.model_dump(exclude_unset=True) for it in items]
     path.write_text(json.dumps(data, indent=2))
-    pend = wl.counts(items)["pending"]  # one fewer after the flip
+    pend = wl.counts(items).pending  # one fewer after the flip
+    target = str(getattr(pick, "target", "") or "")
     logger.info(
         "picked %s item '%s' (%s), %d still pending",
         "resumed active" if resumed else "next pending",
-        pick.get("target", "?"), pick.get("kind", "?"), pend,
+        target or "?", pick.kind or "?", pend,
     )
     return Pick(
         has_item=True,
-        current_item=pick,
-        item_kind=pick.get("kind", ""),
-        item_target=pick.get("target", ""),
-        item_context=pick.get("context", ""),
+        current_item=pick.model_dump(exclude_unset=True),
+        item_kind=pick.kind,
+        item_target=target,
+        item_context=str(getattr(pick, "context", "") or ""),
         pending_count=pend,
         done_count=done,
         done_this_run=this_run,
-        progress=snap["progress"],
-        kinds=snap["kinds"],
+        progress=snap.progress,
+        kinds=snap.kinds,
     )
 
 

@@ -323,7 +323,7 @@ def select_epic(logger: logging.Logger, docs_path: str = "", run_dir: str = "") 
         return EpicPick(reason=reason)
 
     blocked = _load_blocked(root, run_dir)
-    items = [{"id": e, "status": "pending", "order": i} for i, e in enumerate(epics)]
+    items = [wl.WorkItem(id=e, status="pending", order=i) for i, e in enumerate(epics)]
     nxt = wl.select_next(items, skip=blocked)
     if nxt is None:
         # Every queued epic was set aside. Loud, because the run is about to end and this
@@ -344,8 +344,8 @@ def select_epic(logger: logging.Logger, docs_path: str = "", run_dir: str = "") 
 
     if blocked:
         logger.info("skipping %d epic(s) set aside this run (%s)", len(blocked), ", ".join(blocked))
-    logger.info("selected epic '%s'", nxt["id"])
-    return EpicPick(has_epic=True, epic=str(nxt["id"]))
+    logger.info("selected epic '%s'", nxt.id)
+    return EpicPick(has_epic=True, epic=nxt.id)
 
 
 @blueprint.node
@@ -481,10 +481,10 @@ def _progress_fields(report: dict | str) -> tuple[str, str]:
         return "", ""
     done = int(report.get("done") or 0)
     remaining = [str(s) for s in (report.get("remaining") or [])]
-    items: list[dict[str, str]] = [{"id": f"__done_{i}", "status": "done"} for i in range(done)]
-    items += [{"id": s, "status": "pending"} for s in remaining]
+    items = [wl.WorkItem(id=f"__done_{i}", status="done") for i in range(done)]
+    items += [wl.WorkItem(id=s, status="pending") for s in remaining]
     snap = wl.snapshot(items)
-    return snap["progress"], str(snap["remaining"])
+    return snap.progress, str(snap.remaining)
 
 
 def _next_story_report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
