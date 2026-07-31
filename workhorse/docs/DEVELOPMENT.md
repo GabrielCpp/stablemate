@@ -17,7 +17,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   ├── main.py                # CLI: resolve the workflow, pick the run dir, hand to the driver
 │   ├── packaged.py            # Entry-point discovery: what `workhorse run <name>` resolves to
 │   ├── rundir.py              # Run identity: the (workflow, run-id) dir and the resume contract
-│   ├── manifest.py            # The per-repo context manifest (`--context-file`)
+│   ├── manifest.py            # The per-repo context manifest (ContextManifest → ManifestContext)
 │   ├── context.py             # WorkflowContext: the key→value bag prompts render against
 │   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
 │   ├── references.py          # Static skill/prompt reference checking (the --dry-run warning)

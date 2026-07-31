@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from workhorse import logsetup, otel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
+from workhorse.manifest import ManifestContext
 from workhorse.pyflow.driver import Resume, drive, read_resume
 from workhorse.pyflow.engine import RunEnv, stub_nodes
 from workhorse.pyflow.errors import PyflowError, WorkflowFailed
@@ -43,12 +44,12 @@ def run_pyflow(
     params: dict[str, Any] | None = None,
     no_cache: bool = False,
     dry_run: bool = False,
-    context_manifest: dict[str, Any] | None = None,
+    context_manifest: ManifestContext | None = None,
 ) -> int:
     """Run one flow of `registry` and return the process exit code."""
     params = dict(params or {})
     name = registry.name or "workflow"
-    manifest = dict(context_manifest or {})
+    manifest = (context_manifest or ManifestContext()).as_context()
 
     # Preflight the skill/prompt references the farrier template helpers will have to
     # resolve. An unresolved one does not fail the render — it renders as prose into a

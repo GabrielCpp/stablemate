@@ -33,15 +33,49 @@ MANIFEST = {
 
 
 def _ctx(**extra):
-    return {**wm.build_manifest_context(MANIFEST), **extra}
+    return {**wm.build_manifest_context(MANIFEST).as_context(), **extra}
 
 
-def test_build_manifest_context_shapes_reserved_keys():
-    ctx = wm.build_manifest_context(MANIFEST)
-    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
-    assert ctx["_used_skills"] == ["go", "react-router"]
-    assert ctx["_skill_dir"] == ".claude/skills"
-    assert ctx["template"]["backend_layer_name"] == "Go gateway"
+def test_build_manifest_context_names_what_it_read():
+    mc = wm.build_manifest_context(MANIFEST)
+    assert mc.present
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert mc.used_skills == ("go", "react-router")
+    assert mc.skill_dir == ".claude/skills"
+    assert mc.values["template"]["backend_layer_name"] == "Go gateway"
+
+
+def test_the_reserved_keys_round_trip_through_one_type():
+    """`as_context` writes the `_`-prefixed keys and `from_context` reads them back —
+    the two halves are one type, so a rename is one edit and neither half can drift."""
+    mc = wm.build_manifest_context(MANIFEST)
+    back = wm.ManifestContext.from_context(mc.as_context())
+    assert back.present
+    assert back.instructions == mc.instructions
+    assert back.prompts == mc.prompts
+    assert back.used_skills == mc.used_skills
+    assert back.skill_dir == mc.skill_dir
+    assert back.repo_root == mc.repo_root
+
+
+def test_an_absent_manifest_adds_no_context_key():
+    """The manifest-free case is a value, not a None — and it contributes nothing, so
+    a run without one renders exactly the arguments its state passed."""
+    assert wm.ManifestContext().as_context() == {}
+    assert not wm.ManifestContext.from_context({}).present
+
+
+def test_a_wrong_typed_field_degrades_instead_of_raising():
+    """farrier's file is another tool's output: an unknown key is ignored and a
+    wrong-typed one falls back to its default. A manifest workhorse cannot fully read
+    must not end a week-long run."""
+    mc = wm.build_manifest_context(
+        {**MANIFEST, "used_skills": "go", "skill_dir": 7, "future_key": {"a": 1}},
+        backend="claude",
+    )
+    assert mc.used_skills == ()
+    assert mc.skill_dir == ".claude/skills"  # the backend's, since the file's was junk
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
 
 
 def test_instruction_ref_resolves_from_manifest():
@@ -81,40 +115,35 @@ def test_touched_layers_gates_per_story():
     assert "GO" in fallback and "WEB" in fallback
 
 
-def test_codex_backend_rewrites_skill_paths(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "codex")
-    ctx = wm.build_manifest_context(MANIFEST)
-    assert ctx["_instructions"]["go"] == ".agents/skills/demo-go/SKILL.md"
-    assert ctx["_instructions"]["react-router"] == ".agents/skills/demo-react-router/SKILL.md"
-    assert ctx["_skill_dir"] == ".agents/skills"
+def test_codex_backend_rewrites_skill_paths():
+    mc = wm.build_manifest_context(MANIFEST, backend="codex")
+    assert mc.instructions["go"] == ".agents/skills/demo-go/SKILL.md"
+    assert mc.instructions["react-router"] == ".agents/skills/demo-react-router/SKILL.md"
+    assert mc.skill_dir == ".agents/skills"
 
 
-def test_copilot_backend_rewrites_skill_paths(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "copilot")
-    ctx = wm.build_manifest_context(MANIFEST)
-    assert ctx["_instructions"]["go"] == ".github/skills/demo-go/SKILL.md"
-    assert ctx["_skill_dir"] == ".github/skills"
+def test_copilot_backend_rewrites_skill_paths():
+    mc = wm.build_manifest_context(MANIFEST, backend="copilot")
+    assert mc.instructions["go"] == ".github/skills/demo-go/SKILL.md"
+    assert mc.skill_dir == ".github/skills"
 
 
-def test_same_backend_no_rewrite(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "claude")
-    ctx = wm.build_manifest_context(MANIFEST)
-    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
-    assert ctx["_skill_dir"] == ".claude/skills"
+def test_same_backend_no_rewrite():
+    mc = wm.build_manifest_context(MANIFEST, backend="claude")
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert mc.skill_dir == ".claude/skills"
 
 
-def test_old_manifest_no_skill_dir_no_rewrite(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "codex")
+def test_old_manifest_no_skill_dir_no_rewrite():
     old_manifest = {k: v for k, v in MANIFEST.items() if k != "skill_dir"}
-    ctx = wm.build_manifest_context(old_manifest)
-    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
+    mc = wm.build_manifest_context(old_manifest, backend="codex")
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
 
 
-def test_unknown_backend_falls_back_to_manifest_dir(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "future-cli")
-    ctx = wm.build_manifest_context(MANIFEST)
-    assert ctx["_instructions"]["go"] == ".claude/skills/demo-go/SKILL.md"
-    assert ctx["_skill_dir"] == ".claude/skills"
+def test_unknown_backend_falls_back_to_manifest_dir():
+    mc = wm.build_manifest_context(MANIFEST, backend="future-cli")
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert mc.skill_dir == ".claude/skills"
 
 
 def test_explicit_missing_context_file_is_hard_error():
@@ -124,9 +153,10 @@ def test_explicit_missing_context_file_is_hard_error():
 
 
 def test_absent_auto_detected_manifest_returns_empty(monkeypatch, tmp_path):
-    # No --context-file and no repo manifest → empty (manifest-free workflows run).
+    # No --context-file and no repo manifest → absent (manifest-free workflows run).
     monkeypatch.setenv("AGENT_REPO_DIR", str(tmp_path))
-    assert wm.load_context_manifest(None) == {}
+    mc = wm.load_context_manifest(None)
+    assert not mc.present and mc.as_context() == {}
 
 
 # ── namespaced skills ─────────────────────────────────────────────────────────
@@ -150,7 +180,7 @@ NAMESPACED = {
 
 
 def _ns_ctx():
-    return wm.build_manifest_context(NAMESPACED)
+    return wm.build_manifest_context(NAMESPACED).as_context()
 
 
 def test_instruction_ref_resolves_through_a_pack_namespace():
@@ -178,7 +208,7 @@ def test_genuinely_ambiguous_suffix_does_not_guess():
         },
     }
     out = render_string("{{ instruction_ref('story-docs') }}",
-                        wm.build_manifest_context(ambiguous))
+                        wm.build_manifest_context(ambiguous).as_context())
     assert "generated story-docs instruction file when installed" in out
 
 
@@ -191,5 +221,5 @@ def test_exact_match_still_wins_over_a_suffix_match():
         },
     }
     out = render_string("{{ instruction_ref('story-docs') }}",
-                        wm.build_manifest_context(exact))
+                        wm.build_manifest_context(exact).as_context())
     assert out == ".claude/skills/demo-story-docs/SKILL.md"
