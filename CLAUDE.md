@@ -1,9 +1,15 @@
 # stablemate
 
-A `uv` workspace monorepo of the agent-workflow tooling: **workhorse** (the YAML
-workflow runner/engine), **farrier** (the installer), and **ostler** (the doc-graph
-validator). Python ≥ 3.12. Each subproject has its own README/CLAUDE.md — read those
-before changing that component.
+A `uv` workspace monorepo of the agent-workflow tooling: **workhorse** (the runner
+driving an agent CLI through a checkpointed Python state machine), **workflows**
+(those state machines), **farrier** (the installer), **ostler** (the doc-graph
+validator), plus `core`, `groom`, `saddlebag`, `base-library` and `benchmarks`.
+Python ≥ 3.12. Every subproject has a README — read it before changing that
+component. Only `workhorse/` also has a nested `CLAUDE.md`; the other eight are
+README-only, so don't hunt for per-package instruction files that aren't there.
+
+A workflow is **Python**, not YAML. The YAML engine is retired — no `workflow.yml`,
+no `requires:` block, no node-graph document. Prose describing one is stale; fix it.
 
 ## stablemate is public (load-bearing)
 
