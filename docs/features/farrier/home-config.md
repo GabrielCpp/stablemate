@@ -5,49 +5,82 @@ title: Home config file (config.toml)
 ---
 # Home config file (config.toml)
 
-The shared, machine-local settings file both `farrier` and `workhorse` read and write — currently
-holding the [library directory](concepts/library-directory.md) candidate and the local
-`stablemate` checkout path. Read by `read_config`, written key-by-key by `_write_config_key`
-(shared by `write_library_dir` and `write_stablemate_dir`), and surfaced to the user by
+The shared, machine-local settings file every stablemate tool reads and writes — holding the
+overlay [library directory](concepts/library-directory.md) candidate, the base-library path, the
+local `stablemate` checkout path, and the per-backend `power`/`harness` tables workhorse resolves
+against. It lives in `stablemate_core`, not in farrier: the keys are shared, so workhorse
+inheriting a farrier-set `library_dir` is the point rather than a leak. Read by `load_config`
+(farrier spells the same function `read_config`; it is an alias, not a second implementation),
+written key-by-key by `write_config_key`, and surfaced to the user by
 [`farrier config show`](farrier.md#config).
 
-- file: `config.toml` at `CONFIG_PATH` (OS-appropriate, via `platformdirs.user_config_dir("farrier")`
-  — e.g. `~/.config/farrier/config.toml` on Linux, `~/Library/Application Support/farrier/config.toml`
-  on macOS, `%APPDATA%\farrier\config.toml` on Windows)
-- code: `farrier/farrier/install.py::read_config`
+- file: `config.toml` under `platformdirs.user_config_dir("stablemate")` — e.g.
+  `~/.config/stablemate/config.toml` on Linux, `~/Library/Application Support/stablemate/config.toml`
+  on macOS, `%APPDATA%\stablemate\config.toml` on Windows. `$STABLEMATE_CONFIG` (or the
+  pre-unification `$WORKHORSE_CONFIG`) overrides the path outright.
+- code: `core/stablemate_core/config.py::load_config`
 
 ## Fields
 
-A flat TOML table of string values. `_write_config_key` merges into whatever keys already exist
-rather than replacing the file, so any key is legal — these two are the ones farrier/workhorse
-actually read back.
+A TOML table. `write_config_key` merges into whatever keys already exist rather than replacing the
+file, so any key is legal — these are the ones the tools actually read back. (`power.*` and
+`harness.*` are nested tables owned by workhorse; see workhorse's own docs for their shape.)
 
 ### library_dir
 - type: `string` — required: no — default: unset
 
-The [library directory](concepts/library-directory.md) resolution's third-precedence candidate
-(after `--library` and `$FARRIER_LIBRARY_DIR`). Written by
-[`farrier config set-library <path>`](farrier.md#config) via `write_library_dir`, after the path
-is validated with `is_library_dir` (must contain `library/` and `packs/`).
+The [library directory](concepts/library-directory.md) resolution's third-precedence *overlay*
+candidate (after `--library` and `$FARRIER_LIBRARY_DIR`). Written by
+[`farrier config set-library <path>`](farrier.md#config) via `write_library_dir`, after the path is
+validated with `is_library_dir` (must contain `library/`).
+
+### base_dir
+- type: `string` — required: no — default: unset
+
+An explicit on-disk path to the *base* library content — the persisted form of
+`$STABLEMATE_BASE_DIR`. Written by `write_base_dir`. Consulted by `base_library_dir()` second,
+after the env var and before a `stablemate_dir`-derived checkout path; a configured-but-invalid
+value is skipped rather than raised on, because the base is additive and failing soft keeps an
+overlay-only setup working.
 
 ### stablemate_dir
 - type: `string` — required: no — default: unset
 
-The local `stablemate` checkout path (holds the workhorse runtime and the farrier installer
-source) used for `SRC=1` local-source runs of the generated agent launcher. Written by
+The local `stablemate` checkout path (holds the workhorse runtime and the farrier installer source)
+used for `SRC=1` local-source runs of the generated agent launcher, and as the third route to a base
+library (`<checkout>/base-library`). Written by
 [`farrier config set-stablemate <path>`](farrier.md#config) via `write_stablemate_dir` — unlike
 `library_dir`, the path is persisted as-is with no directory-shape validation. Read back by
 `resolve_stablemate_dir`, which returns `None` when the key is unset.
 
-- code: `farrier/farrier/install.py::write_stablemate_dir`
+- code: `core/stablemate_core/config.py::write_stablemate_dir`
+
+### config_version
+- type: `integer` — required: no — default: absent (treated as version 0)
+
+The schema version this file was last written under, stamped on **every** write. It is not the
+`stablemate-core` package version: coupling the two would bump the schema on every patch release and
+lock out every tool that had not upgraded yet. A file newer than the running build's
+`CONFIG_VERSION` makes `write_config_key` refuse with `ConfigVersionError` rather than clobber it —
+the one guard that holds however the tools were installed, because it defends the file rather than
+trusting the code that reaches it. An older file is carried forward by `_migrate_forward` before the
+write lands, so a write never mixes schemas.
 
 ## Reading and writing
 
-- `read_config()` — returns `{}` if `CONFIG_PATH` does not exist; otherwise parses the file with
-  `tomllib.load`.
-- `_write_config_key(key, value)` — creates `CONFIG_PATH`'s parent directory if needed, reads the
-  existing config via `read_config`, sets `key = value` in the merged mapping, then rewrites the
-  **whole file** from that mapping as `key = "escaped-value"` lines (backslashes and double quotes
-  escaped) — so a single-key write preserves every other key already stored.
+- `load_config()` — returns the parsed unified file if it exists. If it does not, and the path was
+  **not** named explicitly, the pre-unification per-tool files (`user_config_dir("workhorse")` then
+  `user_config_dir("farrier")`, merged in that order) are read as a fallback; an explicitly named
+  `$STABLEMATE_CONFIG` that happens not to exist means "this file", not "and also whatever is in
+  `~/.config/workhorse`". A corrupt or unreadable file parses to `{}` rather than raising — an
+  unattended run must not die on a bad config, and every caller already handles "nothing
+  configured".
+- `write_config_key(key, value)` — creates the config directory if needed, reads the existing config
+  via `load_config`, applies the version guard/migration above, sets `key = value`, stamps
+  `config_version`, and rewrites the whole file with a real TOML writer (`tomli_w`). When only
+  legacy files exist, this is what merges them into the unified path. Using a TOML writer is
+  load-bearing: the hand-rolled `f'{k} = "{v}"'` it replaced stringified nested tables, so a single
+  `config set-base` turned `[power.*]` into a Python-repr string and every node silently fell back
+  to the default model with no error anywhere.
 
-- code: `farrier/farrier/install.py::_write_config_key`
+- code: `core/stablemate_core/config.py::write_config_key`

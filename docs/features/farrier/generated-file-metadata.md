@@ -15,8 +15,8 @@ origin.
 
 - file: front matter of any farrier-generated `SKILL.md` / command `.md` under `.claude/`,
   `.agents/`, or `.github/`
-- code: `farrier/farrier/install.py::skill_metadata_block` — read back by
-  `farrier/farrier/install.py::frontmatter_metadata`
+- code: `farrier/farrier/renderer.py::skill_metadata_block` — read back by
+  `farrier/farrier/frontmatter.py::frontmatter_metadata`
 
 ## Fields
 

@@ -2460,6 +2460,82 @@ runs where GitHub does not. Zero broken markdown links across all 313 tracked fi
 GitHub-accurate checker. All ten inbound anchors into this slice were enumerated before
 rewriting and preserved. `ruff check .`, `make test` and `make check-public` green.
 
+### Iteration 16 — farrier's `install.py` split, and an ostler blind spot
+
+`farrier/farrier/install.py` is now a 219-line compatibility facade that **declares nothing**:
+`grep -nE '^(def |class )'` returns no lines. It re-exports from twelve capability modules so
+`farrier.install:main` (still the declared console script) and historical
+`from farrier.install import ...` call sites keep resolving. Six pages of the farrier book
+pointed 21 `code:` targets at it. All 21 are re-pointed; twelve distinct symbols resolved as:
+
+| doc target | real home |
+|---|---|
+| `main` | `farrier/farrier/cli.py:439` |
+| `resolve_library_dir` | `farrier/farrier/layers.py:126` |
+| `Renderer` and its seven methods | `farrier/farrier/renderer.py:94` |
+| `skill_metadata_block` | `farrier/farrier/renderer.py:40` |
+| `frontmatter_metadata` | `farrier/farrier/frontmatter.py:69` |
+| `render_expected` | `farrier/farrier/outputs.py:130` |
+| `is_library_dir` | `core/stablemate_core/layout.py:12` |
+| `read_config` | `core/stablemate_core/config.py:384` — an **alias assignment**, `read_config = load_config`; the honest `code:` target is `load_config`, with the farrier spelling explained in prose |
+| `write_library_dir` / `write_stablemate_dir` | `core/stablemate_core/config.py:387` / `:392` |
+| `set_library_globals` | **nothing — the mechanism is gone** |
+| `_write_config_key` | **nothing — `write_config_key` at `config.py:214`, no underscore** |
+
+Found untrue, beyond the paths:
+
+1. **`library-directory.md`'s entire "Module globals populated" section.** It documented
+   `set_library_globals(root)` pointing eight `farrier.install` globals (`AGENTS`, `LIBRARY`,
+   `PACKS`, `SKILLS`, `PROMPTS`, `ROOTS`, `SCAFFOLDS`, `WORKFLOWS`) at one library root. No
+   such globals exist — `grep` for any of the eight in `farrier/farrier/*.py` returns nothing.
+   The subject survives under a new name, so it was **rewritten, not deleted**, per the STOP
+   rule: `set_layers(overlay)` builds an ordered `LAYERS` stack (overlay, then base) and
+   lookups go through `layer_dirs` / `find_in_layers` / `available_names` / `searched_layers`.
+   The old globals' paths are now `parts` tuples: `("library", "skills")`,
+   `("library", "roots", f"{root}.md")`, `("workflows", name)`.
+2. **"A usable library must contain both `library/` and `packs/`."** `is_library_dir` requires
+   only `library/`; `packs/` is deliberately optional, since the base ships skills and
+   scaffolds with no packs at all. Stated on two pages.
+3. **"If none of the three yield a candidate, it raises `SystemExit`."** It returns `None` when
+   a base library is installed — base-only is a supported setup, and the one a reader with no
+   configuration gets. `SystemExit` is raised only with neither overlay nor base.
+4. **The home config's identity.** It is not farrier's: it is
+   `platformdirs.user_config_dir("stablemate")`, not `…("farrier")`, and it is owned by
+   `stablemate_core.config`. The page missed `base_dir`, missed `config_version` and its
+   `ConfigVersionError` guard, missed the legacy-path merge (`workhorse` then `farrier`, only
+   when the unified file is absent and the path was not named explicitly), and described the
+   writer as emitting hand-escaped `key = "value"` lines — it uses `tomli_w`, and the change
+   was load-bearing: the string version stringified nested tables, so one `config set-base`
+   turned `[power.*]` into a Python-repr string and every node silently fell back to the
+   default model.
+5. **"Missing root names are silently skipped"** (`renderer.md`). `render` validates the whole
+   `roots` selection up front and raises with the unknown names, the layers searched and the
+   names that do exist; the per-root miss check survives only as a guard for a
+   directly-constructed `Renderer` in tests. Workflows are validated the same way — not with
+   the documented `SystemExit("Unknown workflow: <name>")`.
+6. **A dead `verify:` target.** `library-directory.md` cited
+   `farrier/tests/test_config_resolution.py::test_set_library_globals`; that test is gone.
+   Replaced with the three tests that do cover the successor —
+   `test_no_overlay_is_fine_when_base_is_installed`, `test_overlay_shadows_base`,
+   `test_unknown_pack_names_the_layers`.
+
+**Finding 26 — ostler's `missing-code-symbol` check only visits node-level `code:` bullets.**
+Of the 21 `install.py` targets across those six pages, ostler flagged **8**. Every flagged one
+is the *first* `code:` bullet in its file (the node's own), plus `farrier.md#version`, which is
+a sub-node with a heading. The other 13 sit in sections that are not ostler nodes and are never
+checked — which is exactly how `set_library_globals` and `_write_config_key`, symbols that
+exist nowhere in the tree, stayed invisible to the checker while the page describing them was
+read as verified. This is the "if it cannot report this, say so instead of grepping around it"
+case: reported here rather than worked around, since fixing it is engine work and this loop
+changes no behavior. Until it is fixed, a page's non-node `code:` bullets are unverified and a
+grep is the only check.
+
+Every farrier `missing-code-symbol` is cleared; the single survivor repo-wide is
+`scriptutil.py::_read_workspace_file`, part of the de-YAML remainder. `dangling-code-ref`
+2 → 2 and `missing-anchor` 23 → 23 (untouched by this slice); `ostler doctor` totals
+**34 → 26**. Zero broken markdown links across 313 tracked files. `ruff check .`, `make test` and
+`make check-public` green.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
