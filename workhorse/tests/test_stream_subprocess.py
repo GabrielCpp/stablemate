@@ -117,6 +117,53 @@ def test_wedged_midline_is_killed_by_watchdog():
     assert elapsed < 20, f"watchdog did not fire promptly (took {elapsed:.1f}s)"
 
 
+class _SteppingClock:
+    """A clock whose ``monotonic`` jumps a fixed step every time it is read.
+
+    Not a ``FakeClock``: nothing in the stream loop sleeps, so a clock that only moves
+    on ``sleep`` would never reach any deadline. Time here advances because it was
+    *observed*, which is enough to drive a wall-clock check and nothing else.
+    """
+
+    def __init__(self, step: float) -> None:
+        self.step = step
+        self.t = 0.0
+
+    def now(self):
+        raise AssertionError("the stream loop must not ask for wall-clock time")
+
+    def monotonic(self) -> float:
+        self.t += self.step
+        return self.t - self.step
+
+    def sleep(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def test_the_turn_deadline_is_measured_on_the_injected_clock():
+    """A two-hour timeout expires in about a second, because the supervisor is handed
+    its clock rather than importing one.
+
+    This is the seam the module-level ``_active``/``time.monotonic()`` pair could not
+    offer: the production default is still the real clock, but a test that wants to see
+    an overrun turn get killed no longer has to wait out the overrun.
+    """
+    clock = _SteppingClock(step=3600.0)
+    supervisor = process.ProcessSupervisor(clock=clock)
+    start = time.monotonic()
+    timed_out, rc = supervisor.stream(
+        [sys.executable, "-u", "-c", "import time; time.sleep(3600)"],
+        "slow_node",
+        7200.0,                      # two hours, on the fake clock
+        lambda _line: None,
+        resilience=AgentResilience(watchdog_grace_s=3600),  # never fires; the loop wins
+    )
+    elapsed = time.monotonic() - start
+    assert timed_out is True
+    assert rc != 0                   # the overrunning turn's group was killed
+    assert elapsed < 20, f"a fake two-hour deadline took {elapsed:.1f}s of real time"
+
+
 def test_group_children_are_reaped():
     """The agent's grandchildren (e.g. MCP servers / browsers) must die with the group
     when a turn is force-killed, not orphan. We spawn a child that writes its PID, then
@@ -145,6 +192,7 @@ def test_group_children_are_reaped():
 
 if __name__ == "__main__":
     test_clean_stream_completes_without_timeout()
+    test_the_turn_deadline_is_measured_on_the_injected_clock()
     test_wedged_midline_is_killed_by_watchdog()
     test_group_children_are_reaped()
     print("ok")

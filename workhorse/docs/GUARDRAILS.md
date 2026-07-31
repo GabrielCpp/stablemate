@@ -29,7 +29,7 @@ through three layers before it can ever crash the run (see
    rewrite is in flight, `exec` of the same path fails for a sub-second window —
    `ETXTBSY` (a running native binary being overwritten) or `ENOENT` during the
    updater's rename. That must not interrupt an otherwise-healthy turn, so
-   `process._spawn_streaming` retries the spawn a few times with short backoff
+   `process.ProcessSupervisor.spawn` retries the spawn a few times with short backoff
    (`AGENT_EXEC_RETRY_*`). The subtle part is telling this apart from a *genuinely
    absent* CLI (the classic launch-context bug: a non-interactive shell never loaded
    the nvm `PATH`). You **cannot** do it by probing once — during an `ENOENT` rename
