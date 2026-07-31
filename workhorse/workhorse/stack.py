@@ -36,9 +36,10 @@ import os
 import shlex
 import signal
 import subprocess
-import time
 import urllib.request
 from typing import Any
+
+from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 BOOT_TIMEOUT_S = 30.0     # a foreground dev server; overridable via a manifest `boot_timeout`
 POLL_INTERVAL_S = 0.5
@@ -87,6 +88,7 @@ def boot_app(
     *,
     adopt: bool = True,
     logger: logging.Logger,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
     """Launch one app/stack and prove it healthy, or fail soft.
 
@@ -98,6 +100,11 @@ def boot_app(
     already serving the identity is reused as-is. A caller that mutates the code the app
     is built from — where a stack left serving from a prior run is *stale* — passes
     ``adopt=False`` to force the (idempotent, self-freshening) launch to run instead.
+
+    *clock*: the boot window is measured and waited on through this, so a test that
+    asserts how many polls a 30-second window buys states the window instead of racing
+    the machine it runs on. Defaulted rather than required — a workflow node calls this
+    with a manifest and a logger, and the real clock is what it means.
     """
     health_path = health_path or "/"
     app_cwd = app_cwd or "."
@@ -130,8 +137,8 @@ def boot_app(
 
     pgid = os.getpgid(proc.pid)
     detached = False  # the command returned; whatever it started serves outside our pgid
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
+    deadline = clock.monotonic() + timeout_s
+    while clock.monotonic() < deadline:
         # Health first: a bring-up command can exit the instant the stack is serving, so
         # checking liveness first would race a successful boot into a spurious failure.
         if health_ok(health_url, app_identity):
@@ -152,7 +159,7 @@ def boot_app(
             logger.info("launch command exited cleanly without serving yet — treating it "
                         "as a bring-up command and waiting for %s", health_url)
             detached = True
-        time.sleep(POLL_INTERVAL_S)
+        clock.sleep(POLL_INTERVAL_S)
 
     if detached:
         logger.warning("app did not answer %s within %.0fs after the bring-up command "
@@ -167,7 +174,8 @@ def boot_app(
 
 
 def teardown_app(
-    pgid_arg: str, stop_cmd: str, app_cwd: str, *, logger: logging.Logger,
+    pgid_arg: str, stop_cmd: str, app_cwd: str, *,
+    logger: logging.Logger, clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
     """Reap a booted app, run its documented stop recipe, or deliberately leave it up.
 
@@ -204,17 +212,18 @@ def teardown_app(
     logger.info("tearing down app process group %d", pgid)
     if not _killpg(pgid, signal.SIGTERM):
         return {"torn_down": "yes"}  # already gone
-    deadline = time.monotonic() + TERM_GRACE_S
-    while time.monotonic() < deadline:
+    deadline = clock.monotonic() + TERM_GRACE_S
+    while clock.monotonic() < deadline:
         if not _killpg(pgid, 0):  # still alive?
             return {"torn_down": "yes"}
-        time.sleep(POLL_INTERVAL_S)
+        clock.sleep(POLL_INTERVAL_S)
     _killpg(pgid, signal.SIGKILL)
     return {"torn_down": "yes"}
 
 
 def ensure_stack(
-    manifest: dict[str, Any], *, repo_root: str | None = None, logger: logging.Logger,
+    manifest: dict[str, Any], *, repo_root: str | None = None,
+    logger: logging.Logger, clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
     """Bring a whole QA stack to ready from a declarative manifest, or fail soft.
 
@@ -301,7 +310,7 @@ def ensure_stack(
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
         res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
-                       identity, timeout_s, adopt=False, logger=logger)
+                       identity, timeout_s, adopt=False, logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
             return _fail("launch", f"the launch command did not serve {health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
@@ -319,12 +328,13 @@ def ensure_stack(
     # stack that is still coming up — a spurious failure that routes an otherwise healthy
     # run into repair. Gates are documented as read-only assertions (`seed` owns the side
     # effects), so re-running one is safe.
-    health_deadline = time.monotonic() + boot_timeout(
+    health_deadline = clock.monotonic() + boot_timeout(
         str(manifest.get("health_timeout", "")), default=HEALTH_WINDOW_S
     )
     for i, step in enumerate(manifest.get("health") or []):
         ok, err = _gate_until(
-            step, app_cwd, timeout_s, logger, label=f"health[{i}]", deadline=health_deadline
+            step, app_cwd, timeout_s, logger,
+            label=f"health[{i}]", deadline=health_deadline, clock=clock,
         )
         if not ok:
             logger.warning("health[%d] failed: %s", i, err)
@@ -336,12 +346,13 @@ def ensure_stack(
 
 
 def teardown_stack(
-    handles: dict[str, str], manifest: dict[str, Any], *, logger: logging.Logger,
+    handles: dict[str, str], manifest: dict[str, Any], *,
+    logger: logging.Logger, clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
     """Reap a stack :func:`ensure_stack` brought up, honouring the leave-up policy."""
     return teardown_app(
         handles.get("app_pgid", ""), manifest.get("stop", ""),
-        manifest.get("app_cwd") or ".", logger=logger,
+        manifest.get("app_cwd") or ".", logger=logger, clock=clock,
     )
 
 
@@ -377,7 +388,7 @@ def _may_adopt(
 
 def _gate_until(
     step: Any, default_cwd: str, default_timeout: float, logger: logging.Logger,
-    *, label: str, deadline: float,
+    *, label: str, deadline: float, clock: Clock,
 ) -> tuple[bool, str]:
     """Run one gate, re-attempting a failure until *deadline*; report the last error.
 
@@ -391,12 +402,12 @@ def _gate_until(
     while True:
         attempt += 1
         ok, err = _run_step(step, default_cwd, default_timeout, logger, label=label)
-        remaining = deadline - time.monotonic()
+        remaining = deadline - clock.monotonic()
         if ok or remaining <= 0:
             return ok, err
         logger.info("%s not satisfied on attempt %d (%s) — retrying for up to %.0fs more",
                     label, attempt, err, remaining)
-        time.sleep(HEALTH_RETRY_S)
+        clock.sleep(HEALTH_RETRY_S)
 
 
 def _run_step(
