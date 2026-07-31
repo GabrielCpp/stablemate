@@ -161,7 +161,7 @@ def _insert_under_section(lines: list[str], section: str, bullet: str) -> list[s
 
 @blueprint.node
 def file_backlog_items(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = ""
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> BacklogDrain:
     """Append this story's filed items to the repo backlog, de-duplicated, then clear them.
 
@@ -169,7 +169,7 @@ def file_backlog_items(
     present — so a rerun cannot re-file them. It is kept only when the backlog could not be
     created at all, which is the one path where the items would otherwise be lost.
     """
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     spec = spec_dir.strip()
     if not spec:
         logger.info("no spec_dir supplied — nothing to drain")
@@ -232,7 +232,7 @@ def file_backlog_items(
 
 @blueprint.node
 def select_fix_item(
-    logger: logging.Logger, docs_path: str = "", backlog_path: str = ""
+    logger: logging.Logger, docs_path: str = "", backlog_path: str = "", repo_dir: str = ""
 ) -> FixPick:
     """Draw the next drainable bullet from `## Filed by coder`, or report the pool dry.
 
@@ -241,7 +241,7 @@ def select_fix_item(
     is what lets a resumed iteration re-draw the same item and reach the same story.
     """
     rel = backlog_path.strip() or BACKLOG_REL
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     path = root / rel
 
     if not path.is_file():
@@ -299,6 +299,7 @@ def seed_fix_story(
     epics_dir: str = "",
     epic: str = "",
     docs_path: str = "",
+    repo_dir: str = "",
 ) -> FixStorySeed:
     """Register the drawn bullet as a single-AC story in the perpetual `fixes` bucket.
 
@@ -332,7 +333,7 @@ def seed_fix_story(
             "no bullet_text supplied (expected select_fix_item's fix_bullet_text output)"
         )
 
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(root)
     # The bucket's directory name is ostler's answer, not the slug asked for: epic
     # directories are numbered (`0001-fixes`), so joining `epics_dir` with the bare bucket
@@ -483,7 +484,11 @@ def _author_story_body(
 
 @blueprint.node
 def prune_fix_item(
-    logger: logging.Logger, bullet_id: str = "", docs_path: str = "", backlog_path: str = ""
+    logger: logging.Logger,
+    bullet_id: str = "",
+    docs_path: str = "",
+    backlog_path: str = "",
+    repo_dir: str = "",
 ) -> FixPruned:
     """Remove a shipped fix's bullet from the backlog. Ostler first, direct edit second.
 
@@ -499,7 +504,7 @@ def prune_fix_item(
         logger.info("no bullet_id supplied — nothing to prune")
         return FixPruned(reason="no bullet_id supplied — nothing to prune")
 
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     if Ostler(root).backlog_prune(bullet_id).ok:
         logger.info("pruned '%s' via ostler", bullet_id)
         return FixPruned(
@@ -544,6 +549,7 @@ def mark_fix_blocked(
     note: str = "",
     docs_path: str = "",
     backlog_path: str = "",
+    repo_dir: str = "",
 ) -> FixBlocked:
     """Annotate a stuck fix in place instead of pruning it — the drain's "flag and continue".
 
@@ -563,7 +569,7 @@ def mark_fix_blocked(
         logger.warning("no bullet_id supplied — nothing to mark")
         return FixBlocked(reason="no bullet_id supplied — nothing to mark")
 
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     path = root / rel
     if not path.is_file():
         logger.warning("no backlog file at %s", rel)

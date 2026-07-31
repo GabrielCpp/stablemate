@@ -21,7 +21,6 @@ import logging
 import os
 import sys
 import tempfile
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -86,10 +85,11 @@ def _env(
     test states the budget it asserts against instead of setting an env var.
     """
     writer = ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
+    # No backend, and none to substitute: `RunConfig.backend` defaults to None, so a
+    # ladder built from this config has nothing to drive and nothing to resolve. The
+    # tests that DO run agent turns hand `_env` an `agent_runner=` of their own.
     if config is None:
-        config = RunConfig(backend_factory=lambda cli=None: None)
-    elif config.backend_factory is None:
-        config = replace(config, backend_factory=lambda cli=None: None)
+        config = RunConfig()
     return RunEnv(
         writer=writer,
         workflow_dir=Path(tmp),

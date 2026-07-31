@@ -77,7 +77,7 @@ def test_a_real_turn_reaches_done_with_the_agents_own_greeting() -> None:
                 writer=writer,
                 workflow_dir=Path(hello_world.__file__).parent,
                 session_id_path=writer.run_dir / ".session_id",
-                config=RunConfig(backend_factory=lambda cli=None: None),
+                config=RunConfig(),
                 agent_runner=StubRunner(agent),
                 nodes=hello_world.workflow.nodes,
             ),

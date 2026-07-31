@@ -2,10 +2,10 @@
 
 Ports `resolve-review-context.py`, `verify-review-resolution.py` and `check_feedback.py`.
 
-`check_feedback.py` carried its own `_find_repo_root()` — a fourth copy of the AGENT_REPO_DIR
+`check_feedback.py` carried its own `_find_repo_root(repo_dir)` — a fourth copy of the repo-root
 / cwd-if-root / ancestor-walk sequence, written out because the script was stdlib-only and
 could not import `workhorse.scriptutil`. A node has no such constraint, so it calls
-`paths.launch_repo_root()` like everything else in this package. The resolution order is the
+`paths.launch_repo_root(repo_dir)` like everything else in this package. The resolution order is the
 same one the script implemented.
 
 One divergence is *not* repaired here, and it is a finding rather than a preference:
@@ -49,7 +49,12 @@ def _scope_of(text: str) -> str:
 
 @blueprint.node
 def resolve_review_context(
-    logger: logging.Logger, spec_dir: str = "", repo: str = "", docs_path: str = ""
+    logger: logging.Logger,
+    spec_dir: str = "",
+    repo: str = "",
+    docs_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> ReviewContext:
     """Where the review turns run, and which code repos they may read.
 
@@ -60,13 +65,13 @@ def resolve_review_context(
     `repo` is the standalone-PR path. With no `plan-context.json` to decode there is nothing
     to derive the affected set from, so the explicitly-named repo *is* the affected set.
     """
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     plan_ctx = (
         load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
         if spec_dir
         else {}
     )
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
     names = [repo] if (not plan_ctx and repo) else get_affected_repos(plan_ctx, repos)
     return ReviewContext(
         docs_repo_path=str(root),
@@ -81,6 +86,7 @@ def verify_review_resolution(
     story_slug: str = "",
     claimed_status: str = "applied",
     claimed_notes: str = "",
+    repo_dir: str = "",
 ) -> ImplResult:
     """Fail-closed gate over `apply-review`'s self-reported result. It can only downgrade.
 
@@ -101,7 +107,7 @@ def verify_review_resolution(
     * no verdict sidecar at all → the claim passes through unchanged, so a repo that does
       not emit one keeps the prior behavior instead of being over-blocked.
     """
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     slug = story_slug
     spec_dir = docs_root / "docs" / "specs" / slug
     if not slug or not (spec_dir / RESOLUTION_FILE).is_file():
@@ -158,7 +164,9 @@ def verify_review_resolution(
 
 
 @blueprint.node
-def check_feedback(logger: logging.Logger, feedback_path: str = "") -> Feedback:
+def check_feedback(
+    logger: logging.Logger, feedback_path: str = "", repo_dir: str = ""
+) -> Feedback:
     """Poll the story's feedback inbox once, without ever halting or asking.
 
     The non-blocking counterpart to the operator gate: a human may drop notes into
@@ -176,7 +184,7 @@ def check_feedback(logger: logging.Logger, feedback_path: str = "") -> Feedback:
 
     # `root / path` yields `path` when it is absolute, so repo-relative and absolute inbox
     # paths both work.
-    inbox = paths.launch_repo_root() / feedback_path
+    inbox = paths.launch_repo_root(repo_dir) / feedback_path
     if not inbox.exists():
         logger.info("no inbox file at %s — nothing to poll", inbox)
         return Feedback()

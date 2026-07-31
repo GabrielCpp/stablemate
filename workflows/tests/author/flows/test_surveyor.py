@@ -285,7 +285,7 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
         # sub-flow's prompt paths resolve against its parent's directory.
         workflow_dir=Path(author.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
-        config=RunConfig(backend_factory=lambda cli=None: None),
+        config=RunConfig(),
     )
 
 

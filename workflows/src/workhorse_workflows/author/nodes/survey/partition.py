@@ -41,6 +41,7 @@ def validate_partition(
     logger: logging.Logger,
     partition: str = "docs/survey/partition.yaml",
     inventory: str = "docs/survey/inventory.json",
+    repo_dir: str = "",
 ) -> PartitionCheck:
     """Every non-clean unit maps into at least one cluster, and no cluster invents units.
 
@@ -51,7 +52,7 @@ def validate_partition(
     """
     part_rel = partition.strip() or "docs/survey/partition.yaml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
 
     part_path = root / part_rel
     if not part_path.is_file():
@@ -195,6 +196,7 @@ def emit_artifacts(
     inventory: str = "docs/survey/inventory.json",
     backlog: str = "docs/backlog.md",
     unit_manifest: str = "docs/survey/unit-manifest.json",
+    repo_dir: str = "",
 ) -> EmitResult:
     """Write the generated backlog bullets and the unit-level manifest.
 
@@ -210,7 +212,7 @@ def emit_artifacts(
     backlog_rel = backlog.strip() or "docs/backlog.md"
     manifest_rel = unit_manifest.strip() or "docs/survey/unit-manifest.json"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     try:
         part = yaml.safe_load((root / part_rel).read_text(encoding="utf-8"))
         clusters = part.get("clusters") or []

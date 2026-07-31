@@ -173,7 +173,9 @@ def record_errors(record: dict, unit_id: str) -> list[str]:
 
 
 @blueprint.node(stub=_stubs.recorded)
-def validate_record(logger: logging.Logger, record_path: str, unit_id: str) -> RecordCheck:
+def validate_record(
+    logger: logging.Logger, record_path: str, unit_id: str, repo_dir: str = ""
+) -> RecordCheck:
     """Check one unit's finding record, hard and deterministically.
 
     Nothing here is a judgment call: the record parses, it describes the unit it was
@@ -188,7 +190,7 @@ def validate_record(logger: logging.Logger, record_path: str, unit_id: str) -> R
         logger.warning("record_path and unit_id are both required")
         return RecordCheck(record_errors="record_path and unit_id are both required")
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     path = (root / record_rel).resolve()
     if not path.is_file():
         logger.warning(
@@ -222,6 +224,7 @@ def verify_records(
     inventory: str = "docs/survey/inventory.json",
     findings_dir: str = "docs/survey/findings",
     ref: str = "HEAD",
+    repo_dir: str = "",
 ) -> VerifyResult:
     """The coverage gate: every frozen unit accounted for, and no silent shrinkage.
 
@@ -235,7 +238,7 @@ def verify_records(
     findings_rel = findings_dir.strip() or "docs/survey/findings"
     ref = ref.strip() or "HEAD"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     inv_path = root / inv_rel
     if not inv_path.is_file():
         logger.info("no inventory at %s — nothing was surveyed", inv_rel)

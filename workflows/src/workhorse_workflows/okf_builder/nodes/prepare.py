@@ -73,6 +73,7 @@ def prepare(
     service: str = "",
     source_path: str = "",
     source_excludes: str = "",
+    repo_dir: str = "",
 ) -> Prepared:
     """Resolve paths and initialize (or adopt) the build worklist.
 
@@ -83,7 +84,7 @@ def prepare(
     Every unusable setting comes back as a `Prepared` with `ostler_ok` false and a
     `prepare_error` saying which one — `start()` is where that becomes a failed run.
     """
-    root = paths.docs_root(docs_path)
+    root = paths.docs_root(docs_path, repo_dir)
     source_rel = source_path or service
     source = (root / source_rel).resolve() if source_rel else root.resolve()
     try:

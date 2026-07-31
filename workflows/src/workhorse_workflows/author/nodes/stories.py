@@ -112,6 +112,7 @@ def seed_story(
     epics_dir: str = "docs/epics",
     bullet: str = "",
     backlog: str = "docs/backlog.md",
+    repo_dir: str = "",
 ) -> SeededStory:
     """Register ONE bullet as a new story inside an already-existing epic.
 
@@ -139,7 +140,7 @@ def seed_story(
             "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"bullet\":\"...\"}')"
         )
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     okf = Ostler(root)
     # ostler names the folder, not this join: epic directories carry their creation order
     # (`0001-accounts`) and story mode is invoked with the bare slug, so a literal join would
@@ -213,7 +214,7 @@ def seed_story(
 
 
 @blueprint.node
-def select_story(logger: logging.Logger, epic_dir: str = "") -> StoryChoice:
+def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "") -> StoryChoice:
     """The next story in this epic whose `story.md` still needs writing.
 
     **ostler answers the whole question**: `next_story_report(epic, need="author")` walks
@@ -232,7 +233,7 @@ def select_story(logger: logging.Logger, epic_dir: str = "") -> StoryChoice:
         return StoryChoice(reason="no epic_dir supplied")
 
     epic = Path(epic_dir_rel).name
-    okf = Ostler(survey_repo_root())
+    okf = Ostler(survey_repo_root(repo_dir))
 
     try:
         report = okf.next_story_report(epic, need="author")
@@ -322,7 +323,7 @@ def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
 
 
 @blueprint.node(stub=_stubs.clean)
-def validate_story(logger: logging.Logger, story_dir: str = "") -> Defects:
+def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = "") -> Defects:
     """The bare-minimum story contract, checked deterministically.
 
     A story is intentionally lean — a Context section and Acceptance Criteria — because the
@@ -342,7 +343,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "") -> Defects:
         logger.warning("no story_dir supplied")
         return Defects(errors="no story_dir supplied")
 
-    story_md = survey_repo_root() / story_dir_rel / "story.md"
+    story_md = survey_repo_root(repo_dir) / story_dir_rel / "story.md"
     if not story_md.is_file():
         logger.warning("story.md missing at %s", story_md)
         return Defects(errors=f"story.md missing at {story_md}")
@@ -367,7 +368,11 @@ def validate_story(logger: logging.Logger, story_dir: str = "") -> Defects:
 
 @blueprint.node(stub=_stubs.clean)
 def check_story_grounding(
-    logger: logging.Logger, story_dir: str = "", epic_dir: str = "", features_dir: str = ""
+    logger: logging.Logger,
+    story_dir: str = "",
+    epic_dir: str = "",
+    features_dir: str = "",
+    repo_dir: str = "",
 ) -> Defects:
     """Was the story written against the surface documentation, or from imagination?
 
@@ -388,7 +393,7 @@ def check_story_grounding(
         logger.warning("story_dir and epic_dir are required — nothing to check")
         return Defects(errors="story_dir and epic_dir are required")
 
-    okf = Ostler(survey_repo_root())
+    okf = Ostler(survey_repo_root(repo_dir))
     slug = Path(story_dir_rel).name
     epic = Path(epic_dir_rel).name
     errors: list[str] = []
@@ -435,7 +440,11 @@ def check_story_grounding(
 
 @blueprint.node
 def record_attempt(
-    logger: logging.Logger, ledger_path: str = "", label: str = "", note: str = ""
+    logger: logging.Logger,
+    ledger_path: str = "",
+    label: str = "",
+    note: str = "",
+    repo_dir: str = "",
 ) -> Ledger:
     """Append this attempt's failure to the story's attempts ledger, and read it back.
 
@@ -455,7 +464,7 @@ def record_attempt(
         logger.info("no ledger_path supplied — nothing to record")
         return Ledger()
 
-    path = survey_repo_root() / ledger_rel
+    path = survey_repo_root(repo_dir) / ledger_rel
     heading = f"## Attempt {label}"
 
     try:
@@ -489,7 +498,9 @@ def _scope_of(text: str) -> str:
 
 
 @blueprint.node
-def check_story_feedback(logger: logging.Logger, feedback_path: str = "") -> Feedback:
+def check_story_feedback(
+    logger: logging.Logger, feedback_path: str = "", repo_dir: str = ""
+) -> Feedback:
     """Poll the operator's inbox for un-consumed feedback. Never blocks, never asks.
 
     The twin of an `Await`, and its opposite: a human may drop a note at any time while the
@@ -507,7 +518,7 @@ def check_story_feedback(logger: logging.Logger, feedback_path: str = "") -> Fee
         return Feedback()
 
     # `root / abs` == abs (pathlib), so an absolute path works too.
-    inbox = feedback_repo_root() / feedback_path
+    inbox = feedback_repo_root(repo_dir) / feedback_path
     if not inbox.exists():
         logger.info("no feedback inbox at %s", inbox)
         return Feedback()
@@ -539,6 +550,7 @@ def prune_bullet(
     backlog: str = "docs/backlog.md",
     bullet_id: str = "",
     from_backlog: bool = False,
+    repo_dir: str = "",
 ) -> Pruned:
     """Remove the one backlog bullet story mode consumed — story mode's tail.
 
@@ -553,7 +565,7 @@ def prune_bullet(
         logger.info("bullet '%s' is not from the backlog (or missing) — no-op", bullet_id)
         return Pruned()
 
-    backlog_path = survey_repo_root() / backlog_rel
+    backlog_path = survey_repo_root(repo_dir) / backlog_rel
     if not backlog_path.is_file():
         logger.info("no backlog at %s — nothing to prune", backlog_path)
         return Pruned()

@@ -84,7 +84,9 @@ UI_QA_MODES = ("playwright", "maestro")
 
 
 @blueprint.node
-def open_pr(logger: logging.Logger, epic: str = "", base_branch: str = "main") -> PrGate:
+def open_pr(
+    logger: logging.Logger, epic: str = "", base_branch: str = "main", repo_dir: str = ""
+) -> PrGate:
     """Open the finished epic's PR, and say whether there is anything to gate CI on.
 
     With no epic there is nothing to PR and nothing to gate: the queue was already pruned
@@ -98,11 +100,11 @@ def open_pr(logger: logging.Logger, epic: str = "", base_branch: str = "main") -
         logger.info("no epic — nothing to PR")
         return PrGate(ci_base=base_branch)
 
-    _open_epic_pr(logger, epic, base_branch)
+    _open_epic_pr(logger, epic, base_branch, repo_dir)
     return PrGate(should_gate=True, ci_epic=epic, ci_base=base_branch)
 
 
-def _open_epic_pr(logger: logging.Logger, epic: str, base: str) -> None:
+def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = "") -> None:
     """Commit the queue prune, push the epic branch, open its PR. Best-effort throughout.
 
     Every early return leaves the branch unpushed or the PR unopened for a manual
@@ -110,7 +112,7 @@ def _open_epic_pr(logger: logging.Logger, epic: str, base: str) -> None:
     non-github origin all reach the end of the epic and advance the queue.
     """
     branch = f"feat/{epic}"
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     if not branch_exists(root, branch):
         logger.info("no branch %s to PR", branch)
@@ -161,7 +163,9 @@ def _open_epic_pr(logger: logging.Logger, epic: str, base: str) -> None:
 
 
 @blueprint.node
-def merge_pr(logger: logging.Logger, epic: str = "", base_branch: str = "main") -> MergeOutcome:
+def merge_pr(
+    logger: logging.Logger, epic: str = "", base_branch: str = "main", repo_dir: str = ""
+) -> MergeOutcome:
     """Merge the epic's PR into its base, then move the local checkout to the merged tip.
 
     Syncing the checkout is the load-bearing half: the next epic branches from whatever
@@ -179,7 +183,7 @@ def merge_pr(logger: logging.Logger, epic: str = "", base_branch: str = "main") 
         logger.info("no epic given — nothing to merge")
         return MergeOutcome(merge_status="unavailable", base_branch=base_branch)
 
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     token = resolve_github_token(root)
     if not token:
@@ -278,7 +282,11 @@ def _find_merged_pr(repo, branch: str):
 
 @blueprint.node
 def flag_ci_failure(
-    logger: logging.Logger, epic: str = "", attempts: str = "?", summary: str = ""
+    logger: logging.Logger,
+    epic: str = "",
+    attempts: str = "?",
+    summary: str = "",
+    repo_dir: str = "",
 ) -> CiFlagged:
     """CI could not be turned green within the fix budget. Leave it red and say so.
 
@@ -289,7 +297,7 @@ def flag_ci_failure(
     re-attempts the loop rather than dying in a terminal.
     """
     branch = f"feat/{epic}"
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     logger.warning(
         "%s\n"
@@ -317,7 +325,11 @@ def flag_ci_failure(
 
 @blueprint.node
 def flag_merge_failure(
-    logger: logging.Logger, epic: str = "", base_branch: str = "main", attempts: str = "?"
+    logger: logging.Logger,
+    epic: str = "",
+    base_branch: str = "main",
+    attempts: str = "?",
+    repo_dir: str = "",
 ) -> MergeFlagged:
     """The PR could not be merged within the conflict-resolution budget. Say so and pause.
 
@@ -326,7 +338,7 @@ def flag_merge_failure(
     PR left open and unmerged.
     """
     branch = f"feat/{epic}"
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     logger.warning(
         "%s\n"
@@ -389,6 +401,8 @@ def open_story_pr(
     story_path: str = "",
     spec_dir: str = "",
     story_branch: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> StoryPr:
     """Story mode's terminal: one PR per affected **code** repo, none in the docs repo.
 
@@ -419,8 +433,8 @@ def open_story_pr(
         return StoryPr()
 
     branch = story_branch or story_slug
-    root = find_repo_root()
-    repos = resolve_workspace("CODER_WORKSPACE")
+    root = find_repo_root(repo_dir)
+    repos = resolve_workspace(workspace_file, repo_dir)
 
     spec = root / spec_dir if spec_dir else None
     plan_ctx = (

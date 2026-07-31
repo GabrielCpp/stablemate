@@ -38,6 +38,7 @@ def build_okf_context(
     base: str = "HEAD",
     head: str = "WORKTREE",
     docs_path: str = "",
+    repo_dir: str = "",
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir.
 
@@ -45,7 +46,7 @@ def build_okf_context(
     the YAML engine — a workflow var is a string — and the encoding is gone here along with
     the decoder's "was not valid JSON" warning, which had nothing left to guard.
     """
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     returncode, payload, stderr = ostler_qa.qa_context(
         spec_dir,
         base=base,
@@ -71,6 +72,7 @@ def validate_okf_context(
     spec_dir: str = "",
     build_status: str = "invalid",
     docs_path: str = "",
+    repo_dir: str = "",
 ) -> OkfContextResult:
     """Re-check the packet the builder wrote, and carry the builder's verdict forward.
 
@@ -78,7 +80,7 @@ def validate_okf_context(
     and the build that produced it passed. The last is why `build_status` is a parameter — a
     packet can validate cleanly and still have been generated from a failed run.
     """
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     returncode, payload, stderr = ostler_qa.qa_context_validate(spec_dir, docs_root=docs_root)
     cli_status = str(payload.get("status", "invalid")).lower()
     status = (

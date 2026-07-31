@@ -309,7 +309,7 @@ def _attribute_failures(result: RegressionRun, context: dict) -> RegressionRun:
 
 @blueprint.node
 def detect_regression_platform(
-    logger: logging.Logger, spec_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> RegressionPlatform:
     """Did the approved plan touch a UI layer, and on which platform(s)?
 
@@ -318,7 +318,7 @@ def detect_regression_platform(
     surfaced for the gate to scope its journeys; a legacy file carrying only the flat
     `touched_layers` list still resolves through the older map, without paths.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     plan_ctx = (
         load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
         if spec_dir
@@ -359,6 +359,8 @@ def run_regression_suite(
     spec_dir: str = "",
     qa_dir: str = "",
     platform: str = "none",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> RegressionRun:
     """Run the committed user-journey suites for `platform` and report their own verdict.
 
@@ -367,12 +369,12 @@ def run_regression_suite(
     plan-context itself, the same convention as `detect_regression_platform`, rather than
     depending on a list-shaped argument.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     spec_path = root / spec_dir
     plan_ctx = (
         load_json(spec_path / "plan-context.json", "plan-context.json", logger) if spec_dir else {}
     )
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
 
     if platform == "web":
         result = _run_platform("web", repos, plan_ctx, qa_dir, logger)

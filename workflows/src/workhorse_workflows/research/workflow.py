@@ -77,8 +77,19 @@ class Research(Workflow):
     """
 
     #: Which program to run, as a repo-relative dir. Empty → `load_program` selects it
-    #: (`$RESEARCH_PROGRAM`, the launch dir, `agents.yml`, the pointer file).
+    #: (the launch dir, `agents.yml`, the pointer file).
     program: str = ""
+
+    #: The remote to clone, when the run has to fetch its own checkout. Empty — the usual
+    #: case — means work in place on `repo_dir`, which the CLI has already resolved.
+    repo_url: str = ""
+
+    #: The branch to clone. Only read when `repo_url` is set.
+    repo_branch: str = "main"
+
+    #: Where the operator stood, which is one of the program-selection signals. Empty
+    #: means the driver's own working directory.
+    launch_dir: str = ""
 
     def setup(self) -> Program:
         """Get a checkout, then read the program manifest out of it.
@@ -87,8 +98,13 @@ class Research(Workflow):
         program's paths, and none of them decides those values. This is `setup` +
         `load_config` in the YAML.
         """
-        repo = self.call(clone_repo)
-        return self.call(load_program, self.program, repo.repo_dir)
+        repo = self.call(
+            clone_repo,
+            repo_dir=self.repo_dir,
+            repo_url=self.repo_url,
+            repo_branch=self.repo_branch,
+        )
+        return self.call(load_program, self.program, repo.repo_dir, self.launch_dir)
 
     def labels(self) -> dict[str, str]:
         """What the run is working on — telemetry the engine cannot know."""

@@ -24,14 +24,17 @@ from workhorse.scriptutil import find_docs_root
 BUILD_DIRNAME = ".agents/okf-build"
 
 
-def docs_root(docs_path: str = "") -> Path:
-    """The docs repo root: the explicit path, else `CODER_DOCS_PATH`, else the repo walk.
+def docs_root(docs_path: str = "", repo_dir: str = "") -> Path:
+    """The docs repo root: the explicit path, else the walk up from `repo_dir`.
 
     Both entry points resolve it this way — the main graph's `prepare` and the walk's
     `detect_webapp` — which is what lets the walk run standalone against a book the main
     graph built in an earlier run.
+
+    Neither argument is read from the environment: both are run inputs that travel down
+    from the workflow, per the rule in `workflows/README.md`.
     """
-    return Path(find_docs_root(docs_path))
+    return Path(find_docs_root(docs_path, repo_dir))
 
 
 def features_root(root: Path, service: str) -> Path:

@@ -11,7 +11,6 @@ covered in practice.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +40,7 @@ def load_config(
     logger: logging.Logger,
     backlog: str = "docs/backlog.md",
     epics_dir: str = "docs/epics",
+    repo_dir: str = "",
 ) -> Config:
     """Resolve the author's paths and prove the backlog exists.
 
@@ -57,7 +57,7 @@ def load_config(
     backlog = backlog.strip() or "docs/backlog.md"
     epics_dir = epics_dir.strip() or "docs/epics"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     backlog_path = (root / backlog).resolve()
     if not backlog_path.is_file():
         logger.warning("backlog file not found: %s", backlog_path)
@@ -101,18 +101,22 @@ def load_config(
     )
 
 
-def _base_branch(author_branch: str, cwd: Path) -> str:
+def _base_branch(author_branch: str, cwd: Path, configured: str = "") -> str:
     """The branch the run forked from — what a PR would target.
 
     The branch the repo is sitting on wins, unless that is already the author branch (a
-    resume). Otherwise the first of `REPO_BRANCH`, `develop`, `main`, `master` that
+    resume). Otherwise the first of `configured`, `develop`, `main`, `master` that
     exists locally, and failing all of those the configured name or `main`.
+
+    `configured` is the run's `base_branch` input, carried down from the workflow rather
+    than read from the environment — the branch a run targets is an input, so it has to be
+    visible in the checkpoint and overridable by a caller.
     """
     current = active_branch(cwd)
     if current and current != author_branch:
         return current
 
-    configured = os.environ.get("REPO_BRANCH", "").strip()
+    configured = configured.strip()
     for candidate in [configured, "develop", "main", "master"]:
         if candidate and candidate != author_branch and local_branch_exists(cwd, candidate):
             return candidate
@@ -132,20 +136,26 @@ def _run_slug(run_dir: str) -> str:
 
 
 @blueprint.node
-def branch_author(logger: logging.Logger, run_dir: str = "", mode: str = "epic") -> Branches:
+def branch_author(
+    logger: logging.Logger,
+    run_dir: str = "",
+    mode: str = "epic",
+    repo_dir: str = "",
+    base_branch: str = "",
+) -> Branches:
     """Cut (or re-check-out) the one branch this run works on.
 
     One branch per run. A blank `author_branch` in the return is the "carry on where we
     are" answer, not a failure: it is what a repo with no `.git` gets, and what a failed
     checkout gets. `mode` reaches only a log line — it is here because the script took it.
     """
-    repo_root = find_repo_root()
+    repo_root = find_repo_root(repo_dir)
     if not (repo_root / ".git").exists():
         logger.info("no .git at %s — skipping branch creation", repo_root)
         return Branches(base_branch="main", author_branch="")
 
     branch = f"author/{_run_slug(run_dir)}"
-    base_branch = _base_branch(branch, repo_root)
+    base_branch = _base_branch(branch, repo_root, base_branch)
 
     if local_branch_exists(repo_root, branch):
         checkout(repo_root, branch)

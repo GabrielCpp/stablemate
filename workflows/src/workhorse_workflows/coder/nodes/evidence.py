@@ -415,6 +415,7 @@ def verify_qa_evidence(
     spec_dir: str = "",
     claimed_status: str = "",
     claimed_notes: str = "",
+    repo_dir: str = "",
 ) -> QaResult:
     """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies.
 
@@ -438,7 +439,7 @@ def verify_qa_evidence(
             notes="QA evidence gate: no spec_dir provided to locate qa-evidence.json.",
         )
 
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     spec_path = root / spec_dir
     evidence_path = spec_path / EVIDENCE_FILE
 

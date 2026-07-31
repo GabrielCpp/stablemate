@@ -64,7 +64,10 @@ def _subsection_ids(text: str, heading: str) -> set[str]:
 
 @blueprint.node(stub=_stubs.holds)
 def verify_reconcile(
-    logger: logging.Logger, epics_dir: str = "docs/epics", ref: str = "HEAD"
+    logger: logging.Logger,
+    epics_dir: str = "docs/epics",
+    ref: str = "HEAD",
+    repo_dir: str = "",
 ) -> VerifyReport:
     """Scope this run silently dropped, measured against the last committed epics.
 
@@ -79,7 +82,7 @@ def verify_reconcile(
     """
     epics_rel = epics_dir.strip() or "docs/epics"
     ref = ref.strip() or "HEAD"
-    root = launch_repo_root()
+    root = launch_repo_root(repo_dir)
     epics_path = root / epics_rel
 
     if show_file(root, ref, epics_rel) is None and not (root / ".git").exists():
@@ -137,7 +140,7 @@ def verify_reconcile(
 
 
 @blueprint.node(stub=_stubs.holds)
-def verify_integrity(logger: logging.Logger, epic: str = "") -> VerifyReport:
+def verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> VerifyReport:
     """`ostler doctor` over the whole graph, as a blocking gate.
 
     The per-epic coverage validator proves seeds map to stories *within* an epic; story
@@ -149,7 +152,7 @@ def verify_integrity(logger: logging.Logger, epic: str = "") -> VerifyReport:
     opt-in-by-presence stance the other author gates take. `epic` blank means the whole
     graph, which is what the final gate wants.
     """
-    okf = Ostler(launch_repo_root())
+    okf = Ostler(launch_repo_root(repo_dir))
 
     try:
         report = okf.doctor(epic=epic.strip() or None)
@@ -192,7 +195,7 @@ def _is_done(status: str) -> bool:
 
 
 @blueprint.node(stub=_stubs.clean)
-def validate_artifacts(logger: logging.Logger) -> Defects:
+def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Can the coder engine actually walk what this run produced?
 
     A valid epics queue, every queued epic loadable with at least one story, every story
@@ -208,7 +211,7 @@ def validate_artifacts(logger: logging.Logger) -> Defects:
     The YAML passed `epics_dir` here for the node's contract and the script never read it:
     ostler discovers the graph's doc roots itself. This takes no arguments.
     """
-    okf = Ostler(survey_repo_root())
+    okf = Ostler(survey_repo_root(repo_dir))
 
     try:
         queue = okf.todo()
@@ -285,7 +288,11 @@ def _commit_message(mode: str, epic: str, bullet: str) -> str:
 
 @blueprint.node
 def commit_author(
-    logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = ""
+    logger: logging.Logger,
+    mode: str = "epic",
+    epic: str = "",
+    bullet: str = "",
+    repo_dir: str = "",
 ) -> Committed:
     """Commit the epic/story docs this run wrote, in the one repo it wrote them in.
 
@@ -293,7 +300,7 @@ def commit_author(
     is no affected-repos resolution, so this always commits at the repo root.
     `mode="incomplete"` is the failure edge and only changes the message.
     """
-    repo_root = find_repo_root()
+    repo_root = find_repo_root(repo_dir)
     if not (repo_root / ".git").exists():
         logger.info("no .git at %s — nothing to commit", repo_root)
         return Committed()
@@ -384,6 +391,7 @@ def open_author_pr(
     mode: str = "epic",
     epic: str = "",
     bullet: str = "",
+    repo_dir: str = "",
 ) -> PullRequest:
     """Push the run's branch and open one PR in the docs repo.
 
@@ -397,7 +405,7 @@ def open_author_pr(
     if not author_branch:
         raise WorkflowFailed("no author branch was provided")
 
-    repo_root = find_repo_root()
+    repo_root = find_repo_root(repo_dir)
     if not (repo_root / ".git").exists():
         return _skipped(logger, f"no .git at {repo_root}")
 

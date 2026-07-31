@@ -255,14 +255,28 @@ def allow_all_directories() -> None:
         pass
 
 
-def clone(url: str, dest: str | Path, *, branch: str | None = None, single_branch: bool = True) -> bool:
-    """Clone ``url`` into ``dest`` (``git clone``). Returns success. Honors the ambient
-    ``GIT_SSH_COMMAND`` for SSH remotes (git inherits it from the environment)."""
+def clone(
+    url: str,
+    dest: str | Path,
+    *,
+    branch: str | None = None,
+    single_branch: bool = True,
+    ssh_command: str = "",
+) -> bool:
+    """Clone ``url`` into ``dest`` (``git clone``). Returns success.
+
+    ``ssh_command`` sets ``GIT_SSH_COMMAND`` **for this clone only** — the caller says
+    what host-key policy its remote needs instead of exporting one into the process,
+    where it would silently apply to every other git call in the run. An ambient
+    ``GIT_SSH_COMMAND`` the launcher set is still inherited when this is empty.
+    """
     kwargs: dict = {}
     if branch:
         kwargs["branch"] = branch
     if single_branch:
         kwargs["single_branch"] = True
+    if ssh_command:
+        kwargs["env"] = {"GIT_SSH_COMMAND": ssh_command}
     try:
         Repo.clone_from(url, str(dest), **kwargs)
         return True

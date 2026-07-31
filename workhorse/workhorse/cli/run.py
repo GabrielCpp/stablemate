@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from workhorse import otel
@@ -152,10 +153,12 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     if args.cli:
         os.environ["AGENT_CLI"] = args.cli
 
-    # Validate the active backend now so an unknown name fails fast with a clear
-    # message instead of mid-run.
+    # Resolve the active backend now so an unknown name fails fast with a clear
+    # message instead of mid-run — and because this is the ring that gets to know
+    # adapters exist. What travels on the invocation is the adapter itself, so
+    # nothing further in has to reach back to the registry to find one.
     try:
-        get_backend()
+        backend = get_backend()
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -190,7 +193,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         context_manifest=_load_context_manifest(args.context_file),
         # Read last, after `--cli` and the repo-dir default above have had their say,
         # so what the run is given is the environment as the CLI finally settled it.
-        config=RunConfig.from_env(os.environ),
+        config=replace(RunConfig.from_env(os.environ), backend=backend),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
 

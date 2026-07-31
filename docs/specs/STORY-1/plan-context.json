@@ -1,0 +1,25 @@
+{
+  "story": "STORY-1",
+  "services": [
+    {
+      "repo": "api",
+      "path": ".",
+      "type": "go",
+      "plan_file": "plan-api.md",
+      "skills": [
+        "go-service"
+      ]
+    },
+    {
+      "repo": "web",
+      "path": ".",
+      "type": "react-router",
+      "plan_file": "plan-web.md",
+      "skills": []
+    }
+  ],
+  "implementation_order": [
+    "api::.",
+    "web::."
+  ]
+}
