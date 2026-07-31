@@ -78,7 +78,7 @@ markdown path links (never `[[wikilinks]]`).
    + implementations: model the base as a code concept, each impl as a code concept that `extends:`
    it, and whatever *selects* one at runtime `refs:` the base (profile §7.11).
    - **A concept is a real explanation, not a stub.** Cover its *parts* (a "Workflow" explains its
-     node types, flows, and vars/env; a format explains its fields) and **point to the more
+     states, transitions, and inputs/env; a format explains its fields) and **point to the more
      specific nodes** for each — the format that holds the on-disk shape, the code concept that
      implements a piece, the command that drives it. A one-line concept with a lone `code:` bullet
      is incomplete.
@@ -88,7 +88,7 @@ markdown path links (never `[[wikilinks]]`).
 5. **Flows.** A `flow` per multi-step journey; its `steps:` are an ordered list of links into the
    interactions/invocations/screens it traverses. Flows live at the service root (`flows/`) because
    a journey often crosses contexts.
-6. **Formats.** A `format` per file/artifact shape (a `workflow.yaml`, an OpenAPI doc), fields as
+6. **Formats.** A `format` per file/artifact shape (an `agents.yml`, an OpenAPI doc), fields as
    `### <key>` sections.
 
 **Placement is per-service, then by context.** `docs/features/<service>/`; split into `gui/`,
