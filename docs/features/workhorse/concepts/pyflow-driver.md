@@ -5,16 +5,17 @@ title: drive — walk a workflow written as a Python state machine
 ---
 # drive — walk a workflow written as a Python state machine
 
-The loop the Python state-machine engine runs, the sibling of the YAML
-[node-walk engine](workflow.md#node-walk-engine). Where the node walk advances a cursor over a
-[`Graph`](workflow.md) and merges each node's outputs into a
-[`WorkflowContext`](workflow-context.md), `drive` calls a *method* on a `Workflow` instance and
-follows the transition it returns. Control flow is Python — `if`, `for`, a counter that is just a
-counter — rather than `branch` nodes and context keys.
+The loop workhorse runs. There is one engine and this is it: `drive` calls a *method* on a
+`Workflow` instance and follows the transition it returns, checkpointing before each one.
+Control flow is ordinary Python — `if`, `for`, a counter that is just a counter — because the
+graph lives in the method bodies rather than in a data file the engine interprets.
 
-Both engines share the runs directory, the [`ArtifactWriter`](artifact-writer.md) layout, the
-[agent backends](agent-backend.md), telemetry and the [resilience ladder](run-agent.md). What
-differs is where the graph lives.
+The retired YAML front-end advanced a cursor over a declared node graph and merged each node's
+outputs into an ambient context map; what replaced it is [the three tiers of
+state](#the-three-tiers-of-state-and-no-fourth) below. Everything *under* the state — the runs
+directory and [`ArtifactWriter`](artifact-writer.md) layout, the [agent
+backends](agent-backend.md), telemetry, and the [resilience ladder](run-agent.md) — is
+unchanged by that, which is why a ported workflow's operator knobs still mean what they meant.
 
 - code: `workhorse/workhorse/pyflow/driver.py::drive`
 
@@ -53,8 +54,9 @@ differs is where the graph lives.
    `waiting_on` set, and polls. Anything else is a `WorkflowFailed` — a state that falls off the
    end returning `None` is a bug, not a terminal.
 6. **Budget.** Each hop burns one unit of `max_transitions` (`WORKHORSE_MAX_TRANSITIONS`,
-   default 1000). Exhaustion raises `WorkflowFailed` — the analogue of the YAML engine's
-   [gas tank](gas-tank.md) for a loop that never converges.
+   default 1000). Exhaustion raises `WorkflowFailed`. That, plus the wall-clock
+   `WORKHORSE_MAX_RUNTIME_S` deadline checked between states, is the whole runaway bound —
+   there is no per-node fuel budget, because a Python `for` loop is not a cycle in a graph.
 
 ## The three tiers of state, and no fourth
 
@@ -105,17 +107,17 @@ Nodes carry aliases for the same reason at a different layer: `self.output(node)
 a run *directory* named after the node, so a renamed node would otherwise lose the output a
 half-finished run already recorded.
 
-## Two engines, one runs directory
+## A checkpoint from the retired engine is refused, not misread
 
-A checkpoint is tagged `"engine": "pyflow"`. Both engines read the same runs directory and share
-one `--resume-latest`, so each recognizes the other's checkpoint and refuses it by name — the
-YAML side in `main.run()`, the Python side in `read_resume`. The failure this prevents is not the
-`KeyError`: it is a state name that collides with a node id by coincidence and resumes the wrong
-thing.
+A checkpoint is tagged `"engine": "pyflow"`, and `read_resume` refuses anything else by name.
+The YAML engine is gone, but the run directories it wrote are not: they sit in the same
+`.agents/runs` tree and are eligible for the same `--resume-latest`. The failure this prevents
+is not the `KeyError` — it is a `current_id` that collides with a state name by coincidence and
+resumes the wrong thing. Such a run cannot be resumed; start it over.
 
 ## Related
 
-- [workflow](workflow.md) — the YAML engine this one sits beside
-- [ArtifactWriter](artifact-writer.md) — the run directory and checkpoint files both engines write
+- [the workflow format](../workflow-format.md) — the package shape this walks
+- [state graph](pyflow-state-graph.md) — what `dot` and `--dry-run` derive from the same classes
+- [ArtifactWriter](artifact-writer.md) — the run directory and checkpoint files it writes
 - [run_agent](run-agent.md) — the resilience ladder `self.agent` goes through unchanged
-- [gas tank](gas-tank.md) — the YAML engine's equivalent of the transition budget

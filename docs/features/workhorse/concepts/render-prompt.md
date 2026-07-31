@@ -5,7 +5,7 @@ title: render — file-based prompt rendering
 ---
 # render — file-based prompt rendering
 
-Renders an [agent node](../workflow-format.md#concept-agent-run-an-llm-turn)'s `prompt:` file (a Jinja2 template on disk)
+Renders an [agent node](../workflow-format.md#the-agent-turn)'s `prompt:` file (a Jinja2 template on disk)
 against the node's render context, first splicing in a repo-authored **flavor override**
 ([`_flavor_override`](#_flavor_override)) if one exists for that node. [`run_agent`](run-agent.md)
 calls it once per node (`render(node.prompt, prompt_ctx, workflow_dir)`) to produce the text
@@ -79,7 +79,7 @@ farrier copying or rewriting it. Presence alone activates it: no config, no sele
   `workflow_dir: Path`.
 - **Algorithm:**
   1. `repo_root = context.get("_node_cwd") or context.get("_repo_root")` — an agent node with a
-     declared [`cwd:`](../workflow-format.md#field-cwd) looks its flavor up **relative to that per-node
+     declared [`cwd:`](../workflow-format.md#cwd-and-add_dirs) looks its flavor up **relative to that per-node
      working directory** instead of the run's [`_repo_root`](../context-manifest.md#runtime-mapping),
      so each repo in a multi-repo workflow can carry its own flavor independent of the orchestrating
      repo. Neither key set → return `None` (no repo to look an override up against, e.g. a

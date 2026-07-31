@@ -1536,12 +1536,100 @@ types are deleted, and the driver actually logs `state →`, `call →`, `agent 
   **kwargs)`. Corrected, along with the dangling `self.review` the example never defined.
   Docstring only; no behavior.
 
+### Iteration 3 — the OKF book's index, format and driver pages
+
+Work-order item 3, first half. The book's two **entry points** were the stale ones that
+mattered most, because every other page is reached through them:
+
+- **`docs/features/workhorse/workhorse.md`** — the `type: cli` index, titled "fail-soft
+  runner for **YAML** agent workflows" and documenting `--workflow <path>`,
+  `_resolve_workflow_path`, `_resolve_library_dir`/`WORKHORSE_LIBRARY_DIR`, `dot --pin`/
+  `--leaf`, `load_workflow`, terminal/fail nodes, and a split `~/.config/workhorse/` vs
+  `~/.config/farrier/` config. Rewritten from `main.py` and `pyflow/run.py`: name-only
+  resolution through the `workhorse.workflows` entry-point group, the two front doors, the
+  five subcommands as they actually parse, `config set-base` and the unified
+  `~/.config/stablemate/config.toml`, exit codes 0/1/130. **It never appeared in `ostler
+  doctor`** — its `code:` citation (`main.py::main`) still resolves, so nothing about the
+  page's 281 lines of prose was checkable.
+- **`docs/features/workhorse/workflow-format.md`** — carried a "this format no longer
+  exists" banner over 164 lines of YAML schema. Its *subject* survives under a new name, so
+  per the loop's stop rule it was rewritten rather than deleted: the workflow package is now
+  the format, and the page documents package layout, `Registry`, the entry point, the
+  console script, the `Workflow` subclass, states, transitions, `Blueprint`, nodes,
+  `prompts/`, and a new `## The agent turn` section (`returns` / `power` / `timeout` /
+  `cwd and add_dirs`).
+- **`concepts/pyflow-driver.md`** and **`concepts/pyflow-state-graph.md`** were already
+  grounded and correct, but framed as *one of two engines* — "the sibling of the YAML
+  node-walk engine", "the analogue of the YAML engine's gas tank", a whole "Two engines, one
+  runs directory" section. De-framed: one engine, with the retired one referred to in the
+  past tense where it explains a choice.
+- **`run-artifacts.md`** — the anchor `workhorse/README.md#sessions-per-node-clean-context`
+  broke silently in the README split (`16e971e`); retargeted to
+  `workhorse/docs/DEVELOPMENT.md#sessions-per-turn-clean-context`.
+
+**Findings from iteration 3:**
+
+- **`ostler doctor` grounds only `code:` bullets attached to a recognized OKF unit node.**
+  `doctor.py::_check_code_grounding` iterates `graph.ui_nodes` and reads `node.meta["code"]`;
+  a `- code:` bullet under a plain `` ## `name` — prose `` heading belongs to no unit, so it
+  is never checked. Three pages dangle **unreported** because of this:
+  `concepts/scriptutil.md` (8 dead symbols — `resolve_workspace`, `checkout_workspace`,
+  `get_repo_config`, `build_dispatch_list`, `get_affected_repos`, `open_repo`, `run_gh`),
+  `concepts/testing.md` (8 dead `WorkflowRun`/assert symbols), and
+  `concepts/workflow.md::_step_loop`. This is the loop's *"if it cannot report this, say so
+  instead of grepping around it"* case: said, not grepped around. Fixing it is an ostler
+  change, so it stays a finding.
+- **`main.py::_add_test_args` still helps `"Directory containing workflow.yaml and a tests/
+  subdirectory"`** — a stale string in shipped code, printed by `workhorse test --help`. The
+  directory it wants is a workflow *package*. Reported, not fixed (no behavior this loop).
+- **`runner/spec.py`'s module docstring says "both front-ends build one … The YAML loader
+  validates a node's mapping into it"** — present tense about a deleted loader.
+  `pyflow/engine.py:305` is now the only builder of an `AgentNode`. Same for
+  `pyflow/driver.py:65`, "The two engines share a runs directory". Reported, not fixed.
+- **`args` rendering *did* change, and both WORKFLOW.md and AUTHORING.md said it did not.**
+  The YAML `args:` was a dict of Jinja template **strings**, so an `int` or a `Path`
+  stringified on the way past; `self.agent(args={…})` merges real Python objects into the
+  render context (`pyflow/engine.py` passes `args={}` on the node and puts the values in the
+  `WorkflowContext` instead, with the comment saying exactly why). Corrected in WORKFLOW.md's
+  "what did not change" list and stated in the format page.
+- **`self.agent(timeout=…)` defaults to 3600s, not unbounded** — `AgentNode.timeout` is
+  `float | None = 3600` and `engine.py` only sets the key when the caller passed one. The
+  first draft of the format page said "unbounded"; corrected against the source.
+
+**`ostler doctor` went 18 → 29 errors, and that is the point.** Eleven of the new ones are
+inbound links from stale `concepts/` pages into anchors the rewritten `workflow-format.md`
+no longer has (`#outputspec`, `#script`, `#branch`, `#call`, `#vars`, `#flows`). The dangle
+was always there — the old page kept it *hidden* by preserving retired anchors. Every one of
+the 29 now names a page whose subject is deleted, plus six in `docs/features/farrier/`
+(`install.py` lost `render_expected`, `resolve_library_dir`, `Renderer`, `main`,
+`read_config` — outside this loop's scope but genuinely dangling). Live pages that merely
+*linked* into the format page (`extract-outputs`, `render-prompt`, `run-agent`,
+`stream-subprocess`, `flows/workhorse-choose-backend-and-power`) were retargeted in this
+commit; their bodies still speak YAML and are the next iteration's work, along with the four
+stale `flows/` walkthroughs.
+
+**okf-builder was not launched**, deliberately. The builder grounds a page against symbols
+that exist; it cannot decide that a page's *subject* was deleted, which is exactly what this
+iteration had to decide. Secondarily, `829d848` is labelled "step 1" of an in-flight refactor
+of `runner/agent.py` — the code path an unattended builder run drives hardest.
+
+**Open question for the operator** (asked, not acted on, per the stop rule): nine
+`concepts/` pages — `workflow.md`, `dot-renderer.md`, `load-workflow.md`, `run-script.md`,
+`run-call.md`, `run-flow.md`, `evaluate-branch.md`, `builtins-registry.md`, `gas-tank.md` —
+have subjects that survive *only* in the sense that `pyflow-driver.md` and
+`pyflow-state-graph.md` already document what replaced them. Rewriting them duplicates those
+two pages; deleting them with links redirected is the honest move, and deletion needs a call.
+
 ### The green gate, and a concurrent workstream
 
-`make test` is **red in the working tree and green at `HEAD`** — verified by running
-`workhorse/tests/test_agent_cap.py` in a detached worktree at `HEAD`, where it is 18/18.
-The 13 failures come from an uncommitted, in-flight refactor of
-`workhorse/workhorse/runner/agent.py` (`_invoke_claude(..., resilience=)`) belonging to
-another workstream sharing this checkout, not from loop 3. Loop 3's iterations touch
-Markdown and one docstring, and commit only their own paths. `ruff check .` and
-`make check-public` are both clean.
+`make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
+by running the failing files in a detached worktree at `HEAD`. At iteration 2 the 13
+failures were an uncommitted refactor of `workhorse/workhorse/runner/agent.py`
+(`_invoke_claude(..., resilience=)`); at iteration 3 they had moved to
+`workhorse/workhorse/runner/backends.py` (`_finalize_turn`, `_codex_on_event`,
+`_opencode_on_event` all gaining parameters), which was last written **two minutes** before
+the run — `test_backends.py` + `test_agent_cap.py` are **56/56 at `HEAD`** in a clean
+worktree. Two consecutive `make test` invocations in the same iteration disagreed with each
+other, which is the signature of another workstream editing mid-run rather than of a real
+regression. Loop 3's iterations touch Markdown and one docstring, and commit only their own
+paths. `ruff check .` and `make check-public` are both clean.

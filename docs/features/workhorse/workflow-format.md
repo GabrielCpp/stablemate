@@ -1,168 +1,271 @@
 ---
 type: format
 slug: workflow-format
-title: The workflow file format (workflow.yaml) — RETIRED
+title: The workflow format (a Python package)
 ---
-# Workflow file format — retired
+# Workflow format
 
-> **This format no longer exists.** Workhorse has one engine, and it is Python: a workflow is a
-> state machine of decorated methods on a `Workflow`, resolved by name through the
-> `workhorse.workflows` entry-point group. `workhorse run <name>` never reads a `workflow.yaml`,
-> nothing parses this schema, and no `workflow.yaml` remains in this repository. Kept as the
-> record of what the YAML front-end accepted, because the four workflows that ran on it were
-> ported state by state against exactly these fields.
->
-> The loader that validated it (`workhorse/workhorse/graph/loader.py::load_workflow`), the node
-> model it produced and the `script`/`branch`/`call` runners are all deleted. The concept pages
-> this file links to are grounded in those symbols and are being rewritten with it; until then,
-> read every page under `concepts/` in the past tense too.
+A workflow is a **Python package**, not a file. It declares a `Registry` under a name, the
+`Workflow` subclasses whose methods are its states, and the `@blueprint.node` functions
+that do its work; its distribution publishes that name in the `workhorse.workflows`
+entry-point group, which is how [`workhorse run <name>`](workhorse.md#run) finds it. There
+is no file to hand the CLI and no schema to validate — the package *is* the format, and
+Python's own import and signature machinery is what checks it.
 
-Everything below describes the retired schema.
+This page is the **structural reference**: what a workflow package contains and what each
+piece must be. The narrative guide to writing one — worked examples, the three tiers of
+state, the substitution seam, telemetry labels — is
+[workhorse/docs/AUTHORING.md](../../../workhorse/docs/AUTHORING.md). Holding a
+`workflow.yaml` from the retired YAML front-end? Every construct in that schema is mapped
+to its replacement in
+[workhorse/docs/WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md); the schema itself is
+gone, along with its loader, its node model and its `script`/`branch`/`call` runners.
+
+## Package layout
+
+```
+my_workflow/
+├── __init__.py
+├── workflow.py         # the Registry, the Workflow classes, the console script
+├── nodes.py            # @blueprint.node functions
+└── prompts/            # Jinja2 .md templates
+    └── step.md
+```
+
+Nothing enforces those filenames — the entry point names whatever object holds the
+`Registry`, and prompt paths are resolved relative to the package directory. What *is*
+load-bearing is that the package be importable from a real directory on disk:
+`Registry.directory()` refuses a zip-imported package, and [`run`](workhorse.md#run) calls
+it eagerly so that failure arrives at resolution time rather than at the first prompt
+render.
 
 ## Fields
 
-Top-level keys of a workflow (and of every entry in [flows](#flows), which is itself a full
-workflow).
+### Registry
+- type: `workhorse.pyflow.Registry` — required: yes
 
-### name
-- type: `string` — required: no — default: the file stem (`workflow.yaml` → its dir name)
+The composition root, and the object the entry point must resolve to. It carries the
+workflow's name, its node index, its named flows and its agent stubs; anything else
+resolving under that entry point is a hard error naming what it actually found.
 
-Human label; names the run dir and the DOT digraph.
-
-### start
-- type: `string` (a node id) — required: **yes**
-
-Entry node id; must be a key in [nodes](#nodes) or load fails.
-
-### vars
-- type: `map<string, any>` — required: no — default: `{}`
-
-Initial context. A `var` with a **null** default is a **required parameter** (missing at launch
-→ error); an **empty-string** default is optional; any other value is the default. Overridden on
-a fresh start by [run](workhorse.md#run)'s `--params`/`--params-file` (ignored on resume).
-
-### env
-- type: `map<string, string>` (values Jinja2-rendered from context) — required: no — default: `{}`
-
-Environment variables injected into **every** [script](#script) node's subprocess; a node's own
-`env` merges on top (node wins per key).
-
-### nodes
-- type: `list<Node>` — required: **yes**
-
-The graph. Authored as a YAML list; keyed by each node's `id` at load. Node kinds below.
-
-### flows
-- type: `map<string, Workflow>` — required: no — default: `{}`
-
-Named sub-graphs, each a full workflow (this same schema, recursively). A [flow](#flow) node runs
-one; each is also runnable standalone via [`workhorse run <workflow> <flow>`](workhorse.md#run).
-
-## Node types
-
-Every node has `id: string` (**required**) and `type: enum` (**required**, the discriminator).
-All `next`/target ids must resolve within the same graph (`terminal`/`fail` take no `next`).
-
-### concept: agent — run an LLM turn
-
-An `agent` node runs one LLM turn against a rendered prompt. `next: string|null`.
-
-#### field: prompt
-- type: `path`
-- required: yes
-- semantics: Jinja2 template
-
-#### field: args
-- type: `map<string,string>`
-- default: `{}`
-- semantics: Jinja2, rendered into the prompt
-
-#### field: outputs
-- type: `list<OutputSpec>`
-- default: `[]`
-
-#### field: power
-- type: `enum{low,medium,high}|null`
-- default: null → backend default
-
-#### field: timeout
-- type: `float|null`
-- default: `3600`
-- semantics: seconds; `0`/null → engine default `AGENT_RESULT_TIMEOUT_S`; `infinity`/`inf`/`unbounded`/`never` → no limit
-
-#### field: cwd
-- type: `string|null`
-- default: process CWD
-- semantics: Jinja2
-
-#### field: add_dirs
-- type: `list<string>|string`
-- default: `[]`
-- semantics: Jinja2; extra dirs granted
-
-#### field: next
-- type: `string|null`
-
-### script
-Run a script, capturing one JSON object from stdout as its outputs. Fields: `script: path`
-(**required**); `args: list<string>` (Jinja2, positional; default `[]`); `outputs:
-list<OutputSpec>` (default `[]`); `cwd: string|null` (default the workflow dir); `env:
-map<string,string>` (Jinja2; merged over workflow `env`; default `{}`); `refuel: string|null` (a
-context dot-path — reaching this node refuels the gas tank when that value changed since the last
-visit; default null); `next: string|null`. A script can import
-[`workhorse.scriptutil`](concepts/scriptutil.md) for workspace resolution, JSON/JSONC loading, and
-`git`/`gh` plumbing shared across workflows (available because workhorse is installed editable).
-
-### branch
-Route to a node by inspecting context. Fields: `path: string` (**required**, a context dot-path);
-`cases: map<string,string>` (value→next equality map; default `{}`); `conditions:
-list<{op,value,next}>` where `op ∈ {==,!=,<,>,<=,>=}` and `value: string` (numeric compares;
-default `[]`); `default: string|null` (fallback next). Evaluation: `cases` first, then
-`conditions` in order, then `default`.
-
-### flow
-Call a named sub-graph like a function. Fields: `name: string` (**required**, a key in this
-graph's [flows](#flows) — validated to exist); `args: map<string,string>` (Jinja2 against the
-**parent** context — the only values that cross into the child, alongside the flow's own `vars`;
-default `{}`); `outputs: list<OutputSpec>` (keys lifted from the child's terminal context back to
-the parent; default `[]`); `next: string|null`.
-
-### call
-Invoke a builtin function. Fields: `fn: string` (**required**); `args: map<string,string>`
-(Jinja2; default `{}`); `outputs: list<CallOutputSpec>` (an OutputSpec plus optional `wrap:
-string|null`; default `[]`); `refuel: string|null`; `next: string|null`.
-
-### terminal / fail
-End the run: `terminal` exits 0, `fail` exits 1. No fields beyond `id`/`type`.
-
-### OutputSpec
-An entry in a node's `outputs:`. Fields: `key: string` (**required**, the context key to extract);
-`default: any` (emitted for this key when the node exhausts the resilience ladder and defaults to
-`next`; default null). `CallOutputSpec` adds `wrap: string|null`.
-
-## Sample (load-valid)
-
-```yaml
-name: example
-start: step
-vars:
-  subject: "the Fibonacci sequence"
-nodes:
-  - id: step
-    type: agent
-    prompt: prompts/step.md
-    args: { subject: "{{ subject }}" }
-    outputs:
-      - key: result
-        default: { status: error }
-    next: decide
-  - id: decide
-    type: branch
-    path: result.status
-    cases: { ok: done }
-    default: failed
-  - id: done
-    type: terminal
-  - id: failed
-    type: fail
+```python
+workflow = Registry("acme").add_blueprints(blueprint)
+main = workflow.main(Build)
 ```
+
+- `add_blueprints(*blueprints)` — folds every blueprint's nodes into the one index a run
+  is handed. A node the index does not carry is a hard error naming `add_blueprints`, not
+  a silent fallback.
+- `add_flows(**flows)` — names re-entry points (`add_flows(qa=Qa, dev=Dev)`), each value a
+  `Workflow` subclass. Those names are what `workhorse run <name> <flow>` accepts.
+- `override(**by_name)` — returns a **copy** of the index with those names rebound. Used by
+  tests; non-mutating, so a substitution cannot outlive the run that asked for it.
+- `stub_agents({stem: reply})` — declares what `--dry-run` returns for an agent turn, keyed
+  by prompt stem.
+- `main(entry)` — builds the `workhorse-<name>` console script around that entry class.
+- `directory()` — the package directory prompts resolve against.
+
+### entry point
+- type: `workhorse.workflows` entry-point group — required: yes
+
+The only resolution mechanism there is. Without it the workflow has no name and cannot be
+run:
+
+```toml
+[project.entry-points."workhorse.workflows"]
+acme = "acme_workflow.workflow:workflow"
+```
+
+A name that does not resolve prints the sorted list of installed names; a name that looks
+like a *path* is additionally told that workflows are Python packages now.
+
+### console script
+- type: `[project.scripts]` entry — required: no
+
+`Registry.main(entry)` returns a `main` suitable for a per-workflow console script, so a
+distribution can publish `workhorse-acme` alongside `workhorse run acme`. Both reach the
+same parser; the script only binds the workflow name up front.
+
+```toml
+[project.scripts]
+workhorse-acme = "acme_workflow.workflow:main"
+```
+
+### Workflow subclass
+- type: `workhorse.pyflow.Workflow` subclass — required: yes (at least one)
+
+The state machine. Its **inputs** are class attributes (a pydantic model's fields), filled
+from `--params` and frozen once `setup()` returns. Its **states** are methods. The entry
+state is the method named `start` — not a declared key, and not the first method defined.
+
+```python
+class Build(Workflow):
+    subject: str                       # input — required, from --params
+    target_env: str = "local"          # input — optional, with a default
+
+    def setup(self) -> Settings:       # runs once; its return becomes self.ctx
+        return Settings.load(self.subject)
+
+    def start(self):
+        return Continue(None, self.review, count=0)
+```
+
+- `setup()` — optional; runs once before the first state, and its return value becomes
+  `self.ctx` for the whole run.
+- `labels()` — optional; returns `dict[str, str]` and is re-read before every transition.
+  Keys are **not** `wf.`-prefixed. Values that render empty are dropped; a `labels()` that
+  raises costs that transition's labels and nothing else.
+- `self.call(fn, …)` / `self.agent(path, returns=…, args=…, power=…, timeout=…, cwd=…,
+  add_dirs=[…])` / `self.handoff(Child, **inputs)` / `self.output(node)` — the four things
+  a state body does. `self.output(node)` is a *read* of a recorded artifact and raises
+  `NodeNotRunError` when the node has not run.
+
+### state
+- type: method on a `Workflow` subclass — required: yes (`start`, at minimum)
+
+An ordinary method. Its parameters are the state parameters the previous transition bound;
+they live exactly one hop. Control flow inside it is ordinary Python — `if`, `for`, a
+counter that is just a counter. It must return a transition (or raise `WorkflowFailed`).
+
+`@workflow.state(aliases=[…])` declares former names for a state, so a run checkpointed on
+the old name still resumes. A checkpoint naming an unknown state fails loudly rather than
+silently restarting the run; an alias colliding with a live name raises at import; and
+`dot`/`--dry-run` render live names only.
+
+### transition
+- type: `Continue` · `Done` · `Await` — required: yes (every state returns one)
+
+| Return | Meaning |
+|---|---|
+| `Continue(result, self.next_state, **params)` | go to `next_state` with those parameters |
+| `Done(result)` | this flow is finished; `result` is what a `handoff` caller receives |
+| `Await(path, questions, self.next_state, **params)` | write `questions` to `path`, checkpoint, and poll until a human touches the file |
+| `raise WorkflowFailed(reason)` | end the run as failed |
+
+The target is **positional-only**, and the keyword arguments are bound against its
+signature *at transition time* — a typo in a parameter name fails on the transition that
+made it rather than several states later as a missing key.
+
+### Blueprint
+- type: `workhorse.pyflow.Blueprint` — required: no
+
+Collects `@blueprint.node` functions under a namespace, to be folded into a registry.
+
+```python
+blueprint = Blueprint("acme")
+
+
+@blueprint.node
+def measure(logger, subject: str) -> Reading:
+    return Reading(kind=subject, count=len(subject))
+```
+
+### node
+- type: function decorated with `@blueprint.node` — required: no
+
+A plain function whose **first parameter is `logger`**. Its declared return annotation is
+its output contract — a `BaseModel`, or any JSON-able value — and that is what gets
+recorded as the node's artifact. It runs in the driver's own process: there is no
+subprocess, no stdout protocol, and no JSON to print. It imports its libraries at module
+scope, because an installed distribution's dependencies are resolved by `pip`/`uv` before
+a run exists to fail.
+
+`@blueprint.node(stub=…)` declares what `--dry-run` substitutes for it;
+`@blueprint.node(aliases=[…])` declares former names, because `self.output(node)` resolves
+against a run directory named after the node.
+
+### prompts/
+- type: directory of Jinja2 `.md` templates — required: no (yes if any state calls `self.agent`)
+
+Resolved relative to the package directory. Rendered with a resilient undefined — a
+missing variable renders empty and logs a warning rather than raising. `node_timeout_s` /
+`node_timeout_min` are injected so a prompt can size its own work (both read `"unbounded"`
+when the turn has no budget). A prompt must output JSON matching the model its turn
+declared in `returns=`.
+
+The render context is the [context manifest](context-manifest.md) underneath and the
+state's `args` on top — so a state that binds `repo` means its own, not the manifest's.
+Those `args` go into the context as **real Python objects**, not as pre-rendered strings:
+an `int` stays an `int` and a `Path` stays a `Path`, which is the one place prompt
+rendering genuinely differs from the retired engine (whose `args:` was a dict of Jinja
+template strings, and so stringified everything on the way past).
+
+## The agent turn
+
+One LLM turn, in its own session, driven by the [agent backend](concepts/agent-backend.md)
+`--cli` selected. The state calls it, gets a typed value back, and decides what to do — the
+turn itself is not a graph node and has no `next:`:
+
+```python
+verdict = self.agent(
+    "prompts/review.md",              # the template, relative to the package
+    returns=Verdict,                  # the model the reply must satisfy
+    args={"unit": unit_id},           # rendered into the prompt
+    power="medium",                   # the abstract tier the config maps to a model
+    timeout=1800,                     # this turn's wall-clock budget, seconds
+    cwd=self.ctx.repo_root,           # where the CLI is launched
+    add_dirs=[self.ctx.docs_root],    # further directories it may read
+)
+```
+
+Every keyword past `returns=` is optional and defaults to whatever the engine defaults to,
+so a state that says nothing behaves as before. These are **real Python values, not
+template strings** — the state computes them and passes them.
+
+Underneath, the turn goes through [render_prompt](concepts/render-prompt.md), the
+[resilience ladder](concepts/run-agent.md), and [output
+extraction](concepts/extract-outputs.md), all unchanged by the port.
+
+### returns
+- type: a pydantic `BaseModel` subclass — required: yes
+
+The reply contract, replacing the retired schema's per-key `outputs:` list. The turn's JSON
+is validated into this model, and its fields are what the state reads. When the resilience
+ladder exhausts every recovery, it emits **this model's declared keys as nulls** rather
+than crashing the run — so a state branching on an agent reply needs a safe arm for the
+empty one. `AGENT_USE_DEFAULT_OUTPUTS=false` hard-fails instead.
+
+### power
+- type: `str` — required: no — default: the backend's own default tier
+
+An abstract tier (`low` / `medium` / `high`), resolved per backend through
+`~/.config/stablemate/config.toml` at `power.<tier>.<backend>` into a concrete model and
+reasoning effort. A workflow names the tier it needs; the operator's config decides what
+that costs. See [BACKENDS.md](../../../workhorse/docs/BACKENDS.md).
+
+### timeout
+- type: `float` (seconds) — required: no — default: `3600` (one hour)
+
+This turn's wall-clock budget. Pass `float("inf")` for a turn that must not be cut off;
+be deliberate about it, because an unbounded turn that wedges hangs the run with no
+timeout-retry recovery. The effective value is injected into the prompt context as
+`node_timeout_s` / `node_timeout_min` so the prompt can size its own work; both read
+`"unbounded"` when the turn is unbounded.
+
+### cwd and add_dirs
+- type: `Path`-like, and a list of `Path`-like — required: no
+
+`cwd` is where the agent CLI is launched, which decides whose `CLAUDE.md`, skills and git
+context the turn sees — it matters more than it looks. `add_dirs` are further directories
+the turn may read; the runner de-dupes them against `cwd` and turns the rest into
+`--add-dir` flags.
+
+## What has no counterpart
+
+The retired schema had three constructs with no Python spelling. Each is a consequence of
+what the port bought rather than an oversight, and each is spelled out with its reasoning
+in [WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
+
+- **`requires:`**, the tool preflight — a workflow is an installed distribution now, so its
+  dependencies are `[project.dependencies]` and are resolved at install time.
+- **`default:` on an OutputSpec** — the resilience ladder still defaults an exhausted agent
+  turn, but emits the `returns=` model's keys as nulls rather than guessing a value.
+- **per-node `activity:`** — now a flagged log record
+  (`logger.info(…, extra={"activity": True})`), so the rendered message *is* the activity.
+
+## Related
+
+- [workhorse CLI](workhorse.md) — the commands that resolve and run a workflow
+- [drive](concepts/pyflow-driver.md) — the state loop that walks the machine
+- [state graph](concepts/pyflow-state-graph.md) — what `dot` and `--dry-run` derive from it
+- [run artifacts](run-artifacts.md) — what a run writes as it goes
