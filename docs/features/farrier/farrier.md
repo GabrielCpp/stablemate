@@ -6,15 +6,18 @@ title: farrier — render the agent prompt library into a repository
 # farrier — render the agent prompt library into a repository
 
 farrier renders an agent-neutral prompt library into a target repository's Codex/Claude/Copilot
-adapters, driven by that repo's `agents.yml`. It ships no library content of its own — it locates
-the library directory (the `agents/` tree holding `library/`, `packs/`, `scaffolds/`, `workflows/`)
-by, in order: the `--library` flag, the `$FARRIER_LIBRARY_DIR` env var, or `library_dir` in the
-shared home config file (set with `farrier config set-library`). A bare `farrier [--repo DIR]`
-with no recognized subcommand is treated as `install` — the dispatch/default-command rule lives in
-`main`.
+adapters, driven by that repo's `agents.yml`. It ships no library content of its own — it renders
+from a [layer stack](concepts/library-directory.md#the-layer-stack): an optional *overlay* library,
+located by the `--library` flag, the `$FARRIER_LIBRARY_DIR` env var or `library_dir` in the
+[shared home config file](home-config.md) (set with `farrier config set-library`), stacked above the
+*base* library that ships with stablemate. Either alone is a working setup; with neither, farrier
+exits with a setup hint. A bare `farrier [--repo DIR]` with no recognized subcommand is treated as
+`install` — the dispatch/default-command rule lives in `main`.
 
-- binary: `farrier`
-- code: `farrier/farrier/install.py::main`
+- binary: `farrier` (the console script is declared as `farrier.install:main`, which re-exports
+  `main` from `farrier.cli` — `install.py` is a compatibility facade that declares nothing of its
+  own)
+- code: `farrier/farrier/cli.py::main`
 
 **Exit codes:** `0` on success; commands raise `SystemExit(message)` on error, which propagates as
 a nonzero exit with the message printed to stderr. `install --check` specifically returns `1` when
@@ -176,4 +179,4 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - usage: `farrier version`
 - does:
   - run: print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
-- code: `farrier/farrier/install.py::main`
+- code: `farrier/farrier/cli.py::main`

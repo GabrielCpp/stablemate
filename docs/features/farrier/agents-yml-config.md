@@ -18,7 +18,7 @@ isn't a `dict` (e.g. a bare YAML list or scalar); `render_expected` then walks e
 compute the `{output path: content}` map `install`/`install --check` act on.
 
 - file: `agents.yml` at the repo root (or `--config PATH`)
-- code: `farrier/farrier/install.py::render_expected`
+- code: `farrier/farrier/outputs.py::render_expected`
 
 ## Fields
 
@@ -178,7 +178,7 @@ camelCase or snake_case spelling.
   generated `.agents/local.compose.yaml`, interpolated from the host env at `docker compose up`
   time (empty string if unset on the host).
 - `githubTokenEnv` — type: `string` — required: no — default: none. **Not read anywhere in
-  `farrier/farrier/install.py`** — accepted in the mapping but currently inert to farrier itself;
+  farrier itself** — accepted in the mapping but currently inert to farrier itself;
   it exists for the installed workflow's own runtime/prompts (workflows run directly from the
   library and are never copied into the repo) to interpret.
 - `storyCoder` — type: `mapping` (opaque) — required: no — default: none. Same as

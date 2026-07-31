@@ -13,7 +13,7 @@ into the concrete `{output path: file content}` map that
 aggregates) are the two `render_expected` calls directly. (Scaffolds are no longer rendered at
 install time — see the [`scaffold` command](../farrier.md#scaffold).)
 
-- code: `farrier/farrier/install.py::Renderer`
+- code: `farrier/farrier/renderer.py::Renderer`
 
 ## Construction
 
@@ -30,7 +30,9 @@ install time — see the [`scaffold` command](../farrier.md#scaffold).)
 - `template_values` — the merged `template`/`vars` mapping (`collect_template_values`), exposed to
   templates as both `template.*` and `vars.*`.
 - `skills` / `prompts` — the selected `Source` lists (`selected_sources` over
-  `load_sources(SKILLS, "skill")` / `load_sources(PROMPTS, "prompt")`), each indexed into
+  `load_layered_sources("skill", "library", "skills")` /
+  `load_layered_sources("prompt", "library", "prompts")`, so an overlay source shadows a base one
+  with the same id — see [the layer stack](library-directory.md#the-layer-stack)), each indexed into
   `self.skill_lookup` / `self.prompt_lookup` via `build_lookup` — keyed by dotted id, deprefixed
   public id, prefixed public name, and library-relative path (with/without `.md`/`.prompt.md`),
   dash-normalized — so the `instruction_ref`/`prompt_ref`/`skill_file`/`isUsingInstruction` template
@@ -65,7 +67,7 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
   same merged mapping under two names).
 - `target` — the render target string (`"claude"` / `"codex"` / `"copilot"`).
 
-- code: `farrier/farrier/install.py::Renderer.render_templates`
+- code: `farrier/farrier/renderer.py::Renderer.render_templates`
 
 ## Skill and prompt output paths
 
@@ -84,7 +86,7 @@ map it to its per-target generated path:
 deprefixed public id. An unrecognized `target` string is a `SystemExit` (defensive; every call site
 passes a literal from the fixed target set above).
 
-- code: `farrier/farrier/install.py::Renderer.skill_output_path`
+- code: `farrier/farrier/renderer.py::Renderer.skill_output_path`
 
 ## `render` — the per-agent output set
 
@@ -94,17 +96,23 @@ name](../agents-yml-config.md#agents):
 
 - **`copilot`** — every selected skill via `generated_skill(source, "copilot", path)`; every
   selected prompt via a plain `render_templates` copy (no front matter rewrite, unlike Claude); and,
-  per selected `roots` name whose `ROOTS/<root>.md` exists, that file's Jinja-rendered body written
-  to **both** `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`
-  (missing root names are silently skipped).
+  per selected `roots` name resolving to `library/roots/<root>.md` in some layer
+  (`find_in_layers`), that file's Jinja-rendered body written
+  to **both** `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`. A
+  root name no layer provides is **not** silently skipped: `render` validates the whole `roots`
+  selection up front and raises `SystemExit` with the unknown names, the layers searched, and the
+  root names that do exist. (The per-root miss check remains as a guard for a directly-constructed
+  `Renderer` in tests.)
 - **`codex`** — every selected skill via `generated_skill(source, "codex", path)`; every selected
   prompt via a plain `render_templates` copy.
 - **`claude`** — every selected skill via `generated_skill(source, "claude", path)`; every selected
   prompt via `generated_command(source, "claude", path)` (front matter + provenance, unlike
   Codex/Copilot's plain copy).
-- **workflows** — validates every name in `workflows` exists under `WORKFLOWS/<name>` (`SystemExit
-  ("Unknown workflow: <name>")` otherwise); workflow *content* is never copied into the repo — only
-  the launcher scaffolding that points at it, at the library path, is generated:
+- **workflows** — validates that every name in `workflows` resolves to `workflows/<name>` in some
+  layer (`find_in_layers`), raising `SystemExit` listing the unknown names, the layers searched and
+  the workflow names that do exist. Workflow *content* is never copied into the repo — a workflow
+  runs directly from whichever layer holds it, which is why the name has to resolve at install
+  time; only the launcher scaffolding that passes that name to workhorse is generated:
   - `.agents/agents.mk` (`render_agents_mk`) — **always** emitted, for every install, filling
     `workflow_meta` defaults (`repo_url` → `REPLACE_ME-git-remote-url`, `branch` → `"main"`,
     `agents_dir` → `DEFAULT_AGENTS_DIR`, `repo_name` → `repo.name`) for any key `workflow_meta`
@@ -117,7 +125,7 @@ name](../agents-yml-config.md#agents):
     an existing root Makefile is never overwritten; `ensure_makefile_include` wires it at install
     time instead.
 
-- code: `farrier/farrier/install.py::Renderer.render`
+- code: `farrier/farrier/renderer.py::Renderer.render`
 
 ### `context_manifest` — the per-repo run-time manifest
 
@@ -129,7 +137,7 @@ so the committed file is machine-independent) /`vars`, `instructions` and `promp
 skill/prompt id → its rendered output path, repo-root-relative), `used_skills` (sorted lookup keys),
 and `skill_dir` (this `target`'s skill directory, repo-root-relative).
 
-- code: `farrier/farrier/install.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
 
 ### `generated_skill` / `generated_command` — front matter + provenance
 
@@ -147,8 +155,8 @@ and the body through `render_templates`, then re-emit front matter carrying the
   Farrier-internal header keys (`agent`, `name`) are dropped — the command name comes from the
   filename.
 
-- code: `farrier/farrier/install.py::Renderer.generated_skill`
-- code: `farrier/farrier/install.py::Renderer.generated_command`
+- code: `farrier/farrier/renderer.py::Renderer.generated_skill`
+- code: `farrier/farrier/renderer.py::Renderer.generated_command`
 
 ## `render_local_instruction`
 
@@ -160,4 +168,4 @@ and the body through `render_templates`, then re-emit front matter carrying the
   inlining for non-Claude targets); otherwise the rendered README body is appended under a `##
   Local README` heading.
 
-- code: `farrier/farrier/install.py::Renderer.render_local_instruction`
+- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction`
