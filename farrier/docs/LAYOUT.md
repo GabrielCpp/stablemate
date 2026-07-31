@@ -214,8 +214,13 @@ scans it.
 
 Selection is still *validated* against a `workflows/<name>/` directory in some library
 layer, which the base library no longer has — so today only an overlay that still ships
-one can be named here. Reconciling that validation with entry-point discovery is
-[the migration plan](../../docs/plans/workflow-as-python-state-machine.md)'s, not done.
+one can be named here. **This is a known gap in farrier, not a leftover of the port.**
+`renderer.py` rejects any name for which `find_in_layers("workflows", name)` returns
+`None`; it should ask the `workhorse.workflows` entry-point group the same question
+`workhorse run` asks. Until it does, a workflow that is installed and runnable is still
+refused here if no library layer happens to carry a directory of that name. Reported in
+[the progress ledger](../../docs/plans/workflow-as-python-state-machine-progress.md);
+fixing it is farrier's work, not the retired migration's.
 
 ## Templating
 

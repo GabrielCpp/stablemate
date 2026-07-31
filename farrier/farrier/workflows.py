@@ -3,7 +3,7 @@
 Resolving the launcher's repo/branch/agents-dir meta, plus the template values and
 skip rules the installer shares with it. Farrier does not read a workflow's own
 prompts: what a workflow depends on is the workflow's business, declared by the
-package that ships it (see docs/plans/workflow-as-python-state-machine.md).
+package that ships it (see workhorse/docs/AUTHORING.md).
 """
 from __future__ import annotations
 

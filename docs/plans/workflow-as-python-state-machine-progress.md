@@ -2718,6 +2718,74 @@ concurrent-workstream note exists to prevent. Left in place rather than reverted
 symbol iteration 18 grounded in — `pyflow/run.py`'s two handlers, `driver.py::_labels`,
 `ladder.py:155` — was verified present at `HEAD`.
 
+### Iteration 20 — the plan becomes history (work-order item 6)
+
+**Item 6 closed.** Both documents were *marked implemented with a pointer*, not deleted. That
+was not a preference: eight tracked files link into them, four of those from shipped code —
+`workflows/src/workhorse_workflows/{research,author}/workflow.py`, `author/flows/surveyor.py`,
+`author/flows/parity_surveyor.py` — and deleting the targets would have traded a stale document
+for four dangling references in source. The plan is also the only written record of *why* the
+YAML front-end went; the shipped docs record what replaced it, not what was weighed against it.
+
+- **`docs/plans/workflow-as-python-state-machine.md`** — `status: design` → `status:
+  implemented`. The header block, which read *"This is a pre-implementation design brief.
+  Nothing below is built"* and *"No code written, no migration started"*, is replaced by a
+  banner that says the document is history, tells the reader every "would" in it means "does",
+  and routes by intent to the five shipped destinations (`AUTHORING.md` to write one,
+  `WORKFLOW.md` to port one, `workflows/README.md` for the four that shipped,
+  `workflow-format.md` for the model, this ledger for what each step settled). Three tail
+  sections that read as live work — **Still open**, **Suggested first step**, **Execution
+  loops** — each got a one-line settled/taken/ran note rather than a rewrite; the sections are
+  the plan's own account and are worth preserving verbatim under a correct label.
+- **`docs/plans/author-workflow-python/`** — both files. The README banner names
+  `workflows/src/workhorse_workflows/author/` as the real thing and says plainly that this one
+  is not installed, not imported, not tested and not to be copied. `workflow.py`'s module
+  docstring leads with `HISTORY — SUPERSEDED` for the reader who opens the 64 KB file directly
+  and never sees the README. Its **Open questions this raised** section got the three answers
+  the build produced, each verified against source rather than recalled:
+  - the `Workflow`/`Workflow` name collision was resolved by **renaming the singleton**: the
+    base class is `Workflow`, the registrar is `Registry(name)`;
+  - "no mutable fields" is **enforced**, not observed — `pyflow/workflow.py` sets `_frozen`
+    when `setup()` returns and overrides `__setattr__` to refuse public assignment after it,
+    with no escape hatch;
+  - a parameter may be anything its annotation validates: `pyflow/driver.py::coerce_params`
+    runs each checkpoint param through a pydantic `TypeAdapter` on the way off disk, so a
+    `Path` round-trips as a `Path` and a bad hand edit raises `WorkflowFailed` naming the
+    state's real parameters. The artifact guessed "a stated convention rather than an enforced
+    one"; it became a checked contract.
+
+**Four inbound references treated the plan as live work, and were the actual defect.** A banner
+does not help a reader who arrives from one of these:
+
+- **`farrier/docs/LAYOUT.md`** said reconciling farrier's workflow validation with entry-point
+  discovery *"is [the migration plan]'s, not done"* — an open obligation parked on a document
+  that was about to be retired. Verified the gap is real (`farrier/farrier/renderer.py` rejects
+  any name where `find_in_layers("workflows", name)` is `None`, via
+  `selection_errors.unknown_selection_error`), and restated it as **farrier's own known gap**:
+  a workflow that is installed and runnable is refused here if no library layer carries a
+  directory of that name. **Finding 32**, and it is a code change, so it stays a finding.
+- **`workflows/README.md`** — three edits. "what is still outstanding *from it*" → outstanding
+  *here*; "What the plan still owes" → "What is still outstanding"; and the `~400 lines`
+  file-split rule, which called itself normative while delegating to the plan, now states that
+  the README is where the rule lives and the plan carries only the argument.
+- **`farrier/farrier/workflows.py`** — a docstring pointed at the plan for what a workflow
+  declares. Re-pointed at `workhorse/docs/AUTHORING.md`. Docstring only, no behavior.
+
+**One other plan quotes the dead front-end, and was framed rather than rewritten.**
+`docs/plans/okf-ui-profile.md` samples `workflow.yaml`, `load_workflow`, `graph/context.py` and
+`workhorse dot --workflow <path>` in §7.6–§7.10 and its §3 `format` bullet. Those are worked
+examples of *OKF node shape* that happen to quote workhorse's June docs; rewriting them would
+falsify the record of what the profile was designed against. Its existing status banner now
+also names the stale sections and points at the current `workflow-format.md`.
+`docs/plans/workhorse-otel.md` has the same kind of content (`coder/workflow.yaml`,
+`OutOfGasError`) and needed nothing: it already opens "This doc is a pre-implementation design
+brief", carries `status: implemented`, and annotates its own design-time file list inline.
+
+**Not stale, checked and left alone:** the "node types" and `requires:` bullets throughout
+`okf-runbook.md`, `ostler-okf-ui-support.md` and most of `okf-ui-profile.md` are **OKF
+document** node types, not workflow-YAML nodes. A grep for the retired vocabulary hits them and
+they are current.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration

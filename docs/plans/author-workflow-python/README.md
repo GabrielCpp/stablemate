@@ -1,11 +1,25 @@
 # `author`, rewritten as Python
 
+> ## This is history. The real `author` is at [`workflows/src/workhorse_workflows/author/`](../../../workflows/src/workhorse_workflows/author/).
+>
+> This directory is a **pre-implementation design artifact**, written 2026-07-29 and kept as
+> it stood. It is not a workflow: nothing imports it, nothing runs it, it is not installed,
+> and it is not in any test. Read it for the *census* it was made for — 159 nodes weighed
+> against a proposed shape before that shape existed — not as an example to copy. Where it
+> and the shipped `author` package differ, the shipped package is right; the differences it
+> anticipated are listed under [Deliberately not gathered in](#deliberately-not-gathered-in)
+> and the ones it got wrong are in
+> [the progress ledger](../workflow-as-python-state-machine-progress.md).
+>
+> The design it argues for **shipped**: `workhorse.pyflow` exists, and how to write a
+> workflow against it is [`workhorse/docs/AUTHORING.md`](../../../workhorse/docs/AUTHORING.md).
+
 `workflow.py` here is the `author` workflow expressed in the shape proposed by
 [../workflow-as-python-state-machine.md](../workflow-as-python-state-machine.md).
-It is a **design artifact**: nothing imports it, nothing runs it, and nothing
-under `workhorse/` or `base-library/workflows/` was changed to produce it. The
-`workhorse.pyflow` import at the top does not exist — that import *is* the
-proposal.
+It was a **design artifact**: nothing imported it, nothing ran it, and nothing
+under `workhorse/` or `base-library/workflows/` was changed to produce it. At the
+time it was written the `workhorse.pyflow` import at the top did not exist — that
+import *was* the proposal.
 
 **Gathering everything into one file is a convenience of the artifact, not the
 proposed shape.** A real workflow is a package: a `workflow.py` holding the state
@@ -181,6 +195,24 @@ boundary chosen on how much work a crash should cost.
    the budget back as a parameter.
 
 ## Open questions this raised
+
+> **All three were answered in the build.** Left below as they were asked, because the
+> reasoning is what the artifact was for; the answers are:
+>
+> - **The naming collision was resolved by renaming the singleton.** The base class is
+>   `Workflow`; the module-level registrar is `Registry`, constructed with the workflow's
+>   name (`workflow = Registry("research").add_blueprints(blueprint)`). States use `self`.
+> - **"No mutable fields" is enforced, not observed.** `pyflow/workflow.py` sets a private
+>   `_frozen` flag when `setup()` returns and overrides `__setattr__` to refuse any
+>   non-underscore assignment after that, with a message pointing the writer at the
+>   transition instead. There is no escape hatch.
+> - **A parameter can be anything the state's annotation validates.** The checkpoint is
+>   still JSON and still hand-editable; what pairs with that is
+>   `pyflow/driver.py::coerce_params`, which validates each param against the state
+>   signature's type hint through a pydantic `TypeAdapter` on the way back off disk — so a
+>   `Path` survives a round trip as a `Path`, an unknown key is a `WorkflowFailed` naming
+>   the state's real parameters, and a bad hand edit is caught rather than silently coerced.
+>   It became a checked contract rather than the stated convention guessed at below.
 
 - **Two things are called `Workflow`**: the base class `Author` extends, and
   the module-level runner singleton. Inside a state, `self.call(...)` and

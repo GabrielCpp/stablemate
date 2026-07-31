@@ -16,7 +16,8 @@ uv run workhorse-research run          # the same parser, name already bound
 
 The shape came from the
 [workflow-as-python-state-machine](../docs/plans/workflow-as-python-state-machine.md)
-plan; what is still outstanding from it is noted under [Status](#status).
+design brief, which shipped and is now kept only for its reasoning. What is still
+outstanding *here* is noted under [Status](#status).
 
 ## How workhorse finds a workflow in here
 
@@ -79,9 +80,10 @@ nothing under `nodes/` imports `workflow.py`.
 
 How small each of those files has to be is **normative, not per-workflow taste** — one
 subject per module, `nodes/` is a package even when it holds three functions, and
-`~400 lines` is the trigger to apply the rule. The plan's
-[One workflow, several files](../docs/plans/workflow-as-python-state-machine.md) carries
-the rules and the reasoning; `coder`'s nodes alone run to ~6,600 lines across 18
+`~400 lines` is the trigger to apply the rule. This README is where that rule is stated;
+the argument behind it is "One workflow, several files" in the
+[retired design brief](../docs/plans/workflow-as-python-state-machine.md).
+`coder`'s nodes alone run to ~6,600 lines across 18
 modules, and a single `nodes.py` at that size is `scriptutil.py` again.
 
 ## Status
@@ -89,7 +91,7 @@ modules, and a single `nodes.py` at that size is `scriptutil.py` again.
 All four workflows are ported and resolve through the entry-point group; the YAML engine
 they came from is retired, so this package is the only place a stablemate workflow lives.
 
-What the plan still owes: this distribution is unpublished, so there is no `pip install`
+What is still outstanding: this distribution is unpublished, so there is no `pip install`
 route to it and a `pipx` layout needs `pipx inject workhorse-agent <this distribution>`
 to land it in the engine's venv. Farrier also still validates a `workflows:` selection
 against a `workflows/<name>/` directory in a library layer rather than against the entry
