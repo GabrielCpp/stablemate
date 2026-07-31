@@ -47,13 +47,9 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
 
-# Discovery: `workhorse run <name>` resolves a name here before it looks in a library
-# directory. The value points at the `Registry` OBJECT, not the entry function —
-# discovery needs the registry.
-#
-# A name declared here SHADOWS the base library's copy of the same workflow, which is
-# the intent: `base-library/workflows/research/` stays as the YAML original (still
-# runnable by path) and this is what `workhorse run research` gets.
+# Discovery: this is the ONLY place `workhorse run <name>` resolves a name. There is no
+# path form and no library fallback — a workflow is a Python package. The value points at
+# the `Registry` OBJECT, not the entry function; discovery needs the registry.
 [project.entry-points."workhorse.workflows"]
 research = "workhorse_workflows.research.workflow:workflow"
 author = "workhorse_workflows.author.workflow:workflow"
