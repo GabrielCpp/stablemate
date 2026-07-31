@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent
+from workhorse.runner import ladder
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode
 
@@ -43,9 +43,9 @@ def _run_capturing(node):
         seen["timeout"] = timeout
         return json.dumps({})
 
-    with patch.object(agent, "render", fake_render), \
-         patch.object(agent, "_invoke_claude", fake_invoke):
-        agent.run_agent(
+    with patch.object(ladder, "render", fake_render), \
+         patch.object(ladder, "_run_turn_with_recovery", fake_invoke):
+        ladder.run_agent(
             node, WorkflowContext(initial={}), Path("."), None, backend=FakeBackend()
         )
     return seen["ctx"], seen["timeout"]

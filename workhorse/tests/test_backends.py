@@ -21,7 +21,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent
+from workhorse.runner import failure, process
 from workhorse.runner.backends import (
     AgentBackend,
     aider,
@@ -443,7 +443,7 @@ def test_finalize_turn_classifies_failures():
             TIMEOUT,
         )
         raise AssertionError("expected raise on non-zero exit")
-    except agent.BackendInvocationError as e:
+    except failure.BackendInvocationError as e:
         assert e.transient is True
     # Timeout is always transient.
     try:
@@ -455,13 +455,13 @@ def test_finalize_turn_classifies_failures():
             TIMEOUT,
         )
         raise AssertionError("expected raise on timeout")
-    except agent.BackendInvocationError as e:
+    except failure.BackendInvocationError as e:
         assert e.transient is True
     # Empty result is transient.
     try:
         turn.finalize_turn("codex", "n", turn.TurnState(), None, TIMEOUT)
         raise AssertionError("expected raise on empty result")
-    except agent.BackendInvocationError as e:
+    except failure.BackendInvocationError as e:
         assert e.transient is True
     # Clean success returns the text.
     ok = turn.TurnState(result_text="x")
@@ -479,7 +479,7 @@ def test_classify_turn_records_node_to_session_manifest():
 
     # Two successful turns for the SAME node, different sessions (a reframe).
     assert (
-        agent.classify_turn(
+        failure.classify_turn(
             "opencode",
             "investigate",
             result_text="ok",
@@ -493,7 +493,7 @@ def test_classify_turn_records_node_to_session_manifest():
         == "ok"
     )
     assert sidp.read_text() == "ses_first"  # live file still tracks the latest
-    agent.classify_turn(
+    failure.classify_turn(
         "opencode",
         "investigate",
         result_text="ok",
@@ -517,7 +517,7 @@ def test_classify_turn_without_session_writes_no_manifest():
     """No session id (e.g. aider, which has none) → nothing to map, no file."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     assert (
-        agent.classify_turn(
+        failure.classify_turn(
             "aider",
             "impl",
             result_text="done",
@@ -536,7 +536,7 @@ def test_classify_turn_without_session_writes_no_manifest():
 def test_finalize_turn_non_recoverable_names_each_backend():
     """A non-zero exit whose output is NOT a retryable marker is non-recoverable
     (transient=False, not overflow), and the message names the ACTUAL backend — the
-    one shared classifier (agent.classify_turn) gives every CLI a uniform,
+    one shared classifier (failure.classify_turn) gives every CLI a uniform,
     backend-named error instead of a hardcoded 'Claude'."""
     diag = "Unexpected server error. Check server logs for details."
     for name in ("opencode", "codex", "copilot", "claude"):
@@ -549,7 +549,7 @@ def test_finalize_turn_non_recoverable_names_each_backend():
                 TIMEOUT,
             )
             raise AssertionError(f"{name}: expected raise on a hard CLI exit")
-        except agent.BackendInvocationError as e:
+        except failure.BackendInvocationError as e:
             assert e.transient is False, f"{name}: server error must be non-recoverable"
             assert e.overflow is False
             assert name in str(e), f"{name}: message must name the backend"
@@ -764,7 +764,7 @@ def test_opencode_cap_attaches_codex_reset_at():
                 "P", "review_implementation", None, model="openai/gpt-5.5"
             )
             raise AssertionError("expected a cap BackendInvocationError")
-        except agent.BackendInvocationError as exc:
+        except failure.BackendInvocationError as exc:
             assert exc.reset_at == reset, (
                 "precise Codex reset must ride through to the runner"
             )
@@ -794,7 +794,7 @@ def test_opencode_non_cap_does_not_probe_codex():
 def _drive_stream_jsonl(lines, on_event):
     """Run ``jsonl.stream_jsonl``, feeding ``lines`` to its on_line callback through a
     faked stream_subprocess that stops the moment on_line requests an early abort
-    (mirroring agent.stream_subprocess). Returns the finished ``TurnState``."""
+    (mirroring process.stream_subprocess). Returns the finished ``TurnState``."""
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         for raw in lines:
@@ -804,7 +804,7 @@ def _drive_stream_jsonl(lines, on_event):
                 return True, 0
         return False, 0
 
-    with patch.object(agent, "stream_subprocess", fake_stream):
+    with patch.object(process, "stream_subprocess", fake_stream):
         return jsonl.stream_jsonl(
             ["opencode"], "review_implementation", 3600, None, on_event,
             resilience=RESILIENCE,
@@ -834,7 +834,7 @@ def test_opencode_cap_log_line_aborts_stream_early():
     assert consumed["n"] == 1, "stream must stop at the cap line — later events unread"
     # The runner's classifier then frames this as a cap, not a timeout.
     try:
-        agent.classify_turn(
+        failure.classify_turn(
             "opencode",
             "review_implementation",
             result_text=state.result_text or None,
@@ -844,7 +844,7 @@ def test_opencode_cap_log_line_aborts_stream_early():
             timeout=3600,
         )
         raise AssertionError("expected a cap BackendInvocationError")
-    except agent.BackendInvocationError as exc:
+    except failure.BackendInvocationError as exc:
         assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(
             exc
         )
@@ -888,7 +888,7 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
     assert "ProviderHeaderTimeoutError" in state.diagnostics_text
     assert state.result_text == "", "stream must stop before a later result"
     try:
-        agent.classify_turn(
+        failure.classify_turn(
             "opencode",
             "investigate",
             result_text=None,
@@ -898,7 +898,7 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
             timeout=3600,
         )
         raise AssertionError("expected a transient BackendInvocationError")
-    except agent.BackendInvocationError as exc:
+    except failure.BackendInvocationError as exc:
         assert exc.transient is True
         assert exc.timed_out is False, "provider timeout did not spend the node budget"
         assert "ProviderHeaderTimeoutError" in str(exc)

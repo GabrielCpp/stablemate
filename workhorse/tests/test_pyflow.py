@@ -2,7 +2,7 @@
 
 Dependency-free and standalone, like the rest of `tests/`: nothing here touches the
 network, the agent CLI or the clock. The agent seam is patched at
-`workhorse.pyflow.engine.agent_runner.run_agent` and the `Await` wait at
+`workhorse.pyflow.engine.agent_ladder.run_agent` and the `Await` wait at
 `workhorse.pyflow.driver._sleep`, so a test that exercises a week-long wait costs
 microseconds.
 
@@ -538,8 +538,8 @@ def test_agent_validates_the_reply_into_the_declared_model():
             calls.append((node.id, [o.key for o in node.outputs], ctx.as_dict()))
             return "rendered prompt", {"kind": "reviewed", "count": 2}
 
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        real = pyflow_engine.agent_ladder.run_agent
+        pyflow_engine.agent_ladder.run_agent = fake_run_agent
         try:
 
             class Asks(Workflow):
@@ -551,7 +551,7 @@ def test_agent_validates_the_reply_into_the_declared_model():
 
             assert drive(Asks(), env) == ("reviewed", 2)
         finally:
-            pyflow_engine.agent_runner.run_agent = real
+            pyflow_engine.agent_ladder.run_agent = real
 
         assert calls[0][0] == "review", calls
         assert calls[0][1] == ["kind", "count"], calls
@@ -572,8 +572,8 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
             nodes.append(node)
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        real = pyflow_engine.agent_ladder.run_agent
+        pyflow_engine.agent_ladder.run_agent = fake_run_agent
         try:
 
             class Asks(Workflow):
@@ -591,7 +591,7 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
 
             drive(Asks(), env)
         finally:
-            pyflow_engine.agent_runner.run_agent = real
+            pyflow_engine.agent_ladder.run_agent = real
 
         assert nodes[0].cwd == "/repos/acme", nodes[0]
         assert nodes[0].add_dirs == ["/repos/docs", "/repos/api-service"], nodes[0]
@@ -619,8 +619,8 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
             seen.append(ctx.as_dict())
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        real = pyflow_engine.agent_ladder.run_agent
+        pyflow_engine.agent_ladder.run_agent = fake_run_agent
         try:
 
             class Asks(Workflow):
@@ -632,7 +632,7 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
 
             drive(Asks(), env)
         finally:
-            pyflow_engine.agent_runner.run_agent = real
+            pyflow_engine.agent_ladder.run_agent = real
 
         ctx = seen[0]
         assert ctx["_instructions"] == {"go": ".claude/skills/acme-go/SKILL.md"}
@@ -651,8 +651,8 @@ def test_a_run_with_no_manifest_renders_exactly_its_arguments():
             seen.append(ctx.as_dict())
             return "rendered", {"kind": "ok", "count": 0}
 
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = fake_run_agent
+        real = pyflow_engine.agent_ladder.run_agent
+        pyflow_engine.agent_ladder.run_agent = fake_run_agent
         try:
 
             class Asks(Workflow):
@@ -662,7 +662,7 @@ def test_a_run_with_no_manifest_renders_exactly_its_arguments():
 
             drive(Asks(), env)
         finally:
-            pyflow_engine.agent_runner.run_agent = real
+            pyflow_engine.agent_ladder.run_agent = real
 
         assert seen[0] == {"unit": "CASE-1"}
 

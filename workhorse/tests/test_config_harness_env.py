@@ -26,7 +26,7 @@ from unittest.mock import patch
 
 from stablemate_core.config import resolve_harness_env
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent, backends
+from workhorse.runner import backends, failure, process
 from workhorse.runner.backends.aider import AiderBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
@@ -122,8 +122,8 @@ def _spawn_env(backend, **run_turn_kwargs):
     # others through ``backends.turn.finalize_turn`` — ends its turn there, so one
     # patch at that boundary covers all five without reaching into any adapter.
     with (
-        patch.object(agent, "stream_subprocess", fake_stream),
-        patch.object(agent, "classify_turn", lambda *a, **k: "ok"),
+        patch.object(process, "stream_subprocess", fake_stream),
+        patch.object(failure, "classify_turn", lambda *a, **k: "ok"),
     ):
         backend.run_turn(
             "P", "n", None,
@@ -189,7 +189,7 @@ def test_compaction_runs_under_the_same_env():
         sid_path.write_text("session-abc")
         with (
             _with_config(CONFIG),
-            patch.object(agent, "stream_subprocess", fake_stream),
+            patch.object(process, "stream_subprocess", fake_stream),
         ):
             assert ClaudeBackend().compact(
                 sid_path, "n",
@@ -209,9 +209,9 @@ def test_harness_env_wins_over_the_inherited_shell():
         raise RuntimeError("stop before launching anything")
 
     with patch.dict(os.environ, {"HARNESS_KNOB": "from-shell"}, clear=False):
-        with patch.object(agent, "_spawn_streaming", fake_spawn):
+        with patch.object(process, "_spawn_streaming", fake_spawn):
             try:
-                agent.stream_subprocess(
+                process.stream_subprocess(
                     ["true"], "n", 1.0, lambda line: None,
                     resilience=RESILIENCE,
                     env_extra={"HARNESS_KNOB": "from-config"},

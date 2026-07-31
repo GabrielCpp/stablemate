@@ -42,7 +42,13 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   ├── errors.py          # WorkflowFailed, NodeNotRunError and the rest of the exceptions
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
-│       ├── agent.py           # Invoke the agent CLI; the retry → reframe → default ladder
+│       ├── ladder.py          # Render the prompt, drive the retry → cap-wait → compact →
+│       │                      #   reframe → default ladder, return the node's outputs
+│       ├── failure.py         # The turn's error types, its markers and its classifier
+│       ├── process.py         # Spawn an agent CLI: process group, watchdog, stream loop
+│       ├── caps.py            # How long to wait out a scheduled-reset cap, and how to sleep it
+│       ├── reframe.py         # The ladder's substitute prompts and its default outputs
+│       ├── extract.py         # Recover the node's declared outputs from a free-form answer
 │       ├── backends/          # The agent-CLI port and its adapters
 │       │   ├── __init__.py    # AgentBackend: the port, and nothing else
 │       │   ├── registry.py    # name → backend class; the only module importing every adapter
@@ -87,7 +93,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 
 `Done` ends the flow and `WorkflowFailed` ends the run; `Await` checkpoints first and
 then polls for the answer file. The resilience for agent turns lives entirely in
-`runner/agent.py::run_agent` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
+`runner/ladder.py::run_agent` — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
 ## Sessions (per-turn clean context)
 
@@ -132,7 +138,7 @@ If a `.venv` isn't present, create one with `uv sync` (or `make install`).
 
 **Where to put tests.** There are two styles. Controller-internal tests add a
 `tests/test_<area>.py` that injects the CLI boundary (a fake `AgentBackend` from
-`tests/_fakes.py`, or a stub `_invoke_claude`) and patches sleeping so nothing hits
+`tests/_fakes.py`, or a stub `_run_turn_with_recovery`) and patches sleeping so nothing hits
 the network or waits in real time:
 `test_agent_cap.py` (cap/transient handling), `test_agent_recovery.py` (reframe →
 default ladder), `test_resume_auto.py`, `test_idempotency.py`,

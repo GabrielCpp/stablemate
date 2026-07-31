@@ -6,7 +6,7 @@ and the agent ladder then read from this object rather than the environment, so 
 run's configuration is immutable by design and a test can drive a workflow
 in-process with explicit values instead of mutating global state.
 
-``from_env`` is the *only* place these variables are read: ``runner/agent.py``
+``from_env`` is the *only* place these variables are read: ``runner/ladder.py``
 holds no import-time constants of its own, so the names and defaults documented in
 ``docs/GUARDRAILS.md`` have exactly one implementation and a caller that passes no
 config gets the dataclass defaults rather than whatever the environment said when
@@ -53,7 +53,7 @@ def _bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class AgentResilience:
-    """The agent-node recovery ladder's tuning knobs (see runner/agent.py).
+    """The agent-node recovery ladder's tuning knobs (see runner/ladder.py).
 
     One field per ``AGENT_*`` env var. Built by :meth:`from_env` at the CLI
     boundary; the driver threads it into ``run_agent`` so the reframe/retry/cap

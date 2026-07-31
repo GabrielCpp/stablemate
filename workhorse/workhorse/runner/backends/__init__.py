@@ -1,6 +1,6 @@
 """The agent-CLI port: one interface the controller drives, whatever CLI is behind it.
 
-The resilience ladder in ``agent.py`` (transient/cap retries, context-overflow
+The resilience ladder in ``ladder.py`` (transient/cap retries, context-overflow
 compaction, prompt reframing, default-to-next) is CLI-agnostic and delegates the
 two operations that ARE CLI-specific to the active backend:
 
@@ -11,7 +11,7 @@ two operations that ARE CLI-specific to the active backend:
 The backend is chosen per-run via the ``AGENT_CLI`` env var (or ``--cli``), so a
 single workflow runs entirely on one CLI. The *model* is selectable per node via a
 node's ``model:`` map (a per-CLI map, e.g. ``{claude: opus, aider: openrouter/...}``;
-see ``runner/agent.py``). To run a node on an OpenRouter model, point an
+see ``runner/ladder.py``). To run a node on an OpenRouter model, point an
 OpenRouter-native backend (``aider`` / ``opencode``) at it with ``AGENT_CLI`` and
 give the node an ``openrouter/<slug>`` model — no proxy, since those CLIs speak
 plain chat-completions and (for the MiMo experiment) cache natively.
@@ -77,7 +77,7 @@ class AgentBackend(ABC):
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result
         text. Persist the session id (when the CLI supports resume) to
-        ``session_id_path``. Raise ``agent.BackendInvocationError`` on failure,
+        ``session_id_path``. Raise ``failure.BackendInvocationError`` on failure,
         classifying it as ``transient`` / ``overflow`` / cap (``reset_at``) so the
         ladder can recover appropriately.
 

@@ -2,9 +2,9 @@
 protocol, and the adapter that exposes it as an ``AgentBackend``.
 
 This is the only place that knows Claude's event vocabulary. It used to live in
-``runner/agent.py`` — the CLI-agnostic recovery ladder — with the backend facade
+``runner/ladder.py`` — the CLI-agnostic recovery ladder — with the backend facade
 delegating back into it, which made the generic ring the home of one implementation
-and forced ``agent`` and ``backends`` to import each other lazily. Claude is now a
+and forced the ladder and ``backends`` to import each other lazily. Claude is now a
 sibling of every other adapter and the ladder imports it not at all.
 
 Unlike the other CLIs, Claude compacts in place: ``/compact`` over ``--resume -p``
@@ -20,7 +20,8 @@ from pathlib import Path
 
 from workhorse import otel
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent as _agent
+from workhorse.runner import failure as _failure
+from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend
 
@@ -144,7 +145,7 @@ def _run_cli(
     # overflow / cap / non-recoverable verdicts. Claude's structured-cap signals
     # (rate_limited / rate_reset_at, from the stream-json rate_limit_event) are
     # passed in so a capped window still carries its precise reset epoch.
-    return _agent.classify_turn(
+    return _failure.classify_turn(
         "claude",
         node_id,
         result_text=stream.result_text,
@@ -228,7 +229,7 @@ def _compact_session(
     try:
         # Shares the supervised spawn path (own process group, hard watchdog, group
         # reap), so a wedged /compact turn can't hang the run either.
-        _agent.stream_subprocess(
+        _process.stream_subprocess(
             cmd, node_id, timeout, on_line,
             resilience=resilience,
             stdin_data="/compact", env_extra=env_extra,
@@ -325,7 +326,7 @@ def _stream_events(
                     str(event.get("subtype") or "") + " " + str(event.get("result") or "")
                 )
         elif etype == "rate_limit_event":
-            blocked, reset_at = _agent._rate_limit_info(event)
+            blocked, reset_at = _failure.rate_limit_info(event)
             if reset_at is not None:
                 stream.rate_reset_at = reset_at  # last-seen window reset (only if capped)
             if blocked:
@@ -334,7 +335,7 @@ def _stream_events(
             stream.session_id = event["session_id"]
         _emit_event(node_id, event)
 
-    stream.timed_out, stream.returncode = _agent.stream_subprocess(
+    stream.timed_out, stream.returncode = _process.stream_subprocess(
         cmd, node_id, timeout, on_line,
         resilience=resilience,
         stdin_data=stdin_data, cwd=cwd, env_extra=env_extra,

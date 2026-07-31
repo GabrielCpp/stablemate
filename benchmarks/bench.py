@@ -74,7 +74,9 @@ import yaml
 # scope (not lazily): workhorse is a workspace member, so this is a hard dependency, and
 # a benchmark that silently degrades when its scorer is missing is worse than one that
 # refuses to start.
-from workhorse.runner import agent as wh_agent
+from workhorse.runner import caps as wh_caps
+from workhorse.runner import extract as wh_extract
+from workhorse.runner import failure as wh_failure
 from workhorse.runner.backends.registry import get_backend
 
 HERE = Path(__file__).resolve().parent
@@ -613,7 +615,7 @@ def judge_one(spec: Spec, bullet: dict, rubric: str, backend) -> dict:
     # Reuse workhorse's own response parser — the tested one that already handles fenced
     # blocks, bare objects, and the tolerant repair pass — rather than a second parser
     # that would drift from it.
-    parsed = wh_agent._parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
+    parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
 
     try:
         level = max(0, min(MAX_LEVEL, int(parsed.get("level", 0))))
@@ -651,13 +653,13 @@ def call_agent(backend, prompt: str, *, node_id: str, spec: Spec, attempts: int 
                 cwd=str(spec.target),
                 effort=spec.judge.get("effort"),
             )
-        except wh_agent.BackendInvocationError as exc:
+        except wh_failure.BackendInvocationError as exc:
             last = str(exc)
-            if wh_agent._is_cap(last):
-                delay, when = wh_agent._cap_delay_seconds(exc)
+            if wh_failure.is_cap(last):
+                delay, when = wh_caps.cap_delay_seconds(exc)
                 print(f"[{node_id}] ⏸ usage cap reached — pausing ~{int(delay)}s ({when})",
                       flush=True)
-                wh_agent._sleep_with_notice(delay, node_id, when)
+                wh_caps.sleep_with_notice(delay, node_id, when)
             elif attempt < attempts - 1:
                 time.sleep(5 * (attempt + 1))
             else:

@@ -1,4 +1,4 @@
-"""Tests for the shared supervised spawn path (agent.stream_subprocess).
+"""Tests for the shared supervised spawn path (process.stream_subprocess).
 
 These cover the hardening that lets a single wedged turn NOT freeze an unattended
 run: the out-of-band watchdog force-kills the whole process group even when the
@@ -13,13 +13,13 @@ import sys
 import time
 
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent
+from workhorse.runner import process
 
 
 def _run(code: str, *, timeout: float, grace: float = 1.0):
     """Run a tiny python program as the 'agent', collecting streamed lines."""
     lines: list[str] = []
-    timed_out, rc = agent.stream_subprocess(
+    timed_out, rc = process.stream_subprocess(
         [sys.executable, "-u", "-c", code],
         "test_node",
         timeout,
@@ -50,11 +50,11 @@ def test_silent_stream_still_emits_liveness_heartbeats():
     is irrelevant at the 10s production default but bounds this test.
     """
     beats: list[tuple[str, float, float]] = []
-    orig_beat = agent.otel.turn_heartbeat
-    agent.otel.turn_heartbeat = lambda node, idle, elapsed: beats.append((node, idle, elapsed))
+    orig_beat = process.otel.turn_heartbeat
+    process.otel.turn_heartbeat = lambda node, idle, elapsed: beats.append((node, idle, elapsed))
     try:
         # Writes one line, then goes silent until the turn's deadline.
-        agent.stream_subprocess(
+        process.stream_subprocess(
             [sys.executable, "-u", "-c",
              "import sys, time; print('hello'); sys.stdout.flush(); time.sleep(3600)"],
             "select_item",
@@ -63,7 +63,7 @@ def test_silent_stream_still_emits_liveness_heartbeats():
             resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        agent.otel.turn_heartbeat = orig_beat
+        process.otel.turn_heartbeat = orig_beat
 
     assert beats, "a silent turn emitted no heartbeat — a stall would be invisible"
     assert all(node == "select_item" for node, _, _ in beats)
@@ -77,10 +77,10 @@ def test_heartbeat_idle_resets_when_the_stream_speaks():
     """A chatty turn must keep idle_s near zero however long it runs — otherwise a
     healthy long turn would look identical to a hang."""
     beats: list[float] = []
-    orig_beat = agent.otel.turn_heartbeat
-    agent.otel.turn_heartbeat = lambda _n, idle, _e: beats.append(idle)
+    orig_beat = process.otel.turn_heartbeat
+    process.otel.turn_heartbeat = lambda _n, idle, _e: beats.append(idle)
     try:
-        agent.stream_subprocess(
+        process.stream_subprocess(
             [sys.executable, "-u", "-c",
              "import sys, time\n"
              "for _ in range(20):\n"
@@ -91,7 +91,7 @@ def test_heartbeat_idle_resets_when_the_stream_speaks():
             resilience=AgentResilience(heartbeat_every_s=0.1),
         )
     finally:
-        agent.otel.turn_heartbeat = orig_beat
+        process.otel.turn_heartbeat = orig_beat
 
     assert beats, "a streaming turn emitted no heartbeat"
     assert max(beats) < 0.5, f"idle_s climbed on a streaming turn: {beats}"

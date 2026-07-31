@@ -1,4 +1,4 @@
-"""Tests for the core agent's spending/usage-cap handling in _invoke_claude.
+"""Tests for the core agent's spending/usage-cap handling in _run_turn_with_recovery.
 
 Runs without real sleeping (time.sleep and _sleep_with_notice are patched) and
 without any agent CLI — the backend port is INJECTED as a fake. Runnable two ways:
@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
-from workhorse.runner import agent
-from workhorse.runner.agent import BackendInvocationError
+from workhorse.runner import caps, failure, ladder
+from workhorse.runner.failure import BackendInvocationError
 
 #: The cap ladder's knobs are injected, never read from the module — so a test states
 #: the wait budget it asserts against instead of patching a global (rule 5).
@@ -24,14 +24,14 @@ CAP_MSG = "Claude CLI exited with code 1 for node 'select_gate': success Spendin
 
 def test_parse_reset_seconds_variants():
     now = datetime(2026, 6, 1, 2, 10, 0)  # 2:10am
-    assert abs(agent._parse_reset_seconds("resets 3:50am", now) - 100 * 60) < 1  # 1h40m
-    assert abs(agent._parse_reset_seconds("resets at 11pm", now) - (20 * 3600 + 50 * 60)) < 1
-    assert abs(agent._parse_reset_seconds("usage limit, resets 15:50", now) - (13 * 3600 + 40 * 60)) < 1
+    assert abs(caps.parse_reset_seconds("resets 3:50am", now) - 100 * 60) < 1  # 1h40m
+    assert abs(caps.parse_reset_seconds("resets at 11pm", now) - (20 * 3600 + 50 * 60)) < 1
+    assert abs(caps.parse_reset_seconds("usage limit, resets 15:50", now) - (13 * 3600 + 40 * 60)) < 1
     # reset time already passed today -> next day's occurrence
-    assert abs(agent._parse_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
+    assert abs(caps.parse_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
     # no time present -> None (caller uses default)
-    assert agent._parse_reset_seconds("overloaded") is None
-    assert agent._parse_reset_seconds("resets soon") is None
+    assert caps.parse_reset_seconds("overloaded") is None
+    assert caps.parse_reset_seconds("resets soon") is None
 
 
 SESSION_MSG = (
@@ -41,18 +41,18 @@ SESSION_MSG = (
 
 
 def test_classification():
-    assert agent._is_cap(CAP_MSG) is True
-    assert agent._is_cap("rate limit exceeded") is False      # short transient, not a cap
-    assert agent._is_cap("overloaded") is False
-    assert agent._is_transient(CAP_MSG) is True               # cap is still transient/retryable
-    assert agent._is_transient("rate limit") is True
-    assert agent._is_transient("syntax error in node") is False
+    assert failure.is_cap(CAP_MSG) is True
+    assert failure.is_cap("rate limit exceeded") is False      # short transient, not a cap
+    assert failure.is_cap("overloaded") is False
+    assert failure.is_transient(CAP_MSG) is True               # cap is still transient/retryable
+    assert failure.is_transient("rate limit") is True
+    assert failure.is_transient("syntax error in node") is False
     # A session limit is a scheduled-reset cap — must be waited out, not reframed.
-    assert agent._is_cap(SESSION_MSG) is True
-    assert agent._is_transient(SESSION_MSG) is True
+    assert failure.is_cap(SESSION_MSG) is True
+    assert failure.is_transient(SESSION_MSG) is True
     # All cap markers must also be transient, else the cap-wait branch never fires.
-    for marker in agent._CAP_MARKERS:
-        assert agent._is_transient(marker) is True, f"cap marker not transient: {marker}"
+    for marker in failure._CAP_MARKERS:
+        assert failure.is_transient(marker) is True, f"cap marker not transient: {marker}"
 
 
 # OpenRouter (and similar gateways) cap a key per day; the CLI surfaces the raw
@@ -67,12 +67,12 @@ KEY_LIMIT_MSG = (
 
 def test_daily_key_limit_classified_as_cap():
     """A provider per-key daily limit is a (transient) cap, not a hard failure —
-    so _invoke_claude waits it out instead of raising into the reframe ladder."""
-    assert agent._is_cap(KEY_LIMIT_MSG) is True
-    assert agent._is_transient(KEY_LIMIT_MSG) is True
+    so _run_turn_with_recovery waits it out instead of raising into the reframe ladder."""
+    assert failure.is_cap(KEY_LIMIT_MSG) is True
+    assert failure.is_transient(KEY_LIMIT_MSG) is True
     # The bare phrasings both trip the cap detector.
-    assert agent._is_cap("Key limit exceeded") is True
-    assert agent._is_cap("daily limit reached") is True
+    assert failure.is_cap("Key limit exceeded") is True
+    assert failure.is_cap("daily limit reached") is True
 
 
 # opencode logs the usage-limit error to its stream but does NOT exit — it retries
@@ -91,7 +91,7 @@ def test_cap_hang_classified_as_cap_not_timeout():
     timeout — so the run waits the window out under a truthful message instead of
     reporting 'Timeout waiting for result … after Ns'."""
     try:
-        agent.classify_turn(
+        failure.classify_turn(
             "opencode",
             "review_implementation",
             result_text=None,
@@ -104,7 +104,7 @@ def test_cap_hang_classified_as_cap_not_timeout():
     except BackendInvocationError as exc:
         assert "cap reached" in str(exc), "should be framed as a cap"
         assert "Timeout waiting for result" not in str(exc), "must not mis-frame as a timeout"
-        assert agent._is_cap(str(exc)), "runner's cap detector must still catch it"
+        assert failure.is_cap(str(exc)), "runner's cap detector must still catch it"
         assert exc.transient is True
         # A cap is waited out by the cap branch, NOT given the budget-overrun warning,
         # so it must not masquerade as a real wall-clock timeout.
@@ -119,7 +119,7 @@ def test_cap_hang_pauses_then_resumes_same_node():
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            agent.classify_turn(
+            failure.classify_turn(
                 "opencode", node_id, result_text=None, diagnostics=OPENCODE_CAP_DIAG,
                 timed_out=True, returncode=0, timeout=3600,
             )
@@ -131,8 +131,8 @@ def test_cap_hang_pauses_then_resumes_same_node():
         seen_prompts.append(prompt)
         return fake_cli(prompt, *a, **k)
 
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = agent._invoke_claude(
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = ladder._run_turn_with_recovery(
             "DO THE TASK", "review_implementation", None,
             backend=FakeBackend(record_cli),
             resilience=RESILIENCE, timeout=3600,
@@ -157,8 +157,8 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = agent._invoke_claude(
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = ladder._run_turn_with_recovery(
             "p", "resolve_epics", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
@@ -181,8 +181,8 @@ def test_session_limit_pauses_until_reset_then_resumes():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = agent._invoke_claude(
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = ladder._run_turn_with_recovery(
             "p", "review_plan", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
@@ -199,51 +199,51 @@ def test_rate_limit_info_parsing():
         "type": "rate_limit_event",
         "rate_limit_info": {"status": "allowed", "resetsAt": 1780437600, "rateLimitType": "five_hour"},
     }
-    assert agent._rate_limit_info(allowed) == (False, 1780437600.0)
+    assert failure.rate_limit_info(allowed) == (False, 1780437600.0)
 
     blocked = {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected", "resetsAt": 1780000000}}
-    assert agent._rate_limit_info(blocked) == (True, 1780000000.0)
+    assert failure.rate_limit_info(blocked) == (True, 1780000000.0)
 
     # Missing / malformed info → no crash, no signal.
-    assert agent._rate_limit_info({"type": "rate_limit_event"}) == (False, None)
-    assert agent._rate_limit_info({"rate_limit_info": {"status": "allowed", "resetsAt": "n/a"}}) == (False, None)
+    assert failure.rate_limit_info({"type": "rate_limit_event"}) == (False, None)
+    assert failure.rate_limit_info({"rate_limit_info": {"status": "allowed", "resetsAt": "n/a"}}) == (False, None)
 
 
 def test_cap_delay_prefers_structured_reset_at():
     """A structured reset_at epoch drives the wait time precisely (+ margin)."""
     now = 1_000_000.0
     exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
-    delay, _when = agent._cap_delay_seconds(exc, now=now, resilience=RESILIENCE)
+    delay, _when = caps.cap_delay_seconds(exc, now=now, resilience=RESILIENCE)
     assert abs(delay - (3600 + RESILIENCE.cap_wait_margin_s)) < 1
 
     # A past reset → retry promptly (just the margin).
     exc_past = BackendInvocationError("blocked", transient=True, reset_at=now - 50)
-    delay_past, _ = agent._cap_delay_seconds(exc_past, now=now, resilience=RESILIENCE)
+    delay_past, _ = caps.cap_delay_seconds(exc_past, now=now, resilience=RESILIENCE)
     assert delay_past == RESILIENCE.cap_wait_margin_s
 
     # An absurd far-future reset is bounded.
     exc_far = BackendInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
-    delay_far, _ = agent._cap_delay_seconds(exc_far, now=now, resilience=RESILIENCE)
+    delay_far, _ = caps.cap_delay_seconds(exc_far, now=now, resilience=RESILIENCE)
     assert delay_far == RESILIENCE.cap_max_wait_s + RESILIENCE.cap_wait_margin_s
 
 
 def test_cap_delay_falls_back_to_text_then_default():
     """Without a structured reset_at, fall back to parsing the message, then default."""
     now_dt = datetime(2026, 6, 1, 2, 10, 0)
-    with patch.object(agent, "datetime") as dt:
+    with patch.object(caps, "datetime") as dt:
         dt.now.return_value = now_dt
         dt.fromtimestamp.side_effect = lambda ts: datetime.fromtimestamp(ts)
         exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
-        delay, _ = agent._cap_delay_seconds(exc, now=0, resilience=RESILIENCE)  # no reset_at → text path
+        delay, _ = caps.cap_delay_seconds(exc, now=0, resilience=RESILIENCE)  # no reset_at → text path
         assert abs(delay - (100 * 60 + RESILIENCE.cap_wait_margin_s)) < 1
 
     exc_none = BackendInvocationError("overloaded somehow", transient=True)
-    delay_none, _ = agent._cap_delay_seconds(exc_none, now=0, resilience=RESILIENCE)
+    delay_none, _ = caps.cap_delay_seconds(exc_none, now=0, resilience=RESILIENCE)
     assert delay_none == RESILIENCE.cap_default_wait_s
 
 
 def test_structured_reset_at_drives_invoke_wait():
-    """End-to-end: a cap error carrying reset_at makes _invoke_claude sleep until it."""
+    """End-to-end: a cap error carrying reset_at makes _run_turn_with_recovery sleep until it."""
     now = 2_000_000.0
     calls = {"n": 0}
 
@@ -254,9 +254,9 @@ def test_structured_reset_at_drives_invoke_wait():
         return "OK"
 
     slept = []
-    with patch.object(agent.time, "time", lambda: now), \
-         patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = agent._invoke_claude(
+    with patch.object(caps.time, "time", lambda: now), \
+         patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = ladder._run_turn_with_recovery(
             "p", "n", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
@@ -281,8 +281,8 @@ def test_budget_timeout_warns_retry_with_time_budget():
             )
         return "RESULT_OK"
 
-    with patch.object(agent.time, "sleep", lambda s: None):
-        out = agent._invoke_claude(
+    with patch.object(ladder.time, "sleep", lambda s: None):
+        out = ladder._run_turn_with_recovery(
             "DO THE TASK", "implement", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=1200,
@@ -309,8 +309,8 @@ def test_non_timeout_transient_retries_prompt_unchanged():
             raise BackendInvocationError("overloaded_error", transient=True)
         return "OK"
 
-    with patch.object(agent.time, "sleep", lambda s: None):
-        out = agent._invoke_claude(
+    with patch.object(ladder.time, "sleep", lambda s: None):
+        out = ladder._run_turn_with_recovery(
             "DO THE TASK", "implement", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=1200,
@@ -331,8 +331,8 @@ def test_cap_sleeps_until_reset_then_resumes():
         return "RESULT_OK"
 
     slept = []
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = agent._invoke_claude(
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
+        out = ladder._run_turn_with_recovery(
             "prompt", "select_gate", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
@@ -355,8 +355,8 @@ def test_cap_waits_do_not_consume_short_retry_budget():
             raise BackendInvocationError(CAP_MSG, transient=True)
         return "OK_AFTER_CAPS"
 
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
-        out = agent._invoke_claude(
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: None):
+        out = ladder._run_turn_with_recovery(
             "p", "n", None,
             backend=FakeBackend(fake_cli),
             resilience=RESILIENCE.with_overrides(max_invoke_retries=1),  # short budget = 1
@@ -372,9 +372,9 @@ def test_cap_wait_safety_bound():
     def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise BackendInvocationError(CAP_MSG, transient=True)
 
-    with patch.object(agent, "_sleep_with_notice", lambda s, *_a, **_k: None):
+    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: None):
         try:
-            agent._invoke_claude(
+            ladder._run_turn_with_recovery(
                 "p", "n", None,
                 backend=FakeBackend(always_cap),
                 resilience=RESILIENCE.with_overrides(max_cap_waits=3),
@@ -393,9 +393,9 @@ def test_short_transient_uses_bounded_backoff_then_fails():
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    with patch.object(agent.time, "sleep", lambda s: None):
+    with patch.object(ladder.time, "sleep", lambda s: None):
         try:
-            agent._invoke_claude(
+            ladder._run_turn_with_recovery(
                 "p", "n", None,
                 backend=FakeBackend(always_overloaded),
                 resilience=RESILIENCE.with_overrides(max_invoke_retries=2),
@@ -415,7 +415,7 @@ def test_non_transient_fails_immediately():
         raise BackendInvocationError("malformed workflow node", transient=False)
 
     try:
-        agent._invoke_claude(
+        ladder._run_turn_with_recovery(
             "p", "n", None,
             backend=FakeBackend(hard_fail),
             resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,

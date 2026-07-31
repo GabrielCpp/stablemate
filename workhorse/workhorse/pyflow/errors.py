@@ -15,7 +15,7 @@ class WorkflowFailed(PyflowError):
     """A state gave up. The workflow's own way of ending a run badly.
 
     Deliberately an exception rather than a fourth transition type: a failure needs
-    a traceback, and it has to compose with the retry ladder in `runner/agent.py`
+    a traceback, and it has to compose with the retry ladder in `runner/ladder.py`
     the same way any other exception does.
     """
 

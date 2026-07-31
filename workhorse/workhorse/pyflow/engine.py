@@ -32,7 +32,7 @@ from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
-from workhorse.runner import agent as agent_runner
+from workhorse.runner import ladder as agent_ladder
 
 logger = logging.getLogger("workhorse.engine")
 
@@ -155,7 +155,7 @@ class RunEnv:
     #: Canned agent replies for `--dry-run`, keyed by prompt stem. A value, or a
     #: callable taking the render args. Unlisted stems fall back to a blank model.
     agent_stubs: dict[str, Any] | None = None
-    #: The agent backend. None = the real `agent_runner.run_agent`, looked up at call
+    #: The agent backend. None = the real `agent_ladder.run_agent`, looked up at call
     #: time so the default can never be a stale binding.
     run_agent: Callable[..., Any] | None = None
 
@@ -316,7 +316,7 @@ class Engine:
         )
         self.env.log.info("[workhorse] agent  → %s", node_id)
         config = self.env.config
-        run_agent = self.env.run_agent or agent_runner.run_agent
+        run_agent = self.env.run_agent or agent_ladder.run_agent
         rendered, raw = run_agent(
             node,
             # The manifest underneath, the state's arguments on top: a state that

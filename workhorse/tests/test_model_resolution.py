@@ -1,4 +1,4 @@
-"""Tests for power-tier model resolution (runner/agent.py:_resolve_power_settings).
+"""Tests for power-tier model resolution (runner/ladder.py:_resolve_power_settings).
 
 A node's ``power:`` is resolved through user-wide config keyed by backend. Missing
 config falls through to AGENT_MODEL / AGENT_CLAUDE_MODEL for model, then to the
@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 from stablemate_core.config import resolve_backend_default, resolve_power
-from workhorse.runner.agent import _resolve_power_settings
+from workhorse.runner.ladder import _resolve_power_settings
 
 
 CONFIG = {
@@ -36,10 +36,10 @@ CONFIG = {
 
 @contextmanager
 def _config(cfg):
-    """Route both config lookups in the agent module at ``cfg`` (never the real file)."""
+    """Route both config lookups in the ladder module at ``cfg`` (never the real file)."""
     with (
-        patch("workhorse.runner.agent.resolve_power") as power,
-        patch("workhorse.runner.agent.resolve_backend_default") as default,
+        patch("workhorse.runner.ladder.resolve_power") as power,
+        patch("workhorse.runner.ladder.resolve_backend_default") as default,
     ):
         power.side_effect = lambda p, b: resolve_power(p, b, cfg)
         default.side_effect = lambda b: resolve_backend_default(b, cfg)
