@@ -18,6 +18,7 @@ def load_survey_config(
     rubric: str = "docs/survey/rubric.md",
     survey_dir: str = "docs/survey",
     backlog: str = "docs/backlog.md",
+    repo_dir: str = "",
 ) -> SurveyConfig:
     """Resolve the survey's paths and prove the rubric exists.
 
@@ -34,7 +35,7 @@ def load_survey_config(
     survey_dir = survey_dir.strip() or "docs/survey"
     backlog = backlog.strip() or "docs/backlog.md"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     rubric_path = (root / rubric).resolve()
     if not rubric_path.is_file():
         logger.warning("rubric file not found: %s", rubric_path)
@@ -68,6 +69,7 @@ def check_inventory(
     logger: logging.Logger,
     inventory: str = "docs/survey/inventory.json",
     rules: str = "docs/survey/units.yml",
+    repo_dir: str = "",
 ) -> InventoryCheck:
     """Decide whether the granularity planner needs its one bounded judgment.
 
@@ -80,7 +82,7 @@ def check_inventory(
     inventory_rel = inventory.strip() or "docs/survey/inventory.json"
     rules_rel = rules.strip() or "docs/survey/units.yml"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     if (root / inventory_rel).is_file():
         note = f"inventory {inventory_rel} already exists — frozen; the planner never re-runs"
         logger.info(note)

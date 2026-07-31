@@ -43,7 +43,7 @@ SLOW_NODES = 10
 
 @blueprint.node
 def gather_run_evidence(
-    logger: logging.Logger, run_dir: str = "", docs_path: str = ""
+    logger: logging.Logger, run_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> RunEvidence:
     """Digest a finished run's `events.jsonl` into the signals reflection actually needs.
 
@@ -62,7 +62,7 @@ def gather_run_evidence(
     `<docs>/.agents/runs` is used. Dream runs are excluded by name: reflecting on the last
     reflection is the degenerate case, and it is reachable simply by running dream twice.
     """
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     resolved = _resolve_run_dir(run_dir, docs_root)
     if resolved is None or not (resolved / "events.jsonl").is_file():
         logger.warning("no run with events.jsonl found under %s", docs_root)
@@ -191,7 +191,7 @@ def _sessions(run_dir: Path) -> dict[str, str]:
 
 @blueprint.node
 def record_improvements(
-    logger: logging.Logger, docs_path: str = "", run_dir: str = ""
+    logger: logging.Logger, docs_path: str = "", run_dir: str = "", repo_dir: str = ""
 ) -> ImprovementsRecorded:
     """Drain the reflection inbox into the durable ledger, deduping and counting.
 
@@ -208,7 +208,7 @@ def record_improvements(
     would re-bump every proposal in it on the following run and manufacture evidence of
     recurrence that never happened.
     """
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     run_id = Path(run_dir).name if run_dir else "unknown-run"
     ledger_md = f"{DREAM_LEDGER}.md"
     inbox_path = root / DREAM_INBOX

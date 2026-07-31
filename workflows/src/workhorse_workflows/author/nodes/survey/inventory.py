@@ -163,6 +163,7 @@ def expand_inventory(
     logger: logging.Logger,
     rules: str = "docs/survey/units.yml",
     inventory: str = "docs/survey/inventory.json",
+    repo_dir: str = "",
 ) -> Expansion:
     """Materialize the unit inventory from the enumeration rules — then freeze it.
 
@@ -173,7 +174,7 @@ def expand_inventory(
     rules_rel = rules.strip() or "docs/survey/units.yml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     inv_path = root / inv_rel
 
     # ── Freeze: an existing inventory is consumed verbatim, never re-expanded ──────────
@@ -277,7 +278,9 @@ def _load_excludes(root: Path, rules_rel: str) -> list[str]:
 
 
 @blueprint.node(stub=_stubs.split)
-def split_unit(logger: logging.Logger, inventory: str, unit_id: str) -> SplitResult:
+def split_unit(
+    logger: logging.Logger, inventory: str, unit_id: str, repo_dir: str = ""
+) -> SplitResult:
     """Replace a too-big folder unit with its immediate children.
 
     Only `folder` units can split — a file or command unit has no children, so the
@@ -291,7 +294,7 @@ def split_unit(logger: logging.Logger, inventory: str, unit_id: str) -> SplitRes
         logger.warning("inventory and unit_id are both required")
         return SplitResult(split_errors="inventory and unit_id are both required")
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     inv_path = root / inv_rel
     try:
         data = json.loads(inv_path.read_text(encoding="utf-8"))

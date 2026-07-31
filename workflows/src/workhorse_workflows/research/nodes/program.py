@@ -7,7 +7,6 @@ nothing in this package knows any program by name.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -51,29 +50,31 @@ def _walk_up(start: Path, predicate: Callable[[Path], bool]) -> Path | None:
         cur = cur.parent
 
 
-def launch_dir() -> Path:
-    """The directory the run was launched from (the program-selection signal)."""
-    return Path(
-        os.environ.get("AGENT_LAUNCH_DIR") or os.environ.get("PWD") or os.getcwd()
-    ).resolve()
+def launch_dir(launch: str = "") -> Path:
+    """The directory the run was launched from (the program-selection signal).
+
+    An argument rather than `AGENT_LAUNCH_DIR`/`PWD`: where the operator stood is an
+    input to the selection ladder below, so it travels down from the workflow and is
+    visible in the checkpoint. Empty means the process's own working directory.
+    """
+    return Path(launch or Path.cwd()).resolve()
 
 
-def resolve_repo_root(arg_repo: str) -> Path:
-    """Repo root from (in order): explicit arg/env, the launch dir's enclosing
+def resolve_repo_root(arg_repo: str, launch: str = "") -> Path:
+    """Repo root from (in order): the explicit argument, the launch dir's enclosing
     `.git`, else cwd."""
-    explicit = arg_repo or os.environ.get("AGENT_REPO_DIR") or ""
-    if explicit:
-        return Path(explicit).resolve()
-    git_root = _walk_up(launch_dir(), lambda d: (d / ".git").exists())
+    if arg_repo:
+        return Path(arg_repo).resolve()
+    git_root = _walk_up(launch_dir(launch), lambda d: (d / ".git").exists())
     return (git_root or Path.cwd()).resolve()
 
 
-def detect_program_from_launch(repo_root: Path) -> str:
+def detect_program_from_launch(repo_root: Path, launch: str = "") -> str:
     """Walk up from the launch dir to repo_root; return the repo-relative dir of the
     nearest enclosing `program.yml`, or "" if none is found within the repo."""
-    launch = launch_dir()
+    launch_path = launch_dir(launch)
     try:
-        launch.relative_to(repo_root)  # only trust a launch dir inside the repo
+        launch_path.relative_to(repo_root)  # only trust a launch dir inside the repo
     except ValueError:
         return ""
 
@@ -82,7 +83,7 @@ def detect_program_from_launch(repo_root: Path) -> str:
             return True
         return d == repo_root  # stop the walk at the repo boundary
 
-    hit = _walk_up(launch, has_manifest)
+    hit = _walk_up(launch_path, has_manifest)
     if hit is None or not (hit / "program.yml").is_file():
         return ""
     return hit.relative_to(repo_root).as_posix().strip("/")
@@ -118,27 +119,30 @@ def read_pointer(repo_root: Path) -> str:
 
 
 @blueprint.node
-def load_program(logger: logging.Logger, program: str, repo_dir: str) -> Program:
+def load_program(
+    logger: logging.Logger, program: str, repo_dir: str, launch_dir_path: str = ""
+) -> Program:
     """Select a research program and read its manifest into the run's config.
 
     A "research program" is one folder in the target repo, defined by a flat
     `<program_dir>/program.yml` beside its README ladder — no external registry, and
     nothing per-program in this package. Selection, first match wins:
 
-      1. explicit `program` param / `$RESEARCH_PROGRAM`
+      1. the explicit `program` param
       2. the nearest `program.yml` at-or-above the launch dir, bounded by the repo
       3. a top-level `program:` in the repo's `agents.yml` (the committed default)
       4. the legacy `.agents/program` pointer
-    """
-    explicit = program.strip().strip("/") or os.environ.get(
-        "RESEARCH_PROGRAM", ""
-    ).strip().strip("/")
-    repo_root = resolve_repo_root(repo_dir.strip())
 
-    program_dir = explicit
+    Rung 1 lost its `$RESEARCH_PROGRAM` alternative: `program` is already a workflow
+    parameter, so the environment spelling was a second way to say the same thing that no
+    checkpoint recorded.
+    """
+    program_dir = program.strip().strip("/")
+    repo_root = resolve_repo_root(repo_dir.strip(), launch_dir_path)
+
     selected_by = "explicit"
     if not program_dir:
-        program_dir = detect_program_from_launch(repo_root)
+        program_dir = detect_program_from_launch(repo_root, launch_dir_path)
         selected_by = "launch-dir"
     if not program_dir:
         program_dir = read_agents_yaml_program(repo_root)
@@ -154,7 +158,7 @@ def load_program(logger: logging.Logger, program: str, repo_dir: str) -> Program
         )
     logger.info(
         "program %r selected by %s (repo_root=%s, launch_dir=%s)",
-        program_dir, selected_by, repo_root, launch_dir(),
+        program_dir, selected_by, repo_root, launch_dir(launch_dir_path),
     )
 
     manifest = repo_root / program_dir / "program.yml"

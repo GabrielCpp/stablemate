@@ -83,6 +83,7 @@ def prepare_story(
     docs_path: str = "",
     story: str = "",
     epic: str = "",
+    repo_dir: str = "",
 ) -> StoryPaths:
     """Resolve a story slug and epic to the canonical absolute paths every flow uses.
 
@@ -95,7 +96,7 @@ def prepare_story(
         logger.info("no story slug — nothing to resolve")
         return StoryPaths()
 
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
 
     if not epic:
         matches = list(docs_root.glob(f"docs/epics/*/stories/{story}/story.md"))
@@ -132,7 +133,9 @@ def prepare_story(
 
 
 @blueprint.node(aliases=("resolve_ci_workspace",))
-def resolve_workspace_dirs(logger: logging.Logger, docs_path: str = "") -> WorkspaceDirs:
+def resolve_workspace_dirs(
+    logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
+) -> WorkspaceDirs:
     """Every directory this run's agent turns may read: the workspace repos plus the docs.
 
     Agent turns run with one service repo as their cwd, and the story, plan and spec files
@@ -144,8 +147,8 @@ def resolve_workspace_dirs(logger: logging.Logger, docs_path: str = "") -> Works
     body under that name, and `self.output(node)` resolves against the run directory by
     node name, so an alias is what keeps an in-flight CI run resumable across the rename.
     """
-    docs_root = find_docs_root(docs_path)
-    repos = resolve_workspace("CODER_WORKSPACE")
+    docs_root = find_docs_root(docs_path, repo_dir)
+    repos = resolve_workspace(workspace_file, repo_dir)
     dirs = [r["path"] for r in repos.values() if Path(r["path"]).is_dir()]
     if str(docs_root) not in dirs:
         dirs = [str(docs_root), *dirs]
@@ -155,7 +158,7 @@ def resolve_workspace_dirs(logger: logging.Logger, docs_path: str = "") -> Works
 
 @blueprint.node
 def stamp_specs(
-    logger: logging.Logger, docs_path: str = "", story_slug: str = ""
+    logger: logging.Logger, docs_path: str = "", story_slug: str = "", repo_dir: str = ""
 ) -> SpecsStamped:
     """Give every spec doc in the story's spec dir an OKF `type`, or fail the run.
 
@@ -173,7 +176,7 @@ def stamp_specs(
         logger.info("no story slug — nothing to stamp")
         return SpecsStamped()
 
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(docs_root)
     spec_dir = docs_root / _spec_dir_rel(okf, story_slug)
     if not spec_dir.is_dir():
@@ -210,6 +213,7 @@ def prepare_fix_story(
     docs_path: str = "",
     story: str = "",
     epic: str = "",
+    repo_dir: str = "",
 ) -> StoryPaths:
     """`prepare_story` under a second node id, for the backlog drain nested in the main loop.
 
@@ -222,7 +226,7 @@ def prepare_fix_story(
     `prepare-story.py` a second time under `prepare_fix_story` for exactly this reason; the
     comment there is the bug report.
     """
-    return prepare_story(logger, docs_path=docs_path, story=story, epic=epic)
+    return prepare_story(logger, docs_path=docs_path, story=story, epic=epic, repo_dir=repo_dir)
 
 
 __all__ = ["prepare_fix_story", "prepare_story", "resolve_workspace_dirs", "stamp_specs"]

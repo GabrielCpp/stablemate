@@ -10,20 +10,26 @@ from a subdirectory of a repo with no `agents.yml` resolves to a *different* roo
 each. So all four are kept, named for what they actually do, and each ported node calls
 the one its script called:
 
-* `survey_repo_root()` — `AGENT_REPO_DIR`, else the first ancestor with `agents.yml` or a
+Every one of them takes the run's `repo_dir` as its argument and reads no environment
+variable, per the rule in `workflows/README.md`: the consuming repo is an *input*, so it
+travels down from `Workflow.repo_dir` through the state that calls the node. An empty
+`repo_dir` still falls back to a walk — a visible, overridable default, unlike an ambient
+variable.
+
+* `survey_repo_root()` — `repo_dir`, else the first ancestor with `agents.yml` or a
   `docs/epics/` directory. Used by the surveyor's own scripts, and by most of the main
   graph's own nodes (`load_config`, `select_epic`, `select_story`, `validate_story`,
   `check_story_grounding`, `validate_coverage`, `record_attempt`, `prune_bullet`,
   `prune_backlog`, `validate_artifacts`) — despite the name, which reads narrower than
   its use.
-* `launch_repo_root()` — `AGENT_REPO_DIR`, else the current directory, with no walk at
+* `launch_repo_root()` — `repo_dir`, else the current directory, with no walk at
   all. Used by the parity surveyor and by the two tri-state verifiers
   (`verify_reconcile`, `verify_integrity`).
-* `workhorse.scriptutil.find_repo_root` — `AGENT_REPO_DIR`, else the first ancestor with
+* `workhorse.scriptutil.find_repo_root` — `repo_dir`, else the first ancestor with
   `agents.yml` or `.git`. Used by the three git/GitHub nodes (`branch_author`,
   `commit_author`, `open_author_pr`), and imported from the engine where it already
   lives rather than copied to a fourth spelling here.
-* `feedback_repo_root()` — `AGENT_REPO_DIR`, else the current directory *if* it looks
+* `feedback_repo_root()` — `repo_dir`, else the current directory *if* it looks
   like a repo, else the first ancestor with `agents.yml` or `.git`. `check_feedback.py`
   alone resolved this way; `check_story_feedback` keeps it.
 
@@ -37,19 +43,17 @@ makes that join at the call site.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 
-def survey_repo_root() -> Path:
+def survey_repo_root(repo_dir: str | Path = "") -> Path:
     """The consuming repo, as the surveyor's scripts resolved it.
 
-    `AGENT_REPO_DIR` is pinned to the consuming repo by the makefile; a script's own
-    location points into the shared library, so the env var wins over any walk.
+    `repo_dir` is the run's input, carried down from the workflow; a script's own
+    location points into the shared library, so it wins over any walk.
     """
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+    if repo_dir:
+        return Path(repo_dir).resolve()
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
@@ -57,24 +61,22 @@ def survey_repo_root() -> Path:
     return here
 
 
-def launch_repo_root() -> Path:
-    """The consuming repo, as the parity surveyor's scripts resolved it: env, else cwd."""
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+def launch_repo_root(repo_dir: str | Path = "") -> Path:
+    """The consuming repo, as the parity surveyor's scripts resolved it: input, else cwd."""
+    if repo_dir:
+        return Path(repo_dir).resolve()
     return Path.cwd().resolve()
 
 
-def feedback_repo_root() -> Path:
+def feedback_repo_root(repo_dir: str | Path = "") -> Path:
     """The consuming repo, as `check_feedback.py` alone resolved it.
 
     The difference from `survey_repo_root` is the first step: the current directory is
     accepted if it carries *any* of the three markers, and only then are its parents
     walked, looking for the two git-ish ones.
     """
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+    if repo_dir:
+        return Path(repo_dir).resolve()
     here = Path.cwd().resolve()
     if (here / "docs" / "epics").is_dir() or (here / "agents.yml").exists() or (here / ".git").exists():
         return here

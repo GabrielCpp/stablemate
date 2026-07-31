@@ -38,6 +38,7 @@ def select_next_unit(
     logger: logging.Logger,
     inventory: str = "docs/survey/inventory.json",
     findings_dir: str = "docs/survey/findings",
+    repo_dir: str = "",
 ) -> UnitPick:
     """The first unit still `pending`, or the news that none is left.
 
@@ -49,7 +50,7 @@ def select_next_unit(
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     findings_rel = findings_dir.strip() or "docs/survey/findings"
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     inv_path = root / inv_rel
     if not inv_path.is_file():
         logger.warning(
@@ -138,6 +139,7 @@ def mark_unit(
     unit_id: str,
     record_path: str,
     fallback: str = "",
+    repo_dir: str = "",
 ) -> MarkResult:
     """Stamp the unit's inventory entry with its (validated) record's status.
 
@@ -158,7 +160,7 @@ def mark_unit(
         logger.warning("inventory, unit_id, and record_path are all required")
         return MarkResult(mark_note="inventory, unit_id, and record_path are all required")
 
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     record_file = root / record_rel
     status = _record_status(record_file)
     note = "unit marked from its record's status"

@@ -17,7 +17,8 @@ a second copy of one:
   That is the one judgment the assessor makes, and it is recorded per unit (in
   `existing_owner`) so the suppression is auditable rather than invisible.
 
-These nodes resolve the repo through `launch_repo_root()` — env var, else cwd, no walk —
+These nodes resolve the repo through `launch_repo_root(repo_dir)` — the run's input, else
+cwd, no walk —
 because that is what their scripts did. See `author/paths.py`.
 
 Ported from `surveyor/scripts/{load-parity-config,expand-parity-inventory,
@@ -61,6 +62,7 @@ def load_parity_config(
     survey_dir: str = "docs/survey/legacy-vs-new",
     backlog: str = "docs/backlog.md",
     epics: str = "docs/epics",
+    repo_dir: str = "",
 ) -> ParityConfig:
     """Resolve and validate the two documentation inventories being compared.
 
@@ -74,7 +76,7 @@ def load_parity_config(
     backlog = backlog.strip() or "docs/backlog.md"
     epics = epics.strip() or "docs/epics"
 
-    root = launch_repo_root()
+    root = launch_repo_root(repo_dir)
     if not baseline or not (root / baseline).is_file():
         logger.warning("baseline inventory not found: %s", baseline or "(empty)")
         raise WorkflowFailed(f"baseline inventory not found: {baseline or '(empty)'}")
@@ -100,7 +102,7 @@ def load_parity_config(
 
 @blueprint.node(stub=_stubs.expanded)
 def expand_parity_inventory(
-    logger: logging.Logger, baseline: str, inventory: str
+    logger: logging.Logger, baseline: str, inventory: str, repo_dir: str = ""
 ) -> Expansion:
     """Freeze one survey unit per baseline surface.
 
@@ -109,7 +111,7 @@ def expand_parity_inventory(
     marks `rewriteSurface: true` are out of scope by construction — the rewrite already
     owns them.
     """
-    root = launch_repo_root()
+    root = launch_repo_root(repo_dir)
     output = root / inventory
     if output.is_file():
         try:
@@ -203,6 +205,7 @@ def emit_parity_backlog(
     findings_dir: str,
     backlog: str,
     unit_manifest: str,
+    repo_dir: str = "",
 ) -> EmitResult:
     """One backlog bullet per assessed surface that no new-app feature already owns.
 
@@ -210,7 +213,7 @@ def emit_parity_backlog(
     suppressed them, so "we decided this one is already covered" stays an auditable claim
     rather than an absence.
     """
-    root = launch_repo_root()
+    root = launch_repo_root(repo_dir)
     try:
         data = json.loads((root / inventory).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

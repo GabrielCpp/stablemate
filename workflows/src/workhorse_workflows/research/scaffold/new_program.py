@@ -23,7 +23,6 @@ Stdlib-only: runs under the system python3.
 import argparse
 import datetime
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -52,7 +51,7 @@ def write(path: Path, content: str, force: bool) -> None:
 
 def main(logger: logging.Logger) -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default=os.environ.get("AGENT_REPO_DIR") or ".")
+    ap.add_argument("--repo", default=".", help="the repo to scaffold into (default: cwd)")
     ap.add_argument("--dir", required=True, help="repo-relative program dir, e.g. specs/my-program")
     ap.add_argument("--code-root", required=True, help="repo-relative source dir, e.g. src/mypkg")
     ap.add_argument("--name", default="", help="human program name (default: derived from dir)")

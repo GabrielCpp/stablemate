@@ -37,6 +37,11 @@ T = TypeVar("T")
 #: Where a run starts when the checkpoint does not say otherwise.
 START_STATE = "start"
 
+#: Parameter kinds an injected input can be passed to by name. `*args`/`**kwargs` are
+#: not among them: a target that only declares those has not asked for the input, and
+#: filling it would be guessing.
+_NAMEABLE = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+
 #: Attribute `@state(aliases=[...])` stamps on a method. The decorator carries no
 #: registry reference on purpose: it has to be usable in a class body that is defined
 #: before the module-level `Registry` object exists.
@@ -100,6 +105,24 @@ class Workflow(BaseModel):
     #: params, comparable between two runs, and overridable by a caller — which
     #: `AGENT_REPO_DIR` is none of. A state passes it on to the nodes that need it.
     repo_dir: str = ""
+
+    #: Input fields the seams *fill in* — for a node (or a sub-workflow) that declares a
+    #: parameter of the same name and was not passed one at the callsite.
+    #:
+    #: This is the same injection `logger` already gets, extended to the run's ambient
+    #: inputs, and it exists because the alternative to it is the thing the environment
+    #: was covering for: a value every second node needs, restated at ~200 callsites and
+    #: at every `handoff` (which constructs a fresh sub-workflow and so propagates
+    #: nothing). Restating it is what nobody did, which is why `AGENT_REPO_DIR` was read
+    #: from inside the nodes instead.
+    #:
+    #: It is deliberately **not** "fill any parameter whose name matches a field": that
+    #: would silently capture a node's `story`/`epic` argument from an input the state
+    #: had chosen not to pass. A workflow lists what it means to make ambient, and the
+    #: base lists the one field it declares itself. A callsite that passes the parameter
+    #: always wins, and an input that is empty injects nothing — so a node's own default
+    #: still applies.
+    injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
 
     #: Bound by the driver before the first state runs.
     _engine: Any = PrivateAttr(default=None)
@@ -211,9 +234,10 @@ class Workflow(BaseModel):
 
         `Concatenate[Logger, P]` strips the injected logger for the type checker, so
         the node stays a plain function a test can call directly while the callsite
-        here neither passes nor sees it.
+        here neither passes nor sees it. The node's *ambient* arguments — the fields
+        named in `injects` — are filled the same way, and for the same reason.
         """
-        return self._require_engine().call(node, args, kwargs)
+        return self._require_engine().call(node, args, self._fill(node, args, kwargs, skip=1))
 
     def agent(
         self,
@@ -259,8 +283,14 @@ class Workflow(BaseModel):
         the instance is frozen and holds nothing a caller wants that the result does
         not carry. A `Workflow` subclass is a pydantic model, so the signature being
         checked against is its synthesised `__init__`.
+
+        A sub-workflow is *constructed*, not derived, so nothing crosses this boundary
+        that is not an argument. The `injects` fields cross it — a sub-flow declaring
+        `repo_dir` works on the same checkout as its parent by definition, and having to
+        say so at every handoff is exactly the omission that made the environment look
+        necessary.
         """
-        return self._require_engine().handoff(wf, args, kwargs)
+        return self._require_engine().handoff(wf, args, self._fill(wf, args, kwargs))
 
     def output(self, node: Callable[..., T]) -> T:
         """The recorded output of a node that already ran, typed by its own return.
@@ -276,6 +306,50 @@ class Workflow(BaseModel):
         "legitimately empty" alike.
         """
         return self._require_engine().output(node)
+
+    # --- ambient inputs -----------------------------------------------------
+
+    def _fill(
+        self,
+        target: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        *,
+        skip: int = 0,
+    ) -> dict[str, Any]:
+        """`kwargs` plus every `injects` field `target` declares and the callsite omitted.
+
+        `skip` is how many leading parameters the seam itself supplies — 1 for a node
+        (its logger), 0 for a sub-workflow's `__init__` — so that positional arguments
+        line up with the right names and an argument already passed *positionally* is
+        never also passed by keyword.
+
+        Nothing here can fail a call: an unintrospectable target (a builtin, a C
+        callable) simply gets the kwargs it was given.
+        """
+        injects = getattr(type(self), "injects", ())
+        if not injects:
+            return kwargs
+        try:
+            params = inspect.signature(target).parameters
+        except (TypeError, ValueError):
+            return kwargs
+        positional = set(list(params)[skip : skip + len(args)])
+        filled = dict(kwargs)
+        fields = type(self).model_fields
+        for name in injects:
+            if name in filled or name in positional or name not in fields:
+                continue
+            param = params.get(name)
+            if param is None or param.kind not in _NAMEABLE:
+                continue
+            value = getattr(self, name, None)
+            # An empty input injects nothing: the target's own default is a real answer
+            # ("walk up from the cwd"), and overwriting it with a blank would be a lie
+            # about the callsite having said something.
+            if value not in (None, ""):
+                filled[name] = value
+        return filled
 
     # --- freezing -----------------------------------------------------------
 

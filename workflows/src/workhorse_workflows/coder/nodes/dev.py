@@ -15,8 +15,8 @@ already happened; that is the same split `author` and `surveyor` settled on.
 
 Two things the scripts did with paths are kept exactly, and one is worth naming.
 `validate-plan-context.py` and `select-next-layer.py` resolve `<spec_dir>/plan-context.json`
-against `find_repo_root()` while `branch-code-repos.py` resolves it against
-`find_docs_root()` — a real disagreement that is inert in practice, because `prepare_story`
+against `find_repo_root(repo_dir)` while `branch-code-repos.py` resolves it against
+`find_docs_root(docs_path, repo_dir)` — a real disagreement that is inert in practice, because `prepare_story`
 hands every flow an **absolute** `spec_dir` and joining an absolute path onto either root
 yields the same file. The nodes keep their script's root so a standalone run with a relative
 spec dir still behaves as it did.
@@ -81,7 +81,9 @@ def _spec_dir(spec_dir: str, root: Path) -> Path:
 
 
 @blueprint.node
-def validate_plan_context(logger: logging.Logger, spec_dir: str = "") -> PlanValidation:
+def validate_plan_context(
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = ""
+) -> PlanValidation:
     """Do the planner's declared service paths point at real services?
 
     Three checks per service: the path exists in the resolved workspace, it carries the
@@ -97,7 +99,7 @@ def validate_plan_context(logger: logging.Logger, spec_dir: str = "") -> PlanVal
     if not spec_dir:
         return PlanValidation(status="invalid", errors=["spec_dir argument is empty"])
 
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     spec_abs = _spec_dir(spec_dir, root)
 
     plan_ctx = load_json(spec_abs / "plan-context.json", "plan-context.json", logger)
@@ -120,7 +122,7 @@ def validate_plan_context(logger: logging.Logger, spec_dir: str = "") -> PlanVal
             ],
         )
 
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
     errors: list[str] = []
 
     # Producer-contract pre-check: `ostler artifact vet plan-context` applies the structural
@@ -211,6 +213,8 @@ def resolve_impl_context(
     spec_dir: str = "",
     target_env: str = "local",
     docs_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> ImplContext:
     """Decode the approved plan against the workspace into everything downstream needs.
 
@@ -218,13 +222,14 @@ def resolve_impl_context(
     plan-context yields empty lists (logged) so the implementer falls back to reading the
     plan text, rather than a hard failure that aborts the run.
 
-    Two roots, never conflated. `find_repo_root()` is the *orchestrating* repo, where the
-    context manifest and the instruction library live; `find_docs_root(docs_path)` is the
+    Two roots, never conflated. `find_repo_root(repo_dir)` is the *orchestrating* repo, where
+    the context manifest and the instruction library live; `find_docs_root(docs_path, repo_dir)`
+    is the
     *docs* repo, which may be a different directory, may not be a git repo, and may not have
     an `agents.yml`.
     """
-    root = find_repo_root()
-    docs_root = find_docs_root(docs_path)
+    root = find_repo_root(repo_dir)
+    docs_root = find_docs_root(docs_path, repo_dir)
 
     plan_ctx_path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
     plan_ctx = load_json(plan_ctx_path, "plan-context.json", logger) if plan_ctx_path else {}
@@ -234,7 +239,7 @@ def resolve_impl_context(
     instructions: dict[str, str] = manifest.get("instructions") or {}
     services = plan_ctx.get("services") or []
 
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
 
     # Instruction paths from every service's skills, deduplicated in order.
     impl_instruction_paths: list[str] = []
@@ -331,6 +336,8 @@ def branch_code_repos(
     spec_dir: str = "",
     branch: str = "",
     docs_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> BranchOutcome:
     """Put every code repo the plan names onto the story branch.
 
@@ -339,7 +346,7 @@ def branch_code_repos(
     run knew about. Idempotent: a repo already on the branch is left alone, and one that is
     not a git repo is skipped rather than failing the run.
     """
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     plan_ctx = (
         load_json(_spec_dir(spec_dir, docs_root) / "plan-context.json", "plan-context.json", logger)
         if spec_dir
@@ -356,7 +363,7 @@ def branch_code_repos(
                 docs_root,
             )
 
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
     branched: list[str] = []
     already: list[str] = []
     for repo_name in get_affected_repos(plan_ctx, repos):
@@ -373,7 +380,13 @@ def branch_code_repos(
 
 
 @blueprint.node
-def select_next_layer(logger: logging.Logger, spec_dir: str = "", index: int = -1) -> LayerPick:
+def select_next_layer(
+    logger: logging.Logger,
+    spec_dir: str = "",
+    index: int = -1,
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> LayerPick:
     """The next service to implement, or "the dispatch list is exhausted".
 
     `index` is the position of the last completed layer, `-1` before the first.
@@ -385,12 +398,12 @@ def select_next_layer(logger: logging.Logger, spec_dir: str = "", index: int = -
     skipping implementation entirely, is worse than halting. An explicit `"services": []` is
     a legitimate already-exhausted plan (a story touching no code repos) and is not an error.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     plan_ctx_path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
     plan_ctx = load_json(plan_ctx_path, "plan-context.json", logger) if plan_ctx_path else {}
     plan_ctx_absent = plan_ctx_path is None or not plan_ctx_path.exists()
 
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
     dispatch = build_dispatch_list(plan_ctx, repos, fallback=plan_ctx_absent)
 
     if not dispatch and plan_ctx and not plan_ctx_absent and "services" not in plan_ctx:
@@ -413,7 +426,7 @@ def select_next_layer(logger: logging.Logger, spec_dir: str = "", index: int = -
     return LayerPick(index=index, dispatch_count=total)
 
 
-def _lint_override(service: str, cwd: Path) -> str:
+def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
     """An explicit lint command for this service from the orchestrating repo's agents.yml.
 
     Looked up under `lint:` or `workflow.lint:` as a `{service-or-dir: command}` map, by
@@ -421,7 +434,7 @@ def _lint_override(service: str, cwd: Path) -> str:
     """
     if not service:
         return ""
-    cfg_path = find_repo_root() / "agents.yml"
+    cfg_path = find_repo_root(repo_dir) / "agents.yml"
     if not cfg_path.exists():
         return ""
     try:
@@ -448,7 +461,9 @@ def _has_make_lint(cwd: Path) -> bool:
 
 
 @blueprint.node
-def run_lint(logger: logging.Logger, cwd: str = "", service: str = "") -> LintOutcome:
+def run_lint(
+    logger: logging.Logger, cwd: str = "", service: str = "", repo_dir: str = ""
+) -> LintOutcome:
     """Run one service's lint command and report whether it is clean.
 
     The deterministic half of the lint gate; the implement agent's own `make lint`
@@ -467,7 +482,7 @@ def run_lint(logger: logging.Logger, cwd: str = "", service: str = "") -> LintOu
         logger.warning("cwd does not exist: %s", service_dir)
         return LintOutcome(status="skipped", reason=f"cwd does not exist: {service_dir}")
 
-    command = _lint_override(service, service_dir)
+    command = _lint_override(service, service_dir, repo_dir)
     if not command:
         if not _has_make_lint(service_dir):
             logger.info("no lint override and no `make lint` target in %s — skipping", service_dir)

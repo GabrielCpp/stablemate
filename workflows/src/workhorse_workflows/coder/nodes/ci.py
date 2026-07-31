@@ -9,15 +9,15 @@ old node name survives as an alias on it, so an in-flight CI run still resumes.
 **The repo a node works on is a parameter now, not the process's cwd.** Every node in the
 YAML's `fix_ci` graph carried `cwd: {{ current_repo_cwd }}`, and `await-pr-checks.py` has a
 long note explaining that it must therefore use `Path.cwd()` and specifically *not*
-`find_repo_root()`, because `AGENT_REPO_DIR` points at the launch checkout and would
-override the per-node cwd. A node here runs in the engine's own process, so there is no
-per-node cwd to inherit from — the directory arrives as `repo_dir` instead, which is what
-the flow always meant and what the `cwd:` field was a mechanism for.
+`find_repo_root()`, because the launch checkout would override the per-node cwd. A node
+here runs in the engine's own process, so there is no per-node cwd to inherit from — the
+directory arrives as `repo_dir` instead, which is what the flow always meant and what the
+`cwd:` field was a mechanism for.
 
 That surfaces a latent defect in the YAML rather than creating one: `push-ci.py` ran
-`push-epic.py`, which resolves with `find_repo_root()` and so *does* prefer
-`AGENT_REPO_DIR`. In a multi-repo workspace with that variable set, the CI loop polled one
-repo's PR and pushed a different repo's branch. It is recorded as a finding in the progress
+`push-epic.py`, which resolves with `find_repo_root()` and so *did* prefer the launch
+checkout. In a multi-repo workspace the CI loop polled one repo's PR and pushed a
+different repo's branch. It is recorded as a finding in the progress
 ledger; `push_ci_fix` takes `repo_dir` like its neighbours and only falls back to
 `find_repo_root()` when handed nothing, which is the single-repo case the YAML got right.
 
@@ -30,7 +30,6 @@ are gone, as everywhere else in the port.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -76,6 +75,8 @@ def select_ci_repo(
     logger: logging.Logger,
     repo: str = "",
     processed: list[str] | None = None,
+    workspace_file: str = "",
+    launch_dir: str = "",
 ) -> CiRepoPick:
     """The next repo whose CI has not been looked at yet, or "none left".
 
@@ -88,7 +89,7 @@ def select_ci_repo(
     not carry it is a configuration difference rather than a broken run.
     """
     seen = list(processed or [])
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, launch_dir)
 
     if repo:
         if repo in seen:
@@ -96,20 +97,20 @@ def select_ci_repo(
         if repo not in repos:
             logger.warning("repo '%s' not found in workspace — skipping", repo)
             return CiRepoPick(processed=seen)
-        return _picked(repo, repos[repo], seen)
+        return _picked(repo, repos[repo], seen, launch_dir)
 
     for name, info in repos.items():
         if name not in seen:
-            return _picked(name, info, seen)
+            return _picked(name, info, seen, launch_dir)
     return CiRepoPick(processed=seen)
 
 
-def _picked(name: str, info: dict, processed: list[str]) -> CiRepoPick:
+def _picked(name: str, info: dict, processed: list[str], launch_dir: str = "") -> CiRepoPick:
     """`name` chosen, and appended to the processed list the caller carries onward."""
     return CiRepoPick(
         has_repo=True,
         repo=name,
-        repo_cwd=str(info.get("path", find_repo_root())),
+        repo_cwd=str(info.get("path", find_repo_root(launch_dir))),
         processed=[*processed, name],
     )
 
@@ -120,6 +121,8 @@ def poll_pr_checks(
     repo_dir: str,
     branch: str,
     pr_number: str = "",
+    watch_timeout: int = 1200,
+    poll_interval: int = 30,
 ) -> CiChecks:
     """Block until the PR's Actions runs settle, then report `passed`/`failed`/`unavailable`.
 
@@ -135,9 +138,10 @@ def poll_pr_checks(
     site so it is never silent.
 
     The verdict is judged on the PR **head commit**, so stale runs on earlier commits of
-    the branch cannot pollute it. `CI_WATCH_TIMEOUT` (1200s) bounds the wait and
-    `CI_POLL_INTERVAL` (30s) sets the cadence; a never-settling pipeline reports `failed`
-    rather than hanging the run.
+    the branch cannot pollute it. `watch_timeout` (1200s) bounds the wait and
+    `poll_interval` (30s) sets the cadence; a never-settling pipeline reports `failed`
+    rather than hanging the run. Both are arguments rather than environment, so a flow that
+    wants a different cadence says so where the node is called.
     """
     if not branch:
         logger.info("no branch given — nothing to gate")
@@ -181,7 +185,7 @@ def poll_pr_checks(
             status="unavailable", summary=f"could not resolve head SHA for {pr_ref}"
         )
 
-    return _watch(logger, repo, branch, head_sha)
+    return _watch(logger, repo, branch, head_sha, watch_timeout, poll_interval)
 
 
 def _resolve_pr(repo, pr_ref: str):
@@ -212,10 +216,15 @@ def _poll_runs(repo, head_sha: str) -> tuple[int, int, int, str]:
     return total, pending, failed, ", ".join(failing)
 
 
-def _watch(logger: logging.Logger, repo, branch: str, head_sha: str) -> CiChecks:
+def _watch(
+    logger: logging.Logger,
+    repo,
+    branch: str,
+    head_sha: str,
+    watch_timeout: int = 1200,
+    poll_interval: int = 30,
+) -> CiChecks:
     """The poll loop, until the runs settle or the wall-clock ceiling is reached."""
-    watch_timeout = int(os.environ.get("CI_WATCH_TIMEOUT", "1200"))
-    poll_interval = int(os.environ.get("CI_POLL_INTERVAL", "30"))
     start = time.monotonic()
     no_runs_polls = 0
 

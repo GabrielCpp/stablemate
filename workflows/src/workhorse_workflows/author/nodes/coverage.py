@@ -35,7 +35,9 @@ _BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 
 @blueprint.node(stub=_stubs.clean)
-def validate_coverage(logger: logging.Logger, epic_dir: str = "") -> Defects:
+def validate_coverage(
+    logger: logging.Logger, epic_dir: str = "", repo_dir: str = ""
+) -> Defects:
     """Every seed covered by a story, the story graph acyclic, every story file present.
 
     These are exactly what `ostler.doctor(epic=...)` computes, and the epic scope is the
@@ -48,7 +50,7 @@ def validate_coverage(logger: logging.Logger, epic_dir: str = "") -> Defects:
         return Defects(errors="no epic_dir supplied")
 
     epic = Path(epic_dir_rel).name
-    okf = Ostler(survey_repo_root())
+    okf = Ostler(survey_repo_root(repo_dir))
 
     try:
         report = okf.doctor(epic=epic)
@@ -91,7 +93,10 @@ def _matches(backlog_norm: str, seed_norms: list[str]) -> bool:
 
 @blueprint.node
 def prune_backlog(
-    logger: logging.Logger, backlog: str = "docs/backlog.md", epic_dir: str = ""
+    logger: logging.Logger,
+    backlog: str = "docs/backlog.md",
+    epic_dir: str = "",
+    repo_dir: str = "",
 ) -> Pruned:
     """Drop the bullets a fully-authored epic consumed, so the backlog stays a worklist.
 
@@ -102,7 +107,7 @@ def prune_backlog(
     """
     backlog_rel = backlog.strip() or "docs/backlog.md"
     epic_dir_rel = epic_dir.strip()
-    root = survey_repo_root()
+    root = survey_repo_root(repo_dir)
     backlog_path = root / backlog_rel
     epic = Path(epic_dir_rel).name if epic_dir_rel else ""
 

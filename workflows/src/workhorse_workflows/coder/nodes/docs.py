@@ -126,7 +126,10 @@ def _finding_affects_nodes(okf: Ostler, finding: dict[str, Any], affected: set[s
 
 @blueprint.node
 def detect_okf_docs(
-    logger: logging.Logger, docs_path: str = "", features_subdir: str = "docs/features"
+    logger: logging.Logger,
+    docs_path: str = "",
+    features_subdir: str = "docs/features",
+    repo_dir: str = "",
 ) -> OkfDetection:
     """Are this run's docs managed by an OKF graph, so documenting the story means anything?
 
@@ -135,7 +138,7 @@ def detect_okf_docs(
     the trees ostler owns — and a graph that actually loads. Everything semantic (which
     surfaces the story touched, whether it touched any) is the author's.
     """
-    base = Path(find_docs_root(docs_path))
+    base = Path(find_docs_root(docs_path, repo_dir))
     sub = Path(features_subdir or "docs/features")
     requested = sub if sub.is_absolute() else base / sub
 
@@ -183,7 +186,10 @@ def detect_okf_docs(
 
 @blueprint.node
 def classify_documentation_context(
-    logger: logging.Logger, docs_path: str = "", source_roots: tuple[str, ...] = ()
+    logger: logging.Logger,
+    docs_path: str = "",
+    source_roots: tuple[str, ...] = (),
+    repo_dir: str = "",
 ) -> ContextClassification:
     """Deterministic local diff mapping, or semantic multi-repo review?
 
@@ -197,7 +203,7 @@ def classify_documentation_context(
     The returned roots are re-expressed relative to the worktree, which is what
     `ostler qa context` wants.
     """
-    docs_root = Path(find_docs_root(docs_path)).resolve()
+    docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
     try:
         worktree = Path(open_repo(docs_root).working_tree_dir).resolve()
     except (GitError, OSError, TypeError, ValueError, RuntimeError):
@@ -237,6 +243,7 @@ def verify_story_documentation(
     validation_status: str = "invalid",
     context_mode: str = "local",
     author_nodes: tuple[str, ...] = (),
+    repo_dir: str = "",
 ) -> DocumentationGate:
     """Fail-closed conformance and direct-grounding gate over one story's OKF update.
 
@@ -251,7 +258,7 @@ def verify_story_documentation(
        ownership is not coverage, and this is the check the whole gate exists for;
     4. `ostler doctor` reports no errors on any node this story affected.
     """
-    docs_root = Path(find_docs_root(docs_path))
+    docs_root = Path(find_docs_root(docs_path, repo_dir))
     nodes = [str(node) for node in author_nodes]
 
     problems: list[str] = []

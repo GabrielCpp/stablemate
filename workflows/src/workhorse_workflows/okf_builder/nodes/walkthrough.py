@@ -158,6 +158,7 @@ def detect_webapp(
     docs_path: str = "",
     service: str = "",
     source_path: str = "",
+    repo_dir: str = "",
 ) -> WebApp:
     """The docs-derived gate + launch recipe.
 
@@ -184,7 +185,7 @@ def detect_webapp(
     Emits the fixed `cdp_url` the walk's shared browser listens on (must match the repo's
     playwright-MCP `--cdp-endpoint`).
     """
-    root = paths.docs_root(docs_path)
+    root = paths.docs_root(docs_path, repo_dir)
     source_root = str((root / (source_path or service)).resolve())
     features_root = str(paths.features_root(root, service)) if service else ""
 

@@ -17,10 +17,12 @@ Three things change and nothing else does:
 * `sys.exit(1)` becomes `raise WorkflowFailed(...)`, which the driver records as the
   run's terminal state instead of killing the interpreter under it.
 
-The **environment** reads stay verbatim (`AGENT_REPO_DIR`, `REPO_URL`, `REPO_BRANCH`,
-`RESEARCH_PROGRAM`, `AGENT_LAUNCH_DIR`, …): they are the operator contract that a
-compose file, a Makefile and a container entrypoint all write to, and rewriting them
-would break every launcher for no gain.
+The **environment** reads are gone (`AGENT_REPO_DIR`, `REPO_URL`, `REPO_BRANCH`,
+`RESEARCH_PROGRAM`, `AGENT_LAUNCH_DIR`, …). They were the operator contract a compose
+file, a Makefile and a container entrypoint all wrote to; they are now workflow
+parameters of the same names (`repo_dir`, `repo_url`, `repo_branch`, `program`,
+`launch_dir`), so a launcher says the same thing with `--params` and the run's inputs
+land in the checkpoint. See the rule in `workflows/README.md`.
 """
 from __future__ import annotations
 

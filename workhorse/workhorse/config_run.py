@@ -16,7 +16,7 @@ the module happened to be imported.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
@@ -174,8 +174,15 @@ class RunConfig:
     """Immutable configuration for one run.
 
     Built once by :meth:`from_env` (the CLI boundary in ``main()``), then read by the
-    driver instead of ``os.environ``. Tests construct it directly with a
-    ``backend_factory`` (a mock backend) to drive a workflow hermetically.
+    driver instead of ``os.environ``. Tests construct it directly — with a fake
+    ``backend``, or with none at all — to drive a workflow hermetically.
+
+    The backend is a *field* rather than something this class resolves. Resolving one
+    means importing the registry, which imports every adapter, and every adapter
+    imports this module for :class:`AgentResilience` — a real cycle, which used to be
+    hidden inside a method-body import. Being handed the adapter breaks it: the CLI
+    already had to name and validate the backend, so it is the ring that owns the
+    choice, and nothing here needs to know an adapter exists.
     """
 
     resilience: AgentResilience = field(default_factory=AgentResilience)
@@ -197,9 +204,11 @@ class RunConfig:
     #: node's power tier maps to no model. None = no override, so the backend's
     #: ``[default.<backend>]`` entry and then its built-in decide.
     model_override: str | None = None
-    #: Resolves the active agent backend by name. Overridden by the test harness to
-    #: return a mock backend; ``None`` means "use runner.backends.registry.get_backend".
-    backend_factory: Callable[[str | None], AgentBackend] | None = None
+    #: The agent CLI this run drives, already resolved. The CLI boundary picks it —
+    #: ``--cli`` else ``AGENT_CLI`` — and validates it there, so an unknown name fails
+    #: before the first state rather than at the first agent node. ``None`` is a run
+    #: with no agent in it: a dry run, or a test driving nodes only.
+    backend: AgentBackend | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
@@ -212,18 +221,6 @@ class RunConfig:
             print_prompt=_bool(e, "WORKHORSE_PRINT_PROMPT", True),
             model_override=(e.get("AGENT_MODEL") or e.get("AGENT_CLAUDE_MODEL") or None),
         )
-
-    def get_backend(self, cli: str | None = None) -> AgentBackend:
-        """Resolve the backend for this run via ``backend_factory`` or the default."""
-        if self.backend_factory is not None:
-            return self.backend_factory(cli)
-        # Deferred because the registry imports every adapter and each adapter
-        # imports this module for ``AgentResilience`` — a genuine runtime cycle, not
-        # a layering shortcut. The fix is for RunConfig to be *given* a backend at
-        # the CLI boundary rather than resolve one; that is the cli/ split's job.
-        from workhorse.runner.backends.registry import get_backend
-
-        return get_backend()
 
 
 def _configured_max_runtime_s(environ: Mapping[str, str]) -> float:

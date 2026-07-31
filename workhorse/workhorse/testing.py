@@ -24,7 +24,7 @@ Example::
                 writer=writer,
                 workflow_dir=Path(my_workflow.__file__).parent,
                 session_id_path=writer.run_dir / ".session_id",
-                config=RunConfig(backend_factory=lambda cli=None: None),
+                config=RunConfig(),  # no agent backend: this run drives nodes
                 # The seams: rebind a node, script a turn, or leave either out to
                 # get the real one. `nodes=` takes `registry.nodes` or a copy from
                 # `registry.override(...)`.

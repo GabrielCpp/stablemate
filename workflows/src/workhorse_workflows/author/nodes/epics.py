@@ -15,7 +15,9 @@ from workhorse_workflows.author.schemas.main import EpicChoice
 
 
 @blueprint.node
-def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicChoice:
+def select_epic(
+    logger: logging.Logger, epics_dir: str = "docs/epics", repo_dir: str = ""
+) -> EpicChoice:
     """The first epic in the queue whose authoring is not yet complete.
 
     **ostler owns the verdict.** `epic_authored` means the epic has an `epic.md`, lists at
@@ -31,7 +33,7 @@ def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicCh
     backlog is decomposed and the flow moves on to the whole-repo checks.
     """
     epics_dir_rel = epics_dir.strip() or "docs/epics"
-    okf = Ostler(survey_repo_root())
+    okf = Ostler(survey_repo_root(repo_dir))
 
     try:
         queue = okf.todo()

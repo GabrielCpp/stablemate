@@ -4,7 +4,7 @@ Ports `clear-qa-evidence.py`, `ensure-stack.py`, `validate-qa-plan.py` and
 `run-qa-plan.py`. The two ostler-backed nodes are the same adapter shape `nodes/okf.py`
 already uses — `ostler_qa` returns `(returncode, payload, stderr)` and the node turns it
 into a status by its own rule — and they resolve their docs root the same way, through
-`find_docs_root(docs_path)` rather than a per-node cwd the driver does not have.
+`find_docs_root(docs_path, repo_dir)` rather than a per-node cwd the driver does not have.
 
 `clear-qa-gate-state.py` has no node here, deliberately. It blanked five run-context keys
 (`qa_plan_validation`, `qa_plan_review`, `qa_assessment`, `qa_audit`, `qa_result`) so a
@@ -80,7 +80,10 @@ def _absolutize(manifest: dict[str, Any], root: Path) -> dict[str, Any]:
 
 @blueprint.node
 def ensure_stack(
-    logger: logging.Logger, manifest_path: str = "qa-stack.yml", docs_path: str = ""
+    logger: logging.Logger,
+    manifest_path: str = "qa-stack.yml",
+    docs_path: str = "",
+    repo_dir: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner.
 
@@ -91,7 +94,7 @@ def ensure_stack(
     A missing manifest is `skip`, not a failure — a repo that has not authored one runs QA
     exactly as it did before the manifest existed.
     """
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     manifest_rel = manifest_path or "qa-stack.yml"
     path = root / manifest_rel
 
@@ -143,7 +146,7 @@ def ensure_stack(
 
 @blueprint.node
 def validate_qa_plan(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = ""
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> QaPlanValidation:
     """`ostler qa validate` on `<spec_dir>/qa-plan.yml` — is this plan executable?
 
@@ -152,7 +155,7 @@ def validate_qa_plan(
     anything expensive starts.
     """
     plan = str(Path(spec_dir) / "qa-plan.yml")
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     returncode, payload, stderr = ostler_qa.qa_validate(plan, spec_dir, docs_root=docs_root)
     cli_status = str(payload.get("status", "invalid")).lower()
     status = "passed" if returncode == 0 and cli_status == "passed" else "invalid"
@@ -164,7 +167,9 @@ def validate_qa_plan(
 
 
 @blueprint.node
-def run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "") -> QaRunResult:
+def run_qa_plan(
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+) -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
@@ -172,7 +177,7 @@ def run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "")
     only an unrecognized one becomes `invalid`.
     """
     plan = str(Path(spec_dir) / "qa-plan.yml")
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
     _returncode, payload, stderr = ostler_qa.qa_run(plan, spec_dir, docs_root=docs_root)
     status = str(payload.get("status", "invalid")).lower()
     if status not in RUN_STATUSES:

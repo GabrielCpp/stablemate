@@ -97,7 +97,7 @@ class AgentRunner:
         calls. Nothing below here reads configuration of its own.
         """
         return cls(
-            backend=config.get_backend(),
+            backend=config.backend,
             resilience=config.resilience,
             clock=clock,
             print_prompt=config.print_prompt,

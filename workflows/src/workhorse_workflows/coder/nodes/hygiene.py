@@ -96,7 +96,9 @@ def _unique_target(dest: Path, name: str) -> Path:
 
 
 @blueprint.node
-def flush_root_screenshots(logger: logging.Logger, spec_dir: str = "") -> ScreenshotFlush:
+def flush_root_screenshots(
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
+) -> ScreenshotFlush:
     """Move untracked root images into `<spec_dir>/qa/` so `git add -A` cannot commit them.
 
     QA is supposed to screenshot to an absolute path under the spec dir; in practice a bare
@@ -104,7 +106,7 @@ def flush_root_screenshots(logger: logging.Logger, spec_dir: str = "") -> Screen
     purpose — top-level only, untracked only, moves rather than deletes — because the cost
     of being wrong here is destroying a committed asset.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     strays = sorted(p for p in root.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
     if not strays:
         logger.info("no stray images at repo root")
@@ -212,7 +214,9 @@ def _is_comment_line(content: str, filename: str) -> bool:
 
 
 @blueprint.node
-def check_sentinel_ids(logger: logging.Logger, story_slug: str = "") -> QaResult:
+def check_sentinel_ids(
+    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+) -> QaResult:
     """Fail the pass if this branch added a fabricated ID or an "until X exists" stub.
 
     Every failure to *run* the gate returns `passed`, and that is not an oversight: it is a
@@ -220,7 +224,7 @@ def check_sentinel_ids(logger: logging.Logger, story_slug: str = "") -> QaResult
     added lines to be wrong about. The gate that must fail closed is the evidence gate.
     """
     slug = story_slug or "(unknown)"
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     try:
         base_ref = _base_ref(root)

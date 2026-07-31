@@ -116,7 +116,7 @@ def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
         # in the recorded steps honest.
         workflow_dir=Path(research.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
-        config=RunConfig(backend_factory=lambda cli=None: None),
+        config=RunConfig(),
         agent_runner=StubRunner(agent),
         # In-place mode — what `clone_repo` does when a checkout is already in front of
         # it — is this return plus `allow_all_directories()`, which writes

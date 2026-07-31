@@ -62,16 +62,15 @@ DREAM_INBOX = "docs/.dream-improvements.inbox.json"
 DREAM_LEDGER = "docs/workflow-improvements"
 
 
-def epics_repo_root() -> Path:
+def epics_repo_root(repo_dir: str | Path = "") -> Path:
     """`prune-epic.py`'s resolution: `agents.yml` or a `docs/epics/` **directory**.
 
     Not `.git`, which is the difference from `find_repo_root` and the whole point of
     keeping it separate — the epic queue lives in the docs checkout, and a bind-mounted
     docs clone has no `.git` of its own to be found by.
     """
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+    if repo_dir:
+        return Path(repo_dir).resolve()
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
@@ -79,16 +78,15 @@ def epics_repo_root() -> Path:
     return here
 
 
-def launch_repo_root() -> Path:
+def launch_repo_root(repo_dir: str | Path = "") -> Path:
     """The operator gates' resolution: prefer `cwd` when it already looks like a root.
 
     The upward walk only starts at `cwd.parents`, so a `cwd` that carries `docs/epics/`
     but neither `agents.yml` nor `.git` still wins — which is what a test harness relies
     on when it chdirs into a sandbox, and what `find_repo_root` would walk straight past.
     """
-    env_root = os.environ.get("AGENT_REPO_DIR")
-    if env_root:
-        return Path(env_root).resolve()
+    if repo_dir:
+        return Path(repo_dir).resolve()
     cwd = Path.cwd()
     if (cwd / "docs" / "epics").is_dir() or (cwd / "agents.yml").exists() or (cwd / ".git").exists():
         return cwd
@@ -127,7 +125,7 @@ def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
     return root / f"{gate}-context.md"
 
 
-def story_context_path(story_path: str) -> Path:
+def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
     """The per-story operator context file: `<story-folder>/context.md`.
 
     A second gate location, not a duplicate of `operator_context_path`. The coder's
@@ -141,7 +139,7 @@ def story_context_path(story_path: str) -> Path:
     """
     if story_path:
         return Path(story_path).parent / "context.md"
-    return launch_repo_root() / "context.md"
+    return launch_repo_root(repo_dir) / "context.md"
 
 
 __all__ = [

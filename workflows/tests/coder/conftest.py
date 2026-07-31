@@ -127,7 +127,7 @@ def env(tmp_path: Path) -> Callable[..., RunEnv]:
             writer=writer,
             workflow_dir=Path(coder.__file__).parent,
             session_id_path=writer.run_dir / ".session_id",
-            config=RunConfig(backend_factory=lambda cli=None: None),
+            config=RunConfig(),
         )
 
     return _env

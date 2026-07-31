@@ -108,7 +108,7 @@ def _resolve_trunk(root: Path) -> str:
 
 
 @blueprint.node
-def init_base(logger: logging.Logger) -> BaseBranch:
+def init_base(logger: logging.Logger, repo_dir: str = "") -> BaseBranch:
     """Resolve the branch an epic's PR will be opened against, before anything is cut.
 
     The current branch is preferred, because a run started from a release branch should
@@ -116,7 +116,7 @@ def init_base(logger: logging.Logger) -> BaseBranch:
     points at a `feat/`/`rewrite/` branch a prior run left checked out — PR-ing an epic
     into another epic's branch is how a queue quietly stops reaching trunk.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     base = active_branch(root)
     if not base or base.startswith("feat/") or base.startswith("rewrite/"):
         base = _resolve_trunk(root)
@@ -144,7 +144,12 @@ def _branch_repo(logger: logging.Logger, repo_path: Path, repo_name: str, branch
 
 @blueprint.node
 def branch_story(
-    logger: logging.Logger, story: str = "", docs_path: str = "", spec_dir: str = ""
+    logger: logging.Logger,
+    story: str = "",
+    docs_path: str = "",
+    spec_dir: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> StoryBranch:
     """Cut the working branch for a single story, in the docs repo and every affected repo.
 
@@ -160,7 +165,7 @@ def branch_story(
     """
     slug = story or "story"
     branch = slug
-    docs_root = find_docs_root(docs_path)
+    docs_root = find_docs_root(docs_path, repo_dir)
 
     base_branch = "main"
     if (docs_root / ".git").exists():
@@ -176,7 +181,7 @@ def branch_story(
     plan_ctx = load_json(
         docs_root / spec_dir_rel / "plan-context.json", "plan-context.json", logger
     )
-    repos = resolve_workspace("CODER_WORKSPACE")
+    repos = resolve_workspace(workspace_file, repo_dir)
     for repo_name in get_affected_repos(plan_ctx, repos):
         repo_path = Path(repos[repo_name]["path"])
         if repo_path == docs_root:
@@ -222,7 +227,9 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
 
 
 @blueprint.node
-def branch_epic(logger: logging.Logger, epic: str = "", base_branch: str = "") -> EpicBranch:
+def branch_epic(
+    logger: logging.Logger, epic: str = "", base_branch: str = "", repo_dir: str = ""
+) -> EpicBranch:
     """Cut a fresh `feat/<epic>` from HEAD, archiving any leftover branch of that name.
 
     An existing `feat/<epic>` is treated as stale, not resumed. Once an epic's PR merges
@@ -234,7 +241,7 @@ def branch_epic(logger: logging.Logger, epic: str = "", base_branch: str = "") -
     The queue is reconciled from the base afterwards, so an epic branch cut from a stale
     HEAD still walks the queue the base branch has.
     """
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
     restore_paths(root, QUEUE_PATH.as_posix())
 
     if epic:
@@ -291,7 +298,9 @@ def _load_blocked(root: Path, run_dir: str) -> list[str]:
 
 
 @blueprint.node
-def select_epic(logger: logging.Logger, docs_path: str = "", run_dir: str = "") -> EpicPick:
+def select_epic(
+    logger: logging.Logger, docs_path: str = "", run_dir: str = "", repo_dir: str = ""
+) -> EpicPick:
     """Return the front epic of the queue that has not been set aside this run.
 
     The queue is walked front-to-back, one PR per epic; `prune_epic` pops a merged epic off
@@ -303,7 +312,7 @@ def select_epic(logger: logging.Logger, docs_path: str = "", run_dir: str = "") 
     every workflow's queue uses. It is read-only: pruning stays ostler-native in
     `prune_epic`, so no worklist backend is involved.
     """
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(root)
 
     epics = _queue_from_ostler(okf)
@@ -425,7 +434,9 @@ def _prune_json_sidecar(todo_path: Path, epic: str) -> bool:
 
 
 @blueprint.node
-def prune_epic(logger: logging.Logger, epic: str = "", todo_path: str = "") -> EpicPruned:
+def prune_epic(
+    logger: logging.Logger, epic: str = "", todo_path: str = "", repo_dir: str = ""
+) -> EpicPruned:
     """Pop a merged epic off the front of the queue.
 
     Called once an epic's PR has been gated and merged (or passed through offline), so that
@@ -441,7 +452,7 @@ def prune_epic(logger: logging.Logger, epic: str = "", todo_path: str = "") -> E
         logger.info("no epic given — nothing to prune")
         return EpicPruned()
 
-    root = paths.epics_repo_root()
+    root = paths.epics_repo_root(repo_dir)
 
     # An explicit sidecar path wins, matching select_epic's own queue precedence.
     if todo_path.strip():
@@ -599,7 +610,11 @@ def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
 
 @blueprint.node
 def select_story(
-    logger: logging.Logger, epic: str = "", docs_path: str = "", run_dir: str = ""
+    logger: logging.Logger,
+    epic: str = "",
+    docs_path: str = "",
+    run_dir: str = "",
+    repo_dir: str = "",
 ) -> StoryPick:
     """Select the next runnable story within `epic`, or say why there is none.
 
@@ -624,7 +639,7 @@ def select_story(
             reason="no epic supplied to select_story (epic selection is select_epic)"
         )
 
-    root = find_docs_root(docs_path)
+    root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(root)
     skip = _load_skip_set(root, run_dir)
 
@@ -788,6 +803,8 @@ def commit_story(
     story_slug: str = "",
     spec_dir: str = "",
     story_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> StoryCommitted:
     """Commit a completed story's changes in each affected code repo, then stamp it passed.
 
@@ -809,8 +826,8 @@ def commit_story(
     epic_name = registry.epic_slug(epic)
     message = f"{epic_name}: {slug}" if epic_name else slug
 
-    root = find_repo_root()
-    repos = resolve_workspace("CODER_WORKSPACE")
+    root = find_repo_root(repo_dir)
+    repos = resolve_workspace(workspace_file, repo_dir)
 
     spec = root / spec_dir if spec_dir else None
     plan_ctx = (
@@ -866,6 +883,7 @@ def flag_qa_failure(
     attempts: str = "?",
     story_path: str = "",
     run_dir: str = "",
+    repo_dir: str = "",
 ) -> QaFlagged:
     """A story failed automated QA after its last rework. Flag it and let the queue go on.
 
@@ -884,7 +902,7 @@ def flag_qa_failure(
     legitimately retry it.
     """
     slug = story_slug or "story"
-    root = find_repo_root()
+    root = find_repo_root(repo_dir)
 
     marker = f"[QA FAILED after {attempts} attempts — needs manual review]"
     new_status = f"QA give-up after {attempts} attempts — needs manual review"
