@@ -30,6 +30,7 @@ from workhorse.pyflow.workflow import Workflow
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
+from workhorse.runner.ladder import AgentRunner
 
 
 def run_pyflow(
@@ -116,6 +117,10 @@ def run_pyflow(
         # index rather than a branch inside the engine.
         nodes=stub_nodes(registry.nodes) if dry_run else registry.nodes,
         agent_stubs=registry.agent_stubs if dry_run else None,
+        # The other half of that composition: the recovery ladder, built once from the
+        # run's configuration rather than per agent node. A dry run answers from the
+        # stubs above and must not resolve a backend it will never call.
+        agent_runner=None if dry_run else AgentRunner.from_config(config),
         # Anchored to the run's ORIGINAL start, restored from run.json, so a resume
         # continues one budget rather than granting a fresh one every relaunch.
         deadline=runtime_deadline(writer.started_at, config.max_runtime_s),

@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.packaged import find_packaged_workflow
@@ -73,7 +74,7 @@ def test_a_real_turn_reaches_done_with_the_agents_own_greeting() -> None:
                 workflow_dir=Path(hello_world.__file__).parent,
                 session_id_path=writer.run_dir / ".session_id",
                 config=RunConfig(backend_factory=lambda cli=None: None),
-                run_agent=agent,
+                agent_runner=StubRunner(agent),
                 nodes=hello_world.workflow.nodes,
             ),
         )

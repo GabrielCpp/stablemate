@@ -278,7 +278,7 @@ reach into two module namespaces and put them back afterwards:
 
 ```python
 # before — monkeypatching, with a finally-restore to remember
-pyflow_engine.agent_runner.run_agent = agent
+pyflow_engine.agent_ladder.run_agent = agent
 with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
     ...
 ```
@@ -287,7 +287,7 @@ with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
 # after — the same two dependencies, handed to the run
 RunEnv(
     ...,
-    run_agent=agent,
+    agent_runner=agent,
     nodes=research.workflow.override(
         clone_repo=lambda logger: RepoSetup(repo_dir=str(repo))
     ),

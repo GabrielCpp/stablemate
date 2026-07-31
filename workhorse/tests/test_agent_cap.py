@@ -1,16 +1,17 @@
-"""Tests for the core agent's spending/usage-cap handling in _run_turn_with_recovery.
+"""Tests for the core agent's spending/usage-cap handling in ``AgentRunner.turn``.
 
-Runs without real sleeping (time.sleep and _sleep_with_notice are patched) and
-without any agent CLI — the backend port is INJECTED as a fake. Runnable two ways:
+Runs without real sleeping and without any agent CLI: both are INJECTED — the CLI as a
+fake backend, the waiting as a ``FakeClock`` that records the seconds it was asked for
+and returns at once. A cap that reopens eight days out therefore costs microseconds and
+is asserted on as a number (rule 4.2). Runnable two ways:
     ./.venv/bin/python tests/test_agent_cap.py     # standalone, no pytest needed
     ./.venv/bin/python -m pytest tests/test_agent_cap.py
 """
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import patch
 
-from _fakes import FakeBackend
+from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import caps, failure, ladder
 from workhorse.runner.failure import BackendInvocationError
@@ -18,6 +19,26 @@ from workhorse.runner.failure import BackendInvocationError
 #: The cap ladder's knobs are injected, never read from the module — so a test states
 #: the wait budget it asserts against instead of patching a global (rule 5).
 RESILIENCE = AgentResilience()
+
+
+def _turn(cli, prompt="p", node_id="n", *, clock=None, timeout=None, **overrides):
+    """Drive ONE agent turn through the recovery ladder with everything injected.
+
+    The CLI is a fake backend, the knobs are ``AgentResilience`` fields, and the waiting
+    is the given clock — so the cap branch is exercised end to end without a subprocess,
+    a global, or a real second passing.
+    """
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(cli),
+        resilience=RESILIENCE.with_overrides(**overrides) if overrides else RESILIENCE,
+        clock=clock or FakeClock(),
+    )
+    return runner.turn(
+        prompt,
+        node_id,
+        None,
+        timeout=RESILIENCE.result_timeout_s if timeout is None else timeout,
+    )
 
 CAP_MSG = "Claude CLI exited with code 1 for node 'select_gate': success Spending cap reached resets 3:50am"
 
@@ -30,8 +51,8 @@ def test_parse_reset_seconds_variants():
     # reset time already passed today -> next day's occurrence
     assert abs(caps.parse_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
     # no time present -> None (caller uses default)
-    assert caps.parse_reset_seconds("overloaded") is None
-    assert caps.parse_reset_seconds("resets soon") is None
+    assert caps.parse_reset_seconds("overloaded", now) is None
+    assert caps.parse_reset_seconds("resets soon", now) is None
 
 
 SESSION_MSG = (
@@ -67,7 +88,7 @@ KEY_LIMIT_MSG = (
 
 def test_daily_key_limit_classified_as_cap():
     """A provider per-key daily limit is a (transient) cap, not a hard failure —
-    so _run_turn_with_recovery waits it out instead of raising into the reframe ladder."""
+    so the turn waits it out instead of raising into the reframe ladder."""
     assert failure.is_cap(KEY_LIMIT_MSG) is True
     assert failure.is_transient(KEY_LIMIT_MSG) is True
     # The bare phrasings both trip the cap detector.
@@ -125,22 +146,18 @@ def test_cap_hang_pauses_then_resumes_same_node():
             )
         return "RESULT_OK"
 
-    slept, seen_prompts = [], []
+    seen_prompts = []
 
     def record_cli(prompt, *a, **k):
         seen_prompts.append(prompt)
         return fake_cli(prompt, *a, **k)
 
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = ladder._run_turn_with_recovery(
-            "DO THE TASK", "review_implementation", None,
-            backend=FakeBackend(record_cli),
-            resilience=RESILIENCE, timeout=3600,
-        )
+    clock = FakeClock()
+    out = _turn(record_cli, "DO THE TASK", "review_implementation", clock=clock, timeout=3600)
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should re-run the same node after the cap wait"
-    assert len(slept) == 1 and slept[0] == RESILIENCE.cap_default_wait_s, \
+    assert sum(clock.slept) == RESILIENCE.cap_default_wait_s, \
         "opencode's cap error carries no reset time → default wait"
     assert seen_prompts[1] == "DO THE TASK", "cap retry must reuse the prompt verbatim (no budget warning)"
 
@@ -156,17 +173,12 @@ def test_daily_key_limit_pauses_then_resumes_same_node():
             raise BackendInvocationError(KEY_LIMIT_MSG, transient=True)
         return "RESULT_OK"
 
-    slept = []
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = ladder._run_turn_with_recovery(
-            "p", "resolve_epics", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-        )
+    clock = FakeClock()
+    out = _turn(fake_cli, node_id="resolve_epics", clock=clock)
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should re-run the same node after the daily-limit wait"
-    assert len(slept) == 1 and slept[0] == RESILIENCE.cap_default_wait_s, \
+    assert sum(clock.slept) == RESILIENCE.cap_default_wait_s, \
         "no reset time in the message → falls back to the default cap wait"
 
 
@@ -180,17 +192,12 @@ def test_session_limit_pauses_until_reset_then_resumes():
             raise BackendInvocationError(SESSION_MSG, transient=True)
         return "RESULT_OK"
 
-    slept = []
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = ladder._run_turn_with_recovery(
-            "p", "review_plan", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-        )
+    clock = FakeClock()
+    out = _turn(fake_cli, node_id="review_plan", clock=clock)
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should retry the node after the session-limit wait"
-    assert len(slept) == 1 and slept[0] > 0, "should pause once until the reset"
+    assert sum(clock.slept) > 0, "should pause until the reset"
 
 
 def test_rate_limit_info_parsing():
@@ -212,38 +219,38 @@ def test_rate_limit_info_parsing():
 def test_cap_delay_prefers_structured_reset_at():
     """A structured reset_at epoch drives the wait time precisely (+ margin)."""
     now = 1_000_000.0
+    clock = FakeClock(datetime.fromtimestamp(now))
     exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
-    delay, _when = caps.cap_delay_seconds(exc, now=now, resilience=RESILIENCE)
+    delay, _when = caps.cap_delay_seconds(exc, resilience=RESILIENCE, clock=clock)
     assert abs(delay - (3600 + RESILIENCE.cap_wait_margin_s)) < 1
 
     # A past reset → retry promptly (just the margin).
     exc_past = BackendInvocationError("blocked", transient=True, reset_at=now - 50)
-    delay_past, _ = caps.cap_delay_seconds(exc_past, now=now, resilience=RESILIENCE)
+    delay_past, _ = caps.cap_delay_seconds(exc_past, resilience=RESILIENCE, clock=clock)
     assert delay_past == RESILIENCE.cap_wait_margin_s
 
     # An absurd far-future reset is bounded.
     exc_far = BackendInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
-    delay_far, _ = caps.cap_delay_seconds(exc_far, now=now, resilience=RESILIENCE)
+    delay_far, _ = caps.cap_delay_seconds(exc_far, resilience=RESILIENCE, clock=clock)
     assert delay_far == RESILIENCE.cap_max_wait_s + RESILIENCE.cap_wait_margin_s
 
 
 def test_cap_delay_falls_back_to_text_then_default():
     """Without a structured reset_at, fall back to parsing the message, then default."""
-    now_dt = datetime(2026, 6, 1, 2, 10, 0)
-    with patch.object(caps, "datetime") as dt:
-        dt.now.return_value = now_dt
-        dt.fromtimestamp.side_effect = lambda ts: datetime.fromtimestamp(ts)
-        exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
-        delay, _ = caps.cap_delay_seconds(exc, now=0, resilience=RESILIENCE)  # no reset_at → text path
-        assert abs(delay - (100 * 60 + RESILIENCE.cap_wait_margin_s)) < 1
+    # 2:10am, so "resets 3:50am" is 1h40m out — stated by the clock, not patched onto
+    # the module: the text path reads the same injected "now" as the epoch path.
+    clock = FakeClock(datetime(2026, 6, 1, 2, 10, 0))
+    exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
+    delay, _ = caps.cap_delay_seconds(exc, resilience=RESILIENCE, clock=clock)
+    assert abs(delay - (100 * 60 + RESILIENCE.cap_wait_margin_s)) < 1
 
     exc_none = BackendInvocationError("overloaded somehow", transient=True)
-    delay_none, _ = caps.cap_delay_seconds(exc_none, now=0, resilience=RESILIENCE)
+    delay_none, _ = caps.cap_delay_seconds(exc_none, resilience=RESILIENCE, clock=clock)
     assert delay_none == RESILIENCE.cap_default_wait_s
 
 
 def test_structured_reset_at_drives_invoke_wait():
-    """End-to-end: a cap error carrying reset_at makes _run_turn_with_recovery sleep until it."""
+    """End-to-end: a cap error carrying reset_at makes the turn sleep until it."""
     now = 2_000_000.0
     calls = {"n": 0}
 
@@ -253,17 +260,11 @@ def test_structured_reset_at_drives_invoke_wait():
             raise BackendInvocationError("blocked", transient=True, reset_at=now + 7200)
         return "OK"
 
-    slept = []
-    with patch.object(caps.time, "time", lambda: now), \
-         patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = ladder._run_turn_with_recovery(
-            "p", "n", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-        )
+    clock = FakeClock(datetime.fromtimestamp(now))
+    out = _turn(fake_cli, clock=clock)
 
     assert out == "OK"
-    assert len(slept) == 1 and abs(slept[0] - (7200 + RESILIENCE.cap_wait_margin_s)) < 1
+    assert abs(sum(clock.slept) - (7200 + RESILIENCE.cap_wait_margin_s)) < 1
 
 
 def test_budget_timeout_warns_retry_with_time_budget():
@@ -281,12 +282,7 @@ def test_budget_timeout_warns_retry_with_time_budget():
             )
         return "RESULT_OK"
 
-    with patch.object(ladder.time, "sleep", lambda s: None):
-        out = ladder._run_turn_with_recovery(
-            "DO THE TASK", "implement", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=1200,
-        )
+    out = _turn(fake_cli, "DO THE TASK", "implement", timeout=1200)
 
     assert out == "RESULT_OK"
     assert len(seen_prompts) == 2
@@ -309,12 +305,7 @@ def test_non_timeout_transient_retries_prompt_unchanged():
             raise BackendInvocationError("overloaded_error", transient=True)
         return "OK"
 
-    with patch.object(ladder.time, "sleep", lambda s: None):
-        out = ladder._run_turn_with_recovery(
-            "DO THE TASK", "implement", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=1200,
-        )
+    out = _turn(fake_cli, "DO THE TASK", "implement", timeout=1200)
 
     assert out == "OK"
     assert seen_prompts == ["DO THE TASK", "DO THE TASK"]
@@ -330,19 +321,13 @@ def test_cap_sleeps_until_reset_then_resumes():
             raise BackendInvocationError(CAP_MSG, transient=True)
         return "RESULT_OK"
 
-    slept = []
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: slept.append(s)):
-        out = ladder._run_turn_with_recovery(
-            "prompt", "select_gate", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-        )
+    clock = FakeClock()
+    out = _turn(fake_cli, "prompt", "select_gate", clock=clock)
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should retry the node after the cap wait"
-    assert len(slept) == 1, "should pause exactly once"
     # waited a positive, scheduled amount (parsed reset + margin), never longer than a day
-    assert 0 < slept[0] <= 24 * 3600 + RESILIENCE.cap_wait_margin_s + 1
+    assert 0 < sum(clock.slept) <= 24 * 3600 + RESILIENCE.cap_wait_margin_s + 1
 
 
 def test_cap_waits_do_not_consume_short_retry_budget():
@@ -355,13 +340,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
             raise BackendInvocationError(CAP_MSG, transient=True)
         return "OK_AFTER_CAPS"
 
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: None):
-        out = ladder._run_turn_with_recovery(
-            "p", "n", None,
-            backend=FakeBackend(fake_cli),
-            resilience=RESILIENCE.with_overrides(max_invoke_retries=1),  # short budget = 1
-            timeout=RESILIENCE.result_timeout_s,
-        )
+    out = _turn(fake_cli, max_invoke_retries=1)  # short budget = 1
 
     assert out == "OK_AFTER_CAPS"
     assert calls["n"] == 4, "3 caps + 1 success, despite max_invoke_retries=1"
@@ -372,17 +351,11 @@ def test_cap_wait_safety_bound():
     def always_cap(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise BackendInvocationError(CAP_MSG, transient=True)
 
-    with patch.object(ladder, "sleep_with_notice", lambda s, *_a, **_k: None):
-        try:
-            ladder._run_turn_with_recovery(
-                "p", "n", None,
-                backend=FakeBackend(always_cap),
-                resilience=RESILIENCE.with_overrides(max_cap_waits=3),
-                timeout=RESILIENCE.result_timeout_s,
-            )
-            raise AssertionError("expected BackendInvocationError after exhausting cap waits")
-        except BackendInvocationError:
-            pass
+    try:
+        _turn(always_cap, max_cap_waits=3)
+        raise AssertionError("expected BackendInvocationError after exhausting cap waits")
+    except BackendInvocationError:
+        pass
 
 
 def test_short_transient_uses_bounded_backoff_then_fails():
@@ -393,17 +366,11 @@ def test_short_transient_uses_bounded_backoff_then_fails():
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    with patch.object(ladder.time, "sleep", lambda s: None):
-        try:
-            ladder._run_turn_with_recovery(
-                "p", "n", None,
-                backend=FakeBackend(always_overloaded),
-                resilience=RESILIENCE.with_overrides(max_invoke_retries=2),
-                timeout=RESILIENCE.result_timeout_s,
-            )
-            raise AssertionError("expected BackendInvocationError after retries")
-        except BackendInvocationError as e:
-            assert "overloaded" in str(e)
+    try:
+        _turn(always_overloaded, max_invoke_retries=2)
+        raise AssertionError("expected BackendInvocationError after retries")
+    except BackendInvocationError as e:
+        assert "overloaded" in str(e)
     assert calls["n"] == 3, "initial + 2 retries"
 
 
@@ -415,11 +382,7 @@ def test_non_transient_fails_immediately():
         raise BackendInvocationError("malformed workflow node", transient=False)
 
     try:
-        ladder._run_turn_with_recovery(
-            "p", "n", None,
-            backend=FakeBackend(hard_fail),
-            resilience=RESILIENCE, timeout=RESILIENCE.result_timeout_s,
-        )
+        _turn(hard_fail)
         raise AssertionError("expected immediate raise on non-transient error")
     except BackendInvocationError:
         pass

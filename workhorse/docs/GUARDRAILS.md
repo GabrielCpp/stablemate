@@ -21,7 +21,7 @@ This occurs when Claude's CLI doesn't return a (non-empty) result event within t
 The worker is built to run unattended for days, so resilience is the single,
 default behavior — there is no mode flag to enable. Every agent node escalates
 through three layers before it can ever crash the run (see
-`workhorse/runner/ladder.py::run_agent`):
+`workhorse/runner/ladder.py::AgentRunner.run`):
 
 0. **Exec-retry (spawn-time, before a turn even starts)** — the agent CLI can be
    replaced on disk *mid-run* by its own auto-updater (Claude Code ships a native
@@ -51,7 +51,7 @@ through three layers before it can ever crash the run (see
    limit, *session limit*, quota — are instead *waited out* until the window
    reopens and then retried; the run pauses rather than reframing or defaulting,
    since re-asking a capped subscription can't help
-   (`ladder._run_turn_with_recovery`). The wait time prefers the CLI's
+   (`ladder.AgentRunner.turn`). The wait time prefers the CLI's
    **structured** `rate_limit_event.resetsAt` epoch (exact,
    timezone-correct, bounded by `AGENT_CAP_MAX_WAIT_S`), falling back to parsing
    the reset time from the message text (e.g. `session limit · resets 11:30am`),

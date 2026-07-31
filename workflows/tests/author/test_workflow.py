@@ -9,7 +9,7 @@ ostler's real graph, the two deterministic story gates, the coverage gate, the w
 gates and the git tail.
 
 The agent seam is patched where the engine reads it
-(`workhorse.pyflow.engine.agent_runner.run_agent`) and the stub **writes the artifacts its
+(`RunEnv.agent_runner`) and the stub **writes the artifacts its
 reply claims to have written**: `decompose-epics` creates the epic and queues it,
 `split-stories` registers the stories, `write-story` writes the story document. The
 authoring state lives in those files rather than in the machine, so an agent that only
@@ -39,17 +39,18 @@ import json
 import subprocess
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _fakes import StubRunner
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow import driver as pyflow_driver
-from workhorse.pyflow import engine as pyflow_engine
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 
@@ -438,12 +439,7 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
 
 
 def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = agent
-    try:
-        return drive(Author(**inputs), env)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    return drive(Author(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
 # --------------------------------------------------------------------------- epic mode
@@ -739,12 +735,11 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     assert resume.flow == "Author", resume
 
     second = _Agent(backlogged)
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = second
-    try:
-        result = drive(Author(**resume.inputs), _env(tmp_path, run_dir=run_dir), resume)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    result = drive(
+        Author(**resume.inputs),
+        replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
+        resume,
+    )
 
     # Nothing upstream of the story re-ran: not the split, not this story's mockup.
     assert second.counts() == {

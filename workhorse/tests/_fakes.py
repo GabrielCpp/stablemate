@@ -12,6 +12,7 @@ when a file is run standalone (``uv run python tests/test_x.py``) and under pyte
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -60,3 +61,25 @@ class FakeBackend(AgentBackend):
         if self._compact is None:
             raise AssertionError("FakeBackend.compact called but no compact was supplied")
         return self._compact(session_id_path, node_id, model, **kwargs)
+
+
+class FakeClock:
+    """A ``Clock`` that records what it was asked to wait and never waits.
+
+    The same injection point, for time: a cap that reopens eight days out is a list of
+    numbers rather than a patched ``time.sleep``. Sleeping advances ``now``, so a test
+    can assert on the "resuming around" label the ladder computes from it.
+    """
+
+    def __init__(self, now: datetime | None = None) -> None:
+        # A fixed, unremarkable instant so a test that prints the resume time reads the
+        # same on every machine; tests that care state their own.
+        self._now = now or datetime(2026, 1, 1, 12, 0, 0)
+        self.slept: list[float] = []
+
+    def now(self) -> datetime:
+        return self._now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self._now += timedelta(seconds=seconds)

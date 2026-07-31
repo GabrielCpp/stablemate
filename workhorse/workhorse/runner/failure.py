@@ -117,7 +117,7 @@ class BackendInvocationError(RuntimeError):
     fast. ``overflow`` flags the special case where the model's context window
     was exhausted mid-node and the headless CLI returned instead of compacting —
     the runner recovers this by compacting the session and continuing (see
-    ``ladder.run_agent``), so it is NOT retried with backoff (that would just
+    ``ladder.AgentRunner``), so it is NOT retried with backoff (that would just
     overflow again) and is handled before the generic reframe ladder.
     """
 

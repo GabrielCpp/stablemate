@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import re
-import time
 from datetime import datetime, timedelta
 
 from workhorse import otel
 from workhorse.config_run import AgentResilience
+from workhorse.runner.clock import Clock
 from workhorse.runner.failure import BackendInvocationError
 
 
-def parse_reset_seconds(text: str, now: datetime | None = None) -> float | None:
+def parse_reset_seconds(text: str, now: datetime) -> float | None:
     """Seconds from ``now`` until the cap reset time named in ``text`` — e.g.
     'resets 3:50am', 'resets at 11pm', 'resets 15:50'. Returns the next future
-    occurrence of that clock time, or None if no time is found (caller defaults)."""
-    now = now or datetime.now()
+    occurrence of that clock time, or None if no time is found (caller defaults).
+
+    ``now`` is passed in, never read here: this is a parser, and a parser that
+    reads the clock cannot be exercised without one.
+    """
     m = re.search(r"resets?(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)", text, re.IGNORECASE)
     if m:
         hour = int(m.group(1)) % 12
@@ -37,31 +40,34 @@ def parse_reset_seconds(text: str, now: datetime | None = None) -> float | None:
 
 def cap_delay_seconds(
     exc: BackendInvocationError,
-    now: float | None = None,
     *,
     resilience: AgentResilience,
+    clock: Clock,
 ) -> tuple[float, str]:
     """How long to sleep for a cap, and a human 'resuming around' label.
 
     Prefers the structured ``reset_at`` epoch (precise, timezone-correct) when the
     error carries one, bounded by ``resilience.cap_max_wait_s``; otherwise parses
     a reset time from the message text; otherwise uses the default wait.
+
+    Both paths read "now" from the injected ``clock``, so a cap that reopens eight
+    hours out is a test that states the hour rather than one that patches ``time``.
     """
-    now = now if now is not None else time.time()
+    now = clock.now()
     if exc.reset_at is not None:
-        secs = exc.reset_at - now
+        secs = exc.reset_at - now.timestamp()
         if secs > 0:
             delay = min(secs, resilience.cap_max_wait_s) + resilience.cap_wait_margin_s
-            when = datetime.fromtimestamp(now + delay).strftime("%a %H:%M")
+            when = (now + timedelta(seconds=delay)).strftime("%a %H:%M")
             return delay, when
         # Reset already passed (stale event / clock skew) → retry promptly.
         return resilience.cap_wait_margin_s, "reset already passed — retrying shortly"
 
-    parsed = parse_reset_seconds(str(exc))
+    parsed = parse_reset_seconds(str(exc), now)
     if parsed is None:
         return resilience.cap_default_wait_s, "unknown reset — using default wait"
     delay = parsed + resilience.cap_wait_margin_s
-    return delay, (datetime.now() + timedelta(seconds=delay)).strftime("%a %H:%M")
+    return delay, (now + timedelta(seconds=delay)).strftime("%a %H:%M")
 
 
 def sleep_with_notice(
@@ -70,6 +76,7 @@ def sleep_with_notice(
     label: str,
     *,
     resilience: AgentResilience,
+    clock: Clock,
 ) -> None:
     """Sleep ``total_s`` seconds, printing a 'still paused' line every
     ``resilience.cap_tick_s``
@@ -80,7 +87,7 @@ def sleep_with_notice(
     otel.heartbeat(node_id, remaining)
     while remaining > 0:
         chunk = min(remaining, resilience.cap_tick_s)
-        time.sleep(chunk)
+        clock.sleep(chunk)
         remaining -= chunk
         otel.heartbeat(node_id, remaining)
         if remaining > 0:

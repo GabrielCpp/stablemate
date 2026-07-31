@@ -16,14 +16,15 @@ import json
 import logging
 import subprocess
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import Workflow
-from workhorse.pyflow import engine as pyflow_engine
 from workhorse.pyflow.driver import Resume, drive
 from workhorse.pyflow.engine import RunEnv
 
@@ -134,20 +135,16 @@ def env(tmp_path: Path) -> Callable[..., RunEnv]:
 
 @pytest.fixture
 def drive_flow() -> Callable[..., Any]:
-    """`drive`, with the agent seam swapped for the duration of the call.
+    """`drive`, with the scripted agent handed to the run rather than patched in.
 
-    The seam is patched where the engine reads it — `pyflow.engine.agent_runner.run_agent`
-    — so the whole `agent()` path above it (prompt resolution, the reply schema, the
-    recorded turn) is the real one and only the model call is scripted.
+    The seam is `RunEnv.agent_runner`, the ladder the engine drives every turn through:
+    injected here, so the whole `agent()` path above it (prompt resolution, the reply
+    schema, the recorded turn) is the real one, only the model call is scripted, and the
+    substitution is an input to *this* run with nothing to restore afterwards.
     """
 
     def _drive(flow: Workflow, run_env: RunEnv, agent: Any, resume: Resume | None = None) -> Any:
-        real = pyflow_engine.agent_runner.run_agent
-        pyflow_engine.agent_runner.run_agent = agent
-        try:
-            return drive(flow, run_env, resume)
-        finally:
-            pyflow_engine.agent_runner.run_agent = real
+        return drive(flow, replace(run_env, agent_runner=StubRunner(agent)), resume)
 
     return _drive
 

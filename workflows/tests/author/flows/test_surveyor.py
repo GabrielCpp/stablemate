@@ -7,7 +7,7 @@ Nothing is stubbed except the agent turn. `load_survey_config`, `check_inventory
 record ruleset, the coverage gate, the orphan sweep and the emitter.
 
 The agent seam is patched where the engine reads it
-(`workhorse.pyflow.engine.agent_runner.run_agent`) and the stub **writes the artifacts its
+(`RunEnv.agent_runner`) and the stub **writes the artifacts its
 reply claims to have written** — the rules file, the finding record, the partition. The
 loop's state lives in those files, not in the machine, so an agent that only replied would
 leave every node downstream of it with nothing to read.
@@ -31,16 +31,17 @@ import json
 import subprocess
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow import driver as pyflow_driver
-from workhorse.pyflow import engine as pyflow_engine
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 
@@ -288,12 +289,7 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
 
 
 def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = agent
-    try:
-        return drive(Surveyor(**inputs), env)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    return drive(Surveyor(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
 def _units(repo: Path) -> dict[str, str]:
@@ -605,12 +601,11 @@ def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
     assert resume.flow == "Surveyor", resume
 
     second = _Agent(surveyed)
-    real = pyflow_engine.agent_runner.run_agent
-    pyflow_engine.agent_runner.run_agent = second
-    try:
-        result = drive(Surveyor(**resume.inputs), _env(tmp_path, run_dir=run_dir), resume)
-    finally:
-        pyflow_engine.agent_runner.run_agent = real
+    result = drive(
+        Surveyor(**resume.inputs),
+        replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
+        resume,
+    )
 
     # Only the interrupted unit ran again, and the planner did not re-run: the frozen
     # list is the coverage claim, so a resume consumes it rather than re-deriving it.

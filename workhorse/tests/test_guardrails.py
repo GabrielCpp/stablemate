@@ -6,7 +6,7 @@ Test script for verifying guardrail improvements in the agent worker.
 import os
 import sys
 
-from workhorse.config_run import AgentResilience
+from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.runner.caps import parse_reset_seconds
 from workhorse.runner.failure import BackendInvocationError, is_cap, is_transient
 
@@ -136,6 +136,19 @@ def test_environment_variables():
     # An explicit environment must reach the dataclass, and only through it.
     overridden = AgentResilience.from_env({"AGENT_MAX_INVOKE_RETRIES": "7"})
     assert overridden.max_invoke_retries == 7, "from_env ignored the environment"
+
+    # The run-wide settings the ladder is built from are read the same way: once, at
+    # the edge, into one frozen value (rule 4.1). The model override in particular is
+    # a *precedence*, not a lookup — AGENT_MODEL first, the legacy spelling behind it —
+    # and it can only be asserted where the reading happens.
+    run = RunConfig.from_env({"AGENT_MODEL": "opus", "AGENT_CLAUDE_MODEL": "sonnet"})
+    assert run.model_override == "opus", "AGENT_MODEL must win over AGENT_CLAUDE_MODEL"
+    legacy = RunConfig.from_env({"AGENT_CLAUDE_MODEL": "sonnet"})
+    assert legacy.model_override == "sonnet", "the legacy spelling is still honored"
+    assert RunConfig.from_env({}).model_override is None, "unset means the CLI's default"
+    assert RunConfig.from_env({}).print_prompt is True, "WORKHORSE_PRINT_PROMPT is on by default"
+    quiet = RunConfig.from_env({"WORKHORSE_PRINT_PROMPT": "0"})
+    assert quiet.print_prompt is False, "WORKHORSE_PRINT_PROMPT=0 must silence the prompt"
     print("✓ Environment variables tests passed!\n")
 
 
