@@ -79,11 +79,21 @@ git config --global user.name "${GIT_AUTHOR_NAME:-Acme Agent}"
 # credential before cloning a private remote). Otherwise use Workhorse's generic,
 # unauthenticated checkout. The hook convention is generic; provider/token policy
 # stays entirely in the workflow.
+#
+# This shell is the process boundary: it reads the environment and passes what it
+# finds as arguments, because nothing inside a run may read the environment itself
+# (see workflows/README.md). The credential is the one exception and crosses by
+# *name* — git expands the value from its own inherited environment, so it never
+# lands in an argument list a `ps` would show.
 if [ -f /workflow/scripts/checkout-workspace.py ]; then
     uv run python3 /workflow/scripts/checkout-workspace.py
 else
-    uv run python3 -c \
-        "from workhorse_workflows.kit import checkout_workspace; checkout_workspace()"
+    uv run python3 -m workhorse_workflows.kit.workspace \
+        ${CODER_WORKSPACE:+--workspace-file "$CODER_WORKSPACE"} \
+        ${WORKSPACE_ROOT:+--workspace-root "$WORKSPACE_ROOT"} \
+        ${REPO_URL:+--repo-url "$REPO_URL"} \
+        ${REPO_NAME:+--repo-name "$REPO_NAME"} \
+        ${REPO_BRANCH:+--repo-branch "$REPO_BRANCH"}
 fi
 
 # Launch the groom-sidecar session in the background, ahead of the main run
@@ -132,9 +142,29 @@ run_sidecar &
 # can't reliably report the exit — the entrypoint has to, while still alive.
 # Point HOME at the volume so Claude CLI finds ~/.claude there.
 # CLAUDE_CODE_OAUTH_TOKEN (if set) is inherited from the environment.
+#
+# The operator's environment becomes run *parameters* here, for the same reason the
+# checkout step above takes flags: inside the run an input has to be visible in the
+# checkpoint and overridable by a caller, which an ambient variable is not. They go
+# through --params-file rather than --params so an explicit `--params` in "$@" still
+# wins (the CLI merges the file first, then inline).
+boundary_params="$CLAUDE_HOME/boundary-params.json"
+{
+    printf '{'
+    sep=''
+    if [ -n "${CODER_WORKSPACE:-}" ]; then
+        printf '%s"workspace_file": "%s"' "$sep" "$CODER_WORKSPACE"; sep=', '
+    fi
+    if [ -n "${CODER_DOCS_PATH:-}" ]; then
+        printf '%s"docs_path": "%s"' "$sep" "$CODER_DOCS_PATH"; sep=', '
+    fi
+    printf '}\n'
+} > "$boundary_params"
+
 uv run workhorse \
     --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}" \
     ${AGENT_RUNS_DIR:+--runs-dir "$AGENT_RUNS_DIR"} \
+    --params-file "$boundary_params" \
     "$@" &
 wf_pid=$!
 

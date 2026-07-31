@@ -10,7 +10,13 @@ subdirectory, or from a repo whose `docs/epics/` exists but whose `.git` does no
 on a *different* root under each. So each is kept, named for what it actually does, and
 each ported node calls the one its script called:
 
-* `workhorse.scriptutil.find_repo_root` — `AGENT_REPO_DIR`, else the first of
+Every one of them takes the run's `repo_dir` as its argument and reads no environment
+variable, per the rule in `workflows/README.md`: the consuming repo is an *input*, so it
+travels down from `Workflow.repo_dir` through the state that calls the node. An empty
+`repo_dir` still falls back to a walk — a visible, overridable default, unlike an
+ambient variable.
+
+* `workhorse.scriptutil.find_repo_root` — `repo_dir`, else the first of
   `[cwd, *cwd.parents]` carrying `agents.yml` or `.git`. Four scripts
   (`check-sentinel-ids.py`, `detect-regression-platform.py`, `flush-root-screenshots.py`,
   `verify_qa_evidence.py`) had re-typed this function *character for character* rather
@@ -20,7 +26,7 @@ each ported node calls the one its script called:
   **directory** rather than `.git`. `prune-epic.py` alone resolves this way, and the
   difference matters exactly where it is used: a docs checkout with no `.git` (a
   bind-mounted clone) still has its epic queue popped.
-* `launch_repo_root()` — `AGENT_REPO_DIR`, else `cwd` *if* it looks like a project root
+* `launch_repo_root()` — `repo_dir`, else `cwd` *if* it looks like a project root
   (`docs/epics/`, `agents.yml` or `.git`), else the first ancestor with `agents.yml` or
   `.git`, else `cwd`. The operator-gate scripts (`await_operator.py`,
   `await-ci-operator.py`, `await-merge-operator.py`) and `check_feedback.py` resolve this
@@ -40,7 +46,6 @@ makes that join at the call site.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from ostler import path as okf_path

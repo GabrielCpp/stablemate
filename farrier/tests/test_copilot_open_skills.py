@@ -75,7 +75,6 @@ def test_render_copilot_skills_include_frontmatter(tmp_path):
     outputs = renderer.render(
         agents={"copilot": True, "claude": False, "codex": False},
         roots=set(),
-        workflows=set(),
     )
     skill_path = tmp_path / ".github" / "skills" / "demo-go" / "SKILL.md"
     assert skill_path in outputs, f"Expected {skill_path} in outputs"
@@ -90,7 +89,6 @@ def test_render_copilot_no_legacy_instructions_files(tmp_path):
     outputs = renderer.render(
         agents={"copilot": True, "claude": False, "codex": False},
         roots=set(),
-        workflows=set(),
     )
     for path in outputs:
         assert ".github/instructions" not in str(path), (

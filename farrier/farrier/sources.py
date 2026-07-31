@@ -137,7 +137,6 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
         "prompts": set(data.get("prompts", []) or []),
         "roots": set(data.get("roots", []) or []),
         "scaffolds": parse_scaffold_ids(data.get("scaffolds"), f"pack {pack_id}"),
-        "workflows": set(data.get("workflows", []) or []),
     }
     for include in data.get("includes", []) or []:
         child = load_pack(str(include), seen)
@@ -148,13 +147,12 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
 
 def collect_selection(
     config: dict[str, Any],
-) -> tuple[set[str], set[str], set[str], set[str], set[str]]:
+) -> tuple[set[str], set[str], set[str], set[str]]:
     selection: dict[str, Any] = {
         "skills": set(),
         "prompts": set(),
         "roots": set(),
         "scaffolds": set(),
-        "workflows": set(),
     }
     for pack in config.get("packs", []) or []:
         loaded = load_pack(str(pack))
@@ -164,7 +162,7 @@ def collect_selection(
     selection["scaffolds"].update(
         parse_scaffold_ids(config.get("scaffolds"), "agents.yml")
     )
-    for key in ["skills", "prompts", "roots", "workflows"]:
+    for key in ["skills", "prompts", "roots"]:
         selection[key].update(config.get(key, []) or [])
 
     return (
@@ -172,7 +170,6 @@ def collect_selection(
         selection["prompts"],
         selection["roots"],
         selection["scaffolds"],
-        selection["workflows"],
     )
 
 
@@ -227,9 +224,8 @@ def unmatched_patterns(
     Selection is a filter, so an entry naming a file that does not exist contributes nothing
     and the render proceeds — the repo silently ends up without a skill it declared. That
     surfaces much later as an agent running unskilled while every gate still reports success,
-    which is the worst shape a failure can take. ``packs`` and ``workflows`` already fail loudly
-    on the same typo (``load_pack``, ``renderer``'s workflow check); this closes the gap for
-    skills, prompts, and roots.
+    which is the worst shape a failure can take. ``packs`` already fails loudly on the same
+    typo (``load_pack``); this closes the gap for skills, prompts, and roots.
     """
     literals: list[str] = []
     globs: list[str] = []

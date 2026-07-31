@@ -3,9 +3,14 @@
 # ============================================================================
 #
 # Copy this file to your repository root as `agents.yml`, then prune it to the
-# keys you need. farrier reads it to decide which skills, prompts, roots, and
-# workflows from the prompt library to render into your repo's adapter files,
-# and which scaffold ids `farrier scaffold` may apply.
+# keys you need. farrier reads it to decide which skills, prompts and roots from
+# the prompt library to render into your repo's adapter files, and which scaffold
+# ids `farrier scaffold` may apply.
+#
+# It does NOT install workflows. A workflow is a Python package workhorse finds
+# through the `workhorse.workflows` entry-point group — you `pip install` it and
+# run `workhorse run <name>`. The one key here a workflow reads for itself is
+# `workflow:` at the bottom.
 #
 # Run it (after `pipx install farrier` and pointing farrier at the library):
 #   farrier config set-library /path/to/the/library     # one-time
@@ -46,8 +51,8 @@ agents:
 
 # ---------------------------------------------------------------------------
 # packs — named bundles from the library's packs/*.yml (omit the .yml). A pack
-# selects a set of skills/prompts/roots/scaffolds/workflows and may `include`
-# other packs. All selected packs are merged (union).
+# selects a set of skills/prompts/roots/scaffolds and may `include` other packs.
+# All selected packs are merged (union).
 # ---------------------------------------------------------------------------
 packs:
   - go
@@ -145,31 +150,18 @@ template:
 
 
 # ---------------------------------------------------------------------------
-# workflow — configuration for the generated launcher (.agents/agents.mk) and
-# for workflow runners. Required only when a selected pack installs workflows.
+# workflow — an opaque block farrier passes through untouched. The installer
+# reads nothing in it; the WORKFLOW packages you run read their own keys out of
+# it, so what belongs here is whatever the workflow you installed documents.
 # camelCase or snake_case accepted.
+#
+# (`repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to
+# configure a generated Docker launcher. That launcher is gone — `workhorse run`
+# takes its arguments on the command line — and those keys are now ignored.)
 # ---------------------------------------------------------------------------
 workflow:
-  # Git remote for GitHub-default workflow runs (NOT the default local
-  # bind-mount clone). Auto-detected from `git remote get-url origin` if omitted.
-  repoUrl: https://github.com/org/myrepo.git        # or: repo_url
-
-  # Long-lived integration/trunk branch the worker clones and targets PRs at.
-  # Auto-detected (origin/HEAD → main → master) if omitted. Must be the trunk,
-  # NOT your current feature branch.
-  branch: main
-
-  # Path from this repo to the prompt-library content directory. Becomes
-  # AGENTS_DIR in .agents/agents.mk. Default: $(abspath $(CURDIR)/../vigilant-octo/agents).
-  agentsDir: ../vigilant-octo/agents                # or: agents_dir
-
-  # Host environment variables to forward into the Docker worker at compose-up.
-  envPassthrough:                                   # or: env_passthrough
-    - GH_TOKEN
-    - OPENAI_API_KEY
-
-  # Name of the env var carrying the GitHub token for PR/CI workflow steps
-  # (falls back to GH_TOKEN then GITHUB_TOKEN). Must also be in envPassthrough.
+  # Name of the env var carrying the GitHub token for the coder workflow's PR
+  # and CI steps (falls back to GH_TOKEN then GITHUB_TOKEN).
   githubTokenEnv: GH_TOKEN
 
   # storyCoder (and similar) — an opaque, workflow-specific subtree passed

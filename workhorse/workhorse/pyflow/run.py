@@ -11,7 +11,6 @@ same shape whichever engine wrote it.
 
 from __future__ import annotations
 
-import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +47,11 @@ class RunInvocation:
 
     `params` stays an untyped map on purpose. Arbitrary key→value *is* the contract —
     a workflow's own pydantic fields are what validate it, one layer further in.
+
+    The last two fields are what the environment said, read where environments are
+    read. Both default to the shipped defaults rather than to a read of their own, so
+    nothing under this module reaches for `os.environ` and an in-process caller gets
+    the documented values instead of whatever the shell it was launched from held.
     """
 
     registry: Registry
@@ -59,6 +63,8 @@ class RunInvocation:
     no_cache: bool = False
     dry_run: bool = False
     context_manifest: ManifestContext = field(default_factory=ManifestContext)
+    config: RunConfig = field(default_factory=RunConfig)
+    telemetry: otel.TelemetryHost = field(default_factory=otel.TelemetryHost)
 
 
 def run_pyflow(invocation: RunInvocation) -> int:
@@ -71,6 +77,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
     no_cache = invocation.no_cache
     dry_run = invocation.dry_run
     params = dict(invocation.params)
+    config = invocation.config
     name = registry.name or "workflow"
     manifest = invocation.context_manifest.as_context()
 
@@ -129,7 +136,6 @@ def run_pyflow(invocation: RunInvocation) -> int:
         print(f"[workhorse] ERROR: {exc}")
         return 1
 
-    config = RunConfig.from_env()
     env = RunEnv(
         writer=writer,
         workflow_dir=registry.directory(),
@@ -157,9 +163,10 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # Console logging first, so a node's logger has somewhere to write even with
     # telemetry off; start_run then hangs the OTel handler off the same root logger.
     logsetup.setup()
-    # The one place telemetry's environment is read. Everything below the entry point
-    # is handed the host rather than reaching for os.environ itself.
-    otel.install(otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)))
+    # Telemetry is installed here rather than at the CLI because this is where the run
+    # it reports on begins and ends; what the environment said about it arrived with
+    # the invocation, like every other setting.
+    otel.install(invocation.telemetry)
     otel.start_run(name, writer.run_id, str(writer.run_dir))
     try:
         try:

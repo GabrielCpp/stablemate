@@ -13,14 +13,11 @@ from jinja2 import Environment, StrictUndefined
 
 from farrier.frontmatter import first_heading, split_front_matter
 from farrier.launcher import (
-    DEFAULT_AGENTS_DIR,
     LAUNCHER_AGENTS_MK,
-    LAUNCHER_COMPOSE,
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_CONTEXT_MANIFEST_FMT,
     LAUNCHER_ROOT_MAKEFILE,
     render_agents_mk,
-    render_local_compose,
 )
 from farrier.layers import available_names, find_in_layers
 from farrier.naming import kebab, relative_reference, yaml_quote
@@ -373,8 +370,6 @@ class Renderer:
         self,
         agents: dict[str, bool],
         roots: set[str],
-        workflows: set[str],
-        workflow_meta: dict[str, str] | None = None,
     ) -> dict[Path, str]:
         outputs: dict[Path, str] = {}
 
@@ -432,28 +427,7 @@ class Renderer:
                     source, "claude", output_path
                 )
 
-        # Workflows are NOT installed/copied — they run directly from whichever library
-        # layer holds them (see render_agents_mk: the launcher passes the workflow NAME
-        # and workhorse resolves it across the same layers).
-        # Validate the selection is known so a typo still fails loudly here.
-        unknown_workflows = sorted(
-            workflow for workflow in workflows
-            if find_in_layers("workflows", workflow) is None
-        )
-        if unknown_workflows:
-            raise SystemExit(
-                unknown_selection_error(
-                    "workflows",
-                    unknown_workflows,
-                    available_names("workflows", dirs=True),
-                    extra=(
-                        "Workflows are not copied into the repo — they run from the library "
-                        "layer that holds them, so the name must resolve at install time."
-                    ),
-                )
-            )
-
-        # Same discipline for roots. These render only into the copilot adapter, so an
+        # Roots render only into the copilot adapter, so an
         # unknown one used to be skipped in silence — and on a repo with copilot disabled it
         # was never even looked at. Validate unconditionally: the declaration is wrong
         # regardless of which assistants happen to be enabled, and finding that out only
@@ -478,50 +452,37 @@ class Renderer:
             )
 
         # The launcher (.agents/agents.mk) is generated for EVERY repo: its
-        # agent-install/agent-check targets are useful even with no workflow, and
-        # a root Makefile can then include it unconditionally. render_agents_mk
-        # only emits the workflow-run targets when >= 1 workflow is installed.
-        meta = dict(workflow_meta or {})
-        meta.setdefault("repo_url", "REPLACE_ME-git-remote-url")
-        meta.setdefault("branch", "main")
-        meta.setdefault("agents_dir", DEFAULT_AGENTS_DIR)
-        meta.setdefault("repo_name", kebab(self.repo.name))
-        meta["agents"] = dict(agents)
-        ordered = sorted(workflows)
-        outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk(ordered, meta)
+        # agent-install/agent-check targets are what keep the adapters current, and
+        # a root Makefile can then include it unconditionally.
+        outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk()
 
-        # The per-repo context manifest + local compose override are what make a
-        # run-from-library work, so they are only emitted when a workflow exists.
-        if workflows:
-            # Emit one manifest per ENABLED assistant so a run can target the matching
-            # adapters (instruction_ref → .claude/skills, .github/skills, …). AGENT_CLI
-            # selects which at run time (launcher CONTEXT_FILE + workhorse auto-detect).
-            enabled_assistants = [
-                t for t in ("claude", "codex", "copilot") if agents.get(t)
-            ]
-            # The primary (first enabled) assistant also backs the generic manifest,
-            # for back-compat and workhorse's AGENT_CLI-agnostic auto-detect default.
-            manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
-            for assistant in enabled_assistants:
-                outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST_FMT.format(assistant)] = (
-                    json.dumps(
-                        self.context_manifest(assistant), indent=2, sort_keys=True
-                    )
-                    + "\n"
-                )
-            outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST] = (
-                json.dumps(
-                    self.context_manifest(manifest_target), indent=2, sort_keys=True
-                )
+        # The per-repo context manifest maps instruction_ref -> the adapter paths
+        # rendered above, so it is emitted for every install: a workflow run reads
+        # it to resolve skills against THIS repo, and it is farrier's output whether
+        # or not any workflow is installed here.
+        #
+        # Emit one manifest per ENABLED assistant so a run can target the matching
+        # adapters (instruction_ref -> .claude/skills, .github/skills, …). AGENT_CLI
+        # selects which at run time (workhorse auto-detects from AGENT_REPO_DIR).
+        enabled_assistants = [t for t in ("claude", "codex", "copilot") if agents.get(t)]
+        # The primary (first enabled) assistant also backs the generic manifest,
+        # for back-compat and workhorse's AGENT_CLI-agnostic auto-detect default.
+        manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
+        for assistant in enabled_assistants:
+            outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST_FMT.format(assistant)] = (
+                json.dumps(self.context_manifest(assistant), indent=2, sort_keys=True)
                 + "\n"
             )
-            outputs[self.repo / LAUNCHER_COMPOSE] = render_local_compose(ordered, meta)
+        outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST] = (
+            json.dumps(self.context_manifest(manifest_target), indent=2, sort_keys=True)
+            + "\n"
+        )
 
         # Only emit a thin root Makefile when the repo has none — never clobber a
         # user-authored Makefile. When one already exists, the generated launcher
         # is wired into it instead via ensure_makefile_include() at install time
         # (an idempotent include block), so its agent targets are reachable either
-        # way. Both paths run regardless of workflows, since the launcher is too.
+        # way.
         root_makefile = self.repo / LAUNCHER_ROOT_MAKEFILE
         if not root_makefile.exists():
             outputs[root_makefile] = (

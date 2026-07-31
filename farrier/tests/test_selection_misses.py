@@ -2,13 +2,13 @@
 
 Selection is a *filter*: `selected_sources` keeps library files matching the patterns in
 agents.yml, so an entry naming a file that does not exist simply contributes nothing and the
-install proceeds. `packs` and `workflows` already guard against that typo (`load_pack`,
-renderer's workflow check); `skills`, `prompts` and `roots` did not, so a misspelled skill
-produced a repo silently missing a skill it declared.
+install proceeds. `packs` already guards against that typo (`load_pack`); `skills`,
+`prompts` and `roots` did not, so a misspelled skill produced a repo silently missing a
+skill it declared.
 
 That shape of failure is the worst one available here: the symptom appears much later, as an
 agent running unskilled while every gate downstream still reports success. There is an
-aggregate guard ("Selected packs did not match any skills, prompts, or workflows") but it only
+aggregate guard ("Selected packs did not match any skills or prompts") but it only
 fires when *everything* misses — one typo among ten stayed silent.
 
 Literal vs glob is the severity line: a literal name is a promise about a specific file, so a
@@ -171,9 +171,9 @@ def test_known_root_still_renders(tmp_path: Path) -> None:
     assert (repo / ".github" / "copilot-instructions.md").is_file()
 
 
-# ── packs and workflows: already loud, now verbose through the same formatter ──
-# These two were never silent, but they each had their own terse message. One operator
-# mistake deserves one answer, so they share the formatter with skills/prompts/roots.
+# ── packs: already loud, now verbose through the same formatter ──
+# This one was never silent, but it had its own terse message. One operator mistake
+# deserves one answer, so it shares the formatter with skills/prompts/roots.
 
 def test_unknown_pack_is_verbose(tmp_path: Path) -> None:
     library = make_library(tmp_path)
@@ -190,21 +190,6 @@ def test_unknown_pack_is_verbose(tmp_path: Path) -> None:
     assert "Available packs (1):" in message
     # A pack can arrive via another pack's `includes:`, so a name you never typed can fail.
     assert "includes:" in message
-
-
-def test_unknown_workflow_is_verbose(tmp_path: Path) -> None:
-    library = make_library(tmp_path)
-    (library / "workflows" / "coder").mkdir(parents=True)
-    repo = tmp_path / "repo"
-    write_config(repo, BASE + "skills:\n  - demo/real-skill\nworkflows:\n  - codr\n")
-
-    with pytest.raises(SystemExit) as excinfo:
-        install(repo, library)
-
-    message = str(excinfo.value)
-    assert "unknown workflow in agents.yml `workflows:`" in message
-    assert "did you mean: coder?" in message
-    assert "Available workflows (1):" in message
 
 
 def test_empty_catalog_says_the_layer_is_missing_not_the_name(tmp_path: Path) -> None:

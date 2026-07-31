@@ -8,12 +8,14 @@ differently, which is why ``_read_workspace_file`` returns None rather than gues
 The clone/update path here shells out to ``git`` rather than going through
 :mod:`workhorse_workflows.kit.git`: it runs from ``entrypoint.sh`` before the engine
 starts, on directories that are not repos yet, with a credential helper built per
-command.
+command. That is also why :func:`checkout_workspace` has a ``__main__`` entry: the
+container shell is the process boundary and passes what it knows as arguments, so
+nothing inside the run has to read the environment to learn the same facts.
 """
 from __future__ import annotations
 
+import argparse
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -21,7 +23,8 @@ from pathlib import Path
 
 import yaml
 
-from workhorse.scriptutil import load_jsonc
+from workhorse.scriptutil import find_repo_root, load_jsonc
+from workhorse_workflows.kit import credentials
 
 
 def _repo_name_from_dir(path: Path) -> str:
@@ -32,45 +35,45 @@ def _repo_name_from_dir(path: Path) -> str:
     return re.sub(r"-+", "-", name).strip("-").lower()
 
 
-def _read_workspace_file(workspace_env_key: str) -> tuple[list[dict], Path] | None:
-    """Parse the `.code-workspace` file named by ``workspace_env_key``, if set.
+def _read_workspace_file(workspace_file: str | Path) -> tuple[list[dict], Path] | None:
+    """Parse the `.code-workspace` file at ``workspace_file``, if it exists.
 
-    Returns ``(folders, ws_dir)`` when the env var points at an existing file,
-    else ``None`` — callers apply their own single-folder fallback in that case,
-    since resolve_workspace() (read an existing checkout) and checkout_workspace()
-    (create one) fall back differently.
+    Returns ``(folders, ws_dir)`` when the path names an existing file, else ``None`` —
+    callers apply their own single-folder fallback in that case, since
+    resolve_workspace() (read an existing checkout) and checkout_workspace() (create
+    one) fall back differently.
     """
-    workspace_path = os.environ.get(workspace_env_key)
-    if not workspace_path or not Path(workspace_path).exists():
+    if not workspace_file or not Path(workspace_file).exists():
         return None
-    ws = load_jsonc(Path(workspace_path).read_text(encoding="utf-8"))
-    ws_dir = Path(workspace_path).parent
+    ws = load_jsonc(Path(workspace_file).read_text(encoding="utf-8"))
+    ws_dir = Path(workspace_file).parent
     return ws.get("folders", []), ws_dir
 
 
-def resolve_workspace(workspace_env_key: str = "WORKSPACE_FILE") -> dict[str, dict]:
-    """Build {repo_name: {path, ...}} from workspace file or CWD fallback.
+def resolve_workspace(
+    workspace_file: str | Path = "", repo_dir: str | Path = ""
+) -> dict[str, dict]:
+    """Build {repo_name: {path, ...}} from a workspace file, or from ``repo_dir`` alone.
 
     Resolution order:
-    1. Read the env var named by ``workspace_env_key`` (caller-supplied; default
-       ``WORKSPACE_FILE`` for generic use). Workflow scripts should pass their
-       own convention (e.g. ``"CODER_WORKSPACE"``).
-    2. If that env var points to an existing file, parse it as a VSCode workspace.
-    3. Otherwise treat the repo root as a single-folder workspace.
+    1. ``workspace_file`` — the run's own input (a workflow field, defaulted by the
+       CLI/entrypoint from whatever the operator configured). When it names an existing
+       file, parse it as a VSCode workspace.
+    2. Otherwise treat ``repo_dir`` (a single repo) as a one-folder workspace.
+
+    Neither is read from the environment: both are the run's inputs, so both arrive as
+    arguments — see `workflows/README.md` on why a node may not read the environment.
 
     For each folder, reads agents.yml and merges the workspace: section into the record.
     """
-    parsed = _read_workspace_file(workspace_env_key)
+    parsed = _read_workspace_file(workspace_file)
     if parsed is not None:
         folders, ws_dir = parsed
     else:
-        # Script nodes run with cwd = the workflow definition's own directory, not the
-        # consuming repo (see main.py's AGENT_REPO_DIR comment), so a bare Path.cwd()
-        # here would synthesize a single-folder workspace keyed off the workflow dir's
-        # name (e.g. "coder") instead of the real repo. Mirror find_repo_root()'s
-        # AGENT_REPO_DIR-first resolution so mono-repo setups (no CODER_WORKSPACE) key
-        # correctly off the actual repo.
-        cwd = Path(os.environ.get("AGENT_REPO_DIR") or Path.cwd()).resolve()
+        # A single-repo run: key the synthesized folder off the *repo* root rather than
+        # the process cwd, which for a node is the workflow's own directory and would
+        # name the workspace after the workflow (e.g. "coder") instead of the repo.
+        cwd = find_repo_root(repo_dir)
         agents_yml = cwd / "agents.yml"
         if agents_yml.exists():
             try:
@@ -124,17 +127,21 @@ def _has_unsynced_work(dest: Path, branch: str) -> bool:
     return ahead.stdout.strip() != "0"
 
 
-def _git_network_command(*args: str) -> list[str]:
+def _git_network_command(
+    *args: str, token_env: str = credentials.GIT_CREDENTIAL_ENV
+) -> list[str]:
     """Build a Git command with transient credentials for clone/fetch.
 
-    A workflow-specific checkout hook may supply ``WORKHORSE_GIT_TOKEN`` after
-    resolving credentials according to that workflow's own configuration. The
-    generic checkout code does not know token names or provider conventions.
+    A workflow-specific checkout hook may leave a token in ``token_env`` after resolving
+    credentials according to that workflow's own configuration; the generic checkout code
+    knows no token names or provider conventions. Only the variable's *presence* is read
+    here — the helper string names it, and the git subprocess expands it from its own
+    inherited environment, so the secret never reaches an argument list or a log.
     """
-    if not os.environ.get("WORKHORSE_GIT_TOKEN", ""):
+    if not credentials.has_git_credential(token_env):
         return ["git", *args]
     credential_helper = (
-        '!f() { echo username=x-access-token; echo "password=$WORKHORSE_GIT_TOKEN"; }; f'
+        f'!f() {{ echo username=x-access-token; echo "password=${token_env}"; }}; f'
     )
     return ["git", "-c", f"credential.helper={credential_helper}", *args]
 
@@ -155,46 +162,52 @@ def _set_origin_url(dest: Path, url: str) -> None:
 
 
 def checkout_workspace(
-    workspace_env_key: str = "CODER_WORKSPACE",
+    workspace_file: str | Path = "",
     workspace_root: str | Path = "/workspace",
+    *,
+    repo_url: str = "",
+    repo_name: str = "repo",
+    repo_branch: str = "main",
+    token_env: str = credentials.GIT_CREDENTIAL_ENV,
 ) -> None:
     """Clone/update every `url`-bearing folder in the `.code-workspace` file into
     ``workspace_root``, transparent to whichever workflow graph runs next.
 
     Meant to be invoked once from entrypoint.sh, before the workflow engine starts —
     neither coder nor author has a "setup" node; by the time the graph starts, every
-    folder's working tree already exists under ``workspace_root/<folder name>``.
+    folder's working tree already exists under ``workspace_root/<folder name>``. The
+    shell is the process boundary, so it reads its own environment and passes the
+    values here as arguments (see ``__main__`` at the bottom of this module).
 
     Resolution order:
-    1. If the workspace file (named by ``workspace_env_key``) is set, clone/update
-       every folder in its `folders` list that carries a `url` key (its own optional
-       schema extension — VSCode ignores unknown keys, so plain `.code-workspace`
-       files stay valid whether or not they use it). A missing `branch` defaults to
-       "main". Folders WITHOUT a `url` are left untouched — they may not be git repos
-       at all (e.g. a plain documentation directory); their content can only reach the
-       container via the workspace-directory bind mount (see compose.yaml), not a clone.
-    2. Otherwise (no workspace file set), synthesize a single folder from the existing
-       REPO_URL/REPO_NAME/REPO_BRANCH env vars (today's single-primary-repo mechanism)
-       and feed it through the exact same clone path — this keeps 1-repo and N-repo
-        runs on one code path with zero repo-name defaulting. The URL may be a local
-        bind-mounted source or a remote authenticated through ``REPO_TOKEN_ENV``.
+    1. If ``workspace_file`` names an existing file, clone/update every folder in its
+       `folders` list that carries a `url` key (its own optional schema extension —
+       VSCode ignores unknown keys, so plain `.code-workspace` files stay valid whether
+       or not they use it). A missing `branch` defaults to "main". Folders WITHOUT a
+       `url` are left untouched — they may not be git repos at all (e.g. a plain
+       documentation directory); their content can only reach the container via the
+       workspace-directory bind mount (see compose.yaml), not a clone.
+    2. Otherwise, synthesize a single folder from ``repo_url``/``repo_name``/
+       ``repo_branch`` (the single-primary-repo mechanism) and feed it through the exact
+       same clone path — this keeps 1-repo and N-repo runs on one code path with zero
+       repo-name defaulting. The URL may be a local bind-mounted source or a remote
+       authenticated through the token in ``token_env``.
     """
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[checkout] %(message)s")
     logger = logging.getLogger("workhorse.checkout")
     workspace_root = Path(workspace_root)
 
-    parsed = _read_workspace_file(workspace_env_key)
+    parsed = _read_workspace_file(workspace_file)
     if parsed is not None:
         folders, _ws_dir = parsed
     else:
-        repo_url = os.environ.get("REPO_URL", "")
         if not repo_url:
-            logger.info("no workspace file and no REPO_URL set — nothing to check out")
+            logger.info("no workspace file and no repo url given — nothing to check out")
             return
         folders = [{
-            "name": os.environ.get("REPO_NAME") or "repo",
+            "name": repo_name or "repo",
             "url": repo_url,
-            "branch": os.environ.get("REPO_BRANCH", "main"),
+            "branch": repo_branch or "main",
         }]
 
     workspace_root.mkdir(parents=True, exist_ok=True)
@@ -210,7 +223,9 @@ def checkout_workspace(
         if (dest / ".git").exists():
             _set_origin_url(dest, url)
             subprocess.run(
-                _git_network_command("-C", str(dest), "fetch", "--quiet", "origin"),
+                _git_network_command(
+                    "-C", str(dest), "fetch", "--quiet", "origin", token_env=token_env
+                ),
                 check=True, timeout=300,
             )
             if _has_unsynced_work(dest, branch):
@@ -233,21 +248,34 @@ def checkout_workspace(
             logger.info("cloning %s from %s (%s)", name, url, branch)
             subprocess.run(
                 _git_network_command(
-                    "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest)
+                    "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest),
+                    token_env=token_env,
                 ),
                 check=True, timeout=600,
             )
 
 
-def get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | None = None):
+def get_repo_config(
+    repo_name: str,
+    key: str,
+    default=None,
+    *,
+    repos: dict | None = None,
+    workspace_file: str | Path = "",
+    repo_dir: str | Path = "",
+):
     """Get a config value from a repo's agents.yml workspace section.
 
+    Pass ``repos`` when the caller already resolved the workspace (the usual case, and
+    the cheap one); otherwise the workspace is resolved from the same two run inputs
+    :func:`resolve_workspace` takes.
+
     Examples:
-        get_repo_config("api-service", "qa_mode")            # → "cli"
-        get_repo_config("api-service", "base_branch", "main") # → "develop"
+        get_repo_config("api-service", "qa_mode", repos=repos)             # → "cli"
+        get_repo_config("api-service", "base_branch", "main", repos=repos) # → "develop"
     """
     if repos is None:
-        repos = resolve_workspace()
+        repos = resolve_workspace(workspace_file, repo_dir)
     repo = repos.get(repo_name, {})
     return repo.get(key, default)
 
@@ -323,3 +351,39 @@ def get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]:
         if name and name in repos:
             names.add(name)
     return sorted(names)
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """`python -m workhorse_workflows.kit.workspace` — the entrypoint.sh checkout step.
+
+    The container shell owns its environment and expands it into these flags, which is
+    what keeps the environment on the *outside* of the run: this module never reads a
+    variable of its own, and the one thing it cannot take as a flag — the credential —
+    is named, not passed, so the secret stays out of the argument list.
+    """
+    parser = argparse.ArgumentParser(prog="workhorse-checkout", description=__doc__)
+    parser.add_argument("--workspace-file", default="", metavar="PATH",
+                        help="A .code-workspace manifest listing the repos to check out.")
+    parser.add_argument("--workspace-root", default="/workspace", metavar="DIR",
+                        help="Directory the folders are checked out under.")
+    parser.add_argument("--repo-url", default="", metavar="URL",
+                        help="Single-repo fallback when no workspace file is given.")
+    parser.add_argument("--repo-name", default="repo", metavar="NAME")
+    parser.add_argument("--repo-branch", default="main", metavar="BRANCH")
+    parser.add_argument("--token-env", default=credentials.GIT_CREDENTIAL_ENV, metavar="VAR",
+                        help="Name of the variable holding a clone/fetch credential. "
+                             "Only the name crosses the boundary; git expands the value.")
+    args = parser.parse_args(argv)
+    checkout_workspace(
+        args.workspace_file,
+        args.workspace_root,
+        repo_url=args.repo_url,
+        repo_name=args.repo_name,
+        repo_branch=args.repo_branch,
+        token_env=args.token_env,
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - process entry
+    raise SystemExit(_main())

@@ -29,10 +29,7 @@ from farrier.sources import (
     selected_sources,
     unmatched_patterns,
 )
-from farrier.workflows import (
-    collect_template_values,
-    resolve_workflow_meta,
-)
+from farrier.template_values import collect_template_values
 
 
 TARGET_DIRS = [
@@ -141,7 +138,6 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         include_prompts,
         roots,
         _scaffold_ids,  # consumed by `farrier scaffold`, not by install
-        workflows,
     ) = collect_selection(config)
     exclude = config.get("exclude") or {}
 
@@ -154,26 +150,19 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         all_prompts, include_prompts, set(exclude.get("prompts", []) or [])
     )
     # Fail loudly on a selection entry that names a file the library does not have, the same
-    # way `packs` and `workflows` already do. Selection is a filter, so without this a typo
+    # way `packs` already does. Selection is a filter, so without this a typo
     # silently yields a repo missing a skill it declared — and the symptom is an agent running
     # unskilled while every gate still reports success.
     check_selection(
         [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
     )
-    if not skills and not prompts and not workflows:
-        raise SystemExit(
-            "Selected packs did not match any skills, prompts, or workflows"
-        )
+    if not skills and not prompts:
+        raise SystemExit("Selected packs did not match any skills or prompts")
 
     renderer = Renderer(
         repo, prefix, repo_config, collect_template_values(config), skills, prompts
     )
-    workflow_meta = resolve_workflow_meta(
-        config, repo, str(repo_config.get("name") or kebab(repo.name))
-    )
-    workflow_meta["repo_src_default"] = repo.as_posix()
-    workflow_meta["repo_config_default"] = (repo / "agents.yml").as_posix()
-    outputs = renderer.render(agents, roots, workflows, workflow_meta)
+    outputs = renderer.render(agents, roots)
 
     for mapping in config.get("localInstructions", []) or []:
         skill_names = mapping_skill_names(mapping)
@@ -226,11 +215,12 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
         elif path.read_text(encoding="utf-8") != expected:
             changed.append(path.relative_to(repo).as_posix())
 
-    # `.agents/workflows` is not scanned. Farrier rendered a workflow's YAML tree there
-    # until the front-end was retired; it has emitted nothing into it since, so scanning
-    # it would only report a leftover from an older install as `extra:` — a --check
-    # failure the operator cannot fix by re-rendering. Nothing writes it, nothing owns
-    # it, and an unowned directory is not the installer's to police.
+    # Neither `.agents/workflows` nor `.agents/local.compose.yaml` is scanned. Farrier
+    # rendered a workflow's YAML tree into the first and a per-workflow compose override
+    # into the second while workflows were its concern; it emits neither now, so scanning
+    # them would only report a leftover from an older install as `extra:` — a --check
+    # failure the operator cannot fix by re-rendering. `remove_targets` still deletes the
+    # compose override, which is where a leftover is actually disposed of.
     expected_paths = set(outputs)
     for rel in TARGET_DIRS:
         target = repo / rel
@@ -243,7 +233,6 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
         ".github/copilot-instructions.md",
         ".github/agents/copilot-instructions.md",
         LAUNCHER_AGENTS_MK,
-        LAUNCHER_COMPOSE,
         LAUNCHER_CONTEXT_MANIFEST,
     ]:
         path = repo / rel
@@ -388,7 +377,7 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     remove_targets(repo)
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
         write_text(path, content)
-    # Workflow runs write logs/artifacts under .agents/runs (see render_agents_mk
+    # Workflow runs write logs/artifacts under .agents/runs (see workhorse's --runs-dir
     # RUNS_DIR). Keep them out of version control. Only relevant when a workflow
     # launcher was generated.
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_agents_gitignore(repo):
