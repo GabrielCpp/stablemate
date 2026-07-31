@@ -47,7 +47,9 @@ def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicCh
 
     # Items stay in queue order (no `order` key → sequence order preserved).
     items = [
-        {"id": str(epic), "status": "done" if okf.epic_authored(str(epic)) else "pending"}
+        wl.WorkItem(
+            id=str(epic), status="done" if okf.epic_authored(str(epic)) else "pending"
+        )
         for epic in queue
     ]
 
@@ -56,9 +58,9 @@ def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicCh
     if pick is None:
         reason = "every epic in the queue is fully authored"
         logger.info(reason)
-        return EpicChoice(reason=reason, progress=snap["progress"])
+        return EpicChoice(reason=reason, progress=snap.progress)
 
-    epic = str(pick["id"])
+    epic = pick.id
     logger.info(
         "selected epic '%s' — missing epic.md, has no stories, or a story is unwritten", epic
     )
@@ -67,7 +69,7 @@ def select_epic(logger: logging.Logger, epics_dir: str = "docs/epics") -> EpicCh
         epic=epic,
         epic_dir=epic_dir(epics_dir_rel, epic),
         reason="epic missing epic.md, has no stories, or a story is still unwritten",
-        progress=snap["progress"],
+        progress=snap.progress,
     )
 
 

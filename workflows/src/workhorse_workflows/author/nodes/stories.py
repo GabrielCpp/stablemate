@@ -247,15 +247,16 @@ def select_story(logger: logging.Logger, epic_dir: str = "") -> StoryChoice:
 
     # The report's own tallies are the worklist, in DAG order, so the dashboard's "3/12" is
     # identical in shape to every other worklist node in the library.
-    items = [{"id": f"authored-{i}", "status": "done"} for i in range(int(report["done"]))] + [
-        {"id": slug, "status": "pending"} for slug in report["remaining"]
-    ]
+    items = [
+        wl.WorkItem(id=f"authored-{i}", status="done")
+        for i in range(int(report["done"]))
+    ] + [wl.WorkItem(id=slug, status="pending") for slug in report["remaining"]]
     snap = wl.snapshot(items)
 
     if report["state"] != "ready":
         logger.info("every story in epic '%s' has a written story.md", epic)
         return StoryChoice(
-            reason=report["detail"], progress=snap["progress"], remaining_count=snap["remaining"]
+            reason=report["detail"], progress=snap.progress, remaining_count=snap.remaining
         )
 
     story = report["story"]
@@ -268,8 +269,8 @@ def select_story(logger: logging.Logger, epic_dir: str = "") -> StoryChoice:
         # From ostler, not derived: ostler knows where it actually put the file.
         story_dir=str(Path(path).parent),
         reason=report["detail"],
-        progress=snap["progress"],
-        remaining_count=snap["remaining"],
+        progress=snap.progress,
+        remaining_count=snap.remaining,
     )
 
 

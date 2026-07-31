@@ -70,24 +70,26 @@ def select_next_unit(
 
     snap = wl.snapshot(units, scheme=SURVEY_SCHEME)  # progress + kinds for the dashboard
     pick = wl.select_next(units, scheme=SURVEY_SCHEME)  # first not-done/not-blocked
-    unit_id = str(pick.get("id", "")) if isinstance(pick, dict) else ""
+    unit_id = pick.id if pick is not None else ""
     if not unit_id:
         # None left (or a degenerate pending unit with no id — nothing assessable): the
         # empty pending set is the coverage proof, so hand off to the coverage gate.
         reason = "no pending units left — every unit has a finding record (or is blocked)"
         logger.info(reason)
-        return UnitPick(reason=reason, progress=snap["progress"], kinds=snap["kinds"])
+        return UnitPick(reason=reason, progress=snap.progress, kinds=snap.kinds)
 
     logger.info("selected pending unit '%s'", unit_id)
     return UnitPick(
         has_unit=True,
         unit_id=unit_id,
-        unit_path=str(pick.get("path", unit_id)),
-        unit_kind=str(pick.get("kind", "")),
+        # `path` is the surveyor's own field, carried top-level on the item — the
+        # primitive keeps it rather than learning what it means.
+        unit_path=str(getattr(pick, "path", "") or unit_id),
+        unit_kind=pick.kind,
         record_path=f"{findings_rel}/{record_slug(unit_id)}.md",
         reason="first inventory unit still pending",
-        progress=snap["progress"],
-        kinds=snap["kinds"],
+        progress=snap.progress,
+        kinds=snap.kinds,
     )
 
 
