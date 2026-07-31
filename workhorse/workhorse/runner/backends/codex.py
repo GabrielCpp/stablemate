@@ -8,8 +8,7 @@ from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.jsonl import stream_jsonl
+from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
 
@@ -63,7 +62,7 @@ def _on_event(event, state: TurnState, node_id):
         state.diagnostics.append(json.dumps(event)[:500])
 
 
-class CodexBackend(AgentBackend):
+class CodexBackend(JsonlBackend):
     """OpenAI Codex CLI (``codex exec --json``). No in-place compaction — Codex
     manages its own context, so the ladder reframes on overflow. Runs with the
     sandbox bypassed because the worker container is itself the sandbox (mirrors
@@ -120,7 +119,7 @@ class CodexBackend(AgentBackend):
             print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
         else:
             cmd = [*head, "exec", *flags, "-"]
-        state = stream_jsonl(
+        state = self.stream(
             cmd, node_id, timeout, prompt, _on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),

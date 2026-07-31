@@ -13,8 +13,7 @@ from pathlib import Path
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.jsonl import stream_jsonl
+from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
 
@@ -27,7 +26,7 @@ class _OpenCodeEvents:
     That belongs to this adapter, not on the ``TurnState`` every backend shares — a
     struct shared by N implementations holding one implementation's private key is
     exactly the shape the shared module must not have. One instance per turn; the
-    bound ``on_event`` is what ``stream_jsonl`` is handed.
+    bound ``on_event`` is what the stream loop is handed.
     """
 
     #: part id → text. Ids come from opencode; the positional fallback keeps parts
@@ -153,7 +152,7 @@ def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
         return None
 
 
-class OpenCodeBackend(AgentBackend):
+class OpenCodeBackend(JsonlBackend):
     """OpenCode CLI (``opencode run --format json``). Speaks plain chat-completions
     to whatever provider its model names, so it drives OpenRouter models directly —
     e.g. ``openrouter/xiaomi/mimo-v2.5`` — with no proxy. The prompt is passed as the
@@ -206,7 +205,7 @@ class OpenCodeBackend(AgentBackend):
         cmd += ["--", prompt]
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
-        state = stream_jsonl(
+        state = self.stream(
             cmd, node_id, timeout, None, _OpenCodeEvents().on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),

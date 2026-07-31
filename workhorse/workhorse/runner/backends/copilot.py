@@ -7,8 +7,7 @@ from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.jsonl import stream_jsonl
+from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
 
@@ -35,7 +34,7 @@ def _on_event(event, state: TurnState, node_id):
         state.diagnostics.append(json.dumps(event)[:500])
 
 
-class CopilotBackend(AgentBackend):
+class CopilotBackend(JsonlBackend):
     """GitHub Copilot CLI (``copilot -p --output-format json``). No in-place
     compaction. --allow-all-tools + --no-ask-user make it fully autonomous (the
     container is the sandbox). Session is resumed by id via --session-id.
@@ -87,7 +86,7 @@ class CopilotBackend(AgentBackend):
         if sid:
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
-        state = stream_jsonl(
+        state = self.stream(
             cmd, node_id, timeout, None, _on_event,
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
