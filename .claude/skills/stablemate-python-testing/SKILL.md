@@ -60,23 +60,21 @@ Invoke scripts through their entry point with `sys.executable` — not `python3`
 
 ```python
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
-def test_script_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_script_happy_path(tmp_path: Path) -> None:
     # Seed inputs
     (tmp_path / "input.json").write_text('{"key": "val"}', encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, str(SCRIPTS / "my-script.py"), "input.json"],
+        [sys.executable, str(SCRIPTS / "my-script.py"), "--repo-dir", str(tmp_path), "input.json"],
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        env={**os.environ, "AGENT_REPO_DIR": str(tmp_path)},
     )
 
     assert result.returncode == 0, f"stderr: {result.stderr}"
@@ -85,6 +83,13 @@ def test_script_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 ```
 
 Use `sys.executable` — the same interpreter running the test runs the script, ensuring shared dependencies are available.
+
+**State the inputs on the command line, not in `env`.** A path handed over as an environment
+variable is invisible to the caller and unreachable from the CLI, so the test and the real
+invocation drift apart with nothing comparing them. In a workflow distribution this is more
+than a preference — reading the environment under `workhorse_workflows/` is prohibited
+outright (`make check-no-env`), so a test that seeds `AGENT_REPO_DIR` exercises a path the
+code no longer takes.
 
 ## Mocking external calls
 

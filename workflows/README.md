@@ -54,6 +54,44 @@ name. A wheel installed by pip or uv satisfies this; a zipapp or zip-safe egg do
 not, and workhorse refuses one at resolution rather than failing later as a missing
 template.
 
+## A workflow reads no environment (load-bearing)
+
+**Prohibited:** `os.environ`, `os.getenv` and their kin anywhere under
+`src/workhorse_workflows/`. Everything a node or a state needs is an **argument** or a
+**workflow parameter** — a field on the `Workflow` subclass, settable with `--param`.
+
+The reason is the checkpoint. A run's inputs are recorded there, so a resume days later
+on another machine replays the values the run actually started with; a value read from
+the environment is in no checkpoint, so a resume silently takes a *different* one and
+nothing in the artifacts says so. It is also absent from the run's telemetry, and
+unreachable from the CLI — `--params` cannot set it — which splits the operator contract
+across two spellings that no test compares.
+
+The **process boundary** is where the environment legitimately lives, and it is outside
+this package: `workhorse/cli/run.py` and `workhorse/entrypoint.sh` translate `$FOO` into
+`--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
+of them reading `AGENT_REPO_DIR`.
+
+Ambient *paths* — `repo_dir`, `docs_path`, `workspace_file` — are wanted by roughly every
+second node and chosen by no state, which is exactly the shape that used to be an
+environment read. They are fields, and `Workflow.injects` (see `coder/paths.AMBIENT`)
+fills them into any node or sub-flow that declares a parameter of the same name and was
+not passed one. A callsite value always wins, and an empty field injects nothing, so the
+target's own default stands.
+
+One exception, and it is a security property rather than an exemption:
+`kit/credentials.py` resolves tokens from the environment **because** a secret must never
+become a `--param` — params are checkpointed to disk and echoed in logs and telemetry,
+which is precisely what a token must not be. A credential crosses into a subprocess by
+*name* (`_git_network_command` names the variable; git expands it), never by value.
+Keeping that in one auditable module is the point.
+
+The rule is enforced, not just written down:
+
+```bash
+make check-no-env    # also runs as part of `make test`
+```
+
 ## Layout
 
 ```

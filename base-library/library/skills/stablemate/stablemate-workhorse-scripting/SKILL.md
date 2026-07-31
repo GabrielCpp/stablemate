@@ -34,10 +34,11 @@ must never learn the shape of one workflow's data.
   directly in the prompt's Jinja over the args the state passes
   (`{% raw %}{% for svc in plan_result.services %}{% endraw %}` / `| map(attribute='type') | unique`).
 - **A genuinely reusable primitive** → add it to workhorse **parameterised**, with no
-  knowledge of any workflow's field names. `resolve_workspace(env_key)` is the model: the
-  workflow passes `"CODER_WORKSPACE"`; workhorse just reads the env var it's told to. Good
-  additions are things like "read a dotted path from a JSON file", "dedup a list preserving
-  order" — verbs, not nouns from a specific schema.
+  knowledge of any workflow's field names. `find_repo_root(repo_dir)` is the model: the
+  workflow passes the path it already holds as a field, and workhorse resolves the argument
+  it's told to — it reads no environment and knows no workflow's vocabulary. Good additions
+  are things like "read a dotted path from a JSON file", "dedup a list preserving order" —
+  verbs, not nouns from a specific schema.
 
 Litmus test before touching `workhorse/**`: *would a totally different workflow want this
 unchanged?* If it only makes sense for the coder workflow, it belongs in the workflow.
@@ -140,6 +141,45 @@ losing the checkpoint write a raised exception would have gone through. Raise; d
 A process a node **backgrounds** is owned by nothing and is reaped when the node ends. A
 process that must outlive its node has to be started detached and owned explicitly —
 `workhorse.stack`'s `ensure_stack` / `teardown_stack` is the parameterised primitive for it.
+
+## No environment — arguments and workflow parameters only
+
+`os.environ`, `os.getenv` and their kin are **prohibited** anywhere under
+`src/workhorse_workflows/`. Everything a node or a state needs is an argument, or a field
+on the `Workflow` subclass (settable with `--param`). `make check-no-env` enforces it, and
+it runs as part of `make test`.
+
+The reason is the checkpoint. A run's inputs are recorded there, so a resume days later on
+another machine replays what the run actually started with; a value read from the
+environment is in no checkpoint, so a resume silently takes a *different* one and nothing
+in the artifacts says so. It is also absent from the run's telemetry and unreachable from
+`--params`, which splits the operator contract across two spellings no test compares.
+
+The **process boundary** is where the environment legitimately lives, and it is outside
+this package: `workhorse/cli/run.py` and `workhorse/entrypoint.sh` translate `$FOO` into
+`--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
+of them reading `AGENT_REPO_DIR`.
+
+The ambient paths — `repo_dir`, `docs_path`, `workspace_file` — are the shape that used to
+be an environment read: wanted by every second node, chosen by no state. They are fields,
+and `Workflow.injects` (see `coder/paths.AMBIENT`) fills them into any node or sub-flow
+declaring a parameter of the same name that was not passed one. A callsite value always
+wins; an empty field injects nothing, so the target's own default stands.
+
+```python
+# in the Workflow subclass
+injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path", "workspace_file")
+
+# the node just declares what it wants — the callsite says nothing
+def collect(logger: Logger, docs_path: str = "", repo_dir: str = "") -> Docs:
+    root = scriptutil.find_docs_root(docs_path, repo_dir)
+```
+
+One exception, and it is a security property rather than an exemption: `kit/credentials.py`
+resolves tokens from the environment **because** a secret must never become a `--param` —
+params are checkpointed to disk and echoed in logs and telemetry. A credential crosses into
+a subprocess by *name* (git expands the variable), never by value. Keep that in that one
+auditable module. The full rule is in `workflows/README.md`.
 
 ## Idempotency, not just determinism
 
@@ -277,13 +317,17 @@ if gh_repo is not None:
 defining submodule** (`workhorse_workflows.kit.git`), not the `kit` facade, or the
 forwarding hands the test the real one.
 
-**Working directory.** A node inherits the driver's cwd. Use `AGENT_REPO_DIR` when you need
-the run's repo root rather than assuming it:
+**Working directory.** A node inherits the driver's cwd, which is not necessarily the
+checkout under work. Take the repo root as an **argument** rather than assuming it — never
+from the environment, which is prohibited here (see *No environment* below):
 
 ```python
-env_root = os.environ.get("AGENT_REPO_DIR")
-root = Path(env_root).resolve() if env_root else Path.cwd().resolve()
+def my_node(logger: Logger, repo_dir: str = "") -> Result:
+    root = scriptutil.find_repo_root(repo_dir)   # argument first, else walk up from cwd
 ```
+
+The workflow holds `repo_dir` as a field and `Workflow.injects` fills it into any node that
+declares the parameter, so the callsite usually says nothing at all.
 
 ## OKF graph (ostler) — the in-process `ostler` API, never subprocess
 

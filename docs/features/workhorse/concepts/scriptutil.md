@@ -64,24 +64,27 @@ in `die` is itself `NoReturn`.
 
 ## `find_repo_root`
 
-- **Input:** none.
-- **Output:** `Path` — `AGENT_REPO_DIR` (resolved) if that env var is set; else the first of
-  `Path.cwd()` and its parents containing an `agents.yml` or a `.git`; else `Path.cwd()` itself if
-  none match.
+- **Input:** `repo_dir: str | Path = ""` — the run's own input (`Workflow.repo_dir`, which the CLI
+  defaults to the launch directory), handed to the node as an argument.
+- **Output:** `Path` — `repo_dir` resolved when given; else the first of `Path.cwd()` and its
+  parents containing an `agents.yml` or a `.git`; else `Path.cwd()` itself if none match.
 - code: `workhorse/workhorse/scriptutil.py::find_repo_root`
 
-`AGENT_REPO_DIR` takes priority over walking `cwd` because a run's cwd is not necessarily the
-consuming repo (see [workhorse run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
-`agents.yml`/`.git` whenever the two diverge. `workhorse_workflows.kit`'s
-[`resolve_workspace`](workflow-kit.md#resolve_workspace) mirrors this same
-`AGENT_REPO_DIR`-first order for exactly that reason.
+The argument takes priority over walking `cwd` because a run's cwd is not necessarily the consuming
+repo (see [workhorse run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
+`agents.yml`/`.git` whenever the two diverge. It reads **no environment variable**: a node whose
+root depends on the ambient environment is a node whose behavior no caller can see or override,
+which is the rule in [workflows/README.md](../../../../workflows/README.md).
+`workhorse_workflows.kit`'s [`resolve_workspace`](workflow-kit.md#resolve_workspace) mirrors the
+same argument-first order for exactly that reason.
 
 ## `find_docs_root`
 
-- **Input:** `docs_path: str = ""` — an explicit path (typically a workflow parameter).
+- **Input:** `docs_path: str = ""` — an explicit path (typically a workflow parameter);
+  `repo_dir: str | Path = ""`, the same input `find_repo_root` takes, so the two travel together.
 - **Output:** `Path`, resolved in priority order: 1) `docs_path` if given (absolute as-is, else
-  joined under [`find_repo_root()`](#find_repo_root)); 2) the `CODER_DOCS_PATH` env var, same
-  absolute/relative handling; 3) `find_repo_root()` itself if neither is set.
+  joined under [`find_repo_root(repo_dir)`](#find_repo_root)); 2) `find_repo_root(repo_dir)` itself
+  when it is empty — i.e. the docs sit beside the code.
 - code: `workhorse/workhorse/scriptutil.py::find_docs_root`
 
 ## `fresh_import`

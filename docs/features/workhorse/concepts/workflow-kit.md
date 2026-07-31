@@ -41,11 +41,12 @@ monkeypatching a single module used to give for free.
 
 Which repos a run spans, where they are, and getting them onto disk. The manifest is the
 [`.code-workspace` file](../code-workspace-file.md), parsed with scriptutil's
-[`load_jsonc`](scriptutil.md#load_jsonc) by a shared `_read_workspace_file(workspace_env_key)`
-helper: it reads `os.environ[workspace_env_key]` and returns `(folders, ws_dir)`, or `None` when the
-var is unset or names a path that doesn't exist. It returns `None` rather than guessing because
-`resolve_workspace` (read an existing checkout) and `checkout_workspace` (create one) fall back
-differently.
+[`load_jsonc`](scriptutil.md#load_jsonc) by a shared `_read_workspace_file(workspace_file)`
+helper: it parses the path it is handed and returns `(folders, ws_dir)`, or `None` when that path is
+empty or does not exist. The path is an **argument** — the run's `workspace_file` input, never an
+environment read (see [workflows/README.md](../../../../workflows/README.md)). It returns `None`
+rather than guessing because `resolve_workspace` (read an existing checkout) and
+`checkout_workspace` (create one) fall back differently.
 
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file`
 
@@ -56,22 +57,24 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
 [`build_dispatch_list`](#build_dispatch_list), [`get_repo_config`](#get_repo_config) and
 [`get_affected_repos`](#get_affected_repos) all key off.
 
-- **Input:** `workspace_env_key: str = "WORKSPACE_FILE"` — the env var name to read; callers pass
-  their own convention (e.g. `"CODER_WORKSPACE"`) rather than this module assuming one.
+- **Input:** `workspace_file: str | Path = ""` — the manifest the run was given;
+  `repo_dir: str | Path = ""` — the single checkout to fall back to. Both are workflow inputs the
+  caller passes down, so this module assumes no convention and reads no environment.
 - **Output:** `dict[str, dict]` — one entry per folder, each at least `{"path": <abs path str>}`,
   plus (when the folder's `agents.yml` exists and parses) `"template"` (its `template:` mapping) and
   every key of its `workspace:` mapping spread on top.
 - **Algorithm:**
   1. **Locate folders** via `_read_workspace_file`. When it returns `(folders, ws_dir)`, `ws_dir` is
      the workspace file's parent directory and folder `path`s resolve relative to it. When it
-     returns `None`, fall back to a **single-folder** workspace: the root is `AGENT_REPO_DIR` if
-     set, else `Path.cwd()`; its name is that root's `agents.yml` `repo.name` if present, else the
-     directory basename normalized by `_repo_name_from_dir` (the same kebab rule farrier derives a
-     prefix with, so a checkout at `.../Acme` and a config value `acme` resolve to one key); and
-     `ws_dir` is the root's **parent**, so the folder's `path` resolves back to the root itself.
-     `AGENT_REPO_DIR` comes first for the same reason it does in
+     returns `None`, fall back to a **single-folder** workspace: the root is
+     `find_repo_root(repo_dir)`, i.e. the argument when given and otherwise the upward walk from
+     `Path.cwd()`; its name is that root's `agents.yml` `repo.name` if present, else the directory
+     basename normalized by `_repo_name_from_dir` (the same kebab rule farrier derives a prefix
+     with, so a checkout at `.../Acme` and a config value `acme` resolve to one key); and `ws_dir`
+     is the root's **parent**, so the folder's `path` resolves back to the root itself. The
+     argument comes first for the same reason it does in
      [`find_repo_root`](scriptutil.md#find_repo_root) — a bare `Path.cwd()` would key a mono-repo
-     run off the workflow's own directory name instead of the real repo.
+     run off whatever directory the driver was launched from instead of the real repo.
   2. **Merge each folder's `agents.yml`.** Resolve `ws_dir / folder["path"]`; if
      `<abs path>/agents.yml` exists, `yaml.safe_load` it — on a YAML/OS error the entry is just
      `{"path": ...}` with no merge; otherwise take its `template:` mapping (default `{}`) and spread
@@ -81,8 +84,8 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
 - **Raises:** nothing on a missing/invalid `agents.yml` (caught and degraded per folder); an invalid
   `.code-workspace` file itself propagates `load_jsonc`'s `JSONDecodeError`.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace`
-- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_agent_repo_dir_over_cwd`
-- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_agent_repo_dir`
+- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
+- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
 
 The `agents.yml` `workspace:` section is this module's own reading of the file — a multi-repo
 extension distinct from farrier's field list for the same file (see
@@ -96,15 +99,16 @@ Clones or fast-forwards every `url`-bearing folder into `workspace_root`. Invoke
 checkout_workspace()"` — before the engine starts, so every folder's working tree already exists by
 the time the first state runs. Neither coder nor author has a "setup" state.
 
-- **Input:** `workspace_env_key: str = "CODER_WORKSPACE"`; `workspace_root: str | Path =
-  "/workspace"`.
+- **Input:** `workspace_file: str | Path = ""`; `workspace_root: str | Path = "/workspace"`; and
+  keyword-only `repo_url` / `repo_name` / `repo_branch` / `token_env`. `entrypoint.sh` is the
+  process boundary and passes what it read there as arguments (this module's `__main__`).
 - **Output:** `None` (side effect: working trees under `workspace_root`); progress goes to stderr at
   `INFO` through a `"workhorse.checkout"` logger.
 - **Algorithm:**
-  1. **Locate folders** via the same `_read_workspace_file` helper. If it returns `None`, read
-     `REPO_URL`; if empty, log and return having done nothing; else synthesize one folder
-     `{"name": REPO_NAME or "repo", "url": REPO_URL, "branch": REPO_BRANCH or "main"}` — which keeps
-     the 1-repo and N-repo cases on one code path.
+  1. **Locate folders** via the same `_read_workspace_file` helper. If it returns `None`, fall back
+     to the `repo_url` argument; if empty, log and return having done nothing; else synthesize one
+     folder `{"name": repo_name, "url": repo_url, "branch": repo_branch}` — which keeps the 1-repo
+     and N-repo cases on one code path.
   2. `workspace_root.mkdir(parents=True, exist_ok=True)`.
   3. **Per folder without a `url`:** skip entirely. It may not be a git repo at all (e.g. a plain
      docs directory that reaches the container only via a bind mount), so nothing is cloned for it.

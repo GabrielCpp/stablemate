@@ -202,7 +202,7 @@ them — they are one config file so both tools agree on where that content live
 
 ```bash
 workhorse config set-library ~/path/to/your/prompt-library
-# Optionally, also set the stablemate path (used as CODER_WORKSPACE):
+# Optionally, also set the stablemate checkout (where its base-library is found):
 workhorse config set-stablemate ~/path/to/stablemate
 ```
 

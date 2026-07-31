@@ -1,8 +1,8 @@
 """The parity survey's two ends: `load_parity_config`, the freeze, and the emitter.
 
-Same shape as the surveyor's tests — real nodes against a real directory tree, with
-`AGENT_REPO_DIR` pinning the consuming repo. `launch_repo_root()` honours that variable
-just as `survey_repo_root()` does, so the `repo` fixture is the seam for both.
+Same shape as the surveyor's tests — real nodes against a real directory tree, with the
+`repo` fixture standing the test in the consuming repo. `launch_repo_root()` falls back
+to the working directory just as `survey_repo_root()` does, so that one fixture pins both.
 """
 from __future__ import annotations
 
