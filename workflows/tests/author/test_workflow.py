@@ -56,7 +56,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
-from workhorse_workflows.author.nodes.survey import record_slug
+from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.workflow import Author
 
 BACKLOG = "docs/backlog.md"
@@ -76,6 +76,11 @@ SEEDS = {
     "b1": "[b1] Users can sign in with an email and a password",
     "b2": "[b2] Users can reset a forgotten password",
 }
+#: A prose bullet in the backlog's preamble, of the kind every real backlog carries — a
+#: surfaces list, a format note. It is not a scope item: it has no `[id]` handle, so nothing
+#: downstream can address it, and both prune tails must leave it alone *and* keep it out of
+#: their "remaining" count. Counting it made an emptied backlog report work still in it.
+SURFACE = "- **api** — the only surface, and the only writer of stored data"
 #: What the scripted `split-stories` registers, one story per seed.
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
@@ -118,7 +123,11 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     author run, which is what makes `verify_reconcile` report `skipped` rather than a
     defect.
     """
-    write(repo / BACKLOG, "# Backlog\n\n## Scope items\n\n" + "".join(f"- {b}\n" for b in SEEDS.values()))
+    write(
+        repo / BACKLOG,
+        f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
+        + "".join(f"- {b}\n" for b in SEEDS.values()),
+    )
     _commit(repo, "seed")
     return repo
 
@@ -450,7 +459,9 @@ def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
 # --------------------------------------------------------------------------- epic mode
 
 
-def test_epic_mode_authors_the_backlog_and_commits_it(backlogged: Path, tmp_path: Path) -> None:
+def test_epic_mode_authors_the_backlog_and_commits_it(
+    backlogged: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """The straight-through run: one epic, two stories, both gates green, then the git tail.
 
     Every count below is a node the YAML ran exactly once per pass too, and the artifacts
@@ -459,7 +470,9 @@ def test_epic_mode_authors_the_backlog_and_commits_it(backlogged: Path, tmp_path
     and no PR because there is no token.
     """
     agent = _Agent(backlogged)
-    result = _drive(_env(tmp_path), agent)
+    with caplog.at_level("INFO"):
+        result = _drive(_env(tmp_path), agent)
+    pruned = "\n".join(r.getMessage() for r in caplog.records if "pruned" in r.getMessage())
 
     assert agent.counts() == {
         "decompose-epics": 1,
@@ -477,9 +490,14 @@ def test_epic_mode_authors_the_backlog_and_commits_it(backlogged: Path, tmp_path
     # The whole-graph gate ran on a clean graph: no error-level findings left.
     assert not [f for f in Ostler(backlogged).doctor()["findings"] if f["severity"] == "error"]
 
-    # The coverage tail pruned the two bullets the epic consumed, and left the heading.
-    assert _bullets(backlogged) == []
+    # The coverage tail pruned the two bullets the epic consumed, and left the heading —
+    # and the preamble's prose bullet, which was never scope to begin with.
+    assert _bullets(backlogged) == [SURFACE]
     assert "## Scope items" in (backlogged / BACKLOG).read_text()
+    # Nothing outstanding — asserted on the log line, because in epic mode the prune tail's
+    # count reaches a human only there (the run's result is the PR node's). The surviving
+    # prose bullet is not a work item, and counting it says the backlog still holds work.
+    assert "pruned 2 bullet(s)" in pruned and "(0 remaining)" in pruned, pruned
 
     # The git tail: committed on the run's own branch, PR skipped for want of a token.
     assert _subject(backlogged) == "author: epic backlog authoring"
@@ -488,6 +506,46 @@ def test_epic_mode_authors_the_backlog_and_commits_it(backlogged: Path, tmp_path
 
     # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
+
+
+def test_the_commit_leaves_work_the_run_did_not_do_alone(
+    backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
+) -> None:
+    """The run commits the docs it authored, not the working tree it found.
+
+    `repo_dir` defaults to the directory the run was launched from, so the repo author
+    writes into is routinely a checkout somebody else is working in — the git tail used
+    to `git add -A`, which swept their in-flight edits into a commit subjected
+    `author: …`. Anything outside the docs tree must survive the run uncommitted.
+    """
+    stray = write(backlogged / "src/half_finished.py", "def in_progress(): ...\n")
+
+    _drive(_env(tmp_path), _Agent(backlogged))
+
+    assert _subject(backlogged) == "author: epic backlog authoring"
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
+        cwd=backlogged,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert committed, "the run committed nothing at all"
+    # Everything the run authored, and nothing else. `.agents/ids.json` is ostler's id
+    # ledger: it sits outside the docs tree but must land in the same commit as the
+    # documents it numbers, or the next run remints those ids for other entities.
+    assert all(p.startswith("docs/") or p == ".agents/ids.json" for p in committed), committed
+    assert ".agents/ids.json" in committed, committed
+    # Still there, still theirs: untouched on disk and untracked in git.
+    assert stray.read_text() == "def in_progress(): ...\n"
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=backlogged,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert "src/half_finished.py" in untracked, untracked
 
 
 def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
@@ -658,9 +716,11 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
     stories = _stories(with_epic)
     assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
     assert all(stories.values()), stories
-    # The bullet it consumed is pruned; the other one is still work.
-    assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
+    # The bullet it consumed is pruned; the other one is still work, and the preamble's
+    # prose bullet is neither — kept in the file, counted as nothing.
+    assert _bullets(with_epic) == [SURFACE, f"- {SEEDS['b2']}"]
     assert result.removed == 1, result
+    assert result.remaining == 1, result
     assert _commit_count(with_epic) == before, "story mode must not commit"
 
 
