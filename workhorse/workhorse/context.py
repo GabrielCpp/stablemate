@@ -1,3 +1,10 @@
+"""The flat key→value bag a node's prompt and args render against.
+
+Lives at the top level rather than under ``graph/`` because it is not the YAML
+front-end's: the agent runner takes one, and the Python driver builds one per
+`self.agent` call from that node's arguments. The graph walk was only ever its
+first caller.
+"""
 from __future__ import annotations
 from typing import Any
 

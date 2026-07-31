@@ -26,7 +26,7 @@ from stablemate_core.config import (
     write_config_key,
 )
 from workhorse.config_run import RunConfig
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.graph.loader import load_workflow
 from workhorse.requirements import UnmetRequirementsError, check_requirements
 from workhorse.graph.nodes import AgentNode, BranchNode, CallNode, FlowNode, Graph, ScriptNode, TerminalNode

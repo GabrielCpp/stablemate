@@ -2,8 +2,12 @@
 
 A bare workflow NAME resolves across an ordered stack of library layers: the
 configured overlay first, then the base library shipped as the `stablemate-library`
-wheel. This is what lets `workhorse run coder` work from a bare pip install while
+wheel. This is what lets `workhorse run <name>` work from a bare pip install while
 still letting a private overlay override a base workflow.
+
+The fixture name is deliberately one no distribution ships (`acme-flow`): a packaged
+entry point wins over every library layer, so naming the fixture after a real
+workflow tests the entry-point branch instead of the layering this file is about.
 
 Run directly (no pytest required):
     uv run python tests/test_library_layers.py
@@ -46,21 +50,21 @@ def test_base_only_resolves():
     """The zero-config case: `pip install stablemate-library` and run."""
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp) / "base"
-        make_workflow(base, "coder", "base-coder")
+        make_workflow(base, "acme-flow", "base-acme-flow")
         with layers(overlay=None, base=base):
-            path = main._resolve_workflow_path("coder")
-        assert path == (base / "workflows" / "coder" / "workflow.yaml").resolve()
+            path = main._resolve_workflow_path("acme-flow")
+        assert path == (base / "workflows" / "acme-flow" / "workflow.yaml").resolve()
     print("ok: base-only resolves a bare name")
 
 
 def test_overlay_shadows_base():
     with tempfile.TemporaryDirectory() as tmp:
         base, overlay = Path(tmp) / "base", Path(tmp) / "overlay"
-        make_workflow(base, "coder", "base-coder")
-        make_workflow(overlay, "coder", "overlay-coder")
+        make_workflow(base, "acme-flow", "base-acme-flow")
+        make_workflow(overlay, "acme-flow", "overlay-acme-flow")
         with layers(overlay=overlay, base=base):
-            path = main._resolve_workflow_path("coder")
-        assert path.read_text().strip() == "name: overlay-coder"
+            path = main._resolve_workflow_path("acme-flow")
+        assert path.read_text().strip() == "name: overlay-acme-flow"
     print("ok: overlay shadows base")
 
 
@@ -68,11 +72,11 @@ def test_base_fills_gaps_under_an_overlay():
     """An overlay that does not define a workflow must still fall through to the base."""
     with tempfile.TemporaryDirectory() as tmp:
         base, overlay = Path(tmp) / "base", Path(tmp) / "overlay"
-        make_workflow(base, "coder", "base-coder")
+        make_workflow(base, "acme-flow", "base-acme-flow")
         make_workflow(overlay, "private", "overlay-private")
         with layers(overlay=overlay, base=base):
-            path = main._resolve_workflow_path("coder")
-        assert path.read_text().strip() == "name: base-coder"
+            path = main._resolve_workflow_path("acme-flow")
+        assert path.read_text().strip() == "name: base-acme-flow"
     print("ok: base fills the gaps under an overlay")
 
 
@@ -101,14 +105,14 @@ def _expect_exit(spec: str) -> int:
 
 def test_no_layers_at_all_exits():
     with layers(overlay=None, base=None):
-        assert _expect_exit("coder") == 1
+        assert _expect_exit("acme-flow") == 1
     print("ok: no layers at all exits non-zero")
 
 
 def test_name_missing_from_every_layer_exits():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp) / "base"
-        make_workflow(base, "coder", "base-coder")
+        make_workflow(base, "acme-flow", "base-acme-flow")
         with layers(overlay=None, base=base):
             assert _expect_exit("nope") == 1
     print("ok: a name no layer provides exits non-zero")

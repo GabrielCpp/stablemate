@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from workhorse.builtins import REGISTRY
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 from workhorse.graph.nodes import CallNode
 from workhorse.templates import render_string
 

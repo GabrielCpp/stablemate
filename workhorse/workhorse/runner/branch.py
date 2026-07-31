@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any
 
 from workhorse.graph.nodes import BranchNode
-from workhorse.graph.context import WorkflowContext
+from workhorse.context import WorkflowContext
 
 _OPS = {
     "==": lambda a, b: a == b,
