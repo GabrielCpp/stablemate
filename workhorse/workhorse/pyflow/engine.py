@@ -26,6 +26,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from workhorse.artifacts import ArtifactWriter
+from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
@@ -173,6 +174,19 @@ class RunEnv:
     #: distinction the presence of a child checkpoint cannot make. The driver owns
     #: both the setting and the clearing; nothing else writes it.
     resume_pending: bool = False
+
+    def __post_init__(self) -> None:
+        """Bind the run's ladder to the run's clock, once.
+
+        The ladder used to be built in two places — eagerly by the CLI and lazily by
+        the engine on first agent node — and *neither* passed `self.clock`, so the
+        port injected here silently stopped at the driver's own `Await` and the ladder
+        went on waiting on the real one. Building it here is what makes "one run, one
+        clock" true rather than merely documented: there is a single construction site
+        and it can see the field.
+        """
+        if self.agent_runner is None:
+            self.agent_runner = AgentRunner.from_config(self.config, clock=self.clock)
 
     @property
     def run_dir(self) -> Path:
@@ -330,7 +344,10 @@ class Engine:
             **budget,
         )
         self.env.log.info("[workhorse] agent  → %s", node_id)
-        runner = self.env.agent_runner or AgentRunner.from_config(self.env.config)
+        # Never None: `RunEnv.__post_init__` resolves the field, so the ladder this run
+        # uses is the ladder this run was built with — not one this call constructs from
+        # configuration it would have to re-read.
+        runner = self.env.agent_runner
         rendered, raw = runner.run(
             node,
             # The manifest underneath, the state's arguments on top: a state that

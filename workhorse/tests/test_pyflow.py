@@ -886,6 +886,42 @@ def test_dry_run_records_the_calls_without_making_them():
 # ------------------------------------------------------------- the composition root
 
 
+def test_the_run_builds_its_ladder_on_the_run_s_clock():
+    """The run's clock reaches the agent ladder, not just the driver's `Await` poll.
+
+    The two used to be built apart — the CLI made a ladder eagerly, the engine made a
+    second one lazily, and neither passed `RunEnv.clock` — so a run handed a fake clock
+    still waited out an eight-hour cap window for real. `__post_init__` is the single
+    construction site that can see the field, which is what makes it one clock per run.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        clock = FakeClock()
+        env = _env(tmp, clock=clock)
+        assert env.agent_runner is not None, "the ladder is resolved at construction"
+        assert env.agent_runner.clock is clock
+
+
+def test_a_supplied_ladder_is_used_as_given():
+    """Substitution still wins over construction — otherwise the seam every workflow
+    author's test uses (`agent_runner=StubRunner(...)`) would be overwritten by a real
+    ladder built from the run's config."""
+    with tempfile.TemporaryDirectory() as tmp:
+        scripted = ScriptedRunner(lambda *a, **k: ("", {}))
+        assert _env(tmp, agent_runner=scripted).agent_runner is scripted
+
+
+def test_the_ladder_carries_the_run_s_configured_knobs():
+    """`RunConfig` is read once at the CLI edge; the ladder is what that value becomes,
+    so a knob set there must arrive without any other module reading configuration."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config = RunConfig(print_prompt=False, model_override="a-model")
+        runner = _env(tmp, config=config).agent_runner
+        assert runner is not None
+        assert runner.print_prompt is False
+        assert runner.model_override == "a-model"
+        assert runner.resilience is config.resilience
+
+
 def test_the_run_index_supplies_the_body_the_callsite_only_names():
     """`self.call(measure, …)` passes the function because `Concatenate[Logger, P]`
     needs it for typing; what runs is whatever the run's index holds under that name.
