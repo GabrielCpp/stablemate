@@ -1,19 +1,23 @@
 ---
 type: format
 slug: workflow-format
-title: The workflow file format (workflow.yaml)
+title: The workflow file format (workflow.yaml) — RETIRED
 ---
-# Workflow file format
+# Workflow file format — retired
 
-The complete YAML schema of a [workflow](concepts/workflow.md) — the data contract from which
-the model is regenerable. Parsed and validated by [load_workflow](concepts/load-workflow.md);
-consumed by [workhorse run](workhorse.md#run) (executes it) and [workhorse dot](workhorse.md#dot)
-(renders it). Its `vars` are what [run](workhorse.md#run)'s `--params` override. A
-[script](#script) node's own script may import [scriptutil](concepts/scriptutil.md) for shared
-workspace resolution and `git`/`gh` plumbing.
+> **This format no longer exists.** Workhorse has one engine, and it is Python: a workflow is a
+> state machine of decorated methods on a `Workflow`, resolved by name through the
+> `workhorse.workflows` entry-point group. `workhorse run <name>` never reads a `workflow.yaml`,
+> nothing parses this schema, and no `workflow.yaml` remains in this repository. Kept as the
+> record of what the YAML front-end accepted, because the four workflows that ran on it were
+> ported state by state against exactly these fields.
+>
+> The loader that validated it (`workhorse/workhorse/graph/loader.py::load_workflow`), the node
+> model it produced and the `script`/`branch`/`call` runners are all deleted. The concept pages
+> this file links to are grounded in those symbols and are being rewritten with it; until then,
+> read every page under `concepts/` in the past tense too.
 
-- file: `**/workflow.yaml`
-- code: `workhorse/workhorse/graph/loader.py::load_workflow`
+Everything below describes the retired schema.
 
 ## Fields
 

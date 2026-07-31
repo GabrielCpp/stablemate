@@ -49,7 +49,12 @@ Each has a parity section below.
 of graph YAML, its 127 scripts and its 61 prompts. Step 3 took the plumbing that outlived it: a
 library is `library/` and nothing else, and farrier no longer owns `.agents/workflows`. Step 4
 narrowed the fetch: the cache now holds a sparse checkout of `base-library/` with no `.git`, which
-is markdown and YAML and not a line of Python. What remains of loop 2 is one doc.
+is markdown and YAML and not a line of Python. Step 6 put a retired banner on the last two
+documents that still described the format as current.
+
+**Loop 2 is complete** — see "Loop 2 is done" below for the end condition checked rather than
+asserted, and the one finding it leaves for loop 3. Next is loop 3, the documentation pass:
+the plan's §Migration items 1–5.
 
 The port cost the driver **four additive changes, all in loop 1.1 step 1**, all asked for by
 `author`. `okf-builder` and every one of `coder`'s nine stages needed **none** — thirteen
@@ -109,6 +114,7 @@ took it.)
 | 1 | `20f5183` | **The YAML engine.** `graph/` and `runner/{script,branch,call}.py` deleted, `main.py` 1,667 → 670 lines, `testing.py` 575 → 103, and with them the 63 base-library workflow test files, 10 workhorse test files and the `test-workflows` make target. List item 1, done — and it took list item 2's `requires:` half with it |
 | 3 | `81287c4` | **The plumbing.** `is_library_dir` is now `(path/"library").is_dir()` — `workflows/` is no longer a library's content — and farrier stopped owning `.agents/workflows`: gone from `remove_targets` and from the `--check` extra-file scan, taking `should_skip_workflow_file`/`WORKFLOW_SKIP_PARTS` with them. List item 3, done |
 | 4 | `5461e89` | **The fetch.** `_clone_into` is a sparse `base-library/`-only checkout (`--filter=blob:none --sparse`, `sparse-checkout set --no-cone`) that records HEAD in a `.commit` sidecar and deletes `.git`. 628K→240K, and nothing fetched is executable. Fails closed: no fallback to a full clone. List item 4, done |
+| 6 | `PENDING` | **The last two false documents.** `docs/features/workhorse/workflow-format.md` and `workhorse/docs/WORKFLOW.md` (482 lines) carry a retired banner and are reframed in the past tense — corrected, not rewritten; their successors are loop 3's. List item 6, done, and with it loop 2 |
 
 **The entry gate held.** All fourteen `### Parity` sections are present and behavioral, so every
 workflow whose YAML this loop deletes has recorded evidence. Deletion may proceed.
@@ -371,9 +377,57 @@ in the package table and the `pipx inject` line that makes `workhorse run <name>
 schema link to a deleted doc. Also the two `pytest-xdist` comments naming a `pytest.ini` that went
 with the YAML tree, and `workhorse/README.md`'s per-workflow-docs path.
 
-**Next: list item 6, the last one.** Correct `docs/features/workhorse/workflow-format.md`.
-(`base-library/workflows/README.md`, also on the docs-correction bullet, was deleted with its
-directory — the strongest correction available.)
+#### Step 6 — the last two false documents
+
+`docs/features/workhorse/workflow-format.md` (164 lines) and `workhorse/docs/WORKFLOW.md` (482)
+are the same file at two levels of detail: a complete schema reference for a schema with no
+parser. Both now open with a banner saying the format is deleted, that `workhorse run <name>`
+will not read a `workflow.yaml`, that a workflow is a `Workflow` of decorated methods returning
+`Continue`/`Done`/`Await` resolved through the entry-point group, and that the body is the record
+of what the four shipped workflows were ported *from*. The bodies are untouched below that.
+
+That is deliberately a correction and not a rewrite. The plan assigns both successors to loop 3
+(§Migration items 2 and 3) and says of this one that loop 2 "only corrected far enough not to be
+false" — writing the Python-API reference mid-deletion is how it gets written from memory instead
+of from what loop 2 actually built. Two details the banners record because they are the parts
+readers will otherwise assume changed and did not: checkpointing survives, rekeyed from a node id
+to `(state, params)`; and GUARDRAILS' resilience knobs are untouched, because they sit under the
+agent turn, which both engines drive identically.
+
+`workflow-format.md`'s heading anchors are left alone even where the words have gone stale
+(`## Sample (load-valid)`), because the `concepts/` and `flows/` pages link into them and loop 3
+is rewriting that whole book — breaking fifty inbound anchors to fix one adjective is a trade in
+the wrong direction. The two scripting-skill copies still call WORKFLOW.md "the authoritative
+schema"; the banner answers them on arrival, and they are on loop 3's list.
+
+(`base-library/workflows/README.md`, the third file on the docs-correction bullet, was deleted
+with its directory in step 2 — the strongest correction available.)
+
+### Loop 2 is done
+
+The end condition, checked rather than asserted:
+
+- **No YAML front-end remains.** `git ls-files | grep -c workflow.yaml` → `0`.
+  `workhorse/workhorse/graph/` does not exist.
+- **All four resolve through `workhorse.workflows` and still run.** The entry-point group loads
+  `author`, `coder`, `okf-builder`, `research`; all four `workhorse run <name> --dry-run` green.
+- **The 7,719 lines are accounted for.** Every one is a state in a `workhorse_workflows` package
+  with a `### Parity` section above. One thing was carried out rather than deleted and is named:
+  `research`'s program scaffolder. 878 lines of `await-operator.py` were deleted unported, as
+  intended, with the driver's polling `Await` as the replacement.
+
+**One finding for loop 3, recorded and not fixed here**, since fixing it meant improvising on
+farrier mid-deletion: `renderer.py:439-449` still validates a `workflows:` selection against
+`find_in_layers("workflows", name)`. The base ships no `workflows/` directory now, so a base-only
+install cannot name a workflow and the launcher scaffolding it gates is unreachable without an
+overlay that still has one (step 3).
+
+**And one non-finding, checked so loop 3 does not have to.** The plan flags `labels:` and per-node
+`power:` as YAML blocks that are "now something else — and if loop 2 built nothing for them, that
+is a finding." Both exist: `Workflow.labels()` is a hook the driver renders per state onto the
+activity record (`pyflow/driver.py:296`, `RunEnv.labels`), and `power` is a keyword on
+`self.agent(...)` that reaches the turn's budget (`pyflow/engine.py:273`) — it landed in loop 1's
+`5d3f89d`. Loop 3 documents them; it does not need to build them.
 
 ### Parity — `author`
 
