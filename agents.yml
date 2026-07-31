@@ -10,6 +10,8 @@ packs:
   - python-workflow
   - stablemate
   - testing
+  - architecture
+  - ui
 
 # groom's web UI owes the accessibility contract, so select the universal skill
 # directly (only this repo needs it; packs are for bundles reused by ≥2 repos).
@@ -27,8 +29,12 @@ packs:
 # for real means changing that router line in the shared agent library, which is
 # not this repo's call to make unilaterally -- so `stablemate-groom` says
 # out loud that the stack skill does not apply here.
-skills:
-  - ui/ui-accessibility
+# `stablemate/stablemate-repo-docs` governs this repo's prose entry surface --
+# CLAUDE.md, README.md, and the per-package docs/ folders. Selected directly
+# rather than through the `stablemate` pack because it is generic to any repo,
+# not part of the stablemate toolchain bundle; promote it to a pack once a
+# second repo wants it.
+skills: {}
 
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back

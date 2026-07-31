@@ -21,20 +21,20 @@ dependencies = [
   # The shared config file, base-library discovery and cache. Depends on nothing
   # here and must not: tools -> core, never back.
   "stablemate-core>=0.1.0",
+  # Prompt rendering (templates.py) and the static reference scan (references.py).
   "jinja2>=3.1",
-  "pyyaml>=6.0",
-  # Round-trip YAML for the few writers that edit a file a human also maintains
-  # (genesis's agents.yml). pyyaml preserves every value and destroys every comment,
-  # which on a mature repo config is the larger loss and is not recoverable.
-  "ruamel.yaml>=0.18",
+  # Every value crossing a boundary — an agent's JSON reply, a node's return, the
+  # context manifest — is a model.
   "pydantic>=2.0",
+  # Tolerant parsing of an agent reply that is *almost* JSON, before the recovery
+  # ladder spends a retry on it.
   "json-repair>=0.30",
-  "platformdirs>=4.0",
-  # Version comparison for a workflow's `requires:` preflight (requirements.py).
-  # Ambient in most environments via pip/pytest, which is exactly why it needs
-  # declaring — an undeclared import works until it meets a clean venv.
-  "packaging>=23.0",
 ]
+# Deliberately short. The engine is workflow-agnostic, so anything a *workflow* reads
+# belongs on `workhorse-workflows`, not here: YAML (pyyaml/ruamel.yaml) left with the
+# retired YAML front-end and is declared by the workflows that parse it. `platformdirs`
+# is stablemate-core's business — the config/cache paths are the whole reason that
+# package exists — and nothing under `workhorse/` imports it directly.
 
 [project.optional-dependencies]
 # pytest-xdist: the workflow integration suites (e.g. the coder workflow's tests,

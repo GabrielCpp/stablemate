@@ -2047,11 +2047,7 @@ source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },
     { name = "json-repair" },
-    { name = "packaging" },
-    { name = "platformdirs" },
     { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "ruamel-yaml" },
     { name = "stablemate-core" },
 ]
 
@@ -2071,13 +2067,9 @@ requires-dist = [
     { name = "json-repair", specifier = ">=0.30" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.25" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.25" },
-    { name = "packaging", specifier = ">=23.0" },
-    { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "stablemate-core", editable = "core" },
 ]
 provides-extras = ["test", "otel"]
