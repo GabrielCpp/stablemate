@@ -210,7 +210,9 @@ require a checkout of this repository.
 for everything the quick start leaves out — the three tiers of state, checkpoints and
 resume, sub-flows, operator gates, telemetry labels. Holding a `workflow.yaml` from the
 retired YAML engine instead? [workhorse/docs/WORKFLOW.md](workhorse/docs/WORKFLOW.md)
-maps every construct in that schema to what replaces it.
+maps every construct in that schema to what replaces it, and [Why a workflow is Python and
+not a config file](workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file) is
+why that schema is gone.
 
 ## Development
 

@@ -10,7 +10,9 @@ A workflow is a **Python package**, not a file. It declares a `Registry` under a
 that do its work; its distribution publishes that name in the `workhorse.workflows`
 entry-point group, which is how [`workhorse run <name>`](workhorse.md#run) finds it. There
 is no file to hand the CLI and no schema to validate — the package *is* the format, and
-Python's own import and signature machinery is what checks it.
+Python's own import and signature machinery is what checks it. Why it is a package rather
+than a declarative file is argued once, in
+[workhorse/README.md](../../../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file).
 
 This page is the **structural reference**: what a workflow package contains and what each
 piece must be. The narrative guide to writing one — worked examples, the three tiers of

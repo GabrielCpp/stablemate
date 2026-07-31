@@ -1997,6 +1997,50 @@ farrier's injected `metadata:` frontmatter** (`generated_by`, `source`, `resolve
 `do_not_edit`) — 5–8 lines per file. Zero content drift; the installed copy faithfully
 mirrors the source.
 
+### Iteration 10 — the motivation, which was missing rather than duplicated
+
+Work-order item 5: *"Motivate the design ONCE, in one place, and link to it. Five READMEs
+each re-arguing why workflows are Python is how a repo reads as unfinished."*
+
+**Finding 23 — the premise is inverted, and that is the more serious defect.** Nothing in
+the tree argues why a workflow is Python. Six tracked files *assert* it —
+`workhorse/README.md` (three times), `workhorse/docs/AUTHORING.md`,
+`base-library/README.md`, `docs/features/workhorse/workflow-format.md`,
+`flows/workhorse-setup-and-run.md`, the root `CLAUDE.md` — each stating the fact because
+it needs it locally, and **none giving a reason**. A repo does not read as unfinished
+because it argues a decision five times; it reads as arbitrary because it announces one
+five times and defends it never. The rationale existed only inside
+`workflow-as-python-state-machine.md` — the ~1,550-line plan that item 6 is about to
+retire, which would have deleted the only written justification for the change the whole
+loop is documenting.
+
+Written once now, as **"Why a workflow is Python and not a config file"** in
+`workhorse/README.md` — chosen because it is the PyPI landing page, so it is where someone
+*evaluating* workhorse arrives, and because that file already carries the only `## Why`
+section in the tree. Recovered from the plan's `## Why change anything` (lines 34–61) and
+`## The trilemma this resolves` (683–698), which is the sanctioned narrow read: intent the
+shipped source cannot express. It carries the three real arguments — values and loops are
+what a graph schema cannot model (the constant kept in sync by comment, `for _ in range(3)`
+emulated with four nodes and three scripts, every inter-node value a Jinja string);
+dependency isolation, which the plan itself calls the bigger win; and the pick-two the
+state boundary resolves, **including what it gives up** (a complete static graph — the
+interior of a state is opaque to `workhorse dot`).
+
+The five assertion sites now link to it rather than each implying its own reason: the root
+`README.md`, `workhorse/docs/AUTHORING.md`, `workhorse/docs/WORKFLOW.md`,
+`base-library/README.md` and `docs/features/workhorse/workflow-format.md`.
+
+**Finding 24 — the migration note existed but was unreachable from the one page that
+matters.** Item 5's last bullet calls a migration note "a public obligation". Iteration 2
+already wrote it (`workhorse/docs/WORKFLOW.md`), and it was linked from the root README,
+AUTHORING.md, workflow-format.md and DEVELOPMENT.md. But `workhorse/README.md` — the PyPI
+page, the *most likely arrival point for someone holding a `workflow.yaml`*, since they
+have the distribution and not the checkout — **never mentioned the YAML front-end at all**,
+in any of its 450 lines. The obligation was discharged everywhere except where it was owed.
+Fixed with a callout at the end of the new section.
+
+Both remaining item-5 bullets are now done; item 5 is closed.
+
 ### The green gate, and a concurrent workstream
 
 `make test` is **red in the working tree and green at `HEAD`**, re-verified each iteration
