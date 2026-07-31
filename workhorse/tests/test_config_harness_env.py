@@ -27,13 +27,11 @@ from unittest.mock import patch
 from stablemate_core.config import resolve_harness_env
 from workhorse.config_run import AgentResilience
 from workhorse.runner import agent, backends
-from workhorse.runner.backends import (
-    AiderBackend,
-    ClaudeBackend,
-    CodexBackend,
-    CopilotBackend,
-    OpenCodeBackend,
-)
+from workhorse.runner.backends.aider import AiderBackend
+from workhorse.runner.backends.claude import ClaudeBackend
+from workhorse.runner.backends.codex import CodexBackend
+from workhorse.runner.backends.copilot import CopilotBackend
+from workhorse.runner.backends.opencode import OpenCodeBackend
 
 
 CONFIG = {
@@ -120,9 +118,11 @@ def _spawn_env(backend, **run_turn_kwargs):
             on_line(line)
         return False, 0
 
+    # Only the shared classifier is stubbed: every backend — Claude directly, the
+    # others through ``backends.turn.finalize_turn`` — ends its turn there, so one
+    # patch at that boundary covers all five without reaching into any adapter.
     with (
         patch.object(agent, "stream_subprocess", fake_stream),
-        patch.object(backends, "_finalize_turn", lambda *a, **k: "ok"),
         patch.object(agent, "classify_turn", lambda *a, **k: "ok"),
     ):
         backend.run_turn(

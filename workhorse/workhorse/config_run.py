@@ -168,7 +168,7 @@ class RunConfig:
     #: Absolute wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S); 0 = unbounded.
     max_runtime_s: float = 0.0
     #: Resolves the active agent backend by name. Overridden by the test harness to
-    #: return a mock backend; ``None`` means "use runner.backends.get_backend".
+    #: return a mock backend; ``None`` means "use runner.backends.registry.get_backend".
     backend_factory: Callable[[str | None], AgentBackend] | None = None
 
     @classmethod
@@ -183,7 +183,11 @@ class RunConfig:
         """Resolve the backend for this run via ``backend_factory`` or the default."""
         if self.backend_factory is not None:
             return self.backend_factory(cli)
-        from workhorse.runner.backends import get_backend
+        # Deferred because the registry imports every adapter and each adapter
+        # imports this module for ``AgentResilience`` — a genuine runtime cycle, not
+        # a layering shortcut. The fix is for RunConfig to be *given* a backend at
+        # the CLI boundary rather than resolve one; that is the cli/ split's job.
+        from workhorse.runner.backends.registry import get_backend
 
         return get_backend()
 

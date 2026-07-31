@@ -16,6 +16,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.runner.agent import BackendInvocationError
@@ -38,9 +39,11 @@ def _node() -> AgentNode:
     )
 
 
-def _run(node, **kw):
+def _run(node, backend=None, **kw):
     """Drive one node with the ladder's knobs INJECTED (``AgentResilience`` fields),
-    not patched onto the module — the ladder reads no configuration of its own."""
+    not patched onto the module — the ladder reads no configuration of its own. The
+    backend is injected for the same reason: ``run_agent`` resolves no CLI of its own,
+    so a test that wants a particular compaction outcome hands one over."""
     # node.prompt is normally a template FILE path; render it inline for the test.
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)):
         return agent.run_agent(
@@ -48,6 +51,7 @@ def _run(node, **kw):
             WorkflowContext(initial={}),
             Path("."),
             None,
+            backend=backend or FakeBackend(),
             resilience=AgentResilience(**kw),
         )
 
@@ -79,6 +83,7 @@ def test_rendered_prompt_is_written_and_only_path_is_printed():
             Path("."),
             None,
             run_dir=run_dir,
+            backend=FakeBackend(),
         )
 
     assert outputs == {"decision": "approve", "review": "looks good"}
@@ -96,7 +101,7 @@ def test_empty_result_then_reframe_succeeds():
     def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            # Mirrors _run_claude_cli when result text is empty.
+            # Mirrors what a backend's turn raises when the result text is empty.
             raise BackendInvocationError(
                 "No 'result' event received from Claude for node 'review_implementation'",
                 transient=True,
@@ -185,7 +190,10 @@ def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
     good = json.dumps({"decision": "continue", "review": "ok"})
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
          patch.object(agent, "_invoke_claude", lambda *a, **k: good):
-        agent.run_agent(_node(), WorkflowContext(initial={}), Path("."), sid_path)
+        agent.run_agent(
+            _node(), WorkflowContext(initial={}), Path("."), sid_path,
+            backend=FakeBackend(),
+        )
 
     # The stub never re-wrote it, so a cleared file means "started clean".
     assert not sid_path.exists(), "new node should drop the prior node's session"
@@ -203,6 +211,7 @@ def test_interrupted_node_keeps_session_for_resume(tmp_path=None):
          patch.object(agent, "_invoke_claude", lambda *a, **k: good):
         agent.run_agent(
             _node(), WorkflowContext(initial={}), Path("."), sid_path,
+            backend=FakeBackend(),
             resume_session=True,
         )
 
@@ -239,9 +248,10 @@ def test_overflow_compacts_then_continues_same_prompt():
 
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
          patch.object(agent, "_invoke_claude", fake_invoke), \
-         patch.object(agent, "_compact_session", fake_compact), \
          patch.object(agent.time, "sleep", lambda s: None):
-        _, outputs = _run(_node(), max_rephrase_attempts=2)
+        _, outputs = _run(
+            _node(), backend=FakeBackend(compact=fake_compact), max_rephrase_attempts=2
+        )
 
     assert outputs == {"decision": "approve", "review": "done"}
     assert compacted["n"] == 1, "should compact exactly once"
@@ -258,9 +268,13 @@ def test_overflow_falls_back_to_reframe_when_compaction_fails():
 
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
          patch.object(agent, "_invoke_claude", always_overflow), \
-         patch.object(agent, "_compact_session", failed_compact), \
          patch.object(agent.time, "sleep", lambda s: None):
-        _, outputs = _run(_node(), max_rephrase_attempts=1, max_compact_attempts=1)
+        _, outputs = _run(
+            _node(),
+            backend=FakeBackend(compact=failed_compact),
+            max_rephrase_attempts=1,
+            max_compact_attempts=1,
+        )
 
     # Compaction failed → reframe exhausted → declared defaults.
     assert outputs["decision"] == "continue"
@@ -279,9 +293,13 @@ def test_overflow_compaction_attempts_are_bounded():
 
     with patch.object(agent, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
          patch.object(agent, "_invoke_claude", always_overflow), \
-         patch.object(agent, "_compact_session", ok_compact), \
          patch.object(agent.time, "sleep", lambda s: None):
-        _run(_node(), max_rephrase_attempts=1, max_compact_attempts=2)
+        _run(
+            _node(),
+            backend=FakeBackend(compact=ok_compact),
+            max_rephrase_attempts=1,
+            max_compact_attempts=2,
+        )
 
     assert compacted["n"] == 2, "compaction must be bounded by max_compact_attempts"
 

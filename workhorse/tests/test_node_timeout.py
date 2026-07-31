@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from _fakes import FakeBackend
 from workhorse.config_run import AgentResilience
 from workhorse.runner import agent
 from workhorse.context import WorkflowContext
@@ -44,7 +45,9 @@ def _run_capturing(node):
 
     with patch.object(agent, "render", fake_render), \
          patch.object(agent, "_invoke_claude", fake_invoke):
-        agent.run_agent(node, WorkflowContext(initial={}), Path("."), None)
+        agent.run_agent(
+            node, WorkflowContext(initial={}), Path("."), None, backend=FakeBackend()
+        )
     return seen["ctx"], seen["timeout"]
 
 
