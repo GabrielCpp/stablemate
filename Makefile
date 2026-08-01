@@ -7,15 +7,26 @@ help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
+# The one command a fresh clone runs. `hooks` is here rather than left to the reader
+# because git carries no hook configuration: a clone starts with core.hooksPath unset,
+# so both guards are silently off until someone sets it — and the commit that needed
+# stopping is usually the first one, made before anyone has read this file.
+.PHONY: install
+install: sync hooks ## Set up a fresh clone: sync the workspace venv, then install the git hooks
+
 .PHONY: sync
 sync: ## Sync the workspace venv (all members) from the root uv.lock
 	uv sync --all-packages
 
 .PHONY: hooks
-hooks: ## Install the git hooks (blocks private overlay names from this public repo)
+hooks: ## Install the git hooks (private-name guard + Conventional Commits check)
 	git config core.hooksPath .githooks
-	@echo "hooks installed. Names come from \$$STABLEMATE_PRIVATE_NAMES or"
-	@echo "\$$GIT_DIR/private-names (both untracked); with neither, the hook is a no-op."
+	@echo "hooks installed:"
+	@echo "  pre-commit  blocks private overlay names. They come from"
+	@echo "              \$$STABLEMATE_PRIVATE_NAMES or \$$GIT_DIR/private-names (both"
+	@echo "              untracked); with neither configured, this hook is a no-op."
+	@echo "  commit-msg  rejects a subject that is not a Conventional Commit, since"
+	@echo "              release-please reads the type to decide what gets released."
 
 .PHONY: lint
 lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)

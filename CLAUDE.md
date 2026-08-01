@@ -28,7 +28,7 @@ them from an untracked source instead: `$STABLEMATE_PRIVATE_NAMES`, or
 `$GIT_DIR/private-names` (one per line; `.git/` is never committed).
 
 ```bash
-make hooks    # once per clone: installs .githooks/pre-commit
+make install  # once per clone: venv + hooks (`make hooks` for the hooks alone)
 ```
 
 The hook blocks any commit whose staged paths or added lines carry a configured name.
@@ -95,3 +95,49 @@ for a reviewer.
 
 The full rationale, and the fixes that recur, are in the `python-cli`, `python-testing`
 and `python-architecture` skills.
+
+## Commit messages are Conventional Commits (load-bearing)
+
+Releases are cut by **release-please**, which reads commit subjects and nothing else.
+The type is therefore not a style preference — it is the input that decides whether a
+package ships and at what version:
+
+| Subject                    | Effect on the package named by the scope |
+| -------------------------- | ---------------------------------------- |
+| `feat:`                    | minor bump                               |
+| `fix:` / `perf:` / `refactor:` | patch bump                           |
+| `<type>!:` or a `BREAKING CHANGE:` body paragraph | major bump        |
+| `docs:` `test:` `build:` `ci:` `chore:` | **no release at all**       |
+
+A repaired defect labelled `chore:` ships to nobody, and the omission surfaces weeks
+later as a bug report against a version that never contained the fix. That is the
+failure this rule exists to prevent.
+
+```
+<type>(<scope>): <lowercase imperative description>
+
+<optional body, wrapped at 72 columns, explaining why — not what>
+```
+
+- **types**: `feat` `fix` `perf` `refactor` `docs` `test` `build` `ci` `chore` `revert`.
+  Pick by what the change *is*, not how large it is: a rename, a move or an extraction
+  is `refactor`, never `feat`.
+- **scope**: one tracked top-level directory — `core`, `workhorse`, `workflows`,
+  `farrier`, `ostler`, `groom`, `saddlebag`, `base-library`, `benchmarks`, `docs`,
+  `scripts` — or one of `deps`, `release`, `ci`, `lint`, `hooks`. It names the
+  *package*, not the module inside it: `fix(workhorse):`, not `fix(runner):`, because
+  the package is what gets released. Omit the parentheses entirely for a repo-wide change.
+- Subject ≤ 72 characters, no capital first word, no trailing period.
+- **One concern per commit.** A stage spanning four unrelated changes cannot be labelled
+  correctly by any single type, so whichever type is chosen withholds a release from the
+  other three. Split first, then label.
+
+```bash
+make install  # installs .githooks/commit-msg alongside the private-names hook
+```
+
+`.githooks/commit-msg` rejects a subject that violates the above, deriving the valid
+scopes from the tracked top-level directories so a new workspace member needs no edit.
+`git commit --no-verify` bypasses it. A generated message — Zed's *Generate commit
+message*, an agent's — only ever biases toward this format; the hook is what makes it
+hold.
