@@ -72,15 +72,27 @@ def _rewrite_wikilinks(body: str) -> str:
 def _emit_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
                  body_lines: list[str]) -> list[str]:
     """Canonical lines for one metadata bullet: normalize its ``- key: value`` first line and keep
-    any nested child lines verbatim; expand a one-line ``does:`` into the nested-bullet form."""
+    any nested child lines verbatim; expand a one-line ``does:`` into the nested-bullet form.
+
+    The first line is rebuilt from ``raw[0]``, never from ``bullet.text``. A bullet whose value
+    soft-wraps across source lines has all of them in ``bullet.text``, newline included, so a
+    first line built from it *already contains* the continuation — and ``raw[1:]`` then appended
+    it a second time. Every ``fmt`` run added another copy of every wrapped line, which also made
+    the formatter non-idempotent on any doc whose prose is wrapped at a column, i.e. most of them.
+    """
     raw = body_lines[bullet.line_start:bullet.line_end]
     key = _bullet_key(bullet.text)
     spec = uitype.bullet_by_key.get(key or "")
     if spec is None:
         return raw  # unrecognized bullet — leave exactly as authored
-    value = bullet.text.split(":", 1)[1].strip() if ":" in bullet.text else ""
-    if spec.nested and value and not bullet.children:
-        return [f"- {key}:", f"  - {value}"]
+    if spec.nested and not bullet.children:
+        # The expansion collapses the value into one nested bullet, so here the wrap *is* joined
+        # — deliberately, and on whitespace, so no newline survives into the emitted line.
+        whole = " ".join((bullet.text.split(":", 1)[1] if ":" in bullet.text else "").split())
+        if whole:
+            return [f"- {key}:", f"  - {whole}"]
+    head = raw[0]
+    value = head.split(":", 1)[1].strip() if ":" in head else ""
     first = f"- {key}: {value}" if value else f"- {key}:"
     return [first, *raw[1:]]
 
