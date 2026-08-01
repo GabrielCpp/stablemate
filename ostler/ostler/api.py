@@ -35,6 +35,7 @@ from __future__ import annotations
 # as. The method keeps its name: it is the public API spelling of the CLI verb.
 import builtins
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -341,15 +342,20 @@ class Ostler:
     def qa_context(self, *, base: str, spec: str | Path, head: str = "WORKTREE",
                    source_roots: dict[str, builtins.list[str]] | None = None,
                    features_root: str = "",
-                   story_file: str | Path | None = None) -> dict:
+                   story_file: str | Path | None = None,
+                   exclude_paths: Iterable[str] = ()) -> dict:
         """Build the base/head changed-code→OKF obligation packet and write it into
-        ``spec`` (``ostler qa context``); returns the packet."""
+        ``spec`` (``ostler qa context``); returns the packet.
+
+        ``exclude_paths`` drops repo-relative paths from the diff before it is mapped —
+        for a ``head="WORKTREE"`` caller that knows some of the dirt is not its own."""
         from ostler.qa import build_context, write_context
 
         packet = build_context(
             self.root, base=base, head=head, source_roots=source_roots or {},
             features_root=features_root,
-            story_file=self._resolve(story_file) if story_file else None)
+            story_file=self._resolve(story_file) if story_file else None,
+            exclude_paths=exclude_paths)
         write_context(packet, self._resolve(spec))
         return packet
 
