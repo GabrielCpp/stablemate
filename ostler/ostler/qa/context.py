@@ -6,6 +6,7 @@ import ast
 import json
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,18 @@ _VERIFY_REF_RE = re.compile(
     r"(?P<path>[A-Za-z0-9_./$-]+\.(?:py|tsx?|jsx?|go|mjs|cjs|ya?ml|dart|java|kts?|rs|sh|bash|sql|rb|php|cs|swift|feature))"
     r"(?:::(?P<symbol>[^`,]+))?"
 )
+
+#: Reason kinds that reach a node only through the graph, never through the diff. A node
+#: held solely by these was not touched by this story — the closure walked to it from
+#: something that was. It stays in the packet as context and is not owed live evidence.
+_CLOSURE_REASON_KINDS = frozenset(
+    {"contains-impacted-node", "flow-links-contract", "flow-contract-closure", "graph-closure"}
+)
+
+#: Bullets that name how to address a node in a running UI. Lifted onto the obligation so a
+#: planner writing a browser locator reads them there rather than re-deriving them from the
+#: sibling `role:`/`name:` obligations it happens to have been handed.
+_LOCATOR_KEYS = ("selector", "role", "name", "keyboard", "route", "entry", "params")
 
 _QA_REQUIREMENT_KEYS = {
     "flow": ("start", "end"),
@@ -71,8 +84,17 @@ def build_context(
     source_roots: dict[str, list[str]] | None = None,
     features_root: str = "",
     story_file: Path | None = None,
+    exclude_paths: Iterable[str] = (),
 ) -> dict[str, Any]:
+    """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
+
+    `exclude_paths` are repo-relative paths to drop from the diff before anything is
+    obligated on them. It exists for the `head="WORKTREE"` caller: the worktree is not a
+    commit, so it can hold work that belongs to whoever left it there rather than to the
+    change under examination, and only that caller can tell the two apart.
+    """
     root = root.resolve()
+    excluded_paths = {str(path) for path in exclude_paths}
     # Repo-relative on purpose: this one is handed to `git ls-tree`, which pathspecs against
     # the work tree, not the filesystem. Empty means "wherever this repo configures its book",
     # which ostler answers — spelling `docs/features` here would read the wrong tree in a repo
@@ -90,7 +112,8 @@ def build_context(
     changes = [
         change
         for change in _changed_units(root, base, head, source_roots)
-        if not any(
+        if change.path not in excluded_paths
+        and not any(
             change.path == prefix or change.path.startswith(prefix.rstrip("/") + "/")
             for prefix in excluded_doc_roots
         )
@@ -261,6 +284,7 @@ def build_context(
         for item in verification_index
         if item["impacted"]
     ]
+    grounded: set[str] = set()
     for node_id in sorted(selected):
         node = nodes_by_id[node_id]
         for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
@@ -274,6 +298,8 @@ def build_context(
                         "message": "code grounding resolves in neither base nor head",
                     }
                 )
+            else:
+                grounded.add(node_id)
         if not _verification_refs(node):
             health.append(
                 {
@@ -287,13 +313,19 @@ def build_context(
         obligation
         for node_id in sorted(contracts)
         for obligation in _obligations(
-            nodes_by_id[node_id], direct_reasons.get(node_id, []), journey=False
+            nodes_by_id[node_id],
+            direct_reasons.get(node_id, []),
+            journey=False,
+            required=_is_required(node_id, direct_reasons, grounded),
         )
     ] + [
         obligation
         for node_id in sorted(journeys)
         for obligation in _obligations(
-            nodes_by_id[node_id], direct_reasons.get(node_id, []), journey=True
+            nodes_by_id[node_id],
+            direct_reasons.get(node_id, []),
+            journey=True,
+            required=_is_required(node_id, direct_reasons, grounded),
         )
     ]
     obligations.sort(key=lambda item: item["id"])
@@ -318,12 +350,26 @@ def build_context(
     }
 
 
+#: The whole-book verification table, split out of the agent-facing packet. It carries one
+#: row per `verify:` ref in the entire feature graph — impacted or not — because
+#: `_attribute_failures` classifies a failing test as "outside-impact" rather than
+#: "unattributed" only when it can find a non-impacted owner. That makes it the largest
+#: member of the packet by far and the least useful to a reader: on a nine-epic book it was
+#: 61% of a 676 KB file that a planning agent reads in full. The reader keeps
+#: `verificationRefs` — the impacted subset — and the machine reads this beside it.
+VERIFICATION_INDEX_FILE = "qa-okf-verification-index.json"
+
+
 def write_context(packet: dict[str, Any], spec_dir: Path) -> tuple[Path, Path]:
     spec_dir.mkdir(parents=True, exist_ok=True)
     json_path = spec_dir / "qa-okf-context.json"
     md_path = spec_dir / "qa-okf-context.md"
-    json_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
-    md_path.write_text(render_context(packet), encoding="utf-8")
+    reader_packet = {key: value for key, value in packet.items() if key != "verificationIndex"}
+    (spec_dir / VERIFICATION_INDEX_FILE).write_text(
+        json.dumps(packet.get("verificationIndex", []), indent=2) + "\n", encoding="utf-8"
+    )
+    json_path.write_text(json.dumps(reader_packet, indent=2) + "\n", encoding="utf-8")
+    md_path.write_text(render_context(reader_packet), encoding="utf-8")
     return json_path, md_path
 
 
@@ -348,7 +394,10 @@ def render_context(packet: dict[str, Any]) -> str:
         lines.append("- (none)")
     lines.extend(["", "## Obligations", ""])
     for obligation in packet.get("obligations", []):
-        lines.append(f"- `{obligation['id']}`: {obligation['requirement']}")
+        suffix = "" if obligation.get("required", True) else "  _(context only — not owed evidence)_"
+        lines.append(f"- `{obligation['id']}`: {obligation['requirement']}{suffix}")
+        for key, values in sorted(obligation.get("locators", {}).items()):
+            lines.append(f"  - {key}: {'; '.join(values)}")
     if not packet.get("obligations"):
         lines.append("- (none)")
     lines.extend(["", "## Health Findings", ""])
@@ -472,6 +521,14 @@ def _changed_units(
             if head == "WORKTREE"
             else _revision_text(root, head, item["new"])
         )
+        if not base_text and not head_text:
+            # Nothing readable on either side: a compiled artifact, a binary asset, or an empty
+            # file. None of the three can be grounded — there is no symbol to cite and no
+            # behaviour to verify — so leaving them in only makes the ownership gate unwinnable,
+            # the same failure mode `_is_generated_unit` exists to prevent. A *deleted source*
+            # file is not caught here: its base side still reads as text, and losing a
+            # documented symbol is a real obligation.
+            continue
         status = "modified"
         if item["old"] == "/dev/null":
             status = "added"
@@ -543,12 +600,12 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
         declarations: list[tuple[int, str]] = []
         if suffix == ".go":
             for match in inventory.GO_DECL.finditer(text):
-                star, receiver, method, func, typename = match.groups()
+                star, receiver, method, func, typename, value = match.groups()
                 if method:
                     owner = f"(*{receiver})" if star else receiver
                     name = f"{owner}.{method}"
                 else:
-                    name = func or typename
+                    name = func or typename or value
                 declarations.append((text.count("\n", 0, match.start()) + 1, name))
         elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
             declarations.extend(
@@ -582,11 +639,23 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
 
 
 def _revision_text(root: Path, revision: str, path: str) -> str:
+    """The blob's text at `revision`, or "" — the same answer `_working_text` gives for a file
+    it cannot decode, so the two sides of a diff agree about what "unreadable" means.
+
+    Binary is not an exotic input here: a repo that committed a compiled artifact and then
+    deleted it puts that blob on the base side of the very first diff, and `git show` streams
+    its bytes. Decoding those strictly used to raise straight out of `build_context`, so one
+    stray executable in the change set voided the whole obligation packet.
+    """
     if not path or path == "/dev/null":
         return ""
     try:
-        return _git(root, "show", f"{revision}:{path}")
+        blob = _git_bytes(root, "show", f"{revision}:{path}")
     except RuntimeError:
+        return ""
+    try:
+        return blob.decode("utf-8")
+    except UnicodeDecodeError:
         return ""
 
 
@@ -616,11 +685,24 @@ def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
     return False
 
 
-def _git(root: Path, *args: str) -> str:
-    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+def _git_bytes(root: Path, *args: str) -> bytes:
+    """Raw stdout. Never `text=True`: git's output is only text by convention — `show` streams
+    a blob verbatim, and `diff` inlines the bytes of any file git guessed was text — so a
+    strict decode inside `subprocess` raises `UnicodeDecodeError` from wherever git was called
+    rather than from a place that can decide what an undecodable file means."""
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True)
     if result.returncode:
-        raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(stderr or f"git {' '.join(args)} failed")
     return result.stdout
+
+
+def _git(root: Path, *args: str) -> str:
+    """Decoded leniently: every caller but `_revision_text` wants path lists or hunk headers,
+    which are ASCII, and would rather see a replacement character inside one line of a diff
+    than lose the whole listing. `_revision_text` decodes strictly off `_git_bytes` instead,
+    because there "undecodable" has a meaning — no symbols — and "" is how it is spelled."""
+    return _git_bytes(root, *args).decode("utf-8", errors="replace")
 
 
 def _values(value: Any) -> list[str]:
@@ -761,6 +843,11 @@ def _is_non_production_path(path: str) -> bool:
     # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
     if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
         return True
+    # The same footprint, at any depth: `okf_builder`'s coverage node writes
+    # `.source-inventory.json` *into the source root it scanned*, so there is one per code tree
+    # and no root-scoping to lean on. The dotted name is unambiguous enough to stand alone.
+    if name == ".source-inventory.json":
+        return True
     # CI and agent-tooling dotfile trees.
     return bool(parts and parts[0] in {".github", ".gitlab", ".agents"})
 
@@ -838,11 +925,37 @@ def _is_generated_unit(root: Path, change: ChangedUnit) -> bool:
     return bool(_GENERATED_MARKER.search(head))
 
 
+def _is_required(
+    node_id: str,
+    direct_reasons: dict[str, list[dict[str, str]]],
+    grounded: set[str],
+) -> bool:
+    """Whether this node's obligations are owed live evidence, or are only context.
+
+    Two conditions, both from the book rather than from inference. The node must be
+    *grounded* — at least one `code:` ref that resolves in base or head — because a node
+    whose `code:` is empty documents something nobody has built yet, and a QA plan cannot
+    exercise a route or a component that has no implementation. And it must be reached by
+    the diff directly rather than only by graph closure, because the closure is deliberately
+    broad: a single edited file drags in every flow that links to every contract it owns.
+    Demanding live proof for the whole closure is what made the packet grow faster than the
+    change did.
+    """
+    kinds = {reason.get("kind", "") for reason in direct_reasons.get(node_id, [])}
+    return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
+
+
+def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
+    bullets = node.get("bullets", {})
+    return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
+
+
 def _obligations(
     node: dict[str, Any],
     reasons: list[dict[str, str]],
     *,
     journey: bool,
+    required: bool = True,
 ) -> list[dict[str, Any]]:
     suffix = "end-state" if journey else "contract"
     base = {
@@ -851,9 +964,13 @@ def _obligations(
         "node": node["id"],
         "source": node["path"],
         "requirement": node.get("title") or node["id"],
-        "evidenceRequired": "live",
+        "required": required,
+        "evidenceRequired": "live" if required else "context",
         "reasons": reasons or [{"kind": "graph-closure", "ref": node["id"]}],
     }
+    locators = _locators(node)
+    if locators:
+        base["locators"] = locators
     output = [base]
     normative_keys = (
         "consistency",

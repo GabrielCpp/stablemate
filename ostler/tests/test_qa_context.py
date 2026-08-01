@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -517,3 +518,117 @@ def test_context_ignores_generated_code_alongside_real_change(tmp_path: Path):
     paths = [change["path"] for change in packet["changedCode"]]
     assert "svc/controller.py" in paths, paths
     assert "svc/schema_pb2.py" not in paths, paths
+
+
+def test_deleted_binary_does_not_void_the_packet(tmp_path: Path):
+    """A binary blob on the base side must not take the whole obligation packet down with it.
+
+    `_revision_text` read `git show <base>:<path>` through `subprocess(text=True)`, so the
+    bytes of a committed-then-deleted compiled artifact raised `UnicodeDecodeError` out of
+    `build_context` — no packet, no `qa-okf-context.json`, and the docs gate failing with a
+    codec error for a story whose real change was ordinary Go source next to it.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/link.md").write_text(
+        "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc/controller.py").write_text("def create_link():\n    return 1\n", "utf-8")
+    # An ELF header: byte 24 is the entry point's first octet, which is where the strict
+    # decode used to fail. Committed, then deleted — exactly how a stray `go build` lands.
+    (tmp_path / "svc/server").write_bytes(b"\x7fELF\x02\x01\x01\x00" + bytes(16) + b"\xa0\x87G\x00")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/server").unlink()
+    (tmp_path / "svc/controller.py").write_text(
+        "def create_link():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"svc": ["svc"]})
+
+    changes = {change["path"]: change for change in packet["changedCode"]}
+    assert "svc/controller.py" in changes, changes
+    assert changes["svc/controller.py"]["headSymbols"] == ["create_link"]
+    # And it is not owed documentation: a blob with no readable side has no symbol to cite,
+    # so demanding an owner for it is a gate no correct answer clears.
+    assert "svc/server" not in changes, changes
+    assert not [f for f in packet["healthFindings"] if f["severity"] == "error"]
+    assert packet["obligations"]
+
+
+def test_the_inventory_the_toolchain_writes_into_a_source_root_is_not_owed(tmp_path: Path):
+    """`.source-inventory.json` is ours, not the product's, at whatever depth it lands.
+
+    `okf_builder`'s coverage node writes it into each source root it scans, so the existing
+    root-scoped `agents.yml`/`qa-stack.yml` rule never saw it and the ownership gate reported
+    it as an unmapped production unit — inviting an agent to invent a feature Concept that
+    owns the tool's own cache file.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/link.md").write_text(
+        "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc/controller.py").write_text("def create_link():\n    return 1\n", "utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/controller.py").write_text(
+        "def create_link():\n    return 2\n", encoding="utf-8")
+    (tmp_path / "svc/.source-inventory.json").write_text('{"symbols": []}\n', encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"svc": ["svc"]})
+
+    paths = [change["path"] for change in packet["changedCode"]]
+    assert "svc/controller.py" in paths, paths
+    assert "svc/.source-inventory.json" not in paths, paths
+
+
+def test_excluded_paths_leave_the_diff_before_anything_is_obligated_on_them(tmp_path: Path):
+    """`head="WORKTREE"` is not a commit, so some of the dirt can be somebody else's.
+
+    The caller that asked for this diffs one story's work against `HEAD`. When an earlier
+    story died before its commit, its package is still on disk and lands in *this* story's
+    packet — obligations to test code the story never wrote, forever, until a human commits
+    or reverts it. The caller is the only party that can tell the two apart, so it names the
+    paths and this drops them before the mapping runs: no changed unit, and no obligation
+    derived from one either.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/link.md").write_text(
+        "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc/controller.py").write_text("def create_link():\n    return 1\n", "utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/controller.py").write_text(
+        "def create_link():\n    return 2\n", encoding="utf-8")
+    # The abandoned story's package: never committed, and nothing in the graph mentions it.
+    (tmp_path / "svc/orphan.py").write_text("def strand():\n    return 3\n", encoding="utf-8")
+
+    charged = build_context(tmp_path, base=base, source_roots={"svc": ["svc"]})
+    assert "svc/orphan.py" in [c["path"] for c in charged["changedCode"]], charged["changedCode"]
+
+    packet = build_context(
+        tmp_path, base=base, source_roots={"svc": ["svc"]}, exclude_paths=["svc/orphan.py"]
+    )
+
+    paths = [change["path"] for change in packet["changedCode"]]
+    assert "svc/controller.py" in paths, paths
+    assert "svc/orphan.py" not in paths, paths
+    # And it is gone from the findings too — an excluded path cannot be an unmapped unit.
+    assert "orphan" not in json.dumps(packet["healthFindings"]), packet["healthFindings"]

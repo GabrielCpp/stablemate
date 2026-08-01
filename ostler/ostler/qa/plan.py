@@ -9,6 +9,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -198,6 +199,11 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     action_ids: set[str] = set()
     asserted_coverage: set[str] = set()
     all_coverage = _known_coverage(document.context)
+    documented = {
+        obligation["id"]: obligation.get("locators") or {}
+        for obligation in document.context.get("obligations", [])
+        if is_mapping(obligation) and obligation.get("id")
+    }
     for index, scenario in enumerate(scenarios):
         label = f"scenarios[{index}]"
         if not isinstance(scenario, dict):
@@ -302,6 +308,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 elif not output.is_relative_to(spec_dir / "qa"):
                     problems.append(f"{prefix} output must be under qa/")
             problems.extend(_validate_tokens(action, prefix, inputs, secrets))
+        if driver == "playwright":
+            problems.extend(_validate_book_locators(str(scenario_id), covers, actions, documented))
         if covers and not has_assertion:
             problems.append(f"scenario '{scenario_id}' lists coverage but has no machine assertion")
         if has_assertion:
@@ -309,6 +317,13 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
     for obligation in document.context.get("obligations", []):
         if not isinstance(obligation, dict) or not obligation.get("id"):
+            continue
+        # An obligation the context builder marked as context-only names something this
+        # story neither built nor touched — an unimplemented endpoint the closure walked to,
+        # a screen with no `code:` behind it. Demanding an asserted scenario for it is what
+        # sent planners after routes that do not exist. Absent the key, require it: a packet
+        # written before the flag existed says nothing about which of its members are real.
+        if obligation.get("required", True) is False:
             continue
         if obligation["id"] not in asserted_coverage:
             problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
@@ -505,6 +520,114 @@ def _contained_path(base: Path, raw: Any) -> Path | None:
     except ValueError:
         return None
     return resolved
+
+
+#: A bullet's leading token — `alert` out of `alert`, and out of `alert — a static region`.
+#: The book writes a clean ARIA role most of the time and trailing prose the rest of it, and
+#: a rule that only fires on the clean spelling is a rule the planner routes around.
+_BULLET_TOKEN_RE = re.compile(r"^[\s`\"']*([^\s—,;(`\"']+)")
+
+#: `n/a` on a `role:`/`route:` bullet is the book saying the node has none — a static region
+#: with no interactive control, a component that never owns a URL. Not an address.
+_ABSENT_BULLET = frozenset({"n/a", "na", "none", "-", "—"})
+
+
+def _bullet_tokens(values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for value in values if isinstance(values, list) else [values]:
+        match = _BULLET_TOKEN_RE.match(str(value or ""))
+        token = match.group(1).strip().lower() if match else ""
+        if token and token not in _ABSENT_BULLET:
+            tokens.add(token)
+    return tokens
+
+
+def _route_matches(route: str, url: str) -> bool:
+    """Whether a planned `goto` lands on a route the book documents.
+
+    Segment-wise, because a documented route carries parameters (`/docs/:slug`, `/docs/{id}`)
+    and so does a planned URL (`/docs/{{slug}}`, filled from a prior step). Either side's
+    parameter matches anything; a literal must match a literal.
+    """
+    planned = urlsplit(url).path or "/"
+    documented = urlsplit(route).path or "/"
+    left = [part for part in planned.strip("/").split("/") if part]
+    right = [part for part in documented.strip("/").split("/") if part]
+    if len(left) != len(right):
+        return False
+    return all(
+        part.startswith((":", "{")) or other.startswith((":", "{")) or part == other
+        for part, other in zip(left, right, strict=True)
+    )
+
+
+def _validate_book_locators(
+    scenario_id: str,
+    covers: list[str],
+    actions: list[Any],
+    documented: dict[str, dict[str, Any]],
+) -> list[str]:
+    """A browser scenario is addressed the way the book says, or it does not validate.
+
+    The OKF book already carries `role:`, `name:`, `selector:` and `route:` for every screen
+    and component; the packet puts them on the obligation. Left as prompt guidance this was
+    ignored outright — every locator written before this gate was a text match on a rendered
+    string, which passes today, breaks on the next copy edit, and proves nothing about the
+    accessible name the book requires. So it is enforced here instead: a `text:` locator is
+    rejected when the book gave an address for everything the scenario covers, a stated role
+    must actually be addressed by role, and a `goto` may only reach a documented route.
+
+    Both role rules are deliberately scoped to leave no dead end. A scenario mixing a
+    role-documented node with one the book gives no address for still needs text for the
+    latter, so the text rejection fires only when *every* covered obligation states a role;
+    and a screen node documenting `role: main` should not force a `get_by_role("main")` next
+    to the assertion that matters, so one role locator satisfies the addressing rule. A gate
+    that demands the impossible is a gate the planner burns its turns against.
+    """
+    roles: set[str] = set()
+    routes: set[str] = set()
+    addressable = bool(covers)
+    for cover in covers:
+        locators = documented.get(cover) or {}
+        node_roles = _bullet_tokens(locators.get("role"))
+        addressable = addressable and bool(node_roles or _bullet_tokens(locators.get("selector")))
+        roles |= node_roles
+        routes |= {route for route in _bullet_tokens(locators.get("route")) if route.startswith("/")}
+
+    used_roles: set[str] = set()
+    text_actions: list[str] = []
+    goto_urls: list[str] = []
+    for index, action in enumerate(actions):
+        if not is_mapping(action):
+            continue
+        locator = action.get("locator")
+        if is_mapping(locator):
+            if "role" in locator:
+                used_roles |= _bullet_tokens(locator.get("role"))
+            if "text" in locator:
+                text_actions.append(f"action {index + 1}")
+        if action.get("do") == "goto" and action.get("url"):
+            goto_urls.append(str(action["url"]))
+
+    problems: list[str] = []
+    if roles and addressable:
+        for where in text_actions:
+            problems.append(
+                f"scenario '{scenario_id}' {where} uses a text locator while the covered "
+                f"OKF node documents role(s) {sorted(roles)} — address it by role and name"
+            )
+    if roles and not used_roles:
+        problems.append(
+            f"scenario '{scenario_id}' covers OKF node(s) documenting role(s) {sorted(roles)} "
+            "that no Playwright locator addresses by role"
+        )
+    for url in goto_urls:
+        if routes and not any(_route_matches(route, url) for route in sorted(routes)):
+            problems.append(
+                f"scenario '{scenario_id}' navigates to {url!r}, which is not a route "
+                f"documented by the covered OKF node(s): {sorted(routes)}"
+            )
+    return problems
 
 
 def _validate_locator(locator: Any, label: str, driver: str) -> list[str]:
