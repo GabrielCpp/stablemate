@@ -179,6 +179,56 @@ def test_go_grounds_a_qualified_method_and_an_unexported_func():
     assert inventory.declares("x.go", GO, "NotHere") is False
 
 
+GO_VALUES = '''\
+package schema
+
+type ElementName string
+
+type Alias = ElementName
+
+const (
+	ElementPage ElementName = "page"
+	ElementBody ElementName = "body"
+	unexported  ElementName = "nope"
+)
+
+var InlineElements = []ElementName{ElementRef}
+
+var ElementRules = map[ElementName]ElementRule{
+	ElementPage: {RequiredAttributes: []string{"schema"}},
+}
+
+var (
+	Grouped = 1
+	Paired, Also = 2, 3
+	Table = map[string]int{
+		NotADeclaration: 1,
+	}
+)
+'''
+
+
+def test_go_resolves_package_level_values_and_named_types():
+    """A Go table is where a closed vocabulary lives, and the book has to be able to cite it.
+
+    `ElementRules` is the direct analog of a TypeScript `const` the TS scanner has always
+    resolved, so a parity doc could ground the TS half and never the Go one — a correct
+    citation that `doctor` reports as `missing-code-symbol` forever. `Alias` and
+    `ElementName` come with it: only `struct`/`interface` used to count as a type.
+    """
+    assert inventory.symbols("schema.go", GO_VALUES) == [
+        "ElementName", "Alias", "ElementPage", "ElementBody", "InlineElements",
+        "ElementRules", "Grouped", "Paired", "Also", "Table"]
+
+
+def test_a_composite_literal_inside_a_value_block_is_not_a_declaration():
+    """Depth, not indentation. `NotADeclaration: 1` is a map key one level in, and reads
+    exactly like a `var (…)` entry until you count braces."""
+    declared = inventory.declared_names("schema.go", GO_VALUES)
+    assert "NotADeclaration" not in declared, sorted(declared)
+    assert {"unexported", "Grouped", "ElementRules"} <= declared, sorted(declared)
+
+
 TS = '''\
 export function exported() {}
 function local() {}

@@ -72,8 +72,19 @@ GO_DECL = re.compile(
     r"^func\s+\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?(\*?)\s*([A-Za-z_][A-Za-z0-9_]*)"
     r"(?:\[[^\]]*\])?\s*\)\s*([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
     r"|^func\s+([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
-    r"|^type\s+([A-Za-z][A-Za-z0-9_]*)(?:\[[^\]]*\])?\s+(?:struct|interface)\b",
+    r"|^type\s+([A-Za-z][A-Za-z0-9_]*)(?:\[[^\]]*\])?\s*[=A-Za-z_*\[(]"
+    r"|^(?:var|const)\s+([A-Za-z][A-Za-z0-9_]*)\b",
     re.MULTILINE,
+)
+#: A `var (…)` / `const (…)` block, opened and closed in column zero. `type (…)` is left
+#: out on purpose: its entries are struct declarations whose *fields* look exactly like
+#: declarations one level in, and no repo has needed it.
+GO_GROUP = re.compile(r"^(?:var|const)\s*\(\s*?\n(.*?)^\)", re.MULTILINE | re.DOTALL)
+#: One entry in such a block: the name, or the leading name of a `A, B = 1, 2` list. The
+#: negative lookahead rejects a composite-literal key (`ElementPage: {…}`), which is the
+#: shape a value spilling over several lines contributes.
+GO_GROUP_DECL = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*)\s*(?![:,])"
 )
 TS_DECL = re.compile(
     r"^export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
@@ -193,28 +204,67 @@ def _php_symbols(text: str, *, public_only: bool) -> list[str]:
     return out
 
 
+def _go_group_names(body: str) -> list[tuple[int, str]]:
+    """The names a `var (…)` / `const (…)` block declares, with their offsets into `body`.
+
+    Brace-depth tracked rather than indentation-matched: a value that spills over several
+    lines (`ElementRules = map[…]{…}` inside a block) indents entries that are
+    syntactically indistinguishable from declarations, and `ElementPage: {…}` is not a
+    package-level name.
+    """
+    found: list[tuple[int, str]] = []
+    depth = 0
+    offset = 0
+    for line in body.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if depth == 0 and stripped:
+            m = GO_GROUP_DECL.match(stripped)
+            if m:
+                start = offset + (len(line) - len(stripped))
+                found.extend((start, n.strip()) for n in m.group(1).split(","))
+        depth += sum(line.count(c) for c in "{[(") - sum(line.count(c) for c in "}])")
+        offset += len(line)
+    return found
+
+
 def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
-    """Types/funcs, plus each method qualified by its receiver.
+    """Types/funcs/vars/consts, plus each method qualified by its receiver.
 
     `func (w *FirebaseClaimsWriter) SetRoleClaims(…)` → `(*FirebaseClaimsWriter).SetRoleClaims`;
     a value receiver drops the star. Export is judged on the *method* name, not the receiver's:
     an exported method on an unexported type is still part of the surface.
+
+    Package-level values count. A Go table (`var ElementRules = map[…]{…}`) is where a
+    closed vocabulary actually lives, and it is the direct analog of the TypeScript `const`
+    the TS scanner has always resolved — a book documenting both sides of a parity pair
+    could ground the TS half and never the Go one, which makes a correct citation an
+    unfixable `missing-code-symbol`. Ordering is by source position across all four shapes,
+    because `symbols` is the inventory's ordered unit list.
     """
-    out: list[str] = []
-    for star, receiver, method, func, typename in GO_DECL.findall(text):
+    found: list[tuple[int, str]] = []
+    for m in GO_DECL.finditer(text):
+        star, receiver, method, func, typename, value = m.groups()
         if method:
             if exported_only and not method[:1].isupper():
                 continue
             owner = f"(*{receiver})" if star else receiver
-            out.append(f"{owner}.{method}")
+            found.append((m.start(), f"{owner}.{method}"))
             if not exported_only:
-                out.extend((method, receiver))
+                found.extend(((m.start(), method), (m.start(), receiver)))
             continue
-        name = func or typename
+        name = func or typename or value
         if exported_only and not name[:1].isupper():
             continue
-        out.append(name)
-    return out
+        found.append((m.start(), name))
+    for block in GO_GROUP.finditer(text):
+        base = block.start(1)
+        found.extend(
+            (base + at, name)
+            for at, name in _go_group_names(block.group(1))
+            if not (exported_only and not name[:1].isupper())
+        )
+    found.sort(key=lambda pair: pair[0])
+    return [name for _, name in found]
 
 
 def symbols(path: str | Path, text: str) -> list[str]:
