@@ -275,11 +275,30 @@ def _same_test_path(left: str, right: str) -> bool:
     return left == right or left.endswith(f"/{right}") or right.endswith(f"/{left}")
 
 
-def _attribute_failures(result: RegressionRun, context: dict) -> RegressionRun:
+def _verification_index(spec_path: Path, spec_dir: str, logger: logging.Logger) -> list:
+    """The whole-book verify table, from its sidecar file.
+
+    It used to be a member of `qa-okf-context.json`, where it was the bulk of a packet a
+    planning agent reads in full while only this node ever read that member. Ostler writes
+    it beside the packet now; a run whose context predates the split still carries it
+    inline, so fall back there rather than losing attribution on a resumed story.
+    """
+    if not spec_dir:
+        return []
+    sidecar = load_json(
+        spec_path / "qa-okf-verification-index.json", "qa-okf-verification-index.json", logger
+    )
+    if isinstance(sidecar, list):
+        return sidecar
+    context = load_json(spec_path / "qa-okf-context.json", "qa-okf-context.json", logger)
+    index = context.get("verificationIndex", [])
+    return index if isinstance(index, list) else []
+
+
+def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
     """Attach the OKF `verify:` owner of each failing test — diagnosis, never a downgrade."""
     if result.status != "failed" or not result.failing_tests:
         return result
-    index = context.get("verificationIndex", [])
     attribution = []
     for failure in result.failing_tests:
         test_path = failure.split(": ", 1)[0]
@@ -390,12 +409,7 @@ def run_regression_suite(
     else:
         result = RegressionRun(notes=f"platform={platform!r} — nothing to run")
 
-    context = (
-        load_json(spec_path / "qa-okf-context.json", "qa-okf-context.json", logger)
-        if spec_dir
-        else {}
-    )
-    result = _attribute_failures(result, context)
+    result = _attribute_failures(result, _verification_index(spec_path, spec_dir, logger))
     logger.info("regression run status=%s (%d failing)", result.status, len(result.failing_tests))
     return result
 
