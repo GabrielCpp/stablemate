@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Enforce Conventional Commits on the subject line.
+#
+# Under release-please the type is not a style preference — it is the input that
+# decides whether a package is released and at what version. A `chore:` that should
+# have been `fix:` ships nothing, silently, and the omission is only visible weeks
+# later when someone reports a bug against a version that never shipped the fix.
+# A prompt (Zed's generate-message, an agent's) can only bias; this decides.
+#
+# Enable:  make hooks     (sets core.hooksPath to .githooks)
+# Bypass:  git commit --no-verify
+set -uo pipefail
+
+msg_file="$1"
+
+# Git's own comment lines, and everything below the `--verbose` scissors, are not
+# part of the message. Strip both, then drop leading blanks so `head -n1` is the
+# real subject even when the editor opened on an empty first line.
+clean="$(sed '/^# -\+ >8 -\+$/,$d' "$msg_file" | grep -v '^#')"
+body_start="$(printf '%s\n' "$clean" | sed -n '/./,$p')"
+subject="$(printf '%s\n' "$body_start" | head -n1)"
+second="$(printf '%s\n' "$body_start" | sed -n '2p')"
+
+# Messages git or a tool composes, not a human: nothing to enforce.
+case "$subject" in
+  Merge\ *|Revert\ \"*|fixup!\ *|squash!\ *|amend!\ *) exit 0 ;;
+  '') echo "commit-msg: empty commit message." >&2; exit 1 ;;
+esac
+
+# Same list as the Zed `commit_message_instructions` and the CLAUDE.md section, so
+# the thing that generates and the thing that judges cannot disagree.
+types='feat|fix|perf|refactor|docs|test|build|ci|chore|revert'
+
+# Scopes are derived, not hardcoded: every tracked top-level directory is a valid
+# scope, so adding a workspace member needs no edit here. The extras are the
+# cross-cutting areas that are real but own no directory.
+mapfile -t dirs < <(git ls-tree -d --name-only HEAD 2>/dev/null | grep -v '^\.')
+scopes=("${dirs[@]}" deps release ci lint hooks)
+
+fail() {
+  echo "commit-msg: $1" >&2
+  echo >&2
+  echo "  subject: $subject" >&2
+  echo >&2
+  echo "Conventional Commits: <type>(<scope>): <lowercase imperative description>" >&2
+  echo "  types:  ${types//|/, }" >&2
+  echo "  scopes: ${scopes[*]}  (optional — omit for repo-wide changes)" >&2
+  echo "  feat/fix/perf/refactor release a version; docs/test/build/ci/chore do not." >&2
+  echo >&2
+  echo "To commit anyway: git commit --no-verify" >&2
+  exit 1
+}
+
+[[ ${#subject} -le 72 ]] || fail "subject is ${#subject} characters, over the 72 limit."
+
+if [[ ! $subject =~ ^($types)(\(([a-z0-9][a-z0-9._-]*)\))?(!)?:\ (.+)$ ]]; then
+  fail "subject is not a Conventional Commit."
+fi
+scope="${BASH_REMATCH[3]}"
+description="${BASH_REMATCH[5]}"
+
+# Skipped when HEAD does not exist yet (the very first commit): there is no tree to
+# derive scopes from, and rejecting every scope would be the wrong answer.
+if [[ -n $scope && ${#dirs[@]} -gt 0 ]]; then
+  found=""
+  for s in "${scopes[@]}"; do [[ $s == "$scope" ]] && found=1 && break; done
+  [[ -n $found ]] || fail "'$scope' is not a known scope."
+fi
+
+# Uppercase first word is the tell that the built-in "capitalize the subject line"
+# rule won over the convention — the single most common way a generated message
+# comes back wrong.
+[[ $description =~ ^[A-Z] ]] && fail "the description must not start with a capital."
+[[ $description == *. ]] && fail "the description must not end with a period."
+
+# A body that starts on line 2 is invisible to `git log --oneline` and to
+# release-please's changelog, which reads the subject alone.
+[[ -z $second ]] || fail "leave a blank line between the subject and the body."
+
+exit 0

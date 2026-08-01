@@ -217,13 +217,17 @@ why that schema is gone.
 ## Development
 
 ```bash
-make sync                            # create the workspace venv (all members)
-make hooks                           # once per clone: the private-name pre-commit hook
+make install                         # once per clone: the workspace venv + the git hooks
+make sync                            # just the venv, when that is all that changed
 make test                            # every suite + the benchmark tests + check-public
 make build                           # wheels + sdists for core, workhorse, workflows, farrier
 make -C farrier check                # inspect a built wheel's contents
 make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom)
 ```
+
+`make install` is `sync` plus `hooks`, because git carries no hook configuration: a
+fresh clone has `core.hooksPath` unset, so the private-name guard and the
+Conventional Commits check are both silently off until something sets it.
 
 `make sync` runs `uv sync --all-packages` so every member is installed. (Plain
 `uv sync` targets the workspace root, which is an intentionally non-packaged
