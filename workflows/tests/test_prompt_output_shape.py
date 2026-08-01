@@ -74,30 +74,35 @@ def _top_level_keys(body: str) -> set[str] | None:
     return keys or None
 
 
-def _turns(source: Path) -> list[tuple[int, ast.expr, ast.expr]]:
+def _turns(source: Path) -> list[tuple[int, str, ast.expr]]:
     """Every `self.agent(...)` in `source` as `(line, prompt, returns)`.
 
     A call missing either argument is skipped rather than failed: `returns=` is optional in
     the engine (a turn without one is asked for a single scalar key) and a non-literal prompt
     is `test_prompts_exist.py`'s finding to report, not this file's to report twice.
     """
-    found: list[tuple[int, ast.expr, ast.expr]] = []
+    found: list[tuple[int, str, ast.expr]] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for node in ast.walk(tree):
-        fn = node.func if isinstance(node, ast.Call) else None
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
         if not (isinstance(fn, ast.Attribute) and fn.attr == "agent"):
             continue
         if not (isinstance(fn.value, ast.Name) and fn.value.id == "self"):
             continue
-        prompt = node.args[0] if node.args else None
-        returns = None
+        prompt: ast.expr | None = node.args[0] if node.args else None
+        returns: ast.expr | None = None
         for kw in node.keywords:
             if kw.arg == "prompt":
                 prompt = kw.value
             elif kw.arg == "returns":
                 returns = kw.value
+        # A literal prompt is a path string; a constant of any other type is as much
+        # `test_prompts_exist.py`'s finding as a non-literal one, and drops out with it.
         if returns is not None and isinstance(prompt, ast.Constant):
-            found.append((node.lineno, prompt, returns))
+            if isinstance(prompt.value, str):
+                found.append((node.lineno, prompt.value, returns))
     return found
 
 
@@ -106,7 +111,7 @@ def _sites() -> list[tuple[str, Path, int, str, ast.expr]]:
     for name in WORKFLOWS:
         for source in sorted((PACKAGE / name).rglob("*.py")):
             for lineno, prompt, returns in _turns(source):
-                sites.append((name, source, lineno, prompt.value, returns))
+                sites.append((name, source, lineno, prompt, returns))
     return sites
 
 

@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from ostler.untyped import is_mapping
+
 MECHANISMS = {"live", "synthetic", "fixture"}
 DRIVERS = {"command", "playwright", "maestro"}
 ASSERT_KEYS = {
@@ -222,7 +224,10 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             covers = []
         for cover in covers:
             if cover not in all_coverage:
-                problems.append(f"scenario '{scenario_id}' covers unknown ID '{cover}'")
+                problems.append(
+                    f"scenario '{scenario_id}' "
+                    f"{_uncoverable(cover, document.context, all_coverage)}"
+                )
 
         escape_hatches = int("test_file" in scenario) + int("maestro_flow" in scenario)
         actions = scenario.get("actions")
@@ -242,7 +247,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         driver = target.get("driver")
         for action_index, action in enumerate(actions):
             prefix = f"scenario '{scenario_id}' action {action_index + 1}"
-            if not isinstance(action, dict):
+            if not is_mapping(action):
                 problems.append(f"{prefix} must be a mapping")
                 continue
             action_id = action.get("id")
@@ -270,6 +275,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                     problems.append(f"{prefix} action {operation!r} is not supported by command driver")
                 if operation == "command" and any(key in action for key in ASSERT_KEYS):
                     has_assertion = True
+                if operation == "command":
+                    problems.extend(_evidence_paths_in_command(action.get("cmd"), prefix))
             locator = action.get("locator")
             if locator is not None:
                 problems.extend(_validate_locator(locator, prefix, driver))
@@ -313,6 +320,37 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     return problems
 
 
+#: A bare `qa/steps/…` or `qa/asserts/…` inside a command. Anchored to a shell token boundary so
+#: `/abs/qa/steps/x` — the absolute spelling that works — is not the tail of a match, while both
+#: `qa/steps/x` and `./qa/steps/x` are.
+_BARE_EVIDENCE_PATH = re.compile(
+    r"""(?:^|[\s;&|<>()"'`=])(?:\./)?qa/(?:steps|asserts)/""", re.MULTILINE
+)
+
+
+def _evidence_paths_in_command(cmd: Any, prefix: str) -> list[str]:
+    """Reject a command that reaches for the evidence directory by a bare relative path.
+
+    `out:` and `capture:` are resolved against the spec directory, so `out: qa/steps/x.txt`
+    lands in the evidence dir and ostler creates its parent. A step's `cmd`, though, runs with
+    its cwd at the **repo root** — where `qa/steps/` does not exist. The identical string
+    therefore means two different places depending on which key it sits under, and the failure
+    is silent in the worst way: the redirect fails, the command dies with empty stdout, and
+    every assertion chained off it fails against an implementation that is correct. One run
+    lost 38 of 66 assertions to this and reported working code as broken.
+
+    Caught here rather than at run time because the diagnostic can name the action and the fix
+    (absolute path, or `capture:` + `{{key}}` instead of a hand-rolled temp file), while the
+    runtime symptom is an empty file with no explanation attached.
+    """
+    if not isinstance(cmd, str) or not _BARE_EVIDENCE_PATH.search(cmd):
+        return []
+    return [
+        f"{prefix} command uses a bare 'qa/steps/' or 'qa/asserts/' path; a cmd runs from the "
+        f"repo root, so use the absolute qa_dir path or chain values with capture:/{{{{key}}}}"
+    ]
+
+
 def _validate_background(background: Any) -> list[str]:
     """Check the daemons a plan starts before its scenarios run.
 
@@ -329,7 +367,7 @@ def _validate_background(background: Any) -> list[str]:
     seen: set[str] = set()
     for index, daemon in enumerate(background):
         label = f"background[{index}]"
-        if not isinstance(daemon, dict):
+        if not is_mapping(daemon):
             problems.append(f"{label} must be a mapping")
             continue
         name = daemon.get("name")
@@ -356,7 +394,7 @@ def _validate_background(background: Any) -> list[str]:
                     f"{label}.ready_check as a string must be an http(s) URL; "
                     "use a {cmd, assert_contains} mapping for a command probe"
                 )
-        elif isinstance(check, dict):
+        elif is_mapping(check):
             unknown = set(check) - {"cmd", "assert_contains", "timeout"}
             if not isinstance(check.get("cmd"), str) or not check["cmd"].strip():
                 problems.append(f"{label}.ready_check mapping requires a non-empty 'cmd'")
@@ -423,6 +461,42 @@ def _known_coverage(context: dict[str, Any]) -> set[str]:
     return known
 
 
+def _uncoverable(cover: str, context: dict[str, Any], known: set[str]) -> str:
+    """Say *why* `covers: [cover]` is not coverable, and what to write instead.
+
+    "unknown ID" alone is true of two different mistakes with opposite repairs, and it
+    describes only the rarer one. An id naming a **documented node that this change does
+    not touch** is not unknown — the node is right there in the book, which is where the
+    plan author read it. Told it is unknown, the author goes back to the book, finds it,
+    and either re-asserts the same id or invents a neighbour; the coverable set is the one
+    place the message never sent them. That lap is not free: a coder run spent one of its
+    three plan reworks re-submitting `…/api.md#tooling:contract` for a real `#tooling`
+    section that simply owned none of the changed files.
+
+    So the two are separated, and the obligations this change *does* carry are named. They
+    are bounded — a diff wide enough to have hundreds is one where the list is the answer.
+    """
+    node = cover.split(":", 1)[1].rsplit(":", 1)[0] if cover.startswith("okf:") else ""
+    documented = {
+        *(str(item) for item in context.get("contracts", [])),
+        *(str(item) for item in context.get("journeyNodes", [])),
+        *(str(item.get("node", "")) for item in context.get("directNodes", [])
+          if isinstance(item, dict)),
+    }
+    coverable = ", ".join(sorted(known)[:12]) or "(none — this change carries no obligations)"
+    if node and node in documented:
+        return (
+            f"covers '{cover}', which is a documented node but not an obligation of this "
+            f"change — nothing in the diff is owned by it, so there is no requirement here "
+            f"to verify. Drop the scenario, or point it at what this change does owe: "
+            f"{coverable}"
+        )
+    return (
+        f"covers unknown ID '{cover}' — it is neither an obligation of this change nor one "
+        f"of its acceptance criteria. Coverable here: {coverable}"
+    )
+
+
 def _contained_path(base: Path, raw: Any) -> Path | None:
     candidate = Path(str(raw))
     resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
@@ -434,7 +508,7 @@ def _contained_path(base: Path, raw: Any) -> Path | None:
 
 
 def _validate_locator(locator: Any, label: str, driver: str) -> list[str]:
-    if not isinstance(locator, dict) or not locator:
+    if not is_mapping(locator) or not locator:
         return [f"{label} locator must be a non-empty mapping"]
     unknown = set(locator) - LOCATOR_KEYS
     if unknown:

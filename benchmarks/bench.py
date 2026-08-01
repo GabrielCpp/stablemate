@@ -75,6 +75,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import NoReturn
 
 import tomli_w
 import yaml
@@ -97,11 +98,12 @@ from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 HERE = Path(__file__).resolve().parent
 STABLEMATE = HERE.parent
-# A workflow is an installed distribution resolved by name through the
-# `workhorse.workflows` entry-point group, so there is no per-workflow directory to run
-# from any more (`base-library/workflows/<name>` was deleted with the YAML engine). Runs
-# are launched from the workspace root, which is all `uv run` needs; the source tree is
-# still located, but only to date the code a run was produced by — see `read_runs`.
+# A workflow is an installed distribution that ships its own console script
+# (`workhorse-coder`), so there is no per-workflow directory to run from any more
+# (`base-library/workflows/<name>` was deleted with the YAML engine) and no name to hand
+# a generic runner. Runs are launched from the workspace root, which is all `uv run`
+# needs; the source tree is still located, but only to date the code a run was produced
+# by — see `read_runs`.
 WORKFLOW_SRC = STABLEMATE / "workflows" / "src" / "workhorse_workflows"
 
 # ── The rubric. One definition, used by the prompt, the parser, and the report. ────────
@@ -152,7 +154,7 @@ def say(msg: str) -> None:
     print(f"\n{BOLD}== {msg}{RESET}", flush=True)
 
 
-def die(msg: str) -> None:
+def die(msg: str) -> NoReturn:
     raise SystemExit(f"{RED}error: {msg}{RESET}")
 
 
@@ -198,7 +200,7 @@ class Spec:
         die(f"no surface {name!r} in {self.path}")
 
     def params(self, service: str) -> str:
-        """The flow params for one `workhorse run coder genesis` invocation."""
+        """The flow params for one `workhorse-coder run genesis` invocation."""
         s = self.surface(service)
         joined = lambda *xs: ",".join(x for x in xs if x)  # noqa: E731
         return json.dumps({
@@ -350,8 +352,10 @@ def run_logged(cmd: list[str], cwd: Path, log: Path, env: dict[str, str] | None 
         cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, bufsize=1, env={**os.environ, **(env or {})},
     )
+    if proc.stdout is None:  # pragma: no cover - `stdout=PIPE` above guarantees the pipe
+        raise RuntimeError("the workflow subprocess was started without a stdout pipe")
     with log.open("w", encoding="utf-8") as fh:
-        for line in proc.stdout:  # type: ignore[union-attr]
+        for line in proc.stdout:
             sys.stdout.write(line)
             sys.stdout.flush()
             fh.write(line)
@@ -366,7 +370,7 @@ def cmd_genesis(spec: Spec) -> None:
         svc = s["service"]
         say(f"genesis: {svc}")
         rc = run_logged(
-            ["uv", "run", "workhorse", "run", "coder", "genesis",
+            ["uv", "run", "workhorse-coder", "run", "genesis",
              "--runs-dir", str(spec.artifacts), "--params", spec.params(svc)],
             cwd=STABLEMATE, log=spec.logs / f"genesis-{svc}.log",
             env=phase_env(spec, "genesis"),
@@ -446,7 +450,7 @@ def cmd_author(spec: Spec, *, resume: bool = False, budget_s: float | None = Non
     say("author → epics + stories" + (" (resuming)" if resume else ""))
     log = spec.logs / "author.log"
     return phase_rc("author", run_logged(
-        ["uv", "run", "workhorse", "run", "author", "--runs-dir", str(spec.artifacts),
+        ["uv", "run", "workhorse-author", "run", "--runs-dir", str(spec.artifacts),
          *resume_flags(spec, "author", resume),
          "--params", json.dumps({"backlog": spec.backlog})],
         cwd=STABLEMATE, log=log,
@@ -461,7 +465,7 @@ def cmd_coder(spec: Spec, *, resume: bool = False, budget_s: float | None = None
     say("coder → implementation" + (" (resuming)" if resume else ""))
     log = spec.logs / "coder.log"
     return phase_rc("coder", run_logged(
-        ["uv", "run", "workhorse", "run", "coder", "--runs-dir", str(spec.artifacts),
+        ["uv", "run", "workhorse-coder", "run", "--runs-dir", str(spec.artifacts),
          *resume_flags(spec, "coder", resume),
          "--params", json.dumps({"docs_path": str(spec.target)})],
         cwd=STABLEMATE, log=log,

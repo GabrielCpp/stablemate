@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import present
+
 from saddlebag import cli
 from saddlebag.db import Pool
 
@@ -35,7 +37,12 @@ def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
         capsys.readouterr()
         with pytest.raises(SystemExit) as exc:
             cli.main(["--db", str(db_path), *argv])
-        return exc.value.code
+        code = exc.value.code
+        # `main` exits with a status, never with a message: `SystemExit.code` is
+        # `str | int | None` in general, and asserting that here is what lets every
+        # caller compare against a number.
+        assert isinstance(code, int)
+        return code
 
     return _run
 
@@ -69,7 +76,7 @@ def test_a_value_on_argv_is_config_and_lands_in_the_pool_db(run, db_path, store)
     assert run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=acme") == 0
 
     with Pool(db_path) as pool:
-        entry = pool.env_get_entry("env-001", "VITE_FIREBASE_PROJECT_ID")
+        entry = present(pool.env_get_entry("env-001", "VITE_FIREBASE_PROJECT_ID"))
     assert (entry.kind, entry.value) == ("config", "acme")
     assert store.secrets == {}
 
@@ -79,7 +86,7 @@ def test_a_value_on_stdin_is_a_secret_and_never_reaches_the_pool_db(run, db_path
     assert run("env", "set", "web-local", "API_KEY", "--secret-stdin", stdin=SECRET) == 0
 
     with Pool(db_path) as pool:
-        entry = pool.env_get_entry("env-001", "API_KEY")
+        entry = present(pool.env_get_entry("env-001", "API_KEY"))
     assert (entry.kind, entry.value) == ("secret", None)
     assert store.secrets == {"env-001/API_KEY": SECRET}
 
@@ -90,7 +97,7 @@ def test_from_credential_is_a_credential_ref_and_stores_nothing(run, db_path, st
                "--from-credential", "cred-007:password") == 0
 
     with Pool(db_path) as pool:
-        entry = pool.env_get_entry("env-001", "TEST_USER_PASSWORD")
+        entry = present(pool.env_get_entry("env-001", "TEST_USER_PASSWORD"))
     assert (entry.kind, entry.cred_ref) == ("credential-ref", "cred-007:password")
     assert store.secrets == {}
 
@@ -111,7 +118,7 @@ def test_set_can_annotate_a_key_without_supplying_a_value(run, db_path):
                "--note", "only needed in staging") == 0
 
     with Pool(db_path) as pool:
-        entry = pool.env_get_entry("env-001", "SENTRY_DSN")
+        entry = present(pool.env_get_entry("env-001", "SENTRY_DSN"))
     assert (entry.kind, entry.required, entry.note) == ("pending", False, "only needed in staging")
 
 
@@ -143,7 +150,7 @@ def test_import_from_an_env_example_takes_keys_and_never_values(run, tmp_path, c
     assert "every key is pending" in out(capsys)
 
     with Pool(db_path) as pool:
-        entries = pool.env_get("env-001").entries
+        entries = present(pool.env_get("env-001")).entries
     assert [e.key for e in entries] == ["VITE_FIREBASE_API_KEY", "VITE_FIREBASE_PROJECT_ID"]
     assert {e.kind for e in entries} == {"pending"}
     assert all(e.value is None for e in entries)  # 'placeholder' was never stored
@@ -159,7 +166,7 @@ def test_reimporting_does_not_clobber_a_supplied_value(run, tmp_path, db_path):
 
     assert run("env", "import", "web-local", "--from", str(example)) == 0
     with Pool(db_path) as pool:
-        assert pool.env_get_entry("env-001", "PROJECT_ID").value == "acme"
+        assert present(pool.env_get_entry("env-001", "PROJECT_ID")).value == "acme"
 
 
 def test_import_into_an_unknown_environment_exits_one(run, tmp_path):
@@ -186,8 +193,8 @@ def test_export_then_import_reconstitutes_the_environment_on_a_fresh_host(
     assert exc.value.code == 0
 
     with Pool(fresh) as pool:
-        environment = pool.env_by_name("web-local")
-    assert environment.target.endswith(".env.local")
+        environment = present(pool.env_by_name("web-local"))
+    assert present(environment.target).endswith(".env.local")
     assert {e.key: e.kind for e in environment.entries} == {
         "VITE_FIREBASE_PROJECT_ID": "config",
         "VITE_FIREBASE_AUTH_EMULATOR_HOST": "config",
@@ -297,12 +304,12 @@ def test_render_leases_a_credential_ref_and_release_frees_it(run, store, web, ta
     assert "TEST_USER_PASSWORD=hunter2" in target.read_text(encoding="utf-8")
 
     with Pool(db_path) as pool:
-        assert pool.get("cred-001").run_id == "run-42"
+        assert present(pool.get("cred-001")).run_id == "run-42"
 
     # The bookend the workflow already has needs no change to clean up after render.
     assert run("release", "--run-id", "run-42") == 0
     with Pool(db_path) as pool:
-        assert not pool.get("cred-001").is_locked()
+        assert not present(pool.get("cred-001")).is_locked()
 
 
 def test_render_with_no_target_is_a_usage_error(run):
@@ -354,7 +361,7 @@ def test_check_takes_no_lease(run, web, db_path):
 
     run("env", "render", web, "--check", "--run-id", "run-42")
     with Pool(db_path) as pool:
-        assert not pool.get("cred-001").is_locked()
+        assert not present(pool.get("cred-001")).is_locked()
 
 
 # -- doctor -------------------------------------------------------------------

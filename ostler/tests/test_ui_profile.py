@@ -12,7 +12,7 @@ from pathlib import Path
 from ostler import doctor, query, registry
 from ostler.model import load
 
-from conftest import write
+from conftest import present, write
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +107,8 @@ def test_is_known_type():
 
 
 def test_ui_type_lookup_by_base():
-    assert registry.ui_type("interaction").heading == "Interactions"
-    assert registry.ui_type("screen").kind == "file"
+    assert present(registry.ui_type("interaction")).heading == "Interactions"
+    assert present(registry.ui_type("screen")).kind == "file"
     assert registry.ui_type("epic") is None
 
 
@@ -403,8 +403,9 @@ def _write_runbook_trio(repo: Path) -> None:
 
 
 def test_operational_types_registered():
-    rb, env, step = (registry.ui_type("runbook"), registry.ui_type("environment"),
-                     registry.ui_type("step"))
+    rb = present(registry.ui_type("runbook"))
+    env = present(registry.ui_type("environment"))
+    step = present(registry.ui_type("step"))
     assert rb.kind == "file"
     assert [s.heading for s in rb.required_sections] == ["Steps"]
     assert env.kind == "file"

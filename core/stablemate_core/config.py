@@ -2,7 +2,7 @@
 
 One file, ``~/.config/stablemate/config.toml`` (platform-appropriate), read and
 written by workhorse and farrier alike. It used to be one file *per tool*, which meant
-``workhorse config set-base`` and ``farrier config set-base`` wrote to different places
+each tool's own ``config set-base`` wrote to a different place
 and could silently disagree about ``library_dir`` / ``stablemate_dir`` / ``base_dir`` —
 keys that only mean anything if every tool sees the same value.
 

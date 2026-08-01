@@ -1,7 +1,7 @@
 """`hello-world` — the smallest workflow that runs, and the one the docs point at.
 
 It exists to be *copied*: two states, one node, one agent turn, no repo, no context
-manifest, no external service. `workhorse run hello-world --dry-run` walks it green on
+manifest, no external service. `workhorse-hello-world run --dry-run` walks it green on
 a bare checkout with no agent CLI installed at all, which is what makes it usable as a
 quick start rather than a listing.
 

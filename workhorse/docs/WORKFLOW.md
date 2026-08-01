@@ -1,9 +1,9 @@
 # Migrating a `workflow.yaml` to a Python workflow
 
 The YAML front-end is **deleted**. There is no loader, no node types, no `requires:`
-preflight, and no `workflow.yaml` anywhere in this repository. `workhorse run <name>`
-resolves a name through the `workhorse.workflows` entry-point group and will not read a
-file you hand it — passing a path is refused by name rather than silently misread.
+preflight, and no `workflow.yaml` anywhere in this repository. There is no generic
+`workhorse` command either: each workflow declares its own `workhorse-<name>` console
+script, which carries the workflow object itself, so there is nothing to hand a path to.
 
 A workflow is now a Python package whose **states are methods** on a `Workflow` subclass
 and whose **nodes are plain functions** collected into a `Blueprint`. If you are writing a
@@ -54,7 +54,7 @@ attention during a migration:
 
 | YAML | Python |
 |---|---|
-| `name:` | `Registry("acme")`, plus the `workhorse.workflows` entry point that publishes that name |
+| `name:` | `Registry("acme")`, plus the `[project.scripts]` row that binds it to the `workhorse-acme` command |
 | `start:` | the entry class passed to `Registry.main(...)`; the run begins in its method named `start` |
 | `vars:` | class attributes on the `Workflow` — still filled by `--params`, and frozen once `setup()` returns |
 | `requires:` | **no counterpart** — see below |
@@ -112,10 +112,9 @@ A missing required input now fails at binding time with the parameter's own name
 # then
 workhorse --workflow ./wf/workflow.yaml --params '{"story":"ACME-1"}'
 
-# now — a NAME, resolved through the entry-point group
-workhorse run coder --params '{"story":"ACME-1"}'
-workhorse run coder qa --params '{"story":"ACME-1"}'   # a flow, standalone
-workhorse-coder run qa --params '{"story":"ACME-1"}'   # the package's own console script
+# now — the workflow's own console script, which carries the workflow object
+workhorse-coder run --params '{"story":"ACME-1"}'
+workhorse-coder run qa --params '{"story":"ACME-1"}'   # a flow, standalone
 ```
 
 Every other flag (`--runs-dir`, `--run-id`, `--params-file`, `--cli`, `--resume-run`,
@@ -212,14 +211,14 @@ main = console_script(workflow.entry_point(Example))
 
 That pair is a translation, not a runnable file: `prompts/step.md` is whatever prompt the
 YAML workflow already had. For something that does run as written — the same shape, with
-the prompt, the entry point and the console script actually in place — read
+the prompt and the console script actually in place — read
 [`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py)
 and check your port against it:
 
 ```bash
-workhorse run hello-world --dry-run
+workhorse-hello-world run --dry-run
 ```
 
-The package layout around it — `pyproject.toml` entry point, prompt directory, node
+The package layout around it — `pyproject.toml` console script, prompt directory, node
 module — and everything the port needs beyond this table are in
 [AUTHORING.md](AUTHORING.md).

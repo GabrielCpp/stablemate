@@ -234,7 +234,7 @@ def test_no_branch_is_nothing_to_gate_on(
 ) -> None:
     """Without a branch the poll returns before it looks for a token, and the walk still runs.
 
-    The flow is reachable standalone (`workhorse run coder fix_ci`), so a missing branch is
+    The flow is reachable standalone (`workhorse-coder run fix_ci`), so a missing branch is
     an ordinary input, not a programming error.
     """
     run_env = env()

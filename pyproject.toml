@@ -49,10 +49,19 @@ dev = [
     # with it.
     "pytest-xdist>=3.6",
     "ruff>=0.15.20",
+    # The type checker, run from this root next to ruff (`make lint`). Pinned as a dev
+    # dependency rather than invoked with `uvx` so every clone and CI run checks against
+    # the same version — a type checker that floats reports a different set of findings
+    # per machine, which is the one thing a gate must not do.
+    "ty>=0.0.65",
     # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the
     # okf-builder walkthrough that runs against this workspace's .venv.
     "playwright>=1.40",
     "pillow>=10.0",
+    # saddlebag's `vault` extra. Installed here so ty resolves `hvac` and actually
+    # type-checks the vault backend; without it that adapter is an unresolved import
+    # and its whole body goes unchecked.
+    "hvac>=2.0",
     # workhorse's opt-in `otel` extra, pinned here so the dev venv can run the
     # producer→groom-collector path end-to-end (production installs opt in via
     # `pip install 'workhorse-agent[otel]'`).
@@ -75,3 +84,18 @@ extend-select = [
 # module is imported as part of its package, and it hides which package a name
 # comes from — see the python-cli skill.
 ban-relative-imports = "all"
+
+# ty runs from this root too (`make lint`), over the same tree ruff sees, so member
+# packages carry no [tool.ty] of their own either. Every rule is at its default
+# severity: there is no ignore list, because a rule that is off is a rule nobody can
+# tell is being violated.
+[tool.ty.src]
+exclude = [
+    # A *rendered reference*, not a module: the pre-Python-workflow snapshot that
+    # `workflows/.../author/workflow.py` was written against and still cites. It imports
+    # `author.gh_token` and calls helpers that the engine has since renamed, and that is
+    # the point — it records the shape at the time it was written. Type-checking it
+    # would report 28 findings whose only available fix is to edit the historical
+    # record. Nothing imports it; it is prose that happens to be syntactically Python.
+    "docs/plans/author-workflow-python/workflow.py",
+]

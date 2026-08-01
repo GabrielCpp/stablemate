@@ -199,15 +199,15 @@ invisible to `--check`.
 A library ships no workflows, and farrier installs none. A workflow used to be a
 directory of YAML (`workflow.yaml` plus `prompts/`, `scripts/`, `docs/`) that farrier
 copied into `.agents/workflows/<name>/`; the YAML front-end has been retired, and a
-workflow is now a Python package
-[`workhorse-agent`](https://pypi.org/project/workhorse-agent/) resolves through the
-`workhorse.workflows` entry-point group — a distribution's business, installed with
-`pip`/`uv`, not rendered out of a library:
+workflow is now a Python distribution built on
+[`workhorse-agent`](https://pypi.org/project/workhorse-agent/) that declares its own
+command — a distribution's business, installed with `pip`/`uv`, not rendered out of a
+library:
 
 ```bash
 uv tool install workhorse-workflows
-workhorse run coder --dry-run    # static preflight, drives nothing
-workhorse run coder
+workhorse-coder run --dry-run    # static preflight, drives nothing
+workhorse-coder run
 ```
 
 There is no `workflows:` key in a pack or in `agents.yml`, no `workflows/` directory in

@@ -8,7 +8,7 @@ It assumes you can already run a workflow. If you cannot yet, run the shipped qu
 first — it needs no repository and, under `--dry-run`, no agent CLI at all:
 
 ```bash
-workhorse run hello-world --dry-run
+workhorse-hello-world run --dry-run
 ```
 
 Its whole source is one commented ~90-line file,
@@ -56,14 +56,14 @@ that renders a template needs the template on disk beside its package.
 
 Its **states** are methods on a `Workflow` subclass, each returning the next state;
 its **nodes** are plain functions collected into a `Blueprint`; a `Registry` names the
-whole thing and is what the `workhorse.workflows` entry point resolves to. Control flow
+whole thing and is what the package's console script is built from. Control flow
 is ordinary Python — `if`, `for`, a counter that is just a counter.
 
 ## Shipping your own, outside this repo
 
-`workhorse run <name>` resolves a name **only** through the `workhorse.workflows`
-entry-point group — there is no path form and no directory it scans. So a workflow of your
-own is a distribution, and this is the whole of it:
+Workhorse is a library: it ships no command, resolves no workflow by name, and scans no
+directory. A workflow reaches a terminal by **declaring its own console script**, so a
+workflow of your own is a distribution, and this is the whole of it:
 
 ```toml
 # acme-workflows/pyproject.toml
@@ -73,11 +73,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["workhorse-agent"]
 
-[project.entry-points."workhorse.workflows"]
-greeter = "acme_workflows.greeter.workflow:workflow"   # the Registry OBJECT, not main
-
 [project.scripts]
-workhorse-greeter = "acme_workflows.greeter.workflow:main"   # optional second front door
+workhorse-greeter = "acme_workflows.greeter.workflow:main"   # what console_script RETURNED
 
 [build-system]
 requires = ["hatchling"]
@@ -89,12 +86,14 @@ packages = ["src/acme_workflows"]
 
 Two details are load-bearing rather than taste:
 
-- **The entry point names the `Registry`, not the entry function.** Discovery needs the
-  registry object — `main` is the console script, and pointing the entry point at it fails
-  at resolution rather than at run time.
+- **The script names what `console_script(...)` returned, not a call to it.** A
+  `[project.scripts]` target is called after import, so the module needs a module-level
+  `main = console_script(workflow.entry_point(Greeter))`; `console_script(...)()` would
+  drive a run at import time instead of binding a command. A workflow with no row in this
+  table has no command at all — which you notice at install time, not mid-run.
 - **It must install unpacked, with the prompts inside it.** Prompts are rendered by a
   filesystem template loader rooted at the package directory, so a zip-imported install is
-  refused, and a `prompts/*.md` left out of the wheel is a workflow that resolves and then
+  refused, and a `prompts/*.md` left out of the wheel is a workflow that starts and then
   cannot render. The `[tool.hatch.build.targets.wheel]` above needs nothing further —
   hatchling ships every file under `packages=`, markdown included — but a backend that
   takes only `.py` unless told otherwise (setuptools without `package_data`) will drop
@@ -105,11 +104,11 @@ tools are imported in-process:
 
 ```bash
 uv pip install ./acme-workflows       # or: pipx inject workhorse-agent ./acme-workflows
-uv run workhorse run greeter --dry-run
+uv run workhorse-greeter run --dry-run
 ```
 
-Copying `hello_world/` and changing the two `Registry("hello-world")` / entry-point names
-is the shortest route to a green run of your own; everything below is what you add next.
+Copying `hello_world/` and changing the `Registry("hello-world")` name and its
+`[project.scripts]` row is the shortest route to a green run of your own; everything below is what you add next.
 
 **Agent prompts** must output JSON matching the model the turn declared in `returns=`:
 
@@ -231,13 +230,30 @@ status = ensure_stack(manifest, repo_root=self.ctx.repo_root, logger=log)
 | Key | What it does |
 |---|---|
 | `entry_url` / `health_path` | the HTTP readiness probe (path defaults to `/`) |
-| `identity` | a marker string expected in the served body — the readiness signal, and a precondition for reuse |
+| `identity` | a substring expected in the served **response body** — the readiness signal, and a precondition for reuse |
 | `reuse` | when adopting an already-serving stack is safe: `if-fresh` (default), `always`, `never` |
 | `fresh` | a probe command (exit 0 ⇔ the running stack reflects current code) that gates `if-fresh` adoption |
 | `app_cwd` / `repo_root` / `boot_timeout` | launch context, and the ceiling on boot |
 | `launch` / `stop` | the **idempotent** bring-up command, and the teardown recipe (absent ⇒ leave an expensive stack up) |
 | `prepare` / `seed` / `health` | ordered steps run before launch / after it serves / last |
 | `health_timeout` | the window in seconds the `health` gates get to converge (default 120) |
+
+**Every command in the manifest is a shell recipe**, run through `bash -c` (`/bin/sh -c`
+only where there is no bash) — `launch`, `stop`, and each `prepare`/`seed`/`health` step.
+Pipes, `&&`/`||` guards, redirection and `&` all mean what they say, which is what makes
+the *idempotent* launch above expressible at all: "start it unless it is already serving"
+is written `<probe> || <start>`, and a bring-up command that hands the stack off writes
+`nohup … & disown`. bash rather than `sh` because `sh` is dash on Debian/Ubuntu and dash
+has no `disown`.
+
+**`identity` is matched against the response body — not the URL, host or port.** It is
+the one manifest key whose mistakes are invisible to the obvious hand-check: `curl -sf -o
+/dev/null <url>` discards the body, so a URL that answers 200 to every manual probe still
+fails the gate when the marker is not in what it served. Pick something the page really
+says (a `<title>`, a health endpoint's `"status":"ok"`), or omit the key — omitted means
+"any 2xx/3xx is ready", which also disables adoption, since adopting an arbitrary listener
+on that port is exactly what the marker exists to prevent. Setting it to a host:port is
+the recurring mistake; that string is in the *request*, never the response.
 
 **Health gates retry inside that window.** Booting proves only that the entry URL
 answers, and a gate typically asserts on a *slower sibling* — a migration, a queue, a
@@ -249,7 +265,10 @@ order it always comes up in.
 `failed_step` and **`error`** when it could not get there. `error` is the failing step's
 own message, and it is there because a caller's usual next move is to hand the failure
 to whoever repairs it: the step name alone ("the health gate") says which thing broke,
-not what to fix. Log lines don't cross the node boundary — the return value does.
+not what to fix. Log lines don't cross the node boundary — the return value does. For
+`failed_step: "launch"` that message is bring-up's *own* verdict — nothing answering, a
+recipe that would not spawn, a nonzero exit, or the `identity` mismatch above — and not a
+single sentence blaming the launch command for all four.
 
 Nothing here raises. A stack that will not come up returns `ready: "no"`, which is what
 lets the workflow decide between repairing, re-planning and asking an operator.
@@ -309,6 +328,15 @@ is only continued when it is the flow the run was *inside*: the checkpoint has t
 the same class and carry the same inputs, and the offer expires with the resumed state,
 so a loop that hands off to the same flow once per story still starts each story's child
 clean. Anything that disagrees starts fresh with a line in the log, never an error.
+
+*Clean* means the scope directory is emptied, not just its checkpoint dropped. Every
+iteration re-enters the same `<run>/<flow-node>/_flow/`, so leaving the last story's
+per-node folders there would hand the next story its answers: `self.output(node)` is a
+file lookup whose contract is "`None` when it has not run", and a state asking for a node
+this pass never reached cannot tell a stale hit from a fresh one. The genuine mid-flow
+resume above is the one re-entry that keeps the directory, which is why it is keyed on
+the engine's "we died inside this node" signal rather than on a checkpoint merely being
+present.
 
 ## The node index is the substitution seam
 

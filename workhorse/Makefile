@@ -46,8 +46,12 @@ publish: build ## Publish to PyPI (token from ~/.pypirc)
 	@UV_PUBLISH_TOKEN="$(PYPI_TOKEN)" uv publish
 
 .PHONY: verify-install
-verify-install: ## Install the published package from PyPI and run --help
-	uv run --with $(NAME) --no-project --refresh-package $(NAME) -- workhorse --help
+verify-install: ## Install the published package from PyPI and import its public API
+	# Workhorse ships no command of its own — it is a library, and what a consumer
+	# imports is the wiring for their own workflow's command. So the smoke test is
+	# that import, not a `--help`.
+	uv run --with $(NAME) --no-project --refresh-package $(NAME) -- \
+		python -c "from workhorse import console_script; print(console_script)"
 
 .PHONY: next-version
 next-version: ## Print the next version inferred from commit history (LEVEL=… to force)

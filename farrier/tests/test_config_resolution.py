@@ -8,6 +8,7 @@ import os
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from farrier import install, layers
 from stablemate_core import config
@@ -29,14 +30,14 @@ def with_temp_config(fn):
     Neutralize that route too.
     """
     original_env = os.environ.get(config.CONFIG_PATH_ENV)
-    original_legacy = config.legacy_config_paths
     with tempfile.TemporaryDirectory() as tmp:
         os.environ[config.CONFIG_PATH_ENV] = str(Path(tmp) / "config.toml")
-        config.legacy_config_paths = list
+        # `patch.object` rather than an assignment over the module attribute: the name is
+        # typed as the function it holds, and the patch puts the real one back itself.
         try:
-            fn(Path(tmp))
+            with patch.object(config, "legacy_config_paths", lambda: []):
+                fn(Path(tmp))
         finally:
-            config.legacy_config_paths = original_legacy
             if original_env is None:
                 os.environ.pop(config.CONFIG_PATH_ENV, None)
             else:
@@ -51,12 +52,8 @@ def base_library(path: Path | None):
     tested in core/tests/test_discovery.py. What matters here is only how farrier stacks
     the result against an overlay.
     """
-    original = layers.base_library_dir
-    layers.base_library_dir = lambda: path
-    try:
+    with patch.object(layers, "base_library_dir", lambda: path):
         yield
-    finally:
-        layers.base_library_dir = original
 
 
 def clear_env():
@@ -196,8 +193,12 @@ def test_overlay_shadows_base():
 
         assert set(sources) == {"demo/shared", "demo/base-only"}
         assert sources["demo/shared"].path.read_text() == "# from overlay"
-        assert sources["demo/shared"].layer.root == overlay
-        assert sources["demo/base-only"].layer.name == install.BASE_LAYER_NAME
+        shared, base_only = sources["demo/shared"].layer, sources["demo/base-only"].layer
+        # Both were read off the layer stack, which is where the layer is stamped on;
+        # only a source built outside it (some other test's) has none.
+        assert shared is not None and base_only is not None
+        assert shared.root == overlay
+        assert base_only.name == install.BASE_LAYER_NAME
     print("ok: overlay shadows base, base fills the gaps")
 
 

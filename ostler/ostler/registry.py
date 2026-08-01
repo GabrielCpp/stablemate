@@ -427,6 +427,22 @@ def ui_type(name: str | None) -> UINodeType | None:
     return UI_TYPES_BY_NAME.get(base_type(name) or "")
 
 
+def ui_type_named(name: str) -> UINodeType:
+    """The ``UINodeType`` for ``name``. ``KeyError`` if the registry declares none.
+
+    The non-optional counterpart to `ui_type`, for the callers holding a name the registry
+    itself produced — a `UI_HEADING_TO_TYPE` value, or a `type:` already accepted by
+    `is_known_type`. They are not asking whether the type exists, and reaching through
+    `ui_type` made a registry that lost an entry surface as ``AttributeError: 'NoneType'``
+    somewhere downstream instead of naming what was missing. Use `ui_type` where absence is
+    an answer rather than a bug.
+    """
+    found = ui_type(name)
+    if found is None:
+        raise KeyError(f"no UI node type named {name!r}; declared: {sorted(UI_TYPES_BY_NAME)}")
+    return found
+
+
 def is_known_type(type_value: str | None) -> bool:
     """True when a declared ``type:`` is a recognized built-in (incl. UI types)."""
     base = base_type(type_value)

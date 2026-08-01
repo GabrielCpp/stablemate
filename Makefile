@@ -17,8 +17,20 @@ hooks: ## Install the git hooks (blocks private overlay names from this public r
 	@echo "hooks installed. Names come from \$$STABLEMATE_PRIVATE_NAMES or"
 	@echo "\$$GIT_DIR/private-names (both untracked); with neither, the hook is a no-op."
 
+.PHONY: lint
+lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)
+	# Both run from this root over the whole workspace, against the one ruleset in
+	# pyproject.toml — a member package that lints itself lints a different tree than
+	# CI does. They answer different questions and neither subsumes the other: ruff
+	# reads one file at a time, so the argument that does not match the parameter is
+	# invisible to it; ty follows the call across modules and never has an opinion
+	# about import order.
+	uv run ruff check .
+	uv run ty check
+
 .PHONY: test
 test: ## Run the packages' test suites, the workflow suites, and the public/private guard
+	$(MAKE) lint
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
 	$(MAKE) -C workflows test

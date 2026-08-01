@@ -36,7 +36,7 @@ from workhorse.runner import process as agent_process
 
 @dataclass(frozen=True, slots=True)
 class RunInvocation:
-    """Everything one `workhorse run` decided, as one value.
+    """Everything one `workhorse-<name> run` decided, as one value.
 
     The fields are the CLI's contract rather than the driver's — which workflow, where
     its artifacts go, what it was given, and which of the three resume spellings the
@@ -179,7 +179,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
             agent_process.terminate_active()
             _record_interrupt(writer)
             print("\n[workhorse] interrupted — run paused.")
-            print(f"[workhorse] resume with: workhorse --resume-run {writer.run_dir}")
+            print(f"[workhorse] resume with: workhorse-{name} run "
+                  f"--resume-run {writer.run_dir}")
             otel.end_run("interrupted", error="KeyboardInterrupt")
             raise SystemExit(130) from None
         except PyflowError as exc:
@@ -198,7 +199,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 # `run.json`, no terminal, exit 1.
                 print(f"[workhorse] ERROR: {exc}")
                 writer.record_interrupt(_state_of(writer), str(exc))
-                print(f"[workhorse] resume with: workhorse run {name} "
+                print(f"[workhorse] resume with: workhorse-{name} run "
                       f"--resume-run {writer.run_dir}")
                 otel.end_run("fail", error=str(exc))
                 return 1

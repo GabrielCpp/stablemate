@@ -9,7 +9,7 @@ from ostler.model import load
 def test_markdown_roundtrip_identity():
     text = "---\nsurface: a/b\nroute: /a/b\n---\n# Title\n\nbody\n"
     doc = markdown.split(text)
-    assert doc.has_frontmatter
+    assert doc.frontmatter is not None
     assert doc.frontmatter["surface"] == "a/b"
     assert doc.render() == text  # exact round-trip, no churn
 

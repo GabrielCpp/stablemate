@@ -1,7 +1,7 @@
 """`review` — review a story's implementation and drive the findings to settled.
 
 The sub-graph the main loop reaches with `self.handoff(Review, ...)` and reads nothing
-back from, and a registered flow in its own right (`workhorse run coder review`) for a PR
+back from, and a registered flow in its own right (`workhorse-coder run review`) for a PR
 that no story pipeline produced. `flow.py` is the machine; where a review runs, what its
 findings settled to and what a human dropped in are in `shared/review.py`, because the QA
 graph resolves the same context when it triages.

@@ -38,7 +38,9 @@ change with.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from workhorse.cli import console_script
 from workhorse.pyflow import (
@@ -206,7 +208,7 @@ class Author(Workflow):
         whole-graph gates all record their Q&A here."""
         return paths.author_context(self.epics_dir)
 
-    def _activity(self, message: str, node: object) -> None:
+    def _activity(self, message: str, node: Callable[..., Any]) -> None:
         """The YAML's `activity:` line: what is being authored, plus queue progress.
 
         The progress half came from `get_node_output(…, 'progress')` guarded by an

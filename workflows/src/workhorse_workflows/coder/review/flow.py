@@ -2,7 +2,7 @@
 `coder/workflow.yaml`'s `flows.review` (18 nodes, lines 1842-2173).
 
 Reached from the main graph as a `type: flow` node that reads nothing back, and standalone as
-`workhorse run coder review` for a PR that no story pipeline produced::
+`workhorse-coder run review` for a PR that no story pipeline produced::
 
     code review → code reuse → review ⇄ apply (bounded) → feedback poll → done
                                     ↘ operator gate ↗

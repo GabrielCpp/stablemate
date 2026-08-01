@@ -161,8 +161,11 @@ boundary_params="$CLAUDE_HOME/boundary-params.json"
     printf '}\n'
 } > "$boundary_params"
 
-uv run workhorse \
-    --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}" \
+# $WORKFLOW names the workflow, and the command is its own console script — workhorse
+# ships no generic runner to hand a name to. The script comes from the
+# `workhorse-workflows` distribution the image installs, so nothing is mounted in: an
+# unset or misspelled WORKFLOW fails here, at spawn, rather than as a resolution error.
+uv run "workhorse-${WORKFLOW:?set WORKFLOW to the workflow to run, e.g. coder}" run \
     ${AGENT_RUNS_DIR:+--runs-dir "$AGENT_RUNS_DIR"} \
     --params-file "$boundary_params" \
     "$@" &

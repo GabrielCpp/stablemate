@@ -80,7 +80,8 @@ def gather_run_evidence(
     all_ts: list[datetime] = []
     for event in events:
         scope = event.get("_scope", "")
-        key = f"{scope}/{event.get('node')}" if scope else event.get("node")
+        node = str(event.get("node") or "")
+        key = f"{scope}/{node}" if scope else node
         ts = _parse_ts(event.get("ts", ""))
         if ts:
             all_ts.append(ts)
@@ -93,10 +94,14 @@ def gather_run_evidence(
             if started and ts:
                 durations.append((key, (ts - started).total_seconds()))
 
-    loops = sorted(
-        [{"node": node, "entered": count} for node, count in enters.items() if count > 1],
-        key=lambda row: -row["entered"],
-    )
+    # Sorted on the count itself rather than on the rows: the row is a display shape whose
+    # values are of mixed type, and re-deriving the sort key from it only invites reading a
+    # string where the count is meant.
+    loops = [
+        {"node": node, "entered": count}
+        for node, count in sorted(enters.items(), key=lambda pair: -pair[1])
+        if count > 1
+    ]
     slow_nodes = [
         {"node": node, "seconds": round(seconds)}
         for node, seconds in sorted(durations, key=lambda pair: -pair[1])[:SLOW_NODES]

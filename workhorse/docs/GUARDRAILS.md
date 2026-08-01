@@ -363,7 +363,7 @@ artifacts section), so it survives even with telemetry off.
 For workflows with long-running operations:
 ```bash
 export AGENT_RESULT_TIMEOUT_S=1200  # 20 minutes
-workhorse run coder
+workhorse-coder run
 ```
 
 ### Aggressive Retries for Unstable Networks
@@ -371,7 +371,7 @@ workhorse run coder
 ```bash
 export AGENT_MAX_INVOKE_RETRIES=10
 export AGENT_INVOKE_BACKOFF_BASE_S=30
-workhorse run coder story
+workhorse-coder run story
 ```
 
 ### Hard-Stop Instead of Defaulting
@@ -389,7 +389,7 @@ When defaulting is disabled and a workflow fails with a transient error:
 1. **Check the error message**: The enhanced logging will indicate if it's transient
 2. **Resume the workflow**: Use the provided resume command
    ```bash
-   workhorse run <name> --resume-run runs/<name>-default
+   workhorse-<name> run --resume-run runs/<name>-default
    ```
 
 ## Testing

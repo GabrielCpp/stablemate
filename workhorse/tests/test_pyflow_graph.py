@@ -20,6 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from pydantic import BaseModel
 
@@ -38,6 +39,24 @@ from workhorse.pyflow import (  # noqa: E402
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow.dot import to_dot  # noqa: E402
 from workhorse.pyflow.graph import preflight, registry_graphs, state_graph  # noqa: E402
+
+
+class RegistryAt(Registry):
+    """A registry whose workflow directory a test can point at a temp dir.
+
+    The real `directory()` derives from the entry class's package, and these
+    workflows are declared in this file — so every run test here has to say where the
+    prompts are. A declared field rather than an assignment over the method: an
+    instance attribute shadowing a method is invisible to a reader and to the
+    checker, and on the module-level singletons below it also outlived the test that
+    set it.
+    """
+
+    #: The directory to answer with, or None to derive it the real way.
+    at: Path | None = None
+
+    def directory(self) -> Path:
+        return self.at if self.at is not None else super().directory()
 
 Transition = Any
 
@@ -73,7 +92,7 @@ class Sample(Workflow):
     @state(aliases=["qa"])
     def review(self, verdict: str) -> Transition:
         found = self.agent("prompts/review.md", returns=Report)
-        return Await("questions.md", [found.verdict], self.finish, verdict=verdict)
+        return Await("questions.md", found.verdict, self.finish, verdict=verdict)
 
     def finish(self, verdict: str) -> Transition:
         return Done(verdict)
@@ -236,7 +255,9 @@ def test_preflight_reports_a_machine_that_cannot_terminate():
 def test_preflight_reports_a_transition_to_something_that_is_not_a_state():
     class Broken(Workflow):
         def start(self) -> Transition:
-            return Continue(None, self.output)
+            # `self.output` is a method of the engine, not a state — which is the
+            # thing preflight has to notice, so the checker is told to allow it.
+            return Continue(None, self.output)  # ty: ignore[missing-argument]
 
         def finish(self) -> Transition:
             return Done(None)
@@ -311,26 +332,22 @@ def test_dry_run_reports_problems_and_never_opens_a_run_dir():
         def stranded(self) -> Transition:
             return Done(None)
 
-    registry = Registry("acme")
+    registry = RegistryAt("acme")
+    registry.at = Path("/nonexistent")
     registry.entry_point(Stranded)
     calls: list[str] = []
     original = pyflow_run.registry_graphs
 
-    def fake_directory() -> Path:
-        return Path("/nonexistent")
-
-    registry.directory = fake_directory  # type: ignore[method-assign]
-    pyflow_run.registry_graphs = lambda reg: (calls.append(reg.name), original(reg))[1]
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            runs = Path(tmp) / "runs"
-            code = pyflow_run.run_pyflow(
-                pyflow_run.RunInvocation(registry, runs_dir=runs, dry_run=True)
-            )
-            assert code == 1
-            assert not runs.exists(), "a failed preflight must not open a run dir"
-    finally:
-        pyflow_run.registry_graphs = original
+    spy = patch.object(
+        pyflow_run, "registry_graphs", lambda reg: (calls.append(reg.name), original(reg))[1]
+    )
+    with spy, tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        code = pyflow_run.run_pyflow(
+            pyflow_run.RunInvocation(registry, runs_dir=runs, dry_run=True)
+        )
+        assert code == 1
+        assert not runs.exists(), "a failed preflight must not open a run dir"
     assert calls == ["acme"]
 
 
@@ -351,10 +368,11 @@ def test_dry_run_drives_the_machine_without_running_a_node():
             self.call(touch)
             return Done("finished")
 
-    registry = Registry("acme").add_blueprints(kit)
+    registry = RegistryAt("acme")
+    registry.add_blueprints(kit)
     registry.entry_point(Quick)
     with tempfile.TemporaryDirectory() as tmp:
-        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        registry.at = Path(tmp)
         code = pyflow_run.run_pyflow(
             pyflow_run.RunInvocation(
                 registry, runs_dir=Path(tmp) / "runs", run_id="real", dry_run=True
@@ -391,7 +409,8 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
             self.agent("prompts/record.md", returns=Report)
             return Done(None)
 
-    registry = Registry("acme").add_blueprints(kit)
+    registry = RegistryAt("acme")
+    registry.add_blueprints(kit)
     registry.stub_agents({"review": {"verdict": "ok"}})
     registry.entry_point(Marked)
     with tempfile.TemporaryDirectory() as tmp:
@@ -399,7 +418,7 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
         prompts.mkdir()
         (prompts / "review.md").write_text("hi")
         (prompts / "record.md").write_text("hi")
-        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        registry.at = Path(tmp)
         runs = Path(tmp) / "runs"
         code = pyflow_run.run_pyflow(
             pyflow_run.RunInvocation(registry, runs_dir=runs, dry_run=True)
@@ -430,11 +449,11 @@ def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
         def start(self) -> Transition:
             return Done(None)
 
-    registry = Registry("acme")
+    registry = RegistryAt("acme")
     registry.entry_point(Quick)
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
-        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        registry.at = Path(tmp)
         pyflow_run.run_pyflow(
             pyflow_run.RunInvocation(
                 registry, runs_dir=runs, run_id="week-long", dry_run=True
@@ -459,14 +478,15 @@ class Halts(Workflow):
         raise WorkflowFailed("budget exhausted")
 
 
-_HALTING: Registry | None = None
+_HALTING: RegistryAt | None = None
 
 
-def _halting_registry() -> Registry:
+def _halting_registry() -> RegistryAt:
     """One registry for `Halts`, for the same reason `_sample_registry` is a singleton."""
     global _HALTING
     if _HALTING is None:
-        registry = Registry("acme").add_blueprints(bp)
+        registry = RegistryAt("acme")
+        registry.add_blueprints(bp)
         registry.entry_point(Halts)
         _HALTING = registry
     return _HALTING
@@ -478,7 +498,7 @@ def _run_halting(*, dry_run: bool) -> tuple[int, str]:
     registry = _halting_registry()
     out = io.StringIO()
     with tempfile.TemporaryDirectory() as tmp:
-        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        registry.at = Path(tmp)
         with contextlib.redirect_stdout(out):
             code = pyflow_run.run_pyflow(
                 pyflow_run.RunInvocation(
@@ -513,7 +533,7 @@ def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int
         def start(self) -> Transition:
             return Done(None)
 
-    registry = Registry("acme")
+    registry = RegistryAt("acme")
     registry.entry_point(Named)
     out = io.StringIO()
     with tempfile.TemporaryDirectory() as tmp:
@@ -522,7 +542,7 @@ def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int
         (prompts / "review.md").write_text(
             '{{ instruction_ref("story-docs") }}\n', encoding="utf-8"
         )
-        registry.directory = lambda: Path(tmp)  # type: ignore[method-assign]
+        registry.at = Path(tmp)
         with contextlib.redirect_stdout(out):
             code = pyflow_run.run_pyflow(
                 pyflow_run.RunInvocation(
@@ -565,7 +585,9 @@ def test_a_run_carrying_no_manifest_is_not_warned_about_references():
 def test_the_run_parser_carries_dry_run():
     from workhorse.cli.parser import build_parser
 
-    args = build_parser().parse_args(["run", "acme", "--dry-run"])
+    args = build_parser(prog="workhorse-acme", workflow="acme").parse_args(
+        ["run", "--dry-run"]
+    )
     assert args.dry_run is True
 
 
@@ -573,21 +595,15 @@ def test_the_run_parser_carries_dry_run():
 
 
 def _dot_args(**kwargs: Any) -> Any:
-    """The `dot` Namespace argparse would have built, with `registry` pre-resolved.
+    """The `dot` Namespace argparse would have built.
 
-    `registry` is the seam the CLI itself uses: `dot.run` prefers one already on the
-    args over resolving the name through the installed entry points, so a test never
-    has to install a distribution to render one.
+    `registry` arrives on the namespace because the console script that started the
+    process is the workflow's own — the command renders whichever workflow it *is*, so
+    a test hands one over the same way the CLI does.
     """
     import argparse
 
-    defaults = {
-        "workflow": None,
-        "positional": [],
-        "name": None,
-        "output": None,
-        "registry": None,
-    }
+    defaults = {"name": None, "output": None, "registry": None}
     return argparse.Namespace(**{**defaults, **kwargs})
 
 
@@ -599,7 +615,7 @@ def test_dot_renders_a_python_workflow_from_its_registry():
 
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        run_dot(_dot_args(positional=["acme"], registry=_sample_registry()))
+        run_dot(_dot_args(registry=_sample_registry()))
     assert buffer.getvalue().startswith("digraph acme {")
 
 
@@ -610,7 +626,9 @@ def test_dot_rejects_pin_and_leaf_at_the_parser():
 
     for flag in ("--pin", "--leaf"):
         try:
-            build_parser().parse_args(["dot", "acme", flag, "mode=epic"])
+            build_parser(prog="workhorse-acme", workflow="acme").parse_args(
+                ["dot", flag, "mode=epic"]
+            )
         except SystemExit as exc:
             assert exc.code == 2
         else:

@@ -86,8 +86,10 @@ def create_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> cr
 
     fields = dict(fields)
     path, err_result = _resolve_path(graph, kind, name, fields)
-    if err_result is not None:
-        return err_result
+    # One check, not two: `_resolve_path` returns a path or a reason, and asking about the
+    # reason alone left the path an `Optional` that every write below had to re-litigate.
+    if path is None:
+        return err_result or crud.Result(False, f"cannot place {kind_name} '{name}'")
     if path.exists():
         return crud.Result(False, f"{kind_name} '{name}' already exists")
 

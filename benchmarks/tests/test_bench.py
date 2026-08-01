@@ -32,6 +32,9 @@ from pathlib import Path
 import pytest
 
 _spec = importlib.util.spec_from_file_location("bench", Path(__file__).parents[1] / "bench.py")
+# A spec and a loader are what a real file on disk always yields; the import machinery
+# answers None for the cases this is not (a namespace package, an unimportable path).
+assert _spec is not None and _spec.loader is not None
 bench = importlib.util.module_from_spec(_spec)
 sys.modules["bench"] = bench
 _spec.loader.exec_module(bench)

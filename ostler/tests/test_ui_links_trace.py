@@ -7,7 +7,7 @@ from pathlib import Path
 from ostler import links, trace
 from ostler.model import load
 
-from conftest import write
+from conftest import present, write
 
 
 SCREEN = """\
@@ -75,7 +75,7 @@ def test_resolve_cross_file_anchor(repo: Path):
     graph = _repo_with_graph(repo)
     src = repo / "docs/features/groom/gui/screens/changes-view.md"
     r = links.LinkResolver(graph)
-    tgt = r.resolve(src, "../components/design-system.md#tree-node")
+    tgt = present(r.resolve(src, "../components/design-system.md#tree-node"))
     assert tgt.file_exists and tgt.anchor_exists and tgt.resolved
     assert tgt.node_id == "docs/features/groom/gui/components/design-system.md#tree-node"
 
@@ -83,21 +83,21 @@ def test_resolve_cross_file_anchor(repo: Path):
 def test_resolve_same_file_anchor(repo: Path):
     graph = _repo_with_graph(repo)
     src = repo / "docs/features/groom/gui/screens/changes-view.md"
-    tgt = links.LinkResolver(graph).resolve(src, "#changes-file-row")
+    tgt = present(links.LinkResolver(graph).resolve(src, "#changes-file-row"))
     assert tgt.resolved and tgt.anchor == "changes-file-row"
 
 
 def test_resolve_dangling_file(repo: Path):
     graph = _repo_with_graph(repo)
     src = repo / "docs/features/groom/gui/screens/changes-view.md"
-    tgt = links.LinkResolver(graph).resolve(src, "../nope/missing.md")
+    tgt = present(links.LinkResolver(graph).resolve(src, "../nope/missing.md"))
     assert not tgt.file_exists and not tgt.resolved
 
 
 def test_resolve_missing_anchor(repo: Path):
     graph = _repo_with_graph(repo)
     src = repo / "docs/features/groom/gui/screens/changes-view.md"
-    tgt = links.LinkResolver(graph).resolve(src, "../../concepts/diff.md#ghost")
+    tgt = present(links.LinkResolver(graph).resolve(src, "../../concepts/diff.md#ghost"))
     assert tgt.file_exists and not tgt.anchor_exists and not tgt.resolved
 
 

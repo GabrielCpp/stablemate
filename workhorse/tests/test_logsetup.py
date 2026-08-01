@@ -61,7 +61,7 @@ def test_records_are_stamped_with_the_current_node(monkeypatch):
     monkeypatch.setattr(otel, "current_node", lambda: "select_item")
     record = logging.LogRecord("script.x", logging.INFO, __file__, 1, "hi", None, None)
     assert logsetup._NodeFilter().filter(record) is True
-    assert record.node == "select_item"
+    assert record.__dict__["node"] == "select_item"
 
 
 def test_an_explicit_node_is_not_overwritten(monkeypatch):
@@ -69,7 +69,7 @@ def test_an_explicit_node_is_not_overwritten(monkeypatch):
     record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
     record.node = "explicit"
     logsetup._NodeFilter().filter(record)
-    assert record.node == "explicit"
+    assert record.__dict__["node"] == "explicit"
 
 
 def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
@@ -79,7 +79,7 @@ def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
     try:
         record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
         assert logsetup._NodeFilter().filter(record) is True
-        assert record.node == ""
+        assert record.__dict__["node"] == ""
     finally:
         otel.install(previous)
 

@@ -26,6 +26,14 @@ cache, so the next read re-loads. Call :meth:`reload` to force a refresh.
 
 from __future__ import annotations
 
+# `Ostler.list` (the method behind `ostler list --type`) shadows the builtin for the
+# whole class body, so a bare `list[dict]` annotation in here resolves to that method
+# rather than to the type. `from __future__ import annotations` hides the damage —
+# annotations are never evaluated, so nothing raises — but every such annotation is
+# wrong to anything that does resolve it, from `typing.get_type_hints` to a type
+# checker. Naming the builtin through `builtins` is what makes them mean what they read
+# as. The method keeps its name: it is the public API spelling of the CLI verb.
+import builtins
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -83,15 +91,15 @@ class Ostler:
 
     # -- retrieval ----------------------------------------------------------
     def list(self, etype: str, *, epic: str | None = None,
-             status: str | None = None) -> list[dict]:
+             status: str | None = None) -> builtins.list[dict]:
         """Concepts of ``etype`` (``ostler list --type``), optionally filtered."""
         return query_mod.list_entities(self.graph, etype, epic, status)
 
-    def search(self, q: str, *, etype: str | None = None) -> list[dict]:
+    def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:
         """Full-text search over Concepts (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
 
-    def query(self, name: str, arg: str) -> list[dict]:
+    def query(self, name: str, arg: str) -> builtins.list[dict]:
         """A named reverse-index query (``ostler query``) — ``arg`` may be a short handle."""
         return query_mod.query(self.graph, name, ids_mod.resolve(self.graph, arg))
 
@@ -131,11 +139,11 @@ class Ostler:
         found = select.epic_by_name(self.graph, epic)
         return found is not None and select.epic_authored(found)
 
-    def todo(self) -> list[str]:
+    def todo(self) -> builtins.list[str]:
         """The epics queue, front-first (``ostler todo list``)."""
         return todo_mod.list_epics(self.graph)
 
-    def backlog(self) -> list[dict]:
+    def backlog(self) -> builtins.list[dict]:
         """Backlog items as ``{"id", "text"}`` dicts (``ostler backlog list``)."""
         return [{"id": i, "text": t} for i, t in backlog_mod.items(self.graph)]
 
@@ -246,8 +254,8 @@ class Ostler:
         return self._apply(crud.create_epic(self._fresh(), name, title, prefix))
 
     def create_story(self, epic: str, slug: str, title: str, *,
-                     covers: list[str] | None = None,
-                     depends: list[str] | None = None,
+                     covers: builtins.list[str] | None = None,
+                     depends: builtins.list[str] | None = None,
                      prefix: str | None = None) -> Result:
         """Create a story under ``epic`` (``ostler create story``).
 
@@ -312,7 +320,7 @@ class Ostler:
         """Dequeue an epic (``ostler todo prune``)."""
         return self._apply(todo_mod.prune(self._fresh(), name))
 
-    def todo_reorder(self, order: list[str]) -> Result:
+    def todo_reorder(self, order: builtins.list[str]) -> Result:
         """Reorder the epics queue (``ostler todo reorder``)."""
         return self._apply(todo_mod.reorder(self._fresh(), order))
 
@@ -331,7 +339,7 @@ class Ostler:
     # they are lazy-imported: the QA/vet machinery (browsers, image libs) never
     # loads for a script that only reads the graph.
     def qa_context(self, *, base: str, spec: str | Path, head: str = "WORKTREE",
-                   source_roots: dict[str, list[str]] | None = None,
+                   source_roots: dict[str, builtins.list[str]] | None = None,
                    features_root: str = "",
                    story_file: str | Path | None = None) -> dict:
         """Build the base/head changed-code→OKF obligation packet and write it into
@@ -345,7 +353,7 @@ class Ostler:
         write_context(packet, self._resolve(spec))
         return packet
 
-    def qa_context_validate(self, *, spec: str | Path) -> list[str]:
+    def qa_context_validate(self, *, spec: str | Path) -> builtins.list[str]:
         """Validate ``qa-okf-context.json`` in ``spec``; returns problem strings, empty
         if valid (``ostler qa context-validate``)."""
         from ostler.qa import validate_context

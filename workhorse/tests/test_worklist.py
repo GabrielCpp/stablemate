@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from _fakes import present
 from workhorse import worklist as wl
 
 
@@ -37,19 +38,19 @@ def _items():
 # select_next
 # --------------------------------------------------------------------------- #
 def test_select_next_skips_done_and_blocked():
-    got = wl.select_next(_items())
+    got = present(wl.select_next(_items()))
     assert got.id == "c"
 
 
 def test_active_item_is_preferred_for_crash_safe_repick():
     items = _items()
     items[3].status = "active"  # d is mid-flight
-    got = wl.select_next(items)
+    got = present(wl.select_next(items))
     assert got.id == "d", "an active item must be re-picked before a fresh pending one"
 
 
 def test_skip_set_passes_over_an_item():
-    got = wl.select_next(_items(), skip={"c"})
+    got = present(wl.select_next(_items(), skip={"c"}))
     assert got.id == "d"
 
 
@@ -63,7 +64,7 @@ def test_order_beats_list_order():
         wl.WorkItem(id="late", status="pending", order=9),
         wl.WorkItem(id="early", status="pending", order=1),
     ]
-    assert wl.select_next(items).id == "early"
+    assert present(wl.select_next(items)).id == "early"
 
 
 def test_custom_scheme_vocabulary():
@@ -73,7 +74,7 @@ def test_custom_scheme_vocabulary():
         wl.WorkItem(id="b", status="held"),
         wl.WorkItem(id="c", status="todo"),
     ]
-    assert wl.select_next(items, scheme=scheme).id == "c"
+    assert present(wl.select_next(items, scheme=scheme)).id == "c"
 
 
 # --------------------------------------------------------------------------- #
@@ -101,11 +102,11 @@ def test_json_backend_roundtrip_mark_and_prune(tmp_path):
     path.write_text(json.dumps(_raw()))
     lst = wl.WorkList(wl.JsonBackend(path), category_key="cat")
 
-    assert lst.select_next().id == "c"
+    assert present(lst.select_next()).id == "c"
     assert lst.mark("c", "done") is True
     assert lst.mark("nonexistent", "done") is False
     # After marking c done, next pending is d.
-    assert lst.select_next().id == "d"
+    assert present(lst.select_next()).id == "d"
     # The change persisted atomically to disk.
     on_disk = json.loads(path.read_text())
     assert next(i for i in on_disk if i["id"] == "c")["status"] == "done"
@@ -163,8 +164,8 @@ def _mixed():
 
 def test_select_next_scopes_to_a_kind():
     # Unscoped, the first pending item overall is E2; scoped to stories it is S2.
-    assert wl.select_next(_mixed()).id == "E2"
-    assert wl.select_next(_mixed(), kind="story").id == "S2"
+    assert present(wl.select_next(_mixed())).id == "E2"
+    assert present(wl.select_next(_mixed(), kind="story")).id == "S2"
     assert wl.select_next(_mixed(), kind="fix") is None  # only a blocked fix remains
 
 
@@ -233,7 +234,9 @@ def test_a_round_trip_adds_no_key_the_workflow_never_wrote(tmp_path):
         {"id": "u2", "path": "src/b.py", "status": "pending"},
     ], saved
     # The workflow's own field is reachable off the parsed item, not buried in payload.
-    assert lst.items()[0].path == "src/a.py"
+    # Read with getattr because that is what "the workflow's own field" means: it is
+    # extra on the model, so no declared attribute could stand for it.
+    assert getattr(lst.items()[0], "path") == "src/a.py"
 
 
 def test_stateless_snapshot_matches_the_worklist_method():

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import present
+
 from saddlebag import envfile, render
 from saddlebag.db import Pool, PoolError
 from saddlebag.models import (
@@ -76,13 +78,13 @@ def test_a_config_only_environment_never_opens_the_store(pool: Pool, tmp_path):
     pool.env_put_entry(environment.id, EnvironmentEntry(key="HOST", kind=KIND_CONFIG,
                                                         value="127.0.0.1:9099"))
 
-    resolution = render.resolve(pool.env_get(environment.id), pool, ExplodingStore())
+    resolution = render.resolve(present(pool.env_get(environment.id)), pool, ExplodingStore())
     assert resolution.values == {"HOST": "127.0.0.1:9099"}
 
 
 def test_a_pending_required_key_is_a_gap(pool: Pool, store, web):
     pool.env_put_entry(web.id, EnvironmentEntry(key="STRIPE_KEY", kind=KIND_PENDING))
-    resolution = render.resolve(pool.env_get(web.id), pool, opener(store))
+    resolution = render.resolve(present(pool.env_get(web.id)), pool, opener(store))
 
     assert not resolution.resolvable
     assert [g.key for g in resolution.gaps if g.reason == render.PENDING] == ["STRIPE_KEY"]
@@ -106,7 +108,7 @@ def test_a_credential_ref_to_a_missing_credential_is_a_gap(pool, store, web):
 def test_an_optional_key_with_no_value_is_omitted_not_a_gap(pool: Pool, store, seeded):
     pool.env_put_entry(seeded.id, EnvironmentEntry(key="SENTRY_DSN", kind=KIND_PENDING,
                                                    required=False))
-    resolution = render.resolve(pool.env_get(seeded.id), pool, opener(store))
+    resolution = render.resolve(present(pool.env_get(seeded.id)), pool, opener(store))
 
     assert resolution.resolvable
     assert "SENTRY_DSN" not in resolution.values
@@ -125,13 +127,13 @@ def test_a_credential_ref_leases_the_credential_for_the_run(pool: Pool, store, s
     resolution = render.resolve(seeded, pool, opener(store), run_id="run-42")
 
     assert resolution.leases["cred-001"]
-    cred = pool.get("cred-001")
+    cred = present(pool.get("cred-001"))
     assert cred.is_locked()
     assert cred.run_id == "run-42"
 
     # And the existing bookend cleans up after it, unchanged.
     assert pool.release_run("run-42") == 1
-    assert not pool.get("cred-001").is_locked()
+    assert not present(pool.get("cred-001")).is_locked()
 
 
 def test_username_and_password_refs_share_one_lease(pool: Pool, store, seeded):
@@ -139,7 +141,7 @@ def test_username_and_password_refs_share_one_lease(pool: Pool, store, seeded):
     pool.env_put_entry(seeded.id, EnvironmentEntry(key="TEST_USER_EMAIL",
                                                    kind=KIND_CREDENTIAL_REF,
                                                    cred_ref="cred-001:username"))
-    resolution = render.resolve(pool.env_get(seeded.id), pool, opener(store), run_id="run-42")
+    resolution = render.resolve(present(pool.env_get(seeded.id)), pool, opener(store), run_id="run-42")
 
     assert resolution.values["TEST_USER_EMAIL"] == "qa@acme.example"
     assert list(resolution.leases) == ["cred-001"]
@@ -160,7 +162,7 @@ def test_a_credential_held_by_another_run_blocks_the_render(pool: Pool, store, s
 def test_check_takes_no_lease(pool: Pool, store, seeded):
     """--check is a gate, not an action: a QA preflight must not lock an identity."""
     render.check(seeded, pool, opener(store))
-    assert not pool.get("cred-001").is_locked()
+    assert not present(pool.get("cred-001")).is_locked()
 
 
 def test_a_failed_lease_hands_back_the_ones_taken_beside_it(pool: Pool, store, seeded):
@@ -173,9 +175,9 @@ def test_a_failed_lease_hands_back_the_ones_taken_beside_it(pool: Pool, store, s
     pool.acquire(other.id, run_id="someone-else")
 
     with pytest.raises(PoolError):
-        render.resolve(pool.env_get(seeded.id), pool, opener(store), run_id="run-42")
+        render.resolve(present(pool.env_get(seeded.id)), pool, opener(store), run_id="run-42")
 
-    assert not pool.get("cred-001").is_locked()
+    assert not present(pool.get("cred-001")).is_locked()
 
 
 # -- formatting ---------------------------------------------------------------

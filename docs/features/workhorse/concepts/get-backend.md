@@ -6,7 +6,7 @@ title: get_backend — select a harness backend by name
 # get_backend
 
 The runtime selector for the [`AgentBackend`](agent-backend.md) `extends:` fan: resolves a name to
-a concrete, cached backend instance. Driven by [`workhorse run`](../workhorse.md#run)'s `--cli`
+a concrete, cached backend instance. Driven by [`workhorse-<name> run`](../workhorse.md#run)'s `--cli`
 flag, which [validates the name eagerly](../workhorse.md#run) at startup so an unknown one fails
 before a run directory exists rather than at the first agent turn.
 
@@ -60,5 +60,5 @@ and the explicit-name path share an entry.
   `backends/__init__.py`, which this module is deliberately kept out of.
 - [`AgentRunner.run`](run-agent.md) — the consumer: the runner is constructed with the resolved
   backend once per run and drives it every agent turn without re-resolving.
-- [`workhorse run`](../workhorse.md#run) — where `--cli` arrives, and where an unknown name is
+- [`workhorse-<name> run`](../workhorse.md#run) — where `--cli` arrives, and where an unknown name is
   turned into a stderr message and exit `1`.

@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-architecture
-description: "Python mechanics for the ports-and-adapters contract and the code-structure rules — Protocol vs ABC, the port package layout (interface at the root, adapters beneath, registry apart), which typed value to reach for (Pydantic / frozen dataclass / TypedDict / NamedTuple) and why round-trip beats provenance, services built by dependency injection from a frozen settings object, null objects instead of Optional collaborators, injected clocks, and the ruff / import-linter rules that turn each of these into a gate. Load when structuring any Python package beyond a single module. Applies to **/*.py."
+description: "Python mechanics for the ports-and-adapters contract and the code-structure rules — Protocol vs ABC, the port package layout (interface at the root, adapters beneath, registry apart), which typed value to reach for (Pydantic / frozen dataclass / TypedDict / NamedTuple) and why round-trip beats provenance, services built by dependency injection from a frozen settings object, null objects instead of Optional collaborators, injected clocks, and the ruff / ty / import-linter rules that turn each of these into a gate. Load when structuring any Python package beyond a single module. Applies to **/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/stacks/python/python-architecture/SKILL.md
@@ -267,6 +267,17 @@ if TYPE_CHECKING:
 | No generic module naming one adapter | `grep -n 'claude\|codex\|copilot' <generic module>` — zero hits is the bar |
 | A function grew into an object | ruff `PLR0913` (too many arguments); a twelve-parameter function is nine pieces of context that lost their home |
 | Missing seams | `grep -rn 'monkeypatch.setattr' tests/ \| grep '_'` — each patch of a private name is a dependency that should have been injected |
+| Every adapter implements the whole port | `ty check` — a partial implementation, a renamed method, a parameter one adapter added, are all `invalid-method-override` or an abstract-instantiation error |
+| A collaborator is a null object, not `Optional` | `ty check` — every unguarded read off a `T \| None` is `unresolved-attribute`, so an `Optional` collaborator cannot stay one silently |
+| Injected, not assigned over | `ty check` — an assignment over a method or a module-level function is `invalid-assignment`, which is what makes injecting the seam cheaper than patching one |
+| A double stands in for the real port | `ty check` — a structural look-alike stops being assignable the moment the port changes, which is exactly when a stale fake is worth hearing about |
+
+The last four are why **`ty` runs alongside ruff** — setup and the zero-findings bar are in
+[`../stablemate-python-cli/SKILL.md`](../stablemate-python-cli/SKILL.md). Ruff reads one
+file at a time and never resolves a name to its definition, so no ruff rule can see an adapter
+that has drifted from its port. That is the failure this architecture is *most* exposed to: the
+whole point of a port is that the caller is written against the interface and never sees the
+adapter, so nothing else notices when the two stop agreeing.
 
 Wire the checks when you add the ports. A contract that is only prose is a contract that erodes the
 first time a deadline is close.

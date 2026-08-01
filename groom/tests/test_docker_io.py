@@ -148,6 +148,8 @@ def test_sidecar_query_parses_snapshot_json():
     snap = '{"current_node": "n1", "terminal": "", "gates": [{"file_path": "a.md", "question": "Q?"}]}'
     with patch.object(docker_io.subprocess, "run", return_value=_completed(stdout=snap)):
         out = docker_io.sidecar_query("abc123")
+    # None is the "socket said nothing usable" answer, which the two tests below own.
+    assert out is not None
     assert out["current_node"] == "n1"
     assert out["gates"][0]["file_path"] == "a.md"
 

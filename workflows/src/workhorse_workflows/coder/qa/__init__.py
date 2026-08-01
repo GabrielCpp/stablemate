@@ -1,7 +1,7 @@
 """`qa` — plan QA for a story, run it, and refuse to believe it passed.
 
 The sub-graph the main loop reaches with `self.handoff(Qa, ...)`, and a registered flow in
-its own right (`workhorse run coder qa`). It is the densest graph in the four workflows,
+its own right (`workhorse-coder run qa`). It is the densest graph in the four workflows,
 and it is the only sub-flow whose own nodes need a package rather than a module:
 
 * `nodes/qa` — clear the evidence, bring the stack up, validate the plan, run it

@@ -5,8 +5,8 @@ The four things every workflow is made of, once each:
 * a **node** — a plain function taking `logger` first, registered on a `Blueprint`;
 * a **state** — a public method on a `Workflow` subclass, returning the next one;
 * an **agent turn** — a Jinja prompt rendered, run, and validated back into a model;
-* a **registry** — the module-level object the `workhorse.workflows` entry point names,
-  and whose `main(...)` return value is the `workhorse-hello-world` console script.
+* a **registry** — the module-level object holding the flows, which `console_script`
+  binds into the `workhorse-hello-world` command this distribution declares.
 
 Deliberately absent: a repo to clone, a context manifest to load, a sub-flow, a
 counter, an `Await`. Those are all in `workhorse/docs/AUTHORING.md`, and every one of
@@ -72,7 +72,7 @@ class HelloWorld(Workflow):
         return Done(reply)
 
 
-#: The name `workhorse run hello-world` resolves, and the run's composition root.
+#: The workflow `workhorse-hello-world run` runs, and the run's composition root.
 #: `stub_agents` declares what `--dry-run` gets back for `prompts/greet.md`, keyed by
 #: the prompt's stem — which is what lets the dry run walk this machine end to end with
 #: no agent CLI installed.
@@ -82,6 +82,6 @@ workflow = (
     .stub_agents({"greet": {"greeting": "Hello from a dry run."}})
 )
 
-#: `main(...)` RETURNS the console-script callable; it never calls it, so importing this
-#: module stays free — which entry-point discovery depends on.
+#: `console_script(...)` RETURNS the callable; it never calls it, so importing this
+#: module stays free — which is what lets `[project.scripts]` name it as a target.
 main = console_script(workflow.entry_point(HelloWorld))

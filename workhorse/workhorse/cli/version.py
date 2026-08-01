@@ -1,4 +1,4 @@
-"""`workhorse version` — print the installed distribution version."""
+"""`workhorse-<name> version` — print the installed engine's distribution version."""
 from __future__ import annotations
 
 import argparse

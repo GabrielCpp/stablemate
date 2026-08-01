@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,7 @@ from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
+from workhorse.pyflow.workflow import Workflow
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.ladder import AgentRunner
 
@@ -304,7 +305,7 @@ class Engine:
         power: str | None = None,
         timeout: float | None = None,
         cwd: str | Path | None = None,
-        add_dirs: list[str | Path] | None = None,
+        add_dirs: Sequence[str | Path] | None = None,
     ) -> Any:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
@@ -350,6 +351,8 @@ class Engine:
         # uses is the ladder this run was built with — not one this call constructs from
         # configuration it would have to re-read.
         runner = self.env.agent_runner
+        if runner is None:  # pragma: no cover - see above; the field is always resolved
+            raise WorkflowFailed("this run was built without an agent runner")
         rendered, raw = runner.run(
             node,
             # The manifest underneath, the state's arguments on top: a state that
@@ -439,7 +442,7 @@ def _describe(spec: NodeSpec, args: tuple[Any, ...], kwargs: dict[str, Any]) -> 
     return f"{spec.blueprint}.{spec.name}({', '.join(parts)})\n"
 
 
-def _sub_scope(cls: type, env: RunEnv) -> dict[str, Any]:
+def _sub_scope(cls: type[Workflow], env: RunEnv) -> dict[str, Any]:
     """What a handed-off flow gets that its caller does not: its own registry's world.
 
     A sub-flow is a different program. It resolves the registry that claimed its class

@@ -609,9 +609,10 @@ def mark_fix_blocked(
         (b for b in backlog_bullets("\n".join(lines)) if b.id == bullet_id), None
     )
     found = target is not None
-    changed = found and not target.blocked
-    if changed:
+    changed = False
+    if target is not None and not target.blocked:
         lines[target.line] = f"{lines[target.line].rstrip()} (blocked: {reason_note})"
+        changed = True
 
     if not found:
         logger.warning("no backlog bullet '%s' found to mark", bullet_id)

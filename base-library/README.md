@@ -22,7 +22,7 @@ That's the whole payload — markdown and YAML, and **not a line of Python**. No
 It used to hold `workflows/` too: four directories of workflow YAML plus the
 `scripts/*.py` its nodes ran. A workflow is a Python package now
 ([why](../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)), resolved
-through the `workhorse.workflows` entry-point group and shipped in a wheel — so the code
+shipped in a wheel with a command of its own — so the code
 left, and what stayed is documents. The `scaffolds/` directory went the same way; farrier still
 reads one from any library layer that has it, so an overlay can ship scaffolds even
 though the base does not.
@@ -49,7 +49,7 @@ A directory counts as a library if it holds `library/`. That is the whole contra
 
 The base is the **lowest-precedence** library layer. farrier renders content across a
 search path (workhorse shares the *discovery* order above, but reads no library content
-— its workflows come from the `workhorse.workflows` entry-point group):
+— its workflows are installed distributions):
 
 ```
 1. --library / $FARRIER_LIBRARY_DIR  (explicit override)

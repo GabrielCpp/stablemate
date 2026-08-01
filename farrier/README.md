@@ -96,13 +96,12 @@ every one of them as having no frontmatter at all.
 
 **Farrier does not install workflows.** A library ships none, `agents.yml` has no
 `workflows:` key, and nothing is written to `.agents/workflows/`. A workflow is a Python
-package workhorse resolves through its `workhorse.workflows` entry-point group: install
-it with pip/uv and run it directly.
+distribution that brings its own command: install it with pip/uv and run it directly.
 
 ```bash
 uv tool install workhorse-workflows
-workhorse run coder --dry-run    # static preflight, drives nothing
-workhorse run coder
+workhorse-coder run --dry-run    # static preflight, drives nothing
+workhorse-coder run
 ```
 
 ## Locating the library

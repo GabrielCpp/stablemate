@@ -82,6 +82,15 @@ Choose one disposition:
 - `extend_plan`: the existing run exposed a concrete untested uncertainty. Append only replayable
   scenarios/assertions to `qa-plan.yml`; the planner and validators will review them before rerun.
 - `repair_setup`: the environment prevented meaningful execution and setup work is required.
+  The node this routes to may touch **only** the stack manifest, dev-environment config, tooling
+  and stack fixtures — it is forbidden from editing `qa-plan.yml`. So route here only when the
+  repair lives outside the plan. Anything the plan itself controls is `repair_plan` even when the
+  symptom reads as environmental: how a step addresses a file, how state is passed between steps,
+  a missing directory a step assumed, a wrong `background:` daemon or `ready_check`. In
+  particular, a step that cannot see a file an earlier step produced is a plan defect — a step's
+  `cmd` runs from the **repo root** while `out:`/`capture:` paths resolve against the spec
+  directory, so a bare `qa/steps/…` inside a command names a different place than the same string
+  under `out:`. Routing that to setup burns a rework on a node that is not allowed to fix it.
 
 `failure_class` is exactly `none`, `product`, `plan`, `environment`, or `evidence`. It describes
 the assessment. `product` deterministically creates a failed QA result even if a weak runner

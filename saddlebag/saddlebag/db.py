@@ -118,6 +118,19 @@ def _dt(value: float | None) -> datetime | None:
     return datetime.fromtimestamp(value, tz=UTC) if value is not None else None
 
 
+def _dt_at(row: sqlite3.Row, column: str) -> datetime:
+    """A timestamp column that is set on every row it is read from.
+
+    A leased credential row carries both lease timestamps — holding them is what *makes* it
+    leased — so a missing one is a corrupt row, and saying which column on which credential
+    beats constructing a `Lease` whose deadline is `None` and failing on the comparison.
+    """
+    when = _dt(row[column])
+    if when is None:
+        raise ValueError(f"credential {row['id']!r} holds a lease with no {column}")
+    return when
+
+
 def _row_to_entry(row: sqlite3.Row) -> EnvironmentEntry:
     return EnvironmentEntry(
         key=row["key"],
@@ -241,8 +254,8 @@ class Pool:
                 lease_id=r["lease_id"],
                 credential_id=r["id"],
                 run_id=r["run_id"],
-                acquired_at=_dt(r["acquired_at"]),
-                expires_at=_dt(r["expires_at"]),
+                acquired_at=_dt_at(r, "acquired_at"),
+                expires_at=_dt_at(r, "expires_at"),
             )
             for r in rows
         ]

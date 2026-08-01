@@ -44,18 +44,24 @@ console.log(JSON.stringify(out));
 """
 
 
-def _derive(observations: list[dict]) -> list[dict] | None:
-    """Run the JS machine over a list of observations. None when node is absent."""
-    if NODE is None:
-        return None
+def _derive(observations: list[dict]) -> list[dict]:
+    """Run the JS machine over a list of observations. Called past `_skipped()`."""
     harness = _HARNESS.format(path=json.dumps(str(ASSETS / "dashboard.js")))
     result = subprocess.run(
-        [NODE, "--input-type=module", "-e", harness],
+        [_node(), "--input-type=module", "-e", harness],
         capture_output=True, text=True, timeout=30,
         env={**os.environ, "GROOM_OBS": json.dumps(observations)},
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+def _node() -> str:
+    """The node binary. Called only past `_skipped()`, which is what rules its
+    absence out — so the callers below spell the command rather than the question of
+    whether node is installed."""
+    assert NODE is not None
+    return NODE
 
 
 def _skipped() -> bool:
@@ -140,7 +146,7 @@ def test_backoff_grows_and_is_capped():
     src = (ASSETS / "dashboard.js").read_text()
     assert "Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * Math.pow(2, attempt))" in src
     result = subprocess.run(
-        [NODE, "--input-type=module", "-e",
+        [_node(), "--input-type=module", "-e",
          'const b=(a)=>Math.min(30000, 500*Math.pow(2,a));'
          'console.log(JSON.stringify([0,1,2,3,10].map(b)));'],
         capture_output=True, text=True, timeout=30,

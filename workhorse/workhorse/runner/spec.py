@@ -30,7 +30,7 @@ class AgentNode(BaseModel):
     args: dict[str, str] = Field(default_factory=dict)
     outputs: list[OutputSpec] = Field(default_factory=list)
     # Abstract capacity tier for this node. The active backend maps this through the
-    # user-wide workhorse config (`power.<level>.<backend>`) to concrete model/effort.
+    # shared stablemate config (`power.<level>.<backend>`) to concrete model/effort.
     # Missing config deliberately leaves model/effort unset so the backend's default
     # behavior applies. See workhorse/config.py and runner/ladder.py.
     power: Literal["low", "medium", "high"] | None = None

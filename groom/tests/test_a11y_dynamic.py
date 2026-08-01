@@ -32,6 +32,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 AXE = Path(__file__).resolve().parent / "vendor" / "axe.min.js"
@@ -167,15 +168,15 @@ class _Live:
         # Startup would otherwise run the docker discovery pass, which prunes the
         # synthetic fleet on its way past. Everything else about the real app —
         # the 5s live tick, the rules ticker, the routes — is left alone.
-        async def _no_reconcile() -> None:
-            return None
+        async def _no_reconcile() -> int:
+            return 0  # the real one answers with how many containers it found
 
-        # Restored in close(): this is a module attribute, not a fixture, so a
-        # stub left behind would silently disarm /refresh for every later test
-        # in the session.
+        # Stopped in close(): this is a module attribute, not a fixture, so a stub
+        # left behind would silently disarm /refresh for every later test in the
+        # session.
         self._app_module = app_module
-        self._real_reconcile = app_module._reconcile
-        app_module._reconcile = _no_reconcile
+        self._reconcile_patch = patch.object(app_module, "_reconcile", _no_reconcile)
+        self._reconcile_patch.start()
         _seed(workspace)
 
         import uvicorn
@@ -212,7 +213,7 @@ class _Live:
             self.browser.close()
             self.pw.stop()
         finally:
-            self._app_module._reconcile = self._real_reconcile
+            self._reconcile_patch.stop()
             self.server.should_exit = True
             self.thread.join(timeout=10)
             self.tmp.cleanup()

@@ -413,6 +413,13 @@ class QaFlowResult(CoderResult):
     `triage_scope` crosses the flow boundary in both directions — the parent seeds it and
     reads the bumped value back — which is the one piece of state the isolated flow does not
     own.
+
+    `spent` exists because `qa_rework` alone cannot describe why the flow gave up. Four
+    separate budgets end it `exhausted` — context repairs, plan repairs, code reworks, and the
+    operator loop — and the parent stamped the story with the code-rework count whichever one
+    ran out. A story that burned all three QA-plan repairs and never reached a code fix was
+    committed as `[QA FAILED after 0 attempts — needs manual review]`, which reads as "the
+    loop never tried" and is the opposite of what happened.
     """
 
     status: str = "exhausted"
@@ -420,6 +427,9 @@ class QaFlowResult(CoderResult):
     qa_rework: int = 0
     triage_scope: int = 0
     operator_notes: str = ""
+    #: Which budget ran out and how much of it was spent, as the phrase that goes in the
+    #: give-up marker ("3 QA-plan repair"). Empty unless the flow ended `exhausted`.
+    spent: str = ""
 
 
 __all__ = [

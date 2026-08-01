@@ -215,6 +215,7 @@ class _Sub:
         dev_status: str = "ready",
         docs_status: str = "passed",
         qa_status: str = "passed",
+        qa_spent: str = "",
         ci_status: str = "passed",
         explode: set[str] | None = None,
     ) -> None:
@@ -223,10 +224,11 @@ class _Sub:
         self.dev_status = dev_status
         self.docs_status = docs_status
         self.qa_status = qa_status
+        self.qa_spent = qa_spent
         self.ci_status = ci_status
         self.explode = explode or set()
         self.calls: list[str] = []
-        self.seen: list[Workflow] = []
+        self.seen: list[_StubFlow] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Sub:
         for name, reply in (
@@ -239,7 +241,7 @@ class _Sub:
             monkeypatch.setattr(coder_workflow, name, self._flow(name, reply))
         return self
 
-    def _flow(self, name: str, reply: Callable[[Workflow], Any]) -> type:
+    def _flow(self, name: str, reply: Callable[[_StubFlow], Any]) -> type:
         """A real `Workflow` subclass named for the flow it stands in for.
 
         The name matters twice over: `handoff` derives the recorded node id from it, and
@@ -248,7 +250,7 @@ class _Sub:
         """
         calls, explode, seen = self.calls, self.explode, self.seen
 
-        def start(child: Workflow) -> Done:
+        def start(child: _StubFlow) -> Done:
             calls.append(name)
             seen.append(child)
             if name in explode:
@@ -257,34 +259,35 @@ class _Sub:
 
         return type(name, (_StubFlow,), {"start": start})
 
-    def calls_to(self, name: str) -> list[Workflow]:
+    def calls_to(self, name: str) -> list[_StubFlow]:
         return [c for n, c in zip(self.calls, self.seen, strict=True) if n == name]
 
     # -- the replies, each the flow's own result model ---------------------
 
-    def _dev(self, child: Workflow) -> DevResult:
+    def _dev(self, child: _StubFlow) -> DevResult:
         if self.changes:
             path = self.repo / "src" / f"{child.story}.py"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"# {child.story}\n", encoding="utf-8")
         return DevResult(status=self.dev_status, operator_notes="rescope to the epic")
 
-    def _review(self, child: Workflow) -> ReviewResult:
+    def _review(self, child: _StubFlow) -> ReviewResult:
         return ReviewResult(status="approved", notes="")
 
-    def _docs(self, child: Workflow) -> DocsResult:
+    def _docs(self, child: _StubFlow) -> DocsResult:
         return DocsResult(status=self.docs_status, notes="")
 
-    def _qa(self, child: Workflow) -> QaFlowResult:
+    def _qa(self, child: _StubFlow) -> QaFlowResult:
         return QaFlowResult(
             status=self.qa_status,
             qa=QaResult(status=self.qa_status),
             qa_rework=1,
             triage_scope=child.triage_scope_count,
             operator_notes="",
+            spent=self.qa_spent,
         )
 
-    def _fix_ci(self, child: Workflow) -> CiChecks:
+    def _fix_ci(self, child: _StubFlow) -> CiChecks:
         return CiChecks(status=self.ci_status, summary="")
 
 
@@ -343,6 +346,12 @@ def _dirty(repo: Path) -> str:
     return subprocess.run(
         ["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True
     ).stdout.strip()
+
+
+def _subjects(repo: Path) -> list[str]:
+    return subprocess.run(
+        ["git", "log", "--format=%s"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.splitlines()
 
 
 # ------------------------------------------------------------------ the epic happy path
@@ -466,6 +475,64 @@ def test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue(
     assert _output(run_env, merge_pr)["merge_status"] == "unavailable"
     # The merge was a no-op, so HEAD is left on the epic branch for a manual push.
     assert _head(repo) == f"feat/{EPIC}"
+
+
+def test_an_epic_branch_carrying_a_set_aside_epic_declines_to_open_a_pr(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    tmp_path: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """`flag_epic_blocked`'s "NOT merged" promise, kept at the only boundary that can keep it.
+
+    `branch_epic` cuts every epic from HEAD rather than from the base — deliberately, and
+    load-bearing: an epic that needs the previous one's code only compiles because of it. But
+    a *set-aside* epic sits on that HEAD too, so its commits ride into the next epic's branch,
+    whose PR targets trunk. Merging that PR merges the failed epic, past the gate that set it
+    aside, with nobody having looked at the failure. Observed on a benchmark run where two
+    QA-gated epics both ended up as ancestors of the third's branch.
+
+    Two controls, because the rule has to be *contributed unmerged commits* rather than plain
+    ancestry, and each control fails a different sloppier version of it. An epic set aside on
+    a branch of its own is not carried, so it must still ship. And an epic set aside before it
+    committed anything leaves `feat/<epic>` sitting on the base — an ancestor of every later
+    branch — so a bare containment test would wedge the whole remaining queue on the first
+    story that failed early, which is the opposite of what the gate is for.
+    """
+    repo = epic()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    # A failed epic's work, then this epic cut on top of it, exactly as `branch_epic` does.
+    git(repo, "checkout", "-q", "-b", "feat/EPIC-0")
+    (repo / "failed.txt").write_text("half-built\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "EPIC-0: story [QA FAILED — needs manual review]")
+    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
+    # One set aside with work of its own that this epic does not carry, and one that never
+    # committed anything at all.
+    git(repo, "checkout", "-q", "-b", "feat/EPIC-9", "main")
+    (repo / "elsewhere.txt").write_text("other work\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "EPIC-9: story")
+    git(repo, "branch", "feat/EPIC-8", "main")
+    git(repo, "checkout", "-q", f"feat/{EPIC}")
+
+    (run_dir / BLOCKED_FILE).write_text("EPIC-0\n", encoding="utf-8")
+    carried = open_pr(logger, epic=EPIC, base_branch="main", run_dir=str(run_dir),
+                      repo_dir=str(repo))
+
+    assert carried.should_gate is False
+    assert carried.ci_epic == ""
+    # Declining the PR must not strand the branch: it is still there for the manual review.
+    assert git(repo, "rev-parse", "--verify", f"feat/{EPIC}").returncode == 0
+
+    (run_dir / BLOCKED_FILE).write_text("EPIC-9\nEPIC-8\n", encoding="utf-8")
+    unrelated = open_pr(logger, epic=EPIC, base_branch="main", run_dir=str(run_dir),
+                        repo_dir=str(repo))
+
+    assert unrelated.should_gate is True, "an unrelated set-aside epic must not block the queue"
+    assert unrelated.ci_epic == EPIC
 
 
 # --------------------------------------------------------------------------- epic branch
@@ -637,7 +704,7 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
     repo = epic()
 
     class _Rescoping(_Sub):
-        def _qa(self, child: Workflow) -> QaFlowResult:
+        def _qa(self, child: _StubFlow) -> QaFlowResult:
             nth = self.calls.count("Qa")
             return QaFlowResult(
                 status="rescope" if nth == 1 else "passed",
@@ -654,6 +721,106 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
     assert sub.calls.count("Dev") == 2, sub.calls
     # One seed for two QA entries: `prepare` was not re-entered.
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
+
+
+def test_the_give_up_marker_names_the_budget_qa_actually_spent(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The marker commit is the only thing a human triaging a given-up story reads first.
+
+    `exhausted` covers four unrelated budgets, and this graph used to stamp the code-rework
+    count for all of them. A story that spent every QA-plan repair and so never reached a
+    code fix was committed as `[QA FAILED after 0 attempts]`, which reads as a story the loop
+    declined to try — the opposite of what happened, and enough to send the reader looking
+    for a routing bug instead of at the plan. `QaFlowResult.spent` names its own budget and
+    this is where that name has to surface.
+    """
+    repo = epic()
+    _Sub(repo, qa_status="exhausted", qa_spent="3 QA-plan repair").install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
+    assert "after 3 QA-plan repair attempts" in marker, marker
+    assert "after 0 attempts" not in marker, marker
+
+
+def test_a_give_up_with_no_named_budget_falls_back_to_the_rework_count(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blank `spent` is a real case, not just an old checkpoint: the empty-story arm.
+
+    It ends `exhausted` having spent nothing at all, so there is no budget to name and the
+    bare count is the honest answer. The fallback also carries a run resumed from a
+    checkpoint written before the field existed.
+    """
+    repo = epic()
+    _Sub(repo, qa_status="exhausted").install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
+    assert "after 1 attempts" in marker, marker
+
+
+def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    write: Callable[[Path, str], Path],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """"Needs manual review" has to say where the review starts, and it is not `review.md`.
+
+    Everything else the give-up leaves behind points elsewhere. The story's own
+    `## Implementation Status` block carries a `- **Review**:` link written by the review
+    phase — a code-quality verdict that is silent about QA — and nothing at all links
+    `qa.md`, which is the document that names the failing assertions and the root cause.
+    Observed on a benchmark give-up whose `qa.md` diagnosed all eleven failures as one plan
+    defect while the story pointed the reader at a review complaining about test helpers.
+
+    The status line rather than a second bullet, because the link bullets belong to the
+    review prompt and on this path that prompt may not have run at all — the status is the
+    only line this node reliably owns.
+    """
+    repo = epic()
+    write(repo / "docs" / "specs" / "STORY-1" / "qa.md", "# QA\n\nEleven assertions failed.\n")
+    _Sub(repo, qa_status="exhausted", qa_spent="3 QA-plan repair").install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
+        encoding="utf-8"
+    )
+    assert "docs/specs/STORY-1/qa.md" in status, status
+
+
+def test_a_give_up_with_no_qa_assessment_written_points_nowhere_rather_than_at_a_ghost(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A give-up can precede any assessment: the QA-plan repair budget can run out with no
+    plan ever executed, so there is nothing to point at. A status naming a file that is not
+    there sends the reader hunting for a missing artifact instead of reading the code, which
+    is strictly worse than the honest bare marker."""
+    repo = epic()
+    _Sub(repo, qa_status="exhausted").install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
+        encoding="utf-8"
+    )
+    assert "needs manual review" in status, status
+    assert "qa.md" not in status, status
 
 
 # ------------------------------------------------------------------- the nested drain

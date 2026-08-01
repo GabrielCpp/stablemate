@@ -271,9 +271,13 @@ _AIDER_COST = re.compile(r"Cost:\s*\$([\d.]+)\s*message", re.I)
 _SUFFIX = {"": 1, "k": 1_000, "m": 1_000_000}
 
 
-def from_text(transcript: str) -> TurnUsage:
+def from_text(transcript: str | None) -> TurnUsage:
     """Best-effort usage for a text-streaming backend (aider). Last report wins —
-    a multi-step turn reprints the line, and the final one is the turn's total."""
+    a multi-step turn reprints the line, and the final one is the turn's total.
+
+    ``None`` is accepted, and is not the same question as "did it report usage": a
+    turn whose transcript was never captured has no usage either, and the caller on
+    the hot path of every stream should not have to say so twice."""
     counts: dict[str, int] = {}
     matches = _AIDER_TOKENS.findall(transcript or "")
     if matches:

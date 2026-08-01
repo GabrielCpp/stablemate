@@ -21,10 +21,40 @@ power:
   high: {claude: {model: sonnet, effort: low}}
 
 # Coder gets the bulk of the hour: author writes the stories once, the coder loops.
+#
+# `author` was 900 and was measured missing it: five bullets decomposed to 3 epics / 5
+# stories, and the ceiling landed at 927s with the last story mid-rework. A story that
+# writes cleanly costs ~85s; the variable cost is the rework loop, and the one story that
+# argued cost 318s across two audit→rework cycles. So the figure has to cover a backlog
+# that disagrees with itself, not just one that writes cleanly — which is why it is not
+# simply 5 × 85 plus the ~250s of epic-level decomposition. 1500 leaves room for roughly
+# four more reworks than this run needed.
+#
+# `coder` was 2700 and was measured missing it by a wide margin: the ceiling arrived with
+# story 1 of 5 still in QA. That one story cost the entire budget — dev 979s, review 265s,
+# docs 499s, qa 958s — so the figure was never four stories short of enough, it was four
+# stories short of one. The headline number is per story, not per run, and it is ~2000s:
+#
+#   dev    ~980s   plan-story 270 + implement-plan 692; the irreducible half
+#   review  265s   one clean pass, no rework
+#   docs    500s   three document→gate cycles, each closing a real finding and converging
+#   qa      ~250s  planning, once the plan validates on the first attempt
+#
+# The qa reading above is 958s in this run because `plan-qa` ran three times against a
+# prompt whose example taught two schema rules wrong (plan-global action ids, and the
+# exactly-one-of do/expect/capture rule). Attempts cost 158s, 599s and 95s; the 599s one
+# was spent reading ostler's own source to reverse-engineer the schema. That is fixed in
+# the prompt and pinned by workflows/tests/coder/test_qa_plan_prompt_schema.py, so ~750s
+# per story comes back — but even with it back, five stories is ~10000s.
+#
+# Which means the "an hour" in the header no longer describes this spec at five bullets.
+# The budget below buys a complete five-story run so the loop failures the bullet count
+# exists to expose can actually be reached; whether the benchmark should instead shrink to
+# fit the hour is a separate call, and deliberately not made here.
 budget:
   genesis: 600
-  author: 900
-  coder: 2700
+  author: 1500
+  coder: 11000
 
 checks:
   - name: build

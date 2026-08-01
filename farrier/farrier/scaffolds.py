@@ -140,7 +140,7 @@ def flatten_scaffold_tree(
                 if extra:
                     raise SystemExit(
                         f"Scaffold {scaffold_id!r}: file node {rel!r} has "
-                        f"unsupported key(s): {', '.join(sorted(extra))}"
+                        f"unsupported key(s): {', '.join(sorted(str(k) for k in extra))}"
                     )
                 files[rel] = value
             elif not value:

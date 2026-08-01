@@ -17,16 +17,31 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+from _fakes import present
+from workhorse.pyflow import Registry
 from workhorse.rundir import auto_resolve, derive_run_id, find_latest_resumable
 
 cli_mod = importlib.import_module("workhorse.cli")
 run_cmd = importlib.import_module("workhorse.cli.run")
 
 
-class _StubRegistry:
-    """Stands in for the resolved Registry — these tests never reach the driver."""
+class _StubRegistry(Registry):
+    """Stands in for the bound Registry — these tests never reach the driver.
 
-    name = "research"
+    A real `Registry` rather than a look-alike: the CLI's parameter is the type, and
+    only the entry point (which these tests never reach) is stubbed out.
+    """
+
+    def __init__(self) -> None:
+        super().__init__('research')
+
+    def directory(self) -> Path:
+        return Path(__file__).resolve().parent
+
+
+def _main(argv: list[str]) -> None:
+    """Drive the console script the way the `research` workflow's own would."""
+    cli_mod.main(argv, workflow="research", registry=_StubRegistry())
 
 
 def _make_run(runs_dir: Path, name: str, *, terminal, with_checkpoint=True, with_run_json=True):
@@ -132,8 +147,8 @@ def test_derive_run_id_explicit_wins_and_no_params_is_default():
 
 
 def test_derive_run_id_digests_params_stably_and_distinctly():
-    report = derive_run_id(None, {"service": "report", "source_path": "report"})
-    api = derive_run_id(None, {"service": "api", "source_path": "api"})
+    report = present(derive_run_id(None, {"service": "report", "source_path": "report"}))
+    api = present(derive_run_id(None, {"service": "api", "source_path": "api"}))
     # Distinct params → distinct ids (no collision on one 'default').
     assert report != api
     assert report.startswith("p") and api.startswith("p")
@@ -160,12 +175,11 @@ def test_derive_run_id_routes_distinct_targets_to_distinct_dirs():
 
 def test_auto_flag_is_gone():
     """--auto must not exist anymore (auto is the default, not an opt-in)."""
-    with patch("sys.argv", ["workhorse", "--workflow", "research", "--auto"]):
-        try:
-            cli_mod.main()
-            raise AssertionError("--auto should no longer be a recognized flag")
-        except SystemExit as e:
-            assert e.code == 2, "argparse should reject the unknown --auto flag"
+    try:
+        _main(["run", "--auto"])
+        raise AssertionError("--auto should no longer be a recognized flag")
+    except SystemExit as e:
+        assert e.code == 2, "argparse should reject the unknown --auto flag"
 
 
 def test_resume_latest_still_errors_when_none():
@@ -180,14 +194,9 @@ def test_resume_latest_still_errors_when_none():
         runs = Path(tmp) / "runs"
         runs.mkdir()
         exit_code = None
-        with patch.object(run_cmd, "run_pyflow", fake_run_pyflow), patch.object(
-            run_cmd, "packaged_registry", lambda spec: _StubRegistry()
-        ), patch(
-            "sys.argv",
-            ["workhorse", "--workflow", "research", "--runs-dir", str(runs), "--resume-latest"],
-        ):
+        with patch.object(run_cmd, "run_pyflow", fake_run_pyflow):
             try:
-                cli_mod.main()
+                _main(["run", "--runs-dir", str(runs), "--resume-latest"])
             except SystemExit as e:
                 exit_code = e.code
     assert called["run"] is False, "the driver should not be entered with nothing to resume"

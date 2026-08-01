@@ -60,8 +60,10 @@ Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"
 Repository = "https://github.com/GabrielCpp/stablemate"
 Issues = "https://github.com/GabrielCpp/stablemate/issues"
 
-[project.scripts]
-workhorse = "workhorse:main"
+# No `[project.scripts]`. Workhorse is a library: it ships the *wiring* for a command
+# line (`workhorse.console_script`) but drives no command of its own, because a generic
+# runner would need to resolve a workflow by name and there is nothing to resolve it
+# against. A workflow distribution binds its own script — see workflows/pyproject.toml.
 
 [tool.uv.sources]
 stablemate-core = { workspace = true }

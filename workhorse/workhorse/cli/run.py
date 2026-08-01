@@ -1,8 +1,12 @@
-"""`workhorse run` — the arguments it takes and the invocation it builds.
+"""`run` — the arguments it takes and the invocation it builds.
 
-Everything here is the CLI's contract rather than any engine's: which workflow and
-flow, the repo dir, the backend, the runs dir, params, the context manifest and the
-resume flags. It ends by handing the driver one :class:`RunInvocation`.
+Everything here is the CLI's contract rather than any engine's: which flow, the repo
+dir, the backend, the runs dir, params, the context manifest and the resume flags. It
+ends by handing the driver one :class:`RunInvocation`.
+
+*Which workflow* is not among them. The console script that reached this module is the
+workflow's own, and it hands its `Registry` in — so there is no name to resolve, and no
+way for this command to be pointed at a different workflow than the one it is.
 
 This is also the process's one environment read. `AGENT_*` and `WORKHORSE_*` become a
 `RunConfig` and a `TelemetryHost` here, and travel on the invocation; nothing the
@@ -18,11 +22,11 @@ from pathlib import Path
 
 from workhorse import otel
 from workhorse.cli.params import load_params
-from workhorse.cli.resolve import packaged_registry
 from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
 # loader on this module and have the CLI see it.
 from workhorse.manifest import load_context_manifest as _load_context_manifest
+from workhorse.packaged import PackagedWorkflowError
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
 # Re-imported under its historical private name: the run-identity rules live in
@@ -36,19 +40,11 @@ HELP = "Execute a workflow (default)"
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--workflow",
+        "flow",
+        nargs="?",
         default=None,
-        help="The workflow NAME (e.g. 'coder') — an installed package registering it "
-        "in the 'workhorse.workflows' entry-point group. Not a path: a workflow is a "
-        "Python package, not a file. May also be given as the first positional "
-        "argument: `workhorse run coder` or `workhorse run coder qa`.",
-    )
-    parser.add_argument(
-        "positional",
-        nargs="*",
-        help="Positional form of --workflow [flow]: `workhorse run <name> [<flow>]`. "
-        "The first token is treated as the workflow name when --workflow is omitted; "
-        "the optional second token is the flow sub-graph to run standalone.",
+        help="The flow sub-graph to run standalone (e.g. 'qa'). Omit it to start the "
+        "workflow at its entry flow.",
     )
     parser.add_argument(
         "--context-file",
@@ -131,14 +127,17 @@ def run(args: argparse.Namespace) -> None:
 
 def invocation(args: argparse.Namespace) -> RunInvocation:
     """Everything `run` decided, as the one value the driver is handed."""
-    workflow_spec, flow = _workflow_and_flow(args)
-
-    # A `workhorse-<name>` console script already holds its Registry (it never went
-    # through discovery), so it hands it in; a bare name resolves one from the entry
-    # point.
-    registry: Registry = getattr(args, "registry", None) or packaged_registry(
-        workflow_spec
-    )
+    # The console script holds its own workflow and hands it in — the CLI never looks
+    # one up. `directory()` is asked for here rather than at the first prompt render,
+    # so a package installed in a shape whose prompts can't be read (a zipapp, a
+    # zip-safe egg) says so now instead of as a `TemplateNotFound` several nodes in.
+    registry: Registry = args.registry
+    try:
+        registry.directory()
+    except PackagedWorkflowError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    flow = args.flow
 
     # The consuming repo is the directory workhorse is launched in — same <cwd> rule
     # as the runs-dir default below. Pin AGENT_REPO_DIR to the launch dir when the
@@ -196,44 +195,6 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         config=replace(RunConfig.from_env(os.environ), backend=backend),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
-
-
-def _workflow_and_flow(args: argparse.Namespace) -> tuple[str, str | None]:
-    """The workflow name and optional flow, from the two input shapes.
-
-    Two same-typed values, so they would normally want a record — but this is the pair
-    ``--workflow [flow]`` is *written* as, and it is consumed on the next line rather
-    than carried anywhere.
-
-    ``explicit``    ``--workflow coder [--flow qa]``  (args.workflow set, positional empty)
-    ``positional``  ``coder [qa]``                    (args.workflow None, positional both)
-    """
-    workflow_spec = args.workflow
-    flow = getattr(args, "flow", None)  # legacy: flow used to be its own positional
-    positional = getattr(args, "positional", []) or []
-    if workflow_spec is None:
-        if not positional:
-            print(
-                "error: workflow is required — pass --workflow <name> or use the "
-                "positional form: workhorse run <name> [<flow>]",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        workflow_spec = positional[0]
-        if len(positional) > 1:
-            flow = positional[1]
-    elif positional:
-        # --workflow given AND positionals present → first positional is the flow
-        if len(positional) == 1:
-            flow = positional[0]
-        else:
-            print(
-                f"error: unexpected positional arguments {positional[1:]!r} — "
-                "when --workflow is given, at most one positional (the flow name) is allowed",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-    return workflow_spec, flow
 
 
 def _resume_run_dir(

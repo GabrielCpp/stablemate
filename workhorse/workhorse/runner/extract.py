@@ -8,10 +8,7 @@ from typing import Any
 from workhorse.runner.failure import OutputParseError
 from workhorse.runner.spec import AgentNode
 
-try:
-    from json_repair import repair_json as _repair_json
-except ImportError:  # tolerant parsing degrades to strict-only if the dep is absent
-    _repair_json = None
+from json_repair import repair_json
 
 
 def extract_outputs(text: str, node: AgentNode) -> dict[str, Any]:
@@ -137,11 +134,9 @@ def _json_objects(text: str) -> list[dict]:
 
 def _parse_json_tolerant(text: str, wanted: set[str]) -> dict | None:
     """Repair-and-extract via ``json-repair``, preferring the object with the
-    wanted keys. Returns None if the dep is absent or no dict could be recovered."""
-    if _repair_json is None:
-        return None
+    wanted keys. Returns None if no dict could be recovered."""
     try:
-        obj = _repair_json(text, return_objects=True)
+        obj = repair_json(text, return_objects=True)
     except Exception:  # noqa: BLE001 — repair is best-effort; never let it crash a run
         return None
     return _select_object(obj, wanted)

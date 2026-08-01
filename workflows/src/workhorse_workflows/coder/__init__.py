@@ -28,7 +28,7 @@ main loop: `genesis` produces the preconditions the main loop *assumes*, `dream`
 after the work like sleep so that reflection never gates a story, and `fix` is a
 standalone drain of the backlog the main loop also drains inline, on its own copy of the
 same nodes. All three are registered flows on the coder `Registry` and entered directly,
-as `workhorse run coder genesis`.
+as `workhorse-coder run genesis`.
 
 The other five are reached with `self.handoff(...)`, and the caller names the class at the
 callsite::

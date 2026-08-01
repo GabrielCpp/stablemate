@@ -10,6 +10,18 @@ from ostler.vet.register import MatchResult, match
 from ostler.vet.report import VetReport, build_report, build_vet_concept
 
 
+def _frontmatter(raw: str) -> dict:
+    """The frontmatter of a rendered vet concept — `build_vet_concept` always writes one.
+
+    Asserting that here rather than at each read keeps the failure legible: a builder that
+    stopped emitting frontmatter fails on this line, not with a subscript of None inside
+    whichever assertion happened to run first.
+    """
+    found = markdown.split(raw).frontmatter
+    assert found is not None
+    return found
+
+
 def _dom(selector, x, y, w, h, visible=True, role="") -> DomElement:
     return DomElement(selector=selector, role=role, visible=visible,
                       bbox=BBox(x=x, y=y, width=w, height=h))
@@ -82,11 +94,11 @@ def test_matched_crop_round_trips_through_json():
 def test_build_vet_concept_creates_fresh():
     report = _build(_clean_match_result())
     raw = build_vet_concept(None, report)
-    doc = markdown.split(raw)
-    assert doc.frontmatter["type"] == "spec.vet"
-    assert doc.frontmatter["slug"] == "01-foo"
-    assert doc.frontmatter["status"] == "clean"
-    assert doc.find_section("State: default") is not None
+    meta = _frontmatter(raw)
+    assert meta["type"] == "spec.vet"
+    assert meta["slug"] == "01-foo"
+    assert meta["status"] == "clean"
+    assert markdown.split(raw).section("State: default") is not None
 
 
 def test_build_vet_concept_rerun_same_state_replaces_in_place():
@@ -94,8 +106,7 @@ def test_build_vet_concept_rerun_same_state_replaces_in_place():
     raw = build_vet_concept(None, report1)
     report2 = _build(_dirty_match_result())
     raw2 = build_vet_concept(raw, report2)
-    doc = markdown.split(raw2)
-    assert doc.frontmatter["states"]["default"]["status"] == "disagreements"
+    assert _frontmatter(raw2)["states"]["default"]["status"] == "disagreements"
     # only one "State: default" section, not two
     assert raw2.count("## State: default") == 1
 
@@ -106,8 +117,8 @@ def test_build_vet_concept_different_state_appends_section():
     report2 = _build(_dirty_match_result(), state="expanded")
     raw2 = build_vet_concept(raw, report2)
     doc = markdown.split(raw2)
-    assert doc.find_section("State: default") is not None
-    assert doc.find_section("State: expanded") is not None
+    assert doc.section("State: default") is not None
+    assert doc.section("State: expanded") is not None
 
 
 def test_build_vet_concept_top_level_status_is_disagreements_if_any_state_is():
@@ -115,9 +126,9 @@ def test_build_vet_concept_top_level_status_is_disagreements_if_any_state_is():
     raw = build_vet_concept(None, report1)
     report2 = _build(_dirty_match_result(), state="expanded")
     raw2 = build_vet_concept(raw, report2)
-    assert markdown.split(raw2).frontmatter["status"] == "disagreements"
+    assert _frontmatter(raw2)["status"] == "disagreements"
 
     # once the disagreeing state goes clean again, overall status follows
     report2_clean = _build(_clean_match_result(), state="expanded")
     raw3 = build_vet_concept(raw2, report2_clean)
-    assert markdown.split(raw3).frontmatter["status"] == "clean"
+    assert _frontmatter(raw3)["status"] == "clean"

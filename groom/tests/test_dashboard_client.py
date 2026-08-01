@@ -27,6 +27,14 @@ CLIENT = ASSETS / "dashboard.js"
 NODE = shutil.which("node")
 
 
+def _node() -> str:
+    """The node binary. Called only past `_skipped()`, which is what rules its
+    absence out — so the caller below spells the command rather than the question of
+    whether node is installed."""
+    assert NODE is not None
+    return NODE
+
+
 def _skipped() -> bool:
     if NODE is not None:
         return False
@@ -43,7 +51,9 @@ def test_the_client_module_parses():
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / "dashboard.mjs"
         copy.write_text(CLIENT.read_text())
-        result = subprocess.run([NODE, "--check", str(copy)], capture_output=True, text=True, timeout=30)
+        result = subprocess.run(
+            [_node(), "--check", str(copy)], capture_output=True, text=True, timeout=30
+        )
     assert result.returncode == 0, result.stderr
 
 

@@ -10,21 +10,15 @@ The bundled image runs `workhorse` as the container-local `nobody` user with
 credential seeding, persistent volumes, and isolation: the agent works against
 its own clone (never a host working tree) and all state lives in named volumes.
 
-## Status: this harness has not been ported off the YAML front-end
+## How the workflow is selected
 
-Everything else on this page — **credentials, volumes, isolation, resetting state** — is
-current. What is **not** current is how the workflow is selected. `entrypoint.sh` still
-launches `workhorse --workflow "${WORKFLOW_PATH:-/workflow/workflow.yaml}"`, and
-`compose.yaml` still bind-mounts a workflow *directory* at `/workflow` — both written for
-the [retired YAML front-end](WORKFLOW.md). The current CLI takes a workflow **name**
-resolved through the `workhorse.workflows` entry-point group and **refuses a path**, so
-that invocation fails at startup.
-
-A workflow is an installed distribution now, so the ported shape is to `pip install` the
-workflow's wheel into the image and run `workhorse run <name>` — no bind mount and no
-`WORKFLOW_DIR`. That is a code change to `entrypoint.sh` and `compose.yaml`, not a
-documentation one, and it has not been made. The `WORKFLOW_DIR` / `WORKFLOW_PATH` rows
-below are documented as they still behave, not as they should.
+A workflow is an **installed distribution**, not a directory: the image installs
+`workhorse-workflows` and each workflow in it declares its own console script. So
+`$WORKFLOW` names the workflow and `entrypoint.sh` spawns that name's command
+(`workhorse-coder run …`). Nothing is bind-mounted at `/workflow`, and there is no
+`WORKFLOW_DIR` or `WORKFLOW_PATH` — a wheel not installed in the image is a workflow the
+container cannot run, and an unset or misspelled `$WORKFLOW` fails at spawn rather than
+part-way into a run.
 
 ## Prerequisites
 
@@ -64,17 +58,15 @@ and a **layered override compose file** — this is how `workhorse` is meant to 
 embedded in a project:
 
 ```bash
-WORKFLOW_DIR=/abs/path/to/workflow-dir \
+WORKFLOW=coder \
 docker compose -f compose.yaml -f your-override.compose.yaml up --abort-on-container-exit
 
 # Force a full image rebuild (after controller or pyproject.toml changes)
 ... docker compose -f compose.yaml -f your-override.compose.yaml up --build --abort-on-container-exit
 ```
 
-`WORKFLOW_DIR` must point at a directory containing a `workflow.yaml`; its
-`prompts/` and `scripts/` subdirectories are mounted alongside it inside the
-container. **This is the un-ported path described in the status note above** — the
-`workflow.yaml` it looks for is a file the current engine can no longer load.
+`WORKFLOW` names a workflow the image has installed; its prompts ship inside that
+distribution, so nothing is mounted alongside it.
 
 > The controller `.py` is `COPY`d into the image, not bind-mounted, so controller
 > edits take effect only after an image rebuild (`--build`).
@@ -105,17 +97,15 @@ A project usually wraps these commands in a `make` target of its own so contribu
 don't type the compose invocation by hand. farrier does not generate one: its
 `.agents/agents.mk` carries only `agent-install` / `agent-check`.
 
-The `hello-world` workflow this file used to recommend as an auth/image smoke test is a
-Python package now, not a directory to point `WORKFLOW_DIR` at, so there is no
-container-side smoke test until the harness is ported. On the host, `workhorse run
-hello-world --dry-run` covers the same ground and needs no agent CLI at all — see the
-[README](../README.md#quick-start).
+For an auth/image smoke test, `WORKFLOW=hello-world` runs the shipped quick start in the
+container. On the host, `workhorse-hello-world run --dry-run` covers the same ground and
+needs no agent CLI at all — see the [README](../README.md#quick-start).
 
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `WORKFLOW_DIR` | _(required)_ | Absolute path to the workflow directory (mounted at `/workflow`). Un-ported — see the [status note](#status-this-harness-has-not-been-ported-off-the-yaml-front-end) |
+| `WORKFLOW` | `coder` | Name of an installed workflow; the container spawns its `workhorse-<name> run` command |
 | `CLAUDE_CODE_OAUTH_TOKEN` | _(unset)_ | Optional long-lived OAuth token (`claude setup-token`); skips the credentials-file seed |
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
 | `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `aider`, or `opencode` |
@@ -134,7 +124,6 @@ hello-world --dry-run` covers the same ground and needs no agent CLI at all — 
 |---|---|---|---|
 | `~/.claude/.credentials.json` | `/mnt/claude-credentials.json` | bind, read-only | Subscription auth — seeded into `claude-state` once at startup |
 | `~/.claude/settings.json` | `/mnt/claude-settings.json` | bind, read-only | Optional host Claude config (commented out by default) |
-| `$WORKFLOW_DIR` | `/workflow` | bind | Workflow definition (yaml, prompts, scripts) — un-ported; a workflow is an installed distribution now |
 | `workspace` volume | `/workspace` | named volume | **Agent working tree** — repo clones, branches, and commits; persists across reboots |
 | `claude-state` volume | `/claude-state` | named volume | Claude sessions + seeded credentials + onboarding stub; persists across reboots |
 | `runs` volume | `/runs` | named volume | Run artifacts; persists across reboots |

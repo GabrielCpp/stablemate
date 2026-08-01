@@ -32,23 +32,34 @@ def _reset() -> None:
     state.SCANNING = False
 
 
-class _FakeConn:
+class _NoSocket:
+    """The socket a `_FakeConn` will never send on — its two RPCs are canned."""
+
+    async def send_json(self, data) -> None:
+        raise AssertionError("a _FakeConn answers without sending on a socket")
+
+
+class _FakeConn(sidecar_hub.SidecarConnection):
     """A stand-in sidecar connection registered directly into the hub, so the
     data-plane handlers exercise the socket-preferred path without a real
-    WebSocket."""
+    WebSocket.
+
+    A real `SidecarConnection` and not a look-alike: the hub's registry is a dict of
+    them, and what this replaces is the two coroutines a handler awaits, not the
+    type the handler is handed."""
 
     def __init__(self, container_id: str, *, result=None, error: bool = False) -> None:
-        self.container_id = container_id
+        super().__init__(container_id, _NoSocket())
         self._result = result
         self._error = error
         self.reloaded = False
 
-    async def rpc(self, method, params):
+    async def rpc(self, method: str, params: dict, *, timeout: float = 0.0):
         if self._error:
             raise sidecar_hub.SidecarError("socket unavailable")
         return self._result
 
-    async def send_reload(self):
+    async def send_reload(self) -> None:
         self.reloaded = True
 
 
@@ -634,7 +645,11 @@ def test_spawn_scan_returns_before_discovery_completes():
         with patch.object(groom_app, "_reconcile", _slow_reconcile):
             await groom_app._spawn_scan()
             order.append("spawn-returned")
-            await groom_app._scan_task  # let the background task finish
+            # The task the spawn just created — `_scan_task` is None only before the
+            # first spawn, which this scenario is past.
+            scan_task = groom_app._scan_task
+            assert scan_task is not None
+            await scan_task  # let the background task finish
 
     asyncio.run(_scenario())
 

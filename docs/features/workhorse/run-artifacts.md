@@ -5,7 +5,7 @@ title: Run artifacts
 ---
 # Run artifacts
 
-The on-disk record of one [`workhorse run`](workhorse.md#run) execution: a directory tree written
+The on-disk record of one [`workhorse-<name> run`](workhorse.md#run) execution: a directory tree written
 incrementally by an `ArtifactWriter` as [`drive`](concepts/pyflow-driver.md) walks the workflow's
 state machine. It serves two purposes at once — **checkpointing** (so a killed run resumes in the
 state it stopped in) and **history** (every prompt, output and event survives the run, read back by

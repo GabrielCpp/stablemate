@@ -102,14 +102,14 @@ def main(logger: logging.Logger) -> None:
         pointer = repo / ".agents" / "program"
         pointer.parent.mkdir(parents=True, exist_ok=True)
         pointer.write_text(
-            "# Active research program for `workhorse run research`. Edit to switch.\n"
+            "# Active research program for `workhorse-research run`. Edit to switch.\n"
             f"{program_dir}\n"
         )
         logger.info("set default program -> %s", pointer)
 
     logger.info(
         "done. Next: fill README ladder + %s thresholds, then\n"
-        "  workhorse run research%s",
+        "  workhorse-research run%s",
         gate,
         "" if args.set_default else f" --params '{{\"program\":\"{program_dir}\"}}'",
     )

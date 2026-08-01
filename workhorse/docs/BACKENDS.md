@@ -25,11 +25,11 @@ a sibling module, `registry.py` maps a name to one). The CLI is chosen **per-run
 (the *model* is still per-node — see below):
 
 ```bash
-workhorse run <name>                      # claude (default)
-workhorse run <name> --cli codex
-workhorse run <name> --cli copilot
-workhorse run <name> --cli aider          # OpenRouter-native
-workhorse run <name> --cli opencode       # OpenRouter-native
+workhorse-<name> run                      # claude (default)
+workhorse-<name> run --cli codex
+workhorse-<name> run --cli copilot
+workhorse-<name> run --cli aider          # OpenRouter-native
+workhorse-<name> run --cli opencode       # OpenRouter-native
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,aider,opencode} env var.
 ```
 
@@ -59,7 +59,7 @@ For running OpenRouter models (e.g. MiMo) on `aider` / `opencode`, see
 ### Node power selection
 
 An agent turn's optional `power=` argument is one of `high`, `medium`, or `low`. It is
-not a model name; it is resolved through the workhorse config file for the active
+not a model name; it is resolved through the shared config file for the active
 backend (see [Config file location](#config-file-location) below):
 
 ```python
@@ -145,16 +145,17 @@ by "first layer that names one wins", an env table would want to *merge* across
 layers — so a second layer would be a different resolution rule, not more of the
 same one.)
 
-Inspect or set config:
+Inspect or set config with **farrier**, which owns the shared config file — workhorse
+is a library and ships no command of its own:
 
 ```bash
-workhorse config show                        # print all config keys
-workhorse config show power.high.claude      # print one value
-workhorse config set-library ~/path/to/lib   # set the overlay library path
-workhorse config set-stablemate ~/path/to/sm # set the stablemate checkout path
-workhorse config set-base ~/path/to/base     # set the base library content path
-workhorse config list                        # list all config keys (power table friendly)
-workhorse config get power.high.claude       # get one key
+farrier config show                        # print all config keys
+farrier config show power.high.claude      # print one value
+farrier config set-library ~/path/to/lib   # set the overlay library path
+farrier config set-stablemate ~/path/to/sm # set the stablemate checkout path
+farrier config set-base ~/path/to/base     # set the base library content path
+farrier config list                        # list all config keys (power table friendly)
+farrier config get power.high.claude       # get one key
 ```
 
 #### Config file location
@@ -172,8 +173,8 @@ Override the path with `STABLEMATE_CONFIG=/path/to/config.toml` (the older
 `WORKHORSE_CONFIG` is still honored).
 
 It is one file because `library_dir`, `stablemate_dir` and `base_dir` only mean anything
-if every tool agrees on them — with a file per tool, `workhorse config set-base` and
-`farrier config set-base` wrote to different places and could silently disagree. The
+if every tool agrees on them — with a file per tool, each tool's own `config set-base`
+wrote to a different place and they could silently disagree. The
 pre-unification per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still
 read when the shared one is absent, and the first write folds them into it, so an
 existing setup keeps working with no migration step.
@@ -185,7 +186,7 @@ versioned independently, so the file — not the code — is where they are kept
 
 | Situation | Behavior |
 |---|---|
-| Config is newer than this build | `config set-*` **refuses** (exit 1). Upgrade workhorse. |
+| Config is newer than this build | `config set-*` **refuses** (exit 1). Upgrade the tool. |
 | Config is older than this build | Migrated forward on the next write; the old file is kept as `config.toml.v<n>.bak`. |
 | Reading a newer config | Succeeds, logs a warning. |
 
@@ -201,15 +202,15 @@ content a workflow's prompts reference. Workhorse does not resolve workflows thr
 them — they are one config file so both tools agree on where that content lives:
 
 ```bash
-workhorse config set-library ~/path/to/your/prompt-library
+farrier config set-library ~/path/to/your/prompt-library
 # Optionally, also set the stablemate checkout (where its base-library is found):
-workhorse config set-stablemate ~/path/to/stablemate
+farrier config set-stablemate ~/path/to/stablemate
 ```
 
 Then verify:
 
 ```bash
-workhorse config show
+farrier config show
 # library_dir=/Users/you/path/to/prompt-library
 # stablemate_dir=/Users/you/path/to/stablemate
 ```
@@ -248,7 +249,7 @@ codex's Responses API, which needs one). Export your key once and pick the backe
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-v1-...
-workhorse run <name> --cli opencode   # or: --cli aider
+workhorse-<name> run --cli opencode   # or: --cli aider
 ```
 
 Point the power tier at the model in your config, so the same workflow still runs
@@ -315,7 +316,7 @@ never exceeds ~200k, that summary buys nothing and costs a cold prompt:
 env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
 ```
 
-…or for a single run, `OPENCODE_DISABLE_AUTOCOMPACT=1 workhorse run <workflow> --cli
+…or for a single run, `OPENCODE_DISABLE_AUTOCOMPACT=1 workhorse-<name> run --cli
 opencode`. Either way it is scoped to the harness, which is the point: do **not** set
 `"compaction": {"auto": false}` in `opencode.jsonc`, because that key is global with
 no per-provider scope and would also disable compaction for models that run close to

@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-testing
-description: "Generic pytest patterns — fixtures, parametrize, subprocess testing, parallel safety. Applies to test files."
+description: "Generic pytest patterns — fixtures, parametrize, subprocess testing, parallel safety, and doubles that subclass the port so `ty check` catches a fake that has drifted. Applies to test files."
 metadata:
   generated_by: farrier
   source: library/skills/stacks/python/python-testing/SKILL.md
@@ -103,6 +103,53 @@ def test_with_mocked_api(monkeypatch: pytest.MonkeyPatch) -> None:
 ```
 
 Prefer `monkeypatch` over `@patch` for test-scoped mutations — it auto-reverts at test teardown.
+
+## A double **is** the port, it does not merely look like one
+
+Test files are type-checked to the same bar as source (`ty check`, zero findings — see
+`python-cli`), and this is where that bites first. A fake that is structurally similar to the
+collaborator it replaces stops being assignable the moment the real one changes — which is
+precisely when a stale fake is worth hearing about, because until then it kept passing while
+testing something that no longer exists.
+
+```python
+# No — a look-alike. It passes today, and goes on passing after the port grows a method.
+class FakeTelemetry:
+    def turn_heartbeat(self, node_id, idle_s, elapsed_s): ...
+
+# Yes — a real one. Subclass the port (or its null implementation) and give a body only to
+# what this test reads; everything else stays the no-op it is in production.
+class FakeTelemetry(NullTelemetry):
+    def __init__(self) -> None:
+        self.beats: list[tuple[str, float, float]] = []
+
+    def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:
+        self.beats.append((node_id, idle_s, elapsed_s))
+```
+
+Two details worth knowing before the checker teaches them the slow way:
+
+- **Protocol conformance is by parameter *name*, not just position.** A `lambda *a: ...` never
+  satisfies a Protocol whose `__call__` names its parameters — write a named function with the
+  same parameter names.
+- **Subclass the null implementation, not the abstract port,** when the port has more members
+  than the test cares about. It is the difference between a fake with a dozen `...` bodies and
+  one that states only the two signals under test.
+
+### Don't assign over a method — patch it or declare it
+
+```python
+registry.directory = lambda: Path(tmp)                  # no: unchecked, and it outlives the test
+
+with patch.object(module, "rmtree", refuse): ...        # yes: reverted on the way out
+class RegistryAt(Registry):                             # yes: a declared field the reader can see
+    at: Path | None = None
+    def directory(self) -> Path:
+        return self.at if self.at is not None else super().directory()
+```
+
+An instance attribute shadowing a method is invisible to both the reader and the checker, and on
+a module-level object it leaks into every test that runs after the one that set it.
 
 ## Markers
 

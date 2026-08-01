@@ -239,6 +239,12 @@ def _failsoft(fallback: _R) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     return decorate
 
 
+# `current_node`'s fallback — and `str()` rather than `""` on purpose. A literal argument
+# makes `_R` the type `Literal[""]`, which is not the `-> str` of the method being
+# wrapped, so the decorator would stop preserving the signature it exists to preserve.
+_NO_OPEN_NODE = str()
+
+
 class Telemetry(Protocol):
     """What the instrumentation sites may ask of telemetry.
 
@@ -822,7 +828,8 @@ class _Telemetry:
             top = self._stack[-1] if self._stack else None
         node = top[0][0] if top else ""
         attrs = self._live_attrs(node)
-        self._run_beats.add(1, attrs)
+        if self._run_beats is not None:
+            self._run_beats.add(1, attrs)
         if top is not None and self._node_elapsed is not None:
             self._node_elapsed.set(time.monotonic() - top[2], attrs)
 
@@ -887,7 +894,7 @@ class _Telemetry:
             )
             span.end()
 
-    @_failsoft("")
+    @_failsoft(_NO_OPEN_NODE)
     def current_node(self) -> str:
         """The innermost open node visit, or "" — what stamps a log record."""
         with self._lock:
@@ -1016,7 +1023,10 @@ class _Telemetry:
     # ---- metrics ---------------------------------------------------------- #
     @_failsoft(None)
     def gas_level(self, gas: int, capacity: int) -> None:
-        if self._gas is not None:
+        # Both instruments are named, not just the first: they are created together and
+        # cleared together above, but that is a fact about the constructor and nothing
+        # here can see it.
+        if self._gas is not None and self._gas_capacity is not None:
             self._gas.set(gas)
             self._gas_capacity.set(capacity)
 
@@ -1027,7 +1037,7 @@ class _Telemetry:
 
     @_failsoft(None)
     def heartbeat(self, node_id: str, remaining_s: float) -> None:
-        if self._heartbeats is not None:
+        if self._heartbeats is not None and self._cap_remaining is not None:
             self._heartbeats.add(1, {"node": node_id})
             self._cap_remaining.set(max(0.0, remaining_s), {"node": node_id})
 
@@ -1037,7 +1047,11 @@ class _Telemetry:
 
     @_failsoft(None)
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:
-        if self._turn_beats is not None:
+        if (
+            self._turn_beats is not None
+            and self._turn_idle is not None
+            and self._turn_elapsed is not None
+        ):
             self._turn_beats.add(1, {"node": node_id})
             self._turn_idle.set(max(0.0, idle_s), {"node": node_id})
             self._turn_elapsed.set(max(0.0, elapsed_s), {"node": node_id})

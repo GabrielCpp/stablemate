@@ -7,7 +7,17 @@ this spec exists to exercise.
 
 Surfaces this app ships:
 
-- **api** — Go service, the only surface, and the only writer of stored data
+- **api** — Go service, the only surface, and the only writer of stored data.
+  It listens on **port 18080**, and QA drives it at `http://localhost:18080`.
+
+  This is an environment constraint, not a behavior: the benchmark owns `18080-18099` and
+  nothing else. A benchmark that starts a server but never says which port it may use gets
+  the language's idiomatic default — for Go that is `8080`, the most contended port on any
+  developer machine. A run here did exactly that, and its QA readiness probe
+  (`POST http://localhost:8080/groups`) was answered by an unrelated service that already
+  held the port. The daemon failed to bind, so the run failed loudly rather than grading
+  itself against a stranger's API — but that was luck, not design. Pick from the owned
+  range and QA can only ever reach this app.
 
 Bullets are user-observable behavior, not implementation tasks. Every bullet is in scope
 for decomposition and none may be dropped.

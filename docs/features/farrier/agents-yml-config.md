@@ -89,9 +89,9 @@ entries are compared as literal names:
   across the layer stack and raises `SystemExit` listing every name no layer provides — only
   *rendered* when `copilot` is enabled, but validated either way.
 
-There is no `workflows:` key. Farrier installs skills and prompts; a workflow is a Python package
-workhorse resolves through its `workhorse.workflows` entry-point group, installed with pip/uv and
-run as `workhorse run <name>`. A leftover `workflows:` list in a pack or in this file is ignored.
+There is no `workflows:` key. Farrier installs skills and prompts; a workflow is an installed
+Python distribution that brings its own command — `pip`/`uv` installs it, and it is run as
+`workhorse-<name> run`. A leftover `workflows:` list in a pack or in this file is ignored.
 
 ### scaffolds
 - type: `list` of `string` (scaffold definition ids) — required: no — default: `[]`
@@ -167,7 +167,8 @@ snake_case spelling by the workflows that read them.
   subtree; farrier does not read or validate its contents.
 
 `repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to parameterize a generated
-Docker launcher. That launcher is gone — `workhorse run` takes its arguments on the command line —
+Docker launcher. That launcher is gone — `workhorse-<name> run` takes its arguments on the command
+line —
 and those keys are now ignored by everything.
 
 ## A load-valid sample

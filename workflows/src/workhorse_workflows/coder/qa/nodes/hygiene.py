@@ -199,7 +199,9 @@ def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
         for patched in patch
         for hunk in patched
         for line in hunk
-        if line.is_added
+        # An added line always has a target line number — it is the post-image the hunk
+        # header counts. The check is what keeps the span type honest for the callers.
+        if line.is_added and line.target_line_no is not None
     ]
 
 

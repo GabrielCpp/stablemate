@@ -19,7 +19,22 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from groom import cli, sidecar
-from inotify_simple import flags
+from inotify_simple import INotify, flags
+
+
+class _UnusedINotify(INotify):
+    """The notifier `_handle_event` takes and none of these events reaches.
+
+    It is only consulted to watch a newly created *directory*, and every event
+    below is a file — so this stands in without opening an inotify fd, keeping the
+    promise in the module docstring that the real one is never exercised here.
+    """
+
+    def __init__(self) -> None:
+        pass  # deliberately not FileIO's: there is no descriptor to open
+
+    def add_watch(self, path, mask):
+        raise AssertionError("no event in this file should add a watch")
 
 
 def _event(wd, mask, name=""):
@@ -128,7 +143,7 @@ def test_handle_event_under_runs_triggers_progress_push():
     with patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
          patch.object(sidecar, "_current_node", _fake_current_node), \
          patch.object(sidecar, "push_progress", _fake_push_progress):
-        sidecar._handle_event(None, event, wd_to_path)
+        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
 
     assert pushed["node"] == "resolve_integrity"
 
@@ -148,7 +163,7 @@ def test_handle_event_on_awaiting_gate_triggers_blocked_push():
          patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
          patch.object(sidecar.Path, "read_text", lambda self: gate_text), \
          patch.object(sidecar, "push_blocked", _fake_push_blocked):
-        sidecar._handle_event(None, event, wd_to_path)
+        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
 
     assert pushed["rel_path"] == "docs/epics/fixes/gate.md"
     assert pushed["question"] == "Which default?"
@@ -163,7 +178,7 @@ def test_handle_event_ignores_files_not_awaiting():
          patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
          patch.object(sidecar.Path, "read_text", lambda self: "STATUS: CONSUMED\n"), \
          patch.object(sidecar, "push_blocked", lambda *a: pushed.append(a)):
-        sidecar._handle_event(None, event, wd_to_path)
+        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
 
     assert pushed == []
 
@@ -171,7 +186,7 @@ def test_handle_event_ignores_files_not_awaiting():
 def test_handle_event_ignores_unknown_watch_descriptor():
     # No exception, no push, when the wd isn't in our map (e.g. a stale watch).
     with patch.object(sidecar, "push_progress", side_effect=AssertionError("should not push")):
-        sidecar._handle_event(None, _event(999, flags.MODIFY, name="x"), {})
+        sidecar._handle_event(_UnusedINotify(), _event(999, flags.MODIFY, name="x"), {})
 
 
 # --------------------------------------------------------------------------- #

@@ -2,7 +2,7 @@
 
 Nothing hands off to this flow: the main graph carries its **own** copy of the drain,
 riding inside an epic's story chain and committing nothing of its own. This package is the
-copy you enter directly (`workhorse run coder fix`), with no epic and no story selected.
+copy you enter directly (`workhorse-coder run fix`), with no epic and no story selected.
 
 Because the two copies run the same nodes, none of them is here: the picking, pruning and
 blocking are in `shared/backlog.py`, the story spine in `shared/story.py`, and the

@@ -11,7 +11,8 @@ pytest: **construct the [`Workflow`](../workflow-format.md#workflow-subclass), h
 [`drive`](../concepts/pyflow-driver.md) a `RunEnv` whose dependencies are substituted, and
 assert on what came back and what was written.** Nothing is monkeypatched and no subprocess
 is spawned — the seam is the run's own node index, so a test replaces a dependency rather
-than reaching into a module. [`workhorse test <dir>`](../workhorse.md#test) is the runner.
+than reaching into a module. `pytest` is the runner: workhorse ships no test subcommand,
+because wrapping `pytest <dir>/tests` in one bought nothing an author could not type.
 The narrative version of the seam, with a worked example, is
 [AUTHORING.md](../../../../workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam).
 
@@ -46,14 +47,12 @@ The narrative version of the seam, with a worked example, is
      per-node `output.json`, and with the helpers `workhorse.testing` still provides:
      `make_git_repo(tmp_path)` for a workflow that expects a real repo, and `assert_file` /
      `assert_file_contains` / `assert_json_file` for what a node wrote to disk.
-  6. **Run the suite** with [`workhorse test <workflow_dir> [-k FILTER] [-v]`](../workhorse.md#test)
-     — `_run_test` confirms `<workflow_dir>/tests/` exists (else errors), confirms `pytest`
-     is importable (else prints the `workhorse-agent[test]` install hint), then calls
-     `pytest.main([<tests_dir>, …])` in-process and exits with pytest's own return code.
-     Plain `pytest <workflow_dir>/tests` works identically; the subcommand only adds the two
-     checks and the hint.
-- end: the process exits `0` when every test under `<workflow_dir>/tests/` passes, and `1`
-  if any test fails, `tests/` is missing, or `pytest` is not installed. Each test's run dir
+  6. **Run the suite** with `pytest <workflow_dir>/tests [-k FILTER] [-v]`. There is no
+     workhorse subcommand for it — a workflow's tests are ordinary pytest over ordinary
+     Python, and the engine is a library the suite imports rather than a runner that has to
+     be told where the tests are. `workhorse-agent[test]` is the extra that brings pytest.
+- end: the process exits `0` when every test under `<workflow_dir>/tests/` passes and `1`
+  if any fails. Each test's run dir
   is left under pytest's `tmp_path` for post-mortem inspection. `workhorse`'s own
   `tests/test_pyflow.py` is written exactly this way and is the worked reference.
 - verify: `workhorse/tests/test_pyflow.py::test_the_run_index_supplies_the_body_the_callsite_only_names`,

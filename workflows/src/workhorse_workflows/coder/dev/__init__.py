@@ -1,7 +1,7 @@
 """`dev` — plan a story and implement it, one service layer at a time.
 
 The sub-graph the main loop reaches with `self.handoff(Dev, ...)`, and a registered flow
-in its own right (`workhorse run coder dev`). `flow.py` is the machine; it calls no nodes
+in its own right (`workhorse-coder run dev`). `flow.py` is the machine; it calls no nodes
 of its own, because every subject it touches — the planning gates, the per-layer
 implementation loop, the story spine — is one a second graph also touches, so all of it is
 in [`shared/`](../shared) (`shared/dev.py`, `shared/story.py`).

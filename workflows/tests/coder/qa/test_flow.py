@@ -572,6 +572,42 @@ def test_an_unmappable_packet_is_repaired_and_rebuilt(
     assert "no feature node" in agent.args_for("repair-qa-context")[0]["context_notes"]
 
 
+def test_a_gate_that_passed_hands_the_plan_turn_no_diagnostics(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A pass is not a finding, so it must not reach `plan_qa` as one.
+
+    `plan-qa.md` renders the `*_notes` under an instruction to repair the existing plan from
+    what the gates said about it. `validate_okf_context` spells a pass "QA OKF context is
+    valid." — carry that into the notes and the plan turn is told to repair a plan from the
+    diagnostic that nothing is wrong. A coder run read the brief exactly as written, answered
+    "I'm leaving both files unchanged", and burned one of three plan reworks on a no-op turn.
+
+    The repair path is what exposes it: the flow re-enters `plan` from `build_context` after a
+    rebuild, so the note the *passing* rebuild wrote is the one `plan` reads.
+    """
+    ostler(context_invalid=1)
+    agent = _Agent(docs, repair="repaired")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # The rebuild passed, so `plan` is entered with a clean slate — not with the pass restated
+    # as something to fix. `context_status` still carries the verdict; that is the routing
+    # field, and it is not rendered as a finding.
+    plan_args = agent.args_for("plan-qa")[0]
+    assert plan_args["context_status"] == "passed", plan_args
+    assert plan_args["context_notes"] == "", plan_args
+    assert all(
+        plan_args[key] == ""
+        for key in ("plan_validation_notes", "plan_review_notes", "run_assessment_notes",
+                    "audit_notes")
+    ), plan_args
+
+
 def test_the_context_repair_loop_is_bounded_at_three(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -933,6 +969,46 @@ def test_a_code_failure_earns_no_bonus_pass(
 
     assert result.status == "exhausted", result
     assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
+
+
+def test_each_exhaustion_names_the_budget_it_spent(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`exhausted` is one status over several unrelated budgets, and they must not blur.
+
+    The parent stamps this phrase into the give-up marker commit and the story frontmatter,
+    and for a while it stamped `qa_rework` no matter which budget ended the flow. A story
+    that burned all three QA-plan repairs and so never reached a code fix was filed as
+    `[QA FAILED after 0 attempts]` — which reads as a story the loop never tried, and sends
+    whoever triages the marker looking in the wrong place. Each arm now says its own name.
+    """
+    ostler(context_invalid=9)
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired"))
+    assert result.status == "exhausted", result
+    assert result.spent == "3 OKF-context repair", result.spent
+
+    okf = ostler(plan_invalid=9)
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+    assert result.status == "exhausted", result
+    assert result.spent == "3 QA-plan repair", result.spent
+    assert okf.runs == 0
+
+    ostler(fail_runs=99)
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    result = drive_flow(Qa(story=STORY), env(), agent)
+    assert result.status == "exhausted", result
+    assert result.spent == "3 code rework", result.spent
+
+    # A dev target reworks nothing by design, so its count is a truthful zero — which is
+    # exactly the number that used to be indistinguishable from "the loop never ran".
+    ostler(fail_runs=99)
+    agent = _Agent(docs, assessment_class="product")
+    result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
+    assert result.status == "exhausted", result
+    assert "dev target" in result.spent, result.spent
 
 
 def test_triage_can_hand_the_scope_back_to_the_author(

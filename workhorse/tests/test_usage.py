@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import importlib
 
+from _fakes import present
+
 usage = importlib.import_module("workhorse.runner.usage")
 
 
@@ -160,7 +162,7 @@ def test_opencode_steps_sum_into_one_turn():
     assert total.output_tokens == 350, total
     assert total.cache_read_input_tokens == 3300, total
     assert total.cache_creation_input_tokens == 400, total
-    assert abs(total.total_cost_usd - 0.035) < 1e-9, total
+    assert abs(present(total.total_cost_usd) - 0.035) < 1e-9, total
 
 
 def test_single_report_backend_merges_unchanged():
