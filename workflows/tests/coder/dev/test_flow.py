@@ -52,6 +52,14 @@ SPEC_REL = f"docs/specs/{STORY}"
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
+#: What an escalating resolver writes into `context.md` before it hands the block over —
+#: the shape `prompts/resolve-operator.md` mandates for the escalated arm.
+ESCALATION_NOTE = (
+    "STATUS: AWAITING_OPERATOR\n\n"
+    "Tried the staging bucket and the fixture; neither exists.\n"
+    "Please confirm which bucket this story targets.\n"
+)
+
 #: The epic index ostler parses to learn the story exists. Without the `## Stories` heading
 #: and the `### <slug>` subsection the graph does not know the story at all, and
 #: `prepare_story`'s authored gate is skipped rather than satisfied — which would make every
@@ -295,6 +303,7 @@ class _Agent:
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
+            self._escalate()
             return {"decision": "escalated", "summary": "needs a product call"}
         self._answer()
         return {"decision": "answered", "summary": "the bucket exists in staging"}
@@ -320,6 +329,16 @@ class _Agent:
             f"STATUS: ANSWERED\nSCOPE: {self.scope}\n\nUse the staging bucket.\n",
             encoding="utf-8",
         )
+
+    def _escalate(self) -> None:
+        """What an *escalating* resolver leaves behind — it does not write nothing.
+
+        `prompts/resolve-operator.md` requires the escalated arm to write
+        `STATUS: AWAITING_OPERATOR` into this same file, with what it tried and what the
+        human must supply. Modelling that as "writes nothing" is what let the flow overwrite
+        it unnoticed; see `test_an_escalating_resolver_leaves_its_note_for_the_human`.
+        """
+        (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
 
 
 def _answers(docs: Path, seen: list[str], *, scope: str = "story") -> Callable[..., None]:
@@ -644,11 +663,7 @@ def test_an_escalating_resolver_falls_through_to_the_human(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The human path is the resolver's fallback, not a separate mode.
-
-    A resolver that cannot resolve the block writes nothing, so the wait is on the questions
-    the flow itself put in the file — which is what the escalated arm is for.
-    """
+    """The human path is the resolver's fallback, not a separate mode."""
     seen: list[str] = []
     agent = _Agent(docs, blocked=1, escalate=True)
 
@@ -657,7 +672,35 @@ def test_an_escalating_resolver_falls_through_to_the_human(
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert seen == ["the prod bucket may not exist"], seen
+
+
+def test_an_escalating_resolver_leaves_its_note_for_the_human(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The escalated arm waits on the file without rewriting it.
+
+    `Await` writes its `questions` with `write_text`, and the escalated arm waits on the very
+    file the resolver has just written `STATUS: AWAITING_OPERATOR` into. Passing the block
+    notes as the ask therefore replaced the resolver's investigation — what it tried, and the
+    concrete thing it needs — with the producer's one-line block summary, so the human
+    arrived to the question instead of the answer-so-far. It also erased the `AWAITING_OPERATOR`
+    /`CONSUMED` history the resolver's own prompt reads back as its "did I already answer
+    this?" loop guard, which is what let the same block escalate round after round.
+
+    Contrast `test_the_human_mode_gate_blocks_on_the_story_folder`: there no resolver ran, so
+    the flow writing the questions is the only thing that puts an ask on disk.
+    """
+    seen: list[str] = []
+    agent = _Agent(docs, blocked=1, escalate=True)
+
+    with patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert seen == [ESCALATION_NOTE], seen
 
 
 def test_a_plan_no_operator_can_unblock_fails_instead_of_looping(

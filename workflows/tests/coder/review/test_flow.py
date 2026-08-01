@@ -45,6 +45,14 @@ SPEC_REL = f"docs/specs/{STORY}"
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
+#: What an escalating resolver leaves in `context.md` before handing the block to a person —
+#: the shape `prompts/resolve-operator.md` mandates for the escalated arm.
+ESCALATION_NOTE = (
+    "STATUS: AWAITING_OPERATOR\n\n"
+    "The retry is unsatisfiable either way; both readings cost something.\n"
+    "Please pick which behaviour this story wants.\n"
+)
+
 #: The epic index ostler parses to learn the story exists — without it `prepare_story`'s
 #: authored gate is skipped rather than satisfied, and every test below would pass for the
 #: wrong reason.
@@ -244,6 +252,7 @@ class _Agent:
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
+            self._escalate()
             return {"decision": "escalated", "summary": "needs a product call"}
         self._answer()
         return {"decision": "answered", "summary": "ship it without the retry"}
@@ -255,6 +264,14 @@ class _Agent:
         (self.docs / CONTEXT_REL).write_text(
             "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
         )
+
+    def _escalate(self) -> None:
+        """An escalating resolver writes its note into the same file, it does not write nothing.
+
+        `prompts/resolve-operator.md` mandates `STATUS: AWAITING_OPERATOR` plus what it tried
+        and what the human must supply — the thing the escalated `Await` must not overwrite.
+        """
+        (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
 
 
 def _answers(seen: list[str]) -> Callable[..., None]:
@@ -539,7 +556,10 @@ def test_an_escalating_resolver_falls_through_to_the_human(
 
     assert result.status == "approved", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert seen == ["the handler ignores the timeout"], seen
+    # The resolver's note, not the block summary: the escalated `Await` waits on this file
+    # without rewriting it, so the human arrives to what the resolver already tried. See
+    # `dev`'s `test_an_escalating_resolver_leaves_its_note_for_the_human`.
+    assert seen == [ESCALATION_NOTE], seen
 
 
 def test_an_answered_resolution_never_waits(
