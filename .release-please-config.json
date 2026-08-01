@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "python",
+  "separate-pull-requests": false,
+  "include-component-in-tag": true,
+  "bootstrap-sha": "beeabb6e3c4221d420b8cfa56e74d44a7935e897",
+  "packages": {
+    "core": { "component": "stablemate-core" },
+    "workhorse": { "component": "workhorse-agent" },
+    "workflows": { "component": "workhorse-workflows" },
+    "farrier": { "component": "farrier" },
+    "ostler": { "component": "ostler" },
+    "groom": { "component": "groom" },
+    "saddlebag": { "component": "saddlebag" }
+  }
+}

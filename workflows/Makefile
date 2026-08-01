@@ -2,8 +2,9 @@
 
 .DEFAULT_GOAL := help
 
-DIST  := dist
-NAME  := $(shell grep -m1 '^name' pyproject.toml | cut -d'"' -f2)
+DIST    := dist
+NAME    := $(shell grep -m1 '^name' pyproject.toml | cut -d'"' -f2)
+VERSION := $(shell grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
 
 .PHONY: help
 help: ## Show this help
@@ -21,6 +22,10 @@ test: ## Run the test suite (no network, no real sleeps)
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/
 	uv build --package $(NAME) --out-dir dist
+
+.PHONY: version
+version: ## Print the current distribution name and version
+	@echo "$(NAME) $(VERSION)"
 
 .PHONY: clean
 clean: ## Remove build artifacts

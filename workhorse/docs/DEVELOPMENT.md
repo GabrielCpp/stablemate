@@ -7,7 +7,9 @@ It assumes you have cloned the [stablemate](https://github.com/GabrielCpp/stable
 repository and are working in its `workhorse/` directory, rather than having installed
 `workhorse-agent` from PyPI. Common tasks are wrapped in the
 [`Makefile`](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/Makefile)
-(`make help`): `make install`, `make test`, `make build`, `make publish`.
+(`make help`): `make install`, `make test`, `make build`. Nothing here publishes —
+releases are opened by `make release` at the repo root and uploaded from CI; see the
+root README's [Releasing](https://github.com/GabrielCpp/stablemate#releasing).
 
 ## Project layout
 
