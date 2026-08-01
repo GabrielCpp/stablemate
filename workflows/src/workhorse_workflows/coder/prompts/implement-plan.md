@@ -178,6 +178,7 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 - Continue with compile errors or failing tests.
 - **Report `done` when you never ran the code in a local environment.** Green unit tests are not proof the code runs.
 - **Report `done` with lint failing.** Run the service's `make lint` (or its configured lint command) and leave it clean — a deterministic lint gate re-runs it and routes any failure back to rework, so a dirty tree does not actually finish the story faster.
+- **Hand-edit the story's `status:` frontmatter or its `## Implementation Status` **Status** line.** See "Story Status" below.
 - Apply the wrong layer's instruction set.
 - Start implementing a consumer layer before the contract/API layer it depends on passes verification.
 
@@ -191,6 +192,23 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 - Fix errors immediately — never defer them.
 - Re-read the plan section before coding each step.
 - For multi-layer stories, implement layers in the order specified by the plan's **Implementation Order** (typically the API/contract layer before the consumers that depend on it) and verify each before moving on.
+
+## Story Status
+
+Do **not** hand-edit the story's `status:` frontmatter or its `## Implementation Status`
+**Status** line. Later gates own those transitions and set them from a structured verdict —
+`Reviewed` from review, `QA passed` only from a QA run the workflow itself performed. You
+have not reached those stages, so any status you write is a claim about work that has not
+happened yet.
+
+This matters beyond tidiness: the queue reads that line. `QA passed`, `done`, `merged` and
+`complete` all mark the story finished, so a status written here makes the story invisible
+to story selection — if the run later gives up, crashes, or sets the epic aside, the story
+stays "passed" forever without QA ever having verified it.
+
+Re-verifying a previously failed story is still your job when the plan says so, and so is
+recording what you ran. Put that under `## Implementation Status` as prose and leave the
+**Status** line to the gate.
 
 ## Machine-Readable Result (required)
 
