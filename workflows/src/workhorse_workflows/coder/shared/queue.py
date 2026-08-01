@@ -41,6 +41,7 @@ from workhorse_workflows.coder.shared import paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (
     BaseBranch,
+    DocsBlockFlagged,
     EpicBlocked,
     EpicBranch,
     EpicPick,
@@ -998,8 +999,74 @@ def flag_qa_failure(
     if not committed:
         logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
 
-    _comment_on_epic_pr(logger, root, epic, slug, attempts, marker, assessment)
+    _comment_on_epic_pr(
+        logger,
+        root,
+        epic,
+        slug,
+        marker,
+        f"did not pass automated QA after {attempts} rework attempts.",
+        assessment,
+    )
     return QaFlagged(qa_flagged=committed)
+
+
+@blueprint.node
+def flag_docs_block(
+    logger: logging.Logger,
+    epic: str = "",
+    story_slug: str = "",
+    notes: str = "",
+    story_path: str = "",
+    run_dir: str = "",
+    repo_dir: str = "",
+) -> DocsBlockFlagged:
+    """The docs phase refused the story. Flag it and let the queue go on.
+
+    `flag_qa_failure`'s sibling, for the other verdict that ends a story without finishing
+    it. A documentation block is not a documentation bug: it is the author or the reviewer
+    saying the book cannot be made true of this code — usually, as the run that forced this
+    node found, because the implementation contradicts a guarantee its own plan required.
+    That is a real finding about the *story*, and the same three properties that make the QA
+    give-up safe make it safe here: the work is committed behind a marker so a human can
+    see it, the status is stamped honestly so dependents stay blocked, and the slug joins
+    the per-run skip set so the queue moves on instead of re-documenting the same refusal.
+
+    Failing the whole run instead — which is what the flow did before — cost every epic
+    behind this one for a finding scoped to one story.
+
+    No assessment path goes in the status the way `qa.md` does for a QA give-up: a docs
+    block leaves no document of its own, so `notes` is the only record of why and it goes
+    into the status text directly.
+    """
+    slug = story_slug or "story"
+    root = find_repo_root(repo_dir)
+
+    marker = "[DOCS BLOCKED — needs manual review]"
+    reason = notes.strip().replace("\n", " ") or "no reason given"
+    story_status.mark(
+        root,
+        slug,
+        f"Docs blocked — needs manual review: {reason}",
+        epic=epic,
+        story_path=story_path,
+        logger=logger,
+    )
+    _record_skip(run_dir, slug)
+
+    committed = bool(commit_all(root, f"{epic}: {slug} {marker}"))
+    if not committed:
+        logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
+
+    _comment_on_epic_pr(
+        logger,
+        root,
+        epic,
+        slug,
+        marker,
+        f"could not be documented — the documentation phase reported it blocked: {reason}",
+    )
+    return DocsBlockFlagged(docs_block_flagged=committed)
 
 
 def _qa_assessment_path(root: Path, spec_dir: str) -> str:
@@ -1021,13 +1088,17 @@ def _qa_assessment_path(root: Path, spec_dir: str) -> str:
 
 
 def _comment_on_epic_pr(
-    logger: logging.Logger, root: Path, epic: str, slug: str, attempts: str, marker: str,
+    logger: logging.Logger, root: Path, epic: str, slug: str, marker: str, why: str,
     assessment: str = "",
 ) -> None:
     """Best-effort note on the epic PR — it only lands if that PR is already open.
 
     During the story loop it usually is not (the PR is opened after the last story), so the
     marker commit is the reliable signal and this is the convenience.
+
+    `why` is the caller's own sentence about what went wrong, because the two give-ups this
+    serves fail for unrelated reasons and a comment that called a docs block a QA failure
+    would send the reviewer to the wrong artefact.
     """
     branch = f"feat/{epic}"
     token = resolve_github_token(root)
@@ -1043,7 +1114,7 @@ def _comment_on_epic_pr(
     try:
         where = f" The QA assessment is at `{assessment}`." if assessment else ""
         pr.create_issue_comment(
-            f"⚠️ Story `{slug}` did not pass automated QA after {attempts} rework attempts. "
+            f"⚠️ Story `{slug}` {why} "
             f"It was committed behind the marker `{marker}` for manual review.{where}",
         )
     except Exception as exc:  # noqa: BLE001 - a PR comment is never worth failing the run
@@ -1054,6 +1125,7 @@ __all__ = [
     "branch_epic",
     "branch_story",
     "commit_story",
+    "flag_docs_block",
     "flag_epic_blocked",
     "flag_qa_failure",
     "init_base",

@@ -21,11 +21,13 @@ follows everywhere else: the repo a node works on is a parameter, never the proc
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from workhorse.scriptutil import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
+from workhorse_workflows.coder.shared.worktree import untouched_since
 
 
 @blueprint.node
@@ -39,14 +41,30 @@ def build_okf_context(
     head: str = "WORKTREE",
     docs_path: str = "",
     repo_dir: str = "",
+    preexisting: tuple[str, ...] = (),
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir.
 
     `source_roots` are `"SURFACE=PATH"` entries. They arrived as a JSON-encoded string under
     the YAML engine — a workflow var is a string — and the encoding is gone here along with
     the decoder's "was not valid JSON" warning, which had nothing left to guard.
+
+    `preexisting` is `snapshot_worktree_state`'s reading from before this story's first dev
+    turn. The default `HEAD..WORKTREE` diff cannot tell this story's uncommitted work from
+    an abandoned story's, so the paths in it that still hold the same bytes are dropped from
+    the diff before it is mapped. Both consumers of this packet were wrong without it: the
+    docs gate demanded grounding for the other story's symbols, and the QA planner wrote
+    scenarios for them. Excluding here rather than in either consumer is what keeps
+    `qa-okf-context.json` and the rendered `.md` beside it saying the same thing.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
+    inherited = sorted(untouched_since(Path(docs_root).resolve(), tuple(preexisting)))
+    if inherited:
+        logger.info(
+            "excluding %d path(s) that were already dirty when the story started: %s",
+            len(inherited),
+            ", ".join(inherited),
+        )
     returncode, payload, stderr = ostler_qa.qa_context(
         spec_dir,
         base=base,
@@ -55,6 +73,7 @@ def build_okf_context(
         story_file=story_file,
         source_roots=list(source_roots),
         docs_root=docs_root,
+        exclude_paths=inherited,
     )
     status = "passed" if returncode == 0 and payload.get("status") != "invalid" else "invalid"
     logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)

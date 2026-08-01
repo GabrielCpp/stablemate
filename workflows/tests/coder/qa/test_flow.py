@@ -18,6 +18,7 @@ convinced of rather than one it was told about.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -36,6 +37,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
+from workhorse_workflows.coder.qa.nodes.qa import record_qa_giveup
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 
 STORY = "STORY-1"
@@ -43,6 +45,14 @@ EPIC = "EPIC-1"
 SPEC_REL = f"docs/specs/{STORY}"
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
+
+#: What an escalating resolver leaves in `context.md` before handing the block to a person —
+#: the shape `prompts/resolve-operator.md` mandates for the escalated arm.
+ESCALATION_NOTE = (
+    "STATUS: AWAITING_OPERATOR\n\n"
+    "Re-ran the stack twice; the emulator comes up but the suite still cannot reach it.\n"
+    "Please confirm which host the suite should dial.\n"
+)
 
 #: The epic index ostler parses to learn the story exists — same shape the `dev` suite uses.
 EPIC_MD = """---
@@ -208,10 +218,17 @@ class _Ostler:
         story_file: str,
         source_roots: list[str],
         docs_root: Path | None = None,
+        exclude_paths: list[str] | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         self.contexts += 1
         self.context_args.append(
-            {"base": base, "head": head, "story_file": story_file, "source_roots": source_roots}
+            {
+                "base": base,
+                "head": head,
+                "story_file": story_file,
+                "source_roots": source_roots,
+                "exclude_paths": list(exclude_paths or []),
+            }
         )
         spec = Path(spec_dir)
         spec.mkdir(parents=True, exist_ok=True)
@@ -336,6 +353,7 @@ class _Agent:
         *,
         repair: str = "repaired",
         review: str = "approved",
+        revise_plans: int = 0,
         disposition: str = "confirmed",
         failure_class: str = "none",
         objective: str = "yes",
@@ -350,6 +368,7 @@ class _Agent:
         self.docs = docs
         self.repair = repair
         self.review = review
+        self.revise_plans = revise_plans
         self.disposition = disposition
         self.failure_class = failure_class
         self.objective = objective
@@ -400,7 +419,10 @@ class _Agent:
         return {"status": "planned", "notes": f"plan pass {nth}"}
 
     def _review_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"disposition": self.review, "notes": f"review pass {nth}"}
+        # `revise_plans` follows `_Ostler`'s convention: a count of *leading* refusals, for
+        # the tests that need the reviewer to relent and let a plan through.
+        disposition = "revise" if nth <= self.revise_plans else self.review
+        return {"disposition": disposition, "notes": f"review pass {nth}"}
 
     def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # A runner failure the assessment confirms is a product defect unless the test says
@@ -442,6 +464,7 @@ class _Agent:
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
+            self._escalate()
             return {"decision": "escalated", "summary": "only a person can decide this"}
         self._answer()
         return {"decision": "answered", "summary": "use the staging bucket"}
@@ -452,6 +475,14 @@ class _Agent:
             f"STATUS: ANSWERED\nSCOPE: {self.scope}\n\nUse the staging bucket.\n",
             encoding="utf-8",
         )
+
+    def _escalate(self) -> None:
+        """An escalating resolver writes its note into the same file, it does not write nothing.
+
+        `prompts/resolve-operator.md` mandates `STATUS: AWAITING_OPERATOR` plus what it tried
+        and what the human must supply — the thing the escalated `Await` must not overwrite.
+        """
+        (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
 
 
 def _answers(seen: list[str], *, scope: str = "story") -> Callable[..., None]:
@@ -707,7 +738,7 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The semantic half of the plan gate spends the same budget the deterministic one does."""
+    """The semantic half of the plan gate has its own three reworks, and buys four reviews."""
     okf = ostler()
     agent = _Agent(docs, review="revise")
 
@@ -716,6 +747,135 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     assert result.status == "exhausted", result
     assert agent.counts() == {"plan-qa": 4, "review-qa-plan": 4}, agent.counts()
     assert okf.runs == 0
+
+
+def test_a_malformed_plan_does_not_spend_the_reviewers_budget(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`_guard_plan_validation`: schema slips are charged to the schema loop, not the reviewer.
+
+    Both guards re-plan, and the YAML spent one counter for both. So a plan that failed
+    `ostler qa validate` twice before parsing arrived at `review_plan` with one rework left —
+    the reviewer got a single revision round out of a budget of three, and the two turns it
+    lost had been spent on a missing key.
+
+    That is not a hypothetical. One benchmark run lost two stories to exactly this shape:
+    `group-membership` and `expense-record` each failed validation on plan attempts 1 and 2,
+    passed on 3, then got one round against a specific and correct reviewer finding before the
+    flow gave up and flagged both epics blocked. `review_plan` is the `power="high"` turn that
+    judges whether the plan tests the story at all — it is the last gate that should be
+    rationed by how many times a matcher was misspelled.
+
+    Two leading validation failures, and the reviewer must still get its full four passes.
+    """
+    okf = ostler(plan_invalid=2)
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    # Six plan turns: two burnt on the schema, four the reviewer actually asked for.
+    assert agent.counts() == {"plan-qa": 6, "review-qa-plan": 4}, agent.counts()
+    assert okf.plan_validations == 6
+    assert okf.runs == 0, "a plan the reviewer never approved must never be executed"
+
+
+def test_the_reviewers_revisions_do_not_spend_the_repair_budget(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`_guard_plan_review`: a prediction must not spend a budget reserved for findings.
+
+    The split above took the *mechanical* gate off the semantic budget. This is the other
+    half: `review_plan` judges a plan it has only read, so its refusals are predictions,
+    while `assess`, `verify_evidence` and `audit` judge a plan the runner has executed
+    against assert files on disk. Sharing a counter lets the predictions spend the findings'
+    budget, and the predictions always go first.
+
+    `04-docs-api-scaffold` is the live case. The reviewer refused three good, specific plans
+    in a row, approved the fourth, and the run executed it: 22 of 23 assertions passed with
+    real behavioural proof. The 23rd failed on a self-inflicted locator bug the assessor
+    diagnosed exactly, naming the one-line repair. There was no budget left to apply it, so
+    a story whose product was correct and whose fix was already written was flagged `needs
+    manual review` and its epic blocked.
+
+    Three revisions and then a failing run: the assessment must still buy its re-plan.
+    """
+    okf = ostler(fail_runs=1)
+    agent = _Agent(docs, revise_plans=3)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # Five plan turns: four the reviewer asked for, one the failing run did.
+    assert agent.counts() == {
+        "plan-qa": 5,
+        "review-qa-plan": 5,
+        "qa-story": 2,
+        "audit-qa": 1,
+    }, agent.counts()
+    assert okf.runs == 2, "the repair the assessment asked for must actually be executed"
+
+
+def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`record_qa_giveup`: the give-up writes the `qa.md` its own status points at.
+
+    `flag_qa_failure` appends `<spec_dir>/qa.md` to the `needs manual review` status only if
+    the file is there, and on this path nothing had ever written one — no plan was ever
+    approved, so no run, no assessment. The human was sent to review a story whose whole
+    account of itself was the phrase "3 QA-plan review revision attempts".
+
+    The findings existed the entire time. `review_plan` puts the reviewer's refusal on
+    `QaLoop.plan_review_notes` on the very transition that reaches the guard, and `_exhausted`
+    used to drop it: `QaFlowResult` carries the code-rework verdict, which on this path is
+    empty. A live run lost a correct and specific diagnosis that way — three scenarios
+    asserting a raw substring against a validation body the API double-JSON-encodes — and the
+    only copy of it was a run-dir artifact the next story's QA flow overwrote.
+    """
+    ostler()
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    giveup = docs / SPEC_REL / "qa.md"
+    assert giveup.is_file(), "the give-up must leave the file its status points at"
+    text = giveup.read_text(encoding="utf-8")
+    assert "review pass 4" in text, text
+    assert "3 QA-plan review revision" in text, text
+
+
+def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None:
+    """A run that produced an assessment has the better document — the node keeps it.
+
+    `_exhausted` is reached from four budgets, and two of them (`code rework`, the
+    operator-guided loop) run *after* QA has executed and written its own account. Summarizing
+    the loop's gate notes over the top of that would replace evidence with a digest.
+    """
+    written = "# QA — STORY-1\n\nEleven scenarios ran; two failed on the empty state.\n"
+    (tmp_path / "qa.md").write_text(written, encoding="utf-8")
+
+    record = record_qa_giveup(
+        logging.getLogger("test"),
+        spec_dir=str(tmp_path),
+        story_slug=STORY,
+        spent="3 code rework",
+        assessment_notes="two scenarios still fail",
+    )
+
+    assert record.written is False
+    assert record.path == str(tmp_path / "qa.md")
+    assert (tmp_path / "qa.md").read_text(encoding="utf-8") == written
 
 
 # --------------------------------------------------------------------------- the stack
@@ -863,7 +1023,10 @@ def test_an_escalating_resolver_hands_the_block_to_a_person(
 
     assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert len(seen) == 1, seen
+    # The resolver's note, not `loop.block_notes`: the escalated `Await` waits on this file
+    # without rewriting it, so the human arrives to what the resolver already tried. See
+    # `dev`'s `test_an_escalating_resolver_leaves_its_note_for_the_human`.
+    assert seen == [ESCALATION_NOTE], seen
 
 
 # --------------------------------------------------------------------------- the two gates
@@ -990,11 +1153,29 @@ def test_each_exhaustion_names_the_budget_it_spent(
     assert result.status == "exhausted", result
     assert result.spent == "3 OKF-context repair", result.spent
 
+    # The three plan budgets are separate loops and name themselves separately: a story that
+    # never got a parseable plan, one whose plan the reviewer kept refusing, and one whose
+    # executed plan kept needing repair are three different problems for whoever reads the
+    # marker, and only the first is about the schema.
     okf = ostler(plan_invalid=9)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
     assert result.status == "exhausted", result
-    assert result.spent == "3 QA-plan repair", result.spent
+    assert result.spent == "3 QA-plan validation repair", result.spent
     assert okf.runs == 0
+
+    okf = ostler()
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, review="revise"))
+    assert result.status == "exhausted", result
+    assert result.spent == "3 QA-plan review revision", result.spent
+    assert okf.runs == 0
+
+    # The post-run budget, reached only through a plan the reviewer approved and the runner
+    # executed — four runs, each one an assessment that did not reach the objective.
+    okf = ostler(fail_runs=99)
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+    assert result.status == "exhausted", result
+    assert result.spent == "3 QA-plan repair", result.spent
+    assert okf.runs == 4
 
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))

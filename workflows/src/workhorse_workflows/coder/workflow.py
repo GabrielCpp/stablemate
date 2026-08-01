@@ -83,6 +83,7 @@ from workhorse_workflows.coder.shared.backlog import (
     select_fix_item,
 )
 from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix
+from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     resolve_impl_context,
@@ -100,6 +101,7 @@ from workhorse_workflows.coder.shared.queue import (
     branch_epic,
     branch_story,
     commit_story,
+    flag_docs_block,
     flag_epic_blocked,
     flag_qa_failure,
     init_base,
@@ -265,7 +267,14 @@ class Coder(Workflow):
         rescope sends the story back to `dev` and re-enters QA, and a budget that reset on
         each entry would never be spent. That is why `triage` is threaded through the four
         pipeline states below instead of starting at zero in `qa`.
+
+        `snapshot_worktree_state` reads the worktree *before* the first dev turn, and
+        `document` hands the reading to the docs flow. The grounding gate diffs
+        `HEAD..WORKTREE`, so without it a story that died before its commit — a docs
+        failure, a QA give-up, a crash — leaves production code in the tree that every
+        story selected after it is then held responsible for documenting.
         """
+        self.call(snapshot_worktree_state, self.docs_path)
         story = self.call(prepare_story, self.docs_path, slug, epic)
         self.logger.info("preparing %s%s", slug, self._progress(), extra={"activity": True})
         return Continue(story, self.dev, epic=epic, zero_diff=zero_diff)
@@ -318,6 +327,13 @@ class Coder(Workflow):
         `not_applicable` — a repo with no book — passes, because the alternative is that
         every repo without documentation cannot run the workflow. Anything else, blank
         included, is `documentation_failed`, which was a `type: fail`.
+
+        `preexisting` is `prepare`'s snapshot, so the grounding gate can tell this story's
+        changes apart from whatever was already dirty when it started; see `_preexisting`
+        for why a run that predates the snapshot passes nothing rather than failing.
+
+        `blocked` is the sub-flow's fourth answer and the only call site that catches it —
+        see `blocked_docs`.
         """
         result = self.handoff(
             Docs,
@@ -325,9 +341,47 @@ class Coder(Workflow):
             docs_path=self.docs_path,
             epic=self._story_epic(epic),
             target_env=self.target_env,
+            preexisting=self._preexisting(),
         )
+        if result.status == "blocked":
+            return Continue(result, self.blocked_docs, epic=epic, zero_diff=zero_diff,
+                            notes=result.notes)
         self._require_documented(result, "story")
         return Continue(result, self.qa, epic=epic, zero_diff=zero_diff, triage=triage)
+
+    def blocked_docs(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> Continue:
+        """The docs phase refused the story: flag it, and take the next one.
+
+        `give_up`'s counterpart for the other verdict that ends a story unfinished, and it
+        exists because the refusal used to fail the *run*. A block is the author or the
+        reviewer saying the book cannot be made true of this code — in the run that forced
+        this state, because the implementation contradicted a fail-closed guarantee its own
+        plan required. That is a finding about one story, and killing the queue for it costs
+        every independent epic behind it.
+
+        No `Docs` re-entry, which is what separates this from `give_up`: the flow that just
+        refused would refuse again on the same grounds, and a second refusal is the loop
+        `flag_docs_block`'s skip-set entry exists to prevent.
+
+        Story mode fails, for `give_up`'s reason: there is no next story to move on to, so
+        "flag and continue" would be a run that reported success having built nothing.
+        """
+        slug = self._story.story_slug
+        if self.mode != "epic":
+            raise WorkflowFailed(
+                f"documentation was blocked for story {slug!r} and there is no queue to "
+                f"move on to: {notes or 'no reason given'}"
+            )
+        self.logger.warning("documentation blocked for %s — flagging and moving on", slug)
+        result = self.call(
+            flag_docs_block,
+            self._queue_epic(epic),
+            slug,
+            notes,
+            self._story.story_path,
+            str(self.run_dir),
+        )
+        return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
     def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
@@ -336,6 +390,10 @@ class Coder(Workflow):
         triage budget the QA flow spent — the YAML passed `triage_scope_count` in as a bare
         rolling var and took it back out as an output for exactly this, and the re-entry
         deliberately bypasses the seed so the count persists across the loop.
+
+        `preexisting` goes in for the same reason `document` takes it: QA builds its
+        obligation packet from the same `HEAD..WORKTREE` diff, so without the snapshot an
+        abandoned story's uncommitted code becomes scenarios this story has to write.
         """
         result = self.handoff(
             Qa,
@@ -346,6 +404,7 @@ class Coder(Workflow):
             target_env=self.target_env,
             qa_stack_manifest=self.qa_stack_manifest,
             triage_scope_count=triage,
+            preexisting=self._preexisting(),
         )
         if result.status == "replan":
             return Continue(result, self.replan, epic=epic, zero_diff=zero_diff,
@@ -412,6 +471,7 @@ class Coder(Workflow):
             docs_path=self.docs_path,
             epic=self._story_epic(epic),
             target_env=self.target_env,
+            preexisting=self._preexisting(),
         )
         self._require_documented(result, "failed story")
         self.call(
@@ -573,6 +633,7 @@ class Coder(Workflow):
             docs_path=self.docs_path,
             epic=self._story_epic(epic),
             target_env=self.target_env,
+            preexisting=self._preexisting(),
         )
         self._require_documented(result, "story (final pass)")
         if self.mode == "epic":
@@ -877,6 +938,19 @@ class Coder(Workflow):
         except NodeNotRunError:
             return ""
         return f" · {progress}" if progress else ""
+
+    def _preexisting(self) -> tuple[str, ...]:
+        """What `prepare`'s snapshot found already dirty, or nothing when it never ran.
+
+        A run checkpointed before the snapshot node existed resumes straight into
+        `document` or `qa` with no recorded output, and an empty tuple is exactly the
+        behaviour both had then — it subtracts nothing. Failing the story instead would
+        punish a resume for a fix that is meant to make resumes safer.
+        """
+        try:
+            return tuple(self.output(snapshot_worktree_state).entries)
+        except NodeNotRunError:
+            return ()
 
     def _dirs(self) -> list[str]:
         """`{{ workspace_dirs }}` — the `add_dirs` every agent turn in this graph was given."""

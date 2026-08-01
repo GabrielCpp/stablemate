@@ -50,8 +50,13 @@ def qa_context(
     story_file: str,
     source_roots: list[str],
     docs_root: Path | None = None,
+    exclude_paths: list[str] | None = None,
 ) -> tuple[int, dict[str, Any], str]:
-    """`ostler qa context` → the obligation packet; rc=1 on an error-level finding."""
+    """`ostler qa context` → the obligation packet; rc=1 on an error-level finding.
+
+    `exclude_paths` are repo-relative paths the caller has established are not part of the
+    change under examination — see `shared/worktree.py` for the only thing that populates it.
+    """
     try:
         packet = okf(docs_root).qa_context(
             base=base,
@@ -60,6 +65,7 @@ def qa_context(
             source_roots=parse_source_roots(source_roots),
             features_root=features_root,
             story_file=story_file or None,
+            exclude_paths=exclude_paths or (),
         )
     except (OSError, RuntimeError, ValueError) as exc:
         return 1, {}, str(exc)

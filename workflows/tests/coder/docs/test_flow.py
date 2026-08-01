@@ -18,6 +18,7 @@ that decides whether the loop can converge at all.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import subprocess
@@ -40,6 +41,7 @@ from workhorse_workflows.coder.shared.docs import (
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -202,6 +204,11 @@ class _Agent:
         if nth >= self.approve_after:
             return {"status": self.review_status, "notes": "reads as built"}
         return {"status": "revise", "notes": "the widget's states are not described"}
+
+
+def _sha256(path: Path) -> str:
+    """The digest `snapshot_worktree_state` records for one worktree file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _output(run_env: RunEnv, node: Any) -> dict[str, Any]:
@@ -414,6 +421,88 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     assert "2 changed production symbol(s)" in gate.notes, gate.notes
 
 
+def test_the_snapshot_records_what_was_already_dirty_with_its_bytes(
+    docs: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Modified *and* untracked, because the case that motivated this is untracked.
+
+    A story that dies in its docs phase never reaches `commit_story`, so the package it
+    wrote stays on disk as untracked files. `git stash create` was the obvious baseline and
+    is exactly wrong here: it does not capture untracked paths, i.e. it misses the only
+    shape this defect takes.
+    """
+    write(docs / "api" / "legacy.go", "package api\n\nfunc Orphan() {}\n")
+    (docs / "README.md").write_text("# acme, edited\n", encoding="utf-8")
+
+    snapshot = snapshot_worktree_state(logger)
+
+    recorded = dict(entry.partition("\0")[::2] for entry in snapshot.entries)
+    assert recorded["api/legacy.go"] == _sha256(docs / "api" / "legacy.go"), recorded
+    assert recorded["README.md"] == _sha256(docs / "README.md"), recorded
+
+
+def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground(
+    docs: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """The cascade this gate had: one abandoned story disabling it for the whole repo.
+
+    The packet is built `HEAD..WORKTREE`, and the workflow's contract is that a story ends
+    in a commit. A story that dies before its commit leaves its production code in the
+    tree, and every story selected after it was then held responsible for grounding symbols
+    it had never heard of and its book had no reason to mention — the run that forced this
+    was a QA-plan fix touching no production code at all, failing on seven Go symbols an
+    earlier story had left behind.
+
+    The subtraction is safe in one direction only, which is the third case below: a path
+    the story went on to edit no longer matches its recorded bytes and stays owed. The
+    filter can shrink by mistake, never grow — a story is never excused from grounding code
+    it wrote.
+    """
+    orphan = "api/legacy.go"
+    write(docs / orphan, "package api\n\nfunc Orphan() {}\n")
+    write_json(
+        docs / SPEC_REL / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": orphan,
+                    "basePath": orphan,
+                    "headPath": orphan,
+                    "baseSymbols": [],
+                    "headSymbols": ["Orphan"],
+                }
+            ],
+            "directNodes": [],
+        },
+    )
+
+    def _gate(preexisting: tuple[str, ...]) -> Any:
+        return verify_story_documentation(
+            logger,
+            spec_dir=SPEC_REL,
+            author_status="not_required",
+            build_status="passed",
+            validation_status="passed",
+            context_mode="local",
+            preexisting=preexisting,
+        )
+
+    # No snapshot subtracts nothing, which is what the gate did before it existed.
+    assert f"{orphan}::Orphan" in _gate(()).notes
+
+    stale = f"{orphan}\0{_sha256(docs / orphan)}"
+    assert "not directly grounded" not in _gate((stale,)).notes
+
+    # The same path, edited by this story since the snapshot: back to being its problem.
+    (docs / orphan).write_text("package api\n\nfunc Orphan() { println(1) }\n", encoding="utf-8")
+    assert f"{orphan}::Orphan" in _gate((stale,)).notes
+
+
 def test_not_required_is_a_real_answer_and_still_goes_through_the_gate(
     docs: Path,
     elsewhere: Path,
@@ -439,17 +528,41 @@ def test_an_author_that_did_not_speak_fails_the_flow(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`blocked` and a blank both fail, and neither spends a rework.
+    """A blank status fails, and does not spend a rework.
 
     There is no brief to hand a second author pass — the first one did not say what stopped
     it — so looping would be spending turns on the same silence.
     """
-    agent = _Agent(author_status="blocked")
+    agent = _Agent(author_status="")
 
-    with pytest.raises(WorkflowFailed, match="documentation author reported blocked"):
+    with pytest.raises(WorkflowFailed, match="documentation author reported nothing"):
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert agent.counts()["document-story"] == 1, agent.counts()
+
+
+def test_a_blocked_author_returns_a_verdict_instead_of_failing_the_run(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A block is a finding about the story, and it must not take the queue down with it.
+
+    The run that forced this: the author found that the implementation granted every origin
+    when `CORS_ALLOWED_ORIGINS` was unset, the opposite of the fail-closed guarantee its own
+    plan required, and refused to write the book's claim as true. Correct refusal — and it
+    killed the whole run, costing eight epics that had nothing to do with it. The verdict
+    comes back for the caller to place instead; the reviewer is never reached, because there
+    is nothing written to review.
+    """
+    agent = _Agent(author_status="blocked")
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert result.notes == "documented on pass 1", result
+    assert agent.counts() == {"document-story": 1}, agent.counts()
 
 
 # --------------------------------------------------------------------------- the reviewer
@@ -483,12 +596,16 @@ def test_a_blocked_review_fails_rather_than_reworking(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`blocked` is the reviewer saying no pass will fix this, so spending three is wrong."""
+    """`blocked` is the reviewer saying no pass will fix this, so spending three is wrong.
+
+    It ends the flow with a verdict rather than an exception, for the reason the author's
+    own block does: which story this costs is the caller's call, not the sub-flow's.
+    """
     agent = _Agent(review_status="blocked")
 
-    with pytest.raises(WorkflowFailed, match="documentation review blocked"):
-        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
+    assert result.status == "blocked", result
     assert agent.counts()["document-story"] == 1, agent.counts()
 
 
@@ -505,10 +622,49 @@ def test_the_loop_is_bounded_at_four_passes(
     """
     agent = _Agent(approve_after=99)
 
-    with pytest.raises(WorkflowFailed, match="did not converge in 4 passes"):
+    with pytest.raises(WorkflowFailed, match="did not converge in 4 review passes"):
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert agent.counts() == {"document-story": 4, "review-story-documentation": 4}
+
+
+def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An author that never names a node never reaches the reviewer, and still stops."""
+    agent = _Agent(nodes_after=99)
+
+    with pytest.raises(WorkflowFailed, match="did not converge in 4 grounding passes"):
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert agent.counts() == {"document-story": 4}
+
+
+def test_the_gates_failure_does_not_spend_the_reviewers_budget(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """One mechanical grounding fix must not cost a semantic round.
+
+    The YAML spent one `documentation_rework_count` on both, so this shape — a first pass
+    that names no node, then a reviewer that finds a real, distinct, fixable defect each
+    round — raised on the third refusal with the book one edit from conformant. That is a
+    two-language schema story from a real run, not a hypothetical: the grounding gate is
+    deterministic and converges in a pass or two, while `review-story-documentation` is a
+    `power="high"` read, and letting the cheap loop draw on the expensive one's budget
+    starves it.
+    """
+    agent = _Agent(nodes_after=2, approve_after=4)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"document-story": 5, "review-story-documentation": 4}
 
 
 # --------------------------------------------------------------------------- resume

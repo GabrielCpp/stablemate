@@ -41,6 +41,25 @@ class ContextClassification(CoderResult):
     notes: str = ""
 
 
+class WorktreeSnapshot(CoderResult):
+    """What was already dirty in the repo when this story started.
+
+    Each entry is `"<repo-relative path>\\0<sha256 of its bytes>"`, for every path git
+    reported as modified or untracked before the story's first dev turn. The grounding gate
+    subtracts these — and only while they are still byte-identical — from the changed
+    production units it holds the story responsible for.
+
+    It exists because the diff the gate reads is `HEAD..WORKTREE`, and the workflow's own
+    contract is that a story ends in a commit. A story that dies before its commit — a docs
+    failure, a QA give-up, a crash — leaves its production code in the tree, and every story
+    selected after it then inherits symbols it never wrote and cannot document. That is a
+    cascade: one abandoned story disables the docs gate for the whole rest of the repo.
+    """
+
+    entries: list[str] = []
+    notes: str = ""
+
+
 class DocumentationResult(CoderResult):
     """`prompts/document-story.md` — the story folded into the as-built OKF book.
 
@@ -82,12 +101,17 @@ class DocumentationReview(CoderResult):
 
 
 class DocsResult(CoderResult):
-    """What the docs flow hands back: `passed` or `not_applicable`.
+    """What the docs flow hands back: `passed`, `not_applicable` or `blocked`.
 
-    The two the callers accept. Every other outcome raised out of the flow rather than
-    returning, because the YAML's `documentation_failed` was a `type: fail` — so `failed`,
-    the `default:` the four call sites declared, is only ever reached when the sub-flow
-    produced no value at all.
+    The first two are the ones every caller accepts. `blocked` is the author's or the
+    reviewer's refusal — the book cannot be made true of this code — and only the main
+    `document` pass places it, by failing that story and taking the next one; the `failed
+    story` and `final pass` call sites still treat it as fatal, because there is no next
+    story to move to from either.
+
+    Everything else still raises out of the flow rather than returning, because the YAML's
+    `documentation_failed` was a `type: fail` — so `failed`, the `default:` the four call
+    sites declared, is only ever reached when the sub-flow produced no value at all.
     """
 
     status: str = "failed"
@@ -101,4 +125,5 @@ __all__ = [
     "DocumentationResult",
     "DocumentationReview",
     "OkfDetection",
+    "WorktreeSnapshot",
 ]
