@@ -366,9 +366,11 @@ class Review(Workflow):
                 code_review=code_review,
                 code_reuse=code_reuse,
             )
+        # No ask — see `dev.flow.resolve_plan`: the escalating resolver's note is already in
+        # this file, and `Await` writes its `questions` over the top of whatever is there.
         return Await(
             self._context,
-            notes,
+            "",
             self.read_operator,
             notes=notes,
             code_review=code_review,

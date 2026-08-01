@@ -239,8 +239,15 @@ class Dev(Workflow):
         )
         if result.decision == "answered":
             return Continue(result, self.read_operator, notes=notes, plan_blocks=plan_blocks)
+        # No ask: an escalating resolver has already written `STATUS: AWAITING_OPERATOR`
+        # into this very file, with what it tried and what the human must supply. `Await`
+        # writes its `questions` with `write_text`, so passing `notes` here would replace
+        # that note with the producer's block summary — the human would arrive to the
+        # question rather than the investigation, and the resolver's own "did I answer this
+        # before?" loop guard would be erased along with it. See `_gate_plan`, which does
+        # pass `notes`: there no resolver ran, so nothing is on disk to preserve.
         return Await(
-            self._context, notes, self.read_operator, notes=notes, plan_blocks=plan_blocks
+            self._context, "", self.read_operator, notes=notes, plan_blocks=plan_blocks
         )
 
     def read_operator(self, notes: str, plan_blocks: int = 0) -> Continue | Done:
