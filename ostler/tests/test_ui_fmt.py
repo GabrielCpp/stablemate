@@ -72,6 +72,29 @@ def test_idempotent():
     assert fmt.format_text(once) == once
 
 
+def test_soft_wrapped_bullet_value_is_not_duplicated():
+    """A bullet whose value wraps across source lines must survive untouched.
+
+    `_emit_bullet` used to rebuild the first line from `bullet.text`, which holds the whole
+    wrapped value newline and all, and then append `raw[1:]` on top — so each run emitted every
+    continuation line twice and the next run doubled it again. It is not an exotic input: OKF
+    docs wrap prose at a column, so it hit essentially every authored `when:`/`detail:` bullet,
+    and an agent that ran `fmt` had to hand-repair the output and then skip the formatter.
+    """
+    text = (
+        "---\ntype: screen\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Interactions\n\n### click\n"
+        "- on: [x](#x)\n- trigger: click\n"
+        "- when: always — reachable while the process is up, including before any\n"
+        "  downstream dependency is ready.\n"
+    )
+    out = fmt.format_text(text)
+    assert out.count("downstream dependency is ready.") == 1, out
+    assert "  downstream dependency is ready." in out, "the wrap's indent is the authored shape"
+    assert out == text, out
+    assert fmt.format_text(out) == out
+
+
 def test_reorder_does_not_strand_blank_between_bullets():
     # A trailing blank line before the next heading must not migrate between reordered bullets.
     text = (
