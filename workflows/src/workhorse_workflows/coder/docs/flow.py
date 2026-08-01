@@ -19,7 +19,9 @@ Divergences from the YAML, all deliberate:
 
 * `documentation_rework_count` was a var with `seed`/`incr` nodes; it is the `rework`
   parameter, and the budget is `MAX_REWORKS` — the literal `"3"` on `guard_documentation`
-  is the only budget the YAML had.
+  is the only budget the YAML had. **It is now two.** `review_rework`/`MAX_REVIEW_REWORKS`
+  counts the reviewer's revisions separately from the grounding gate's; `_rework` carries
+  the run that forced the split.
 * **`documentation_failed` was a `type: fail`**, so every arm that reached it raises
   `WorkflowFailed` at the deciding site. What the four call sites' `default: failed` was for
   — a sub-flow that produced no value at all — cannot happen here, and `DocsResult`'s
@@ -73,16 +75,24 @@ class Docs(Workflow):
     #: `local` or `dev` — passed through to the impl-context decode, which uses it to decide
     #: whether `-local` QA skills survive.
     target_env: str = "local"
-
+    #: `snapshot_worktree_state`'s reading from before this story's first dev turn — the
+    #: paths that were already dirty then, with their bytes. The grounding gate subtracts
+    #: the ones that still match, so an earlier story's abandoned work is not charged to
+    #: this one. Empty subtracts nothing, which is the pre-snapshot behaviour.
+    preexisting: tuple[str, ...] = ()
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
     #: name and was not passed one; see `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
-    #: Document/gate passes before the flow fails. `ClassVar` because the YAML exposed no
+    #: Grounding-gate failures before the flow fails. `ClassVar` because the YAML exposed no
     #: var for it — the literal `"3"` on `guard_documentation` is the whole budget.
     MAX_REWORKS: ClassVar[int] = 3
+
+    #: Reviewer revisions before the flow fails, counted on their own. See `_rework`
+    #: for the run that forced the split.
+    MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths and the workspace to directories."""
@@ -126,15 +136,24 @@ class Docs(Workflow):
         return Continue(okf, self.document)
 
     def document(
-        self, rework: int = 0, gate_notes: str = "", review_notes: str = ""
-    ) -> Continue:
+        self,
+        rework: int = 0,
+        review_rework: int = 0,
+        gate_notes: str = "",
+        review_notes: str = "",
+    ) -> Continue | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
         `document_story` + `decide_documentation_result`. `not_required` is a real answer and
         proceeds to the gate exactly like `documented` does, because "this story changed
-        nothing the book describes" is a claim the grounding gate can check. `blocked`, and a
-        blank taking the YAML's `default:` arm, fail the flow: an author that did not speak
-        has not documented anything, and there is no rework brief to hand it.
+        nothing the book describes" is a claim the grounding gate can check.
+
+        A blank status taking the YAML's `default:` arm still fails the flow: an author that
+        did not speak has not documented anything, and there is no rework brief to hand it.
+        `blocked` is the opposite case and no longer fails — the author *did* speak, and what
+        it said is that the book cannot be made true of this code. It comes back as a
+        `blocked` `DocsResult` for the caller to place; see `Coder.blocked_docs` for why
+        that is one story's finding rather than the whole run's.
 
         The two notes parameters carry the previous pass's gate and review findings, and are
         threaded rather than reset, because under the YAML both were vars that persisted
@@ -162,6 +181,11 @@ class Docs(Workflow):
                 "review_notes": review_notes,
             },
         )
+        if result.status == "blocked":
+            self.logger.info(
+                "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
+            )
+            return Done(DocsResult(status="blocked", notes=result.notes))
         if result.status not in {"documented", "not_required"}:
             raise WorkflowFailed(
                 f"documentation author reported {result.status or 'nothing'}: {result.notes}"
@@ -171,6 +195,7 @@ class Docs(Workflow):
             self.verify,
             author=result,
             rework=rework,
+            review_rework=review_rework,
             gate_notes=gate_notes,
             review_notes=review_notes,
         )
@@ -181,6 +206,7 @@ class Docs(Workflow):
         rework: int,
         gate_notes: str,
         review_notes: str,
+        review_rework: int = 0,
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -207,6 +233,7 @@ class Docs(Workflow):
                 "HEAD",
                 "WORKTREE",
                 self.docs_path,
+                preexisting=tuple(self.preexisting),
             )
             build_status = build.status
             validate_status = self.call(
@@ -227,6 +254,7 @@ class Docs(Workflow):
             validate_status,
             classification.mode,
             tuple(author.nodes),
+            preexisting=tuple(self.preexisting),
         )
         if gate.status == "passed":
             return Continue(
@@ -234,10 +262,16 @@ class Docs(Workflow):
                 self.review,
                 author=author,
                 rework=rework,
+                review_rework=review_rework,
                 gate_notes=gate.notes,
                 review_notes=review_notes,
             )
-        return self._guard(gate, rework, gate.notes, review_notes)
+        if rework >= self.MAX_REWORKS:
+            raise WorkflowFailed(
+                f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
+                f"passes: {gate.notes or review_notes}"
+            )
+        return self._rework(gate, rework + 1, review_rework, gate.notes, review_notes)
 
     def review(
         self,
@@ -245,12 +279,14 @@ class Docs(Workflow):
         rework: int,
         gate_notes: str,
         review_notes: str,
+        review_rework: int = 0,
     ) -> Continue | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
-        `review_story_documentation` + `decide_documentation_review`. `blocked` fails the
+        `review_story_documentation` + `decide_documentation_review`. `blocked` ends the
         flow — the reviewer is saying the story cannot be documented as it stands, which no
-        number of rework passes will change. `revise`, and a blank taking the YAML's
+        number of rework passes will change — but it ends it with a verdict rather than a
+        failure, for the reason `document` gives. `revise`, and a blank taking the YAML's
         `default:`, spends a rework instead.
         """
         result = self.agent(
@@ -274,27 +310,47 @@ class Docs(Workflow):
             self.logger.info("documentation approved for %s", self.ctx.story_slug)
             return Done(DocsResult(status="passed", notes=result.notes))
         if result.status == "blocked":
-            raise WorkflowFailed(f"documentation review blocked: {result.notes}")
-        return self._guard(result, rework, gate_notes, result.notes)
+            self.logger.info(
+                "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes
+            )
+            return Done(DocsResult(status="blocked", notes=result.notes))
+        if review_rework >= self.MAX_REVIEW_REWORKS:
+            raise WorkflowFailed(
+                f"documentation did not converge in {self.MAX_REVIEW_REWORKS + 1} review "
+                f"passes: {result.notes or gate_notes}"
+            )
+        return self._rework(result, rework, review_rework + 1, gate_notes, result.notes)
 
-    def _guard(
-        self, result: object, rework: int, gate_notes: str, review_notes: str
+    def _rework(
+        self,
+        result: object,
+        rework: int,
+        review_rework: int,
+        gate_notes: str,
+        review_notes: str,
     ) -> Continue:
-        """`guard_documentation`: another document pass, or fail the flow.
+        """`guard_documentation`'s other half: send the author back with what it must fix.
 
         Not a state — the routing half of a branch, called from the two states that can
         decide the documentation is not good enough. `_`-prefixed so state discovery does not
         pick it up.
+
+        **The two counters are deliberately separate**, which the YAML's single
+        `documentation_rework_count` was not. The grounding gate is deterministic — it names
+        the exact ungrounded symbols and converges in a pass or two — while
+        `review_story_documentation` is a `power="high"` semantic read that finds a different
+        real defect each round. Sharing one budget means a story that needed a single
+        mechanical grounding fix arrives at the reviewer with two rounds left. That is how a
+        two-language schema story died on a real run: one gate failure, then three reviewer
+        refusals each naming a distinct, correct, fixable defect, and the flow raised on the
+        third with the book one edit from conformant. Same defect the QA flow's
+        `_guard_plan_validation` / `_guard_plan_review` split fixes.
         """
-        if rework >= self.MAX_REWORKS:
-            raise WorkflowFailed(
-                f"documentation did not converge in {self.MAX_REWORKS + 1} passes: "
-                f"{review_notes or gate_notes}"
-            )
         return Continue(
             result,
             self.document,
-            rework=rework + 1,
+            rework=rework,
+            review_rework=review_rework,
             gate_notes=gate_notes,
             review_notes=review_notes,
         )

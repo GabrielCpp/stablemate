@@ -84,6 +84,19 @@ class QaCleared(CoderResult):
     cleared: bool = False
 
 
+class QaGiveupRecord(CoderResult):
+    """`record_qa_giveup` — the give-up left a `qa.md` behind, or found one already there.
+
+    `written` is `False` both when a real QA assessment already occupies the path (nothing
+    to add: the runner's own account is better than a summary of gate notes) and when there
+    was no spec dir to write into. Nothing branches on it; it is there so the run record
+    distinguishes the give-up that produced an explanation from the one that inherited one.
+    """
+
+    written: bool = False
+    path: str = ""
+
+
 class StackStatus(CoderResult):
     """`ensure-stack.py` — the durable QA stack is up, adopted, absent, or broken.
 
@@ -350,9 +363,13 @@ class QaLoop(CoderResult):
     #: as unset and earns no bonus.
     failure_class: str = ""
 
-    #: The five bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair.
+    #: The bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair, except
+    #: `plan_validation_rework` and `plan_review_rework` — see the flow's
+    #: `_guard_plan_validation` and `_guard_plan_review`.
     context_rework: int = 0
     plan_rework: int = 0
+    plan_validation_rework: int = 0
+    plan_review_rework: int = 0
     qa_rework: int = 0
     setup_rework: int = 0
     regression_fix: int = 0

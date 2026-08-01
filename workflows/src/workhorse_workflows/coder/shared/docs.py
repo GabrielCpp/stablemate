@@ -27,6 +27,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationGate,
     OkfDetection,
 )
+from workhorse_workflows.coder.shared.worktree import untouched_since
 from workhorse_workflows.kit import open_repo
 
 #: Where the diff-to-OKF obligation packet lands, relative to the story's spec dir.
@@ -253,6 +254,7 @@ def verify_story_documentation(
     context_mode: str = "local",
     author_nodes: tuple[str, ...] = (),
     repo_dir: str = "",
+    preexisting: tuple[str, ...] = (),
 ) -> DocumentationGate:
     """Fail-closed conformance and direct-grounding gate over one story's OKF update.
 
@@ -268,9 +270,15 @@ def verify_story_documentation(
        reports the ungrounded **references**, since those are what it tests and what the
        author must write back verbatim;
     4. `ostler doctor` reports no errors on any node this story affected.
+
+    `preexisting` is `snapshot_worktree_state`'s reading from before the story's first dev
+    turn. Paths in it that still hold the same bytes were somebody else's uncommitted work
+    the whole time, so point 3 does not charge this story for them; see `untouched_since`
+    for why that subtraction is safe in only one direction.
     """
     docs_root = Path(find_docs_root(docs_path, repo_dir))
     nodes = [str(node) for node in author_nodes]
+    inherited = untouched_since(docs_root.resolve(), tuple(preexisting))
 
     problems: list[str] = []
     if author_status not in {"documented", "not_required"}:
@@ -300,6 +308,10 @@ def verify_story_documentation(
         base_path = str(change.get("basePath", ""))
         head_path = str(change.get("headPath", ""))
         candidates = {str(change.get("path", "")), base_path, head_path} - {""}
+        if candidates and candidates <= inherited:
+            # Every name this change goes by was already dirty at story start and has not
+            # moved since — another story's abandoned work, not this one's.
+            continue
         base_symbols = set(change.get("baseSymbols", []))
         head_symbols = set(change.get("headSymbols", []))
         required = {

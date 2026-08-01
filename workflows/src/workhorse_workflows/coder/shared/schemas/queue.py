@@ -154,6 +154,16 @@ class QaFlagged(CoderResult):
     qa_flagged: bool = False
 
 
+class DocsBlockFlagged(CoderResult):
+    """`flag_docs_block` — the refused story was committed behind its `[DOCS BLOCKED]` marker.
+
+    `QaFlagged`'s sibling and false means the same thing: nothing to commit. The stamp and
+    the per-run skip set are what stop the story being re-selected, not this commit.
+    """
+
+    docs_block_flagged: bool = False
+
+
 class ReplanResult(CoderResult):
     """`replan_epic`'s reply — the rewrite of the epic the operator's answer forced.
 
@@ -168,6 +178,7 @@ class ReplanResult(CoderResult):
 
 __all__ = [
     "BaseBranch",
+    "DocsBlockFlagged",
     "EpicBlocked",
     "EpicBranch",
     "EpicPick",

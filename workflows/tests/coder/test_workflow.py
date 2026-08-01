@@ -104,6 +104,9 @@ BACKLOG = f"""# Backlog
 - [{BULLET}] {BULLET_TEXT}
 """
 
+#: Why a documentation author refuses a story, in the shape a real one gave.
+BLOCK_REASON = "the handler allows every origin when the allow-list is unset"
+
 
 # --------------------------------------------------------------------------- fixtures
 
@@ -190,6 +193,7 @@ class _StubFlow(Workflow):
     story: str = ""
     docs_path: str = ""
     epic: str = ""
+    preexisting: tuple[str, ...] = ()
     operator_mode: str = ""
     target_env: str = ""
     qa_stack_manifest: str = ""
@@ -214,6 +218,7 @@ class _Sub:
         changes: bool = True,
         dev_status: str = "ready",
         docs_status: str = "passed",
+        docs_notes: str = "",
         qa_status: str = "passed",
         qa_spent: str = "",
         ci_status: str = "passed",
@@ -223,6 +228,7 @@ class _Sub:
         self.changes = changes
         self.dev_status = dev_status
         self.docs_status = docs_status
+        self.docs_notes = docs_notes
         self.qa_status = qa_status
         self.qa_spent = qa_spent
         self.ci_status = ci_status
@@ -275,7 +281,7 @@ class _Sub:
         return ReviewResult(status="approved", notes="")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
-        return DocsResult(status=self.docs_status, notes="")
+        return DocsResult(status=self.docs_status, notes=self.docs_notes)
 
     def _qa(self, child: _StubFlow) -> QaFlowResult:
         return QaFlowResult(
@@ -629,6 +635,36 @@ def test_the_epic_reaches_the_sub_flows_and_story_mode_passes_its_own(
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC]
 
 
+def test_both_flows_that_diff_the_worktree_are_told_what_was_already_dirty(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Docs` and `Qa` build the same `HEAD..WORKTREE` packet, so both need the snapshot.
+
+    `Docs` got it first, when an abandoned story's untracked package made the grounding gate
+    demand symbols the next story had never written. Wiring only that one left the same code
+    reaching the QA planner as obligations — scenarios for a feature the story does not have.
+    The assertion is that the snapshot reaches *both*, because one without the other reads
+    like the defect is fixed while half of it still costs a cycle.
+    """
+    repo = epic()
+    orphan = repo / "src" / "abandoned.py"
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_text("def strand():\n    return 1\n", encoding="utf-8")
+    sub = _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(mode="story", story="STORY-1"), env(), _Agent())
+
+    recorded = [c.preexisting for c in sub.calls_to("Docs")] + [
+        c.preexisting for c in sub.calls_to("Qa")
+    ]
+    assert recorded, sub.calls
+    for snapshot in recorded:
+        assert any(entry.startswith("src/abandoned.py\0") for entry in snapshot), snapshot
+
+
 # ------------------------------------------------------------------- the counters
 
 
@@ -821,6 +857,51 @@ def test_a_give_up_with_no_qa_assessment_written_points_nowhere_rather_than_at_a
     )
     assert "needs manual review" in status, status
     assert "qa.md" not in status, status
+
+
+def test_a_blocked_docs_verdict_costs_its_own_story_and_not_the_rest_of_the_queue(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A documentation block is a finding about one story, and it used to kill the run.
+
+    Observed: the author was asked to document a CORS story, found that the implementation
+    granted every origin when the allow-list was unset — the opposite of the fail-closed
+    guarantee the story's own plan required — and refused to write the book's claim as true.
+    The refusal was right. Failing the flow for it was not: the run died on the first epic
+    of nine and took eight unrelated ones with it.
+
+    So the block takes `give_up`'s shape instead — stamp the story, commit behind a marker,
+    skip it, select the next one — and a two-story epic is the smallest one that can show
+    the second story still built. The refused story is documented once and never revisited,
+    which is the other half: the flow that just refused would refuse again on the same
+    grounds, and the skip set is what stops that being a loop. `Docs` is still entered a
+    third time, for STORY-2 — that is the epic's final pass, not a retry.
+    """
+    repo = epic(count=2)
+
+    class _BlockingFirst(_Sub):
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            if child.story == "STORY-1":
+                return DocsResult(status="blocked", notes=BLOCK_REASON)
+            return DocsResult(status="passed", notes="")
+
+    sub = _BlockingFirst(repo).install(monkeypatch)
+
+    result = drive_flow(Coder(), env(), _Agent())
+
+    assert result.has_epic is False, result
+    documented = [c.story for c in sub.calls_to("Docs")]
+    assert documented.count("STORY-1") == 1, documented
+    assert sub.calls.count("Qa") == 1, sub.calls
+    marker = next(s for s in _subjects(repo) if "DOCS BLOCKED" in s)
+    assert "STORY-1" in marker, marker
+    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
+        encoding="utf-8"
+    )
+    assert BLOCK_REASON in status, status
 
 
 # ------------------------------------------------------------------- the nested drain
