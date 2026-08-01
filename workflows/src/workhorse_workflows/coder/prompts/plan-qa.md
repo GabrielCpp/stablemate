@@ -187,13 +187,32 @@ least one machine-executed terminal assertion. `mechanism` is provenance
     cmd: curl -H "Device: {{device_id}}" ...   # same ID — closes the right session
   ```{% endraw %}
   `ostler qa validate` enforces this and will reject a plan that puts `$(date` in a non-fixture step.
-Use role/label locators before CSS for Playwright. Use runner-supported common actions
-for Maestro. Advanced cases may point to committed native Playwright tests or Maestro
-flows, but Ostler still owns invocation, timeout, cleanup, artifacts, recordings, and
-verdicts. Declare services/background processes in the plan; do not start them here.
+**Every Playwright locator and every URL comes from the book, not from the running page and
+not from your memory of it.** `ostler qa validate` enforces this statically and will reject
+the plan — it is a gate, not a preference. The packet carries what you need on the
+obligation itself:
+
+- A `locators` object on an obligation holds that node's own `selector`, `role`, `name`,
+  `keyboard`, `route`, `entry` and `params` bullets. Address the element by `role` + `name`
+  (`get_by_role("alert", name=…)`); use `selector` only when the node states one; fall back
+  to a text locator only when the node documents neither, and say so in the scenario.
+- A text locator invented by reading the implementation — or guessed from a rendered string —
+  is a defect, not a shortcut. It is the thing that breaks on the next copy edit, and it is
+  why a plan that "passed" proves nothing about the accessible name the book requires.
+- Navigate to the `route` the screen documents, entering by its `entry` path and supplying
+  its `params`. Never compose a URL the book does not state.
+
+Use runner-supported common actions for Maestro. Advanced cases may point to committed
+native Playwright tests or Maestro flows, but Ostler still owns invocation, timeout,
+cleanup, artifacts, recordings, and verdicts. Declare services/background processes in the
+plan; do not start them here.
 
 Each AC and required OKF obligation must resolve in `covers` and have an executable
 assertion. A source check, unit test, build, or narrative is not behavioral evidence.
+An obligation marked `"required": false` (rendered `_(context only — not owed evidence)_`)
+names something this story neither built nor touched — an endpoint with no implementation
+behind it, a screen no change reached. Read it for context; do not write a scenario against
+it, and do not invent a route to reach it.
 Stateful behavior must exercise action, persistence, reload/re-query, and isolation.
 Contract consumers must use a real producer when the repository declares one.
 
