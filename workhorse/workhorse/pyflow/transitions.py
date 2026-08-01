@@ -140,4 +140,8 @@ class Await(Generic[P]):
         return f"Await({self.path}, →{self.state}, {self.params!r})"
 
 
-Transition: TypeAlias = "Continue[Any] | Done | Await[Any]"
+# `[...]` and not `[Any]`: both classes are generic over a *ParamSpec*, and the gradual
+# form of one is `...` — the next state's parameter list, whatever it is. Spelled `Any`,
+# the alias reads as "a next state taking one positional argument", so a state returning
+# `Continue(None, self.settle, diagnostics=[...])` does not satisfy its own `-> Transition`.
+Transition: TypeAlias = "Continue[...] | Done | Await[...]"

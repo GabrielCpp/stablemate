@@ -6,12 +6,24 @@ developer's Keychain, and must pass on a headless CI box with no keyring at all.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from saddlebag.db import Pool
+
+
+def present[T](value: T | None) -> T:
+    """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit.
+
+    A `Pool.get` answers `Credential | None` because a caller may ask for an id that
+    isn't there. A test that just inserted the row is not that caller, and saying so
+    keeps the assertion about the field rather than about the lookup.
+    """
+    assert value is not None
+    return value
 
 
 class FakeStore:
@@ -43,7 +55,7 @@ def db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def pool(db_path: Path) -> Pool:
+def pool(db_path: Path) -> Iterator[Pool]:
     with Pool(db_path) as p:
         yield p
 

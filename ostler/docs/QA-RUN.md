@@ -435,6 +435,13 @@ ostler runs it and records PASS/FAIL in the log.
 A step with any inline assertion that fails causes `ostler qa run` to continue (recording
 FAIL) but report a non-zero exit code at the end. Use `--stop-on-fail` to halt immediately.
 
+`expect_http` on a step that sends its stdout elsewhere — `-o /dev/null`, a `-D` aimed at a
+path the step does not declare as its `out:`, a shell `>` — has nothing to compare against.
+That still fails, because the plan cannot prove what it claims, but the assertion record says
+`no HTTP status captured` rather than reporting a status of `None`. The two read very
+differently: one is a plan gap, the other looks like the service answering wrongly, and
+mistaking the first for the second sends a QA loop off repairing working code.
+
 ### Substitution rules
 
 - `{{key}}` in any `cmd` or assertion string is replaced with the value captured from a

@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from _fakes import FakeClock, RecordingTelemetry  # noqa: E402
+from _fakes import FakeClock, RecordingTelemetry, present  # noqa: E402
 from workhorse import otel  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
@@ -77,15 +77,32 @@ class ScriptedRunner:
 
 
 def _env(
-    tmp: str, *, name: str = "acme", config: RunConfig | None = None, **kwargs: Any
+    tmp: str,
+    *,
+    name: str = "acme",
+    config: RunConfig | None = None,
+    reopen: bool = False,
+    **kwargs: Any,
 ) -> RunEnv:
     """A run environment rooted in `tmp`, with the agent backend stubbed out.
 
     `config` is an argument rather than a constant because the driver's own guards —
     the transition budget, the `Await` poll interval — are `RunConfig` fields now, so a
     test states the budget it asserts against instead of setting an env var.
+
+    `reopen` picks which of the writer's two constructors a test means, the way
+    `pyflow.run._open_run` picks between them for a real run: a fresh start builds one
+    (and empties the run dir, since a params-derived id lands on the same path every
+    time), a resume re-binds to the dir already there and keeps its contents. A test
+    that drives a `Resume` must pass it — a fresh writer over a resumable run dir is
+    not a thing the CLI can do, and it would delete the very artifacts being resumed.
     """
-    writer = ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
+    run_dir = Path(tmp) / "runs" / f"{name}-t"
+    writer = (
+        ArtifactWriter.resume(run_dir)
+        if reopen
+        else ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
+    )
     # No backend, and none to substitute: `RunConfig.backend` defaults to the null
     # adapter, so a ladder built from this config drives a CLI that fails every turn
     # with a sentence rather than one that is absent. The tests that DO run agent turns
@@ -281,7 +298,9 @@ def test_a_transition_that_does_not_match_the_next_signature_fails_at_transition
 
         class Mistyped(Workflow):
             def start(self) -> Transition:
-                return Continue(None, self.finish, wrong=1)
+                # The mismatch is the subject of the test: `finish` takes `count`, and
+                # the checker is told to allow the call the runtime must reject.
+                return Continue(None, self.finish, wrong=1)  # ty: ignore[missing-argument, unknown-argument]
 
             def finish(self, count: int) -> Transition:
                 return Done(count)
@@ -946,7 +965,7 @@ def test_the_run_index_supplies_the_body_the_callsite_only_names():
         )))
         assert drive(Calls(), env) == "substituted:login"
         # Non-mutating: the registry every other run in the process shares is untouched.
-        assert registry.nodes.get("measure").fn is measure
+        assert present(registry.nodes.get("measure")).fn is measure
 
 
 def test_overriding_a_node_the_registry_does_not_have_names_the_registered_ones():
@@ -1032,12 +1051,21 @@ def test_the_agent_ladder_is_a_run_dependency_not_a_module_attribute():
         assert seen == ["review"], seen
 
 
-def _crashing_child(visited: list[str], crashes: list[bool]) -> type[Workflow]:
+class _CrashingChild(Workflow):
+    """The sub-flow's declared shape, named so a caller can say what it hands over.
+
+    `handoff(Child, subject=...)` binds against the child's own generated `__init__`,
+    so a factory returning the base `type[Workflow]` would lose `subject` — the
+    parameter every caller below passes. The behaviour lives in the subclass the
+    factory builds; only the field is here."""
+
+    subject: str
+
+
+def _crashing_child(visited: list[str], crashes: list[bool]) -> type[_CrashingChild]:
     """A two-state sub-flow that dies once, in its second state, then succeeds."""
 
-    class Child(Workflow):
-        subject: str
-
+    class Child(_CrashingChild):
         def start(self) -> Transition:
             visited.append(f"start:{self.subject}")
             return Continue(None, self.finish)
@@ -1068,7 +1096,9 @@ def test_a_resume_re_enters_the_sub_flow_where_it_died_rather_than_at_its_start(
         _raises(WorkflowFailed, drive, Parent(), _env(tmp))
         assert visited == ["start:login", "finish:login"], visited
 
-        result = drive(Parent(), _env(tmp), Resume(state="start", params={}, flow="Parent"))
+        result = drive(
+            Parent(), _env(tmp, reopen=True), Resume(state="start", params={}, flow="Parent")
+        )
         assert result == "login", result
         assert visited == ["start:login", "finish:login", "finish:login"], visited
 

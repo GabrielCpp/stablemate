@@ -4,10 +4,10 @@ The generated make launcher (agents.mk), plus the path constants naming what the
 installer writes there.
 
 Farrier installs **skills and prompts**, not workflows. A workflow is a Python
-package found through the ``workhorse.workflows`` entry-point group, so it is
-installed with pip/uv and run with ``workhorse run <name>`` — there is nothing for
-this module to render per workflow, and the launcher's targets are the two that
-regenerate and verify the adapters.
+package that ships its own console script, so it is installed with pip/uv and run
+with ``workhorse-<name> run`` — there is nothing for this module to render per
+workflow, and the launcher's targets are the two that regenerate and verify the
+adapters.
 """
 from __future__ import annotations
 
@@ -35,10 +35,9 @@ def render_agents_mk() -> str:
     Two targets — `agent-install` and `agent-check` — regenerating and verifying
     the adapters farrier renders. A root Makefile can `include` it unconditionally.
 
-    It carries no workflow-run targets: workflows are Python packages resolved
-    through workhorse's `workhorse.workflows` entry-point group, not files this
-    installer places, so running one is `workhorse run <name>` and needs nothing
-    generated per repo.
+    It carries no workflow-run targets: workflows are Python packages that bind
+    their own console scripts, not files this installer places, so running one is
+    `workhorse-<name> run` and needs nothing generated per repo.
     """
     header = """# Agent launcher — farrier adapter regeneration (generated).
 #
@@ -51,11 +50,11 @@ def render_agents_mk() -> str:
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
 #
-# To run a workflow, install its package and call workhorse directly:
+# To run a workflow, install its package and call that workflow's own command:
 #
 #   uv tool install workhorse-workflows
-#   workhorse run <name> --dry-run     # static preflight, drives nothing
-#   workhorse run <name>
+#   workhorse-<name> run --dry-run     # static preflight, drives nothing
+#   workhorse-<name> run
 """
 
     core = """

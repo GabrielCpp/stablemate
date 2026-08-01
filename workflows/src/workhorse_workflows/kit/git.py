@@ -207,6 +207,20 @@ def merge_base(path: str | Path, *refs: str) -> str | None:
     return out or None
 
 
+def is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool:
+    """True if ``ancestor`` is reachable from ``descendant`` (``git merge-base --is-ancestor``).
+
+    Answers "does this branch already contain that one's commits". An unresolvable ref is
+    False rather than an error, on the same best-effort footing as the rest of this module:
+    a ref that does not exist is contained by nothing.
+    """
+    try:
+        open_repo(path).git.merge_base("--is-ancestor", ancestor, descendant)
+        return True
+    except GitError:
+        return False
+
+
 def show_file(path: str | Path, ref: str, relpath: str) -> str | None:
     """The contents of ``relpath`` at ``ref`` (``git show <ref>:<relpath>``), or None
     when it didn't exist there (or git is unavailable)."""

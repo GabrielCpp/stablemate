@@ -19,7 +19,7 @@ no fast-forward. What that buys is that the contract a state must satisfy is
 still resume correctly — and it is why a state should be sized around the work it can
 afford to repeat.
 
-- start: an in-progress `workhorse run <name> [<flow>]` dies after at least one checkpoint
+- start: an in-progress `workhorse-<name> run [<flow>]` dies after at least one checkpoint
   write, before any state returned [`Done`](../workflow-format.md#transition) — so
   [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`. An operator Ctrl-C
   qualifies and resumes identically: `run_pyflow`'s `KeyboardInterrupt` handler terminates

@@ -10,8 +10,7 @@ interpreter as workhorse, because a workflow runs in workhorse's own process:
 
 ```bash
 make sync                              # at the workspace root: engine + workflows, one venv
-uv run workhorse run research          # resolved through the entry-point group
-uv run workhorse-research run          # the same parser, name already bound
+uv run workhorse-research run          # the workflow's own command
 ```
 
 The shape came from the
@@ -19,39 +18,36 @@ The shape came from the
 design brief, which shipped and is now kept only for its reasoning. What is still
 outstanding *here* is noted under [Status](#status).
 
-## How workhorse finds a workflow in here
+## How a workflow gets a command
 
-A distribution advertises what it ships:
+Each workflow binds one, and that is the only way it is reached:
 
 ```toml
-[project.entry-points."workhorse.workflows"]
-research = "workhorse_workflows.research.workflow:workflow"
-
 [project.scripts]
 workhorse-research = "workhorse_workflows.research.workflow:main"
 ```
 
-The **entry point** points at the `Workflow` object, because discovery needs the
-registry rather than the entry function. The **console script** points at `main` — the
-callable `console_script(workflow.entry_point(Entry))` *returns*, since a script target
-is called after import, not during it. `entry_point` declares which flow a bare run
-starts and returns the registry; `console_script` — which lives in `workhorse.cli`,
-the ring a console script actually starts — turns it into that callable.
+The script points at `main` — the callable `console_script(workflow.entry_point(Entry))`
+*returns*, since a script target is called after import, not during it. `entry_point`
+declares which flow a bare run starts and returns the registry; `console_script` — which
+lives in `workhorse.cli`, the ring a console script actually starts — turns it into that
+callable.
 
-`workhorse run <name>` resolves the entry point and hands the name to the same parser
-`workhorse-<name>` uses. There is one parser on purpose: two commands with two parsers
-is the failure this shape invites.
+Nothing resolves a workflow by **name**: the command carries the `Registry` it runs, so
+there is no lookup to disagree with, no group to register in, and a workflow with no row
+in this table has no command at all — a gap you meet at install time rather than
+mid-resolution. Workhorse itself ships no executable.
 
-Nothing here is a plugin API for workhorse. A third party can register the same group
-— that is what makes the mechanism plural — but the engine still knows no workflow's
-vocabulary, and this package still imports the engine and never the other way.
+Nothing here is a plugin API for workhorse either. A third party ships their own
+distribution with their own scripts, and the engine still knows no workflow's
+vocabulary — this package imports the engine and never the other way.
 
 ## Installed unpacked, always
 
 Workhorse renders a workflow's prompts with a filesystem template loader rooted at the
 workflow's own package directory, and keys per-node overrides on that directory's
 name. A wheel installed by pip or uv satisfies this; a zipapp or zip-safe egg does
-not, and workhorse refuses one at resolution rather than failing later as a missing
+not, and workhorse refuses one at startup rather than failing later as a missing
 template.
 
 ## A workflow reads no environment (load-bearing)

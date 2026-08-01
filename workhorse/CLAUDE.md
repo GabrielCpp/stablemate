@@ -2,9 +2,11 @@
 
 You are working inside `workhorse/` — the engine that drives an agent CLI through
 workflows written as **Python state machines**, designed to run **unattended for up to a
-week**. The PyPI distribution is `workhorse-agent`; the import package and the CLI command
-are both `workhorse`. The workflows it runs are not here — they live in `workflows/`
-(`workhorse-workflows`), found through the `workhorse.workflows` entry-point group.
+week**. The PyPI distribution is `workhorse-agent` and the import package is `workhorse`.
+It is a **library**: it ships no command of its own, only the wiring
+(`workhorse.console_script`) a workflow distribution uses to bind *its* command. The
+workflows it runs are not here — they live in `workflows/` (`workhorse-workflows`), each
+declaring its own console script (`workhorse-coder run …`).
 
 What an editor of the engine needs, before the rules below: paths here are relative to
 this directory, so the package is `workhorse/` — inside it, `pyflow/` holds the

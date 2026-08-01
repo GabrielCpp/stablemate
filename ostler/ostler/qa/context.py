@@ -733,13 +733,36 @@ def _is_non_production_path(path: str) -> bool:
         "pubspec.yaml",
         "pubspec.lock",
         "analysis_options.yaml",
+        ".mockery.yaml",
     }
     if name in build_config_names:
         return True
-    # Pulumi stack config (Pulumi.yaml, Pulumi.<stack>.yaml) and CI/tooling dotfiles.
+    # Pulumi stack config (Pulumi.yaml, Pulumi.<stack>.yaml).
     if name.startswith("pulumi.") and name.endswith((".yaml", ".yml")):
         return True
-    return bool(parts and parts[0] in {".github", ".gitlab"})
+    # Log files. Nothing writes one on purpose as a production unit; what lands in a working
+    # tree is a tool's debug output — a Firebase/Firestore emulator's `*-debug.log` is the
+    # case that reached us, dropped into the repo root by the QA stack the gate itself starts.
+    if name.endswith(".log"):
+        return True
+    # The agent toolchain's own footprint inside a client repo: farrier writes `agents.yml` and
+    # the `.agents/` tree, and the coder workflow's QA node writes `qa-stack.yml` (the
+    # `manifest_path` default in `coder/qa/nodes/qa.py`). These say how the repo is built and
+    # tested *by us* and never what it does for a user, so no feature Concept can own them —
+    # and unlike a Makefile they are not even the repo's own scaffolding, they are ours.
+    #
+    # Left in, the ownership gate reports them as unmapped production units, and the only move
+    # left to an agent that must clear the gate is to invent a contract node for them in the
+    # product's feature docs. A greenfield run did exactly that: it added a `#tooling` section
+    # to `docs/features/api/http/api.md` owning `qa-stack.yml` and friends, which cleared the
+    # error and bought a permanent `missing-verification` warning in exchange — a contract that
+    # can never have a grounded verify reference, because a stack manifest has no test.
+    #
+    # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
+    if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
+        return True
+    # CI and agent-tooling dotfile trees.
+    return bool(parts and parts[0] in {".github", ".gitlab", ".agents"})
 
 
 #: How a code generator announces itself. Go standardized the wording and everything that

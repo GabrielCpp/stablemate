@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 from workhorse.templates import render
@@ -43,7 +44,21 @@ PROMPTS = Path(workhorse_workflows.__file__).parent / "coder" / "prompts"
 #: `codegen`) say what the skill is for. A tag missing here resolves nothing and would make
 #: every neutrality assertion below trivially true, which is why the last test re-checks
 #: that the stack a repo *does* have still reaches the prompt.
-STACKS = {
+class _Stack(TypedDict):
+    """One stack's installed skills and the words only it may use.
+
+    Spelled out rather than left to inference: every lookup below reads one of the two
+    keys back out, and a bare literal makes each value the union of both — so the skills
+    map arrives somewhere expecting a mapping and is a tuple half the time.
+    """
+
+    #: skill name → the tags its frontmatter declares.
+    skills: dict[str, tuple[str, ...]]
+    #: Prose that belongs to this stack and no other.
+    words: tuple[str, ...]
+
+
+STACKS: dict[str, _Stack] = {
     "web": {
         "skills": {
             "react-router": ("web", "standards", "runbook"),

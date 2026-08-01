@@ -3,7 +3,7 @@ of `coder/workflow.yaml`'s `flows.docs` (22 nodes, lines 2176-2437).
 
 Reached from the main graph at four call sites (`docs`, `final_docs`, `failed_docs` and
 `document_fix_item`, the last through the `*docs_flow` anchor inside `flows.fix`), and
-standalone as `workhorse run coder docs`::
+standalone as `workhorse-coder run docs`::
 
     detect OKF → classify context → document ⇄ (grounding gate → review) → passed
 

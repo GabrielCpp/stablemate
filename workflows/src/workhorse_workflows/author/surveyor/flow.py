@@ -192,7 +192,7 @@ class Surveyor(Workflow):
             return Continue(check, self.plan)
         return Continue(check, self.expand)
 
-    def plan(self, plan_rework: int = 0, plan_errors: str = "") -> Continue:
+    def plan(self, plan_rework: int = 0, plan_errors: str = "") -> Continue | Await:
         """One bounded judgment: what a unit *is* for this rubric, in this repo.
 
         `plan_units` + `decide_plan_result`. The planner writes the enumeration rules;
@@ -218,7 +218,7 @@ class Surveyor(Workflow):
             return self._gate_plan(result, result.notes or plan_errors)
         return Continue(result, self.expand, plan_rework=plan_rework)
 
-    def expand(self, plan_rework: int = 0) -> Continue:
+    def expand(self, plan_rework: int = 0) -> Continue | Await:
         """Materialize the frozen unit list from the rules — or consume the frozen one.
 
         `expand_inventory` + `decide_expand` + `guard_plan` + `incr_plan`. An inventory
@@ -497,7 +497,7 @@ class Surveyor(Workflow):
 
     def partition(
         self, partition_rework: int = 0, partition_errors: str = ""
-    ) -> Continue:
+    ) -> Continue | Await:
         """Cluster the findings into work items, losslessly.
 
         `partition_findings` + `decide_partition_agent` + `validate_partition` +

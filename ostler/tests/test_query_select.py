@@ -7,7 +7,7 @@ import pytest
 from ostler import backlog, crud, query, select, todo
 from ostler.model import load
 
-from conftest import write
+from conftest import present, write
 
 
 def test_list_by_type(repo: Path):
@@ -43,9 +43,9 @@ def test_query_reverse_indexes(repo: Path):
 def test_next_epic_and_story(repo: Path):
     g = load(repo)
     # both epics have un-done stories; no index → graph order, first is epic-a
-    ne = select.next_epic(g)
+    ne = present(select.next_epic(g))
     assert ne["name"] == "epic-a"
-    ns = select.next_story(g, "epic-a")
+    ns = present(select.next_story(g, "epic-a"))
     assert ns["slug"] == "01-foo"
     # mark 01-foo done → no runnable story left in epic-a
     crud.set_status(load(repo), "01-foo", "QA passed")
@@ -58,9 +58,9 @@ def test_next_story_respects_dependencies(tmp_path: Path):
     crud.create_story(load(tmp_path), "e", "a", "A")
     crud.create_story(load(tmp_path), "e", "b", "B", depends=["a"])
     # b depends on a (not done) → next is a
-    assert select.next_story(load(tmp_path), "e")["slug"] == "a"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "a"
     crud.set_status(load(tmp_path), "a", "done")
-    assert select.next_story(load(tmp_path), "e")["slug"] == "b"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "b"
 
 
 def test_todo_queue(tmp_path: Path):
@@ -127,7 +127,7 @@ def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):
     crud.create_story(load(tmp_path), "e", "dependent", "Dep", depends=["first"])
 
     # Without a skip set, selection returns the first story.
-    assert select.next_story(load(tmp_path), "e")["slug"] == "first"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "first"
 
     # With 'first' given up: it is excluded, and the next INDEPENDENT story runs.
     nxt = select.next_story(load(tmp_path), "e", skip={"first"})
@@ -152,8 +152,8 @@ def test_next_story_skip_is_backward_compatible(tmp_path: Path):
     g = load(tmp_path)
     crud.create_epic(g, "e", "E", prefix="x")
     crud.create_story(load(tmp_path), "e", "only", "Only")
-    assert select.next_story(load(tmp_path), "e")["slug"] == "only"
-    assert select.next_story(load(tmp_path), "e", skip=set())["slug"] == "only"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "only"
+    assert present(select.next_story(load(tmp_path), "e", skip=set()))["slug"] == "only"
 
 
 def test_report_separates_done_from_blocked(tmp_path: Path):
@@ -230,7 +230,7 @@ def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
     crud.create_story(load(tmp_path), "e", "03-independent", "Independent")
     crud.create_story(load(tmp_path), "e", "02-after-first", "After first", depends=["01-first"])
 
-    assert select.next_story(load(tmp_path), "e")["slug"] == "01-first"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "01-first"
 
     # '01' done unblocks '02', but '03' is declared first and is runnable, so '03' is next.
     crud.set_status(load(tmp_path), "01-first", "QA passed")
@@ -240,7 +240,7 @@ def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
 
     # The dependency itself is still a real gate: '02' is only passed over, never lost.
     crud.set_status(load(tmp_path), "03-independent", "QA passed")
-    assert select.next_story(load(tmp_path), "e")["slug"] == "02-after-first"
+    assert present(select.next_story(load(tmp_path), "e"))["slug"] == "02-after-first"
 
 
 def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Path):
@@ -273,7 +273,8 @@ def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Pa
 
 def _authored(root: Path, slug: str) -> None:
     """Fill a scaffold's required sections, the way a write_story node does."""
-    story_md = load(root).find_story(slug)[1].story_md
+    _, story = present(load(root).find_story(slug))
+    story_md = present(story.story_md)
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- why this matters\n")
@@ -362,15 +363,15 @@ def test_author_and_build_are_separate_axes(tmp_path: Path):
 def test_epic_authored_needs_stories_a_doc_and_content(tmp_path: Path):
     """``epic_authored`` is the fact ``select-epic.py`` got wrong — pin all three of its parts."""
     _epic_of_scaffolds(tmp_path, [("a", []), ("b", [])])
-    epic = select.epic_by_name(load(tmp_path), "e")
+    epic = present(select.epic_by_name(load(tmp_path), "e"))
     assert not select.epic_authored(epic), "an epic of bare scaffolds is not authored"
 
     _authored(tmp_path, "a")
-    epic = select.epic_by_name(load(tmp_path), "e")
+    epic = present(select.epic_by_name(load(tmp_path), "e"))
     assert not select.epic_authored(epic), "one written story does not finish the epic"
 
     _authored(tmp_path, "b")
-    epic = select.epic_by_name(load(tmp_path), "e")
+    epic = present(select.epic_by_name(load(tmp_path), "e"))
     assert select.epic_authored(epic)
 
 

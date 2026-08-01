@@ -13,14 +13,18 @@ QA. Ostler is the only primary executor for command, browser, and mobile scenari
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Context status: `{{ workhorse_var('context_status') }}`
-- Context diagnostics: `{{ workhorse_var('context_notes') }}`
-- Previous plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
-- Previous semantic plan-review diagnostics: `{{ workhorse_var('plan_review_notes') }}`
-- Previous execution-assessment diagnostics: `{{ workhorse_var('run_assessment_notes') }}`
-- Previous independent-audit diagnostics: `{{ workhorse_var('audit_notes') }}`
-- Previous deterministic evidence diagnostics: `{{ workhorse_var('evidence_notes') }}`
+{% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
+{% endif %}{% if workhorse_var('plan_validation_notes') %}- Previous plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
+{% endif %}{% if workhorse_var('plan_review_notes') %}- Previous semantic plan-review diagnostics: `{{ workhorse_var('plan_review_notes') }}`
+{% endif %}{% if workhorse_var('run_assessment_notes') %}- Previous execution-assessment diagnostics: `{{ workhorse_var('run_assessment_notes') }}`
+{% endif %}{% if workhorse_var('audit_notes') %}- Previous independent-audit diagnostics: `{{ workhorse_var('audit_notes') }}`
+{% endif %}{% if workhorse_var('evidence_notes') %}- Previous deterministic evidence diagnostics: `{{ workhorse_var('evidence_notes') }}`
+{% endif %}
+A diagnostics line appears only when that gate actually reported something to fix, so **no
+diagnostics lines at all means no gate has complained** — author the plan fresh rather than
+hunting for the finding that is missing from this brief.
 
-Do not rediscover or substitute another story. If any gate routed back here, repair the existing
+Do not rediscover or substitute another story. If a gate did route back here, repair the existing
 plan from its specific diagnostics instead of discarding valid scenarios. Newer semantic,
 assessment, audit, or evidence findings are not superseded by an earlier structurally valid result.
 
@@ -103,10 +107,10 @@ scenarios:
       - okf:required-obligation-id
     actions:
       - do: command
-        id: exercise
+        id: observable-behavior-exercise
         cmd: curl -s http://localhost:8080/health
         assert_contains: ok
-        out: qa/steps/exercise.json
+        out: qa/steps/observable-behavior-exercise.json
 ```
 
 Only define targets the story needs. Every scenario has a target, mechanism, unique id,
@@ -116,6 +120,20 @@ least one machine-executed terminal assertion. `mechanism` is provenance
 `maestro`). Never use a driver name as a mechanism.
 
 - `mechanism` is **required** on every scenario — missing mechanism is a hard validation error.
+- An action `id` must be unique across the **whole plan**, not just within its scenario. The
+  example's `observable-behavior-exercise` is prefixed with its scenario id for exactly this
+  reason: writing six scenarios by copying the example verbatim yields six actions called
+  `exercise`, and every one after the first is a validation error. Namespace every action id to
+  its scenario — the scenario id, or a short unambiguous abbreviation of it (`create-group-success`
+  → `cgs-create`, `cgs-assert-shape`).
+- An action declares **exactly one** of `do`, `expect`, or `capture` — that key names what the
+  action *is*, so a second one is a hard validation error rather than a richer step. Asserting on
+  a `do: command` is not a separate key: it is the `assert_contains` / `assert_count` /
+  `expect_http` / `cloudwatch_confirm` field on the command action itself, as the example shows.
+  `expect:` takes a UI predicate (`visible`, `hidden`, `enabled`, `disabled`, `selected`,
+  `checked`, …) and belongs to the playwright/maestro drivers; `capture:` takes an artifact kind
+  (`screenshot`, `trace`, `body_text`, `accessibility_snapshot`, `view_hierarchy`). Splitting a
+  step into exercise-then-assert means **two actions**, each with its own id.
 - **Never write a stub/placeholder `cmd`** (e.g. `echo 'REPLACE THIS COMMAND: ...'`) for a step you
   can't fully resolve at planning time. If no `plan-context.json` or pre-resolved fixture exists,
   write the **real** discovery command using the tooling the layer's `qa_skill` names so the step
@@ -144,7 +162,16 @@ least one machine-executed terminal assertion. `mechanism` is provenance
           -H 'Content-Type: application/json' -d '{"longUrl":"https://example.com/probe"}'
         assert_contains: "201"
   ```{% endraw %}
-- The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and `qa/asserts/` as sub-directories.
+- The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and
+  `qa/asserts/` as sub-directories. **`out:` and `capture:` paths are the only ones resolved for
+  you**; ostler resolves them against the spec directory and creates their parents. A step's `cmd`
+  runs with its working directory at the **repo root**, so the identical string means a different
+  place inside a command: `out: qa/steps/x.txt` lands in `{{ workhorse_var('qa_dir') }}/steps/`,
+  while `curl -o qa/steps/x.txt` inside a `cmd` targets `<repo>/qa/steps/`, which does not exist —
+  the redirect fails, the command dies with empty stdout, and every assertion downstream of it
+  fails against an implementation that is correct. Chain state between actions with `capture:` +
+  `{% raw %}{{key}}{% endraw %}`, not with hand-written temp files. If a command genuinely must
+  write a file itself, give it the **absolute** `{{ workhorse_var('qa_dir') }}/steps/…` path.
 - **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{% raw %}{{key}}{% endraw %}` in all steps that need it:
 {% raw %}  ```yaml
   - id: gen-device-id

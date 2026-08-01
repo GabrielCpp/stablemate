@@ -50,10 +50,15 @@ def _validate_rules(data: object) -> tuple[list[dict], list[str], list[str]]:
     rules = data.get("rules")
     if not isinstance(rules, list) or not rules:
         return [], [], ["`rules` must be a non-empty list of enumeration rules"]
+    # The mappings, kept as they are checked: a YAML list is a list of *anything*, and the
+    # caller only ever expands this when `errors` came back empty — i.e. when every entry
+    # made it through the check below.
+    mappings: list[dict] = []
     for i, rule in enumerate(rules):
         if not isinstance(rule, dict):
             errors.append(f"rules[{i}] is not a mapping")
             continue
+        mappings.append(rule)
         kind = rule.get("kind")
         if kind not in RULE_KINDS:
             errors.append(f"rules[{i}] kind '{kind}' not one of {sorted(RULE_KINDS)}")
@@ -71,7 +76,7 @@ def _validate_rules(data: object) -> tuple[list[dict], list[str], list[str]]:
     if not isinstance(excludes, list):
         errors.append("`exclude` must be a list of fnmatch patterns")
         excludes = []
-    return rules, [str(x) for x in excludes], errors
+    return mappings, [str(x) for x in excludes], errors
 
 
 def _expand(

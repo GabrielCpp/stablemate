@@ -5,8 +5,8 @@ packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
-| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft runner that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, found by the `workhorse.workflows` entry-point group. |
+| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
+| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
@@ -44,7 +44,7 @@ puts every piece in a single interpreter:
 ```bash
 git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
 make sync                                    # one venv with every member installed
-uv run workhorse run hello-world --dry-run   # the quick start; needs no agent CLI
+uv run workhorse-hello-world run --dry-run   # the quick start; needs no agent CLI
 ```
 
 That last line is the whole install check — see [Your first run](#your-first-run). The
@@ -52,8 +52,8 @@ other workflows are `author`, `coder`, `okf-builder` and `research`, and they wa
 repository and an agent CLI.
 
 That single-interpreter part is not incidental. Workflow code runs **in workhorse's own
-interpreter** and imports its tools in-process, so `workhorse run <name>` only finds a
-workflow through the `workhorse.workflows` entry-point group in that same venv, and
+interpreter** and imports its tools in-process, so a workflow's `workhorse-<name>`
+command only exists in the venv the workflow was installed into, and
 `ostler` being on your `PATH` is not enough — it has to be importable *there*. See
 [Tools a workflow needs](#tools-a-workflow-needs).
 
@@ -150,7 +150,7 @@ It needs no repository, no context manifest and — under `--dry-run` — no age
 all, so it is the one command that tells you the install worked.
 
 ```bash
-uv run workhorse run hello-world --dry-run
+uv run workhorse-hello-world run --dry-run
 ```
 
 ```
@@ -179,7 +179,7 @@ a rendered prompt. Drop the flag and it all happens for real; that one needs an 
 (`claude` by default; `--cli codex|copilot|aider|opencode`):
 
 ```bash
-uv run workhorse run hello-world --params '{"name": "globex"}'
+uv run workhorse-hello-world run --params '{"name": "globex"}'
 ```
 
 ```
@@ -196,12 +196,12 @@ the prompt as the agent received it — `{{ name }}` and `{{ letters }}` filled 
 
 ```bash
 cat .agents/runs/hello-world-*/greet/prompt.md
-uv run workhorse dot hello-world           # the same machine as a graphviz diagram
+uv run workhorse-hello-world dot           # the same machine as a graphviz diagram
 ```
 
 Now read the source, which is under 90 lines and commented to be read in this order:
 [`workflows/src/workhorse_workflows/hello_world/workflow.py`](workflows/src/workhorse_workflows/hello_world/workflow.py).
-Copy that directory, rename it, and give it an entry point of its own —
+Copy that directory, rename it, and give it a console script of its own —
 [Shipping your own, outside this repo](workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo)
 is the whole `pyproject.toml` and the one install command it takes, and it does not
 require a checkout of this repository.

@@ -196,7 +196,7 @@ would be a false negative on a run that is otherwise healthy.
   and `SIGKILL`s the group if it's still alive after that — the same graceful-then-hard pattern as
   the in-`stream_subprocess` timeout kill.
 - Called from `pyflow/run.py`'s two abort paths — the `KeyboardInterrupt` handler and the
-  `PyflowError` handler that back [`workhorse run`](../workhorse.md#run) — so an interrupted or
+  `PyflowError` handler that back [`workhorse-<name> run`](../workhorse.md#run) — so an interrupted or
   fatally-failed run doesn't leave its in-flight agent CLI (and its process tree) orphaned when
   workhorse itself exits.
 

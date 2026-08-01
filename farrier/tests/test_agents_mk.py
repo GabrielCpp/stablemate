@@ -1,9 +1,9 @@
 """The generated launcher (.agents/agents.mk) is emitted for every repo, and carries
 only the two targets that regenerate and verify farrier's adapters.
 
-Rationale: farrier installs skills and prompts, not workflows. A workflow is a
-Python package workhorse resolves through the `workhorse.workflows` entry-point
-group, so nothing about running one is per-repo generated state — `agent-install`
+Rationale: farrier installs skills and prompts, not workflows. A workflow is an
+installed Python distribution that brings its own `workhorse-<name>` command,
+so nothing about running one is per-repo generated state — `agent-install`
 and `agent-check` are the whole launcher, and an existing root Makefile can
 `include` it unconditionally.
 
@@ -52,7 +52,7 @@ def test_no_workflow_run_targets_or_docker_plumbing():
 def test_points_at_the_workhorse_cli_for_running_a_workflow():
     """A reader who lost `make agent-run` needs the replacement in the same file."""
     mk = render_agents_mk()
-    assert "workhorse run <name>" in mk
+    assert "workhorse-<name> run" in mk
     assert "--dry-run" in mk
 
 

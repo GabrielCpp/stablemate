@@ -13,7 +13,7 @@ prompt paths still resolve against `okf_builder/prompts/` like every other one.
 What is specific to this flow is that it is **standalone-invokable**, and was designed
 that way in the YAML::
 
-    workhorse run okf-builder walkthrough-web --params '{"service":"acme"}'
+    workhorse-okf-builder run walkthrough-web --params '{"service":"acme"}'
 
 which is why its `setup()` re-derives every path from `docs_path` rather than taking them
 from the parent's `ctx`: a walk must be runnable against a book an earlier run built.

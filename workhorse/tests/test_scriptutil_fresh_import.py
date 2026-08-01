@@ -26,7 +26,7 @@ def test_fresh_import_picks_up_an_edit_made_after_the_first_import():
         _write_module(d, "wh_probe_a", "VALUE = 'before'\n")
         sys.path.insert(0, d)
         try:
-            import wh_probe_a  # noqa: PLC0415
+            import wh_probe_a  # noqa: PLC0415  # ty: ignore[unresolved-import]
 
             assert wh_probe_a.VALUE == "before"
             _write_module(d, "wh_probe_a", "VALUE = 'after'\n")
@@ -48,7 +48,7 @@ def test_disabled_fresh_import_preserves_a_monkeypatched_attribute():
         _write_module(d, "wh_probe_b", "def seam():\n    return 'real'\n")
         sys.path.insert(0, d)
         try:
-            import wh_probe_b  # noqa: PLC0415
+            import wh_probe_b  # noqa: PLC0415  # ty: ignore[unresolved-import]
 
             wh_probe_b.seam = lambda: "faked"
 

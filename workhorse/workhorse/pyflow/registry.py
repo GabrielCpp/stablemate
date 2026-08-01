@@ -1,15 +1,15 @@
-"""The module-level object an entry point points at.
+"""The module-level object a workflow's console script points at.
 
 ```python
 workflow = Registry("coder").add_blueprints(kit.blueprint, blueprint)
 main = console_script(workflow.entry_point(Coder))
 ```
 
-Two things resolve to this object, and it is the reason both can share one parser:
-the `workhorse.workflows` entry point names it (so `workhorse run coder …` finds the
-workflow), and `main` — *the callable `console_script` returns*, never a call made at
-import — is the `workhorse-coder` console script. A workflow module must stay
-importable without running anything.
+This object *is* the workflow, as far as anything outside the module is concerned.
+`main` — *the callable `console_script` returns*, never a call made at import — is what
+the distribution binds as its `workhorse-coder` script, and it carries this registry
+with it. Nothing resolves a workflow by name: a workflow module must stay importable
+without running anything, and the script that imports it already knows which one it got.
 
 `console_script` lives in `workhorse.cli`, not here. A registry that built its own
 console callable had to import the CLI, which imports the driver, which imports this
@@ -87,7 +87,7 @@ class Registry:
         return self
 
     def add_flows(self, **flows: type[Workflow]) -> "Registry":
-        """Register sub-flows a caller can name, e.g. `workhorse run coder qa`."""
+        """Register sub-flows a caller can name, e.g. `workhorse-coder run qa`."""
         for flow_name, workflow in flows.items():
             if flow_name in self.flows:
                 raise WorkflowDefinitionError(
@@ -158,7 +158,7 @@ class Registry:
     # --- entry point --------------------------------------------------------
 
     def entry_point(self, entry: type[Workflow]) -> "Registry":
-        """Declare `entry` the flow a bare `workhorse run <name>` starts.
+        """Declare `entry` the flow a bare `workhorse-<name> run` starts.
 
         Returns `self`, so the declaration composes with the binding the CLI ring
         owns: `main = console_script(workflow.entry_point(Coder))`.
@@ -174,9 +174,8 @@ class Registry:
         if not self.name:
             raise WorkflowDefinitionError(
                 "a workflow needs a name before it can be a command — `Registry(\"coder\")`, "
-                "not `Registry()`. The name is what `workhorse run <name>` resolves and "
-                "what the CLI binds so a bare `workhorse-<name> run qa` reads 'qa' as the "
-                "flow rather than as the workflow."
+                "not `Registry()`. The name is what the console script is called and "
+                "what its usage line and run directories are named after."
             )
         self._claim(entry)
         self.entry = entry
@@ -223,10 +222,10 @@ class Registry:
     def directory(self) -> Path:
         """The workflow's own directory — what holds its `prompts/`.
 
-        Taken from the package the entry class's module lives in, so it is the same
-        directory whether the name was resolved through an entry point or the console
-        script bypassed discovery entirely. `package_dir` is what refuses a
-        zip-imported package here rather than at `TemplateNotFound` time.
+        Taken from the package the entry class's module lives in — the one place that
+        holds regardless of how the registry reached the CLI, and the reason nothing
+        needs to record a path. `package_dir` is what refuses a zip-imported package
+        here rather than at `TemplateNotFound` time.
         """
         if self.entry is None:
             raise WorkflowDefinitionError(

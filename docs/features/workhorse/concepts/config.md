@@ -9,12 +9,13 @@ The toolchain's small persistent settings file — **one** TOML file at
 `~/.config/stablemate/config.toml`, shared by workhorse and farrier, holding `library_dir`,
 `stablemate_dir`, `base_dir`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
 `[default.<backend>]` fallback table, and a per-harness `[harness.<backend>].env` table. Read and
-written by [workhorse config](../workhorse.md#config); the `power` table is consumed at run time by
+written by [farrier config](../../farrier/farrier.md#config) — workhorse is a library and ships no
+command of its own; the `power` table is consumed at run time by
 `resolve_power` to satisfy a node's [`power`](../workflow-format.md#power) tier, and the `default`
 table by `resolve_backend_default` to fill whatever that left unset.
 
 It lives in `stablemate-core`, not in workhorse. It used to be one file *per tool*, which meant
-`workhorse config set-base` and `farrier config set-base` wrote to different files and then
+each tool's own `config set-base` wrote to a different file and they then
 disagreed about `library_dir`/`stablemate_dir`/`base_dir` — the installer and the runner
 disagreeing about where the library is, silently. The legacy per-tool files are still **read** when
 the unified one is absent; the first write migrates them.
@@ -79,8 +80,9 @@ renamed so neither caller had to change.
 Reads one value out of the loaded config (or a `cfg` dict passed in, else `load_config()`) by a
 dot-path `name` (e.g. `power.high.claude` reaches `[power.high.claude]`). Walks `name.split(".")`
 as successive dict lookups; returns `None` as soon as a segment is missing or a non-dict is
-indexed — an unresolved path is silent, never an error. Used directly by
-[workhorse config get](../workhorse.md#config).
+indexed — an unresolved path is silent, never an error. Used by
+`stablemate_core.discovery` to read `base_dir`/`stablemate_dir` without caring whether either is
+set.
 
 - code: `core/stablemate_core/config.py::get_config_value`
 
@@ -98,7 +100,7 @@ mapping — every node quietly falling back to the harness's default model, with
 
 Creates the config directory if absent. Refuses with `ConfigVersionError` when the file on disk is
 newer than `CONFIG_VERSION`. Used by
-[workhorse config set-library / set-stablemate / set-base](../workhorse.md#config), and by the
+[farrier config set-library / set-stablemate / set-base](../../farrier/farrier.md#config), and by the
 typed helpers `write_library_dir`, `write_stablemate_dir` and `write_base_dir` that wrap it.
 
 - code: `core/stablemate_core/config.py::write_config_key`
@@ -154,7 +156,8 @@ combination is a no-op override, not an error.
 
 ## Consumers
 
-- [`workhorse config`](../workhorse.md#config) — `show`/`get`/`list`/`set-*`.
+- [`farrier config`](../../farrier/farrier.md#config) — `show`/`set-*`, the one command that reads and
+  writes this file. The `power` table has no writer subcommand; it is edited by hand.
 - [`AgentRunner.run`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn.
 - the [agent backend](agent-backend.md) — `resolve_harness_env` for the harness subprocess's
   environment.

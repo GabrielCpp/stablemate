@@ -1,7 +1,7 @@
 """`docs` — fold a finished story into the as-built OKF book, and refuse to believe it was.
 
 The sub-graph the main loop reaches at four call sites with `self.handoff(Docs, ...)`, and
-a registered flow in its own right (`workhorse run coder docs`). `flow.py` is the machine
+a registered flow in its own right (`workhorse-coder run docs`). `flow.py` is the machine
 and there is no `nodes.py` beside it: the QA graph also detects the book, builds the
 obligation packet and verifies the story's documentation, so those nodes are in
 [`shared/`](../shared) — `shared/docs.py` and `shared/okf.py`, named for the subject rather

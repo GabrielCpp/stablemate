@@ -381,6 +381,30 @@ def test_build_and_config_files_are_not_production_units(tmp_path: Path):
         assert not np(path), f"{path} is real code and must stay production"
 
 
+def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
+    """farrier writes `agents.yml` and `.agents/`; the coder workflow's QA node writes
+    `qa-stack.yml`; the QA stack's Firebase emulator drops `*-debug.log` in the repo root. All
+    of them land in a story's diff, none of them is something a feature Concept can own.
+
+    Classified as production they fail the ownership gate, and the only move left to an agent
+    that must clear it is to invent a contract for them in the product's own feature docs. A
+    greenfield run did that — a `#tooling` node in `docs/features/api/http/api.md` owning
+    `qa-stack.yml`, `agents.yml` and `.agents/agents.mk` — which cleared the error and left a
+    permanent `missing-verification` warning behind, since a stack manifest has no test to
+    ground a verify reference on. The gate has to exclude them so it never asks."""
+    from ostler.qa.context import _is_non_production_path as np
+
+    for path in (
+        "agents.yml", "qa-stack.yml", ".agents/agents.mk", ".agents/local.compose.yaml",
+        "firebase-debug.log", "firestore-debug.log", "api/.mockery.yaml",
+    ):
+        assert np(path), f"{path} is toolchain scaffolding and must not be a production unit"
+
+    # Root-scoped on purpose: a nested file by the same name belongs to the product, not to us.
+    for path in ("api/internal/agents.yml", "web/app/qa-stack.yml"):
+        assert not np(path), f"{path} is the product's own file and must stay production"
+
+
 def test_context_ignores_build_files_alongside_real_change(tmp_path: Path):
     """The end-to-end shape of the greenfield-coder failure: a story that touches production
     code AND its build manifest must not be failed on the manifest."""

@@ -355,8 +355,11 @@ class Coder(Workflow):
             return Continue(result, self.dev, epic=epic, zero_diff=zero_diff,
                             triage=result.triage_scope)
         if result.status == "exhausted":
+            # `result.spent` names which budget actually ran out. `qa_rework` stays as the
+            # fallback for a result that carries no name: the empty-story arm, which really
+            # did spend nothing, and a checkpoint written before the field existed.
             return Continue(result, self.give_up, epic=epic, zero_diff=zero_diff,
-                            attempts=result.qa_rework)
+                            attempts=result.spent or result.qa_rework)
         # `passed`, and the YAML's `default:` arm, which was also the drain.
         return Continue(result, self.drain, epic=epic, zero_diff=zero_diff)
 
@@ -384,18 +387,24 @@ class Coder(Workflow):
         )
         return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
-    def give_up(self, epic: str = "", zero_diff: int = 0, attempts: int = 0) -> Continue:
+    def give_up(
+        self, epic: str = "", zero_diff: int = 0, attempts: int | str = 0
+    ) -> Continue:
         """`decide_qa_fail` → `failed_docs` → `qa_give_up`: QA is out of attempts.
 
         In story mode this is the end of the run and it is a failure — there is no next
         story to move on to. In epic mode the story is flagged, whatever *was* built is
         still documented (the `failed_docs` handoff, which is why documentation runs even on
         the failing path), and the loop takes the next story.
+
+        `attempts` is a count only for a result that predates `QaFlowResult.spent`; normally
+        it is that field's phrase ("3 QA-plan repair"), which is why it is stringified rather
+        than counted here. Both forms read correctly in the marker commit and the flag.
         """
         if self.mode != "epic":
             raise WorkflowFailed(
                 f"QA never passed for story {self._story.story_slug!r} after {attempts} "
-                "rework(s); giving up."
+                "attempt(s); giving up."
             )
         result = self.handoff(
             Docs,
@@ -411,6 +420,7 @@ class Coder(Workflow):
             self._story.story_slug,
             str(attempts),
             self._story.story_path,
+            self._story.spec_dir,
             str(self.run_dir),
         )
         return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
@@ -628,10 +638,13 @@ class Coder(Workflow):
         instead of leaving it behind on the base branch.
 
         `should_gate` false — no remote, no token, no PR to gate on — skips straight to the
-        next epic, which is what makes the whole workflow run offline.
+        next epic, which is what makes the whole workflow run offline. It is also how an
+        epic whose branch carries a *set-aside* epic declines to ship: `open_pr` refuses to
+        PR work that would merge past another epic's gate, and the queue advances anyway.
         """
         self.call(prune_epic, self._queue_epic(epic))
-        gate = self.call(open_pr, self._queue_epic(epic), self.output(init_base).base_branch)
+        gate = self.call(open_pr, self._queue_epic(epic), self.output(init_base).base_branch,
+                         str(self.run_dir))
         if not gate.should_gate:
             self.logger.info("no PR to gate on for %s — taking the next epic", epic)
             return Continue(gate, self.select_epic, zero_diff=zero_diff)
@@ -888,7 +901,7 @@ class Coder(Workflow):
 workflow = (
     Registry("coder")
     .add_blueprints(blueprint)
-    # The eight `flows:` blocks, by the name `workhorse run coder <name>` takes. Five are
+    # The eight `flows:` blocks, by the name `workhorse-coder run <name>` takes. Five are
     # only ever reached by `handoff`; `genesis`, `dream` and `fix` are entered directly,
     # which is the whole reason they need names here.
     .add_flows(

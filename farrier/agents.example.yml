@@ -7,9 +7,9 @@
 # the prompt library to render into your repo's adapter files, and which scaffold
 # ids `farrier scaffold` may apply.
 #
-# It does NOT install workflows. A workflow is a Python package workhorse finds
-# through the `workhorse.workflows` entry-point group — you `pip install` it and
-# run `workhorse run <name>`. The one key here a workflow reads for itself is
+# It does NOT install workflows. A workflow is an installed Python distribution
+# that brings its own command — you `pip install` it and run
+# `workhorse-<name> run`. The one key here a workflow reads for itself is
 # `workflow:` at the bottom.
 #
 # Run it (after `pipx install farrier` and pointing farrier at the library):
@@ -156,8 +156,8 @@ template:
 # camelCase or snake_case accepted.
 #
 # (`repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to
-# configure a generated Docker launcher. That launcher is gone — `workhorse run`
-# takes its arguments on the command line — and those keys are now ignored.)
+# configure a generated Docker launcher. That launcher is gone — a workflow's own
+# command takes its arguments on the command line — and those keys are now ignored.)
 # ---------------------------------------------------------------------------
 workflow:
   # Name of the env var carrying the GitHub token for the coder workflow's PR

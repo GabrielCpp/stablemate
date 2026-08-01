@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import present
+
 from saddlebag import cli
 from saddlebag.db import Pool
 
@@ -43,7 +45,12 @@ def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
         capsys.readouterr()
         with pytest.raises(SystemExit) as exc:
             cli.main(["--db", str(db_path), *argv])
-        return exc.value.code
+        code = exc.value.code
+        # `main` exits with a status, never with a message: `SystemExit.code` is
+        # `str | int | None` in general, and asserting that here is what lets every
+        # caller compare against a number.
+        assert isinstance(code, int)
+        return code
 
     return _run
 
@@ -68,7 +75,7 @@ def out(capsys) -> str:
 def test_add_stores_metadata_in_pool_and_password_in_store(add_one, db_path, store):
     assert add_one() == 0
     with Pool(db_path) as pool:
-        cred = pool.get("cred-001")
+        cred = present(pool.get("cred-001"))
     assert cred.username == "admin@staging.example.com"
     assert cred.roles == ("admin", "billing")
     assert store.get("cred-001") == "hunter2"
@@ -88,7 +95,7 @@ def test_add_imports_a_password_from_an_env_file(run, tmp_path, db_path, store):
     assert code == 0
 
     with Pool(db_path) as pool:
-        cred = pool.get("cred-001")
+        cred = present(pool.get("cred-001"))
     assert cred.username == "admin@staging.example.com"
     assert cred.roles == ("admin", "billing")
     # The .env supplied only the secret; the metadata came from the flags.
@@ -202,7 +209,7 @@ def test_add_infers_project_from_the_working_directory(run, monkeypatch, db_path
     monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
     run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
     with Pool(db_path) as pool:
-        assert pool.get("cred-001").project == "stablemate"
+        assert present(pool.get("cred-001")).project == "stablemate"
 
 
 def test_explicit_project_overrides_inference(run, monkeypatch, db_path):
@@ -210,7 +217,7 @@ def test_explicit_project_overrides_inference(run, monkeypatch, db_path):
     run("add", "--username", "a@x.com", "--env", "staging",
         "--project", "other-repo", "--password-stdin", stdin="pw")
     with Pool(db_path) as pool:
-        assert pool.get("cred-001").project == "other-repo"
+        assert present(pool.get("cred-001")).project == "other-repo"
 
 
 def test_empty_project_means_no_project(run, monkeypatch, db_path):
@@ -218,7 +225,7 @@ def test_empty_project_means_no_project(run, monkeypatch, db_path):
     run("add", "--username", "a@x.com", "--env", "staging",
         "--project", "", "--password-stdin", stdin="pw")
     with Pool(db_path) as pool:
-        assert pool.get("cred-001").project is None
+        assert present(pool.get("cred-001")).project is None
 
 
 def test_list_scopes_to_the_inferred_project(run, monkeypatch, capsys):
@@ -318,7 +325,7 @@ def test_scan_json_lists_candidates_without_leasing(add_one, run, capsys, db_pat
     assert json.loads(out(capsys))[0]["id"] == "cred-001"
 
     with Pool(db_path) as pool:
-        assert not pool.get("cred-001").is_locked()
+        assert not present(pool.get("cred-001")).is_locked()
 
 
 def test_scan_excludes_leased_credentials(add_one, run, capsys):
@@ -344,7 +351,7 @@ def test_scan_with_select_via_leases_the_agents_choice(add_one, run, monkeypatch
     assert data["run_id"] == "run-42"
 
     with Pool(db_path) as pool:
-        assert pool.get("cred-001").is_locked()
+        assert present(pool.get("cred-001")).is_locked()
 
 
 def test_scan_with_no_match_exits_one(add_one, run):
@@ -398,7 +405,7 @@ def test_release_by_lease_id(add_one, run, tmp_path, db_path):
 
     assert run("release", "--lease-id", lease_id) == 0
     with Pool(db_path) as pool:
-        assert not pool.get("cred-001").is_locked()
+        assert not present(pool.get("cred-001")).is_locked()
 
 
 def test_release_by_run_id(add_one, run, capsys):

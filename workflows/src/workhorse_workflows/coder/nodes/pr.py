@@ -42,6 +42,7 @@ from workhorse.scriptutil import find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.ci import push_epic_branch
+from workhorse_workflows.coder.shared.queue import epics_set_aside
 from workhorse_workflows.coder.shared.schemas.pr import (
     CiFlagged,
     MergeFlagged,
@@ -58,6 +59,7 @@ from workhorse_workflows.kit import (
     find_open_pr,
     get_affected_repos,
     get_repo_config,
+    is_ancestor,
     origin_url,
     push_branch,
     repo_full_name_from_url,
@@ -82,9 +84,42 @@ UI_QA_MODES = ("playwright", "maestro")
 # ── The epic's PR ────────────────────────────────────────────────────────────────────
 
 
+def _inherited_set_aside_epic(root: Path, run_dir: str, branch: str, base: str) -> str:
+    """The first epic set aside this run whose *unmerged* work `branch` carries, or `""`.
+
+    `branch_epic` cuts every epic branch from HEAD, not from the base — deliberately, so an
+    epic can build on the one before it, which is the only reason a story that depends on a
+    previous epic's code compiles at all. The cost is that a *failed* epic rides along too:
+    `flag_epic_blocked` promises its work "stays on its branch, unmerged … NOT merged", and
+    then the next epic's branch is cut on top of it and its PR targets trunk. Merging that
+    PR merges the set-aside epic, past the gate that set it aside, without anyone reviewing
+    the failure the gate was raised for.
+
+    So containment is the question, not order: an epic branch that contains a set-aside
+    epic's commits is not independently shippable and must not become a PR. It stays on disk
+    for the manual review the gate asked for, and the run advances as it does offline.
+
+    Contributed commits, though, not mere containment. An epic set aside before it committed
+    anything leaves `feat/<epic>` pointing at the base, which is an ancestor of every later
+    branch — so a bare containment test would let one story's early failure wedge the entire
+    remaining queue. A branch the base already contains has nothing to smuggle past a gate.
+    """
+    for blocked in epics_set_aside(root, run_dir):
+        blocked_branch = f"feat/{blocked}"
+        if is_ancestor(root, blocked_branch, base):
+            continue  # built nothing the base does not already have
+        if is_ancestor(root, blocked_branch, branch):
+            return blocked
+    return ""
+
+
 @blueprint.node
 def open_pr(
-    logger: logging.Logger, epic: str = "", base_branch: str = "main", repo_dir: str = ""
+    logger: logging.Logger,
+    epic: str = "",
+    base_branch: str = "main",
+    run_dir: str = "",
+    repo_dir: str = "",
 ) -> PrGate:
     """Open the finished epic's PR, and say whether there is anything to gate CI on.
 
@@ -94,17 +129,50 @@ def open_pr(
     failure inside `_open_epic_pr` is best-effort and leaves the branch for a manual PR,
     which is why this node still reports `should_gate` from the *epic*, not from whether
     GitHub could be reached.
+
+    The one case that reports no gate *with* an epic is a branch carrying a set-aside epic —
+    see :func:`_inherited_set_aside_epic` for why that cannot become a PR. The queue prune is
+    still committed there, because the epic itself did finish and the next selection has to
+    see it gone.
     """
     if not epic:
         logger.info("no epic — nothing to PR")
+        return PrGate(ci_base=base_branch)
+
+    root = find_repo_root(repo_dir)
+    branch = f"feat/{epic}"
+    _commit_queue_prune(logger, root, epic, branch)
+
+    inherited = _inherited_set_aside_epic(root, run_dir, branch, base_branch)
+    if inherited:
+        logger.warning(
+            "not opening a PR for %s: its branch contains epic '%s', which was set aside this "
+            "run and needs manual review — opening it would merge that work past its own gate. "
+            "%s is left on disk; review and merge '%s' first.",
+            branch, inherited, branch, inherited,
+        )
         return PrGate(ci_base=base_branch)
 
     _open_epic_pr(logger, epic, base_branch, repo_dir)
     return PrGate(should_gate=True, ci_epic=epic, ci_base=base_branch)
 
 
+def _commit_queue_prune(logger: logging.Logger, root: Path, epic: str, branch: str) -> None:
+    """Commit the queue prune onto the epic branch, best-effort.
+
+    Before pushing, so it rides into the base with this epic's own merge rather than being
+    lost at the next checkout — `branch_epic` restores `index.md` from the base, so an
+    uncommitted prune does not survive to the next epic. Where the queue lives is ostler's
+    answer, not a literal here.
+    """
+    if not branch_exists(root, branch):
+        return
+    if commit_paths(root, f"{epic}: prune completed epic from queue", paths.epics_index(root)):
+        logger.info("committed index.md prune onto %s", branch)
+
+
 def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = "") -> None:
-    """Commit the queue prune, push the epic branch, open its PR. Best-effort throughout.
+    """Push the epic branch and open its PR. Best-effort throughout.
 
     Every early return leaves the branch unpushed or the PR unopened for a manual
     follow-up, and none of them is an error: an offline run, a token-less run and a
@@ -116,12 +184,6 @@ def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = 
     if not branch_exists(root, branch):
         logger.info("no branch %s to PR", branch)
         return
-
-    # Commit the queue prune onto the epic branch before pushing, best-effort, so it rides
-    # into the base with this epic's own merge rather than being lost at the next checkout.
-    # Where the queue lives is ostler's answer, not a literal here.
-    if commit_paths(root, f"{epic}: prune completed epic from queue", paths.epics_index(root)):
-        logger.info("committed index.md prune onto %s", branch)
 
     token = resolve_github_token(root)
     if not token:

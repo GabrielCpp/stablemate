@@ -13,8 +13,8 @@ def is_library_dir(path: Path) -> bool:
     """A usable library root holds ``library/`` — the skills and prompts.
 
     It used to accept ``workflows/`` as an alternative, back when a workflow was a
-    directory of YAML a library could ship. A workflow is a Python package now, resolved
-    through the ``workhorse.workflows`` entry-point group, so a directory holding only
+    directory of YAML a library could ship. A workflow is an installed Python
+    distribution now, reached through its own console script, so a directory holding only
     ``workflows/`` is not a library — it is a directory of something else.
 
     ``packs/`` is deliberately *not* required. The base library ships scaffolds and the

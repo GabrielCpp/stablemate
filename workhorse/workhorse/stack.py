@@ -24,6 +24,10 @@ rather than by a mode flag:
     deadline. Nothing is in our process group to reap, so teardown runs the
     documented ``stop`` recipe if there is one, and otherwise leaves the stack up.
 
+Every command in a manifest — ``launch``, ``stop``, and the ``prepare``/``seed``/``health``
+steps — is a **shell** recipe, run through ``bash -c``. Pipes, ``&&``/``||`` guards,
+redirection and ``&`` all mean what they say; see :data:`_SHELL`.
+
 Boot is idempotent: if the documented ``identity`` marker is already serving the
 entry URL (a leftover from a prior turn or a shared expensive stack), it is adopted
 rather than double-bound, and no process group is reported so teardown won't kill a
@@ -33,13 +37,33 @@ from __future__ import annotations
 
 import logging
 import os
-import shlex
+import shutil
 import signal
 import subprocess
 import urllib.request
 from typing import Any
 
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+
+#: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
+#: something only a shell can express — an *idempotent* bring-up command is written
+#: `guard || start`, and a bring-up command that hands the stack off backgrounds it with
+#: `nohup … & disown`. Splitting those with `shlex` hands `||`, `|` and `&` to the first
+#: binary as literal arguments: a coder-QA manifest whose launch read
+#: `ss -ltn | grep -q ':8081 ' || (nohup firebase emulators:start … &)` ran as `ss -ltn '|'
+#: grep …` and died with exit 255, so the run failed to boot a stack that was already up
+#: and escalated to a human for a recipe that was correct all along.
+#:
+#: bash rather than `/bin/sh`, because `sh` is dash on Debian/Ubuntu and dash has no
+#: `disown` — the same manifest would then fail at 127 instead of 255. `/bin/sh` only if
+#: there is no bash at all.
+_SHELL = shutil.which("bash") or "/bin/sh"
+
+
+def _shell_argv(cmd: str) -> list[str]:
+    """The argv that runs *cmd* as a shell recipe. See :data:`_SHELL`."""
+    return [_SHELL, "-c", cmd]
+
 
 BOOT_TIMEOUT_S = 30.0     # a foreground dev server; overridable via a manifest `boot_timeout`
 POLL_INTERVAL_S = 0.5
@@ -63,18 +87,46 @@ def boot_timeout(raw: str, default: float = BOOT_TIMEOUT_S) -> float:
     return value if value > 0 else default
 
 
-def health_ok(url: str, identity: str = "") -> bool:
-    """True when *url* answers 2xx/3xx and (if given) *identity* is in the body."""
+def health_probe(url: str, identity: str = "") -> str:
+    """``""`` when *url* is healthy; otherwise one clause saying why it is not.
+
+    The two ways this fails need opposite repairs, and reporting them as one sends the
+    repairer to the wrong file. *Nothing is answering* means fix the bring-up. *It
+    answered, but the body does not carry the manifest's ``identity`` marker* means the
+    stack is up and the **marker** is wrong — and the manifest author cannot see that,
+    because a marker is checked against the body while every hand-check of a URL
+    (``curl -sf -o /dev/null``) throws the body away.
+
+    That is not hypothetical. A coder-QA manifest declared ``identity: "127.0.0.1:8081"``
+    for a Firestore emulator whose root serves the body ``Ok`` — a host:port where a body
+    substring was wanted, so the probe could never pass. The failure reached the operator
+    as "the launch command did not serve http://localhost:8081/", the emulator answered
+    200 to every hand-check, and the block was escalated to a human as a harness fault
+    against a stack that was serving the whole time.
+
+    There is deliberately no ``health_ok`` boolean wrapper beside this. Two names for one
+    check are two seams, and a caller (or a test) that reaches for the boolean one silently
+    misses whichever paths went through the other. ``if not health_probe(...)`` reads the
+    same and there is only one thing to patch.
+    """
     try:
         with urllib.request.urlopen(url, timeout=3) as r:  # noqa: S310 (loopback)
             if not 200 <= r.status < 400:
-                return False
+                return f"{url} answered HTTP {r.status}"
             if not identity:
-                return True
+                return ""
             body = r.read(1_000_000).decode("utf-8", errors="replace")
-            return identity in body
-    except Exception:
-        return False
+            if identity in body:
+                return ""
+            return (
+                f"{url} answered HTTP {r.status}, but its body does not contain the "
+                f"manifest's identity marker {identity!r} — the stack is serving and the "
+                f"marker is what is wrong. `identity` is a substring of the *response "
+                f"body*, not a host:port or a URL; drop it, or set it to something the "
+                f"body really says (body began {body[:80]!r})."
+            )
+    except Exception as exc:  # noqa: BLE001 — any failure to reach it is "not healthy"
+        return f"{url} is not answering ({type(exc).__name__}: {exc})"
 
 
 def boot_app(
@@ -92,9 +144,17 @@ def boot_app(
 ) -> dict[str, str]:
     """Launch one app/stack and prove it healthy, or fail soft.
 
-    Returns ``{boot_ok, entry_url, app_pid, app_pgid}`` — ``app_pgid`` is empty when
-    this run owns no process to reap (an adopted stack, or a bring-up command whose
+    Returns ``{boot_ok, entry_url, app_pid, app_pgid, reason}`` — ``app_pgid`` is empty
+    when this run owns no process to reap (an adopted stack, or a bring-up command whose
     stack lives in containers), so teardown knows not to ``killpg`` a foreign group.
+
+    ``reason`` is empty on success and otherwise says *why* bring-up did not end healthy,
+    in this function's own words. The caller is expected to pass it on rather than
+    substitute a summary of its own: the ways this fails (no launch command, a spawn that
+    errored, a nonzero exit, a deadline with nothing answering, a deadline with the wrong
+    ``identity`` marker) call for repairs in different files, and a caller that flattens
+    them to "the launch command did not serve <url>" names the wrong one four times out of
+    five. See :func:`health_probe`.
 
     *adopt*: when True (the default, and how a read-only walkthrough uses it), an app
     already serving the identity is reused as-is. A caller that mutates the code the app
@@ -113,46 +173,59 @@ def boot_app(
 
     if not launch_cmd:
         logger.warning("no launch command supplied — cannot boot the app under test")
-        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": "the manifest declares no launch command, so there is nothing to "
+                          "bring the app up with"}
 
     # Idempotent reuse: something already serving here → adopt it, own nothing. Safe
     # only with an identity marker; without one, start the documented command and prove
     # that owned process became healthy instead of adopting an arbitrary listener.
-    if adopt and app_identity and health_ok(health_url, app_identity):
+    if adopt and app_identity and not health_probe(health_url, app_identity):
         logger.info("adopting the app already serving %s (identity %r matched); "
                     "teardown will not reap it", health_url, app_identity)
-        return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+        return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": ""}
 
     logger.info("booting app: %s (cwd %s), waiting up to %.0fs for %s",
                 launch_cmd, app_cwd, timeout_s, health_url)
     try:
         proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
-            shlex.split(launch_cmd), cwd=app_cwd,
+            _shell_argv(launch_cmd), cwd=app_cwd,
             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
     except (OSError, ValueError) as exc:
         logger.warning("launch command %r could not be spawned: %s", launch_cmd, exc)
-        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": f"the launch command could not be spawned at all "
+                          f"({type(exc).__name__}: {exc})"}
 
     pgid = os.getpgid(proc.pid)
     detached = False  # the command returned; whatever it started serves outside our pgid
+    # Why the last probe said no. Kept so the give-up below reports the reason and not
+    # merely the symptom — see :func:`health_probe`.
+    why = ""
     deadline = clock.monotonic() + timeout_s
     while clock.monotonic() < deadline:
         # Health first: a bring-up command can exit the instant the stack is serving, so
         # checking liveness first would race a successful boot into a spurious failure.
-        if health_ok(health_url, app_identity):
+        why = health_probe(health_url, app_identity)
+        if not why:
             if detached:
                 logger.info("app is healthy at %s (brought up by a command that has "
                             "since exited — this run owns no process to reap)", health_url)
-                return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+                return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "",
+                        "app_pgid": "", "reason": ""}
             logger.info("app is healthy at %s (pid %d, pgid %d)", health_url, proc.pid, pgid)
-            return {"boot_ok": "yes", "entry_url": entry_url,
+            return {"boot_ok": "yes", "entry_url": entry_url, "reason": "",
                     "app_pid": str(proc.pid), "app_pgid": str(pgid)}
         if not detached and proc.poll() is not None:
             if proc.returncode != 0:
                 logger.warning("app exited with code %s during startup", proc.returncode)
-                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
+                        "app_pgid": "",
+                        "reason": f"the launch command exited with code {proc.returncode} "
+                                  f"during startup"}
             # Exit 0 with nothing serving yet: a bring-up command that handed the app off
             # to something it doesn't own (containers, a supervisor). Not death — keep
             # polling health to the deadline.
@@ -162,15 +235,17 @@ def boot_app(
         clock.sleep(POLL_INTERVAL_S)
 
     if detached:
-        logger.warning("app did not answer %s within %.0fs after the bring-up command "
-                       "exited — failing soft; anything it started is still up",
-                       health_url, timeout_s)
-        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+        logger.warning("app was not healthy within %.0fs after the bring-up command "
+                       "exited — failing soft; anything it started is still up. %s",
+                       timeout_s, why)
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": why}
 
-    logger.warning("app did not answer %s within %.0fs — killing pgid %d and failing soft",
-                   health_url, timeout_s, pgid)
+    logger.warning("app was not healthy within %.0fs — killing pgid %d and failing soft. %s",
+                   timeout_s, pgid, why)
     _killpg(pgid, signal.SIGKILL)
-    return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": ""}
+    return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+            "reason": why}
 
 
 def teardown_app(
@@ -194,7 +269,7 @@ def teardown_app(
             logger.info("no app_pgid — running the documented stop recipe: %s", stop_cmd)
             try:
                 done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
-                    shlex.split(stop_cmd), cwd=app_cwd or ".",
+                    _shell_argv(stop_cmd), cwd=app_cwd or ".",
                     capture_output=True, text=True, timeout=STOP_TIMEOUT_S,
                 )
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -291,7 +366,7 @@ def ensure_stack(
     # Adopt-if-serving — but only when the reuse policy proves the running stack is not
     # stale (built from older code). Otherwise fall through and re-run the (idempotent,
     # self-freshening) launch so QA never runs against a stale build.
-    if identity and health_url and health_ok(health_url, identity):
+    if identity and health_url and not health_probe(health_url, identity):
         if _may_adopt(reuse, manifest, app_cwd, timeout_s, logger):
             logger.info("adopting the stack already serving %s (reuse=%s)", health_url, reuse)
             return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
@@ -312,7 +387,16 @@ def ensure_stack(
         res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
                        identity, timeout_s, adopt=False, logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
-            return _fail("launch", f"the launch command did not serve {health_url or entry_url}",
+            # Report boot's *own* reason, not the step name. "the launch command did not
+            # serve <url>" was this branch's message for every way bring-up can fail, and it
+            # names the one repair — fix the launch recipe — that is wrong for half of them.
+            # A manifest whose `identity` marker never appears in the served body reached the
+            # repairer as a launch fault against a stack that was answering 200 the whole
+            # time; two resolve passes hand-verified the URL, found it healthy, and escalated
+            # it to a human as a harness bug. See :func:`health_probe`.
+            return _fail("launch",
+                         res.get("reason") or f"the launch command did not serve "
+                                              f"{health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
 
@@ -426,7 +510,7 @@ def _run_step(
     logger.info("running %s: %s (cwd %s)", label, cmd, cwd)
     try:
         done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
-            shlex.split(cmd), cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            _shell_argv(cmd), cwd=cwd, capture_output=True, text=True, timeout=timeout,
         )
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return False, str(exc)

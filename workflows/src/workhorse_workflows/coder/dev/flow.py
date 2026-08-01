@@ -2,7 +2,7 @@
 `coder/workflow.yaml`'s `flows.dev` (35 nodes, lines 1349-1832).
 
 It is reached from the main graph as a `type: flow` node, and standalone as
-`workhorse run coder dev`. Three loops share the same states rather than nesting::
+`workhorse-coder run dev`. Three loops share the same states rather than nesting::
 
     plan → (reuse gate)* → (path gate)* → dispatch → (layer → implement → (lint → fix)* )*
 

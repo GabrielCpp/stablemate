@@ -117,7 +117,7 @@ a per-story layer list) doesn't raise a `TypeError`.
 
 ### `agent_cli()`
 Returns `os.environ.get("AGENT_CLI", "claude").strip().lower()` — the active backend name for this
-run (see [workhorse run](../workhorse.md#run)'s `--cli` flag, which sets `AGENT_CLI` before any
+run (see [workhorse-<name> run](../workhorse.md#run)'s `--cli` flag, which sets `AGENT_CLI` before any
 node renders). Read directly from the environment rather than `context`, since the backend is a
 run-level (not per-node) choice.
 

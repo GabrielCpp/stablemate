@@ -24,7 +24,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   ├── version.py         # `version`: print the installed workhorse-agent version
 │   │   ├── resolve.py         # A workflow name → its installed Registry (`run` and `dot`)
 │   │   └── params.py          # --params / --params-file → the starting params dict
-│   ├── packaged.py            # Entry-point discovery: what `workhorse run <name>` resolves to
+│   ├── packaged.py            # A registry's own package dir — where its prompts are read from
 │   ├── rundir.py              # Run identity: the (workflow, run-id) dir and the resume contract
 │   ├── manifest.py            # The per-repo context manifest (ContextManifest → ManifestContext)
 │   ├── context.py             # WorkflowContext: the key→value bag prompts render against
@@ -47,7 +47,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
 │   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
 │   │   ├── run.py             # RunInvocation + run_pyflow(): run dir, dry run, exit code
-│   │   ├── graph.py / dot.py  # Read the states' source; render Graphviz DOT (`workhorse dot`)
+│   │   ├── graph.py / dot.py  # Read the states' source; render Graphviz DOT (the `dot` command)
 │   │   ├── activity.py        # The flagged-log-record activity tracker (a logging.Filter)
 │   │   ├── errors.py          # WorkflowFailed, NodeNotRunError and the rest of the exceptions
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import

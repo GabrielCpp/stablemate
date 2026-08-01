@@ -146,7 +146,7 @@ def code_line_spans(text: str) -> list[tuple[int, int]]:
     For the mutating commands, which rewrite *prose* and must leave a snippet alone: a
     wikilink or a status line inside a fence is sample text, not the document's own.
     """
-    return [tok.map for tok in _MD.parse(_normalize(text))
+    return [(tok.map[0], tok.map[1]) for tok in _MD.parse(_normalize(text))
             if tok.type in ("fence", "code_block") and tok.map]
 
 
@@ -395,6 +395,23 @@ class MarkdownDoc:
                 return hit
         return None
 
+    def section(self, title: str) -> Section:
+        """The section titled ``title``. ``KeyError`` if the document has none.
+
+        The non-optional counterpart to `find_section`, for the callers — tests, and any
+        code working on a document whose shape it has already validated — that are not
+        asking *whether* the section is there. Those callers used to reach straight
+        through `find_section`, so a document missing the heading surfaced as
+        ``AttributeError: 'NoneType' object has no attribute ...`` several frames from
+        the cause; here it names the title that was missing and the ones that were not.
+        Use `find_section` when absence is an answer rather than a bug.
+        """
+        found = self.find_section(title)
+        if found is None:
+            have = sorted({s.title for s in self.walk_sections() if s.title})
+            raise KeyError(f"no section titled {title!r}; document has {have}")
+        return found
+
     def find_bullet(self, label: str) -> Bullet | None:
         """The first ``- **Label**: value`` bullet anywhere in the body."""
         for root in self.sections:
@@ -428,6 +445,11 @@ def split(text: str) -> MarkdownDoc:
         return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
 
     fm = tokens[0]
+    if fm.map is None:
+        # A block token without a line span is not something we can split a body out of, so the
+        # document reads as having no frontmatter — the same answer as an unterminated `---`.
+        return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
+
     raw_fm = fm.content + "\n" if fm.content else ""
     body = "\n".join(text.split("\n")[fm.map[1]:])
     try:
@@ -512,7 +534,7 @@ def _build_sections(body: str) -> list[Section]:
 
     headings: list[Section] = []
     for i, tok in enumerate(tokens):
-        if tok.type == "heading_open":
+        if tok.type == "heading_open" and tok.map:
             level = int(tok.tag[1])
             title = tokens[i + 1].content if i + 1 < len(tokens) and tokens[i + 1].type == "inline" else ""
             headings.append(Section(level=level, title=title, line_start=tok.map[0],
@@ -544,18 +566,22 @@ def _build_sections(body: str) -> list[Section]:
     flat = [s for r in roots for s in r.walk()]
 
     def _container(line_start: int) -> Section | None:
-        return max(
-            (s for s in flat if s.line_start <= line_start < s.line_end),
-            key=lambda s: s.line_start,
-            default=None,
-        )
+        containing = [s for s in flat if s.line_start <= line_start < s.line_end]
+        # sections nest, so the latest-starting one that contains the line is the innermost
+        return max(containing, key=lambda s: s.line_start) if containing else None
+
+    # A line inside no section at all can only happen if there are no sections — the preamble
+    # covers everything before the first heading — so the fallback is the first root or nothing.
+    fallback = roots[0] if roots else None
 
     for bullet in _top_level_bullets(tree):
-        container = _container(bullet.line_start)
-        (container.bullets if container else roots and roots[0].bullets).append(bullet)
+        container = _container(bullet.line_start) or fallback
+        if container is not None:
+            container.bullets.append(bullet)
 
     for table in _parse_tables(tokens):
-        container = _container(table.line_start)
-        (container.tables if container else roots and roots[0].tables).append(table)
+        container = _container(table.line_start) or fallback
+        if container is not None:
+            container.tables.append(table)
 
     return roots

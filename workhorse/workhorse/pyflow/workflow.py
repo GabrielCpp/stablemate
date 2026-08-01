@@ -16,7 +16,7 @@ going through the seam is what earns it a span, a recorded `output.json` — whi
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
@@ -248,7 +248,7 @@ class Workflow(BaseModel):
         power: str | None = None,
         timeout: float | None = None,
         cwd: str | Path | None = None,
-        add_dirs: list[str | Path] | None = None,
+        add_dirs: Sequence[str | Path] | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
@@ -265,6 +265,10 @@ class Workflow(BaseModel):
 
         Unlike the YAML node's fields these are real paths, not Jinja templates: a
         state computes the path in Python and passes it.
+
+        `add_dirs` is a `Sequence`, not a `list`, because it is only read here: a
+        `list[str]` — what a state that collects plain paths naturally holds — is not a
+        `list[str | Path]`, since a mutable list is invariant in its element type.
         """
         return self._require_engine().agent(
             prompt,

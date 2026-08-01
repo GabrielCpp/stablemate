@@ -6,7 +6,13 @@ public URL, and keeping it that way is what holds this backlog to three bullets.
 
 Surfaces this app ships:
 
-- **api** — Go service, the only surface, and the only writer of stored data
+- **api** — Go service, the only surface, and the only writer of stored data.
+  It listens on **port 18081**, and QA drives it at `http://localhost:18081`.
+
+  This is an environment constraint, not a behavior. The benchmark owns `18080-18099` and
+  nothing else; each spec gets its own port so two runs cannot collide either. Left unsaid,
+  a Go service takes `8080` — the most contended port on any developer machine — and QA
+  then probes whatever already holds it.
 
 Bullets are user-observable behavior, not implementation tasks. Every bullet is in scope
 for decomposition and none may be dropped.

@@ -6,6 +6,8 @@ from pathlib import Path
 from ostler import crud, doctor, select
 from ostler.model import load
 
+from conftest import present
+
 
 def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g = load(tmp_path)
@@ -55,7 +57,7 @@ def test_set_status_updates_frontmatter_and_line(repo: Path):
     res = crud.set_status(load(repo), "01-foo", "QA passed")
     assert res.ok
     g = load(repo)
-    story = g.find_story("01-foo")[1]
+    _, story = present(g.find_story("01-foo"))
     assert story.status == "QA passed"
 
 
@@ -90,7 +92,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     assert after.count("Status") == before.count("Status"), "no line gained or lost the word"
     assert "- **Status**: In progress" in after
     # And the value reads back as the field — not as whatever the prose happens to say.
-    assert load(tmp_path).find_story("01-apercu")[1].status == "In progress"
+    assert present(load(tmp_path).find_story("01-apercu"))[1].status == "In progress"
 
 
 def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
@@ -104,7 +106,7 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
             "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),
         encoding="utf-8",
     )
-    story = load(tmp_path).find_story("01-apercu")[1]
+    _, story = present(load(tmp_path).find_story("01-apercu"))
     assert story.status == "Not started"
     assert not select.is_done(story.status)
 

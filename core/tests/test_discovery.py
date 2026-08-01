@@ -59,8 +59,8 @@ def test_is_library_dir_rejects_an_empty_or_wrong_dir(tmp_path):
 def test_is_library_dir_rejects_a_workflows_only_dir(tmp_path):
     """`workflows/` used to be an accepted alternative to `library/`.
 
-    A workflow is a Python package now, resolved through the `workhorse.workflows`
-    entry-point group, so a directory holding only `workflows/` ships no library
+    A workflow is an installed Python distribution now, reached through its own
+    console script, so a directory holding only `workflows/` ships no library
     content — pointing `set-base` at one should be an error, not a silent empty layer.
     """
     (tmp_path / "workflows").mkdir()

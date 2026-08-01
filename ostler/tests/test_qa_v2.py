@@ -135,6 +135,40 @@ def test_v2_validation_rejects_disposable_input_and_unasserted_coverage(tmp_path
     assert any("no machine assertion" in problem for problem in outcome.data["problems"])
 
 
+def test_v2_validation_rejects_a_bare_evidence_path_inside_a_command(tmp_path: Path):
+    """`qa/steps/x` means the evidence dir under `out:` and a missing dir inside a `cmd`.
+
+    `out:` is resolved against the spec directory; a `cmd` runs with its cwd at the repo root,
+    where `qa/steps/` does not exist. A plan that chains actions through hand-written temp files
+    therefore has every redirect fail, every command exit with empty stdout, and every downstream
+    assertion fail — against an implementation that is correct. A real run lost 38 of 66
+    assertions that way and routed the story to rework. The absolute spelling still passes, so
+    the rule rejects the ambiguity rather than the directory.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    action = data["scenarios"][0]["actions"][0]
+    action["cmd"] = "printf '{\"value\":\"ok\"}' > qa/steps/body.json && cat qa/steps/body.json"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_validate(plan, root=tmp_path)
+
+    assert outcome.status == "invalid"
+    assert any("bare 'qa/steps/'" in problem for problem in outcome.data["problems"])
+
+    # The same command written absolutely addresses the same file and is the documented fix, so
+    # it must survive — otherwise the rule bans the evidence directory instead of the ambiguity.
+    body = f"{spec}/qa/steps/body.json"
+    action["cmd"] = f"printf '{{\"value\":\"ok\"}}' > {body} && cat {body}"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    absolute = cmd_validate(plan, root=tmp_path)
+    assert absolute.status == "passed", absolute.data
+
+
 def test_v2_secret_is_runtime_only_and_redacted(tmp_path: Path, monkeypatch):
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -162,6 +196,46 @@ def test_v2_secret_is_runtime_only_and_redacted(tmp_path: Path, monkeypatch):
     )
     assert "top-secret-value" not in persisted
     assert "{{secret.token}}" in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8")
+
+
+def test_v2_separates_a_documented_node_from_a_genuinely_unknown_id(tmp_path: Path):
+    """A node the diff does not touch is not "unknown" — and saying so costs a rework lap.
+
+    The live failure: a plan covered `okf:…/api.md#tooling:contract`. `#tooling` is a real
+    documented section, so "covers unknown ID" sent the author back to the book to confirm
+    a node that was never in question, instead of to the obligation list — which is the
+    only place that says what this change actually owes. The plan came back asserting the
+    same id and the story spent one of its three plan reworks on the round trip.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
+    context["contracts"] = ["docs/features/demo/api.md#tooling"]
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["covers"] = [
+        obligation,
+        "okf:docs/features/demo/api.md#tooling:contract",   # documented, but not owed here
+        "okf:docs/features/demo/invented.md:contract",      # not in the book at all
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    document, load_problems = load_plan(plan, spec, tmp_path)
+    assert not load_problems and document is not None
+    problems = validate_v2(document)
+    documented = next(p for p in problems if "#tooling" in p)
+    unknown = next(p for p in problems if "invented.md" in p)
+
+    # The documented-but-untouched one says so, and does not call the node unknown.
+    assert "not an obligation of this change" in documented
+    assert "unknown ID" not in documented
+    # Both name what the plan *could* cover — the list neither message used to carry.
+    assert obligation in documented
+    assert obligation in unknown
+    assert "unknown ID" in unknown
 
 
 def test_load_plan_requires_okf_context(tmp_path: Path):
@@ -244,7 +318,11 @@ def test_two_browser_targets_share_one_playwright(monkeypatch):
             return _Playwright()
 
     fake = types.ModuleType("playwright.sync_api")
-    fake.sync_playwright = _Context  # type: ignore[attr-defined]
+    # Populated through the namespace rather than by attribute: `ModuleType` declares no
+    # `sync_playwright`, so `fake.sync_playwright = ...` is an unresolved attribute to
+    # anything that checks types, and the point of a fake module is that its contents are
+    # exactly what the test puts in it.
+    fake.__dict__["sync_playwright"] = _Context
     monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
     monkeypatch.setattr(SharedPlaywright, "_playwright", None)
     monkeypatch.setattr(SharedPlaywright, "_users", 0)
@@ -740,3 +818,47 @@ def test_a_trailing_write_out_code_still_beats_a_body_that_looks_like_headers(tm
     outcome = cmd_run(plan, root=tmp_path)
 
     assert outcome.status == "passed", outcome.message
+
+
+def test_an_uncapturable_status_says_so_instead_of_reporting_None(tmp_path: Path):
+    """A step can assert `expect_http` and give ostler no way to answer it.
+
+    `curl -o /dev/null -D headers.txt` with `out:` pointing at neither one leaves the pipe
+    empty, so there is no status to compare and the assertion fails with `a: "None"`. That is
+    true and useless: it is indistinguishable from the service having returned a status that
+    didn't match, which is how two assessment turns in a row came to hunt a product regression
+    that did not exist — one of them re-issuing every request by hand before concluding the
+    plan, not the code, was at fault.
+
+    The verdict is still a failure — the plan really can't prove what it claims. What changes
+    is that the record says which kind of failure it is, in the field the reader actually reads.
+    """
+    spec = tmp_path / "docs/specs/demo"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    headers = spec / "qa/steps/headers.txt"
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "probe",
+            # Body to /dev/null, head to a file this step does not declare as its `out:`.
+            "cmd": f"printf 'HTTP/1.1 404 Not Found\\n' > {headers}",
+            "expect_http": 200,
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "failed"
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    verdict = next(row for row in records if row.get("kind") == "assert")
+    detail = json.dumps(verdict)
+    assert "no HTTP status captured" in detail
+    # Never the bare word that reads as an observed status.
+    assert '"a": "None"' not in detail

@@ -2,7 +2,7 @@
 `coder/workflow.yaml`'s `flows.qa` (91 nodes, lines 2440-3593).
 
 Reached from the main graph as the `qa_phase` flow node, and standalone as
-`workhorse run coder qa`. It is the densest graph in the four workflows, and it is one
+`workhorse-coder run qa`. It is the densest graph in the four workflows, and it is one
 control plane rather than a pipeline::
 
     context ⇄ repair → plan ⇄ review → stack ⇄ setup-fix → run → assess
@@ -100,6 +100,30 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 UNBOUNDED = float("inf")
 
 
+def _finding(passed: bool, notes: str) -> str:
+    """A gate's notes when it failed, and nothing when it passed.
+
+    The `*_notes` fields on `QaLoop` are *diagnostics*: `plan_qa` renders them under an
+    instruction to repair the existing plan from what the gates said about it. A gate that
+    passed said nothing to repair, so storing its verdict there hands the next plan turn a
+    contradiction — "repair this from its diagnostics" over the diagnostic "QA plan is
+    valid."
+
+    That is not a cosmetic mismatch. A gate's notes are written on the branch it takes and
+    then survive `cleared()`, so a *passing* verdict reaches `plan` whenever the flow
+    re-enters it from somewhere other than the gate that failed — re-planning after an
+    OKF-context rebuild is the standing case. A coder run did exactly this, and the agent
+    read the brief correctly: it answered "I'm leaving both files unchanged", the plan then
+    failed validation on the defect nobody had told it about, and the no-op turn cost one
+    of three plan reworks.
+
+    Each gate spells its own success differently (`status == "passed"`, `disposition ==
+    "approved"`, a verdict plus a refutation class), so the predicate stays at the call
+    site and only the rule — a pass is not a finding — lives here.
+    """
+    return "" if passed else notes
+
+
 class Qa(Workflow):
     """Run a story's QA plan, gate the evidence, audit the pass, and bound every retry."""
 
@@ -195,11 +219,14 @@ class Qa(Workflow):
         result = self.call(
             validate_okf_context, self.ctx.spec_dir, build.status, self.docs_path
         )
-        loop = loop.update(context_status=result.status, context_notes=result.notes)
+        loop = loop.update(
+            context_status=result.status,
+            context_notes=_finding(result.status == "passed", result.notes),
+        )
         if result.status == "passed":
             return Continue(result, self.plan, loop=loop)
         if loop.context_rework >= self.MAX_CONTEXT_REWORKS:
-            return self._exhausted(loop)
+            return self._exhausted(loop, f"{loop.context_rework} OKF-context repair")
         return Continue(result, self.repair_context, loop=loop)
 
     def repair_context(self, loop: QaLoop) -> Continue | Await | Done:
@@ -270,7 +297,9 @@ class Qa(Workflow):
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
-        loop = loop.update(plan_validation_notes=validation.notes)
+        loop = loop.update(
+            plan_validation_notes=_finding(validation.status == "passed", validation.notes)
+        )
         if validation.status == "passed":
             return Continue(validation, self.review_plan, loop=loop)
         return self._guard_plan(validation, loop)
@@ -295,7 +324,9 @@ class Qa(Workflow):
                 "target_env": self.target_env,
             },
         )
-        loop = loop.update(plan_review_notes=review.notes)
+        loop = loop.update(
+            plan_review_notes=_finding(review.disposition == "approved", review.notes)
+        )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
         return self._guard_plan(review, loop)
@@ -361,7 +392,9 @@ class Qa(Workflow):
             },
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
-        loop = loop.update(assessment_notes=assessment.notes)
+        loop = loop.update(
+            assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes)
+        )
 
         if assessment.disposition == "repair_setup":
             return self._guard_setup(assessment, loop)
@@ -437,7 +470,11 @@ class Qa(Workflow):
                 "qa_notes": loop.qa.notes,
             },
         )
-        loop = loop.update(audit_notes=result.notes)
+        loop = loop.update(
+            audit_notes=_finding(
+                result.verdict == "stands" and result.refutation_class == "none", result.notes
+            )
+        )
         if result.verdict == "stands":
             if result.refutation_class == "none":
                 return Continue(result, self.backlog, loop=loop)
@@ -532,7 +569,15 @@ class Qa(Workflow):
         )
         self.logger.info("QA findings reported: %s", report.notes)
         return Done(
-            QaFlowResult(qa=loop.qa, qa_rework=loop.qa_rework, triage_scope=loop.triage_scope)
+            QaFlowResult(
+                qa=loop.qa,
+                qa_rework=loop.qa_rework,
+                triage_scope=loop.triage_scope,
+                # Not a budget that ran out — a dev target never fixes — but the parent's
+                # give-up marker is written from this either way, and "0 attempts" on a story
+                # nobody was ever going to rework is the same misreading in a different place.
+                spent=f"{loop.qa_rework} code rework (dev target: reported, not fixed)",
+            )
         )
 
     # ── the passing path: feedback, regression, sentinels ─────────────────────────────
@@ -850,7 +895,7 @@ class Qa(Workflow):
         loop = loop.update(qa=result, qa_rework=loop.qa_rework + 1)
         if loop.qa_rework >= self.MAX_QA_REWORKS:
             self.logger.info("operator loop is out of QA reworks — ending the flow exhausted")
-            return self._exhausted(loop)
+            return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
         return Continue(result, self.build_context, loop=loop)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
@@ -858,7 +903,7 @@ class Qa(Workflow):
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
         """`guard_qa_plan` + `incr_qa_plan`: re-plan, or give up on the story."""
         if loop.plan_rework >= self.MAX_PLAN_REWORKS:
-            return self._exhausted(loop)
+            return self._exhausted(loop, f"{loop.plan_rework} QA-plan repair")
         return Continue(result, self.plan, loop=loop.update(plan_rework=loop.plan_rework + 1))
 
     def _guard_setup(self, result: object, loop: QaLoop) -> Continue | Await | Done:
@@ -878,7 +923,7 @@ class Qa(Workflow):
         if loop.qa_rework < self.MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":
-            return self._exhausted(loop)
+            return self._exhausted(loop, f"{loop.qa_rework} code rework")
         self.logger.info("granting the one verification-only bonus pass")
         return Continue(result, self.apply_fixes, loop=loop.update(bonus_used=True))
 
@@ -894,11 +939,21 @@ class Qa(Workflow):
             return Await(self._context, loop.block_notes, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
 
-    def _exhausted(self, loop: QaLoop) -> Done:
-        """`mark_qa_exhausted`: the budget is spent, and the parent decides what that costs."""
+    def _exhausted(self, loop: QaLoop, spent: str = "") -> Done:
+        """`mark_qa_exhausted`: the budget is spent, and the parent decides what that costs.
+
+        `spent` names *which* of the four budgets ran out, because the parent stamps it onto
+        the story and into the marker commit. Without it the give-up always reported the
+        code-rework count, so a story that spent every QA-plan repair and never got as far as
+        a code fix was filed as "0 attempts" — which reads as an untried story rather than an
+        exhausted one, and is the version a human triaging the marker would act on.
+        """
         return Done(
             QaFlowResult(
-                qa=loop.qa, qa_rework=loop.qa_rework, triage_scope=loop.triage_scope
+                qa=loop.qa,
+                qa_rework=loop.qa_rework,
+                triage_scope=loop.triage_scope,
+                spent=spent,
             )
         )
 

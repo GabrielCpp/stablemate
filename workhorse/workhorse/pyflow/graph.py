@@ -138,11 +138,10 @@ class FlowGraph:
 
 def state_graph(cls: type[Workflow], names: Iterable[str] = ()) -> FlowGraph:
     """Read `cls` into a `FlowGraph`. Live state names only, sorted for stable output."""
-    states = tuple(
-        _read_state(cls, cls.states.get(name))
-        for name in sorted(cls.state_names())
-        if cls.states.get(name) is not None
-    )
+    # Looked up once and filtered on the spec itself: reading `cls.states` twice — once
+    # to test, once to pass — is what let a `None` through to `_read_state`.
+    specs = (cls.states.get(name) for name in sorted(cls.state_names()))
+    states = tuple(_read_state(cls, spec) for spec in specs if spec is not None)
     return FlowGraph(
         workflow=cls.__name__,
         names=tuple(names),
@@ -278,10 +277,14 @@ def _source_tree(fn: object) -> ast.AST | None:
     """Parse a state method's own source, or None when it cannot be read.
 
     A method defined in a REPL or an `exec` has no source file; that is a hole in the
-    analysis rather than a crash, and the caller reports it as one.
+    analysis rather than a crash, and the caller reports it as one. So is a non-callable:
+    one caller looks its argument up with `getattr(cls, tail, None)`, which answers with
+    whatever is there — a class attribute, or nothing at all.
     """
+    if not callable(fn):
+        return None
     try:
-        source = textwrap.dedent(inspect.getsource(fn))  # type: ignore[arg-type]
+        source = textwrap.dedent(inspect.getsource(fn))
     except (OSError, TypeError):
         return None
     try:

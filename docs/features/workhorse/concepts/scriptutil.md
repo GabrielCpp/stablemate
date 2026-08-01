@@ -71,7 +71,7 @@ in `die` is itself `NoReturn`.
 - code: `workhorse/workhorse/scriptutil.py::find_repo_root`
 
 The argument takes priority over walking `cwd` because a run's cwd is not necessarily the consuming
-repo (see [workhorse run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
+repo (see [workhorse-<name> run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
 `agents.yml`/`.git` whenever the two diverge. It reads **no environment variable**: a node whose
 root depends on the ambient environment is a node whose behavior no caller can see or override,
 which is the rule in [workflows/README.md](../../../../workflows/README.md).

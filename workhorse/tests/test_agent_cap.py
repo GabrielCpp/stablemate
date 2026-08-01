@@ -43,13 +43,20 @@ def _turn(cli, prompt="p", node_id="n", *, clock=None, timeout=None, **overrides
 CAP_MSG = "Claude CLI exited with code 1 for node 'select_gate': success Spending cap reached resets 3:50am"
 
 
+def _reset_seconds(message: str, now: datetime) -> float:
+    """The parsed wait, asserting a time *was* found — the None arm is its own case below."""
+    seconds = caps.parse_reset_seconds(message, now)
+    assert seconds is not None, message
+    return seconds
+
+
 def test_parse_reset_seconds_variants():
     now = datetime(2026, 6, 1, 2, 10, 0)  # 2:10am
-    assert abs(caps.parse_reset_seconds("resets 3:50am", now) - 100 * 60) < 1  # 1h40m
-    assert abs(caps.parse_reset_seconds("resets at 11pm", now) - (20 * 3600 + 50 * 60)) < 1
-    assert abs(caps.parse_reset_seconds("usage limit, resets 15:50", now) - (13 * 3600 + 40 * 60)) < 1
+    assert abs(_reset_seconds("resets 3:50am", now) - 100 * 60) < 1  # 1h40m
+    assert abs(_reset_seconds("resets at 11pm", now) - (20 * 3600 + 50 * 60)) < 1
+    assert abs(_reset_seconds("usage limit, resets 15:50", now) - (13 * 3600 + 40 * 60)) < 1
     # reset time already passed today -> next day's occurrence
-    assert abs(caps.parse_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
+    assert abs(_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
     # no time present -> None (caller uses default)
     assert caps.parse_reset_seconds("overloaded", now) is None
     assert caps.parse_reset_seconds("resets soon", now) is None

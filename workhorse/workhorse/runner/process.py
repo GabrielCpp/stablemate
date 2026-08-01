@@ -237,7 +237,7 @@ class ProcessSupervisor:
         cmd: list[str],
         node_id: str,
         timeout: float,
-        on_line: "Callable[[str], None]",
+        on_line: "Callable[[str], object]",
         *,
         resilience: AgentResilience,
         stdin_data: str | None = None,
@@ -255,7 +255,10 @@ class ProcessSupervisor:
         path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
         browser / JVM grandchildren), and the active-process registration behave identically
         regardless of backend. ``on_line`` receives each raw line (newline included) and does
-        its own parsing/accumulation. Returns ``(timed_out, returncode)``.
+        its own parsing/accumulation; its answer is only ever tested for truthiness — a
+        truthy one asks for an early abort — which is why it is typed as returning
+        ``object``: a callback with nothing to say returns ``None`` and stays in shape.
+        Returns ``(timed_out, returncode)``.
 
         ``env_extra`` layers over the inherited environment — the operator's
         ``[harness.<backend>].env`` table, resolved by the backend that knows its own
@@ -375,7 +378,7 @@ def stream_subprocess(
     cmd: list[str],
     node_id: str,
     timeout: float,
-    on_line: "Callable[[str], None]",
+    on_line: "Callable[[str], object]",
     *,
     resilience: AgentResilience,
     stdin_data: str | None = None,

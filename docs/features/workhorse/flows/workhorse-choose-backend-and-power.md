@@ -7,20 +7,21 @@ title: Choose the agent CLI backend and power tier
 
 How an operator points a run at a different agent harness and gives its nodes a *relative*
 performance tier instead of a hardcoded model name: hand-edit the `[power.<tier>.<backend>]` table
-in the [workhorse config file](../concepts/config.md), pick the harness for the run with
-[`workhorse run`](../workhorse.md#run)'s `--cli`, and let each [agent
+in the [shared config file](../concepts/config.md), pick the harness for the run with
+[`workhorse-<name> run`](../workhorse.md#run)'s `--cli`, and let each [agent
 node](../workflow-format.md#the-agent-turn)'s `power:` resolve through that table for whichever
 [AgentBackend](../concepts/agent-backend.md) got selected via
 [`get_backend`](../concepts/get-backend.md). The same workflow — same `power="high"` on a turn —
 thus runs against `opus` under `--cli claude` or a `@gpt-5.5` profile under `--cli codex` with no
 edit to the workflow itself.
 
-- start: a `workhorse` install with a config file (possibly empty — no `library_dir`/`power`
+- start: an installed workflow whose `workhorse-<name>` command is on `PATH`, a config file
+  (possibly empty — no `library_dir`/`power`
   table yet required) and a workflow whose [agent turns](../workflow-format.md#the-agent-turn)
   carry an optional [`power`](../workflow-format.md#power) tier (`low`/`medium`/`high`, default
   unset).
 - steps:
-  1. **Populate the power table.** There is no `workhorse config set` for the nested `power` table
+  1. **Populate the power table.** No command writes the nested `power` table
      — [`write_config_key`](../concepts/config.md#write_config_key) sets one top-level key at a
      time (`library_dir`, `stablemate_dir`, `base_dir`); it preserves nested tables it did not
      write, but it has no path syntax for reaching into one. An operator instead edits the
@@ -47,18 +48,16 @@ edit to the workflow itself.
      model = "openai/gpt-5.5"
      effort = "high"
      ```
-  2. *(optional)* **Confirm what's configured.** [`workhorse config
-     list`](../workhorse.md#config) prints the whole loaded TOML (the power table in full, as
-     indented JSON) via [`load_config`](../concepts/config.md#load_config); [`workhorse config get
-     power.<tier>.<backend>`](../workhorse.md#config) prints one resolved value via
-     [`get_config_value`](../concepts/config.md#get_config_value) (silently empty if that dot-path
-     doesn't resolve, unlike `show`'s hard error on a missing top-level key). Neither command
-     mutates the file — this step is read-only verification of step 1.
-  3. **Pick the harness for the run.** [`workhorse run <workflow> --cli
-     <name>`](../workhorse.md#run) (else the `AGENT_CLI` env var, else `claude`) sets `AGENT_CLI`
+  2. *(optional)* **Confirm what's configured.** [`farrier config
+     show`](../../farrier/farrier.md#config) prints every stored key as `key=value` lines via
+     [`load_config`](../concepts/config.md#load_config) — flat keys only, so the `power` table is
+     read back by opening the file. It does not mutate anything: this step is read-only
+     verification of step 1.
+  3. **Pick the harness for the run.** [`workhorse-<name> run --cli
+     <backend>`](../workhorse.md#run) (else the `AGENT_CLI` env var, else `claude`) sets `AGENT_CLI`
      and calls [`get_backend`](../concepts/get-backend.md#contract) once, eagerly — an unknown
-     `<name>` prints an error listing the valid keys and exits `1` before any node runs, rather than
-     failing mid-run. `<name>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`,
+     `<backend>` prints an error listing the valid keys and exits `1` before any node runs, rather
+     than failing mid-run. `<backend>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`,
      each the registry key of one [AgentBackend](../concepts/agent-backend.md) implementation.
      `get_backend` caches one stateless instance per key, reused for every node of the run.
   4. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
@@ -96,8 +95,8 @@ edit to the workflow itself.
 
 ## Missing element noticed
 
-`workhorse config` has no subcommand to *write* a `power.<tier>.<backend>` entry (only
-`show`/`get`/`list` read it back; `set-library`/`set-stablemate`/`set-base` each set one flat
-top-level key) — populating the power table is a manual TOML edit, not a CLI round-trip. Worth a
-`workhorse config set power.<tier>.<backend> model=… effort=…` command, but out of scope here
-(this item documents current behavior, not a proposal).
+No command writes a `power.<tier>.<backend>` entry — [`farrier
+config`](../../farrier/farrier.md#config)'s `set-library`/`set-stablemate`/`set-base` each set one
+flat top-level key, and `show` reads flat keys back — so populating the power table is a manual TOML
+edit, not a CLI round-trip. Worth a `farrier config set power.<tier>.<backend> model=… effort=…`
+command, but out of scope here (this item documents current behavior, not a proposal).

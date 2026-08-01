@@ -145,7 +145,10 @@ def _keys_of_helper(call: ast.Call, module: ast.Module) -> set[str] | None:
     today. A `**` expansion at the call site is not: its keys live wherever that mapping came
     from.
     """
-    name = call.func.attr  # type: ignore[union-attr]  # the caller checked the shape
+    # The caller matched `self._helper(...)` before handing the call over; restating it
+    # is what makes the attribute a fact here rather than a comment.
+    assert isinstance(call.func, ast.Attribute)
+    name = call.func.attr
     defs = [
         node
         for node in ast.walk(module)
@@ -206,21 +209,27 @@ def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     enclosing = _scopes(tree)
     for node in ast.walk(tree):
-        fn = node.func if isinstance(node, ast.Call) else None
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
         if not (isinstance(fn, ast.Attribute) and fn.attr == "agent"):
             continue
         if not (isinstance(fn.value, ast.Name) and fn.value.id == "self"):
             continue
-        prompt = node.args[0] if node.args else None
-        args = None
+        prompt: ast.expr | None = node.args[0] if node.args else None
+        args: ast.expr | None = None
         for kw in node.keywords:
             if kw.arg == "prompt":
                 prompt = kw.value
             elif kw.arg == "args":
                 args = kw.value
-        if not isinstance(prompt, ast.Constant):
+        # A prompt is a literal path string; a non-literal (or a constant of some other
+        # type) is `test_prompts_exist.py`'s finding, not this file's.
+        if not (isinstance(prompt, ast.Constant) and isinstance(prompt.value, str)):
             continue
-        keys = set() if args is None else _keys_of(args, enclosing[id(node)], tree)
+        keys: set[str] | None = (
+            set() if args is None else _keys_of(args, enclosing[id(node)], tree)
+        )
         if keys is None:
             opaque.append(node.lineno)
             continue

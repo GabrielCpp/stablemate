@@ -112,4 +112,4 @@ Five, each in its own module, each overriding `name` plus `run_turn`/`compact`:
   [`_run_text_turn`](run-text-turn.md).
 
 Selected at runtime by [`get_backend`](get-backend.md), which
-[`workhorse run`](../workhorse.md#run)'s `--cli` flag and the `AGENT_CLI` env var drive.
+[`workhorse-<name> run`](../workhorse.md#run)'s `--cli` flag and the `AGENT_CLI` env var drive.

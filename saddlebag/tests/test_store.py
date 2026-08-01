@@ -27,6 +27,10 @@ from saddlebag.store import (
 class _FakeKeyringModule(types.ModuleType):
     """Stands in for the ``keyring`` package, recording (service, user) pairs."""
 
+    # The real package exposes a `backends` submodule; the fixture binds the genuine
+    # one here so `import keyring.backends.fail` still resolves through the stand-in.
+    backends: types.ModuleType
+
     def __init__(self, backend: object) -> None:
         super().__init__("keyring")
         self.saved: dict[tuple[str, str], str] = {}

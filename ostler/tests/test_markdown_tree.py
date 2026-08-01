@@ -28,6 +28,7 @@ See [old shot](docs/evidence/old.png).
 
 def test_frontmatter_and_roundtrip():
     doc = markdown.split(DOC)
+    assert doc.frontmatter is not None
     assert doc.frontmatter["surface"] == "a/b"
     assert doc.render() == DOC  # byte-exact
 
@@ -38,26 +39,26 @@ def test_section_tree_nesting():
     # preamble (''), the H1, and its three H2 children
     assert "" in titles
     assert "Story: Foo" in titles
-    foo = doc.find_section("Story: Foo")
+    foo = doc.section("Story: Foo")
     assert {c.title for c in foo.children} == {
         "Implementation Status", "Acceptance Criteria", "Evidence"}
 
 
 def test_section_scoped_refs():
     doc = markdown.split(DOC)
-    ac = doc.find_section("Acceptance Criteria")
+    ac = doc.section("Acceptance Criteria")
     assert ac.refs.knowledge_paths == ["docs/knowledge/area/first.md",
                                       "docs/knowledge/area/nested.md",
                                       "docs/knowledge/area/rec.json"]
     # the Evidence section's link does not leak into Acceptance Criteria
-    ev = doc.find_section("Evidence")
+    ev = doc.section("Evidence")
     assert ev.refs.links == [("old shot", "docs/evidence/old.png")]
     assert ac.refs.links == []
 
 
 def test_bullets_and_nesting():
     doc = markdown.split(DOC)
-    ac = doc.find_section("Acceptance Criteria")
+    ac = doc.section("Acceptance Criteria")
     assert len(ac.bullets) == 3
     second = ac.bullets[1]
     assert second.children and "nested detail" in second.children[0].text
@@ -68,7 +69,7 @@ def test_bullets_and_nesting():
 
 def test_source_spans_map_back_to_body():
     doc = markdown.split(DOC)
-    ac = doc.find_section("Acceptance Criteria")
+    ac = doc.section("Acceptance Criteria")
     # the section's raw text slice really is its bytes in the body
     assert ac.text.startswith("## Acceptance Criteria")
     assert "nested detail" in ac.text
@@ -108,7 +109,7 @@ Some prose under the sub-heading.
 
 def test_body_excludes_the_heading_line():
     doc = markdown.split(EMPTY_DOC)
-    written = doc.find_section("Written")
+    written = doc.section("Written")
     assert "## Written" not in written.body
     assert written.body.strip() == "- a criterion"
     # `text` still carries the heading — the two are different questions, both wanted.
@@ -125,38 +126,38 @@ def test_preamble_body_is_its_whole_text():
 
 def test_is_empty_for_a_heading_with_nothing_under_it():
     doc = markdown.split(EMPTY_DOC)
-    assert doc.find_section("Heading only").is_empty
+    assert doc.section("Heading only").is_empty
 
 
 def test_is_empty_ignores_whitespace():
     doc = markdown.split(EMPTY_DOC)
-    assert doc.find_section("Whitespace only").is_empty
+    assert doc.section("Whitespace only").is_empty
 
 
 def test_is_empty_when_the_only_content_is_an_empty_sub_heading():
     # `## Context` containing just `### Background` is still unwritten: a heading is a promise
     # of content, not content. Counting it would let a deeper scaffold pass as authored.
     doc = markdown.split(EMPTY_DOC)
-    assert doc.find_section("Nested empty").is_empty
+    assert doc.section("Nested empty").is_empty
 
 
 def test_is_not_empty_when_a_sub_section_carries_prose():
     doc = markdown.split(EMPTY_DOC)
-    assert not doc.find_section("Nested written").is_empty
+    assert not doc.section("Nested written").is_empty
 
 
 def test_is_not_empty_with_bullets():
     doc = markdown.split(EMPTY_DOC)
-    assert not doc.find_section("Written").is_empty
+    assert not doc.section("Written").is_empty
 
 
 def test_is_empty_for_the_last_section_of_a_document():
     # The final section's span runs to the end of the body; an off-by-one there would read
     # the document's trailing newline as content (or miss real content on the last line).
     doc = markdown.split("# T\n\n## Last\n")
-    assert doc.find_section("Last").is_empty
+    assert doc.section("Last").is_empty
     doc = markdown.split("# T\n\n## Last\n\nwords\n")
-    assert not doc.find_section("Last").is_empty
+    assert not doc.section("Last").is_empty
 
 
 # --- parser-backed behaviour the old regex/line-scan implementation got wrong -------------
@@ -250,7 +251,7 @@ TABLE_DOC = """# Placeholders
 
 
 def test_tables_are_parsed_not_paragraphs():
-    section = markdown.split(TABLE_DOC).find_section("Placeholders")
+    section = markdown.split(TABLE_DOC).section("Placeholders")
     table = section.tables[0]
     assert table.headers == ["Placeholder", "Stands for"]
     assert table.rows == [
@@ -261,12 +262,12 @@ def test_tables_are_parsed_not_paragraphs():
 
 
 def test_table_rows_are_not_mistaken_for_bullets():
-    section = markdown.split(TABLE_DOC).find_section("Placeholders")
+    section = markdown.split(TABLE_DOC).section("Placeholders")
     assert [b.text for b in section.bullets] == ["a real bullet"]
 
 
 def test_table_records_and_column_lookup():
-    table = markdown.split(TABLE_DOC).find_section("Placeholders").tables[0]
+    table = markdown.split(TABLE_DOC).section("Placeholders").tables[0]
     assert table.records[0] == {"Placeholder": "`acme`", "Stands for": "a client repo"}
     assert table.column("placeholder") == ["`acme`", "`web-app`"]
     assert table.column("nope") == []

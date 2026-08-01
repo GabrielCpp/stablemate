@@ -138,7 +138,9 @@ class VaultStore:
         )
 
     def get(self, credential_id: str) -> str | None:
-        import hvac
+        # The exception class is imported by name, not reached through ``hvac.exceptions``:
+        # ``import hvac`` alone does not promise the submodule is bound on the package.
+        from hvac.exceptions import InvalidPath
 
         try:
             resp = self._client.secrets.kv.v2.read_secret_version(
@@ -146,7 +148,7 @@ class VaultStore:
                 mount_point=self.mount,
                 raise_on_deleted_version=True,
             )
-        except hvac.exceptions.InvalidPath:
+        except InvalidPath:
             return None
         data = resp["data"]["data"]
         if VALUE_FIELD in data:

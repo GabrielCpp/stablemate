@@ -9,14 +9,16 @@ from pathlib import Path
 
 from ostler import Ostler
 
+from conftest import present
+
 
 def test_reads_match_the_underlying_core(repo: Path):
     okf = Ostler(repo)
     assert {r["name"] for r in okf.list("epic")} == {"epic-a", "epic-b"}
     assert {r["slug"] for r in okf.list("story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in okf.list("seed", epic="epic-a")} == {"seed-a1", "seed-a2"}
-    assert okf.next_epic()["name"] == "epic-a"
-    assert okf.next_story("epic-a")["slug"] == "01-foo"
+    assert present(okf.next_epic())["name"] == "epic-a"
+    assert present(okf.next_story("epic-a"))["slug"] == "01-foo"
 
 
 def test_query_and_search(repo: Path):

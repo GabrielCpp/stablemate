@@ -1,12 +1,15 @@
 """Local-filesystem reads for **native** runs — the same-host twin of
 :mod:`groom.docker_io`.
 
-A native ``workhorse run`` shares groom's host, so its workspace and run dir are
+A native run shares groom's host, so its workspace and run dir are
 plain paths groom can read directly: no throwaway container, no volume mount, no
 docker at all. These functions mirror the docker_io signatures the dashboard's
 Files/Diff/gate handlers already call, but take a **host base path** instead of a
 docker volume name, so the handlers branch on ``WorkflowContainer.native`` and call
-one or the other with the same shape.
+one or the other with the same shape. That first argument is **positional-only** in
+both modules for exactly that reason: each names it after its own concept (a host
+base path here, a volume name there), and a handler that picks between them at
+runtime must not depend on which name it got.
 
 Path safety is shared with docker_io (``safe_relpath`` rejects traversal); the skip
 set (``_SKIP_DIRS``) matches so both paths agree on what a checkout's tree contains.
@@ -42,7 +45,7 @@ def is_local_dir(path: str) -> bool:
     return bool(path) and Path(path).is_dir()
 
 
-def list_files(base: str, repo_dir: str = "") -> list[str]:
+def list_files(base: str, /, repo_dir: str = "") -> list[str]:
     """Repo-relative paths of every file under one checkout, heavy vendor/VCS dirs
     pruned (same set as the docker path), sorted for a stable tree order."""
     root = _base(base, repo_dir)
@@ -57,7 +60,7 @@ def list_files(base: str, repo_dir: str = "") -> list[str]:
     return sorted(out)
 
 
-def list_repo_dirs(base: str) -> list[str]:
+def list_repo_dirs(base: str, /) -> list[str]:
     """Base-relative paths of every git checkout within two levels of ``base`` —
     the parent dir of each ``.git`` — so a multi-repo workspace diffs each repo."""
     root = _base(base)
@@ -77,7 +80,7 @@ def find_repo_dir(base: str) -> str:
     return repos[0] if repos else ""
 
 
-def git_diff(base: str, repo_dir: str = "") -> str:
+def git_diff(base: str, /, repo_dir: str = "") -> str:
     """Working-tree-vs-HEAD unified diff for one checkout, run locally (no docker).
     "" on any failure — the diff panel is not on a critical path."""
     root = _base(base, repo_dir)
@@ -98,7 +101,7 @@ def git_diff(base: str, repo_dir: str = "") -> str:
     return proc.stdout if proc.returncode == 0 else ""
 
 
-def read_file(base: str, rel_path: str) -> str | None:
+def read_file(base: str, /, rel_path: str) -> str | None:
     """Text of one file under ``base``, or None when missing/unreadable. Guarded by
     ``safe_relpath`` so a crafted path can't escape the base."""
     if not base:
@@ -114,7 +117,7 @@ def read_file(base: str, rel_path: str) -> str | None:
         return None
 
 
-def write_file(base: str, rel_path: str, content: str) -> bool:
+def write_file(base: str, /, rel_path: str, content: str) -> bool:
     """Write ``content`` into a file under ``base`` (the native gate-answer path).
     Returns False on any failure rather than raising."""
     if not base:

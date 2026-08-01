@@ -135,7 +135,7 @@ def check_base_stands_alone() -> list[str]:
     if not skills:
         return ["the base library resolves no skills at all"]
     for skill in skills:
-        if skill.layer.name != install.BASE_LAYER_NAME:
+        if skill.layer is None or skill.layer.name != install.BASE_LAYER_NAME:
             problems.append(f"skill {skill.id!r} did not resolve from the base layer")
         if not skill.id.startswith("stablemate/"):
             problems.append(
@@ -145,8 +145,8 @@ def check_base_stands_alone() -> list[str]:
             )
 
     # There is no workflow clause. The base shipped four workflow directories until the
-    # YAML front-end was retired; a workflow is now a Python package resolved through the
-    # `workhorse.workflows` entry-point group, which is a distribution's business and not
+    # YAML front-end was retired; a workflow is now an installed Python distribution reached
+    # through its own console script, which is a distribution's business and not
     # the library's. What the base still carries is markdown, and the question this check
     # asks of it is the one above: does it resolve without the overlay.
     if not problems:

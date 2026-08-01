@@ -7,7 +7,7 @@
 # Genesis itself carries no stack knowledge either: `scripts/check_public.py` asserts that
 # no base workflow may depend on the private overlay, and the stack packs live there. So
 # every stack-specific value is data, passed in as flow params. Each `surfaces` entry maps
-# 1:1 onto a `workhorse run coder genesis` invocation.
+# 1:1 onto a `workhorse-coder run genesis` invocation.
 
 # Where the benchmark app gets built. Overridable with $TARGET.
 target: /tmp/todo-app

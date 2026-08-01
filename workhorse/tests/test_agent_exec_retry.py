@@ -27,18 +27,25 @@ from workhorse.runner.failure import BackendInvocationError
 RESILIENCE = AgentResilience()
 
 
-def _popen_failing(n_failures: int, code: int, ok: object | None = None):
-    """Fake Popen: raise OSError(code) the first n_failures calls, then return ok."""
-    calls = {"n": 0}
+class _PopenFailing:
+    """Fake Popen: raise OSError(code) the first n_failures calls, then return ok.
 
-    def fake(cmd, **kwargs):
-        calls["n"] += 1
-        if calls["n"] <= n_failures:
-            raise OSError(code, os.strerror(code))
-        return ok if ok is not None else MagicMock()
+    A class and not a closure with an attribute hung off it, because the attempt
+    count is what every test here asserts on — so it is a declared field of the
+    double rather than something bolted onto a function object."""
 
-    fake.calls = calls
-    return fake
+    def __init__(self, n_failures: int, code: int, ok: object | None = None) -> None:
+        self.n_failures = n_failures
+        self.code = code
+        self.ok = ok
+        #: Attempts so far, under the key the assertions read.
+        self.calls = {"n": 0}
+
+    def __call__(self, cmd, **kwargs):
+        self.calls["n"] += 1
+        if self.calls["n"] <= self.n_failures:
+            raise OSError(self.code, os.strerror(self.code))
+        return self.ok if self.ok is not None else MagicMock()
 
 
 def _supervisor() -> tuple[process.ProcessSupervisor, FakeClock]:
@@ -50,7 +57,7 @@ def _supervisor() -> tuple[process.ProcessSupervisor, FakeClock]:
 def test_self_update_etxtbsy_is_retried_then_succeeds():
     """The binary being overwritten mid-run recovers without failing the turn."""
     proc = MagicMock()
-    fake = _popen_failing(3, errno.ETXTBSY, ok=proc)
+    fake = _PopenFailing(3, errno.ETXTBSY, ok=proc)
     supervisor, clock = _supervisor()
     with patch.object(process.subprocess, "Popen", fake), \
          patch.object(process.shutil, "which", return_value="/x/claude"):
@@ -65,7 +72,7 @@ def test_absent_cli_fails_nontransient_after_bounded_retries():
     the bounded retries, never in an unbounded spin. We accept a few seconds' delay on a
     misconfigured launch as the price of never misreading a self-update rename window as
     'absent' (that misread is exactly what killed okf-builder web-bf3's last item)."""
-    fake = _popen_failing(99, errno.ENOENT)   # always ENOENT, and...
+    fake = _PopenFailing(99, errno.ENOENT)   # always ENOENT, and...
     supervisor, clock = _supervisor()
     with patch.object(process.subprocess, "Popen", fake), \
          patch.object(process.shutil, "which", return_value=None):   # ...never resolves
@@ -111,7 +118,7 @@ def test_self_update_enoent_rename_recovers_even_when_which_is_blind():
     this from a never-installed CLI — so we must resolve it in time. Retrying rides the
     rename out and the turn is NOT failed."""
     proc = MagicMock()
-    fake = _popen_failing(2, errno.ENOENT, ok=proc)   # gone for two attempts, then back
+    fake = _PopenFailing(2, errno.ENOENT, ok=proc)   # gone for two attempts, then back
     supervisor, _ = _supervisor()
     with patch.object(process.subprocess, "Popen", fake), \
          patch.object(process.shutil, "which", return_value=None):   # blind, like exec
@@ -122,7 +129,7 @@ def test_self_update_enoent_rename_recovers_even_when_which_is_blind():
 
 def test_exhausted_retries_escalate_as_transient():
     """A self-update that never clears hands off to the outer backoff ladder."""
-    fake = _popen_failing(99, errno.ETXTBSY)   # never recovers
+    fake = _PopenFailing(99, errno.ETXTBSY)   # never recovers
     supervisor, _ = _supervisor()
     with patch.object(process.subprocess, "Popen", fake), \
          patch.object(process.shutil, "which", return_value="/x/claude"):

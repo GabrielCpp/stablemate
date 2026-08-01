@@ -7,7 +7,7 @@ from pathlib import Path
 from ostler import graph, reach
 from ostler.model import load
 
-from conftest import write
+from conftest import present, write
 
 LANDING = """\
 ---
@@ -185,7 +185,7 @@ def test_prose_links_are_not_navigation(repo: Path):
 
 
 def test_leads_to_builds_a_click_path(repo: Path):
-    path = reach.route(_edges(repo), LAND, FORGOT_ID)
+    path = present(reach.route(_edges(repo), LAND, FORGOT_ID))
     assert [h["to"] for h in path] == [SIGNIN, FORGOT_ID]
     assert path[0]["action"] == "activate"
     assert path[0]["node"].endswith("#landing-sign-in-link")  # what to click, not just where
@@ -193,7 +193,7 @@ def test_leads_to_builds_a_click_path(repo: Path):
 
 def test_flow_steps_are_navigation_edges(repo: Path):
     """Consecutive `steps:` on different screens are a recorded transition."""
-    path = reach.route(_edges(repo), SIGNIN, DASH)
+    path = present(reach.route(_edges(repo), SIGNIN, DASH))
     assert len(path) == 1
     assert path[0]["kind"] == "flow-step"
     # the hop is caused by the *previous* step's interaction, not by the arriving node
@@ -201,7 +201,7 @@ def test_flow_steps_are_navigation_edges(repo: Path):
 
 
 def test_route_crosses_both_edge_kinds(repo: Path):
-    path = reach.route(_edges(repo), LAND, DASH)
+    path = present(reach.route(_edges(repo), LAND, DASH))
     assert [h["kind"] for h in path] == ["leads-to", "flow-step"]
 
 
@@ -243,7 +243,7 @@ def test_route_hops_carry_destination_preconditions(repo: Path):
     """A caller walking the route must know what to satisfy on arrival, per hop."""
     _repo(repo)
     by_id = _by_id(repo)
-    path = reach.route(_edges(repo), LAND, DASH, by_id)
+    path = present(reach.route(_edges(repo), LAND, DASH, by_id))
     assert path[-1]["preconditions"]["guards"][0]["text"].startswith("[protected-route]")
     assert path[-1]["preconditions"]["params"][0]["name"] == "projectId"
     # the sign-in hop is unconditional, and says so

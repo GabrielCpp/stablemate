@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from ostler.untyped import is_mapping
 from ostler.qa.session import QaSession, RUN_LOG, _expand
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.v2 import run_plan as run_v2_plan
@@ -52,6 +53,16 @@ class QaOutcome:
 # start
 # ---------------------------------------------------------------------------
 
+DaemonSpec = tuple[str, str, str | Mapping[str, Any] | None]
+"""A background daemon to start: its name, its command, and how to tell it is ready.
+
+The readiness probe is a URL to poll, a ``{cmd, assert_contains}`` mapping to run, or
+``None`` for a daemon nobody waits on. Named because the CLI builds this list and hands it
+straight here — spelled out twice, the two spellings drift and the list stops being
+assignable for reasons that read as a type-checker complaint rather than as the API change
+they are.
+"""
+
 
 def cmd_start(
     run_id: str,
@@ -59,7 +70,7 @@ def cmd_start(
     spec_dir: Path,
     *,
     env: dict[str, str] | None = None,
-    daemons: list[tuple[str, str, str | Mapping[str, Any] | None]] | None = None,
+    daemons: list[DaemonSpec] | None = None,
     secret_values: dict[str, str] | None = None,
 ) -> QaOutcome:
     """Open a new QA session and optionally start background daemons.
@@ -324,8 +335,12 @@ def cmd_validate(
 
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     if isinstance(plan, dict) and plan.get("version") == 2:
-        document, load_problems = load_plan(resolved_plan, resolved_spec, root)
-        problems = load_problems or validate_v2(document)  # type: ignore[arg-type]
+        document, problems = load_plan(resolved_plan, resolved_spec, root)
+        # `load_plan` hands back a document exactly when it found nothing to report, so the
+        # deeper validation runs on a document that is there rather than on a `None` the
+        # short-circuit happened to skip.
+        if document is not None and not problems:
+            problems = validate_v2(document)
     else:
         problems = _validate_plan(plan, resolved_spec)
         problems.extend(_validate_v1_files(plan, resolved_plan, resolved_spec))
@@ -576,7 +591,7 @@ def _validate_plan(plan: Any, spec_dir: Path | None) -> list[str]:
 
     seen_steps: set[str] = set()
     for i, step in enumerate(steps):
-        if not isinstance(step, dict):
+        if not is_mapping(step):
             problems.append(f"steps[{i}] must be a mapping")
             continue
         label = f"steps[{i}] (id={step.get('id', '?')})"

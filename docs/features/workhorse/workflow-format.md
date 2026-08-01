@@ -7,9 +7,9 @@ title: The workflow format (a Python package)
 
 A workflow is a **Python package**, not a file. It declares a `Registry` under a name, the
 `Workflow` subclasses whose methods are its states, and the `@blueprint.node` functions
-that do its work; its distribution publishes that name in the `workhorse.workflows`
-entry-point group, which is how [`workhorse run <name>`](workhorse.md#run) finds it. There
-is no file to hand the CLI and no schema to validate — the package *is* the format, and
+that do its work; its distribution binds that registry to a command in
+`[project.scripts]`, which is how [`workhorse-<name> run`](workhorse.md#run) reaches it.
+There is no file to hand the CLI and no schema to validate — the package *is* the format, and
 Python's own import and signature machinery is what checks it. Why it is a package rather
 than a declarative file is argued once, in
 [workhorse/README.md](../../../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file).
@@ -34,21 +34,21 @@ my_workflow/
     └── step.md
 ```
 
-Nothing enforces those filenames — the entry point names whatever object holds the
-`Registry`, and prompt paths are resolved relative to the package directory. What *is*
-load-bearing is that the package be importable from a real directory on disk:
+Nothing enforces those filenames — the console script names whatever module holds the
+`main` it points at, and prompt paths are resolved relative to the package directory. What
+*is* load-bearing is that the package be importable from a real directory on disk:
 `Registry.directory()` refuses a zip-imported package, and [`run`](workhorse.md#run) calls
-it eagerly so that failure arrives at resolution time rather than at the first prompt
-render.
+it eagerly so that failure arrives at startup rather than at the first prompt render.
 
 ## Fields
 
 ### Registry
 - type: `workhorse.pyflow.Registry` — required: yes
 
-The composition root, and the object the entry point must resolve to. It carries the
-workflow's name, its node index, its named flows and its agent stubs; anything else
-resolving under that entry point is a hard error naming what it actually found.
+The composition root, and the object the console script carries. It carries the
+workflow's name, its node index, its named flows and its agent stubs; handing
+`console_script` anything else — a bare name, most of all — is a `TypeError` naming what it
+actually got.
 
 ```python
 workflow = Registry("acme").add_blueprints(blueprint)
@@ -59,39 +59,34 @@ main = console_script(workflow.entry_point(Build))
   is handed. A node the index does not carry is a hard error naming `add_blueprints`, not
   a silent fallback.
 - `add_flows(**flows)` — names re-entry points (`add_flows(qa=Qa, dev=Dev)`), each value a
-  `Workflow` subclass. Those names are what `workhorse run <name> <flow>` accepts.
+  `Workflow` subclass. Those names are what `workhorse-<name> run <flow>` accepts.
 - `override(**by_name)` — returns a **copy** of the index with those names rebound. Used by
   tests; non-mutating, so a substitution cannot outlive the run that asked for it.
 - `stub_agents({stem: reply})` — declares what `--dry-run` returns for an agent turn, keyed
   by prompt stem.
-- `main(entry)` — builds the `workhorse-<name>` console script around that entry class.
+- `entry_point(entry)` — declares the flow a bare `run` starts, and returns `self` so it
+  composes with the binding below: `console_script(workflow.entry_point(Build))`.
 - `directory()` — the package directory prompts resolve against.
 
-### entry point
-- type: `workhorse.workflows` entry-point group — required: yes
-
-The only resolution mechanism there is. Without it the workflow has no name and cannot be
-run:
-
-```toml
-[project.entry-points."workhorse.workflows"]
-acme = "acme_workflow.workflow:workflow"
-```
-
-A name that does not resolve prints the sorted list of installed names; a name that looks
-like a *path* is additionally told that workflows are Python packages now.
-
 ### console script
-- type: `[project.scripts]` entry — required: no
+- type: `[project.scripts]` entry — required: yes
 
-`Registry.main(entry)` returns a `main` suitable for a per-workflow console script, so a
-distribution can publish `workhorse-acme` alongside `workhorse run acme`. Both reach the
-same parser; the script only binds the workflow name up front.
+The only way a workflow is reached. `console_script(registry)` returns the callable the
+script points at — returned rather than called, because a script target is imported and
+*then* invoked — and that callable carries the `Registry` itself, so nothing is resolved by
+name and nothing is found by path:
+
+```python
+main = console_script(workflow.entry_point(Build))
+```
 
 ```toml
 [project.scripts]
 workhorse-acme = "acme_workflow.workflow:main"
 ```
+
+Without the `[project.scripts]` row the package is still importable and still testable —
+it just has no command. Workhorse ships no executable to run it with instead.
 
 ### Workflow subclass
 - type: `workhorse.pyflow.Workflow` subclass — required: yes (at least one)

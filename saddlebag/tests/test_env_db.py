@@ -6,6 +6,8 @@ import sqlite3
 
 import pytest
 
+from conftest import present
+
 from saddlebag.db import Pool, PoolError
 from saddlebag.models import (
     KIND_CONFIG,
@@ -80,7 +82,7 @@ def test_the_same_name_in_two_projects_is_fine(pool: Pool, web):
 def test_env_by_name_finds_an_unscoped_environment(pool: Pool):
     """`project = NULL` is never true in SQL; the lookup uses `IS`, so this works."""
     pool.env_add(name="web-local", env="local")
-    assert pool.env_by_name("web-local").id == "env-001"
+    assert present(pool.env_by_name("web-local")).id == "env-001"
 
 
 def test_env_find_scopes_to_one_project(pool: Pool, web):
@@ -109,7 +111,7 @@ def test_removing_an_environment_cascades_to_its_entries(pool: Pool, web):
 def test_entries_keep_their_render_order(pool: Pool, web):
     for key in ("C", "A", "B"):
         pool.env_put_entry(web.id, EnvironmentEntry(key=key, kind=KIND_CONFIG, value=key))
-    assert [e.key for e in pool.env_get(web.id).entries] == ["C", "A", "B"]
+    assert [e.key for e in present(pool.env_get(web.id)).entries] == ["C", "A", "B"]
 
 
 def test_resupplying_a_value_does_not_reshuffle_the_file(pool: Pool, web):
@@ -117,7 +119,7 @@ def test_resupplying_a_value_does_not_reshuffle_the_file(pool: Pool, web):
         pool.env_put_entry(web.id, EnvironmentEntry(key=key, kind=KIND_PENDING))
     pool.env_put_entry(web.id, EnvironmentEntry(key="A", kind=KIND_CONFIG, value="now-set"))
 
-    entries = pool.env_get(web.id).entries
+    entries = present(pool.env_get(web.id)).entries
     assert [e.key for e in entries] == ["A", "B", "C"]
     assert entries[0].kind == KIND_CONFIG
 
@@ -126,7 +128,7 @@ def test_a_pinned_position_is_honoured(pool: Pool, web):
     """Manifest import pins positions, so an imported file renders in manifest order."""
     pool.env_put_entry(web.id, EnvironmentEntry(key="LAST", kind=KIND_PENDING, position=9))
     pool.env_put_entry(web.id, EnvironmentEntry(key="FIRST", kind=KIND_PENDING, position=1))
-    assert [e.key for e in pool.env_get(web.id).entries] == ["FIRST", "LAST"]
+    assert [e.key for e in present(pool.env_get(web.id)).entries] == ["FIRST", "LAST"]
 
 
 def test_an_entry_round_trips_through_the_db(pool: Pool, web):
@@ -134,7 +136,7 @@ def test_an_entry_round_trips_through_the_db(pool: Pool, web):
         key="TEST_USER_PASSWORD", kind=KIND_CREDENTIAL_REF,
         cred_ref="cred-007:password", required=False, note="the leased QA user",
     ))
-    entry = pool.env_get_entry(web.id, "TEST_USER_PASSWORD")
+    entry = present(pool.env_get_entry(web.id, "TEST_USER_PASSWORD"))
     assert entry.kind == KIND_CREDENTIAL_REF
     assert entry.cred_ref == "cred-007:password"
     assert entry.required is False
@@ -150,10 +152,10 @@ def test_remove_entry(pool: Pool, web):
 def test_needs_store_is_false_for_a_config_only_environment(pool: Pool, web):
     """The property §7 hangs on: this environment renders on a host with no keyring."""
     pool.env_put_entry(web.id, EnvironmentEntry(key="HOST", kind=KIND_CONFIG, value="localhost"))
-    assert pool.env_get(web.id).needs_store is False
+    assert present(pool.env_get(web.id)).needs_store is False
 
     pool.env_put_entry(web.id, EnvironmentEntry(key="API_KEY", kind=KIND_SECRET))
-    assert pool.env_get(web.id).needs_store is True
+    assert present(pool.env_get(web.id)).needs_store is True
 
 
 # -- store keys ---------------------------------------------------------------
@@ -197,6 +199,6 @@ def test_a_pool_predating_environments_simply_gains_the_tables(tmp_path):
     conn.close()
 
     with Pool(path) as pool:
-        assert pool.get("cred-001").username == "a@x.com"
+        assert present(pool.get("cred-001")).username == "a@x.com"
         assert pool.env_all() == []
         assert pool.env_add(name="web-local", env="local").id == "env-001"

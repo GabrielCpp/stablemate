@@ -14,6 +14,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from types import FunctionType
 from typing import Any
 
 from workhorse.pyflow.errors import UnknownNodeError
@@ -86,7 +87,7 @@ class Blueprint:
 
     def node(
         self,
-        fn: Callable[..., Any] | None = None,
+        fn: FunctionType | None = None,
         *,
         aliases: Iterable[str] = (),
         retries: int = 0,
@@ -111,7 +112,10 @@ class Blueprint:
         """
         alias_tuple = tuple(aliases)
 
-        def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
+        # A `def`, not any callable: a node's *name* is its function name — it keys the
+        # index, the run directory and `self.output(node)` — and only a function carries
+        # one. A partial or a callable object would register as nameless.
+        def decorate(target: FunctionType) -> FunctionType:
             name = target.__name__
             spec = NodeSpec(
                 fn=target,

@@ -61,8 +61,9 @@ workflows/src/workhorse_workflows/<name>/
     └── setup.py, …      # the node functions themselves
 ```
 
-The distribution advertises itself through the `workhorse.workflows` entry-point group;
-`workhorse run <name>` resolves the name to the registry. Nothing is found by file path.
+The distribution binds each workflow to a command in `[project.scripts]`
+(`workhorse-<name> = "…workflow:main"`), and that command carries the registry itself.
+Nothing is resolved by name and nothing is found by file path.
 
 ## The node contract
 

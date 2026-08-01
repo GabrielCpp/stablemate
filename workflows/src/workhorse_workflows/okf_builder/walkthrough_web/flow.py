@@ -61,7 +61,7 @@ MAX_WALK_ROUNDS = 3
 class WalkthroughWeb(Workflow):
     """Walk a web service against its running app, and heal the book from what renders.
 
-    Runnable on its own (`workhorse run okf-builder walkthrough-web`) or reached from the
+    Runnable on its own (`workhorse-okf-builder run walkthrough-web`) or reached from the
     build once coverage is complete. Nothing here is passed down from the build: the
     service name, the docs root and the item ceiling are the only inputs, and every path
     is re-derived from the book.

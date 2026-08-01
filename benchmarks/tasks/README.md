@@ -54,6 +54,26 @@ the run to collect.
 A budget is a *diagnostic*, not a target. A run that hits its ceiling has told you
 something — read `watch` before you raise it.
 
+## Ports belong to the spec
+
+**The benchmark owns `18080-18099` and nothing else.** Every surface that listens names its
+port in its backlog's surface list, and no two specs share one — `expense-split` api 18080,
+`link-shortener` api 18081, `bookmarks` api 18082 and web 18092. A new spec takes the next
+free number in the range and writes it down the same way.
+
+This is not tidiness. A spec that starts a server without naming a port gets the language's
+idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most
+contended ports on a developer machine. An `expense-split` run bound its QA daemon to `8080`
+while an unrelated project's stack already held it, so the readiness probe
+(`POST http://localhost:8080/groups`) was answered by a stranger's service. The daemon lost
+the bind and the run failed loudly, which is the *good* outcome and the one we did not
+choose: had our app come up first, QA would have graded a foreign API and reported a verdict
+about it, with nothing in the evidence to say so. Naming the port removes the coin flip.
+
+The backlog is the right home for it even though it is otherwise strictly
+behavior-not-implementation, because the port is neither — it is a fact about the machine
+the app is allowed to occupy, and the backlog is the one document every phase reads.
+
 ## Why these three, and not one
 
 Each isolates a class of failure the others cannot reach.

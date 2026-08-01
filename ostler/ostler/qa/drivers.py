@@ -370,10 +370,20 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             return page.get_by_text(locator["text"], exact=True)
         return page.locator(locator["css"])
 
+    def _target(self, page: Any, action: dict[str, Any]) -> Any:
+        """The element ``action`` acts on, for the ops that cannot be performed without one.
+
+        A step that omits ``locator:`` on a ``click:`` is an authoring bug in the plan, and
+        saying so quotes the op — instead of an ``AttributeError`` on ``None`` raised from
+        whichever Playwright call the branch happened to reach first.
+        """
+        if not action.get("locator"):
+            raise ValueError(f"Playwright action {action['do']!r} requires a 'locator'")
+        return self._locator(page, action["locator"])
+
     def _do(self, page: Any, action: dict[str, Any]) -> None:
         op = action["do"]
         timeout = float(action.get("timeout", 30)) * 1000
-        locator = self._locator(page, action["locator"]) if action.get("locator") else None
         if op == "goto":
             url = self.session.expand(str(action["url"]), self.variables)
             page.goto(urljoin(str(self.target["base_url"]).rstrip("/") + "/", url.lstrip("/")), timeout=timeout)
@@ -382,17 +392,17 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         elif op == "back":
             page.go_back(timeout=timeout)
         elif op in {"click", "tap"}:
-            locator.click(timeout=timeout)
+            self._target(page, action).click(timeout=timeout)
         elif op == "fill":
             value = self.session.expand(str(action.get("value", "")), self.variables)
-            locator.fill(value, timeout=timeout)
+            self._target(page, action).fill(value, timeout=timeout)
         elif op == "select":
             value = self.session.expand(str(action.get("value", "")), self.variables)
-            locator.select_option(value, timeout=timeout)
+            self._target(page, action).select_option(value, timeout=timeout)
         elif op == "press":
-            locator.press(str(action["key"]), timeout=timeout)
+            self._target(page, action).press(str(action["key"]), timeout=timeout)
         elif op == "clear":
-            locator.clear(timeout=timeout)
+            self._target(page, action).clear(timeout=timeout)
         elif op in {"wait_for", "wait_for_response"}:
             if op == "wait_for_response":
                 expected_url = str(action["url"])
@@ -402,7 +412,8 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
                     timeout=timeout,
                 )
             else:
-                locator.wait_for(state=str(action.get("state", "visible")), timeout=timeout)
+                self._target(page, action).wait_for(
+                    state=str(action.get("state", "visible")), timeout=timeout)
         elif op == "wait_for_idle":
             page.wait_for_load_state("networkidle", timeout=timeout)
         else:
@@ -872,6 +883,24 @@ def _command_verdict(check: str, expected: Any, record: dict[str, Any]) -> tuple
     if check == "expect_http":
         actual_status = record.get("http_status")
         passed = actual_status == int(expected)
+        if not passed and actual_status is None:
+            # `a: "None"` is a true statement that reads as a false one. A step asserting
+            # expect_http whose command sent stdout somewhere else — `-o /dev/null`, `-D` to
+            # a path that is not this step's `out:`, a shell `>` — hands ostler an empty pipe,
+            # and ostler then reports the expected status "not matched" with nothing to match
+            # against. Two separate assessment turns read that as the service returning the
+            # wrong status and went looking for a product regression; both eventually worked
+            # out that no status had been captured at all, one of them only after re-issuing
+            # the requests by hand. The distinction is the whole finding, so it belongs in the
+            # assertion record rather than in whatever the reader reconstructs from it.
+            return passed, {
+                "a": "<no HTTP status captured — this step's stdout reached ostler empty, so "
+                "there was nothing to compare. expect_http reads curl's `-w '%{http_code}'` "
+                "trailing line or the status line of a `-D` dump named as this step's `out:`; "
+                "a command that sends both elsewhere records no status. This is a plan gap, "
+                "not an observed status.>",
+                "b": str(int(expected)),
+            }
         return passed, {"a": str(actual_status), "b": str(int(expected))}
     try:
         value = json.loads(stdout)

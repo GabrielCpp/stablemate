@@ -31,8 +31,15 @@ def test_health_requires_documented_identity(monkeypatch) -> None:
 
     monkeypatch.setattr(stack.urllib.request, "urlopen", lambda *_a, **_kw: Response())
 
-    assert stack.health_ok("http://127.0.0.1:8787", "<title>Acme</title>") is False
-    assert stack.health_ok("http://127.0.0.1:8787", "<title>groom</title>") is True
+    assert stack.health_probe("http://127.0.0.1:8787", "<title>groom</title>") == ""
+
+    # And the miss says the stack is serving and the *marker* is wrong — the distinction
+    # the caller needs, because these two failures are repaired in different files.
+    why = stack.health_probe("http://127.0.0.1:8787", "<title>Acme</title>")
+    assert why
+    assert "<title>Acme</title>" in why       # names the marker that did not match
+    assert "answered HTTP 200" in why         # ...and says the stack answered anyway
+    assert "<title>groom</title>" in why      # quotes what the body really said
 
 
 def test_boot_timeout_falls_back_when_undocumented_or_junk() -> None:
@@ -50,9 +57,9 @@ def test_boot_treats_a_clean_exit_as_a_bring_up_command(monkeypatch) -> None:
     # so a run that failed on the clean exit would never see it.
     polls = {"n": 0}
 
-    def health(*_args, **_kwargs) -> bool:
+    def health(*_args, **_kwargs) -> str:
         polls["n"] += 1
-        return polls["n"] >= 3
+        return "" if polls["n"] >= 3 else "not answering yet"
 
     class Exited:
         pid = 4242
@@ -61,7 +68,7 @@ def test_boot_treats_a_clean_exit_as_a_bring_up_command(monkeypatch) -> None:
         def poll(self) -> int:
             return 0
 
-    monkeypatch.setattr(stack, "health_ok", health)
+    monkeypatch.setattr(stack, "health_probe", health)
     monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Exited())
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
 
@@ -84,7 +91,7 @@ def test_boot_still_fails_when_the_launch_command_errors(monkeypatch) -> None:
         def poll(self) -> int:
             return 2
 
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Died())
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
 
@@ -97,7 +104,7 @@ def test_boot_still_fails_when_the_launch_command_errors(monkeypatch) -> None:
 
 def test_boot_adopts_a_stack_already_serving(monkeypatch) -> None:
     """An identity already serving the entry URL is reused, not double-bound."""
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(
         stack.subprocess, "Popen",
         lambda *_a, **_kw: pytest.fail("must not launch when adopting"),
@@ -107,7 +114,7 @@ def test_boot_adopts_a_stack_already_serving(monkeypatch) -> None:
         "<title>Acme</title>", 60, logger=LOG,
     )
     assert out == {"boot_ok": "yes", "entry_url": "http://localhost:3000",
-                   "app_pid": "", "app_pgid": ""}
+                   "app_pid": "", "app_pgid": "", "reason": ""}
 
 
 def test_boot_app_adopt_false_launches_even_when_serving(monkeypatch) -> None:
@@ -125,7 +132,7 @@ def test_boot_app_adopt_false_launches_even_when_serving(monkeypatch) -> None:
         launched["n"] += 1
         return Exited()
 
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(stack.subprocess, "Popen", popen)
     monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
 
@@ -152,7 +159,7 @@ def test_teardown_without_a_pgid_runs_the_documented_stop_recipe(monkeypatch) ->
 
     out = stack.teardown_app("", "make dev-stack-test-db-down", ".", logger=LOG)
 
-    assert calls == [["make", "dev-stack-test-db-down"]]
+    assert calls == [[stack._SHELL, "-c", "make dev-stack-test-db-down"]]
     assert out["torn_down"] == "yes"
 
 
@@ -170,7 +177,7 @@ def test_teardown_leaves_the_stack_up_when_no_stop_recipe_is_documented(monkeypa
 
 def test_ensure_stack_reuse_always_adopts_without_running_prepare(monkeypatch) -> None:
     """reuse=always (code-independent stack) short-circuits before prepare/launch/seed."""
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(
         stack, "_run_step", lambda *_a, **_kw: pytest.fail("ran a step while adopting"),
     )
@@ -193,7 +200,7 @@ def test_ensure_stack_default_refuses_to_adopt_a_stale_serving_stack(monkeypatch
     This is the staleness guard: a stack serving from a prior story was built from older
     code, so adopting it blindly would run QA against a stale build.
     """
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)  # something IS serving
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")  # something IS serving
     launched = {"n": 0}
 
     def boot(*_a, **kw):
@@ -213,7 +220,7 @@ def test_ensure_stack_default_refuses_to_adopt_a_stale_serving_stack(monkeypatch
 
 
 def test_ensure_stack_if_fresh_adopts_when_probe_passes(monkeypatch) -> None:
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(stack, "_run_step", lambda *_a, **_kw: (True, ""))  # fresh passes
     monkeypatch.setattr(stack, "boot_app", lambda *_a, **_kw: pytest.fail("re-launched a fresh stack"))
     out = stack.ensure_stack(
@@ -225,7 +232,7 @@ def test_ensure_stack_if_fresh_adopts_when_probe_passes(monkeypatch) -> None:
 
 
 def test_ensure_stack_if_fresh_relaunches_when_probe_fails(monkeypatch) -> None:
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     # the fresh probe reports stale; every other step passes
     monkeypatch.setattr(
         stack, "_run_step",
@@ -247,7 +254,7 @@ def test_ensure_stack_if_fresh_relaunches_when_probe_fails(monkeypatch) -> None:
 
 
 def test_ensure_stack_reuse_never_relaunches_even_when_serving(monkeypatch) -> None:
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: True)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(
         stack, "_run_step", lambda *_a, **_kw: pytest.fail("ran a `fresh` probe under reuse=never"),
     )
@@ -279,7 +286,7 @@ def test_ensure_stack_runs_prepare_launch_seed_health_in_order(monkeypatch) -> N
                 "app_pid": "10", "app_pgid": "10"}
 
     # identity absent → no adopt; go through the full ordered path.
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(stack, "_run_step", run_step)
     monkeypatch.setattr(stack, "boot_app", boot)
 
@@ -305,7 +312,7 @@ def test_ensure_stack_fails_the_step_that_failed_and_stops(monkeypatch) -> None:
         ran.append(label)
         return (label != "seed[0]"), "boom"
 
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(stack, "_run_step", run_step)
     monkeypatch.setattr(
         stack, "boot_app",
@@ -339,7 +346,7 @@ def test_ensure_stack_retries_a_health_gate_that_is_not_up_yet(monkeypatch) -> N
         attempts.append(label)
         return len(attempts) >= 3, "container is not running"
 
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(stack, "_run_step", run_step)
     monkeypatch.setattr(
         stack, "boot_app",
@@ -365,7 +372,7 @@ def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monk
         attempts.append(label)
         return False, "still down"
 
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(stack, "_run_step", run_step)
     monkeypatch.setattr(
         stack, "boot_app",
@@ -386,7 +393,7 @@ def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monk
 
 
 def test_ensure_stack_reports_a_failed_launch(monkeypatch) -> None:
-    monkeypatch.setattr(stack, "health_ok", lambda *_a, **_kw: False)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(
         stack, "boot_app",
         lambda *_a, **_kw: {"boot_ok": "no", "entry_url": "u", "app_pid": "", "app_pgid": ""},
@@ -394,6 +401,86 @@ def test_ensure_stack_reports_a_failed_launch(monkeypatch) -> None:
     out = stack.ensure_stack({"entry_url": "u", "launch": "make up"}, logger=LOG)
     assert out["ready"] == "no"
     assert out["failed_step"] == "launch"
+    # No reason from boot → the generic sentence, so `error` is never blank.
+    assert "did not serve" in out["error"]
+
+
+def test_ensure_stack_reports_boots_own_reason_not_a_launch_verdict(monkeypatch) -> None:
+    """A wrong `identity` must not reach the repairer as "the launch command did not serve".
+
+    The live failure: a QA manifest declared `identity: "127.0.0.1:8081"` for an emulator
+    whose root serves the body `Ok`. The stack was up and answering 200 the whole time, but
+    ensure_stack flattened every bring-up failure to one sentence blaming the launch recipe.
+    Two resolve passes hand-verified the URL with `curl -sf -o /dev/null` (which throws the
+    body away, so the marker mismatch is invisible), found it healthy, and escalated it to a
+    human as a harness fault — burning the story's whole QA-rework budget on a one-line
+    manifest typo the message had pointed away from.
+    """
+    marker_miss = ("http://localhost:8081/ answered HTTP 200, but its body does not contain "
+                   "the manifest's identity marker '127.0.0.1:8081'")
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: marker_miss)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "no", "entry_url": "u", "app_pid": "", "app_pgid": "",
+                            "reason": marker_miss},
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "http://localhost:8081", "identity": "127.0.0.1:8081",
+         "launch": "make up"},
+        logger=LOG,
+    )
+    assert out["ready"] == "no"
+    assert out["failed_step"] == "launch"
+    assert out["error"] == marker_miss
+    # The sentence that sent two repair passes to the wrong file must not be what crosses
+    # the node boundary when boot knows better.
+    assert "did not serve" not in out["error"]
+
+
+def test_boot_reports_why_it_gave_up_rather_than_only_that_it_did(monkeypatch) -> None:
+    """The deadline path carries the last probe's reason out, not just `boot_ok: no`."""
+    class Serving:
+        pid = 4242
+        returncode = None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Serving())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "_killpg", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        stack, "health_probe",
+        lambda *_a, **_kw: "http://localhost:8081/ answered HTTP 200, but its body does not "
+                           "contain the manifest's identity marker '127.0.0.1:8081'",
+    )
+
+    out = stack.boot_app(
+        "make up", "http://localhost:8081", "/", ".", ".", "127.0.0.1:8081", 30.0,
+        adopt=False, logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "no"
+    assert "identity marker" in out["reason"]
+
+
+def test_boot_reports_a_nonzero_exit_as_the_reason(monkeypatch) -> None:
+    """Each way bring-up fails needs its own repair, so each states itself."""
+    class Died:
+        pid = 4242
+        returncode = 2
+
+        def poll(self) -> int:
+            return 2
+
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Died())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+
+    out = stack.boot_app(
+        "make up", "http://localhost:3000", "/", ".", ".", "", 60, logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "no"
+    assert "exited with code 2" in out["reason"]
 
 
 def test_teardown_stack_delegates_with_the_leave_up_policy(monkeypatch) -> None:
@@ -429,7 +516,10 @@ def test_run_step_accepts_string_and_mapping(monkeypatch) -> None:
         "root", 42, LOG, label="seed[1]",
     )
     assert ok
-    assert seen == [(["make", "seed"], "root", 42), (["make", "seed-users"], "api", 7.0)]
+    assert seen == [
+        ([stack._SHELL, "-c", "make seed"], "root", 42),
+        ([stack._SHELL, "-c", "make seed-users"], "api", 7.0),
+    ]
 
 
 def test_run_step_reports_a_nonzero_exit(monkeypatch) -> None:
@@ -441,6 +531,56 @@ def test_run_step_reports_a_nonzero_exit(monkeypatch) -> None:
     ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
     assert not ok
     assert "seed blew up" in err
+
+
+def test_a_manifest_step_is_a_shell_recipe_not_an_argv_list() -> None:
+    """Manifest commands run through a shell — really, not via a mock.
+
+    Run as argv this exits 255: `ss` gets `|` and `||` as literal arguments. That is the
+    live failure this pins — a coder-QA manifest whose launch guard was `ss -ltn | grep -q
+    ':8081 ' || (nohup firebase emulators:start … &)` failed to boot a stack that was
+    already serving, and the workflow escalated to a human over a correct recipe."""
+    ok, err = stack._run_step(
+        "echo ':8081 listening' | grep -q ':8081 ' || exit 3", ".", 30, LOG, label="probe",
+    )
+    assert ok, err
+
+    # The other half of the guard: when it does *not* match, the right-hand side runs.
+    ok, _ = stack._run_step("echo nothing | grep -q ':8081 ' || exit 3", ".", 30, LOG, label="p")
+    assert not ok
+
+
+def test_boot_launches_the_recipe_through_a_shell(monkeypatch) -> None:
+    """`<probe> || <start>` is how the coder QA flow writes "start it unless it is already
+    listening", and it only means that in a shell. Split as argv the probe takes `||` and
+    the start command as its own operands and exits nonzero, which boot reads as the app
+    dying during startup — so the run reports a failed launch for a recipe that is correct.
+    That is what the live coder-QA run did, against a stack that was already serving."""
+    recipe = "ss -ltn | grep -q ':8081 ' || (nohup firebase emulators:start & disown)"
+    seen: list[list[str]] = []
+
+    class Serving:
+        pid = 4242
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def popen(argv, **_kwargs):
+        seen.append(argv)
+        return Serving()
+
+    monkeypatch.setattr(stack.subprocess, "Popen", popen)
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
+
+    out = stack.boot_app(
+        recipe, "http://127.0.0.1:18099", "/", ".", ".", "", 30.0,
+        logger=LOG, clock=FakeClock(), adopt=False,
+    )
+
+    assert out["boot_ok"] == "yes"
+    assert seen == [[stack._SHELL, "-c", recipe]]
 
 
 if __name__ == "__main__":

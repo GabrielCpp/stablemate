@@ -1,4 +1,4 @@
-"""Test doubles for the ports the runner is handed.
+"""Test doubles for the ports the runner is handed, plus the one shared assertion helper.
 
 The ladder in ``runner/ladder.py`` drives the agent CLI through the ``AgentBackend``
 port it is *given*, so a test states the CLI's behaviour by injecting a backend rather
@@ -18,6 +18,17 @@ from typing import Any
 
 from workhorse import otel
 from workhorse.runner.backends import AgentBackend
+
+
+def present[T](value: T | None) -> T:
+    """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit.
+
+    ``select_next`` answers `WorkItem | None` because a worklist can be empty; a test
+    that just built a three-item list is not that caller, and saying so keeps the
+    assertion about the item rather than about the lookup.
+    """
+    assert value is not None
+    return value
 
 
 class FakeBackend(AgentBackend):

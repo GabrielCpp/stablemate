@@ -2,7 +2,7 @@
 (11 nodes, lines 3895-4033).
 
 It is reached from the main graph's epic gate as a `type: flow` node, and standalone as
-`workhorse run coder fix_ci`. Its job is to walk the workspace one repo at a time and, for
+`workhorse-coder run fix_ci`. Its job is to walk the workspace one repo at a time and, for
 each, get the epic branch's CI green — or establish that it cannot be::
 
     (pick a repo → (poll → fix → push)* )*

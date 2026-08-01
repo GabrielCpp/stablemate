@@ -6,7 +6,7 @@ title: workhorse.testing — what a callable flow cannot do for itself
 # workhorse.testing — what a callable flow cannot do for itself
 
 A small library workflow authors import from their workflow's `tests/*.py` pytest files — the
-suite [`workhorse test`](../workhorse.md#test) runs. It is **not a harness**, and that is the
+suite plain `pytest` runs. It is **not a harness**, and that is the
 whole point of it: a workflow is a Python state machine, so testing one needs no harness at
 all. A test constructs the [`Workflow`](../workflow-format.md#workflow-subclass), hands
 [`drive`](pyflow-driver.md) a `RunEnv` whose dependencies are substituted, and asserts on what
@@ -117,6 +117,6 @@ recorded-call JSON to parse back.
 
 ## Consumers
 
-- Every workflow's `tests/*.py`, run via [`workhorse test <workflow_dir>`](../workhorse.md#test).
+- Every workflow's `tests/*.py`, run via `pytest <workflow_dir>/tests`.
 - `workflows/tests/**` in this workspace — the shipped workflows' own suites, and the
   worked reference for the pattern above.

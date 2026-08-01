@@ -152,12 +152,12 @@ def _seg_match(seg_type: str, seg_title: str, ntype: str, ntitle: str) -> bool:
     return not (seg_title and seg_title.lower() not in (ntitle or "").lower())
 
 
-def _parse_path(expr: str) -> tuple[list, list]:
+def _parse_path(expr: str) -> tuple[list[tuple[str, str]], list[str]]:
     """`concept:agent / field:timeout` → ([(type,title), …], ['/', …]). Each segment is
     `type:title` (either side optional); `/` = descendant, `>` = direct child."""
     parts = re.split(r"\s*(/|>)\s*", expr.strip())
-    segs: list = []
-    ops: list = []
+    segs: list[tuple[str, str]] = []
+    ops: list[str] = []
     for i, p in enumerate(parts):
         if i % 2:
             ops.append(p)
@@ -167,7 +167,7 @@ def _parse_path(expr: str) -> tuple[list, list]:
     return segs, ops
 
 
-def _match_path(node: dict, segs: list, ops: list) -> bool:
+def _match_path(node: dict, segs: list[tuple[str, str]], ops: list[str]) -> bool:
     """The node's ancestor chain (type_path/title_path) matches the path, right-anchored on the
     node itself. `>` demands the immediately-preceding chain entry; `/` any earlier ancestor."""
     chain = list(zip(node.get("type_path", []), node.get("title_path", [])))
@@ -209,7 +209,8 @@ def select(data: dict, *, node_type: str | None = None, title: str | None = None
     nodes = data["nodes"]
     by_id = {n["id"]: n for n in nodes}
     incoming = {e["to"] for e in data["edges"] if e["to"]}
-    segs = ops = None
+    segs: list[tuple[str, str]] = []
+    ops: list[str] = []
     if path:
         segs, ops = _parse_path(path)
     out = []

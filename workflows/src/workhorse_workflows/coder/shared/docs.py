@@ -211,7 +211,10 @@ def classify_documentation_context(
     """
     docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
     try:
-        worktree = Path(open_repo(docs_root).working_tree_dir).resolve()
+        # A bare repo has no working tree at all, and that is the same answer as "not a
+        # worktree" below — stated here rather than arriving as a `TypeError` from `Path`.
+        working_dir = open_repo(docs_root).working_tree_dir
+        worktree = Path(working_dir).resolve() if working_dir else None
     except (GitError, OSError, TypeError, ValueError, RuntimeError):
         worktree = None
 
@@ -333,13 +336,14 @@ def verify_story_documentation(
         problems.append(f"ostler doctor could not run: {exc}")
     affected = _affected_doc_nodes(packet, nodes)
     # `okf` is None only when its construction raised, and then `report` is empty and the
-    # comprehension never reaches the call.
+    # comprehension never reaches the call — the guard below says so at the line itself.
     doctor_errors = [
         finding
         for finding in report.get("findings", [])
         if isinstance(finding, dict)
         and finding.get("severity") == "error"
         and not (context_mode == "semantic" and finding.get("code") in SEMANTIC_SUPPRESSED)
+        and okf is not None
         and _finding_affects_nodes(okf, finding, affected)
     ]
     if doctor_errors:

@@ -182,7 +182,7 @@ def grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]:
     return paths
 
 
-def list_files(volume: str, repo_dir: str = "") -> list[str]:
+def list_files(volume: str, /, repo_dir: str = "") -> list[str]:
     """Repo-relative paths of every file in one checkout inside ``volume`` —
     the tree shown in groom's Files panel. Heavy vendor/VCS dirs are pruned with
     ``find`` (same set as the gate sweep) so a real checkout with a full
@@ -245,7 +245,7 @@ def list_run_dirs(volume: str) -> list[str]:
     return sorted(dirs)
 
 
-def list_repo_dirs(volume: str) -> list[str]:
+def list_repo_dirs(volume: str, /) -> list[str]:
     """Volume-relative paths of *every* git checkout in a workspace — the
     parent dir of each ``.git`` found within two levels of the volume root.
     Multi-repo workspaces (``.code-workspace`` folders) check several repos
@@ -282,7 +282,7 @@ def find_repo_dir(volume: str) -> str:
     return repos[0] if repos else ""
 
 
-def git_diff(volume: str, repo_dir: str = "") -> str:
+def git_diff(volume: str, /, repo_dir: str = "") -> str:
     """Unified working-tree-vs-HEAD diff for one repo inside ``volume``.
 
     ``repo_dir`` is the volume-relative checkout dir (from
@@ -310,7 +310,7 @@ def git_diff(volume: str, repo_dir: str = "") -> str:
     return proc.stdout
 
 
-def read_file(volume: str, rel_path: str) -> str | None:
+def read_file(volume: str, /, rel_path: str) -> str | None:
     rel_path = safe_relpath(rel_path)
     proc = _run(
         ["docker", "run", "--rm", "-v", f"{volume}:/vol:ro", ALPINE_IMAGE, "cat", f"/vol/{rel_path}"],
@@ -321,7 +321,7 @@ def read_file(volume: str, rel_path: str) -> str | None:
     return proc.stdout
 
 
-def write_file(volume: str, rel_path: str, content: str) -> bool:
+def write_file(volume: str, /, rel_path: str, content: str) -> bool:
     """Write ``content`` into a file inside a named volume. Uses ``cp
     /dev/stdin <dest>`` rather than a shell redirect so no shell is ever
     invoked with the (untrusted) content or path in its command line.

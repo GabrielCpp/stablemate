@@ -66,7 +66,7 @@ a fully declarative graph, and a single source of truth are a pick-two — a
 declarative graph can only stay honest if it is the only description of the flow,
 and then it cannot use the host language. Splitting at the **state** boundary buys
 most of the third back: transitions between states are still recoverable as a
-diagram (`workhorse dot <name>` draws it), while the interior of a state is
+diagram (`workhorse-<name> dot` draws it), while the interior of a state is
 opaque — and the interior of a state is the part nobody wanted to read as a
 diagram anyway.
 
@@ -80,7 +80,12 @@ diagram anyway.
 pip install workhorse-agent     # or: uv add workhorse-agent
 ```
 
-This installs the `workhorse` command. You also need the agent CLI you intend to
+This installs the **library**, not a command: workhorse drives no executable of its
+own. What you run is the console script the *workflow's* distribution binds — see
+[Running a workflow](#running-a-workflow-workhorse-name-run) — so in practice you
+install that distribution, and workhorse comes along as one of its dependencies.
+
+You also need the agent CLI you intend to
 drive on your `PATH` and authenticated — by default the [Claude
 CLI](https://docs.claude.com/en/docs/claude-code) (`claude`), authenticated via a
 Claude subscription or `claude setup-token`. `codex`, `copilot`, `aider` and
@@ -91,19 +96,18 @@ Requires Python ≥ 3.12.
 
 ## Quick start
 
-Run the `workhorse` command against an installed workflow, by name. You need the
+Install a workflow distribution and run one of the commands it brings. You need the
 agent CLI (`claude` by default) installed and authenticated:
 
 ```bash
-workhorse run hello-world
-workhorse run coder qa --params '{"story":"CASE-1234","target_env":"dev"}'
+workhorse-hello-world run
+workhorse-coder run qa --params '{"story":"CASE-1234","target_env":"dev"}'
 ```
 
-Key flags (run `workhorse --help` for the full list):
+Key flags (run `workhorse-<name> --help` for the full list):
 
 | Flag | Purpose |
 |---|---|
-| `--workflow <name>` | The workflow to run. Equivalent to the positional form: `workhorse run <name> [<flow>]` |
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<cwd>/.agents/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
@@ -111,34 +115,44 @@ Key flags (run `workhorse --help` for the full list):
 | `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
 
-### Named workflows (`workhorse run`)
+### Running a workflow (`workhorse-<name> run`)
 
-The `run` subcommand resolves a workflow by name from the installed packages:
+Every workflow brings its own command. `run` is the default subcommand, so it can be
+left out:
 
 ```bash
-workhorse run <name>                              # run the workflow's default flow
-workhorse run <name> <flow>                       # run a specific flow standalone
-workhorse run <name> <flow> --params '{"k":"v"}' # with param overrides
+workhorse-research run                              # the workflow's entry flow
+workhorse-research run qa                           # one flow standalone
+workhorse-research run qa --params '{"k":"v"}'      # with param overrides
+workhorse-research qa                               # same as `run qa`
 ```
 
-`--workflow` and the `run` positional form are equivalent — use whichever fits the
-context.
+There is **no `workhorse` executable and no resolution by name.** The command is bound
+inside the workflow's own distribution, which hands its `Registry` straight to the CLI:
 
-A name resolves in exactly **one** place: an installed distribution that advertises it
-in the `workhorse.workflows` entry-point group. A workflow is a Python package, not a
-directory of files, so there is no path form and no content layer to fall back to; an
-unknown name is answered with the list of what *is* installed.
+```python
+# myworkflows/research/workflow.py
+main = console_script(workflow.entry_point(Research))
+```
 
 ```toml
-[project.entry-points."workhorse.workflows"]
-research = "myworkflows.research.workflow:workflow"
+[project.scripts]
+workhorse-research = "myworkflows.research.workflow:main"
 ```
 
-The entry point must resolve to a `Registry` (see [Writing a
-workflow](#writing-a-workflow) below), and the package must be installed **unpacked**
-(any pip/uv wheel is): the prompt renderer is a filesystem template loader rooted at the
-workflow's own directory, so a zip-imported package is refused at resolution rather than
-failing later as a missing template.
+So the workflow that runs is the one whose command you typed — nothing is looked up, and
+a name that has no script simply has no command, which you notice at install time rather
+than at resolution time. The script must point at what `console_script(...)` **returns**
+(`[project.scripts]` targets are called after import, so a module-level `main = …` is the
+shape).
+
+The package must be installed **unpacked** (any pip/uv wheel is): the prompt renderer is
+a filesystem template loader rooted at the workflow's own directory, so a zip-imported
+package is refused at startup rather than failing later as a missing template.
+
+The three subcommands each command carries are `run`, [`dot`](#diagramming-a-workflow-workhorse-name-dot)
+and `version` — what the author of a workflow needs: run it, draw it, say which engine
+version drew it.
 
 A workflow's node functions run under workhorse's own interpreter, so a tool they import
 must live in *that* environment (`pipx inject workhorse-agent ostler`), not merely on
@@ -198,25 +212,6 @@ than leave a dangling "e.g.". Its arguments are never preflight findings, and ne
 references inside an `isUsingInstruction` branch (its `{% else %}` and `{% elif %}` are
 judged on their own, since they render precisely when the guard did not hold).
 
-### Per-workflow commands (`workhorse-<name>`)
-
-A distribution may also install one console script per workflow, alongside the entry
-point:
-
-```toml
-[project.scripts]
-workhorse-research = "myworkflows.research.workflow:main"
-```
-
-```bash
-workhorse run research qa --run-id=r1 --params '{"k":"v"}'
-workhorse-research  run qa --run-id=r1 --params '{"k":"v"}'   # identical
-```
-
-The two are the same command: one parser, with the workflow name already bound in the
-second. `workhorse-<name>` therefore accepts exactly what `workhorse run` accepts and
-nothing more — for `dot`, `test` or `config`, use `workhorse`.
-
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
 > and persistent volumes. It is *not* part of the PyPI package — see
@@ -229,7 +224,7 @@ clean, `1` on the first problem, so CI can read it. The failure it exists to cat
 is a typo found at hour 30 of an unattended run.
 
 ```bash
-workhorse run coder --dry-run
+workhorse-coder run --dry-run
 ```
 
 It turns the skill/prompt reference warning described above into an exit code, and
@@ -266,14 +261,14 @@ it entered is marked in `events.jsonl` with which stand-in answered it —
 `"stub": "declared"` for one the workflow supplied, `"blank"` for the default empty
 model — which is how you tell a path the workflow *meant* from one a blank reply picked.
 
-## Diagramming a workflow (`workhorse dot`)
+## Diagramming a workflow (`workhorse-<name> dot`)
 
-`workhorse dot` renders a workflow to [Graphviz](https://graphviz.org) DOT straight
+`dot` renders a workflow to [Graphviz](https://graphviz.org) DOT straight
 from the workflow, so the diagram never drifts from it.
 
 ```bash
-workhorse dot coder                         # DOT to stdout
-workhorse dot coder -o wf.dot               # ...to a file
+workhorse-coder dot                         # DOT to stdout
+workhorse-coder dot -o wf.dot               # ...to a file
 dot -Tsvg wf.dot -o wf.svg                  # render (needs graphviz)
 ```
 
@@ -288,7 +283,6 @@ not a node. Aliases are never drawn as a second state.
 
 | Flag | Purpose |
 |---|---|
-| `--workflow <name>` | The workflow to render; equivalent to the positional form |
 | `--name <id>` | Override the `digraph` identifier (default: sanitized workflow name) |
 | `-o, --output <path>` | Write to a file instead of stdout |
 
@@ -303,8 +297,8 @@ The controller drives one agent CLI per run, behind a backend port
 *model* is per-node:
 
 ```bash
-workhorse run <name>                      # claude (default)
-workhorse run <name> --cli codex          # or copilot, aider, opencode
+workhorse-<name> run                      # claude (default)
+workhorse-<name> run --cli codex          # or copilot, aider, opencode
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,aider,opencode} env var.
 ```
 
@@ -355,7 +349,13 @@ the *same* params re-derives the *same* id, so a crash/reboot/plain re-run still
 resumes the existing checkpoint — which is why it's a digest, not a random id.
 On start the controller looks for a checkpoint there:
 
-- **No checkpoint** → start fresh from the workflow's `start` state in that dir.
+- **No checkpoint** → start fresh from the workflow's `start` state in that dir, which
+  is **emptied first**. A finished run leaves its per-node subdirectories behind, and
+  since the id is derived from the params they are sitting in the next run's dir under
+  the next run's name — a post-mortem then reads a clean run as having entered nodes it
+  never reached, with nothing on disk to catch the misreading. **Copy the directory
+  aside before relaunching if you want the previous run's artifacts**; an archive left
+  *inside* `runs/` would be counted as a run by anything aggregating the tree.
 - **Checkpoint present** → resume from the checkpointed state, restoring the frozen
   inputs, `ctx` and the state's parameters. Resume re-enters that state from the top,
   which is why idempotency — not merely determinism — is the contract a state body

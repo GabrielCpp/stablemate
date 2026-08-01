@@ -29,7 +29,7 @@ usage = importlib.import_module("workhorse.runner.usage")
 artifacts = importlib.import_module("workhorse.artifacts")
 
 
-def _event(node: str, seq: int, phase: str, **extra):
+def _event(node: str, seq: int, phase: records.NodePhase, **extra):
     """One event exactly as ArtifactWriter writes it — the model record_event takes.
 
     Building the real `NodeEvent` rather than a dict is the point: the writer and
@@ -154,12 +154,16 @@ def test_noop_by_default_all_calls_inert():
     assert otel.enabled() is False
 
 
-class FakeTelemetry:
+class FakeTelemetry(otel._NullTelemetry):
     """A stand-in for what _build returns: an object satisfying the Telemetry port.
 
     It answers `enabled()` truthfully, which is what the gate now reads — there is
     no `active is None` sentinel to assert on any more, because absence is the
-    null adapter rather than a missing reference."""
+    null adapter rather than a missing reference.
+
+    Subclassing the null adapter is what makes it the port and not merely
+    port-shaped: only the two signals this test reads need a body, and the dozen it
+    does not stay the no-op they are in production."""
 
     def __init__(self) -> None:
         self.ended: list[tuple[str, str | None]] = []
@@ -203,7 +207,10 @@ def _gate(forced, reachable, under_test=False):
     host = otel.TelemetryHost(
         settings=dataclasses.replace(otel.OtelSettings(), forced=forced),
         probe=lambda endpoint, timeout_s: (probes.append(endpoint), reachable)[1],
-        build=lambda *a: (built.append(a[:3]), FakeTelemetry())[1],
+        build=lambda workflow, run_id, run_dir, settings: (
+            built.append((workflow, run_id, run_dir)),
+            FakeTelemetry(),
+        )[1],
         under_test=lambda: under_test,
     )
     previous = otel.install(host)

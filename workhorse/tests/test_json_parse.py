@@ -13,6 +13,8 @@ import importlib
 
 import pytest
 
+from _fakes import present
+
 m = importlib.import_module("workhorse.runner.extract")
 failure = importlib.import_module("workhorse.runner.failure")
 nodes = importlib.import_module("workhorse.runner.spec")
@@ -154,7 +156,7 @@ def test_a_top_level_answer_still_wins_over_a_nested_one():
         '{"status": "findings", "findings": [{"status": "bad", "findings": []}], '
         '"detail": {"status": "nested", "findings": []}}'
     )
-    assert m.parse_json_from_text(text, ["status", "findings"])["status"] == "findings"
+    assert present(m.parse_json_from_text(text, ["status", "findings"]))["status"] == "findings"
 
 
 def test_an_envelope_missing_a_key_still_fails():

@@ -1,8 +1,9 @@
 """The stablemate workflows, as code.
 
 Each workflow is a subpackage — its ``workflow.py``, its ``nodes/``, its ``prompts/``
-— and registers itself in the ``workhorse.workflows`` entry-point group so
-``workhorse run <name>`` finds it. Shared workflow-side helpers live in ``kit/``.
+— and declares its own console script in ``[project.scripts]``, so it is reached as
+``workhorse-<name> run``. Nothing resolves a workflow by name: the script hands the
+engine the ``Registry`` object directly. Shared workflow-side helpers live in ``kit/``.
 
 Imports point one way: a workflow's ``workflow.py`` imports its ``nodes/`` and
 ``flows/``; nothing under ``nodes/`` imports ``workflow.py``. The dependency on

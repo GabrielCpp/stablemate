@@ -156,7 +156,7 @@ def format_text(text: str) -> str:
             continue
         if section.title.strip() != canonical:
             edits.append((section.line_start, section.line_start + 1, [f"## {canonical}"]))
-        uitype = registry.ui_type(registry.UI_HEADING_TO_TYPE[canonical])
+        uitype = registry.ui_type_named(registry.UI_HEADING_TO_TYPE[canonical])
         for sub in section.children:
             if not uitype.literal_id:
                 kebab = anchor_of(sub.title)

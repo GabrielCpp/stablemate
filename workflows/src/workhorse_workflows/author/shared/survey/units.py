@@ -72,7 +72,7 @@ def select_next_unit(
     snap = wl.snapshot(units, scheme=SURVEY_SCHEME)  # progress + kinds for the dashboard
     pick = wl.select_next(units, scheme=SURVEY_SCHEME)  # first not-done/not-blocked
     unit_id = pick.id if pick is not None else ""
-    if not unit_id:
+    if pick is None or not unit_id:
         # None left (or a degenerate pending unit with no id — nothing assessable): the
         # empty pending set is the coverage proof, so hand off to the coverage gate.
         reason = "no pending units left — every unit has a finding record (or is blocked)"

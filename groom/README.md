@@ -82,7 +82,7 @@ and port expose standard OTLP/HTTP receivers — `POST /v1/traces`,
 
 ```bash
 pipx install './workhorse[otel]'   # the extra carries the OTel SDK; without it, no export
-workhorse run coder                # probes the endpoint at start; exports if groom answers
+workhorse-coder run                # probes the endpoint at start; exports if groom answers
 ```
 
 (No env var is needed while `groom serve` is up on the default port — workhorse

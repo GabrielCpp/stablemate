@@ -40,22 +40,28 @@ console.log(JSON.stringify(buildTree(JSON.parse(process.env.GROOM_ENTRIES))));
 """
 
 
-def _build(entries: list[dict]) -> dict | None:
-    """Run the JS builder over a list of entries. None when node is absent."""
-    if NODE is None:
-        return None
+def _build(entries: list[dict]) -> dict:
+    """Run the JS builder over a list of entries. Called past `_skipped()`."""
     harness = _HARNESS.format(
         path=json.dumps(str(ASSETS / "dashboard.js")),
         start=json.dumps(_START),
         end=json.dumps(_END),
     )
     result = subprocess.run(
-        [NODE, "--input-type=module", "-e", harness],
+        [_node(), "--input-type=module", "-e", harness],
         capture_output=True, text=True, timeout=30,
         env={**os.environ, "GROOM_ENTRIES": json.dumps(entries)},
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+def _node() -> str:
+    """The node binary. Called only past `_skipped()`, which is what rules its
+    absence out — so the callers below spell the command rather than the question of
+    whether node is installed."""
+    assert NODE is not None
+    return NODE
 
 
 def _skipped() -> bool:

@@ -346,8 +346,13 @@ def _run_dir_path(root: Path, run_dir: str) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def _load_blocked(root: Path, run_dir: str) -> list[str]:
-    """Epics set aside THIS run by `flag_epic_blocked`. Missing dir or file → empty."""
+def epics_set_aside(root: Path, run_dir: str) -> list[str]:
+    """Epics set aside THIS run by `flag_epic_blocked`. Missing dir or file → empty.
+
+    Public because `open_pr` needs it too: an epic branch is cut from HEAD, so it carries
+    whatever a set-aside epic left there, and a PR that ships it would merge past the very
+    gate that set it aside.
+    """
     if not run_dir:
         return []
     try:
@@ -391,7 +396,7 @@ def select_epic(
         logger.info("%s", reason)
         return EpicPick(reason=reason)
 
-    blocked = _load_blocked(root, run_dir)
+    blocked = epics_set_aside(root, run_dir)
     items = [wl.WorkItem(id=e, status="pending", order=i) for i, e in enumerate(epics)]
     nxt = wl.select_next(items, skip=blocked)
     if nxt is None:
@@ -705,8 +710,12 @@ def select_story(
     progress, remaining_count = _progress_fields(report)
     found = StoryPick(epic=epic, progress=progress, remaining_count=remaining_count)
 
-    state = report.get("state", "") if isinstance(report, dict) else ""
-    nxt = report.get("story") if isinstance(report, dict) else None
+    # One narrowing for the whole tail: `_next_story_report` answers `""` on a tooling
+    # failure, and everything below reads a key off the report — so the failure becomes an
+    # empty mapping here, rather than an `isinstance` repeated at each read.
+    fields: dict = report if isinstance(report, dict) else {}
+    state = fields.get("state", "")
+    nxt = fields.get("story")
 
     # Selection is skip-aware at the ostler level, so a given-up story is never handed back
     # here. This guard only fires if that contract regresses.
@@ -715,12 +724,12 @@ def select_story(
         nxt, state = None, "blocked"
 
     if state == "done":
-        logger.info("%s", report["detail"])
-        return found.model_copy(update={"story_outcome": "done", "reason": report["detail"]})
+        logger.info("%s", fields["detail"])
+        return found.model_copy(update={"story_outcome": "done", "reason": fields["detail"]})
     if state == "blocked":
         detail = (
-            report["detail"]
-            if isinstance(report, dict) and not forced_by_skip
+            fields["detail"]
+            if not forced_by_skip
             else f"the story ostler offered for epic '{epic}' was given up this run"
         )
         logger.warning("epic '%s' is blocked: %s", epic, detail)
@@ -940,6 +949,7 @@ def flag_qa_failure(
     story_slug: str = "",
     attempts: str = "?",
     story_path: str = "",
+    spec_dir: str = "",
     run_dir: str = "",
     repo_dir: str = "",
 ) -> QaFlagged:
@@ -958,12 +968,24 @@ def flag_qa_failure(
     frontmatter, and the per-run skip set excludes the slug for the rest of THIS run
     regardless of the status text. A fresh run, or an operator clearing the skip set, will
     legitimately retry it.
+
+    It also names `qa.md`, which is the document that says *why*. Everything else the
+    give-up leaves behind points somewhere else: the story's own `## Implementation Status`
+    block links `review.md` (written by the review phase, about code quality) and nothing
+    links the QA assessment, so a reader who does the "manual review" this asks for lands
+    on a code review that is silent about the failure. The path goes in the status text
+    rather than in a second bullet because the status is the one line this node reliably
+    owns — the link bullets are the review prompt's to write, and on this path that prompt
+    may never have run.
     """
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
 
     marker = f"[QA FAILED after {attempts} attempts — needs manual review]"
     new_status = f"QA give-up after {attempts} attempts — needs manual review"
+    assessment = _qa_assessment_path(root, spec_dir)
+    if assessment:
+        new_status = f"{new_status}: {assessment}"
     story_status.mark(root, slug, new_status, epic=epic, story_path=story_path, logger=logger)
 
     # Belt-and-braces over the stamp above: this excludes the story for the REMAINDER OF
@@ -976,12 +998,31 @@ def flag_qa_failure(
     if not committed:
         logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
 
-    _comment_on_epic_pr(logger, root, epic, slug, attempts, marker)
+    _comment_on_epic_pr(logger, root, epic, slug, attempts, marker, assessment)
     return QaFlagged(qa_flagged=committed)
 
 
+def _qa_assessment_path(root: Path, spec_dir: str) -> str:
+    """`<spec_dir>/qa.md` repo-relative, or `""` when there is no such file.
+
+    Existence-checked rather than assumed: a give-up can happen before QA ever wrote an
+    assessment (the QA-plan repair budget running out with no plan to execute), and a
+    status pointing at a file that is not there is worse than one that points nowhere.
+    """
+    if not spec_dir:
+        return ""
+    qa_md = Path(spec_dir) / "qa.md"
+    if not qa_md.is_file():
+        return ""
+    try:
+        return str(qa_md.relative_to(root))
+    except ValueError:
+        return str(qa_md)  # outside the repo — an absolute path still finds it
+
+
 def _comment_on_epic_pr(
-    logger: logging.Logger, root: Path, epic: str, slug: str, attempts: str, marker: str
+    logger: logging.Logger, root: Path, epic: str, slug: str, attempts: str, marker: str,
+    assessment: str = "",
 ) -> None:
     """Best-effort note on the epic PR — it only lands if that PR is already open.
 
@@ -1000,9 +1041,10 @@ def _comment_on_epic_pr(
         )
         return
     try:
+        where = f" The QA assessment is at `{assessment}`." if assessment else ""
         pr.create_issue_comment(
             f"⚠️ Story `{slug}` did not pass automated QA after {attempts} rework attempts. "
-            f"It was committed behind the marker `{marker}` for manual review.",
+            f"It was committed behind the marker `{marker}` for manual review.{where}",
         )
     except Exception as exc:  # noqa: BLE001 - a PR comment is never worth failing the run
         logger.info("could not post PR comment for %s: %s", slug, exc)

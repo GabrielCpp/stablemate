@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ostler.untyped import is_mapping, is_sequence
+
 _KEBAB_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
@@ -81,7 +83,7 @@ def _plan_context_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:
     declared: set[str] = set()
     for i, svc in enumerate(services):
         label = f"services[{i}]"
-        if not isinstance(svc, dict):
+        if not is_mapping(svc):
             problems.append(f"{label}: not an object.")
             continue
         for field in ("repo", "path", "type"):
@@ -212,9 +214,17 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
             any_fail = True
             continue
 
-        evidence = c.get("evidence") or []
-        if isinstance(evidence, str):
-            evidence = [evidence]
+        raw_evidence = c.get("evidence") or []
+        if isinstance(raw_evidence, str):
+            evidence: list[Any] = [raw_evidence]
+        elif is_sequence(raw_evidence):
+            evidence = raw_evidence
+        else:
+            # A scalar that is not a path — a number, a mapping. This used to walk straight
+            # into the comprehension below and raise `TypeError` out of a validator whose
+            # whole job is to hand the problem back instead.
+            problems.append(f"{cid}: 'evidence' must be a path or a list of paths.")
+            evidence = []
         if not [e for e in evidence if _evidence_exists(e, root, spec_dir)]:
             problems.append(
                 f"{cid}: marked Pass but cites no evidence file that exists on disk "

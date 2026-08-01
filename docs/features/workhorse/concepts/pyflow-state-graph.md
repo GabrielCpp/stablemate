@@ -5,7 +5,7 @@ title: state_graph / preflight — the state machine read off its own source
 ---
 # state_graph / preflight — the state machine read off its own source
 
-What [`workhorse dot <name>`](../workhorse.md#dot) draws and what
+What [`workhorse-<name> dot`](../workhorse.md#dot) draws and what
 [`--dry-run`](../workhorse.md#run) checks for a workflow written as a Python state machine
 (walked by [drive](pyflow-driver.md)). Nothing declares the graph: a transition is an
 *expression a state returns*, so it is recovered by parsing each state's own source and reading

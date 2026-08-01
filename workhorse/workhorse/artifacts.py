@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,45 @@ from workhorse.records import (
 )
 
 
+def _clear_stale_run(run_dir: Path) -> None:
+    """Empty a stable run dir that a *previous* run left behind, before reusing it.
+
+    A params-derived run id is deterministic (see :mod:`workhorse.rundir`), so re-running
+    the same command lands on the same directory. That is the whole point when the previous
+    run is resumable — but when it finished, the caller starts fresh *in that same dir*, and
+    the previous run's per-node subdirectories are then this run's artifacts as far as
+    anything reading the directory can tell.
+
+    Deleting only the checkpoint and the event log — which is what this used to do — is the
+    worst of the two halves: it destroys the record that an earlier run existed while
+    keeping that run's evidence, unlabelled. A link-shortener benchmark run demonstrated it
+    exactly: a re-run that passed every story and never entered ``flag_qa_failure`` or
+    ``flag_epic_blocked`` shipped a run dir containing both nodes' output, left by the
+    failed run before it. Its 57 events mention neither. A post-mortem over that directory
+    reports a clean run as having flagged a QA failure and blocked an epic, and the reader
+    has nothing on disk to catch it with.
+
+    So the fresh start empties the directory. Preserving the old run for comparison is a
+    real want, but it is not this function's: every location inside ``runs_dir`` is matched
+    by ``glob("*")``, so an archive dir here would be counted as a run by anything
+    aggregating the tree — including the benchmark harness's reliability figures. Whoever
+    wants the old bytes copies them aside *before* launching, where the intent is explicit.
+
+    Fail-soft, because a run must not die over housekeeping: if the tree cannot be removed,
+    fall back to unlinking the two files that would actively corrupt this run — a stale
+    checkpoint (an interruption before this run's first checkpoint would otherwise resurrect
+    the old one on the next auto-resume) and a stale event log (whose seq numbering restarts
+    at 0 here, so the two runs' events would interleave).
+    """
+    if not run_dir.exists():
+        return
+    try:
+        shutil.rmtree(run_dir)
+    except OSError:
+        (run_dir / ArtifactWriter.CHECKPOINT_FILE).unlink(missing_ok=True)
+        (run_dir / ArtifactWriter.EVENTS_FILE).unlink(missing_ok=True)
+
+
 class ArtifactWriter:
     CHECKPOINT_FILE = "checkpoint.json"
     # Append-only, per-node event log (enter/done/terminal) with timestamps.
@@ -34,16 +74,8 @@ class ArtifactWriter:
         if run_id is None:
             run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
         self.run_dir = runs_dir / f"{workflow_name}-{run_id}"
+        _clear_stale_run(self.run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        # A fresh start may reuse a stable dir whose previous run already finished
-        # (e.g. --auto restarting after a terminal run). Drop any stale checkpoint so
-        # an interruption before this run's first checkpoint can't resurrect the old
-        # one on the next auto-resume; this run starts from the graph's start node.
-        (self.run_dir / self.CHECKPOINT_FILE).unlink(missing_ok=True)
-        # A fresh start re-runs from the graph's start node with seq reset to 0, so
-        # any prior event log in a reused (stable-id) dir belongs to a different run
-        # and would interleave confusingly — drop it, mirroring the checkpoint above.
-        (self.run_dir / self.EVENTS_FILE).unlink(missing_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
         self._run_id = run_id
@@ -97,12 +129,21 @@ class ArtifactWriter:
         """Create a FRESH writer rooted directly at ``run_dir`` (no
         ``runs_dir/<name>-<id>`` derivation). Used for a flow's nested scope, which
         lives under the parent run's node dir. Mirrors ``__init__``'s fresh-start
-        hygiene (drop any stale checkpoint/event log from a prior visit)."""
+        hygiene — which means emptying the scope, not just dropping its checkpoint and
+        event log.
+
+        The difference matters more here than it does for a top-level run dir, because a
+        flow node inside a loop re-enters this scope *within a single run*: the coder graph
+        hands off to `Qa` once per story, onto the same ``<run>/qa/_flow``. Leaving the
+        previous story's per-node output in place means the second story's flow starts
+        holding the first story's answers — and :meth:`read_output` is a bare file-existence
+        check whose contract is "None when it has not run". A state that asks for a node
+        this pass never reached gets the previous story's value and cannot tell.
+        """
         self = cls.__new__(cls)
         self.run_dir = run_dir
+        _clear_stale_run(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        (self.run_dir / cls.CHECKPOINT_FILE).unlink(missing_ok=True)
-        (self.run_dir / cls.EVENTS_FILE).unlink(missing_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
         self._run_id = run_id

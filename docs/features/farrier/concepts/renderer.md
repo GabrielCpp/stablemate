@@ -116,8 +116,8 @@ name](../agents-yml-config.md#agents):
   prompt via `generated_command(source, "claude", path)` (front matter + provenance, unlike
   Codex/Copilot's plain copy).
 - **launcher scaffolding** — emitted for every install, gated on nothing. Farrier installs skills
-  and prompts, not workflows: a workflow is a Python package workhorse resolves through its
-  `workhorse.workflows` entry-point group, so there is nothing to render per workflow and the
+  and prompts, not workflows: a workflow is an installed Python distribution that brings its own
+  `workhorse-<name>` command, so there is nothing to render per workflow and the
   launcher's targets are the two that regenerate and verify the adapters above.
   - `.agents/agents.mk` (`render_agents_mk`, no arguments) — the make launcher, carrying
     `agent-install` and `agent-check`.

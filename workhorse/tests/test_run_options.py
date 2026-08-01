@@ -1,14 +1,15 @@
-"""Tests for what `workhorse run` resolves around a workflow name.
+"""What `run` decides around the workflow it was handed.
 
-A name resolves in exactly one place — an installed `workhorse.workflows` entry point
-(covered in test_packaged_workflows.py). What is left for the CLI to decide, and what
-these cover, is everything *around* that name, which is the CLI's contract rather than
-the driver's:
+*Which* workflow is not among them — the console script is the workflow's own and hands
+its registry in. What is left for the CLI to decide, and what these cover, is everything
+*around* it, which is the CLI's contract rather than the driver's:
 
   * `--runs-dir` defaults to <cwd>/.agents/runs — deduced from the launch dir, not from
     wherever the workflow package happens to be installed;
   * `AGENT_REPO_DIR` defaults to the launch cwd for the same reason, and an explicit
-    value wins.
+    value wins;
+  * `--resume-run` accepts every spelling that names a run, including the `--run-id`
+    that made it.
 """
 from __future__ import annotations
 
@@ -18,15 +19,32 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from workhorse.pyflow import Registry
+
 cli_mod = importlib.import_module("workhorse.cli")
-resolve_mod = importlib.import_module("workhorse.cli.resolve")
 run_cmd = importlib.import_module("workhorse.cli.run")
 
 
-class _StubRegistry:
-    """Stands in for the resolved Registry — the CLI only passes it through."""
+class _StubRegistry(Registry):
+    """Stands in for the bound Registry — the CLI only passes it through.
 
-    name = "acme-flow"
+    A real `Registry` rather than a look-alike: the CLI's parameter is the type, and
+    only the entry point (which these tests never reach) is stubbed out.
+    """
+
+    def __init__(self) -> None:
+        super().__init__('acme-flow')
+
+    def directory(self) -> Path:
+        return Path(__file__).resolve().parent
+
+
+def _main(argv: list[str]) -> None:
+    """Drive the console script the way one of a workflow's own would."""
+    try:
+        cli_mod.main(argv, workflow="acme-flow", registry=_StubRegistry())
+    except SystemExit:
+        pass
 
 
 # ── runs-dir default = <cwd>/.agents/runs ───────────────────────────────────
@@ -42,14 +60,9 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
         launch = Path(tmp) / "repo"
         launch.mkdir()
         with patch.object(run_cmd, "run_pyflow", fake_run_pyflow), patch.object(
-            run_cmd, "packaged_registry", lambda spec: _StubRegistry()
-        ), patch.object(
             run_cmd.Path, "cwd", staticmethod(lambda: launch)
-        ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
-            try:
-                cli_mod.main()
-            except SystemExit:
-                pass
+        ):
+            _main(["run"])
     assert captured["runs_dir"] == (launch / ".agents" / "runs").resolve()
 
 
@@ -64,15 +77,8 @@ def test_agent_repo_dir_defaults_to_launch_cwd():
         env = {k: v for k, v in os.environ.items() if k != "AGENT_REPO_DIR"}
         with patch.dict(os.environ, env, clear=True), patch.object(
             run_cmd, "run_pyflow", lambda invocation: 0
-        ), patch.object(
-            run_cmd, "packaged_registry", lambda spec: _StubRegistry()
-        ), patch.object(
-            run_cmd.Path, "cwd", staticmethod(lambda: launch)
-        ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
-            try:
-                cli_mod.main()
-            except SystemExit:
-                pass
+        ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
+            _main(["run"])
             assert os.environ["AGENT_REPO_DIR"] == str(launch.resolve())
 
 
@@ -83,33 +89,10 @@ def test_agent_repo_dir_respects_explicit_value():
         launch.mkdir()
         with patch.dict(os.environ, {"AGENT_REPO_DIR": "/pinned/repo"}, clear=False), \
                 patch.object(run_cmd, "run_pyflow", lambda invocation: 0), patch.object(
-                    run_cmd, "packaged_registry", lambda spec: _StubRegistry()
-                ), patch.object(
                     run_cmd.Path, "cwd", staticmethod(lambda: launch)
-                ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow"]):
-            try:
-                cli_mod.main()
-            except SystemExit:
-                pass
+                ):
+            _main(["run"])
             assert os.environ["AGENT_REPO_DIR"] == "/pinned/repo"
-
-
-# ── a path is no longer a workflow ───────────────────────────────────────────
-
-def test_a_path_is_reported_as_a_path_not_as_an_unknown_name(capsys):
-    """`--workflow ./workflows/coder/workflow.yaml` was the documented invocation for
-    years. Reporting it as merely "no workflow named ..." would read as a bad install."""
-    with patch.object(
-        resolve_mod, "find_packaged_workflow", lambda name: None
-    ), patch.object(resolve_mod, "installed_workflow_names", list):
-        try:
-            resolve_mod.packaged_registry("./workflows/coder/workflow.yaml")
-        except SystemExit as exc:
-            assert exc.code == 1
-        else:
-            raise AssertionError("a path should not resolve to a workflow")
-    err = capsys.readouterr().err
-    assert "not workflow.yaml files" in err, err
 
 
 # ── --resume-run accepts what --run-id took ─────────────────────────────────
@@ -126,14 +109,9 @@ def _resume_target(argv: list[str], make: str) -> Path | None:
         launch = Path(tmp) / "repo"
         (launch / ".agents" / "runs" / make).mkdir(parents=True)
         with patch.object(run_cmd, "run_pyflow", fake_run_pyflow), patch.object(
-            run_cmd, "packaged_registry", lambda spec: _StubRegistry()
-        ), patch.object(
             run_cmd.Path, "cwd", staticmethod(lambda: launch)
-        ), patch("sys.argv", ["workhorse", "--workflow", "acme-flow", *argv]):
-            try:
-                cli_mod.main()
-            except SystemExit:
-                pass
+        ):
+            _main(["run", *argv])
         return captured.get("resume_run_dir")
 
 

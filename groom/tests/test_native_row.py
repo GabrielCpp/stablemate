@@ -1,6 +1,6 @@
 """Native (non-container) runs as first-class dashboard rows.
 
-A native ``workhorse run`` shares groom's host and speaks only telemetry, so:
+A native run shares groom's host and speaks only telemetry, so:
 - its dir existing on this host is the signal that it is native (and the capability
   the local-FS panels rely on) — a containerized run whose paths don't resolve here
   is never materialized as a row and never double-lists;
@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from groom import alerts, app as groom_app, gates, localfs, state, store
-from groom.models import WorkflowState
+from groom.models import GateInfo, WorkflowState
 
 
 def _reset() -> None:
@@ -81,7 +81,8 @@ def test_terminal_span_finishes_and_clears_gates(tmp_path):
     alerts.ingest_metrics([_metric("R2", "workhorse.node.active", 1,
                                    run_dir=str(run_dir), node="qa")])
     groom_app._sync_native_row(state.RUNS["R2"])
-    state.WORKFLOWS["R2"].gates["g"] = object()  # a stand-in open gate
+    state.WORKFLOWS["R2"].gates["g"] = GateInfo(workflow_id="R2", file_path="g")
+    # …an open gate, which the terminal span below has to clear.
     # The root span arriving with a terminal retires the run.
     alerts.ingest_spans([{
         "run_id": "R2", "name": "run:coder", "workflow": "coder",

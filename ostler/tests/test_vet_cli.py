@@ -10,7 +10,21 @@ from ostler import cli, doctor
 from ostler.cli import _build_parser
 from ostler.model import load
 from ostler.vet.regions import RegionBox, RegionList
-from ostler.vet.run import run_vet
+from ostler.vet.report import VetReport
+from ostler.vet.run import VetOutcome, run_vet
+
+
+def report_of(outcome: VetOutcome) -> VetReport:
+    """The report of a run that completed — `run_vet` sets one whenever `error` is empty.
+
+    Checking `error` here as well means a run that fails for an unrelated reason (an
+    unreadable manifest, a missing regions file) fails on this line quoting the message,
+    rather than on an attribute of `None` in whichever assertion the test happened to
+    write first. The tests that are *about* a run error read `outcome.error` directly.
+    """
+    assert not outcome.error, outcome.error
+    assert outcome.report is not None, "a run without an error must carry a report"
+    return outcome.report
 
 
 def parse(argv):
@@ -61,7 +75,7 @@ def test_dry_run_writes_nothing(repo: Path):
 
     outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     assert not outcome.error
-    assert outcome.report.summary.status == "clean"
+    assert report_of(outcome).summary.status == "clean"
     assert plan.render()  # non-empty diff of would-be writes
     assert not vet_md.exists()
 
@@ -92,9 +106,9 @@ def test_disagreement_drives_status_and_exit_code(repo: Path):
     screenshot = _screenshot(repo)
 
     outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
-    assert outcome.report.summary.status == "disagreements"
-    assert outcome.report.summary.missingCount == 1
-    assert outcome.report.summary.unexpectedCount == 1
+    assert report_of(outcome).summary.status == "disagreements"
+    assert report_of(outcome).summary.missingCount == 1
+    assert report_of(outcome).summary.unexpectedCount == 1
 
 
 def test_fully_matching_manifest_is_clean(repo: Path):
@@ -103,7 +117,7 @@ def test_fully_matching_manifest_is_clean(repo: Path):
     screenshot = _screenshot(repo)
 
     outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
-    assert outcome.report.summary.status == "clean"
+    assert report_of(outcome).summary.status == "clean"
 
 
 def test_missing_regions_file_is_a_run_error(repo: Path):
@@ -140,7 +154,7 @@ def test_matched_components_get_named_crops(repo: Path):
     crops = {p["dom"]["name"]: p["crop"] for p in report["matched"]}
     assert crops["activity-inbox-mode"] == "vet/default-activity-inbox-mode.png"
     assert crops[""] == "vet/default-component-1.png"
-    assert outcome.report.summary.status == "clean"
+    assert report_of(outcome).summary.status == "clean"
 
 
 def test_unreadable_screenshot_leaves_matched_crops_unset(repo: Path):
@@ -150,7 +164,7 @@ def test_unreadable_screenshot_leaves_matched_crops_unset(repo: Path):
     screenshot = _screenshot(repo)  # not a real PNG
 
     outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
-    assert outcome.report.matched[0].crop is None
+    assert report_of(outcome).matched[0].crop is None
 
 
 def test_cli_exit_code_is_zero_when_clean(repo: Path, capsys):

@@ -52,7 +52,7 @@ def gate_lock(container_id: str, file_path: str) -> asyncio.Lock:
 def upsert_workflow(container_id: str, **fields: object) -> WorkflowContainer:
     wf = WORKFLOWS.get(container_id)
     if wf is None:
-        name = fields.pop("name", None) or container_id[:12]
+        name = str(fields.pop("name", "") or "") or container_id[:12]
         wf = WorkflowContainer(container_id=container_id, name=name)
         WORKFLOWS[container_id] = wf
     for key, value in fields.items():

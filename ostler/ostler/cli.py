@@ -712,14 +712,18 @@ def _cmd_vet(graph, args) -> int:
         state=args.state,
         iou_threshold=args.iou_threshold,
     )
-    if outcome.error:
+    # A run without an error carries a report; treating a missing one as an error keeps the
+    # two exits together instead of reporting "clean" off an object that is not there.
+    report = outcome.report
+    if outcome.error or report is None:
+        message = outcome.error or "vet produced no report"
         if args.json:
-            _out(json.dumps({"error": outcome.error}))
+            _out(json.dumps({"error": message}))
         else:
-            _out(f"error: {outcome.error}")
+            _out(f"error: {message}")
         return 1
     if args.json:
-        _out(outcome.report.model_dump_json(by_alias=True, indent=2))
+        _out(report.model_dump_json(by_alias=True, indent=2))
     else:
         _out(plan.render())
     if getattr(args, "write", False):
@@ -728,7 +732,7 @@ def _cmd_vet(graph, args) -> int:
             _out(f"\napplied: {len(plan.writes)} file(s) written")
     elif not args.json:
         _out("\n(dry-run — pass --write to apply)")
-    return 0 if outcome.report.summary.status == "clean" else 1
+    return 0 if report.summary.status == "clean" else 1
 
 
 def _cmd_artifact(graph, args) -> int:
@@ -770,7 +774,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
     if op == "start":
         spec_dir = _resolve_spec(args.spec)
         env = dict(kv.split("=", 1) for kv in args.env if "=" in kv)
-        daemons: list[tuple[str, str, str | None]] = []
+        daemons: list[qa_mod.DaemonSpec] = []
         for raw in args.daemons:
             parts = raw.split(":", 2)
             name = parts[0]

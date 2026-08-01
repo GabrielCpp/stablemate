@@ -7,8 +7,17 @@ alone would not belong in it.
 
 Surfaces this app ships:
 
-- **api** — Go service, the only writer of stored data
-- **web** — React Router web app, the only surface a person sees
+- **api** — Go service, the only writer of stored data.
+  It listens on **port 18082**, and QA drives it at `http://localhost:18082`.
+- **web** — React Router web app, the only surface a person sees.
+  It serves on **port 18092**, and QA drives it at `http://localhost:18092`; it reaches the
+  api at `http://localhost:18082`.
+
+These ports are an environment constraint, not a behavior. The benchmark owns `18080-18099`
+and nothing else; each spec and surface gets its own so two runs cannot collide either.
+Left unsaid, each stack takes its language's default — `8080` for Go, `3000` for React
+Router — which are the two most contended ports on any developer machine, and QA then
+probes whatever already holds them instead of this app.
 
 Bullets are user-observable behavior, not implementation tasks. Every bullet is in scope
 for decomposition and none may be dropped. Each one applies to both surfaces: the screen

@@ -167,6 +167,8 @@ def delete_story(graph: Graph, slug: str) -> Result:
         return Result(False, f"no story '{slug}'")
     epic, story = found
     epic_md = epic.epic_md
+    if epic_md is None:
+        return Result(False, f"epic '{epic.name}' has no epic.md to remove the story from")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     _remove_subsection(doc, registry.STORIES_HEADING, slug)
     epic_md.write_text(doc.render(), encoding="utf-8")

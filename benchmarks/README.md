@@ -16,7 +16,7 @@ tasks, no file lists, just things a person can do:
 ```
 
 The workflows under test are given that backlog and a greenfield repo, in three phases:
-`genesis` (the `coder` workflow's greenfield flow — `workhorse run coder genesis`), then
+`genesis` (the `coder` workflow's greenfield flow — `workhorse-coder run genesis`), then
 `author`, then `coder`. Afterwards, every bullet is scored 0–3 against what was actually built:
 
 | level | name       | means                                                       |

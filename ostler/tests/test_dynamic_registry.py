@@ -3,7 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import dynamic_registry
-from conftest import write
+from ostler.dynamic_registry import TemplateKind
+from conftest import present, write
+
+
+def parse(template_name: str, raw: dict) -> TemplateKind:
+    """`parse_kind` on a spec the test wrote to be well-formed.
+
+    `parse_kind` returns ``None`` for a spec it rejects, and the tests that are *about*
+    rejection call it directly and assert on that ``None``. Everywhere else the spec is a
+    fixture and the parse is setup, so ruling the ``None`` out once here keeps a regression
+    legible — this line, naming the call — instead of an attribute lookup on ``None``
+    inside whichever assertion happened to run first.
+    """
+    return present(dynamic_registry.parse_kind(template_name, raw))
 
 
 def test_load_kinds_empty_when_absent(tmp_path: Path):
@@ -88,7 +101,7 @@ research:
 
 
 def test_location_glob_bundle_shape():
-    k = dynamic_registry.parse_kind("t", {
+    k = parse("t", {
         "name": "program", "doc_root": "research", "default_path": "specs",
         "path_template": "{name}/program.md",
     })
@@ -97,7 +110,7 @@ def test_location_glob_bundle_shape():
 
 
 def test_location_glob_leaf_shape():
-    k = dynamic_registry.parse_kind("t", {
+    k = parse("t", {
         "name": "checklist", "doc_root": "qa", "default_path": "docs/qa",
         "path_template": "{name}.md",
     })
@@ -106,7 +119,7 @@ def test_location_glob_leaf_shape():
 
 
 def test_location_glob_nested_parent_expands_to_double_star():
-    k = dynamic_registry.parse_kind("t", {
+    k = parse("t", {
         "name": "gate", "doc_root": "research", "default_path": "specs", "parent": "program",
         "path_template": "{parent}/gates/{name}/gate.md",
     })
@@ -115,7 +128,7 @@ def test_location_glob_nested_parent_expands_to_double_star():
 
 
 def test_location_glob_three_level_nesting_from_worked_example():
-    finding = dynamic_registry.parse_kind("t", {
+    finding = parse("t", {
         "name": "finding", "doc_root": "research", "default_path": "specs", "parent": "gate",
         "path_template": "{parent}/findings/{name}.md",
     })
@@ -124,7 +137,7 @@ def test_location_glob_three_level_nesting_from_worked_example():
 
 
 def test_location_glob_mixed_literal_and_placeholder():
-    k = dynamic_registry.parse_kind("t", {
+    k = parse("t", {
         "name": "gate", "doc_root": "research", "default_path": "specs",
         "path_template": "G{name}/gate.md",
     })
@@ -132,7 +145,7 @@ def test_location_glob_mixed_literal_and_placeholder():
 
 
 def test_validate_kinds_rejects_builtin_collision():
-    new_kind = dynamic_registry.parse_kind("t", {
+    new_kind = parse("t", {
         "name": "epic", "doc_root": "research", "default_path": "specs",
         "path_template": "{name}/x.md",
     })
@@ -141,11 +154,11 @@ def test_validate_kinds_rejects_builtin_collision():
 
 
 def test_validate_kinds_rejects_cross_template_duplicate():
-    existing = dynamic_registry.parse_kind("a", {
+    existing = parse("a", {
         "name": "program", "doc_root": "a", "default_path": "specs-a",
         "path_template": "{name}/program.md",
     })
-    new_kind = dynamic_registry.parse_kind("b", {
+    new_kind = parse("b", {
         "name": "program", "doc_root": "b", "default_path": "specs-b",
         "path_template": "{name}/program.md",
     })
@@ -154,11 +167,11 @@ def test_validate_kinds_rejects_cross_template_duplicate():
 
 
 def test_validate_kinds_rejects_leaf_shaped_parent():
-    leaf = dynamic_registry.parse_kind("t", {
+    leaf = parse("t", {
         "name": "checklist", "doc_root": "qa", "default_path": "docs/qa",
         "path_template": "{name}.md",
     })
-    child = dynamic_registry.parse_kind("t", {
+    child = parse("t", {
         "name": "item", "doc_root": "qa", "default_path": "docs/qa", "parent": "checklist",
         "path_template": "{parent}/{name}.md",
     })
@@ -167,7 +180,7 @@ def test_validate_kinds_rejects_leaf_shaped_parent():
 
 
 def test_validate_kinds_rejects_unknown_parent():
-    child = dynamic_registry.parse_kind("t", {
+    child = parse("t", {
         "name": "item", "doc_root": "qa", "default_path": "docs/qa", "parent": "ghost",
         "path_template": "{parent}/{name}.md",
     })
@@ -176,7 +189,7 @@ def test_validate_kinds_rejects_unknown_parent():
 
 
 def test_validate_kinds_rejects_extra_files_on_leaf_shaped_kind():
-    leaf = dynamic_registry.parse_kind("t", {
+    leaf = parse("t", {
         "name": "checklist", "doc_root": "qa", "default_path": "docs/qa",
         "path_template": "{name}.md",
         "extra_files": [{"path": "README.md", "content": "# hi\n"}],
@@ -186,15 +199,15 @@ def test_validate_kinds_rejects_extra_files_on_leaf_shaped_kind():
 
 
 def test_validate_kinds_accepts_valid_three_level_hierarchy():
-    program = dynamic_registry.parse_kind("research", {
+    program = parse("research", {
         "name": "program", "doc_root": "research", "default_path": "specs",
         "path_template": "{name}/program.md",
     })
-    gate = dynamic_registry.parse_kind("research", {
+    gate = parse("research", {
         "name": "gate", "doc_root": "research", "default_path": "specs", "parent": "program",
         "path_template": "{parent}/gates/{name}/gate.md",
     })
-    finding = dynamic_registry.parse_kind("research", {
+    finding = parse("research", {
         "name": "finding", "doc_root": "research", "default_path": "specs", "parent": "gate",
         "path_template": "{parent}/findings/{name}.md",
     })

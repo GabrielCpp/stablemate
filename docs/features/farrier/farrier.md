@@ -87,12 +87,15 @@ already current.
 - code: `farrier/farrier/cli.py::_run_install`
 
 ### config
-- usage: `farrier config <set-library|set-stablemate|show> [args]`
+- usage: `farrier config <set-library|set-stablemate|set-base|show> [args]`
 - args:
   - `set-library <path>` — record `path` as `library_dir` in the home config file; errors unless
     `path` contains both a `library/` and a `packs/` directory.
   - `set-stablemate <path>` — record `path` as `stablemate_dir` in the home config file (the local
     `stablemate` checkout, used for `SRC=1` local-source runs of the generated launcher).
+  - `set-base <path>` — record `path` as `base_dir` in the home config file, for isolated/pipx
+    installs where the `stablemate-library` wheel isn't importable; errors unless `path` contains a
+    `library/` directory.
   - `show [key]` — with `key`: print that config key's bare value (error if unset). Without: print
     every config key as `key=value` lines.
 - does:
@@ -103,13 +106,18 @@ already current.
   - run (`set-stablemate`): resolve `path` to an absolute path and persist it as `stablemate_dir`
     in the [home config file](home-config.md) via `write_stablemate_dir` (no validation); print
     `stablemate_dir=<path>`
+  - run (`set-base`): resolve `path` to an absolute path, validate it with `is_library_dir`,
+    persist it as `base_dir` in the [home config file](home-config.md) via `write_base_dir`, and
+    print `base_dir=<path>`
   - run (`show`): read the [home config file](home-config.md) via `read_config`; with a `key`,
     print its bare value (`SystemExit` if unset); without one, print every stored key as
     `key=value`
 - code: `farrier/farrier/cli.py::_run_config`
 
-Mirrors workhorse's `config` interface (`show`/`get`/`set-library`/`set-stablemate`) so
-`agents.mk` and other scripts can call either tool interchangeably for shared settings.
+The one command that reads and writes the [shared config file](../workhorse/concepts/config.md):
+workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
+through farrier for every shared setting. The nested `[power.<tier>.<backend>]` table has no
+writer subcommand — it is edited by hand.
 
 ### source
 - usage: `farrier source <file> [--library DIR]`

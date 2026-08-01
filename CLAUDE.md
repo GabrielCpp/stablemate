@@ -68,20 +68,30 @@ The full rule, including `Workflow.injects` for the ambient paths
 
 ## Python linting (load-bearing)
 
-This repo is linted with **ruff**. Keep it clean — zero findings is the bar, and a
-change isn't done until `ruff check` passes.
+This repo is linted with **ruff** *and* type-checked with **ty**. Keep both clean — zero
+findings is the bar, and a change isn't done until `make lint` passes.
 
 ```bash
-ruff check .            # from the repo root: lint every subproject
+make lint               # both, from the repo root — every subproject in one pass
 ruff check . --fix      # apply the autofixable ones (unused imports, etc.)
 ```
+
+`make test` runs `make lint` first, so a type error fails the suite rather than waiting
+for a reviewer.
 
 - Run it from the **repo root** before wrapping up any Python change, so all of
   workhorse/farrier/ostler are covered in one pass.
 - Fix the finding, don't silence it: prefer correcting the code over adding
-  `# noqa` or broadening ignores. Reach for config/ignores only when a rule is
-  genuinely wrong for this codebase, and say why.
+  `# noqa` / `# ty: ignore` or broadening ignores. Reach for config/ignores only when a
+  rule is genuinely wrong for this codebase, and say why.
 - The same bar applies to test files — unused imports, ambiguous names (`l`/`I`/`O`),
-  and multi-statement semicolon lines are findings, not style preferences.
-- ruff config, when present, lives in the root `pyproject.toml` under `[tool.ruff]`;
-  keep it there so every subproject shares one ruleset.
+  multi-statement semicolon lines, and a fake that has drifted from the port it stands
+  in for are findings, not style preferences.
+- `# type: ignore[...]` is mypy's spelling and is **inert** for ty. The one that
+  suppresses is `# ty: ignore[rule]`, and it names the rule.
+- Config for both lives in the root `pyproject.toml` (`[tool.ruff]`, `[tool.ty]`); keep
+  it there so every subproject shares one ruleset. ty runs with every rule at its default
+  severity and no ignore list — the only exception is a path in `[tool.ty.src] exclude`.
+
+The full rationale, and the fixes that recur, are in the `python-cli`, `python-testing`
+and `python-architecture` skills.

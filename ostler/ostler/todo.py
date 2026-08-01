@@ -113,6 +113,6 @@ def reorder(graph: Graph, order: list[str]) -> Result:
     unknown = [n for n, q in resolved if q is None]
     if unknown:
         return Result(False, f"not in queue: {', '.join(unknown)}")
-    front = [q for _, q in resolved]
+    front = [q for _, q in resolved if q is not None]
     tail = [n for n in current if n not in front]
     return Result(True, "reordered epics queue", [_write(graph, front + tail)])

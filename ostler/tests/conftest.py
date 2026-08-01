@@ -8,6 +8,19 @@ from pathlib import Path
 import pytest
 
 
+def present[T](value: T | None) -> T:
+    """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit.
+
+    A test that fixtures a story and then reads ``select.next_story(...)["slug"]`` is not
+    asking whether the lookup found anything. Saying so here keeps the failure legible if
+    it ever stops finding it (``assert ... is not None`` naming the call, rather than a
+    subscript of ``None`` several lines later) and lets the type checker see what the test
+    already knows. Where absence is the thing under test, assert on it directly instead.
+    """
+    assert value is not None
+    return value
+
+
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

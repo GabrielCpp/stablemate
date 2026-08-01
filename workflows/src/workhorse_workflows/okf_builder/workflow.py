@@ -8,7 +8,7 @@ and formats), descending the code layer by layer. When the drain is dry, a deter
 checkpoint (`ostler fmt` + `doctor`) and a computed coverage join queue whatever was
 missed and loop, until the book covers the inventory. Then it walks the running app.
 
-    workhorse run okf-builder --params '{"service":"acme","source_path":"acme"}'
+    workhorse-okf-builder run --params '{"service":"acme","source_path":"acme"}'
 
 The reduction is the same four collapses `author` established, and this port is the one
 that confirms them on a workflow that shares none of author's shape:
