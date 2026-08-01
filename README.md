@@ -237,63 +237,80 @@ harness's own tests — a benchmark whose scoring is wrong is worse than none) a
 that the base library still stands alone. `make okf-verify` is separate and slower: it
 checks every OKF book's coverage against its source.
 
-Each package that ships is independently versioned and published
-(`make -C <pkg> publish`, for `core`, `workhorse`, `farrier`, `ostler` and `groom`).
-See each package's README for details, and [Releasing](#releasing) for the ordering.
+Each package that ships is independently versioned and released from CI. Nothing is
+published from a laptop. See each package's README for details, and
+[Releasing](#releasing) for the mechanism.
 
 ## Releasing
 
-Each package is released independently, with its next version inferred from the
-[Conventional-Commit](https://www.conventionalcommits.org) history since its last
-release tag (`<dist-name>-v<version>`, e.g. `farrier-v1.3.0`). Only commits that
-touch the package's own directory count, so each package bumps on its own clock.
+A release is **proposed in a pull request and shipped by merging it**. Two things follow
+from that, and both are the point:
 
-The root release targets cover three distributions — `core`, `workhorse` and `farrier` —
-in that order, because the other two declare `stablemate-core` and releasing them against
-an unpublished core produces installs that cannot resolve. That ordering is currently
-theoretical rather than exercised: `stablemate-core` has never been uploaded, which is
-why the package table above marks it unpublished and why a `pipx` install of workhorse
-still needs `--find-links core/dist`. `workflows` builds but is not published either (see
-[workflows/README.md](workflows/README.md)) — its Makefile stops at `build`. `ostler` and
-`groom` sit outside the root targets but carry the same release machinery, so
-`make -C ostler release` works on its own clock. `saddlebag` has no Makefile at all;
-releasing it would mean adding one first.
+- **The version is reviewable before it exists.** [release-please](https://github.com/googleapis/release-please)
+  reads the [Conventional-Commit](https://www.conventionalcommits.org) history since each
+  package's last tag and opens one PR carrying the computed version bumps and the
+  generated `CHANGELOG.md` files. You read what would ship before it ships.
+- **There is no PyPI token anywhere.** The upload runs in
+  [`.github/workflows/release.yml`](.github/workflows/release.yml) under
+  [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/): GitHub mints a
+  short-lived OIDC token that PyPI verifies against a publisher registered as
+  *(GabrielCpp, stablemate, `release.yml`, environment `pypi`)*. No long-lived secret
+  exists to leak, in the repo or in a dotfile.
+
+```bash
+make release        # dispatch the workflow; a release PR appears in ~30s
+gh pr list --label 'autorelease: pending'
+# …review it, then merge it. Merging is what publishes.
+```
+
+`make release` builds nothing and uploads nothing — it only dispatches. The workflow does
+not run on ordinary pushes to `main`, so a release happens when you ask for one and never
+by accident.
+
+### What merging does
+
+Merging the release PR re-triggers the same workflow, which then creates the tags
+(`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases, runs `make test`
+against the merged tree, and uploads the packages that were actually released — in
+dependency order, since an install of a release has to resolve:
+
+```
+stablemate-core → ostler → workhorse-agent → farrier → workhorse-workflows
+```
+
+`groom` and `saddlebag` are versioned and get changelogs but have no upload step: the name
+`groom` on PyPI belongs to an unrelated project, and `saddlebag` is not in scope yet.
+Adding either means registering its trusted publisher on PyPI and adding its two steps to
+the workflow.
 
 | Commit since last tag | Bump |
 | --- | --- |
 | `feat!:` / `fix(x)!:` / `BREAKING CHANGE:` in body | major |
 | `feat:` | minor |
-| anything else (`fix:`, `perf:`, `docs:`, …, or none) | patch |
+| `fix:` / `perf:` | patch |
+| `docs:` / `chore:` / `refactor:` / anything unparseable | **none — no release** |
 
-```bash
-make version                         # print each published package's current version
-make next-version                    # show what each package WOULD bump to
-make release DRY_RUN=1               # preview the full release, change nothing
-make release                         # bump, build, publish, commit, tag, push — all three
-make -C farrier release              # release just one package
-```
+That last row is the change of consequence. Under the old shell scripts a
+non-conventional subject still produced a patch bump, so *any* commit released. Now the
+commit message is what decides whether a package is released at all, and a
+`Restructure the workflows` subject bumps nothing. If `make release` returns an empty PR,
+that is why.
 
-`make release` stamps the new version into `pyproject.toml`, builds, publishes to
-PyPI, then commits, creates the annotated tag, and pushes. The PyPI upload happens
-before anything is committed or pushed: if publish fails, nothing is committed,
-tagged, or pushed — just revert the local version stamp with
-`git checkout -- <pkg>/pyproject.toml` and retry.
+Baselines live in [`.release-please-manifest.json`](.release-please-manifest.json) and the
+package map in [`.release-please-config.json`](.release-please-config.json); a new
+distribution is one entry in each, plus its build/publish steps in the workflow.
 
-Knobs (set as `make` variables or environment variables):
+### One-time setup (not in the repo)
 
-| Knob | Effect |
-| --- | --- |
-| `DRY_RUN=1` | Print every step; change nothing. |
-| `LEVEL=major\|minor\|patch` | Force the bump level instead of inferring it. |
-| `RELEASE_VERSION=x.y.z` | Use an exact version (skips inference). |
-| `PUBLISH=testpypi` | Publish to TestPyPI (or use `make release-test`). |
-| `ALLOW_DIRTY=1` | Skip the clean-working-tree guard. |
-| `NO_PUSH=1` | Commit + tag locally, but do not push. |
-| `ZEROVER=1` | Pre-1.0 demotion (breaking → minor, feat → patch) while on 0.x. |
-
-To review before committing, use `make bump` (or `make -C <pkg> bump`), which only
-stamps the inferred version into `pyproject.toml` — you then commit, tag, and
-publish by hand.
+1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository
+   `stablemate`, workflow `release.yml`, environment `pypi`. `stablemate-core` and
+   `workhorse-workflows` do not exist on the index yet, so they get a **pending**
+   publisher, which the first upload converts into the project.
+2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
+   in the repository settings. Adding yourself as a required reviewer turns the merge into
+   an explicit "approve the upload", which is the cheapest safety net available.
+3. Settings → Actions → General → **Allow GitHub Actions to create and approve pull
+   requests**, or release-please cannot open the PR with the default token.
 
 ## License
 

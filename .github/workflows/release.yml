@@ -1,0 +1,164 @@
+# The only release path. Two triggers, and deliberately not `push: main` —
+# a release is something you ask for (`make release`) and then approve (merge the PR),
+# not something that happens because a commit landed.
+#
+#   workflow_dispatch          `make release`. release-please reads the commits since each
+#                              package's last tag and opens/refreshes ONE release PR.
+#   pull_request: closed       that PR merging. release-please then creates the tags and
+#                              GitHub releases, and the publish job uploads to PyPI.
+#
+# Credentials: there are none. Publishing uses PyPI Trusted Publishing (OIDC) — the
+# `id-token: write` permission below mints a short-lived token PyPI verifies against a
+# publisher registered as (GabrielCpp, stablemate, release.yml, environment `pypi`).
+# That registration pins THIS FILENAME, which is why the release PR and the upload live
+# in one file rather than two.
+#
+# Publishing also has to be in the same *run* as the release: releases created with
+# GITHUB_TOKEN do not trigger further workflows, so an `on: release` workflow would never
+# fire. The publish job consumes this run's `releases_created` / `paths_released` outputs
+# instead.
+
+name: release
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    # On a dispatch, always. On a merge, only for release-please's own branch — an
+    # ordinary PR merging must not start a release.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release-please--'))
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.rp.outputs.releases_created }}
+      paths_released: ${{ steps.rp.outputs.paths_released }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          target-branch: main
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # uv.lock records every workspace member's own version, so release-please's bump
+      # stales it the moment it writes the pyprojects. Refreshing it here means the PR a
+      # human reviews is a tree that `uv sync --locked` accepts, rather than one that
+      # fails on the next clone.
+      - uses: actions/checkout@v4
+        if: steps.rp.outputs.pr
+        with:
+          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+      - uses: astral-sh/setup-uv@v5
+        if: steps.rp.outputs.pr
+        with:
+          python-version: "3.12"
+      - name: Refresh uv.lock on the release branch
+        if: steps.rp.outputs.pr
+        run: |
+          uv lock
+          if ! git diff --quiet uv.lock; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: refresh uv.lock for the release" uv.lock
+            git push
+          fi
+
+  # The gate. An upload to PyPI cannot be taken back, so the suite that guards the repo's
+  # invariants — lint, the package suites, check-public, check-no-env, check-parsers — runs
+  # against the merged tree before anything leaves the runner.
+  verify:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-packages
+      - run: make test
+
+  publish:
+    needs: [release-please, verify]
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    # Named so PyPI's trusted publisher can require it, and so an optional required
+    # reviewer here turns "merge the PR" into "approve the upload".
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # main, not the pull_request merge ref: this is the commit release-please tagged.
+          ref: main
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # Ordered by the dependency graph, because an install of a release has to resolve:
+      # workhorse-agent and farrier declare stablemate-core, and workhorse-workflows
+      # declares workhorse-agent and ostler. Steps in a job run in order; a matrix does
+      # not promise that, and a `needs:` chain would need always()/!failure() guards to
+      # survive a skipped predecessor.
+
+      - name: Build stablemate-core
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'core')
+        run: uv build --package stablemate-core --out-dir dist/stablemate-core
+      - name: Publish stablemate-core
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'core')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/stablemate-core
+
+      - name: Build ostler
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'ostler')
+        run: uv build --package ostler --out-dir dist/ostler
+      - name: Publish ostler
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'ostler')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/ostler
+
+      - name: Build workhorse-agent
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workhorse')
+        run: uv build --package workhorse-agent --out-dir dist/workhorse-agent
+      - name: Publish workhorse-agent
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workhorse')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/workhorse-agent
+
+      - name: Build farrier
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'farrier')
+        run: uv build --package farrier --out-dir dist/farrier
+      - name: Publish farrier
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'farrier')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/farrier
+
+      - name: Build workhorse-workflows
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workflows')
+        run: uv build --package workhorse-workflows --out-dir dist/workhorse-workflows
+      - name: Publish workhorse-workflows
+        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workflows')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/workhorse-workflows
+
+      # groom and saddlebag are versioned and get changelogs, but have no publish step:
+      # the name `groom` on PyPI belongs to an unrelated project, and saddlebag is not
+      # in scope. Releasing either means adding its steps here and registering a pending
+      # trusted publisher first.

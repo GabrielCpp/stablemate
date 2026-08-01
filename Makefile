@@ -76,57 +76,34 @@ check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets
 	uv run python scripts/check_parsers.py
 
 .PHONY: build
-build: ## Build sdists + wheels (into each package's dist/)
+build: ## Build sdists + wheels for the published distributions (into each package's dist/)
+	# The same order the release workflow publishes in, and for the same reason: an
+	# install of a release has to resolve. core leads because workhorse and farrier
+	# declare it; workflows trails because it declares workhorse-agent and ostler.
 	$(MAKE) -C core build
+	$(MAKE) -C ostler build
 	$(MAKE) -C workhorse build
-	# workflows carries the workflows themselves and depends on workhorse-agent,
-	# so it builds after the engine. It is not published yet — see workflows/README.md.
-	$(MAKE) -C workflows build
 	$(MAKE) -C farrier build
-
-.PHONY: publish-test
-publish-test: ## Publish both packages to TestPyPI
-	$(MAKE) -C core publish-test
-	$(MAKE) -C workhorse publish-test
-	$(MAKE) -C farrier publish-test
-
-.PHONY: publish
-publish: ## Publish to PyPI. core goes FIRST — workhorse and farrier depend on it
-	$(MAKE) -C core publish
-	$(MAKE) -C workhorse publish
-	$(MAKE) -C farrier publish
+	$(MAKE) -C workflows build
 
 .PHONY: version
-version: ## Print both package versions
+version: ## Print every published package's declared version
 	@$(MAKE) -s -C core version
+	@$(MAKE) -s -C ostler version
 	@$(MAKE) -s -C workhorse version
 	@$(MAKE) -s -C farrier version
-
-.PHONY: next-version
-next-version: ## Print the next inferred version for both packages (no changes)
-	@$(MAKE) -s -C core next-version
-	@$(MAKE) -s -C workhorse next-version
-	@$(MAKE) -s -C farrier next-version
-
-.PHONY: bump
-bump: ## Stamp inferred next versions into both pyprojects (no commit)
-	@$(MAKE) -s -C core bump
-	@$(MAKE) -s -C workhorse bump
-	@$(MAKE) -s -C farrier bump
+	@$(MAKE) -s -C workflows version
 
 .PHONY: release
-release: ## Release: bump from history, build, publish, commit, tag, push (DRY_RUN=1, …)
-	# core leads: workhorse and farrier declare stablemate-core, so releasing them
-	# against an unpublished core produces installs that cannot resolve.
-	$(MAKE) -C core release
-	$(MAKE) -C workhorse release
-	$(MAKE) -C farrier release
-
-.PHONY: release-test
-release-test: ## Release both packages to TestPyPI
-	$(MAKE) -C core release-test
-	$(MAKE) -C workhorse release-test
-	$(MAKE) -C farrier release-test
+release: ## Open (or refresh) the release-please PR — merging it is what publishes
+	# Nothing is built, versioned or uploaded here. This dispatches
+	# .github/workflows/release.yml, which reads the Conventional Commits since each
+	# package's last tag and opens ONE pull request carrying the version bumps and
+	# changelogs. Merging that PR tags, releases, and uploads to PyPI over OIDC —
+	# there is no token on this machine to leak.
+	gh workflow run release.yml --ref main
+	@echo "dispatched. The release PR appears in ~30s; find it with:"
+	@echo "  gh pr list --label 'autorelease: pending'"
 
 # >>> farrier: agent launcher include (generated) >>>
 # Surfaces agent-install / agent-check from the generated
