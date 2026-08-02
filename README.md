@@ -297,8 +297,16 @@ the workflow.
 | --- | --- |
 | `feat!:` / `fix(x)!:` / `BREAKING CHANGE:` in body | major |
 | `feat:` | minor |
-| `fix:` / `perf:` | patch |
-| `docs:` / `chore:` / `refactor:` / anything unparseable | **none — no release** |
+| `fix:` / `perf:` / `refactor:` | patch |
+| `docs:` / `test:` / `build:` / `ci:` / `chore:` / anything unparseable | **none — no release** |
+
+`refactor:` is in the patch row only because `changelog-sections` in
+[`.release-please-config.json`](.release-please-config.json) puts it there. Release-please
+hides that type by default, and a hidden type bumps nothing — so before that section
+existed, a commit that rewrote a package shipped to nobody while reading as though it had
+released. The section is written out in full because declaring it replaces the defaults
+rather than extending them: a type left off the list is a type that silently stops
+releasing.
 
 That last row is the change of consequence. Under the old shell scripts a
 non-conventional subject still produced a patch bump, so *any* commit released. Now the
