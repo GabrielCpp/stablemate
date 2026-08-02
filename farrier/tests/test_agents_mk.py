@@ -139,6 +139,44 @@ def test_runs_as_nobody_with_the_operators_group():
     assert 'AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)"' in mk
 
 
+def test_run_output_stays_writable_from_the_host():
+    """Group access is the only thing bridging the container's uid and yours, so
+    nothing may drop the group write bit. Git works against this by default — it
+    writes into `.git` with no group write at all — and `core.sharedRepository` on
+    the SOURCE repo is what relaxes it, because that is where a worktree's objects
+    and refs land."""
+    mk = render_agents_mk()
+    assert "core.sharedRepository group" in mk
+    # setgid, so directories the container mints inherit your group.
+    assert 'chmod g+s "$$worktree_root"' in mk
+
+
+def test_the_operators_own_repo_config_is_only_touched_when_absent():
+    """It is their repo, and the setting persists and changes how their own git
+    writes — so it is announced, and never overwritten."""
+    mk = render_agents_mk()
+    assert "config --local core.sharedRepository || true" in mk
+    assert "[agent] set core.sharedRepository=group" in mk
+
+
+def test_credentials_are_staged_per_run_rather_than_read_in_place():
+    """`~/.claude/.credentials.json` is mode 600, so a container that is not you
+    cannot read it and the run dies at "Not logged in". The copy is 640 and per-run;
+    the operator's own file is never modified — chmod-ing it would be undone the
+    next time the CLI rotates the token."""
+    mk = render_agents_mk()
+    assert 'run_auth="$$worktree_root/.credentials.json"' in mk
+    assert 'install -m 640 "$$HOME/.claude/.credentials.json" "$$run_auth"' in mk
+    assert 'AGENT_CREDENTIALS_FILE="$$run_auth"' in mk
+
+
+def test_a_machine_with_no_credentials_file_still_launches():
+    """CLAUDE_CODE_OAUTH_TOKEN is the other supported auth path, and it needs no
+    file at all — so a missing credentials file is skipped, not fatal."""
+    mk = render_agents_mk()
+    assert 'if [ -r "$$HOME/.claude/.credentials.json" ]; then' in mk
+
+
 def test_operating_targets_address_a_single_run():
     """With N runs in flight, every operating verb has to name which one."""
     mk = render_agents_mk()

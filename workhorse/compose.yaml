@@ -111,8 +111,14 @@ services:
       # AWS_PROFILE: ${AWS_PROFILE:-default}
     volumes:
       # Subscription credentials — seeded into the volume at startup (read-only here).
+      #
+      # The default is your real credentials file, which works only when the
+      # container runs as you. It does not: it runs as nobody's uid with your group,
+      # and that file is mode 600 — no group, no read, and the run dies at "Not
+      # logged in". So the launcher stages a group-readable copy per run and points
+      # AGENT_CREDENTIALS_FILE here; your own file is never modified.
       - type: bind
-        source: ${HOME}/.claude/.credentials.json
+        source: ${AGENT_CREDENTIALS_FILE:-${HOME}/.claude/.credentials.json}
         target: /mnt/claude-credentials.json
         read_only: true
 

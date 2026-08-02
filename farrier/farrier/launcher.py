@@ -137,7 +137,10 @@ define agent_launch
 	project="$(1)-$$run_id"; \\
 	repo_name="$$(basename "$(AGENT_REPO)")"; \\
 	worktree_root="$(AGENT_WORKTREE_ROOT)/$$run_id"; \\
+	run_auth="$$worktree_root/.credentials.json"; \\
 	mkdir -p "$$worktree_root"; \\
+	$(agent_stage_credentials) \\
+	$(agent_share_with_container) \\
 	echo "[agent] workflow  : $(1)"; \\
 	echo "[agent] run id    : $$run_id"; \\
 	echo "[agent] container : $$project"; \\
@@ -146,6 +149,7 @@ define agent_launch
 	WORKFLOW="$(1)" \\
 	AGENT_RUN_ID="$$run_id" \\
 	AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)" \\
+	AGENT_CREDENTIALS_FILE="$$run_auth" \\
 	AGENT_REPO_HOST_DIR="$(AGENT_REPO)" \\
 	AGENT_SOURCE_MODE=worktree \\
 	AGENT_WORKTREE_ROOT="$$worktree_root" \\
@@ -154,6 +158,51 @@ define agent_launch
 	REPO_NAME="$$repo_name" \\
 	REPO_BRANCH="$(AGENT_BASE_BRANCH)" \\
 	docker compose -p "$$project" -f "$(AGENT_COMPOSE)" up $(AGENT_UP_FLAGS)
+endef
+
+# Your Claude subscription credentials, where a non-you container can read them.
+#
+# The container runs as nobody's uid with your group, and ~/.claude/.credentials.json
+# is mode 600 — owner-only, so group access buys nothing and the run dies at "Not
+# logged in". Three ways out were weighed (see the plan's item 8): chmod your real
+# credentials 640 (the CLI rewrites that file on token rotation and would silently
+# restore 600 later), run the container as you (gives it your uid everywhere it is
+# mounted), or stage a copy. Staging wins because it changes nothing you own and
+# cannot rot.
+#
+# The copy is per-run, mode 640, group-owned by you, and lives beside the run's
+# worktree rather than inside it — `agent-clean` takes it with the rest of the run.
+# `.agents/` is gitignored, so it is never committed. Skipped silently when you have
+# no credentials file: CLAUDE_CODE_OAUTH_TOKEN is the other supported path, and
+# compose falls back to binding your real file for a container that runs as you.
+define agent_stage_credentials
+	if [ -r "$$HOME/.claude/.credentials.json" ]; then \\
+		install -m 640 "$$HOME/.claude/.credentials.json" "$$run_auth"; \\
+	fi;
+endef
+
+# Make what the container writes usable from the host afterwards.
+#
+# The container runs as nobody's uid with YOUR group (see AGENT_UID/AGENT_GID), so
+# group access is the only thing bridging the two — and by default git works against
+# that: it writes loose objects mode 0444, no group write bit anywhere.
+# `core.sharedRepository=group` is what relaxes it, and it has to be set on the
+# SOURCE repo, because that is where a worktree's objects land.
+#
+# Set here rather than inside the container on purpose: this is the operator's own
+# repo, and it should be configured by something running as the operator. It is
+# persistent and it does change how their own git writes — so it is announced, and
+# only set when absent. Undo with `git config --unset core.sharedRepository`.
+#
+# setgid on the worktree root makes every directory created beneath it inherit the
+# group, which is what keeps the umask's 775 meaningful for paths the container mints.
+define agent_share_with_container
+	if [ -z "$$(git -C "$(AGENT_REPO)" config --local core.sharedRepository || true)" ]; then \\
+		git -C "$(AGENT_REPO)" config --local core.sharedRepository group; \\
+		echo "[agent] set core.sharedRepository=group on $(AGENT_REPO) (so the"; \\
+		echo "[agent]   container's commits stay writable from the host)"; \\
+	fi; \\
+	chmod g+s "$$worktree_root";
 endef
 
 # RUN names a launched run by its compose project (`<workflow>-<run-id>`), which is

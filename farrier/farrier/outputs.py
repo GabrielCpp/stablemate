@@ -312,6 +312,11 @@ def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
 # output at review time) where the old one was silent.
 AGENTS_GITIGNORE_BLOCK = (
     "/.agents/runs/",              # run logs, pids and copied-out artifacts
+    # Per-run git worktrees, and the staged credentials copy beside each. Both are
+    # emphatically not repo content: a worktree is a second checkout of this very
+    # repo (committing it nests the repo in itself), and the credentials copy is a
+    # secret. This entry is load-bearing rather than tidy.
+    "/.agents/worktrees/",
     "/.agents/skills/",            # rendered skill adapters
     "/.agents/prompts/",           # rendered prompt adapters
     "/.agents/workflows/",         # legacy rendered workflow trees

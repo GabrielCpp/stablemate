@@ -482,6 +482,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     # --signal=SIGUSR1 <container>` dumps its stack to the container log instead.
     faulthandler.register(signal.SIGUSR1)
 
+    # Everything this container writes into a bind-mounted host path has to stay
+    # usable from the host afterwards, and the container's uid is deliberately not
+    # the operator's. Group access is what bridges that, so nothing may drop the
+    # group write bit: 002 leaves new files 664 and new directories 775. Set before
+    # the first child is spawned, because a umask is inherited, not applied.
+    os.umask(0o002)
+
     layout = Layout()
     # HOME is pinned before anything reads it: the Claude CLI, uv's tool dir and
     # git's global config all resolve through it, and all three have to land on the

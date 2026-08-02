@@ -769,9 +769,65 @@ groom, whose suite is not in §6's list, and it is the suite that caught the dri
 discovery fixture. Anyone working from §6 alone would have missed five real failures.
 Treat §6's list as a minimum, and run the suite of whatever package you touched.
 
-### 8. uid/gid host-usability
+### 8. uid/gid host-usability — **done**
 `core.sharedRepository`, umask, setgid — verified against a real container writing
 to a real host repo (§4.8).
+
+**As built.** `umask(0o002)` in the supervisor before the first child is spawned (a
+umask is inherited, not applied); `core.sharedRepository=group` and `chmod g+s` on
+the worktree root from the launcher, which runs *as the operator* — it is their repo,
+and it should be configured by something running as them. Set only when absent, and
+announced, because it persists and changes how their own git writes.
+
+#### §4.8's mechanism works; its stated reason is wrong
+
+Verified against a real container writing to a real host repo, as §4.8 demanded.
+Result: files `-rw-rw-r-- nobody:<yourgroup>`, directories `drwxrwsr-x`, and the host
+can write **and commit** into what the container produced — interleaved container
+commit → host commit → container commit, all succeeding, all visible to both.
+
+But the specific claim §4.8 flagged for verification does not hold. It said *"Git
+writes loose objects `0444` by default; `core.sharedRepository` is what relaxes
+that."* Measured: loose objects are `-r--r--r--` **with `core.sharedRepository=group`
+set**, for objects written by the container and by the host alike. `sharedRepository`
+does not relax object file modes.
+
+It does not need to. A loose object is immutable and content-addressed — nobody ever
+rewrites one, so `0444` is correct and sufficient. What has to be group-writable is
+the **directories** the objects land in (`drwxrwsr-x`) and the **refs**
+(`-rw-rw-r--`), and those are exactly what `sharedRepository` relaxes. The mechanism
+is right; the sentence explaining it was about the wrong file.
+
+#### The credentials read — the gap §4.8 never considered, now closed
+
+§4.8 reasoned entirely about writes. Reads broke first: `~/.claude/.credentials.json`
+is mode **600**, so uid 65534 cannot read it whatever the group is, and a live run as
+`65534:1000` died at `claude CLI exited with code 1: Not logged in`.
+
+Four options were weighed and **the operator chose staging**:
+
+| Option | Why not |
+|---|---|
+| `chmod 640` your real credentials | The CLI rewrites that file when it rotates the token and may restore `600` — so it breaks later, unpredictably |
+| Run the container as your uid | Reverts §4.1; gives the container your uid everywhere it is mounted |
+| Require `CLAUDE_CODE_OAUTH_TOKEN` | Works today, but the operator has to mint and manage a long-lived token |
+| **Stage a per-run copy** ✅ | Changes nothing the operator owns, and cannot rot |
+
+The launcher (running as the operator, so it *can* read the 600 file) does
+`install -m 640` into the run's worktree root and points `AGENT_CREDENTIALS_FILE`
+there; `compose.yaml` binds that instead, falling back to the real file for a
+container that does run as you. The copy is per-run and dies with `agent-clean`.
+A machine with no credentials file is skipped rather than failed, since
+`CLAUDE_CODE_OAUTH_TOKEN` is the other supported path.
+
+**Verified end to end as `65534:1000`:** credentials seeded, a real Claude turn
+completed (`✓ result received`), the run exited 0, the worktree came out
+`nobody:<yourgroup>` with the host able to commit into it — and the operator's own
+`~/.claude/.credentials.json` still `600 gabriel:gabriel`, untouched.
+
+**Gitignore gap closed on the way.** Item 5 started creating `.agents/worktrees/`,
+and farrier's `AGENTS_GITIGNORE_BLOCK` did not cover it — so a target repo could
+commit a second checkout of itself, and now also a copy of a credential. Added.
 
 ### 9. Docs
 `DOCKER.md:11` asserts the agent "works against its own clone (never a host working
