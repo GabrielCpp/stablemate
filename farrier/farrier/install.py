@@ -81,6 +81,7 @@ from farrier.outputs import (
     ensure_agents_gitignore,
     ensure_gitignore_entry,
     ensure_makefile_include,
+    expected_text,
     install_outputs,
     normalize_agents,
     remove_targets,
@@ -88,8 +89,11 @@ from farrier.outputs import (
     write_text,
 )
 from farrier.renderer import (
+    Rendered,
     Renderer,
+    asset_banner,
     local_instruction_banner,
+    read_asset_text,
     skill_metadata_block,
 )
 from farrier.scaffolds import (
@@ -103,7 +107,10 @@ from farrier.scaffolds import (
     substitute_scaffold_path,
 )
 from farrier.sources import (
+    ASSET_DIRS,
+    Asset,
     Source,
+    asset_owner,
     build_lookup,
     collect_selection,
     library_source_path,
@@ -115,11 +122,14 @@ from farrier.sources import (
     public_name,
     parse_scaffold_ids,
     selected_sources,
+    skill_assets,
 )
 from farrier.template_values import collect_template_values
 
 __all__ = [
     "AGENTS_GITIGNORE_BLOCK",
+    "ASSET_DIRS",
+    "Asset",
     "BASE_DIR_ENV",
     "BASE_LAYER_NAME",
     "config_path",
@@ -132,10 +142,13 @@ __all__ = [
     "Layer",
     "MAKEFILE_INCLUDE_END",
     "MAKEFILE_INCLUDE_MARKER",
+    "Rendered",
     "Renderer",
     "SCAFFOLD_TREE_FILE_KEYS",
     "Source",
     "TARGET_DIRS",
+    "asset_banner",
+    "asset_owner",
     "available_scaffold_ids",
     "banner_sources",
     "base_library_dir",
@@ -146,6 +159,7 @@ __all__ = [
     "ensure_agents_gitignore",
     "ensure_gitignore_entry",
     "ensure_makefile_include",
+    "expected_text",
     "fetch_scaffold_url",
     "find_agents_config",
     "find_in_layers",
@@ -172,6 +186,7 @@ __all__ = [
     "parse_scaffold_ids",
     "public_id",
     "public_name",
+    "read_asset_text",
     "read_config",
     "read_yaml",
     "relative_reference",
@@ -184,6 +199,7 @@ __all__ = [
     "searched_layers",
     "selected_sources",
     "set_layers",
+    "skill_assets",
     "skill_metadata_block",
     "source_id",
     "split_front_matter",

@@ -32,19 +32,26 @@ class Source:
     layer: Layer | None = None
 
 
-def library_source_path(source: Source) -> str:
-    """The source's path within the prompt library, for provenance banners.
+def library_path(path: Path, fallback: str) -> str:
+    """*path* anchored at the last ``library/`` segment, or *fallback*.
 
-    Anchored at the last ``library/`` segment so the result is machine-independent
-    (e.g. ``library/skills/go/go-qa/SKILL.md``) — identical across machines and
-    therefore stable under ``--check``. Falls back to ``source.rel`` if the path is
-    not under a ``library/`` tree (it always is for skills/prompts).
+    Machine-independent by construction (e.g. ``library/skills/go/go-qa/SKILL.md``) —
+    identical across machines and therefore stable under ``--check``.
     """
-    parts = source.path.parts
+    parts = path.parts
     if "library" in parts:
         idx = len(parts) - 1 - parts[::-1].index("library")
         return Path(*parts[idx:]).as_posix()
-    return source.rel
+    return fallback
+
+
+def library_source_path(source: Source) -> str:
+    """The source's path within the prompt library, for provenance banners.
+
+    Falls back to ``source.rel`` if the path is not under a ``library/`` tree (it
+    always is for skills/prompts).
+    """
+    return library_path(source.path, source.rel)
 
 
 def public_id(source: Source) -> str:
@@ -58,14 +65,86 @@ def public_name(prefix: str, source: Source) -> str:
     return f"{prefix}-{base}"
 
 
+#: Directories a skill may bundle beside its SKILL.md, shipped with it rather than
+#: installed as skills of their own. ``references/`` holds the long-form material a
+#: SKILL.md points at instead of inlining (examples, tables, snippets) so the always-
+#: loaded body stays short; ``scripts/`` holds the executables a procedure would
+#: otherwise ask the agent to retype.
+ASSET_DIRS = ("references", "scripts")
+
+
+@dataclass(frozen=True)
+class Asset:
+    """One file bundled with a skill, to be installed beside its SKILL.md.
+
+    *rel* is the path relative to the owning skill directory (``references/api.md``),
+    which is also its path relative to the generated SKILL.md — so a library author
+    links a reference with exactly the path they see on disk, in every adapter.
+    """
+
+    path: Path
+    rel: str
+
+    @property
+    def is_script(self) -> bool:
+        return self.rel.split("/", 1)[0] == "scripts"
+
+
+def asset_owner(root: Path, path: Path) -> Path | None:
+    """The skill directory owning *path*, or None if *path* is not a bundled asset.
+
+    A directory named ``references``/``scripts`` only means *assets* when it sits
+    directly inside a skill — i.e. its parent holds a SKILL.md. Anywhere else it is an
+    ordinary library directory that may legitimately contain skills, so the name alone
+    must not disqualify it.
+    """
+    rel = path.relative_to(root)
+    # rel.parts[:-1] — the filename itself is never an asset-dir marker.
+    for index, part in enumerate(rel.parts[:-1]):
+        if part in ASSET_DIRS:
+            owner = root.joinpath(*rel.parts[:index])
+            if (owner / "SKILL.md").is_file():
+                return owner
+    return None
+
+
+def skill_assets(source: Source) -> list[Asset]:
+    """Every file bundled under *source*'s ``references/``/``scripts/``, sorted.
+
+    Empty for a flat (non-SKILL.md) source: bundling is a property of the directory
+    form, and a flat ``foo.md`` has no directory of its own to bundle into.
+    """
+    if source.path.name != "SKILL.md":
+        return []
+    skill_dir = source.path.parent
+    assets: list[Asset] = []
+    for name in ASSET_DIRS:
+        directory = skill_dir / name
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.rglob("*")):
+            if path.is_file():
+                assets.append(
+                    Asset(path=path, rel=path.relative_to(skill_dir).as_posix())
+                )
+    return sorted(assets, key=lambda asset: asset.rel)
+
+
 def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
     sources: list[Source] = []
     # Load SKILL.md files (new open skill format: <name>/SKILL.md).
     # Also support flat *.md files for backwards compatibility during migration.
+    #
+    # Markdown under a skill's own references/ or scripts/ is skipped: it belongs to
+    # that skill and ships beside it (see skill_assets). Without this, splitting a long
+    # SKILL.md into references/ would silently register each fragment as a top-level
+    # skill of its own — competing for the library-wide-unique names farrier resolves by.
     for path in sorted(
         list(root.rglob("SKILL.md"))
         + [p for p in root.rglob("*.md") if p.name != "SKILL.md"]
     ):
+        if asset_owner(root, path) is not None:
+            continue
         rel = path.relative_to(root).as_posix()
         sources.append(
             Source(

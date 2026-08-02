@@ -18,8 +18,9 @@ The pull request for epic `{{ ci_epic }}` (branch `feat/{{ ci_epic }}`) is **fai
    - Reproduce locally with the repository's own bounded `make` targets where possible (e.g. format, lint, codegen drift, unit/integration tests). Every command you run must be wall-clock bounded (`timeout ...`), per the repo CLI conventions.
 3. **Fix the root cause**, not the symptom. Common CI failures here: generated-file drift (re-run codegen and commit the result), formatting (`make fmt`), failing tests, or build breaks. Keep the change minimal and scoped to what CI flagged — do not refactor unrelated code. This stage may not add or change a user-facing service, screen, component, command, endpoint, flow, concept, format, or other observable contract because no story documentation context exists here. If CI can only be fixed by changing such a contract, make no commit and report `failed` for operator/story-level resolution.
 4. **Verify locally** that the gate you fixed now passes (re-run the same bounded command).
-5. **Commit on the epic branch.** Stage and commit your fix with a clear message, e.g.:
-   `git add -A && git commit -m "{{ ci_epic }}: fix CI — <what you fixed>"`
+5. **Commit on the epic branch.** Stage and commit your fix with a **Conventional Commit** subject — releases in these repositories are cut by release-please, which reads commit subjects and nothing else, so a non-conforming subject ships to nobody. Use `fix` when the CI failure was a defect in the code, `chore` when it was generated-file drift, formatting or config, and scope it to the package you changed:
+   `git add -A && git commit -m "fix(<package>): <what you fixed>"` — e.g. `fix(api-service): reject an expired token instead of panicking`, `chore(web-app): regenerate the API client`.
+   Keep the subject ≤ 72 characters, lowercase after the colon, no trailing period; name the epic in the body if it helps (`Epic: {{ ci_epic }}`).
    Do **not** push and do **not** open/merge a PR — the workflow handles the push and re-check.
 
 If you cannot determine or fix the failure (e.g. the checks are unreadable, or the failure is infrastructure/flake outside the code), make no spurious commit and report `failed` with a short explanation — the workflow will retry or escalate.

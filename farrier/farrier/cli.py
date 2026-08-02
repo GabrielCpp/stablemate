@@ -151,6 +151,11 @@ def find_agents_config(start: Path) -> Path | None:
     return None
 
 
+#: Filenames farrier generates by aggregating skills into one always-loaded file
+#: (localInstructions). Only these resolve through the repo's live agents.yml.
+_LOCAL_INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "CODEX.md")
+
+
 def mapped_instruction_sources(generated: Path) -> list[str] | None:
     """Resolve a generated local-instruction file via its repo's agents.yml.
 
@@ -167,7 +172,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     the file is stale, and pointing at its old sources would invite edits that
     the next install silently discards.
     """
-    if generated.name not in ("CLAUDE.md", "AGENTS.md", "CODEX.md"):
+    if generated.name not in _LOCAL_INSTRUCTION_FILES:
         return None
     config_path = find_agents_config(generated.parent)
     if config_path is None:
@@ -222,6 +227,9 @@ def _run_source(args: argparse.Namespace) -> int:
     # Skills/commands stamp one source in front matter. Local instruction files
     # resolve through the repo's agents.yml — the live mapping — and only fall
     # back to their generation-time HTML banner when no agents.yml is found.
+    # A bundled markdown reference has no front matter of its own and is not a local
+    # instruction file either; its banner is its only provenance, and unlike a stale
+    # localInstructions mapping there is nothing live it could disagree with.
     rel_source = frontmatter_metadata(text).get("source")
     if rel_source:
         rel_sources = [rel_source]
@@ -229,7 +237,7 @@ def _run_source(args: argparse.Namespace) -> int:
         rel_sources = mapped_instruction_sources(generated)
         if rel_sources is None:
             rel_sources = banner_sources(text)
-            if rel_sources:
+            if rel_sources and generated.name in _LOCAL_INSTRUCTION_FILES:
                 print(
                     f"note: no agents.yml found above {args.file}; resolving from "
                     "the file's banner, which may be stale.",

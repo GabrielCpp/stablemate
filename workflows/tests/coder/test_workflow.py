@@ -48,7 +48,13 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder import workflow as coder_workflow
 from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
-from workhorse_workflows.coder.nodes.pr import flag_ci_failure, merge_pr, open_pr, open_story_pr
+from workhorse_workflows.coder.nodes.pr import (
+    _epic_pr_title,
+    flag_ci_failure,
+    merge_pr,
+    open_pr,
+    open_story_pr,
+)
 from workhorse_workflows.coder.shared.queue import (
     BLOCKED_FILE,
     SKIP_FILE,
@@ -395,6 +401,42 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
 
 
+def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The subjects the coder writes into somebody else's repo are release inputs.
+
+    Those repos cut releases with release-please, which reads commit subjects and nothing
+    else. `EPIC-0: STORY-1` parses as no type, so the story ships and the release never
+    names it — a silence that surfaces weeks later as a bug report against a version that
+    was supposed to contain the feature.
+
+    Two subjects, two types, and the difference between them is the point: the story's own
+    commit is a `feat` because a story is documented behavior that did not exist before,
+    while the status stamp moves a `status:` line and no code, so typing it as the story
+    would cut a second release for the act of recording the first.
+    """
+    repo = epic()
+    _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    subjects = _subjects(repo)
+    story = next(s for s in subjects if s.startswith("feat("))
+    stamp = next(s for s in subjects if "QA passed" in s)
+    assert story == "feat(acme): story STORY-1", story
+    assert stamp.startswith("docs(acme): "), stamp
+    # The epic and the story stay findable, in the body where they cannot reach a changelog.
+    bodies = subprocess.run(
+        ["git", "log", "--format=%b"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout
+    assert f"Epic: {EPIC}" in bodies, bodies
+    assert "Story: STORY-1" in bodies, bodies
+
+
 def test_a_fresh_run_drops_the_skip_state_a_previous_run_left_in_the_run_dir(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -611,6 +653,24 @@ def test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr(
     # The branch the PR was opened from is the one `branch_story` cut.
     assert _output(run_env, open_story_pr)["story_pr"] == "skipped"
     assert _head(repo) == _output(run_env, branch_story)["story_branch"]
+
+
+def test_the_epic_pr_title_is_the_subject_a_squash_merge_will_release(
+    epic: Callable[..., Path],
+) -> None:
+    """The title is not decoration: under squash-merge it *becomes* the merge commit.
+
+    GitHub uses the PR title as the squashed subject, so for an epic branch — which is
+    always bot-authored and usually squash-merged — this one string is everything
+    release-please gets to read about the epic. `Epic: EPIC-1` parses as no type.
+
+    Asserted directly on the builder because the node around it needs a reachable GitHub,
+    and every test in this file runs offline; the offline path leaves the branch for a
+    manual PR and never forms a title at all.
+    """
+    repo = epic()
+
+    assert _epic_pr_title(repo, EPIC) == "feat(acme): epic One"
 
 
 def test_the_epic_reaches_the_sub_flows_and_story_mode_passes_its_own(

@@ -281,9 +281,16 @@ class Fix(Workflow):
         repos from *this* fix's own plan context, via this iteration's `spec_dir`, so each
         commit covers exactly the repos its own plan touched. No push and no PR — this flow
         is standalone, and there is no epic branch for it to open one against.
+
+        `kind="fix"` is the one override of the story default: every item this flow drains
+        was *filed* — by a review, by QA, by an operator — against behavior that already
+        shipped. Committing those as `feat` would bump a minor version for a repair and
+        list the defect in the changelog's features.
         """
         seed = self.output(seed_fix_story)
-        result = self.call(commit_story, seed.epic, self._story.story_slug, self._story.spec_dir)
+        result = self.call(
+            commit_story, seed.epic, self._story.story_slug, self._story.spec_dir, kind="fix"
+        )
         return Continue(result, self.start)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────

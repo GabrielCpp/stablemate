@@ -37,7 +37,7 @@ from ostler import Ostler, markdown, model, path as okf_path, registry, select
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
-from workhorse_workflows.coder.shared import paths, story_status
+from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (
     BaseBranch,
@@ -831,7 +831,7 @@ def select_story(
 
 
 def _stamp_status(
-    logger: logging.Logger, root: Path, epic: str, slug: str, story_path: str, message: str
+    logger: logging.Logger, root: Path, epic: str, slug: str, story_path: str
 ) -> None:
     """Record `QA passed` on the story and commit just that change.
 
@@ -860,7 +860,17 @@ def _stamp_status(
             specs.append(str(path.resolve().relative_to(root.resolve())))
         except ValueError:
             logger.info("status file %s is outside %s — not committing it here", path, root)
-    if specs and commit_paths(root, f"{message} [{DONE_STATUS}]", *specs):
+    # `docs`, not the story's own `feat`: this commit moves a status line and no code, and
+    # typing it as the story would bump a version for the act of recording that the story
+    # passed — a second release for work the story's own commit already released.
+    stamp = commits.message(
+        "docs",
+        commits.scope(root.name),
+        f"mark {slug} {DONE_STATUS}",
+        epic=epic,
+        story=slug,
+    )
+    if specs and commit_paths(root, stamp, *specs):
         logger.info("recorded %s for %s", DONE_STATUS, slug)
 
 
@@ -873,6 +883,7 @@ def commit_story(
     story_path: str = "",
     repo_dir: str = "",
     workspace_file: str = "",
+    kind: str = "feat",
 ) -> StoryCommitted:
     """Commit a completed story's changes in each affected code repo, then stamp it passed.
 
@@ -887,15 +898,20 @@ def commit_story(
     never reads as complete. The stamp happens AFTER the code commits, so `committed`
     measures the story's WORK and nothing else, and so a crash between the two leaves the
     story un-stamped — retried — rather than marked done with no work behind it.
+
+    `kind` is the Conventional Commit type these commits carry, and it defaults to `feat`
+    because that is what a story is: documented behavior that did not exist before. The one
+    caller that overrides it is the fix drain, whose items are filed defects — see
+    `commits` for why the type is not guessed per story.
     """
     slug = story_slug or "story"
-    # The epic's sequence number is a folder-ordering device, not part of its name: a subject
-    # line reads `fixes: <story>`, whether the caller handed us `fixes` or `0004-fixes`.
-    epic_name = registry.epic_slug(epic)
-    message = f"{epic_name}: {slug}" if epic_name else slug
-
     root = find_repo_root(repo_dir)
     repos = resolve_workspace(workspace_file, repo_dir)
+
+    # The epic's sequence number is a folder-ordering device, not part of its name, so the
+    # trailer reads `Epic: fixes` whether the caller handed us `fixes` or `0004-fixes`.
+    epic_name = registry.epic_slug(epic) or epic
+    description = commits.story_description(root, story_path, slug)
 
     spec = root / spec_dir if spec_dir else None
     plan_ctx = (
@@ -905,11 +921,19 @@ def commit_story(
     )
     affected = get_affected_repos(plan_ctx, repos)
 
+    # Each repo's commit is scoped to that repo's own name, because that is the name its
+    # release-please config knows the package by — one story touching three repos produces
+    # three subjects, each releasing the component it actually changed.
+    def _story_message(package: str) -> str:
+        return commits.message(
+            kind, commits.scope(package), description, epic=epic_name, story=slug
+        )
+
     if not affected:
         # No plan-context.json or no services in it — commit in the resolved root (the
         # single-repo / no-workspace-file case, and test sandboxes with no seeded plan).
         logger.info("no affected repos resolved from plan-context — falling back to the repo root")
-        any_committed = bool(commit_all(root, message))
+        any_committed = bool(commit_all(root, _story_message(root.name)))
         if any_committed:
             logger.info("committed in %s", root.name)
     else:
@@ -922,11 +946,11 @@ def commit_story(
             if not (repo_path / ".git").exists():
                 logger.warning("repo %s is not a git repo — skipping", name)
                 continue
-            if commit_all(repo_path, message):
+            if commit_all(repo_path, _story_message(name)):
                 logger.info("committed in %s", repo_path.name)
                 any_committed = True
 
-    _stamp_status(logger, root, epic, slug, story_path, message)
+    _stamp_status(logger, root, epic, slug, story_path)
     return StoryCommitted(committed=any_committed)
 
 
@@ -995,7 +1019,23 @@ def flag_qa_failure(
     # clearing it.
     _record_skip(run_dir, slug)
 
-    committed = bool(commit_all(root, f"{epic}: {slug} {marker}"))
+    # Still `feat`: whatever the marker says about its QA, this commit carries the story's
+    # implementation, and a reviewer who merges it ships that code. Typing the give-up
+    # `chore` to dodge a version bump would ship the feature with no release naming it —
+    # the exact silence this format exists to prevent.
+    committed = bool(
+        commit_all(
+            root,
+            commits.message(
+                "feat",
+                commits.scope(root.name),
+                slug,
+                marker=marker,
+                epic=epic,
+                story=slug,
+            ),
+        )
+    )
     if not committed:
         logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
 
@@ -1054,7 +1094,21 @@ def flag_docs_block(
     )
     _record_skip(run_dir, slug)
 
-    committed = bool(commit_all(root, f"{epic}: {slug} {marker}"))
+    # `feat` for the same reason as the QA give-up: the marker qualifies the story, it does
+    # not remove the story's code from the commit.
+    committed = bool(
+        commit_all(
+            root,
+            commits.message(
+                "feat",
+                commits.scope(root.name),
+                slug,
+                marker=marker,
+                epic=epic,
+                story=slug,
+            ),
+        )
+    )
     if not committed:
         logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
 

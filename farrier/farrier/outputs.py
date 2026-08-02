@@ -42,9 +42,28 @@ TARGET_DIRS = [
 ]
 
 
+def expected_text(content: str) -> str:
+    """The exact bytes *content* installs as — the one place the rule is stated.
+
+    ``--check`` compares against what ``write_text`` would write, so the two must agree
+    by construction rather than by both remembering to ``rstrip``. Verbatim outputs
+    (bundled scripts and non-markdown references) are exempt: their trailing whitespace
+    is theirs, and a here-doc or fixture that ends in a blank line means it.
+    """
+    if getattr(content, "verbatim", False):
+        return content
+    return content.rstrip() + "\n"
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
+    path.write_text(expected_text(content), encoding="utf-8")
+    # A bundled script exists to be run, and a skill that says `./scripts/check.sh`
+    # is wrong the moment the installed copy is not executable. Mirrors chmod +x
+    # for the owner/group/other read bits already on the file.
+    if getattr(content, "executable", False):
+        mode = path.stat().st_mode
+        path.chmod(mode | ((mode & 0o444) >> 2))
 
 
 def normalize_agents(config: dict[str, Any]) -> dict[str, bool]:
@@ -209,10 +228,14 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
     changed: list[str] = []
     extra: list[str] = []
     for path, content in outputs.items():
-        expected = content.rstrip() + "\n"
+        expected = expected_text(content)
         if not path.exists():
             missing.append(path.relative_to(repo).as_posix())
         elif path.read_text(encoding="utf-8") != expected:
+            changed.append(path.relative_to(repo).as_posix())
+        elif getattr(content, "executable", False) and not path.stat().st_mode & 0o111:
+            # Identical text but not runnable — a `./scripts/x.sh` in a skill fails at
+            # the shell, so --check has to call it out rather than report the repo current.
             changed.append(path.relative_to(repo).as_posix())
 
     # Neither `.agents/workflows` nor `.agents/local.compose.yaml` is scanned. Farrier

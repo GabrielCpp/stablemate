@@ -292,8 +292,9 @@ def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
     assert BULLET not in _backlog(docs), _backlog(docs)
     assert "## Filed by coder" in _backlog(docs)
 
-    # And the change was committed in the repo the plan named, with no push and no PR.
-    assert _log_of(workspace["api"])[0] == f"fixes: {SLUG}"
+    # And the change was committed in the repo the plan named, with no push and no PR — as a
+    # Conventional Commit `fix` scoped to that repo, because release-please reads the subject.
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
     assert (workspace["api"] / "pagination.go").is_file()
 
 
@@ -323,7 +324,7 @@ def test_the_drain_keeps_going_until_the_section_is_empty(
     assert agent.counts()["qa-fix-item"] == 2, agent.counts()
     assert "widget-pagination" not in _backlog(docs), _backlog(docs)
     assert "mobile-pagination" not in _backlog(docs), _backlog(docs)
-    assert len([line for line in _log_of(workspace["api"]) if line.startswith("fixes:")]) == 2
+    assert len([line for line in _log_of(workspace["api"]) if line.startswith("fix(api):")]) == 2
 
 
 # --------------------------------------------------------------------------- the two flags
@@ -526,7 +527,7 @@ def test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit(
     # The sub-flow was handed this iteration's story and its self-created bucket.
     assert agent.args_for("document-story")[0]["story_path"].endswith("story.md")
     # And the commit is downstream of it: documentation gates the commit, not the reverse.
-    assert _log_of(workspace["api"])[0] == f"fixes: {SLUG}"
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
 
 
 def test_documentation_that_cannot_converge_fails_the_run_before_the_commit(
@@ -552,7 +553,7 @@ def test_documentation_that_cannot_converge_fails_the_run_before_the_commit(
     with pytest.raises(WorkflowFailed):
         drive_flow(Fix(), env(), agent)
 
-    assert "fixes:" not in "".join(_log_of(workspace["api"]))
+    assert "fix(api):" not in "".join(_log_of(workspace["api"]))
     assert BULLET not in _backlog(docs), _backlog(docs)
 
 
