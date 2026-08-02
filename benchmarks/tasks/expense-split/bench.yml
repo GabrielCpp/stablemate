@@ -56,6 +56,12 @@ budget:
   author: 1500
   coder: 11000
 
+# Says out loud what the paragraph above works out: this task does not claim the hour. The
+# task set's other specs still do, and are still held to it.
+over_hour: >-
+  five stories at ~2000s each. Shrinking the bullet count to fit the hour would remove the
+  loop failures the bullet count exists to expose.
+
 checks:
   - name: build
     cmd: cd api && go build ./...

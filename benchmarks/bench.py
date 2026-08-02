@@ -178,6 +178,11 @@ class Spec:
     #: A `power.<level>.<backend>` overlay for the runs this spec drives — the tier the
     #: benchmark is *meant* to be run at, as spec data rather than machine state.
     power: dict = field(default_factory=dict)
+    #: Why this task deliberately budgets past the hour the task set otherwise promises
+    #: (`over_hour: "a full five-story run, so the loop failures are reachable"`). Prose,
+    #: because the only thing worth recording is the reason. Empty means the task claims
+    #: the hour and is held to it.
+    over_hour: str = ""
 
     @property
     def logs(self) -> Path:
@@ -244,6 +249,7 @@ def load_spec(path: Path) -> Spec:
         judge=raw.get("judge") or {},
         budget=raw.get("budget") or {},
         power=raw.get("power") or {},
+        over_hour=raw.get("over_hour") or "",
     )
 
 
