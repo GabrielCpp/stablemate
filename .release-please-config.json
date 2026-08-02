@@ -19,7 +19,7 @@
     { "type": "chore", "section": "Miscellaneous Chores", "hidden": true }
   ],
   "packages": {
-    "workhorse": { "component": "workhorse-agent" },
+    "workhorse": { "component": "workhorse-agent", "release-as": "1.0.0" },
     "workflows": { "component": "workhorse-workflows" },
     "farrier": { "component": "farrier" },
     "ostler": { "component": "ostler" },
