@@ -41,6 +41,19 @@ services:
       # distribution baked into the image — there is no generic runner to point at
       # a mounted workflow, so nothing is mounted for it.
       WORKFLOW: ${WORKFLOW:-coder}
+
+      # This run's identity, minted by the launcher (agents.mk) as a UUID per
+      # launch and passed to workhorse as --run-id. Without it every container
+      # derives the SAME id: workhorse falls back to a digest of the run params,
+      # and in a container those are identical every time (same cwd, same
+      # defaults), so a second run resumes — or deletes — the first's run dir.
+      #
+      # Compose interpolates this at container-CREATE time, so the value is baked
+      # into the container config: `docker restart` re-enters with the same id and
+      # resumes from the checkpoint, while a fresh launch mints a new one. Empty
+      # means "let workhorse decide", i.e. the pre-concurrency behavior.
+      AGENT_RUN_ID: ${AGENT_RUN_ID:-}
+
       # Write run artifacts to the persistent named volume (survives reboots).
       AGENT_RUNS_DIR: /runs
       # The CLI binary lives in a read-only system path; don't let it self-update.

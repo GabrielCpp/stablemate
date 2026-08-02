@@ -145,6 +145,9 @@ ENV HOME=/claude-state
 #   CLAUDE_CODE_OAUTH_TOKEN  long-lived token from `claude setup-token` (skips the file seed)
 #   WORKFLOW                 name of an installed workflow, e.g. coder — the entrypoint
 #                            runs its console script (`workhorse-coder run …`)
+#   AGENT_RUN_ID             this run's identity, passed on as --run-id. The launcher
+#                            mints a UUID per launch; without it every container
+#                            derives the same id and they collide on one run dir.
 #   AGENT_RUNS_DIR           artifact output dir  (compose sets /runs)
 # Bedrock alternative: set CLAUDE_CODE_USE_BEDROCK=1 + AWS_PROFILE and mount ~/.aws (see compose.yaml).
 

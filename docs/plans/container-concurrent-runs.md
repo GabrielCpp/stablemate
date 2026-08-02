@@ -306,7 +306,7 @@ to a real host repo, not an assertion.
 
 ## 5. Work items, in order
 
-### 1. Launcher: farrier-generated run targets
+### 1. Launcher: farrier-generated run targets — **done**
 `render_agents_mk()` takes no arguments and emits only `agent-install`/`agent-check`
 (`launcher.py:32`) — run targets were deleted when workflows left farrier's scope.
 They return, driven by pipx discovery (item 4).
@@ -317,6 +317,43 @@ and exports `AGENT_UID=65534`, `AGENT_GID=$(shell id -g)`.
 
 Depends on item 4 for *what* to generate targets for; the target *shape* is
 testable first against a fixed list.
+
+**As built.** `render_agents_mk(workflows: Sequence[str] = ())`. Item 4 will pass the
+discovered names; the empty default renders the adapter-only launcher, which is
+also exactly what "discovery found nothing" must render as — so the no-workflow case
+is not a placeholder, it is the real behavior §8.2 asks for. Kept the plan's
+ordering: a list of names was all item 1 needed, and widening it to richer
+discovery records later is mechanical.
+
+Four decisions worth the next reader's time:
+
+- **Per-run volumes come from the compose *project name*, not from compose.yaml.**
+  `docker compose -p <workflow>-<runid>` namespaces every named volume by project,
+  so `workspace`/`claude-state`/`runs` become per-run with *no* change to
+  compose.yaml's `volumes:` block. §4.7's table asked for per-run volumes without
+  saying how; this is how, and it costs nothing.
+- **The operating handle is the project, not the container name.** §4.7's table says
+  container `<workflow>-<runid>`; compose actually names it
+  `<workflow>-<runid>-agent-1`. Setting `container_name:` to force the shorter form
+  was rejected — the project name already keys the volumes *and* the container, so
+  one handle addresses everything a run owns. `RUN=<workflow>-<runid>` is that
+  handle.
+- **Worktree creation moved to item 5.** §5.1 lists it here, but nothing consumes a
+  worktree until `kit/workspace.py` learns `--source-mode worktree`. A `mkdir` and a
+  bind mount that no process reads is churn, and would have had to be re-shaped
+  once item 5 settled the flag names. Item 1 owns UUID + project + uid/gid + run id.
+- **§3.1's fix landed here rather than waiting for the supervisor.** `compose.yaml`
+  gained `AGENT_RUN_ID: ${AGENT_RUN_ID:-}` and `entrypoint.sh` forwards it as
+  `--run-id`. Item 2 re-homes that line into the supervisor; doing it now is what
+  makes item 1 verifiable end-to-end instead of a rendered string. Compose
+  interpolates at container-*create* time, so the id is baked into the container
+  config and `docker restart` resumes the same run — the restart semantics §3.1
+  wanted, for free.
+
+**Added beyond §5.1:** `agent-runs` / `agent-logs` / `agent-stop` / `agent-clean`,
+each addressing one run by `RUN=`. With N runs in flight there is otherwise no way
+to find, follow or stop one; `agent-stop` deliberately leaves the volumes so
+`docker restart` resumes, and `agent-clean` is the destructive `down -v`.
 
 ### 2. Supervisor (`workhorse/supervisor.py`), replacing entrypoint.sh
 Add `init: true` first — that is the whole reaping/signal story. Then port the 17

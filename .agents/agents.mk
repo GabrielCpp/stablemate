@@ -9,11 +9,12 @@
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
 #
-# To run a workflow, install its package and call workhorse directly:
+# No containerized run targets: no workflow distribution is installed here. Install
+# one (`uv tool install workhorse-workflows`) and re-run `make agent-install`; a
+# target appears per discovered workflow. To run one directly, without a container:
 #
-#   uv tool install workhorse-workflows
-#   workhorse run <name> --dry-run     # static preflight, drives nothing
-#   workhorse run <name>
+#   workhorse-<name> run --dry-run     # static preflight, drives nothing
+#   workhorse-<name> run
 
 AGENTS_DIR     ?= $(shell farrier config show library_dir)
 # Public stablemate checkout (holds the farrier installer source). Needed only
