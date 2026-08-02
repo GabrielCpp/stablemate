@@ -127,8 +127,9 @@ RUN uv sync --frozen --package workhorse-agent --package ostler \
     && chmod -R a+rwX /app /workspace /runs /claude-state \
     && chmod -R a+rX /opt/uv-python
 
-COPY workhorse/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# The supervisor arrives with `COPY workhorse/` above — it is a sibling of the
+# Dockerfile, not a distribution file, and it runs under the venv's interpreter so
+# it can call the workspace checkout in-process rather than spawning a second one.
 
 USER nobody
 ENV HOME=/claude-state
@@ -151,4 +152,6 @@ ENV HOME=/claude-state
 #   AGENT_RUNS_DIR           artifact output dir  (compose sets /runs)
 # Bedrock alternative: set CLAUDE_CODE_USE_BEDROCK=1 + AWS_PROFILE and mount ~/.aws (see compose.yaml).
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Not PID 1: compose's `init: true` puts Docker's bundled tini there, so zombie
+# reaping and signal delivery come from a C binary rather than from this process.
+ENTRYPOINT ["/app/.venv/bin/python", "/app/workhorse/supervisor.py"]

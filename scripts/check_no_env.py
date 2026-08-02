@@ -10,7 +10,7 @@ the operator contract ends up split across two spellings that no test compares.
 
 Everything a workflow needs is therefore an argument or a workflow parameter. The
 process boundary is where the environment legitimately lives: `workhorse/cli/run.py` and
-`workhorse/entrypoint.sh` translate `$FOO` into `--params` once, on the way in.
+`workhorse/supervisor.py` translate `$FOO` into `--params` once, on the way in.
 
 One allowlist entry, and it is a security property rather than an exemption:
 `kit/credentials.py` resolves tokens from the environment **because** a secret must never

@@ -14,6 +14,10 @@ services:
     # The image makes /workspace, /runs and /claude-state world-writable so a
     # fresh named volume is usable under any uid (see Dockerfile).
     user: "${AGENT_UID:-65534}:${AGENT_GID:-65534}"
+    # Docker's bundled tini as PID 1, with the supervisor as its child. Zombie
+    # reaping and signal delivery are the fiddly part of being PID 1 and there is no
+    # reason to own them — this is that, from a battle-tested C binary, in one line.
+    init: true
     extra_hosts:
       # Lets the container's groom-sidecar (installed as an editable uv tool from
       # the /mnt/groom-src bind below) reach a `groom` dashboard on the host.
@@ -28,7 +32,7 @@ services:
     environment:
       # ── Auth: Claude subscription (Claude.ai OAuth) is the DEFAULT ─────────────
       # Credentials are seeded once from the host's ~/.claude/.credentials.json
-      # into the persistent claude-state volume by entrypoint.sh; the CLI then
+      # into the persistent claude-state volume by supervisor.py; the CLI then
       # refreshes/rotates the token in-volume across runs and reboots.
       #
       # Optional: skip the file seed and use a long-lived OAuth token instead.
@@ -89,14 +93,14 @@ services:
       # Optional: host directory containing a .code-workspace file, for
       # multi-repo runs (or non-git sibling folders that can't be cloned — see
       # workhorse/scriptutil.py's checkout_workspace()). Uncomment and set
-      # WORKSPACE_DIR_HOST; point the workspace-file env var (e.g.
-      # CODER_WORKSPACE) at this mount's target below, not the host path.
+      # WORKSPACE_DIR_HOST, then point AGENT_PARAM_WORKSPACE_FILE at this mount's
+      # target below, not at the host path.
       # - type: bind
       #   source: ${WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}
       #   target: /mnt/workspace-host
 
       # groom-sidecar source (the `pipx install --editable` model). groom is NOT
-      # baked into the image; entrypoint.sh installs it as an editable uv tool
+      # baked into the image; supervisor.py installs it as an editable uv tool
       # from this bind, so the running sidecar imports the host source live — an
       # edit reaches it via a `reload` over the socket (or a `docker restart`)
       # with no image rebuild. Omit this bind and the container runs without a

@@ -77,7 +77,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 ├── tests/                     # Standalone test files (see below)
 ├── compose.yaml               # Service, env, mounts, named volumes
 ├── Dockerfile                 # Ubuntu + uv + Claude CLI + the controller package
-├── entrypoint.sh              # Non-root auth seeding, checkout, exec `workhorse`
+├── supervisor.py              # Container preflight + two-child supervision (not shipped)
 ├── Makefile                   # install / test / build / publish tasks (`make help`)
 ├── pyproject.toml             # Python deps (jinja2, pydantic); the lock is the workspace's
 ├── README.md                  # What workhorse is, install, and the CLI (the PyPI page)
@@ -206,7 +206,7 @@ them keeps agent context accurate too.
 
 ## Editing the container
 
-The repo ships a Docker harness (`Dockerfile`, `compose.yaml`, `entrypoint.sh`)
+The repo ships a Docker harness (`Dockerfile`, `compose.yaml`, `supervisor.py`)
 for isolated unattended runs. It is not part of the PyPI package; its build/run
 workflow — including rebuilding the image after controller or `pyproject.toml`
 changes — is documented in [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).

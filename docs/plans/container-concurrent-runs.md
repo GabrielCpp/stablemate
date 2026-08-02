@@ -355,7 +355,7 @@ each addressing one run by `RUN=`. With N runs in flight there is otherwise no w
 to find, follow or stop one; `agent-stop` deliberately leaves the volumes so
 `docker restart` resumes, and `agent-clean` is the destructive `down -v`.
 
-### 2. Supervisor (`workhorse/supervisor.py`), replacing entrypoint.sh
+### 2. Supervisor (`workhorse/supervisor.py`), replacing entrypoint.sh — **done**
 Add `init: true` first — that is the whole reaping/signal story. Then port the 17
 responsibilities from §2.1 as ~150 lines of asyncio: two children with distinct
 restart policies, exit-code propagation, SIGTERM forwarding. Preflight calls
@@ -364,6 +364,71 @@ restart policies, exit-code propagation, SIGTERM forwarding. Preflight calls
 **Write the observer-absent test first** — the workflow must run correctly with the
 observer child missing or crashed. That test is what keeps groom optional (§4.4).
 Delete the dead hook branch (§2.1 #9) rather than porting it.
+
+**As built.** `workhorse/supervisor.py` + `workhorse/tests/test_supervisor.py`;
+`entrypoint.sh` deleted, `ENTRYPOINT` is now the venv's interpreter on the
+supervisor, `init: true` is on the service. All 17 responsibilities are re-homed;
+#9's dead hook branch was deleted, not ported.
+
+**Verified in the real container, not by asserting on a string.** `ps -ef` inside a
+running container shows `/sbin/docker-init` at pid 1 with the supervisor as its
+child, so `init: true` does what §4.3 said it would. Better still, the run that
+verified this had its **observer crash on startup** for an unrelated reason
+(below) — so the guarantee item 2 exists for was demonstrated rather than mocked:
+the supervisor logged `observer exited with 1; not restarting it`, the workflow ran
+to completion, and exit 0 propagated. The run landed in `/runs/coder-v3` from
+`--run-id v3`, which is §3.1 closed end to end.
+
+Three corrections to §4, each found by running it:
+
+- **§4.2's "net deletion" does not hold — the one-shot exit push stays.** The claim
+  was that `--exit-code` exists only because the sidecar is not the parent, and
+  collapses into `await proc.wait()`. Being the parent tells the *supervisor* the
+  exit code; it does not tell *groom*, and the sidecar's only channel to groom is
+  the WebSocket the sidecar itself holds. Removing the one-shot would mean inventing
+  a supervisor→observer channel: more code, not less. It is ported as-is, as a
+  best-effort spawn under a timeout that can never change the container's exit
+  status.
+- **The workflow script is addressed by path, not by name.** The image never put
+  `/app/.venv/bin` on `$PATH`; `entrypoint.sh` hid that behind `uv run`, which
+  resolves it at the cost of a step on every start. A bare `workhorse-coder`
+  therefore resolved to nothing. The supervisor uses the sibling of its own
+  interpreter — it already knows which environment it imported the workflow package
+  from — and refuses with `no such workflow: <name> (looked for <path>)` when the
+  image does not carry it.
+- **`CODER_WORKSPACE` / `CODER_DOCS_PATH` are gone, replaced by `AGENT_PARAM_<NAME>`.**
+  §7 forbids a workflow's field names anywhere in `workhorse/**`, and the supervisor
+  lives there — porting that `printf` verbatim would have written `coder`'s
+  vocabulary into the harness. The prefix is the parameterised primitive §7 asks
+  for: `AGENT_PARAM_DOCS_PATH=/docs` becomes `{"docs_path": "/docs"}`, and any
+  workflow's params are expressible without this file knowing that workflow exists.
+  The checkout's workspace file now comes from the same resolved params rather than
+  a second variable, so a run and its own checkout cannot disagree about the
+  manifest. **This is a breaking change for an operator with `CODER_WORKSPACE` set**
+  — item 9 owns saying so in DOCKER.md.
+
+**Added beyond §5.2:** `faulthandler.register(SIGUSR1)`. A wedged supervisor in an
+unattended container was otherwise undiagnosable — no debugger is installed and `ps`
+only says the process exists. `docker kill --signal=SIGUSR1 <container>` now dumps
+its stack to the container log. (Written while diagnosing exactly that.)
+
+**Two defects found, neither in scope here:**
+
+1. **The uid decision (§4.1/§4.8) cannot read the credentials mount.**
+   `~/.claude/.credentials.json` is mode `600`, owned by the operator. A container
+   running as `65534:<host gid>` cannot read it — group access does not help at
+   `600` — so the first real run died on `PermissionError`. The supervisor now warns
+   with an actionable message instead of a traceback, but **the uid choice itself is
+   unresolved**: either the operator relaxes that file's mode, or the container runs
+   as the operator's uid after all (which is what compose did before §4.1 changed
+   it), or the launcher pre-stages a group-readable copy. **Item 8 must decide**;
+   §4.8 only ever considered writes.
+2. **groom's sidecar cannot import under `--no-sources`.** `groom/gates.py` does
+   `from workhorse import gates`, but the isolated tool venv resolves
+   `workhorse-agent` from **PyPI**, and the released 0.8.0 has no `gates` module —
+   only this tree does. So the sidecar has been dying on startup in every container,
+   silently, because the old shell discarded its stdout. Pre-existing and unrelated
+   to this plan; item 3 rebuilds this install path and is where it gets fixed.
 
 ### 3. Generation-copy install + reload
 The `/mnt/<pkg>-src` → `/opt/live/<pkg>/<gen>` mechanism (§4.5), shared by groom and

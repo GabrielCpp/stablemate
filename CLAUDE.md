@@ -54,7 +54,7 @@ A value read from the environment is in no checkpoint (so a resume silently take
 different one) and in no telemetry, and `--params` cannot set it.
 
 The process boundary is where the environment belongs, and it is outside that package:
-`workhorse/cli/run.py` and `workhorse/entrypoint.sh` translate `$FOO` into `--params`
+`workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$FOO` into `--params`
 once, on the way in. The one allowlisted module is `kit/credentials.py`, and for the
 opposite reason — a secret must *never* become a checkpointed `--param`.
 

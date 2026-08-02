@@ -64,7 +64,7 @@ unreachable from the CLI — `--params` cannot set it — which splits the opera
 across two spellings that no test compares.
 
 The **process boundary** is where the environment legitimately lives, and it is outside
-this package: `workhorse/cli/run.py` and `workhorse/entrypoint.sh` translate `$FOO` into
+this package: `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$FOO` into
 `--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
 of them reading `AGENT_REPO_DIR`.
 
