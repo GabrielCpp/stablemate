@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from farrier import layers as _layers
+from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
     ConfigVersionError,
     config_path,
@@ -438,10 +439,62 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
 
+    # workflows
+    workflows_p = sub.add_parser(
+        "workflows",
+        help="List the workflows installed on this machine (from pipx)",
+    )
+    workflows_p.add_argument(
+        "--names",
+        action="store_true",
+        help="Print just the names, space-separated — the form the generated "
+             "launcher reads at make time.",
+    )
+
     # version
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
+
+
+def _run_workflows(args: argparse.Namespace) -> int:
+    """`farrier workflows` — what this machine can run, and where it came from.
+
+    `--names` is the machine-readable form, and it is why this command exists: the
+    generated launcher resolves its run targets by calling it at **make** time
+    rather than having farrier bake the list into `.agents/agents.mk`. A baked list
+    would be a tracked file whose content differs per developer — and, for a local
+    install, one carrying somebody's home directory into the repo.
+    """
+    found = pipx.discover()
+
+    if args.names:
+        # Space-separated on one line: make's `$(shell …)` collapses newlines to
+        # spaces anyway, and this keeps the empty case an empty line rather than a
+        # stray one.
+        print(" ".join(pipx.names(found)))
+        return 0
+
+    if not found:
+        print(
+            "No workflows installed. Install a workflow distribution "
+            "(e.g. `pipx install workhorse-workflows`) and they appear here."
+        )
+        return 0
+
+    for dist in found:
+        origin = dist.origin or "?"
+        if dist.local_path is not None:
+            origin = f"{dist.local_path}{' (editable)' if dist.editable else ''}"
+            if dist.missing:
+                origin += "  ** source directory is gone **"
+        print(f"{dist.distribution} {dist.version}  <- {origin}")
+        for workflow in dist.workflows:
+            print(f"    {workflow}")
+
+    # A stale editable install is worth an exit code: it still *runs* here, so
+    # nothing else will report it until a container tries to bind the path.
+    return 1 if any(dist.missing for dist in found) else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -452,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
     # Keep `farrier --repo .` working: if no recognised subcommand is given,
     # inject `install` so existing invocations are unchanged.
     # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"install", "config", "version", "source", "scaffold"}
+    _SUBCOMMANDS = {"install", "config", "version", "source", "scaffold", "workflows"}
     if argv and argv[0] in ("-h", "--help"):
         pass  # let the top-level parser handle it
     elif not argv or argv[0] not in _SUBCOMMANDS:
@@ -472,6 +525,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "scaffold":
         return _run_scaffold(args)
+
+    if args.command == "workflows":
+        return _run_workflows(args)
 
     return _run_install(args)
 

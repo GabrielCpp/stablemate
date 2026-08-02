@@ -480,13 +480,85 @@ same run the sidecar started cleanly and survived to teardown (`observer exited 
 socket. The supervisor's half is tested (restage-then-restart, and a raising refresh
 still restarting on the old generation); groom's half is unchanged by this item.
 
-### 4. pipx discovery in farrier
+### 4. pipx discovery in farrier — **done**
 Read `pipx list --json`; classify PyPI vs local; emit what the launcher must mount
 and install. Flag an editable local install whose path no longer exists.
 
 Per §8.2 the discovered set is authoritative — there is no selection list to
 reconcile against. `agents.yml` supplies only per-workflow settings, so a workflow
 with no entry there is still runnable on defaults.
+
+**As built.** `farrier/farrier/pipx.py` + a `farrier workflows [--names]` subcommand,
+`farrier/tests/test_pipx.py`, and `farrier/tests/test_launcher_make.py` (real `make`
+against the rendered launcher).
+
+#### The reversal: discovery happens at *make* time, not at render time
+
+**Item 1 assumed farrier would bake the discovered list into `.agents/agents.mk`.
+That is wrong, and item 1's `render_agents_mk(workflows)` parameter is gone.**
+
+`.agents/agents.mk` is **tracked** — farrier's gitignore block (`outputs.py:313`)
+deliberately excludes it while ignoring the context manifests. The installed pipx set
+is a property of the *machine*. Baking one into the other gives you a tracked file
+that differs per developer, churns on every `pipx install`/`uninstall`, fails
+`make agent-check` on any machine whose set differs — and, for a workflow installed
+from a local path, commits somebody's home directory into a **public** repo.
+
+So the rendered file is byte-identical everywhere and asks at parse time:
+
+```make
+ifneq ($(filter agent-run-%,$(MAKECMDGOALS)),)
+AGENT_WORKFLOWS := $(shell $(FARRIER) workflows --names)
+$(foreach wf,$(AGENT_WORKFLOWS),$(eval $(call agent_run_target,$(wf))))
+endif
+```
+
+Three things this buys, each deliberate:
+
+- **Real targets, not a pattern rule.** `$(eval)` generates `agent-run-coder` as an
+  actual target, so `make agent-run-typo` gets make's own *No rule to make target*.
+  An `agent-run-%` pattern rule matches anything and would launch a container for a
+  workflow that does not exist. §8.2 asked for "a target per discovered workflow";
+  this is that, without writing the names down.
+- **Gated on the goal.** `farrier workflows` shells out to pipx (~0.4s measured, plus
+  interpreter start). This file is `include`d by the repo's root Makefile, so an
+  unconditional `$(shell …)` would tax every `make <anything>`. A test asserts `make
+  help` succeeds with `FARRIER=/nonexistent-binary`.
+- **`agent-workflows`** is the human surface, since the run targets no longer show up
+  in `make help` (which greps the file). It prints each distribution, its version,
+  and where it was installed from.
+
+Other decisions:
+
+- **Classification is by shape, not by existence.** A local install whose directory
+  was deleted still classifies as local and reports `missing`, rather than falling
+  through to "looks like a PyPI name" — which would have the container try to
+  `pip install /home/dev/gone`. `farrier workflows` exits 1 when any install is
+  stale, because nothing else reports it until a container fails on the mount.
+- **`workhorse-agent` and `workhorse-workflows` match the script prefix but are not
+  workflows**, so they are excluded by name. `stablemate-library` needs no exclusion —
+  it exposes no apps at all.
+- **Every failure path returns an empty list.** No pipx, a non-zero exit, unparseable
+  JSON, a renamed key after a pipx upgrade: the honest answer from inside a Makefile
+  is "no workflows are discoverable", never a traceback in the middle of `make`.
+
+**Verified with real `make`,** not by asserting on the rendered string: the file
+parses, a discovered name becomes a target that reaches `docker compose` with the
+right `WORKFLOW`, a hyphenated name (`okf-builder`) survives `$(eval)`'s re-parse, an
+undiscovered name fails, and an unrelated target never invokes discovery. The
+`--names` output was also checked against this machine's actual `pipx list --json`.
+
+**Still open — the mount/install half.** Discovery reports `local_path`, but nothing
+consumes it yet: for a workflow installed from a host directory the launcher must
+bind that directory and the container must install from a copy (livesource, item 3,
+is already the mechanism — `LiveSource` is generic over the package for exactly this
+reason). Sequenced with item 5, which is when the launcher grows bind mounts anyway.
+
+**Tech debt found, out of scope:** `workhorse-workflows` pins `workhorse-agent>=1,<2`
+but the newest release is `0.8.0`, so `pipx install workhorse-workflows` cannot
+resolve — from PyPI or from a local checkout. Nothing in this plan depends on it
+(the image installs from the workspace), but it means the *documented* install path
+is broken today.
 
 ### 5. Worktree checkout
 Reinstate in `kit/workspace.py` — as **CLI arguments, not env vars**.
