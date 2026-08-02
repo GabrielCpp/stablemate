@@ -74,11 +74,16 @@ class EpicPick(CoderResult):
 
 
 class EpicBranch(CoderResult):
-    """`branch-epic.py` — the freshly cut `feat/<epic>`, and the epic it belongs to.
+    """`branch-epic.py` — the `feat/<epic>` this run is on, and the epic it belongs to.
 
-    Always freshly cut: an existing `feat/<epic>` is renamed aside to
-    `archive/<epic>-<sha>` rather than resumed. `epic_branch` is `feat/` + the epic even
-    when the epic is blank, which is what the YAML emitted and what the PR nodes read.
+    Cut from HEAD when it does not exist. When it does, the run either continues on it
+    (this working tree already had it, or it is merged into the base and the name is
+    free to reuse) or refuses — a branch another working tree holds, or one carrying
+    unmerged work nobody claimed, is not this run's to take. See
+    `queue._claim_epic_branch`.
+
+    `epic_branch` is `feat/` + the epic even when the epic is blank, which is what the
+    YAML emitted and what the PR nodes read.
     """
 
     working_epic: str = ""

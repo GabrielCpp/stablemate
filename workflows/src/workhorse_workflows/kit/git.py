@@ -94,6 +94,67 @@ def checkout(path: str | Path, branch: str, *, create: bool = False, reset: bool
         return False
 
 
+def branch_owner(path: str | Path, branch: str) -> str | None:
+    """The working tree that currently has ``branch`` checked out, or None.
+
+    A branch belongs to at most one working tree at a time — git enforces that, and
+    the message it gives already names the holder. This exists so a *caller* can name
+    it too, before trying: with N concurrent runs sharing one repo, "failed to create
+    branch" is a dead end, while "another run is on it, at <path>" says what happened
+    and what to look at.
+
+    Note that git's protection is not total. It refuses `checkout`, `branch -f` and
+    `branch -D` on a branch another worktree holds, but **not** `update-ref`, which
+    will happily move a branch out from under a live checkout. Nothing in this kit
+    calls `update-ref`; if something ever does, it needs this check first.
+    """
+    try:
+        listing = open_repo(path).git.worktree("list", "--porcelain")
+    except GitError:
+        return None
+    wanted = branch if branch.startswith("refs/") else f"refs/heads/{branch}"
+    tree: str | None = None
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            tree = line[len("worktree "):].strip()
+        elif line.startswith("branch ") and tree and line[len("branch "):].strip() == wanted:
+            return tree
+    return None
+
+
+def branch_merged(path: str | Path, branch: str, base: str) -> bool:
+    """True when ``branch`` carries nothing ``base`` does not already have.
+
+    Two ways that can be true, and both count:
+
+    * ``branch``'s commits are reachable from ``base`` — an ordinary merge or a
+      fast-forward.
+    * ``branch``'s *content* is identical to ``base``'s, even though its commits are
+      not reachable. This is the **squash merge**: the PR landed as one new commit on
+      base, so nothing on the branch is an ancestor of anything, yet every change it
+      made is already there.
+
+    Missing the second case is not academic — squash is the default merge on most
+    repos, so an ancestry-only check would call every landed epic branch "unmerged"
+    and refuse to reuse it. A squash-merged branch that has since *diverged* still
+    fails both tests, which is the case worth refusing.
+
+    ``base`` is tried as given and then as ``origin/<base>``, because a container may
+    hold only the remote-tracking ref.
+    """
+    for ref in (base, f"origin/{base}") if base and "/" not in base else (base,):
+        if not ref or not branch_exists(path, ref):
+            continue
+        if is_ancestor(path, branch, ref):
+            return True
+        try:
+            open_repo(path).git.diff("--quiet", ref, branch)
+            return True  # no content difference: squash-merged and untouched since
+        except GitError:
+            continue
+    return False
+
+
 def commits_ahead(path: str | Path, branch: str, base: str) -> int:
     """Commits reachable from ``branch`` but not ``origin/<base>``. Returns -1 when
     the range is unresolvable (e.g. no ``origin/<base>`` yet)."""

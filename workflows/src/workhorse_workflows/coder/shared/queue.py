@@ -55,6 +55,8 @@ from workhorse_workflows.coder.shared.schemas.queue import (
 from workhorse_workflows.kit import (
     active_branch,
     branch_exists,
+    branch_merged,
+    branch_owner,
     checkout,
     commit_all,
     commit_paths,
@@ -63,12 +65,10 @@ from workhorse_workflows.kit import (
     find_open_pr,
     get_affected_repos,
     local_branch_exists,
-    rename_branch,
     resolve_github_token,
     resolve_repo,
     resolve_workspace,
     restore_paths,
-    short_sha,
     show_file,
 )
 
@@ -233,42 +233,62 @@ def branch_story(
     return StoryBranch(base_branch=base_branch, story_branch=branch, repos=branched)
 
 
-def _archive_name(root: Path, branch: str) -> str:
-    """A free `archive/<epic>-<sha>` name, suffixed until it collides with nothing.
+def _claim_epic_branch(logger: logging.Logger, root: Path, branch: str, base: str) -> None:
+    """Put this run on `feat/<epic>`, or refuse and say why.
 
-    The bare name collides whenever a run is retried at the same commit, which is exactly
-    what a retry after a failure *is*. Refusing to archive there used to leave the stale
-    `feat/<epic>` in place for `checkout -b` to fail on — deliberately, on the reasoning
-    that losing a ref is worse than failing loudly. But it fails loudly the same way on
-    every subsequent attempt, because nothing about the repo has changed: the run could
-    not start again until a human renamed a branch. An unattended queue cannot get past
-    that, and "failed to create epic branch" is a dead end, not a diagnosis.
+    There are exactly four states an existing branch of that name can be in, and they
+    want four different answers:
 
-    Suffixing keeps the property that motivated the refusal — no ref is ever overwritten
-    or deleted, both commits stay reachable — while letting the rename always succeed.
+    ============================  =========================================
+    State                         Action
+    ============================  =========================================
+    Held by another working tree  Hard error — another run is on it
+    Merged into base              Reset to HEAD and reuse
+    Unmerged, nobody's            Hard error — real work, a human decides
+    Held by *this* working tree   Continue on it, no reset
+    ============================  =========================================
+
+    This replaces renaming the branch aside to `archive/<epic>-<sha>`. That was
+    reasonable while a leftover ref landed in a container-local clone that
+    `down -v` destroyed. Under worktrees the refs land in the **operator's own
+    repo**, so every re-run left a permanent `archive/*` in their `git branch` —
+    and archival renamed *every* existing branch, merged or not, to defend against
+    one case: a squash-merged branch that has since diverged. The table above
+    handles that case directly (`branch_merged` sees a squash merge; a diverged one
+    fails both tests and is refused) and refuses the genuinely dangerous case
+    instead of silently renaming past it.
+
+    Refusing rather than working around is deliberate, and it is the one place this
+    workflow prefers a hard stop to an unattended recovery: the alternatives are
+    discarding somebody's unmerged commits or continuing an epic on top of an
+    unrelated branch's content, and neither is something a run should decide alone.
     """
-    base = f"archive/{branch[len('feat/'):]}-{short_sha(root, branch) or 'unknown'}"
-    if not branch_exists(root, base):
-        return base
-    # Bounded: a hundred retries at one commit is a broken loop, not a naming problem.
-    for n in range(2, 100):
-        if not branch_exists(root, f"{base}-{n}"):
-            return f"{base}-{n}"
-    return f"{base}-{short_sha(root, 'HEAD') or 'x'}"
+    if not branch_exists(root, branch):
+        if not checkout(root, branch, create=True):
+            raise WorkflowFailed(f"failed to create epic branch {branch}")
+        return
 
+    owner = branch_owner(root, branch)
+    if owner is not None:
+        if Path(owner).resolve() != Path(root).resolve():
+            raise WorkflowFailed(
+                f"{branch} is checked out in another working tree ({owner}) — another "
+                f"run is working this epic. Wait for it, or run a different epic."
+            )
+        logger.info("resuming %s, already checked out here", branch)
+        return
 
-def _archive_stale_branch(logger: logging.Logger, root: Path, branch: str) -> None:
-    """Rename an existing epic branch aside instead of resuming it.
+    if branch_merged(root, branch, base):
+        logger.info("%s is already merged into %s — reusing the name from HEAD", branch, base)
+        if not checkout(root, branch, reset=True):
+            raise WorkflowFailed(f"failed to reset merged epic branch {branch}")
+        return
 
-    Renaming rather than deleting means the old work stays fully reachable under the
-    archive name — see :func:`_archive_name` for how a name is chosen when the obvious
-    one is taken.
-    """
-    archive = _archive_name(root, branch)
-    if rename_branch(root, branch, archive):
-        logger.info("archived stale epic branch %s -> %s (renamed, not deleted)", branch, archive)
-    else:
-        logger.warning("could not archive stale branch %s — leaving it in place", branch)
+    raise WorkflowFailed(
+        f"{branch} already exists with commits that are not in {base or 'the base branch'}. "
+        f"That is unmerged work this run did not create — merge it, or delete the branch, "
+        f"then start the epic again."
+    )
 
 
 def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
@@ -292,13 +312,11 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
 def branch_epic(
     logger: logging.Logger, epic: str = "", base_branch: str = "", repo_dir: str = ""
 ) -> EpicBranch:
-    """Cut a fresh `feat/<epic>` from HEAD, archiving any leftover branch of that name.
+    """Put this run on `feat/<epic>`, cutting it from HEAD when it does not exist yet.
 
-    An existing `feat/<epic>` is treated as stale, not resumed. Once an epic's PR merges
-    (typically as a squash) its branch no longer reflects the current queue, and a leftover
-    branch under that name may hold an entirely different epic's abandoned work. Reusing it
-    risks continuing on unrelated content, and — being a real checkout of a possibly
-    diverged tree — can fail outright against a dirty working tree.
+    An existing branch of that name is not assumed stale and not assumed ours — see
+    :func:`_claim_epic_branch` for the four states it can be in and why three of them
+    have an answer other than "rename it aside".
 
     The queue is reconciled from the base afterwards, so an epic branch cut from a stale
     HEAD still walks the queue the base branch has.
@@ -307,13 +325,7 @@ def branch_epic(
     restore_paths(root, paths.epics_index(root))
 
     if epic:
-        branch = f"feat/{epic}"
-        if branch_exists(root, branch):
-            _archive_stale_branch(logger, root, branch)
-        # Always cut fresh from current HEAD — even when the archive above could not rename
-        # and left the old branch in place, so a diverged branch is never silently reused.
-        if not checkout(root, branch, create=True):
-            raise WorkflowFailed(f"failed to create epic branch {branch}")
+        _claim_epic_branch(logger, root, f"feat/{epic}", base_branch)
 
     _reconcile_queue(logger, root, base_branch)
     return EpicBranch(working_epic=epic, epic_branch=f"feat/{epic}")

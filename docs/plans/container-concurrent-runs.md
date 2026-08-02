@@ -626,7 +626,7 @@ way through with no digest collision).
 the Claude CLI refuses to run (`Temp directory … is owned by uid 0`). It is a property
 of that path, not of worktree mode; the re-run under `$HOME` was clean.
 
-### 6. Branch ownership guard
+### 6. Branch ownership guard — **done**
 `checkout()` is at `kit/git.py:80`. N concurrent runs sharing one ref namespace
 makes this load-bearing rather than defensive. Git already refuses to check out a
 branch another worktree holds — that half is free. `kit/git.py` has three raw
@@ -635,12 +635,72 @@ branch another worktree holds — that half is free. `kit/git.py` has three raw
 layer is a per-worktree `reference-transaction` hook via `extensions.worktreeConfig`
 + `core.hooksPath`.
 
-### 6b. Drop epic-branch archival (§8.3)
+**As built.** `kit/git.py` gained `branch_owner(path, branch)` — the working tree
+holding a branch, from `git worktree list --porcelain` — and the four-state rule in
+`queue._claim_epic_branch` uses it to refuse *by name*.
+
+**The `reference-transaction` hook was NOT built, and that is a decision.** The plan
+assumed a guard in `checkout()` leaves real gaps. Measured against git rather than
+assumed — a repo with `feat/e1` held by a second worktree:
+
+| Operation | Result |
+|---|---|
+| `git checkout feat/e1` | **refused**, naming the holding worktree |
+| `git branch -f feat/e1 main` | **refused**, naming the holding worktree |
+| `git branch -D feat/e1` | **refused**, naming the holding worktree |
+| `git update-ref refs/heads/feat/e1 main` | **succeeds silently**, moves the branch under the live checkout |
+
+So git already covers everything this codebase does, and the single hole is
+`update-ref` — which appears **nowhere** under `workflows/` or `workhorse/` (checked).
+Installing a `reference-transaction` hook means writing `core.hooksPath` and a hook
+script into the *operator's own repo* to close a path nothing takes. That is a large,
+invasive mechanism for a hypothetical, so it is deferred with its trigger recorded
+instead: `branch_owner`'s docstring says that anything adding an `update-ref` call
+needs this check first, and this table says what the hook would buy if that day comes.
+
+What the guard *does* buy is legibility, which is the part concurrency actually
+needed. Before, a second run picking the same epic got `failed to create epic branch`
+— git's refusal swallowed by `checkout()` returning False. Now it gets the path of
+the worktree that holds it.
+
+### 6b. Drop epic-branch archival (§8.3) — **done**
 Replace `_archive_stale_branch` with the four-state rule. Needs a new
 `branch_merged(path, branch, base)` helper. Touches `coder/shared/queue.py:237,260`,
 the schema docstring at `schemas/queue.py:80`, and the assertion at
 `test_workflow.py:596`. **Sequenced here, after item 5**, because the justification
 is the worktree model — done earlier it is an unmotivated behavior change.
+
+**As built.** `_archive_name` and `_archive_stale_branch` are gone, replaced by
+`_claim_epic_branch`; `rename_branch` and `short_sha` stay in the kit, now uncalled
+from here. Six tests cover the four states plus the two squash cases; the old
+`test_retrying_at_the_same_commit_archives_again_instead_of_dead_ending` became
+`…_continues_and_leaves_no_refs_behind`, which is the same scenario with the opposite
+expectation — three attempts at one commit now leave **zero** `archive/*` refs in the
+operator's repo, because "this working tree already has it" is a resume, not staleness.
+
+**`branch_merged` tests content, not just ancestry — and that is load-bearing.**
+The plan named the helper but not its definition, and ancestry alone is the wrong
+one: **squash is the default merge on most repos**, and a squash-merged branch's
+commits are ancestors of nothing on base. An ancestry-only check would call every
+epic branch that ever shipped "unmerged", hit the hard-error row, and stop an
+unattended queue every single time. So it returns true when *either* the commits are
+reachable from base *or* `git diff base branch` is empty — the second being exactly
+"squash-merged and untouched since".
+
+That also handles §8.3's motivating case correctly rather than by accident: a
+squash-merged branch that has **since diverged** fails both tests and is refused,
+which is the one thing archival was defending against. It now gets a refusal that
+says so, instead of a silent rename.
+
+`base` is tried as given and then as `origin/<base>`, since a container may hold only
+the remote-tracking ref.
+
+**The operational trade-off, stated plainly:** this workflow now prefers a hard stop
+to an unattended recovery in one place. That is deliberate — the alternatives on an
+unmerged branch are discarding somebody's commits or building an epic on top of
+unrelated content — but it is a real change in unattended behavior, and the reason it
+is acceptable is that the *common* leftover (a merged or squash-merged branch) no
+longer stops anything at all, where archival used to rename even those aside.
 
 ### 7. Telemetry endpoint (§3.3) and run/telemetry join (§3.4)
 Point `OTEL_EXPORTER_OTLP_ENDPOINT` at `host.docker.internal:8787`. Carry `run_id`

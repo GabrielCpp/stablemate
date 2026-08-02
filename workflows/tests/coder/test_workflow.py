@@ -586,42 +586,171 @@ def test_an_epic_branch_carrying_a_set_aside_epic_declines_to_open_a_pr(
 # --------------------------------------------------------------------------- epic branch
 
 
-def test_retrying_at_the_same_commit_archives_again_instead_of_dead_ending(
+def test_retrying_at_the_same_commit_continues_and_leaves_no_refs_behind(
     epic: Callable[..., Path],
     logger: logging.Logger,
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
     """A retry after a failure *is* a second attempt at an unchanged HEAD.
 
-    `branch_epic` archives a leftover `feat/<epic>` to `archive/<epic>-<sha>`, and that name
-    is a function of the commit — so the second retry wants a name the first retry already
-    took. It used to decline the rename there, on the reasoning that losing a ref is worse
-    than failing loudly, and then fail on the `checkout -b` that the branch it had just
-    declined to move was still in the way of. Loudly, and identically, on every subsequent
-    attempt: nothing about the repo changes between them, so the queue could not start again
-    until a human renamed a branch by hand. An unattended run does not have one, and
-    "failed to create epic branch" is a dead end rather than a diagnosis.
-
-    Three calls at one commit, because two is not enough to reach the collision. The
-    property that motivated the refusal is asserted too — every archive still exists and
-    still points at the commit it was cut from, so suffixing bought the retry without
-    trading away a single ref.
+    `branch_epic` used to rename the leftover `feat/<epic>` aside to
+    `archive/<epic>-<sha>` on every attempt. That was fine while the refs landed in a
+    container-local clone that `down -v` destroyed. Under worktrees they land in the
+    **operator's own repo**, so three attempts left two permanent `archive/*` branches
+    in their `git branch` — for a case that is not stale at all: this working tree
+    already has the branch checked out, so the run is simply resuming itself.
     """
     repo = epic()
-    head = git(repo, "rev-parse", "HEAD").stdout.strip()
 
     for _ in range(3):
         result = branch_epic(logger, epic=EPIC, repo_dir=str(repo))
         assert result.epic_branch == f"feat/{EPIC}"
 
-    branches = git(repo, "branch", "--format=%(refname:short) %(objectname)").stdout.split("\n")
-    archives = sorted(b for b in branches if b.startswith("archive/"))
     assert _head(repo) == f"feat/{EPIC}"
-    # Two retries archived two branches, under names that had to differ from each other.
-    assert len(archives) == 2, archives
-    assert len({a.split()[0] for a in archives}) == 2, archives
-    # Nothing was overwritten or deleted: both still resolve, and to the right commit.
-    assert all(a.split()[1] == head for a in archives), archives
+    branches = git(repo, "branch", "--format=%(refname:short)").stdout.split()
+    assert not [b for b in branches if b.startswith("archive/")], branches
+
+
+def test_a_resumed_epic_branch_keeps_the_commits_it_already_made(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The point of not renaming aside. A restart mid-epic must not lose the stories
+    already committed to the branch — under worktrees the branch is the run's work,
+    not a disposable copy of it."""
+    repo = epic()
+    branch_epic(logger, epic=EPIC, repo_dir=str(repo))
+    write(repo / "src" / "done.txt", "story one\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "story one")
+    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    branch_epic(logger, epic=EPIC, repo_dir=str(repo))
+
+    assert git(repo, "rev-parse", "HEAD").stdout.strip() == landed
+    assert (repo / "src" / "done.txt").exists()
+
+
+def test_a_branch_another_working_tree_holds_is_refused_by_name(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    tmp_path: Path,
+) -> None:
+    """The case concurrency creates. Two runs of the same workflow may pick the same
+    epic; the second must be told that, and where the first is, rather than getting
+    git's generic checkout failure through a `failed to create epic branch`."""
+    repo = epic()
+    other = tmp_path / "other-run"
+    git(repo, "worktree", "add", "--detach", "-q", str(other))
+    git(other, "checkout", "-q", "-b", f"feat/{EPIC}")
+
+    with pytest.raises(WorkflowFailed, match="another working tree"):
+        branch_epic(logger, epic=EPIC, repo_dir=str(repo))
+
+
+def test_unmerged_work_nobody_claimed_is_refused_rather_than_renamed(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Archival renamed this aside silently. In the operator's own repo that is either
+    burying somebody's work under an `archive/*` nobody will look at, or continuing an
+    epic on top of unrelated content. Neither is a run's call to make."""
+    repo = epic()
+    base = _head(repo)
+    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
+    write(repo / "src" / "someone-elses.txt", "unmerged\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "work in progress")
+    git(repo, "checkout", "-q", base)
+
+    with pytest.raises(WorkflowFailed, match="not in"):
+        branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
+
+    # Refused, not renamed: the branch is exactly where the human left it.
+    branches = git(repo, "branch", "--format=%(refname:short)").stdout.split()
+    assert f"feat/{EPIC}" in branches
+    assert not [b for b in branches if b.startswith("archive/")], branches
+
+
+def test_a_merged_epic_branch_is_reused_rather_than_refused(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """The ordinary case after an epic ships: the branch is still lying around, and it
+    holds nothing the base does not. Reusing the name is safe and is what keeps a
+    re-run of a merged epic from needing a human."""
+    repo = epic()
+    base = _head(repo)
+    git(repo, "branch", f"feat/{EPIC}", base)  # exists, merged, held by nobody
+
+    result = branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
+
+    assert result.epic_branch == f"feat/{EPIC}"
+    assert _head(repo) == f"feat/{EPIC}"
+
+
+def test_a_squash_merged_branch_counts_as_merged(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Squash is the default merge on most repos, and it leaves a branch whose commits
+    are ancestors of nothing — so an ancestry-only test would call every landed epic
+    'unmerged' and refuse it, which is a queue that stops needing a human every time.
+    The content test is what catches it."""
+    repo = epic()
+    base = _head(repo)
+    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
+    write(repo / "src" / "shipped.txt", "content\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the epic")
+    git(repo, "checkout", "-q", base)
+    git(repo, "merge", "-q", "--squash", f"feat/{EPIC}")
+    git(repo, "commit", "-qm", "squashed epic")
+
+    # Its commits are reachable from nothing on base...
+    unreachable = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", f"feat/{EPIC}", base],
+        cwd=repo, capture_output=True, text=True, check=False,
+    )
+    assert unreachable.returncode != 0
+    # ...but the content is identical, so the name is free.
+    result = branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
+    assert result.epic_branch == f"feat/{EPIC}"
+
+
+def test_a_squash_merged_branch_that_then_diverged_is_still_refused(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The one case archival existed to defend against. It is refused directly here,
+    rather than renamed past — the divergence is real work that base does not have."""
+    repo = epic()
+    base = _head(repo)
+    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
+    write(repo / "src" / "shipped.txt", "content\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the epic")
+    git(repo, "checkout", "-q", base)
+    git(repo, "merge", "-q", "--squash", f"feat/{EPIC}")
+    git(repo, "commit", "-qm", "squashed epic")
+    git(repo, "checkout", "-q", f"feat/{EPIC}")
+    write(repo / "src" / "after.txt", "diverged\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "kept going after the squash")
+    git(repo, "checkout", "-q", base)
+
+    with pytest.raises(WorkflowFailed, match="not in"):
+        branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
 
 
 # --------------------------------------------------------------------------- story mode
