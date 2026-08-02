@@ -376,3 +376,73 @@ def test_coverage_gate_still_demands_required_obligations(tmp_path: Path):
 
     del document.context["obligations"][1]["required"]
     assert any("unbuilt.md" in item and "not covered" in item for item in validate_v2(document))
+
+
+def _two_flows_over_one_contract(tmp_path: Path) -> Path:
+    """Two sibling journeys over the same changed contract, one of them linking to the other.
+
+    The shape is ordinary in a real book: a broad journey names a narrower one as a step, and
+    both walk the same endpoint. It is also the shape that files the narrower flow under both
+    roles at once.
+    """
+    (tmp_path / "docs/features/demo/flows").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/http").mkdir()
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/http/api.md").write_text(
+        "---\ntype: endpoint\nslug: api\ntitle: Read API\n---\n# Read API\n\n"
+        "- does: serves the stored object verbatim\n"
+        "- code: app/api.go::Read\n"
+        "- verify: tests/api_test.go::TestRead\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/flows/serves-object.md").write_text(
+        "---\ntype: flow\nslug: serves-object\ntitle: Serves object\n---\n# Serves object\n\n"
+        "- start: a caller issues the read request\n"
+        "- steps:\n"
+        "  1. [Read API](../http/api.md) returns the object\n"
+        "- end: the caller receives the object verbatim\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/flows/cold-start.md").write_text(
+        "---\ntype: flow\nslug: cold-start\ntitle: Cold start\n---\n# Cold start\n\n"
+        "- start: the app boots\n"
+        "- steps:\n"
+        "  1. [Read API](../http/api.md) answers\n"
+        "  2. as [Serves object](./serves-object.md) describes\n"
+        "- end: the app has rendered\n",
+        encoding="utf-8",
+    )
+    api = tmp_path / "app/api.go"
+    api.write_text("package app\n\nfunc Read() string { return \"old\" }\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    api.write_text("package app\n\nfunc Read() string { return \"new\" }\n", encoding="utf-8")
+    return api
+
+
+def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
+    """A journey reached by the closure is filed once, so its bullets obligate once.
+
+    `_obligations` runs per member of `contracts` and per member of `journeys`, and only the
+    base obligation spells the role into its id. A flow in both sets therefore emits one
+    `:contract` and one `:end-state` — harmless — and two identical `:start:1` and `:end:1`,
+    which is a duplicate id. `validate_context` rejects the packet for it, and the
+    documentation gate turns that rejection into a rework brief the author cannot satisfy:
+    nothing is wrong with the book, so every pass writes something and fails the same way
+    until the rework budget runs out and the run dies.
+    """
+    _two_flows_over_one_contract(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+
+    linked = "docs/features/demo/flows/serves-object.md"
+    assert linked in packet["journeys"]
+    assert linked not in packet["contracts"]
+    assert not [node for node in packet["contracts"] if "/flows/" in node]
+
+    ids = [item["id"] for item in packet["obligations"]]
+    assert sorted(set(ids)) == sorted(ids)
+    assert validate_context(packet) == []
