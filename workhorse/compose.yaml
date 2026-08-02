@@ -58,6 +58,30 @@ services:
       # means "let workhorse decide", i.e. the pre-concurrency behavior.
       AGENT_RUN_ID: ${AGENT_RUN_ID:-}
 
+      # ── Where this run's working tree comes from ──────────────────────────────
+      # `clone` (the default) makes a disposable copy in the container's own volume
+      # and resets it to the remote on restart. `worktree` gives this run its own
+      # `git worktree` of the host repo bound below — which is what lets N runs work
+      # at once off one object store and one ref namespace.
+      #
+      # In worktree mode the paths must match on both sides. Git records a
+      # worktree's registration in the source repo AND in the worktree, by absolute
+      # path, so a container that saw the repo somewhere else would write paths into
+      # the operator's own .git that do not exist on their machine.
+      AGENT_SOURCE_MODE: ${AGENT_SOURCE_MODE:-clone}
+      AGENT_WORKTREE_ROOT: ${AGENT_WORKTREE_ROOT:-}
+
+      # The repo to check out, for the single-repo case. A workspace file
+      # (AGENT_PARAM_WORKSPACE_FILE) supersedes these and names several.
+      REPO_URL: ${REPO_URL:-}
+      REPO_NAME: ${REPO_NAME:-}
+      REPO_BRANCH: ${REPO_BRANCH:-}
+      # Which checkout the run itself works in — `repo_dir`, workhorse's one
+      # universal input. In worktree mode this is THIS run's tree, not the host repo:
+      # every run has its own, and pointing them all at the shared source would put
+      # N agents in one working directory.
+      AGENT_REPO_DIR: ${AGENT_REPO_DIR:-}
+
       # Write run artifacts to the persistent named volume (survives reboots).
       AGENT_RUNS_DIR: /runs
       # The CLI binary lives in a read-only system path; don't let it self-update.
@@ -84,6 +108,20 @@ services:
       #   source: ${HOME}/.aws
       #   target: /mnt/aws
       #   read_only: true
+
+      # The host repo this run works on, bound AT ITS OWN PATH — source and target
+      # are the same string. That is not tidiness: `git worktree add` writes the
+      # worktree's absolute path into the source repo's .git and the source's
+      # absolute path into the worktree, so any other mapping would leave the
+      # operator with registrations pointing at container paths they cannot use or
+      # prune. Read-WRITE for the same reason — the source repo is written to.
+      #
+      # Worktrees are created UNDER this path (see AGENT_WORKTREE_ROOT), so one bind
+      # covers both sides. Unset (the clone model) it binds the compose file's own
+      # directory somewhere unused, because a compose bind cannot be conditional.
+      - type: bind
+        source: ${AGENT_REPO_HOST_DIR:-.}
+        target: ${AGENT_REPO_HOST_DIR:-/mnt/unused-host-repo}
 
       # No /workflow mount. A workflow is an installed Python package with its own
       # console script, baked into the image — not a directory of yaml and prompts

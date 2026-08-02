@@ -560,7 +560,7 @@ resolve — from PyPI or from a local checkout. Nothing in this plan depends on 
 (the image installs from the workspace), but it means the *documented* install path
 is broken today.
 
-### 5. Worktree checkout
+### 5. Worktree checkout — **done**
 Reinstate in `kit/workspace.py` — as **CLI arguments, not env vars**.
 `workflows/README.md:53` prohibits `os.environ` under `src/workhorse_workflows/`
 because a value read from the environment is in no checkpoint, so a resume silently
@@ -574,6 +574,57 @@ host path, and the bind cannot be read-only (`git worktree add` writes into the
 source `.git`). Create worktrees **detached**: no workflow knows its branch at
 checkout time; the branch is cut later at a workflow node. Never reset a worktree on
 resume — unlike a clone in a disposable volume, it holds the operator's real work.
+
+**Done.** `kit/workspace.py` gained `source_mode` + `worktree_root` (arguments, with
+`--source-mode`/`--worktree-root` on its `__main__`), the supervisor translates
+`AGENT_SOURCE_MODE`/`AGENT_WORKTREE_ROOT` into them, compose.yaml binds the host repo
+at its own path, and the launcher cuts a per-run worktree.
+`workflows/tests/test_kit_worktree.py` covers it against real git repos — worktree
+registration is written by absolute path on both sides, so a fake would only assert
+on itself.
+
+**One bind covers both sides.** The worktree root defaults *inside* the repo
+(`$(AGENT_REPO)/.agents/worktrees/<runid>`), and the repo is bound source==target.
+That single mount therefore puts the source repo *and* every run's tree at paths the
+container and the host agree on — which is the whole requirement, without a second
+mount to keep in sync. §4.7's table put the worktree root outside the repo; inside is
+strictly better and costs nothing.
+
+**A compose bind cannot be conditional**, so the repo bind is declared once with
+`source: ${AGENT_REPO_HOST_DIR:-.}` / `target: ${AGENT_REPO_HOST_DIR:-/mnt/unused-host-repo}`.
+Set (worktree mode) it binds the repo at its own path; unset (clone mode) it binds
+the compose file's own directory somewhere nothing reads. Verified with
+`docker compose config` in both states. The alternative — the launcher generating a
+per-run override file — was rejected as reintroducing generated compose fragments for
+one mount.
+
+**`AGENT_REPO_DIR` points at the run's own tree, not the shared source.** It is
+`repo_dir`, workhorse's one universal input; leaving it at the host repo would put N
+agents in one working directory, which is exactly what the worktrees exist to stop.
+
+**Bug found and fixed on the way:** `REPO_URL`/`REPO_NAME`/`REPO_BRANCH` were read by
+the entrypoint but **never declared in `compose.yaml`**, and compose does not pass
+host environment through unless a service declares it. So the single-repo checkout
+path could not be reached from compose at all — every container logged "no workspace
+file and no repo url given". Now declared alongside the new variables.
+
+#### Verified end to end, twice over
+
+A container cut a `git worktree` of a real host repo, and on the **host** side
+`git worktree list` shows it at a host-valid absolute path, detached at `main`'s
+commit, with `.git` a file pointing back into the source repo. That is §4.5's
+both-sides-absolute requirement checked from the side that would have been broken.
+
+Then the actual premise of the plan: **two containers of the same workflow, launched
+concurrently against one host repo, both exited 0** — each with its own detached
+worktree (both registered host-side), its own volume set
+(`hello-alpha_*` / `hello-beta_*`), and its own run directory
+(`hello-world-alpha` / `hello-world-beta`, i.e. the launcher's UUID reaching all the
+way through with no digest collision).
+
+**Unrelated failure seen and discounted:** with the host repo under `/tmp/claude-1000`,
+the Claude CLI refuses to run (`Temp directory … is owned by uid 0`). It is a property
+of that path, not of worktree mode; the re-run under `$HOME` was clean.
 
 ### 6. Branch ownership guard
 `checkout()` is at `kit/git.py:80`. N concurrent runs sharing one ref namespace

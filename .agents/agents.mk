@@ -51,6 +51,18 @@ AGENT_GID  ?= $(shell id -g)
 # package — compose.yaml/Dockerfile are build inputs, not distribution files.
 AGENT_COMPOSE ?= $(STABLEMATE_DIR)/workhorse/compose.yaml
 
+# The repo a run works on, and where each run's own `git worktree` of it is cut.
+#
+# The worktree root lives INSIDE the repo deliberately: the repo is bind-mounted at
+# its own host path (git records a worktree's registration on both sides by absolute
+# path, so the container and the host must agree), and putting the worktrees under it
+# means that one bind covers the source and every run's tree at matching paths.
+AGENT_REPO         ?= $(CURDIR)
+AGENT_WORKTREE_ROOT ?= $(AGENT_REPO)/.agents/worktrees
+# Recursively expanded (`?=`), so this git call only runs for a launch — not for
+# every `make` in the including repo.
+AGENT_BASE_BRANCH  ?= $(shell git -C "$(AGENT_REPO)" symbolic-ref --quiet --short HEAD 2>/dev/null || echo main)
+
 DETACH ?=
 AGENT_UP_FLAGS = $(if $(DETACH),--detach,--abort-on-container-exit)
 
@@ -70,13 +82,24 @@ define agent_launch
 	set -eu; \
 	run_id="$$(cat /proc/sys/kernel/random/uuid)"; \
 	project="$(1)-$$run_id"; \
+	repo_name="$$(basename "$(AGENT_REPO)")"; \
+	worktree_root="$(AGENT_WORKTREE_ROOT)/$$run_id"; \
+	mkdir -p "$$worktree_root"; \
 	echo "[agent] workflow  : $(1)"; \
 	echo "[agent] run id    : $$run_id"; \
 	echo "[agent] container : $$project"; \
+	echo "[agent] worktree  : $$worktree_root/$$repo_name"; \
 	echo "[agent] follow    : make agent-logs RUN=$$project"; \
 	WORKFLOW="$(1)" \
 	AGENT_RUN_ID="$$run_id" \
 	AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)" \
+	AGENT_REPO_HOST_DIR="$(AGENT_REPO)" \
+	AGENT_SOURCE_MODE=worktree \
+	AGENT_WORKTREE_ROOT="$$worktree_root" \
+	AGENT_REPO_DIR="$$worktree_root/$$repo_name" \
+	REPO_URL="$(AGENT_REPO)" \
+	REPO_NAME="$$repo_name" \
+	REPO_BRANCH="$(AGENT_BASE_BRANCH)" \
 	docker compose -p "$$project" -f "$(AGENT_COMPOSE)" up $(AGENT_UP_FLAGS)
 endef
 

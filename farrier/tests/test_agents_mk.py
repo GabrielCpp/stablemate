@@ -104,6 +104,32 @@ def test_each_launch_mints_its_own_run_id():
     assert 'docker compose -p "$$project"' in mk
 
 
+def test_each_run_gets_its_own_worktree_of_the_repo():
+    mk = render_agents_mk()
+    assert "AGENT_SOURCE_MODE=worktree" in mk
+    # Per RUN, not per repo — that is what lets several be in flight at once.
+    assert 'worktree_root="$(AGENT_WORKTREE_ROOT)/$$run_id"' in mk
+    # The run works IN its own tree, never in the shared source: pointing every run
+    # at the host repo would put N agents in one working directory.
+    assert 'AGENT_REPO_DIR="$$worktree_root/$$repo_name"' in mk
+
+
+def test_the_repo_is_bound_at_its_own_host_path():
+    """Git records a worktree's registration on both sides by absolute path, so the
+    container and the host have to agree on what that path is."""
+    mk = render_agents_mk()
+    assert 'AGENT_REPO_HOST_DIR="$(AGENT_REPO)"' in mk
+    # Worktrees live under the repo, so ONE bind covers the source and every tree.
+    assert "AGENT_WORKTREE_ROOT ?= $(AGENT_REPO)/.agents/worktrees" in mk
+
+
+def test_the_base_branch_is_resolved_lazily():
+    """`?=` keeps this git call out of every `make` in the including repo — it runs
+    only when a launch actually expands it."""
+    mk = render_agents_mk()
+    assert "AGENT_BASE_BRANCH  ?= $(shell git -C" in mk
+
+
 def test_runs_as_nobody_with_the_operators_group():
     """65534:<host gid> — the uid is not yours, the group access is, so run output
     under a bind-mounted host path stays writable from the host."""

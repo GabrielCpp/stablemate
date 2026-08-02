@@ -161,6 +161,58 @@ def _set_origin_url(dest: Path, url: str) -> None:
     )
 
 
+#: How a folder's working tree is materialised.
+#:
+#: ``clone`` is the container-with-its-own-volume model: a disposable copy, reset to
+#: the remote on every restart. ``worktree`` is the concurrent-runs model: N runs each
+#: get their own working tree of ONE bind-mounted host repo, so they share a ref
+#: namespace and an object store and cost no extra clone.
+SOURCE_MODES = ("clone", "worktree")
+
+
+def _add_worktree(source: Path, dest: Path, ref: str, name: str, logger: logging.Logger) -> None:
+    """Give this run its own working tree of ``source``, at ``dest``.
+
+    Three rules here are not defensive, they are the model:
+
+    **Detached.** No workflow knows its branch at checkout time — the branch is cut
+    later, at a workflow node. Checking one out here would claim it in this
+    worktree's name, and git then refuses to check it out anywhere else, so a second
+    concurrent run of the same workflow would fail at its own checkout instead of at
+    a place that could explain why.
+
+    **Never reset an existing worktree.** Unlike a clone in a disposable volume, this
+    is a directory next to the operator's own checkout, on their disk. A restart
+    mid-run finds work in progress; a reset would discard it. So an existing tree is
+    left exactly as it is, which is also what makes ``docker restart`` a resume.
+
+    **Prune first.** Worktree registration is recorded on *both* sides, by absolute
+    path. A run whose directory was deleted without ``git worktree remove`` leaves a
+    registration behind in the source repo, and `worktree add` then refuses the path
+    as already registered. Pruning drops exactly those entries whose directory is
+    gone, and touches no live worktree.
+    """
+    if (dest / ".git").exists():
+        logger.info("%s already has a working tree at %s — leaving it as it is", name, dest)
+        return
+    if not (source / ".git").exists():
+        raise ValueError(
+            f"worktree mode needs {name} to name a git repository on disk, "
+            f"but {source} is not one. A remote URL cannot be a worktree source — "
+            f"bind the repo into the container at its own host path."
+        )
+
+    subprocess.run(
+        ["git", "-C", str(source), "worktree", "prune"], check=True, timeout=30
+    )
+    logger.info("adding worktree for %s at %s (detached at %s)", name, dest, ref)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "-C", str(source), "worktree", "add", "--detach", str(dest), ref],
+        check=True, timeout=120,
+    )
+
+
 def checkout_workspace(
     workspace_file: str | Path = "",
     workspace_root: str | Path = "/workspace",
@@ -169,6 +221,8 @@ def checkout_workspace(
     repo_name: str = "repo",
     repo_branch: str = "main",
     token_env: str = credentials.GIT_CREDENTIAL_ENV,
+    source_mode: str = "clone",
+    worktree_root: str | Path = "",
 ) -> None:
     """Clone/update every `url`-bearing folder in the `.code-workspace` file into
     ``workspace_root``, transparent to whichever workflow graph runs next.
@@ -192,10 +246,30 @@ def checkout_workspace(
        same clone path — this keeps 1-repo and N-repo runs on one code path with zero
        repo-name defaulting. The URL may be a local bind-mounted source or a remote
        authenticated through the token in ``token_env``.
+
+    ``source_mode`` picks how each folder is materialised (see :data:`SOURCE_MODES`).
+    ``worktree`` needs every `url` to be a **local path** — the host repo, bound into
+    the container at its own path — because git records a worktree's registration on
+    both sides by absolute path, so a container that saw the repo somewhere else
+    would write host-invalid paths into the operator's own `.git`. Worktrees are
+    created under ``worktree_root`` (defaulting to ``workspace_root``) for the same
+    reason: that path is bind-mounted from the host and has to agree with it.
+
+    Both are **arguments, not environment**: everything a run is given must be in its
+    checkpoint, so a resume days later takes the same value, and reachable from
+    ``--params``. The process boundary (the container's supervisor) is what reads the
+    environment and expands it into these flags.
     """
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[checkout] %(message)s")
     logger = logging.getLogger("workhorse.checkout")
     workspace_root = Path(workspace_root)
+    if source_mode not in SOURCE_MODES:
+        raise ValueError(
+            f"unknown source mode {source_mode!r}; expected one of {', '.join(SOURCE_MODES)}"
+        )
+    # Defaulting rather than requiring it: a single-run container has no reason to
+    # separate the two, and the concurrent launcher passes the host path explicitly.
+    tree_root = Path(worktree_root) if worktree_root else workspace_root
 
     parsed = _read_workspace_file(workspace_file)
     if parsed is not None:
@@ -218,6 +292,11 @@ def checkout_workspace(
             continue
         name = folder.get("name") or Path(folder["path"]).name
         branch = folder.get("branch", "main")
+
+        if source_mode == "worktree":
+            _add_worktree(Path(url), tree_root / name, branch, name, logger)
+            continue
+
         dest = workspace_root / name
 
         if (dest / ".git").exists():
@@ -373,6 +452,15 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-env", default=credentials.GIT_CREDENTIAL_ENV, metavar="VAR",
                         help="Name of the variable holding a clone/fetch credential. "
                              "Only the name crosses the boundary; git expands the value.")
+    parser.add_argument("--source-mode", default="clone", choices=SOURCE_MODES,
+                        help="How each folder's working tree is materialised. "
+                             "'clone' is a disposable copy; 'worktree' is one working "
+                             "tree of a bind-mounted host repo, so N concurrent runs "
+                             "share its refs and objects.")
+    parser.add_argument("--worktree-root", default="", metavar="DIR",
+                        help="Where worktrees are created (default: --workspace-root). "
+                             "Must be the same path on the host, since git records a "
+                             "worktree's registration on both sides by absolute path.")
     args = parser.parse_args(argv)
     checkout_workspace(
         args.workspace_file,
@@ -381,6 +469,8 @@ def _main(argv: list[str] | None = None) -> int:
         repo_name=args.repo_name,
         repo_branch=args.repo_branch,
         token_env=args.token_env,
+        source_mode=args.source_mode,
+        worktree_root=args.worktree_root,
     )
     return 0
 

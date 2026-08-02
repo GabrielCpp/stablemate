@@ -284,6 +284,11 @@ def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
     second interpreter start and a traceback thrown away. The workspace manifest
     comes from the resolved run params rather than a second environment variable, so
     the run and its own checkout cannot disagree about which one they are using.
+
+    This call is the whole reason the environment stops at this process. Nothing
+    under the run may read `os.environ` — a value read there is in no checkpoint, so
+    a resume days later silently takes a different one — so each of these crosses as
+    an argument, once, here.
     """
     workspace.checkout_workspace(
         params.get("workspace_file", ""),
@@ -291,6 +296,8 @@ def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
         repo_url=env.get("REPO_URL", ""),
         repo_name=env.get("REPO_NAME") or "repo",
         repo_branch=env.get("REPO_BRANCH") or "main",
+        source_mode=env.get("AGENT_SOURCE_MODE") or "clone",
+        worktree_root=env.get("AGENT_WORKTREE_ROOT") or "",
     )
 
 

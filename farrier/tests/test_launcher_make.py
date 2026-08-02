@@ -60,6 +60,21 @@ def test_a_discovered_workflow_becomes_a_real_target(launcher: Path):
     assert "/stablemate/workhorse/compose.yaml" in recipe
 
 
+def test_the_launch_creates_a_worktree_root_for_this_run_alone(launcher: Path):
+    """Two launches must not land in one directory, so the run id is in the path —
+    and the launcher, not the container, is what creates it (the container cannot
+    make a host directory that is not already bound)."""
+    result = _make(launcher, "-n", "agent-run-coder", "AGENT_REPO=/repos/acme")
+    assert result.returncode == 0, result.stderr
+    recipe = result.stdout
+    assert 'worktree_root="/repos/acme/.agents/worktrees/$run_id"' in recipe
+    assert 'mkdir -p "$worktree_root"' in recipe
+    assert "AGENT_SOURCE_MODE=worktree" in recipe
+    # The repo is bound at its own path; the run works in its own tree beneath it.
+    assert 'AGENT_REPO_HOST_DIR="/repos/acme"' in recipe
+    assert 'AGENT_REPO_DIR="$worktree_root/$repo_name"' in recipe
+
+
 def test_a_hyphenated_workflow_name_survives_the_eval(launcher: Path):
     """`$(eval)` re-parses its argument as makefile text, which is exactly where a
     name with a hyphen or an unlucky character would come apart."""

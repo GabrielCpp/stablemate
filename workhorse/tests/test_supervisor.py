@@ -382,3 +382,36 @@ def test_checkout_reads_the_workspace_file_from_the_params_not_a_second_variable
     )
     assert seen["ws"] == "/mnt/ws.code-workspace"
     assert seen["repo_url"] == "https://example.com/acme.git"
+
+
+def test_the_worktree_choice_crosses_as_an_argument_not_as_environment(monkeypatch):
+    """Nothing under the run may read os.environ: a value read there is in no
+    checkpoint, so a resume days later silently takes a different one. This process
+    is the boundary — it reads the environment once and hands over arguments."""
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        supervisor.workspace,
+        "checkout_workspace",
+        lambda ws, root, **kw: seen.update(kw),
+    )
+    supervisor.checkout(
+        {
+            "AGENT_SOURCE_MODE": "worktree",
+            "AGENT_WORKTREE_ROOT": "/repos/acme/.agents/worktrees/run-1",
+            "REPO_URL": "/repos/acme",
+        },
+        {},
+    )
+    assert seen["source_mode"] == "worktree"
+    assert seen["worktree_root"] == "/repos/acme/.agents/worktrees/run-1"
+
+
+def test_a_container_with_no_launcher_still_clones(monkeypatch):
+    """`clone` stays the default, so driving compose by hand is unchanged."""
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        supervisor.workspace, "checkout_workspace", lambda ws, root, **kw: seen.update(kw)
+    )
+    supervisor.checkout({}, {})
+    assert seen["source_mode"] == "clone"
+    assert seen["worktree_root"] == ""
