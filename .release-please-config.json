@@ -5,7 +5,6 @@
   "include-component-in-tag": true,
   "bootstrap-sha": "beeabb6e3c4221d420b8cfa56e74d44a7935e897",
   "packages": {
-    "core": { "component": "stablemate-core" },
     "workhorse": { "component": "workhorse-agent" },
     "workflows": { "component": "workhorse-workflows" },
     "farrier": { "component": "farrier" },

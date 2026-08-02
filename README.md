@@ -11,7 +11,7 @@ packages that work alongside an agent prompt library:
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
 | [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
-| [`core/`](core/) | `stablemate-core` (unpublished) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. Not installed directly. |
+| [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse` and `farrier`, which ship it inside their own wheels; there is nothing to install. |
 
 And two directories that are **not** packages:
 
@@ -64,12 +64,12 @@ pipx install farrier
 pipx install ostler
 ```
 
-The rest are not on PyPI yet: `stablemate-core`, `workhorse-workflows` and `saddlebag`
-are unpublished, the name `groom` on the index belongs to an unrelated project, and the
-last `workhorse-agent` release predates the Python-workflow engine. A `pipx install
-./workhorse` therefore also needs core built locally first (`make -C core build`, then
-`--pip-args="--find-links core/dist"`), which is why the checkout above is the path this
-README vouches for.
+The rest are not on PyPI yet: `workhorse-workflows` and `saddlebag` are unpublished, the
+name `groom` on the index belongs to an unrelated project, and the last `workhorse-agent`
+release predates the Python-workflow engine — which is why the checkout above is the path
+this README vouches for. `stablemate-core` is not on that list because it is not a
+distribution at all: `workhorse` and `farrier` each carry a copy of it, so `pipx install
+./workhorse` resolves from the index alone with nothing built locally first.
 
 `groom` and `saddlebag` are optional add-ons — no base workflow requires either.
 
@@ -279,8 +279,14 @@ against the merged tree, and uploads the packages that were actually released �
 dependency order, since an install of a release has to resolve:
 
 ```
-stablemate-core → ostler → workhorse-agent → farrier → workhorse-workflows
+ostler → workhorse-agent → farrier → workhorse-workflows
 ```
+
+`stablemate-core` is not in that chain and never will be: it is vendored, not published
+(see [`core/README.md`](core/README.md)). A change to it is committed together with the
+copies `make vendor` writes under `workhorse/` and `farrier/`, which is what makes
+release-please bump both tools — it decides what to ship from the paths a commit touched,
+so a fix committed only under `core/` would reach nobody.
 
 `groom` and `saddlebag` are versioned and get changelogs but have no upload step: the name
 `groom` on PyPI belongs to an unrelated project, and `saddlebag` is not in scope yet.
@@ -307,9 +313,9 @@ distribution is one entry in each, plus its build/publish steps in the workflow.
 ### One-time setup (not in the repo)
 
 1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository
-   `stablemate`, workflow `release.yml`, environment `pypi`. `stablemate-core` and
-   `workhorse-workflows` do not exist on the index yet, so they get a **pending**
-   publisher, which the first upload converts into the project.
+   `stablemate`, workflow `release.yml`, environment `pypi`. `workhorse-workflows` does
+   not exist on the index yet, so it gets a **pending** publisher, which the first upload
+   converts into the project.
 2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
    in the repository settings. Adding yourself as a required reviewer turns the merge into
    an explicit "approve the upload", which is the cheapest safety net available.
