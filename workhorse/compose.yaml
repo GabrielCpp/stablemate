@@ -99,13 +99,17 @@ services:
       #   source: ${WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}
       #   target: /mnt/workspace-host
 
-      # groom-sidecar source (the `pipx install --editable` model). groom is NOT
-      # baked into the image; supervisor.py installs it as an editable uv tool
-      # from this bind, so the running sidecar imports the host source live — an
-      # edit reaches it via a `reload` over the socket (or a `docker restart`)
-      # with no image rebuild. Omit this bind and the container runs without a
-      # sidecar. Read-only so a container can never write back into the repo
-      # checkout (the editable install writes only into its own tool venv).
+      # groom-sidecar source. groom is NOT baked into the image; supervisor.py
+      # installs it from this bind at start, so an edit reaches the sidecar via a
+      # `reload` over the socket (or a `docker restart`) with no image rebuild.
+      # Omit this bind and the container runs without a sidecar.
+      #
+      # The bind itself is never imported. Each reload copies it to a new
+      # generation dir under /opt/live and installs from THAT (workhorse/
+      # livesource.py), so a save half-way through a multi-file edit can never be
+      # imported by the running sidecar, and a broken edit leaves the previous
+      # generation to fall back to. Read-only here because nothing in the
+      # container has any reason to write back into the checkout.
       - type: bind
         source: ../groom
         target: /mnt/groom-src

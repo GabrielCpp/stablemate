@@ -50,6 +50,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import livesource
 from workhorse_workflows.kit import workspace
 
 log = logging.getLogger("supervisor")
@@ -90,6 +91,13 @@ class Layout:
     settings_src: Path = Path("/mnt/claude-settings.json")
     credentials_src: Path = Path("/mnt/claude-credentials.json")
     observer_src: Path = Path("/mnt/groom-src")
+    # Where a bind's per-generation copies are staged. Container-local rather than a
+    # volume: a copy of the host source belongs to this container's life, and a fresh
+    # one should re-stage rather than inherit some earlier edit.
+    live_root: Path = Path("/opt/live")
+    # The image's own workhorse checkout, for packages that must be built against
+    # the same engine the run uses rather than a released one.
+    image_workhorse: Path = Path("/app/workhorse")
 
     @property
     def claude_dir(self) -> Path:
@@ -209,22 +217,35 @@ def _git(*args: str) -> None:
     subprocess.run(["git", *args], check=True)
 
 
-def install_observer(layout: Layout) -> list[str] | None:
-    """Install groom's sidecar from its read-only bind, and return how to run it.
+def observer_source(layout: Layout) -> livesource.LiveSource:
+    """groom's sidecar, as a package installed from its host bind.
 
-    groom is not baked into the image: it arrives at runtime from a bind of the host
-    source, so an edit reaches the next sidecar start with no rebuild. Every failure
-    here is swallowed on purpose — no bind, a broken install, no network for its
-    dependencies — because a container with no observer is a supported
-    configuration, not a degraded one.
+    `with_editable` carries **this image's** workhorse rather than letting the
+    isolated tool venv resolve `workhorse-agent` from PyPI. That is a correctness
+    requirement, not a build convenience: the sidecar reads the gate files the engine
+    writes, so a released workhorse in the sidecar's venv and an in-tree one in the
+    run's means the two can disagree about the format. They did — `groom/gates.py`
+    imports `workhorse.gates`, which the released distribution does not yet have, so
+    the sidecar died on startup in every container and the old shell threw the
+    traceback away.
     """
-    if layout.observer_src.is_dir():
-        with contextlib.suppress(subprocess.SubprocessError, OSError):
-            subprocess.run(
-                ["uv", "tool", "install", "--editable", str(layout.observer_src), "--no-sources"],
-                env={**os.environ, "UV_TOOL_BIN_DIR": str(layout.tool_bin)},
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
-            )
+    return livesource.LiveSource(
+        name="groom",
+        mount=layout.observer_src,
+        root=layout.live_root / "groom",
+        with_editable=(layout.image_workhorse,),
+    )
+
+
+def install_observer(layout: Layout) -> list[str] | None:
+    """Stage and install the observer, and return how to run it.
+
+    Failure is swallowed on purpose at every step — no bind, a copy that failed, a
+    broken install, no network for its dependencies — because a container with no
+    observer is a supported configuration, not a degraded one. `livesource.refresh`
+    already reports None rather than raising for each of those.
+    """
+    livesource.refresh(observer_source(layout), layout.tool_bin)
     return [str(layout.observer)] if os.access(layout.observer, os.X_OK) else None
 
 
@@ -343,7 +364,12 @@ class Child:
                 proc.send_signal(sig)
 
 
-async def supervise_observer(child: Child, *, reload_code: int = RELOAD_EXIT_CODE) -> None:
+async def supervise_observer(
+    child: Child,
+    *,
+    reload_code: int = RELOAD_EXIT_CODE,
+    on_reload: Callable[[], object] | None = None,
+) -> None:
     """Keep restarting the observer for as long as it asks to be reloaded.
 
     Only the reserved reload code restarts it. Anything else — a clean exit, a
@@ -351,6 +377,11 @@ async def supervise_observer(child: Child, *, reload_code: int = RELOAD_EXIT_COD
     is what makes a broken reload fail safe rather than spin. Every outcome here is
     non-fatal by construction: this coroutine returns, it never raises into the
     run's exit code.
+
+    `on_reload` is what actually picks up the operator's edit: it re-stages the host
+    bind into a new generation and installs that (see livesource). It runs *between*
+    the exit and the restart, so the process that comes back is importing a directory
+    written once and complete, never the bind the operator is still editing.
     """
     while not child.stopping:
         proc = await child.start()
@@ -359,7 +390,12 @@ async def supervise_observer(child: Child, *, reload_code: int = RELOAD_EXIT_COD
             if rc:
                 log.warning("observer exited with %d; not restarting it", rc)
             return
-        log.info("observer requested a reload; restarting it")
+        log.info("observer requested a reload")
+        if on_reload is not None:
+            # A refresh that fails leaves the previous generation installed, so the
+            # restart below still has something to run. Never fatal.
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(on_reload)
 
 
 async def supervise(
@@ -367,6 +403,7 @@ async def supervise(
     observer: Child | None = None,
     *,
     exit_notice: Callable[[int], Sequence[str]] | None = None,
+    on_reload: Callable[[], object] | None = None,
     timeout_s: float = TEARDOWN_TIMEOUT_S,
 ) -> int:
     """Run both children and return the run's exit code as the container's.
@@ -378,7 +415,9 @@ async def supervise(
     """
     loop = asyncio.get_running_loop()
     observer_task = (
-        asyncio.create_task(supervise_observer(observer)) if observer is not None else None
+        asyncio.create_task(supervise_observer(observer, on_reload=on_reload))
+        if observer is not None
+        else None
     )
 
     # Installed before the spawn, so a `docker stop` during startup still reaches the
@@ -453,6 +492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     observer_cmd = install_observer(layout)
     observer = (
+        # PYTHONDONTWRITEBYTECODE because a generation dir is written once and never
+        # touched again; .pyc files scattered through it are pure noise the prune
+        # then has to delete.
         Child(observer_cmd, env={**env, "PYTHONDONTWRITEBYTECODE": "1"})
         if observer_cmd
         else None
@@ -469,6 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             Child(run_command(env, params_file, extra), env=env),
             observer,
             exit_notice=notice,
+            on_reload=lambda: livesource.refresh(observer_source(layout), layout.tool_bin),
         )
     )
 

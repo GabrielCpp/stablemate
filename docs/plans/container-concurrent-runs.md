@@ -430,9 +430,55 @@ its stack to the container log. (Written while diagnosing exactly that.)
    silently, because the old shell discarded its stdout. Pre-existing and unrelated
    to this plan; item 3 rebuilds this install path and is where it gets fixed.
 
-### 3. Generation-copy install + reload
+### 3. Generation-copy install + reload — **done**
 The `/mnt/<pkg>-src` → `/opt/live/<pkg>/<gen>` mechanism (§4.5), shared by groom and
 local pipx workflows. Reload restarts only the observer.
+
+**As built.** `workhorse/livesource.py` + `workhorse/tests/test_livesource.py`.
+`LiveSource(name, mount, root, with_editable)` and `refresh()` = stage → install →
+prune. The supervisor calls it once at start and again on every reload, *between*
+the observer's exit and its restart, so the process that comes back is importing a
+directory that was written once and completed.
+
+Decisions:
+
+- **Generations are numeric and zero-padded** (`0001`, `0002`), so chronological
+  order is lexical order and `generations()` is a plain sort rather than a stat of
+  every entry.
+- **Two generations are kept, not one.** The obvious `keep=1` deletes the directory
+  the *currently running* process is importing from — precisely the failure this
+  module exists to prevent. The previous generation stays until the one after it
+  lands.
+- **A failed install deletes its own staged copy** and returns None, leaving the
+  previous generation installed. So a broken edit costs a restart, not the observer.
+  The copy is removed rather than kept so the next generation number does not skip.
+- **`.git`/`.venv`/`node_modules`/`__pycache__` are not copied.** The first can dwarf
+  the source, the middle two are rebuilt by the install anyway, and foreign bytecode
+  is worse than useless.
+- `/opt/live` is **container-local, not a volume**. A copy of the host source belongs
+  to this container's life; a fresh container should re-stage rather than inherit a
+  generation staged from some earlier edit. The Dockerfile makes it world-writable
+  alongside the other runtime dirs.
+
+**The groom import defect (item 2's finding #2) is fixed here**, and the fix is a
+correctness argument rather than a build workaround. The sidecar reads the gate files
+the *engine* writes, so it must be built against the same engine: the install now
+passes `--with-editable /app/workhorse` instead of letting the isolated tool venv
+resolve `workhorse-agent` from PyPI. A released engine in the observer's venv and an
+in-tree one in the run's is a disagreement waiting to happen — and it had already
+happened, since `groom/gates.py` imports `workhorse.gates`, which the release does
+not carry.
+
+**Verified in the real container, at the level that matters.** Reading the tool
+venv's `.pth` shows it resolving to `/opt/live/groom/0001` and **not**
+`/mnt/groom-src` — which is §4.5's entire claim, checked rather than assumed. In the
+same run the sidecar started cleanly and survived to teardown (`observer exited with
+-15`, i.e. the supervisor's own SIGTERM), where the previous build had it dying on
+`ImportError` before the workflow began.
+
+**Not verified end-to-end:** a `reload` driven by a real groom dashboard over the
+socket. The supervisor's half is tested (restage-then-restart, and a raising refresh
+still restarting on the old generation); groom's half is unchanged by this item.
 
 ### 4. pipx discovery in farrier
 Read `pipx list --json`; classify PyPI vs local; emit what the launcher must mount

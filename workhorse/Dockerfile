@@ -123,8 +123,8 @@ COPY core/ core/
 RUN uv sync --frozen --package workhorse-agent --package ostler \
     --package workhorse-workflows \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
-    && mkdir -p /workspace /runs /claude-state /opt/uv-python \
-    && chmod -R a+rwX /app /workspace /runs /claude-state \
+    && mkdir -p /workspace /runs /claude-state /opt/uv-python /opt/live \
+    && chmod -R a+rwX /app /workspace /runs /claude-state /opt/live \
     && chmod -R a+rX /opt/uv-python
 
 # The supervisor arrives with `COPY workhorse/` above — it is a sibling of the

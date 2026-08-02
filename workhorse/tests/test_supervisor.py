@@ -100,6 +100,46 @@ def test_only_the_reload_code_restarts_the_observer(tmp_path: Path):
     assert counter.read_text() == "3"  # two reloads, then a clean exit
 
 
+def test_a_reload_restages_the_source_before_restarting(tmp_path: Path):
+    """The restart has to import a directory written once and complete, not the bind
+    the operator may still be saving into. So the refresh happens *between* the exit
+    and the restart, not lazily on the next import."""
+    counter = tmp_path / "starts"
+    order: list[str] = []
+    code = (
+        f"import pathlib,sys; p=pathlib.Path({str(counter)!r}); "
+        "n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
+        "sys.exit(3 if n < 1 else 0)"
+    )
+    child = _child(code=code)
+
+    def refresh() -> None:
+        order.append(f"refresh@{counter.read_text()}")
+
+    _run(supervisor.supervise_observer(child, on_reload=refresh))
+
+    # One reload, and the refresh ran after the first exit and before the second start.
+    assert counter.read_text() == "2"
+    assert order == ["refresh@1"]
+
+
+def test_a_refresh_that_raises_still_restarts_on_the_old_generation(tmp_path: Path):
+    """livesource keeps the previous generation installed when a refresh fails, so
+    the restart has something to run. A raising hook must not end the observer."""
+    counter = tmp_path / "starts"
+    code = (
+        f"import pathlib,sys; p=pathlib.Path({str(counter)!r}); "
+        "n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
+        "sys.exit(3 if n < 1 else 0)"
+    )
+
+    def boom() -> None:
+        raise RuntimeError("staging blew up")
+
+    _run(supervisor.supervise_observer(_child(code=code), on_reload=boom))
+    assert counter.read_text() == "2"
+
+
 def test_a_reload_landing_on_broken_code_fails_safe_instead_of_storming(tmp_path: Path):
     """Any exit that is not the reload code stops the loop for good — otherwise a
     bad edit turns into a restart storm nobody is watching."""
