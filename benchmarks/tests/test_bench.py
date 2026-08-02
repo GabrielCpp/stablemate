@@ -512,6 +512,10 @@ def test_every_task_spec_loads_and_fits_the_hour():
     The hour is `author + coder`, not every phase. Genesis scaffolds the repo once — it is
     network-bound setup that a fix-and-rerun cycle skips, so charging it against the hour
     would price the debugging loop by a step the loop does not take.
+
+    A task may budget past the hour, but only by saying so in `over_hour:` and why. The
+    exception is data rather than a number this test learns to expect, so a budget that
+    grows past the hour by accident still fails — which is the case the assertion is for.
     """
     specs = sorted((Path(__file__).parents[1] / "tasks").glob("*/bench.yml"))
     assert specs, "the debugging task set is missing"
@@ -519,7 +523,10 @@ def test_every_task_spec_loads_and_fits_the_hour():
         spec = bench.load_spec(path)
         assert spec.power, f"{path.parent.name}: no tier pinned — the hour is not the spec's"
         total = sum(float(spec.budget.get(p) or 0) for p in ("author", "coder"))
-        assert 0 < total <= 3600, f"{path.parent.name}: budgets total {total}s, not an hour"
+        assert total > 0, f"{path.parent.name}: no author/coder budget"
+        assert total <= 3600 or spec.over_hour, \
+            f"{path.parent.name}: budgets total {total}s, not an hour — and no `over_hour:` " \
+            f"saying why that is deliberate"
         assert (path.parent / spec.backlog).is_file(), f"{path.parent.name}: no backlog"
         assert bench.parse_backlog(path.parent / spec.backlog), \
             f"{path.parent.name}: backlog has no `- [id] …` bullets"
