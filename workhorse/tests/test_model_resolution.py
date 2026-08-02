@@ -15,7 +15,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from unittest.mock import patch
 
-from stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.runner.ladder import _resolve_power_settings
 
 

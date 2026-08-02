@@ -40,7 +40,7 @@ a configured `stablemate_dir` checkout (`<checkout>/base-library`) → the share
 `pipx`, which isolates each tool in its own venv: the base is data with no package to
 import, so it can only be found by path. The cache is deliberately last, so a fetched
 copy can never shadow a checkout you are editing — though today nothing populates it on
-your behalf: `stablemate_core.base_cache` implements the fetch, but no command calls it
+your behalf: `farrier._vendor.stablemate_core.base_cache` implements the fetch, but no command calls it
 yet, so in practice one of the first three routes is what makes a base reachable. See the
 [monorepo README](https://github.com/GabrielCpp/stablemate#installing) for how the tools
 are installed.

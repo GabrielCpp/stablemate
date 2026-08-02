@@ -52,6 +52,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-parsers
+	$(MAKE) check-vendor
 
 .PHONY: test-bench
 test-bench: ## Run the benchmark harness's own tests (its scoring must be trustworthy)
@@ -86,12 +87,26 @@ check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets
 	# as a comment, a link matched inside a fenced code block.
 	uv run python scripts/check_parsers.py
 
+.PHONY: vendor
+vendor: ## Copy core/stablemate_core into workhorse and farrier (run it with any core change)
+	# stablemate-core is not published; each tool carries a copy. The copy is committed
+	# rather than synthesized at build time because release-please decides what to ship
+	# from the paths a commit touched — a fix committed only under core/ touches no
+	# released package and would reach nobody.
+	uv run python scripts/vendor_core.py
+
+.PHONY: check-vendor
+check-vendor: ## Guard the vendored copies (they must match core/stablemate_core byte for byte)
+	# Two copies of a config *writer* is the failure this repo already had once. They are
+	# safe only while they are identical, and identical is not something anyone notices
+	# by reading a diff of the package they happened to open.
+	uv run python scripts/vendor_core.py --check
+
 .PHONY: build
 build: ## Build sdists + wheels for the published distributions (into each package's dist/)
 	# The same order the release workflow publishes in, and for the same reason: an
-	# install of a release has to resolve. core leads because workhorse and farrier
-	# declare it; workflows trails because it declares workhorse-agent and ostler.
-	$(MAKE) -C core build
+	# install of a release has to resolve — workflows trails because it declares
+	# workhorse-agent and ostler. core is not here: it is vendored, not published.
 	$(MAKE) -C ostler build
 	$(MAKE) -C workhorse build
 	$(MAKE) -C farrier build
@@ -99,7 +114,6 @@ build: ## Build sdists + wheels for the published distributions (into each packa
 
 .PHONY: version
 version: ## Print every published package's declared version
-	@$(MAKE) -s -C core version
 	@$(MAKE) -s -C ostler version
 	@$(MAKE) -s -C workhorse version
 	@$(MAKE) -s -C farrier version

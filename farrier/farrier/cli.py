@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from farrier import layers as _layers
-from stablemate_core.config import (
+from farrier._vendor.stablemate_core.config import (
     ConfigVersionError,
     config_path,
     read_config,

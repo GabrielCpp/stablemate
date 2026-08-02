@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from stablemate_core import base_cache, config
+from farrier._vendor.stablemate_core import base_cache, config
 
 
 @pytest.fixture(autouse=True)

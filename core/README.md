@@ -38,4 +38,31 @@ It depends on nothing else in the workspace and must not: `workhorse → core` a
 `farrier → core`, never back. It knows no workflow's vocabulary, no node types, and
 nothing about library content — only where files live and how they are read.
 
-You do not install this directly; the tools depend on it.
+## It is vendored, not published
+
+Because the guard above holds however the tools got installed, this package is not a
+distribution. `make vendor` copies this directory into each tool that needs it:
+
+```
+core/stablemate_core  →  farrier/farrier/_vendor/stablemate_core
+                      →  workhorse/workhorse/_vendor/stablemate_core
+```
+
+The copies are committed rather than synthesized during the wheel build, for a release
+reason: release-please decides which package to bump from the paths a commit touched, so
+a fix committed only under `core/` touches no released package and would ship to nobody.
+Running `make vendor` in the same commit is what makes both tools release it. Editing a
+copy directly is caught by `make check-vendor`, which runs as part of `make test`.
+
+Two consequences to keep in mind when changing anything here:
+
+- **Every import inside this package must be relative.** The same file is imported under
+  three names, and an absolute `from stablemate_core.x import y` resolves to whichever
+  copy is on `sys.path` — a vendored module would reach back out of the wheel that
+  contains it while still comparing byte-identical on disk. The repo-wide ban on relative
+  imports is lifted for exactly this package, in the root `pyproject.toml`.
+- **A new dependency has to be added to every tool that vendors this.** `check-vendor`
+  compares files; it cannot notice a requirement that only `core/pyproject.toml` declares.
+
+You do not install this directly, and you cannot: the `Private :: Do Not Upload`
+classifier makes PyPI reject it.

@@ -18,9 +18,11 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  # The shared config file, base-library discovery and cache. Depends on nothing
-  # here and must not: tools -> core, never back.
-  "stablemate-core>=0.1.0",
+  # platformdirs and tomli-w are workhorse._vendor.stablemate_core's, not workhorse's
+  # own: the shared config file, base-library discovery and the cache are vendored in
+  # rather than depended on (see core/README.md), so their requirements land here.
+  "platformdirs>=4.0",
+  "tomli-w>=1.0",
   # Prompt rendering (templates.py) and the static reference scan (references.py).
   "jinja2>=3.1",
   # Every value crossing a boundary — an agent's JSON reply, a node's return, the

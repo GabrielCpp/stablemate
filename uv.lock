@@ -295,7 +295,7 @@ dependencies = [
     { name = "mdit-py-plugins" },
     { name = "platformdirs" },
     { name = "pyyaml" },
-    { name = "stablemate-core" },
+    { name = "tomli-w" },
 ]
 
 [package.metadata]
@@ -305,7 +305,7 @@ requires-dist = [
     { name = "mdit-py-plugins", specifier = ">=0.4" },
     { name = "platformdirs", specifier = ">=4" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "stablemate-core", editable = "core" },
+    { name = "tomli-w", specifier = ">=1.0" },
 ]
 
 [[package]]
@@ -2115,8 +2115,9 @@ dependencies = [
     { name = "jinja2" },
     { name = "json-repair" },
     { name = "json5" },
+    { name = "platformdirs" },
     { name = "pydantic" },
-    { name = "stablemate-core" },
+    { name = "tomli-w" },
 ]
 
 [package.optional-dependencies]
@@ -2136,10 +2137,11 @@ requires-dist = [
     { name = "json5", specifier = ">=0.9" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.25" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.25" },
+    { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.0" },
-    { name = "stablemate-core", editable = "core" },
+    { name = "tomli-w", specifier = ">=1.0" },
 ]
 provides-extras = ["test", "otel"]
 

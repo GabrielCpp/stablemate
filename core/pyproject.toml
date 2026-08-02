@@ -13,6 +13,11 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.12",
+  # PyPI refuses any upload carrying this classifier. It is here because the only
+  # copies of this package that ship are the vendored ones inside workhorse and farrier
+  # (`make vendor`); an install that resolved this name from an index would be a second,
+  # independently-versioned copy of the config writer — the thing vendoring removes.
+  "Private :: Do Not Upload",
 ]
 
 # Deliberately tiny. This package exists because workhorse and farrier must AGREE about
@@ -21,6 +26,11 @@ classifiers = [
 # was duplicated code until the duplication caused a real bug: two hand-rolled TOML
 # writers, one of which stringified nested tables and destroyed the other tool's
 # [power.*] settings.
+#
+# It is a workspace member so it can be tested and imported in a checkout, but it is not
+# a distribution: `make vendor` copies it into each tool. These dependencies are declared
+# again by every tool that vendors it — `make check-vendor` cannot notice a missing
+# requirement, only a changed file.
 #
 # It depends on NOTHING in this workspace and must stay that way: workhorse -> core and
 # farrier -> core, never back. It knows no workflow's vocabulary, no node types, and no

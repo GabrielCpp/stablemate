@@ -9,8 +9,12 @@
 #                                       workhorse operator gates)
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
-#   - core/       -> stablemate-core    (shared plumbing: the home config, base-library
-#                                       discovery, the base-library cache)
+#   - core/       -> (no distribution)  (shared plumbing: the home config, base-library
+#                                       discovery, the base-library cache. A member so it
+#                                       can be tested and imported in a checkout, but it
+#                                       is never published: `make vendor` copies it into
+#                                       workhorse and farrier, which ship it. See
+#                                       core/README.md)
 #
 # base-library/ is NOT a package and NOT a workspace member: it is the base library
 # itself — plain data (library/, packs/) that the tools locate on disk or fetch from
@@ -84,6 +88,17 @@ extend-select = [
 # module is imported as part of its package, and it hides which package a name
 # comes from — see the python-cli skill.
 ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# The one package that must NOT name itself. stablemate_core is not published — it is
+# copied into workhorse and farrier by `make vendor`, so the same file is imported as
+# `stablemate_core`, `farrier._vendor.stablemate_core` and
+# `workhorse._vendor.stablemate_core`. An absolute self-import resolves to whichever copy
+# is on sys.path, which in a checkout is the source one: a vendored module would reach
+# back out of the wheel containing it, and the copies would stop being copies at runtime
+# while still comparing byte-identical on disk. The glob is the package name rather than
+# three paths, so a future consumer that vendors it is covered without an edit.
+"**/stablemate_core/*.py" = ["TID252"]
 
 # ty runs from this root too (`make lint`), over the same tree ruff sees, so member
 # packages carry no [tool.ty] of their own either. Every rule is at its default

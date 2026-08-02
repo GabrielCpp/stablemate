@@ -27,7 +27,7 @@ from farrier.cli import (
     main,
     mapped_instruction_sources,
 )
-from stablemate_core.config import (
+from farrier._vendor.stablemate_core.config import (
     config_path,
     read_config,
     resolve_stablemate_dir,
