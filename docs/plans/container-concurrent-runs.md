@@ -1,13 +1,28 @@
 # Concurrent containerized runs: supervisor-owned, pipx-sourced
 
-> **Status:** proposed; nothing implemented. This document records the design for
-> running **N concurrent containerized workflow runs of the same kind** (three
-> `coder` runs at once), replacing `entrypoint.sh` with a small Python supervisor,
-> sourcing workflows from pipx rather than the base library, and giving each run
-> its own `git worktree` of a bind-mounted host repo.
+> **Status: implemented.** All nine work items in §5 are done and green. Two
+> containers of the same workflow now run concurrently against one host repo, each
+> with its own detached worktree, volume set and run id — verified end to end, not
+> asserted.
 >
-> Written against `main` @ `173cbd8`. Every file:line below was verified against
-> that tree — treat them as facts to build on, not claims to re-derive.
+> This document records the design for running **N concurrent containerized workflow
+> runs of the same kind** (three `coder` runs at once), replacing `entrypoint.sh`
+> with a small Python supervisor, sourcing workflows from pipx rather than the base
+> library, and giving each run its own `git worktree` of a bind-mounted host repo.
+>
+> Written against `main` @ `173cbd8`. §§1–4 describe the tree **as it was then** —
+> the `entrypoint.sh` line references and the "what exists today" inventory are
+> history now, deliberately left intact so the item notes in §5 have something to
+> correct. **§5 is the record of what was actually built**, including where the
+> design turned out to be wrong; read those notes before trusting §4.
+>
+> Corrections §5 makes to §4, in case you only read one thing:
+> §4.2's "net deletion" does not hold (item 2) · §4.5 verified at the `.pth` level
+> (item 3) · §8.2's discovery is resolved at *make* time, not render time (item 4) ·
+> §4.7's worktree root moved inside the repo (item 5) · `branch_merged` must test
+> content, not ancestry (item 6b) · §3.3's endpoint was half the fix (item 7) ·
+> §4.8's loose-object claim is wrong and it never considered reads (item 8) ·
+> §6's suite list is missing two (item 7).
 
 ## 1. Problem
 
@@ -829,10 +844,38 @@ completed (`✓ result received`), the run exited 0, the worktree came out
 and farrier's `AGENTS_GITIGNORE_BLOCK` did not cover it — so a target repo could
 commit a second checkout of itself, and now also a copy of a credential. Added.
 
-### 9. Docs
+### 9. Docs — **done**
 `DOCKER.md:11` asserts the agent "works against its own clone (never a host working
 tree)" — deliberately inverted by item 5. Also `workhorse/docs/DEVELOPMENT.md` if
 the entrypoint is described there.
+
+**As built.** `DOCKER.md` is substantially rewritten: the clone claim is inverted and
+*explained* (worktrees are what make concurrency cheap, and a run's commits end up in
+your repo rather than stranded in a volume); a "Running several at once" section
+leads with the launcher; the repo-bind's `source == target` requirement is spelled
+out with its reason; the environment table gains the eleven variables this work
+added; the mounts table and the uid/reset sections are rewritten around per-run
+volumes and `65534:<your gid>`. `DEVELOPMENT.md` was updated back in item 2.
+
+**The breaking change is called out where an operator will hit it**, not only here:
+`CODER_WORKSPACE`/`CODER_DOCS_PATH` → `AGENT_PARAM_<NAME>`, with the note that a
+leftover `CODER_*` is now silently ignored — so "a parameter I thought I had set"
+has a documented cause.
+
+**`docs/features/**` was in scope after all.** Item 2 deferred these as "ostler's OKF
+graph, may need validation". They are validated — `ostler doctor` — and four books
+carried claims this work falsified: `workflow-kit.md` (the checkout is called
+in-process by the supervisor, not shelled out from `entrypoint.sh`, and it now
+documents `source_mode`/`worktree_root`), `code-workspace-file.md`,
+`sidecar-live-sessions.md` and `sidecar-autostart.md` (the sidecar is neither baked
+into the image nor installed from the bind — it is installed from a per-generation
+copy). Deferring them was the wrong call: a doc that describes a deleted file is
+worse than one that is merely thin.
+
+**Pre-existing OKF defect fixed in passing:** `operator-gate-context-file.md` anchored
+`code:` at `groom/groom/gates.py::_STATUS_RE`, a symbol that has never existed —
+`status_of` delegates to workhorse's gates module. `ostler doctor` now reports
+0 errors, 0 warnings.
 
 ## 6. Verification gate
 

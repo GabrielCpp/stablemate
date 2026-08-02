@@ -77,5 +77,5 @@ cloned/updated folder to (skipped instead if the folder has unsynced local work 
 - [`checkout_workspace`](concepts/workflow-kit.md#checkout_workspace) — reads
   `folders[].name`/`url`/`branch` to clone/update working trees before a workflow run starts.
 - No part of the workhorse engine reads this file. It is read only by
-  [`workhorse_workflows.kit`](concepts/workflow-kit.md) — from a node, or from `entrypoint.sh`'s
-  pre-run checkout step.
+  [`workhorse_workflows.kit`](concepts/workflow-kit.md) — from a node, or from the container
+  supervisor's pre-run checkout step.

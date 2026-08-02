@@ -94,14 +94,19 @@ renders from). farrier does not read or validate `workspace:`.
 
 ### `checkout_workspace`
 
-Clones or fast-forwards every `url`-bearing folder into `workspace_root`. Invoked once from
-`entrypoint.sh` — `python -c "from workhorse_workflows.kit import checkout_workspace;
-checkout_workspace()"` — before the engine starts, so every folder's working tree already exists by
-the time the first state runs. Neither coder nor author has a "setup" state.
+Materialises every `url`-bearing folder under `workspace_root` — cloning it, or (in `worktree`
+mode) cutting a detached `git worktree` of a bind-mounted host repo. Invoked once **in-process** by
+the container's `supervisor.py`, before the engine starts, so every folder's working tree already
+exists by the time the first state runs. Neither coder nor author has a "setup" state.
 
 - **Input:** `workspace_file: str | Path = ""`; `workspace_root: str | Path = "/workspace"`; and
-  keyword-only `repo_url` / `repo_name` / `repo_branch` / `token_env`. `entrypoint.sh` is the
-  process boundary and passes what it read there as arguments (this module's `__main__`).
+  keyword-only `repo_url` / `repo_name` / `repo_branch` / `token_env` / `source_mode` /
+  `worktree_root`. `supervisor.py` is the process boundary and passes what it read from the
+  environment as arguments (this module's `__main__` exposes the same set as flags).
+- **`source_mode`:** `clone` (default) is a disposable copy reset to the remote on restart;
+  `worktree` gives each concurrent run its own working tree of one host repo, sharing its objects
+  and refs. A worktree is created **detached** (no workflow knows its branch yet) and an existing
+  one is **never reset** — it sits in the operator's own repo and may hold work in progress.
 - **Output:** `None` (side effect: working trees under `workspace_root`); progress goes to stderr at
   `INFO` through a `"workhorse.checkout"` logger.
 - **Algorithm:**
@@ -127,9 +132,8 @@ the time the first state runs. Neither coder nor author has a "setup" state.
 - **Credentials:** the network commands (clone, fetch) are built by `_git_network_command`, which
   prepends a transient `credential.helper` emitting `x-access-token` / `$WORKHORSE_GIT_TOKEN` when
   that variable is set, and is a plain `git` otherwise. A workflow-specific checkout hook
-  (`/workflow/scripts/checkout-workspace.py`, which `entrypoint.sh` prefers when present) resolves
-  credentials per that workflow's own configuration and exports the variable; the generic code knows
-  no token names or provider conventions.
+  resolves credentials per that workflow's own configuration and exports the variable; the generic
+  code knows no token names or provider conventions.
 - **Raises:** every `subprocess.run(..., check=True)` propagates `subprocess.CalledProcessError` on
   a non-zero exit; each carries a timeout (10s local, 300s fetch, 600s clone).
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace`
@@ -237,8 +241,8 @@ shim, no CLI, no network. Every helper below inherits that seam.
 
 - Workflow **[node functions](../workflow-format.md#node)** across `author`, `coder` and
   `okf_builder`.
-- `entrypoint.sh`, which calls [`checkout_workspace`](#checkout_workspace) once before the engine
-  starts.
+- `workhorse/supervisor.py`, which calls [`checkout_workspace`](#checkout_workspace) once, in
+  process, before the engine starts.
 - Not the engine. Nothing under `workhorse/workhorse/` imports this package — the dependency runs
   one way only, `kit` → [`scriptutil`](scriptutil.md), and only for
   [`load_jsonc`](scriptutil.md#load_jsonc) and [`find_repo_root`](scriptutil.md#find_repo_root).

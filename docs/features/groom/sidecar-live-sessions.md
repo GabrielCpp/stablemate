@@ -44,10 +44,10 @@ reconstruction) into one connection.
   fall back to volume reads.
 - **Interactive data plane** (Files/Diff) is the throwaway-container volume-read
   path described above.
-- The sidecar is **baked into the image** at build time (see
-  [sidecar-autostart](sidecar-autostart.md)): `workhorse/Dockerfile` `COPY groom/`
-  + `uv sync … --package groom`, launched by `entrypoint.sh` as
-  `gosu nobody env HOME=/claude-state uv run groom-sidecar &`.
+- The sidecar is **installed at container start** from a read-only bind of the host
+  source (see [sidecar-autostart](sidecar-autostart.md)) and supervised by
+  `workhorse/supervisor.py` as one of its two children. It is never baked into the
+  image, and a container without the bind simply runs without one.
 
 ## Design principle
 
@@ -275,9 +275,11 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
   send lock) + the `CONNECTIONS` registry.
 - `groom/groom/app.py` — `dashboard_sidecar` (`/sidecar`), the socket-preferred
   `/files`/`/file`/`/diff`, `/reload`, `_apply_hello`.
-- `workhorse/entrypoint.sh` — `uv tool install --editable /mnt/groom-src
-  --no-sources` at startup, then the `run_sidecar` exit-3 supervising loop
-  (restart-only; the editable install makes edits live). `workhorse/Dockerfile`
+- `workhorse/supervisor.py` — installs the sidecar at startup and supervises it,
+  restarting only on exit 3. `workhorse/livesource.py` — copies `/mnt/groom-src` to
+  a new `/opt/live/groom/<gen>` per reload and installs from THAT, so a running
+  process never imports the directory being edited and a broken edit leaves the
+  previous generation to fall back to. `workhorse/Dockerfile`
   — does **not** bake groom (drops `COPY groom/` + `--package groom`); groom is
   the editable tool installed at runtime. `workhorse/compose.yaml` — the
   read-only `../groom:/mnt/groom-src` bind; `farrier`'s generated compose

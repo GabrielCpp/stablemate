@@ -26,10 +26,10 @@ host-side groom (if one is listening).
   workflow and, after the run returns, fires a one-shot
   `groom-sidecar --exit-code "$rc"` so groom learns the workflow finished (the
   container tears down before the inotify loop could report it).
-- Entry point: `docker compose -f workhorse/compose.yaml up`, whose service uses
-  `workhorse`'s image + `entrypoint.sh`. (farrier's generated `.agents/agents.mk`
-  used to carry `make agent-run` / `make agent-build` wrappers; farrier installs
-  skills and prompts only now, and the launcher has no run targets.)
+- Entry point: `make agent-run-<workflow>` from farrier's generated
+  `.agents/agents.mk`, which mints a run id and launches one container per run; or
+  `docker compose -f workhorse/compose.yaml up` by hand, whose service uses
+  `workhorse`'s image + `supervisor.py`.
 
 ## Invariants (load-bearing)
 
@@ -49,9 +49,10 @@ host-side groom (if one is listening).
 
 ## Implementation
 
-- `workhorse/entrypoint.sh` — `uv tool install --editable` from the bind, then
-  the `run_sidecar` supervising loop (restart on exit 3), `trap` for signal
-  forwarding, post-run `groom-sidecar --exit-code`.
+- `workhorse/supervisor.py` — installs the sidecar from the bind (via
+  `livesource`, which installs a per-generation copy rather than the bind itself),
+  supervises it with restart-on-exit-3, forwards signals to the run, and fires the
+  post-run `groom-sidecar --exit-code`.
 - `workhorse/Dockerfile` — bakes workhorse + ostler; groom is the editable tool
   installed at runtime from the bind, not baked.
 - `workhorse/compose.yaml` — `extra_hosts: host.docker.internal:host-gateway` so

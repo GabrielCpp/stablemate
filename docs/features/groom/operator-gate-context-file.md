@@ -23,7 +23,7 @@ volume awaiting file reader](concepts/workspace-volume-awaiting-file-reader.md),
 then rereads and reclassifies each candidate before creating gate info.
 
 - file: arbitrary workspace-relative path inside a workflow container's `/workspace` tree; common paths vary by workflow node and are not fixed by groom.
-- code: groom/groom/gates.py::_STATUS_RE
+- code: groom/groom/gates.py::status_of
 - verify: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 - verify: groom/tests/test_gates.py::test_is_awaiting
 - verify: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
