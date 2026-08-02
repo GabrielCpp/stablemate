@@ -108,19 +108,13 @@ jobs:
           python-version: "3.12"
 
       # Ordered by the dependency graph, because an install of a release has to resolve:
-      # workhorse-agent and farrier declare stablemate-core, and workhorse-workflows
-      # declares workhorse-agent and ostler. Steps in a job run in order; a matrix does
-      # not promise that, and a `needs:` chain would need always()/!failure() guards to
-      # survive a skipped predecessor.
-
-      - name: Build stablemate-core
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'core')
-        run: uv build --package stablemate-core --out-dir dist/stablemate-core
-      - name: Publish stablemate-core
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'core')
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/stablemate-core
+      # workhorse-workflows declares workhorse-agent and ostler. Steps in a job run in
+      # order; a matrix does not promise that, and a `needs:` chain would need
+      # always()/!failure() guards to survive a skipped predecessor.
+      #
+      # stablemate-core is absent deliberately: it is not a distribution. workhorse and
+      # farrier each carry a copy of it (`make vendor`), so a core change is committed as
+      # a change to both of their trees and releases through them.
 
       - name: Build ostler
         if: contains(fromJSON(needs.release-please.outputs.paths_released), 'ostler')
