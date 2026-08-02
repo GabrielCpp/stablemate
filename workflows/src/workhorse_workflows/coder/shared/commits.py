@@ -38,6 +38,12 @@ SUBJECT_LIMIT = 72
 #: escaped into something that matches nothing.
 _SCOPE_STRIP = re.compile(r"[^a-z0-9._-]+")
 
+#: Doc templates commonly label the heading with the artifact's own kind — `# Story: Record an
+#: expense`. That label is redundant twice over in a changelog: the reader knows they are
+#: reading a release note, and the subject already carries the epic/story trailers. Left in, it
+#: becomes the description's first word and every entry reads `feat(api): story: …`.
+_HEADING_LABEL = re.compile(r"^(story|epic)\s*[:–—-]\s*", re.IGNORECASE)
+
 
 def scope(name: str) -> str:
     """The Conventional Commit scope for a repo/package name (`""` when nothing survives).
@@ -108,7 +114,8 @@ def story_description(root: Path, story_path: str, fallback: str = "") -> str:
 
     The heading is the one sentence a human wrote about this story, so it is what belongs
     in a changelog; the slug is the fallback because it always exists and is greppable, not
-    because it reads well.
+    because it reads well. A `Story:`/`Epic:` label on the heading is dropped rather than
+    described, and a heading that is *only* that label falls back to the slug.
     """
     full = root / story_path if story_path else None
     if full is not None and full.is_file():
@@ -116,7 +123,10 @@ def story_description(root: Path, story_path: str, fallback: str = "") -> str:
             for line in full.read_text(encoding="utf-8").splitlines():
                 stripped = line.strip()
                 if stripped.startswith("# "):
-                    return describe(stripped[2:])
+                    described = describe(_HEADING_LABEL.sub("", stripped[2:].strip()))
+                    if described:
+                        return described
+                    break
         except OSError:
             pass
     return describe(fallback)

@@ -104,6 +104,34 @@ def test_the_description_comes_from_the_story_heading(tmp_path: Path) -> None:
     )
 
 
+def test_a_heading_that_labels_itself_a_story_does_not_say_so_twice(tmp_path: Path) -> None:
+    """Observed in the wild: `feat(expense-split): story: Record an expense against a group`.
+
+    Story templates routinely write `# Story: <sentence>`, and the label survived into the
+    description — so every changelog line began with a word that says only what kind of
+    document the coder read, which the trailers already record.
+    """
+    story = tmp_path / "story.md"
+    story.write_text("# Story: Record an expense against a group\n", encoding="utf-8")
+    epic = tmp_path / "epic.md"
+    epic.write_text("# Epic — Groups and members\n", encoding="utf-8")
+
+    assert commits.story_description(tmp_path, "story.md", "expense-record") == (
+        "record an expense against a group"
+    )
+    assert commits.story_description(tmp_path, "epic.md", "groups-and-members") == (
+        "groups and members"
+    )
+
+
+def test_a_heading_that_is_nothing_but_its_label_falls_back_to_the_slug(tmp_path: Path) -> None:
+    """Stripping the label may leave nothing, and `feat(api): ` releases nothing."""
+    story = tmp_path / "story.md"
+    story.write_text("# Story:\n\nbody\n", encoding="utf-8")
+
+    assert commits.story_description(tmp_path, "story.md", "expense-record") == "expense-record"
+
+
 def test_a_story_with_no_heading_or_no_file_falls_back_to_the_slug(tmp_path: Path) -> None:
     """The slug always exists and is greppable — that is the whole of its claim."""
     headless = tmp_path / "headless.md"
