@@ -142,7 +142,19 @@ def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dic
 
 
 def _obligation_problems(context: dict, data: dict) -> list[str]:
-    """Every obligation the OKF context required has a passing verdict with executed logs."""
+    """Every obligation the OKF context *required* has a passing verdict with executed logs.
+
+    The emphasis is the whole check. A packet carries two kinds of member: the nodes this
+    story built or touched, and the nodes the graph closure walked to on its way to them —
+    an endpoint nobody has written yet, a screen with no `code:` behind it. The builder
+    marks the second kind `"required": false`, and `ostler qa validate` already refuses a
+    plan that writes scenarios for them. Demanding evidence for them here anyway is not a
+    stricter gate, it is an unsatisfiable one: the planner is told to leave them out and
+    then failed for having left them out, which routes back to planning and loops forever.
+
+    Absent the key an obligation is required, because a packet written before the flag
+    existed says nothing about which of its members are real.
+    """
     problems: list[str] = []
     evidence_obligations = data.get("obligations") if isinstance(data, dict) else None
     obligation_by_id = {
@@ -152,6 +164,8 @@ def _obligation_problems(context: dict, data: dict) -> list[str]:
     }
     for obligation in context.get("obligations") or []:
         if not isinstance(obligation, dict) or not obligation.get("id"):
+            continue
+        if obligation.get("required", True) is False:
             continue
         obligation_id = str(obligation["id"])
         recorded = obligation_by_id.get(obligation_id)
