@@ -318,6 +318,13 @@ Baselines live in [`.release-please-manifest.json`](.release-please-manifest.jso
 package map in [`.release-please-config.json`](.release-please-config.json); a new
 distribution is one entry in each, plus its build/publish steps in the workflow.
 
+> **`workhorse` currently carries `"release-as": "1.0.0"`.** It is how the 1.0 line is
+> declared, since the changes that earn it — the Python workflow engine, the retired YAML
+> front-end, the per-command CLI — all landed before `bootstrap-sha` and are invisible to
+> release-please. **Delete that key once 1.0.0 is on PyPI.** `release-as` is not consumed
+> by the release it causes: left in place it pins every later workhorse release to 1.0.0,
+> and the second one fails on the index as a duplicate rather than saying why.
+
 ### One-time setup (not in the repo)
 
 1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository

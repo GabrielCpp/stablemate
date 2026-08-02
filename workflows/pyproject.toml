@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
   # The engine. This package is the only direction the dependency runs: workhorse
   # knows nothing about any workflow in here, and must not.
-  "workhorse-agent>=0.8,<1",
+  "workhorse-agent>=1,<2",
   # `kit` — the git/GitHub/workspace half of what used to be `workhorse.scriptutil`.
   # These are here rather than on the engine because knowing how to open a pull
   # request is workflow domain: workhorse never called either library, and every
