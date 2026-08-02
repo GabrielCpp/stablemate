@@ -767,6 +767,11 @@ async def _apply_hello(container_id: str, data: dict) -> None:
         name=identity.get("name"),
         repo_name=identity.get("repo_name"),
         repo_branch=identity.get("repo_branch"),
+        # The join key for this row's telemetry. `upsert_workflow` skips None and
+        # empty values, so a sidecar that predates this (or a container launched
+        # without a run id) leaves the row exactly as it was.
+        run_id=identity.get("run_id") or None,
+        workflow_type=identity.get("workflow") or None,
     )
     wf.current_node = snapshot.get("current_node") or wf.current_node
     wf.gates.clear()

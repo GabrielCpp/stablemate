@@ -145,6 +145,33 @@ def test_hello_frame_carries_identity_and_snapshot():
     assert frame["snapshot"]["current_node"] == "n1"
 
 
+def test_hello_carries_the_run_id_that_joins_the_row_to_its_telemetry():
+    """The dashboard keys its telemetry store by run id, and workhorse stamps that
+    id on every span it exports. Without it in the identity, a container's row falls
+    back to looking the store up by container id and never hits — so a run's spans
+    and the row showing that run stay two unconnected things. It also makes two
+    containers of the same workflow+repo distinguishable, which concurrency needs."""
+    with patch.object(sidecar, "snapshot", return_value={"gates": []}), \
+         patch.dict(
+             sidecar.os.environ,
+             {"AGENT_RUN_ID": "run-abc", "WORKFLOW": "coder"},
+             clear=False,
+         ):
+        identity = sidecar._hello_frame()["identity"]
+    assert identity["run_id"] == "run-abc"
+    assert identity["workflow"] == "coder"
+
+
+def test_a_container_launched_without_a_run_id_still_advertises():
+    """Driving compose by hand sets no run id. The row simply has no telemetry to
+    join to — that must not stop the sidecar from reporting itself at all."""
+    with patch.object(sidecar, "snapshot", return_value={"gates": []}), \
+         patch.dict(sidecar.os.environ, {}, clear=True):
+        identity = sidecar._hello_frame()["identity"]
+    assert identity["run_id"] == ""
+    assert identity["container_id"]
+
+
 def _event(wd, mask, name=""):
     return SimpleNamespace(wd=wd, mask=mask, cookie=0, name=name)
 

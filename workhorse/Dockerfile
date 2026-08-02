@@ -120,7 +120,12 @@ COPY core/ core/
 #     write bytecode there.
 # This is a single-tenant container — one agent, no other principals to isolate
 # from — so a permissive mode costs nothing that ownership was buying.
-RUN uv sync --frozen --package workhorse-agent --package ostler \
+# `--extra otel` is not optional here, despite being an optional extra of the
+# distribution. Telemetry turns itself on when a collector answers — but only if the
+# OpenTelemetry SDK is importable, and without it the whole thing is a silent no-op.
+# A container is precisely the case that cannot notice: the runs worth observing are
+# the unattended week-long ones, and nobody is watching to see that no spans arrived.
+RUN uv sync --frozen --package workhorse-agent --extra otel --package ostler \
     --package workhorse-workflows \
     && ln -sf /app/.venv/bin/ostler /usr/local/bin/ostler \
     && mkdir -p /workspace /runs /claude-state /opt/uv-python /opt/live \

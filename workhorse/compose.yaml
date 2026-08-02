@@ -87,6 +87,25 @@ services:
       # The CLI binary lives in a read-only system path; don't let it self-update.
       DISABLE_AUTOUPDATER: "1"
 
+      # Where workhorse ships spans, metrics and logs. It MUST be set here:
+      # workhorse defaults the endpoint to 127.0.0.1:8787, which inside a container
+      # is the container's own loopback with nothing on it. The probe then fails,
+      # telemetry disables itself without an error, and "groom collects telemetry"
+      # is quietly true only for native runs. `extra_hosts` above is what makes
+      # host.docker.internal resolve to the host's groom.
+      #
+      # Still opt-out and still fail-soft: with no groom listening the probe simply
+      # declines and the run is unaffected.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://host.docker.internal:8787}
+
+      # Where the groom-sidecar dials for the gate/progress socket — the same groom
+      # as the OTLP endpoint above, and its other half. The sidecar reads these, but
+      # compose passes on no host variable it does not declare, so without these two
+      # lines its defaults were the only reachable values and a groom on any other
+      # port could not be pointed at.
+      GROOM_HOST: ${GROOM_HOST:-host.docker.internal}
+      GROOM_PORT: ${GROOM_PORT:-8787}
+
       # ── Bedrock alternative (uncomment this block + the ~/.aws mount below) ────
       # CLAUDE_CODE_USE_BEDROCK: "1"
       # AWS_PROFILE: ${AWS_PROFILE:-default}

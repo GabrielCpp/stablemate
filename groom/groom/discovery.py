@@ -4,9 +4,18 @@ workflow already blocked before groom started is still picked up. Steady
 state comes from the in-container sidecar's push, not from repeating this
 scan on a timer.
 
-Workflow containers are identified generically — a bind mount at
-``/workflow`` plus volume mounts at ``/runs`` and ``/workspace`` — matching
-workhorse's own compose convention, not anything Acme-specific.
+Workflow containers are identified generically — a ``WORKFLOW`` in the
+environment plus mounts at ``/runs`` and ``/workspace`` — matching workhorse's
+own compose convention, not anything repo-specific.
+
+That used to require a bind at ``/workflow`` as well, which matched **nothing**:
+a workflow stopped being a directory of yaml handed to a generic runner and
+became an installed distribution with its own console script, so workhorse's
+compose deliberately mounts no such path. Every container failed the test, and
+containers reached the dashboard only via the sidecar's ``hello`` — meaning a
+container whose sidecar never came up was invisible. ``$WORKFLOW`` is the
+signal that replaced it: it is what the container is *told to run*, so it also
+names the workflow type without inferring it from a mount's basename.
 """
 
 from __future__ import annotations
@@ -44,21 +53,26 @@ def _env_map(inspect: dict[str, Any]) -> dict[str, str]:
 
 
 def is_workhorse_container(inspect: dict[str, Any]) -> bool:
+    """A container running a workhorse workflow: told which one, and with somewhere
+    to put its artifacts and its working tree."""
     mounts = _mounts_by_dest(inspect)
-    return WORKFLOW_MOUNT in mounts and RUNS_MOUNT in mounts and WORKSPACE_MOUNT in mounts
+    if RUNS_MOUNT not in mounts or WORKSPACE_MOUNT not in mounts:
+        return False
+    return bool(_env_map(inspect).get("WORKFLOW"))
 
 
 def _workflow_type(inspect: dict[str, Any], mounts: dict[str, dict[str, Any]]) -> str:
     """The worker's workflow kind (``coder`` / ``author`` / …).
 
-    workhorse mounts each workflow's definition dir at ``/workflow`` from a
-    per-type source (``.../workflows/coder`` vs ``.../workflows/author``), so
-    the mount source's basename is the most reliable, repo-agnostic signal.
-    Fall back to the compose service name when the basename is empty or the
-    generic ``workflow`` (as in a bind straight at ``…/workflow``).
+    ``$WORKFLOW`` is what the container was told to run, and the entrypoint spawns
+    that name's console script — so it is the workflow type by construction, not an
+    inference. The legacy ``/workflow`` mount basename is still read for a container
+    launched by an older harness, and the compose service name is the last resort.
     """
-    source = (mounts.get(WORKFLOW_MOUNT) or {}).get("Source", "")
-    wtype = posixpath.basename(source.rstrip("/"))
+    wtype = _env_map(inspect).get("WORKFLOW", "")
+    if not wtype:
+        source = (mounts.get(WORKFLOW_MOUNT) or {}).get("Source", "")
+        wtype = posixpath.basename(source.rstrip("/"))
     if not wtype or wtype == "workflow":
         labels = (inspect.get("Config") or {}).get("Labels") or {}
         wtype = labels.get("com.docker.compose.service", "")
@@ -76,6 +90,9 @@ def container_from_inspect(inspect: dict[str, Any]) -> WorkflowContainer:
         name=name or container_id,
         repo_name=env.get("REPO_NAME", ""),
         repo_branch=env.get("REPO_BRANCH", ""),
+        # Baked into the container config at create time, so a row discovered by a
+        # scan joins to the same telemetry as one built from a sidecar hello.
+        run_id=env.get("AGENT_RUN_ID", ""),
         workflow_type=_workflow_type(inspect, mounts),
         state=WorkflowState.RUNNING if running else WorkflowState.IDLE,
         workspace_volume=(mounts.get(WORKSPACE_MOUNT) or {}).get("Name", ""),

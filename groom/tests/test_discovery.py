@@ -3,6 +3,13 @@ like a real `docker inspect` blob (trimmed to the fields discovery.py reads,
 matching a workhorse-author-1 style container), plus the scan()/current-node
 reconciliation logic with docker_io mocked out.
 
+The fixture carries **no `/workflow` mount**, because the harness stopped creating
+one: a workflow became an installed distribution with its own console script rather
+than a directory of yaml handed to a generic runner. This file used to assert that
+the mount was required, against a fixture that still had it — so it went on passing
+while `is_workhorse_container` matched nothing real, and every container reached the
+dashboard only through its sidecar's `hello`.
+
 Run: uv run python tests/test_discovery.py   (or via pytest)
 """
 from __future__ import annotations
@@ -20,6 +27,8 @@ def _inspect(**overrides) -> dict:
         "State": {"Running": True, "ExitCode": 0},
         "Config": {
             "Env": [
+                "WORKFLOW=author",
+                "AGENT_RUN_ID=b8f1c2d4-0000-4000-8000-000000000001",
                 "REPO_NAME=Acme",
                 "REPO_BRANCH=fixes/03-datasheet-header",
                 "ACME_GITHUB_TOKEN=super-secret-value",
@@ -27,7 +36,6 @@ def _inspect(**overrides) -> dict:
             ],
         },
         "Mounts": [
-            {"Type": "bind", "Source": "/host/workflow", "Destination": "/workflow"},
             {"Type": "volume", "Name": "author-1-runs", "Destination": "/runs"},
             {"Type": "volume", "Name": "author-1-workspace", "Destination": "/workspace"},
         ],
@@ -36,14 +44,48 @@ def _inspect(**overrides) -> dict:
     return base
 
 
-def test_is_workhorse_container_requires_all_three_mounts():
+def test_a_workflow_container_is_one_told_what_to_run_with_somewhere_to_put_it():
     assert discovery.is_workhorse_container(_inspect()) is True
 
     missing_runs = _inspect(Mounts=[
-        {"Type": "bind", "Source": "/host/workflow", "Destination": "/workflow"},
         {"Type": "volume", "Name": "author-1-workspace", "Destination": "/workspace"},
     ])
     assert discovery.is_workhorse_container(missing_runs) is False
+
+
+def test_the_mounts_alone_are_not_enough_without_a_workflow_to_run():
+    """`/runs` + `/workspace` are generic names. `$WORKFLOW` is what says this
+    container is a workhorse worker rather than something else using them."""
+    no_workflow = _inspect(Config={"Env": ["REPO_NAME=Acme", "PATH=/usr/bin"]})
+    assert discovery.is_workhorse_container(no_workflow) is False
+
+
+def test_the_workflow_type_is_what_the_container_was_told_to_run():
+    """By construction, not inference: the entrypoint spawns `$WORKFLOW`'s own
+    console script, so there is nothing to derive from a mount's basename."""
+    assert discovery.container_from_inspect(_inspect()).workflow_type == "author"
+
+
+def test_a_container_from_an_older_harness_still_types_from_its_mount():
+    legacy = _inspect(
+        Config={"Env": ["REPO_NAME=Acme"]},
+        Mounts=[
+            {"Type": "bind", "Source": "/host/workflows/coder", "Destination": "/workflow"},
+            {"Type": "volume", "Name": "coder-runs", "Destination": "/runs"},
+            {"Type": "volume", "Name": "coder-workspace", "Destination": "/workspace"},
+        ],
+    )
+    assert discovery.container_from_inspect(legacy).workflow_type == "coder"
+
+
+def test_a_scanned_container_carries_the_run_id_that_joins_it_to_its_telemetry():
+    """Workhorse stamps this on every span it exports and groom keys its telemetry
+    store by it. Without it here, a row discovered by a scan looks up the store by
+    container id and never hits — the run's spans and its dashboard row stay two
+    unrelated things."""
+    assert discovery.container_from_inspect(_inspect()).run_id == (
+        "b8f1c2d4-0000-4000-8000-000000000001"
+    )
 
 
 def test_is_workhorse_container_ignores_unrelated_containers():
@@ -65,13 +107,16 @@ def test_container_from_inspect_reads_env_name_and_volumes():
     assert "super-secret-value" not in vars(wf).values()
 
 
-def test_workflow_type_from_workflow_mount_basename():
+def test_the_environment_wins_over_a_leftover_workflow_mount():
+    """A container could carry both — a stale bind and a real `$WORKFLOW`. The
+    environment is what the entrypoint actually spawns, so it decides; the mount's
+    basename is only a guess at what a directory was named."""
     wf = discovery.container_from_inspect(_inspect(Mounts=[
         {"Type": "bind", "Source": "/host/agents/workflows/coder", "Destination": "/workflow"},
         {"Type": "volume", "Name": "coder-1-runs", "Destination": "/runs"},
         {"Type": "volume", "Name": "coder-1-workspace", "Destination": "/workspace"},
     ]))
-    assert wf.workflow_type == "coder"
+    assert wf.workflow_type == "author"
 
 
 def test_workflow_type_falls_back_to_compose_service_label():

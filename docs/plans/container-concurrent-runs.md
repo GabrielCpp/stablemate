@@ -702,10 +702,72 @@ unrelated content — but it is a real change in unattended behavior, and the re
 is acceptable is that the *common* leftover (a merged or squash-merged branch) no
 longer stops anything at all, where archival used to rename even those aside.
 
-### 7. Telemetry endpoint (§3.3) and run/telemetry join (§3.4)
+### 7. Telemetry endpoint (§3.3) and run/telemetry join (§3.4) — **done**
 Point `OTEL_EXPORTER_OTLP_ENDPOINT` at `host.docker.internal:8787`. Carry `run_id`
 on the container row so `_run_facts` can join. Optionally fix `/workflow` discovery
 (§3.5) or drop the requirement.
+
+**§3.3 named the endpoint, but the endpoint was only half of it.** Setting
+`OTEL_EXPORTER_OTLP_ENDPOINT` and stopping there ships a no-op: the image never
+installed the **`otel` extra**, so there is no exporter for any endpoint to reach.
+`import opentelemetry` failed outright in the built image. Telemetry then declines
+exactly as silently as an unreachable collector does — which is why nobody had
+noticed. `Dockerfile` now syncs `--extra otel`.
+
+This is the §4.8 discipline paying off outside §4.8: the fix as written in the plan
+would have passed any test that asserted on compose.yaml, and produced zero spans.
+
+**A second undeclared-variable bug, same class as item 5's `REPO_URL`.**
+`GROOM_HOST`/`GROOM_PORT` are read by the sidecar but were **not declared in
+`compose.yaml`**, and compose passes on no host variable it does not declare. The
+sidecar could therefore only ever dial its hardcoded default — a groom on any other
+port was unreachable, and there was no way to say so. Now declared, defaulting to the
+previous values. Worth noting the pattern: *every* variable a container reads has to
+appear in `compose.yaml`, and two of them had silently not.
+
+**§3.5 fixed rather than dropped.** `is_workhorse_container` required a `/workflow`
+mount that the harness stopped creating when a workflow became an installed
+distribution — so it matched **nothing**, and a container reached the dashboard only
+via its sidecar's `hello`. A container whose sidecar failed to start was invisible,
+which is precisely the container an operator most needs to see. It now keys off
+`$WORKFLOW` in the environment plus the `/runs` and `/workspace` mounts. `$WORKFLOW`
+also *is* the workflow type by construction (the entrypoint spawns that name's
+console script), so `_workflow_type` no longer infers it from a mount basename —
+though it still falls back to that, then to the compose service label, for a
+container from an older harness.
+
+**The test suite had drifted with the code.** `test_discovery.py`'s fixture still
+described a YAML-era container — `/workflow` mount, no `WORKFLOW` env — so
+`test_is_workhorse_container_requires_all_three_mounts` passed happily while the
+function it guarded matched no real container. The fixture is now the shape the
+harness actually produces, and the mount-basename path is tested through an explicit
+*legacy* fixture instead.
+
+#### Verified against a live groom, not by reading compose
+
+Started a second groom on port 8799 (one was already running on 8787 and is not
+mine), launched a real container pointed at it, and read groom's own `/api/state`:
+
+- a run row keyed `run_id: otelrun2` — the launcher's UUID carried through OTLP
+  into groom's store, which is §3.3 end to end;
+- after the `GROOM_PORT` fix, the **container** row (`native: false`,
+  id `9839b8186fc5`) carrying `run_id: join1` and `type: hello-world` from the
+  sidecar's new identity fields;
+- `GET /worker/9839b8186fc5` resolving that run id to real telemetry-derived
+  `metrics` and `logs` — `_run_facts` joining, which is §3.4 end to end. Before, it
+  looked up `state.RUNS[container_id]` and could never hit.
+
+**Not merged into one row.** groom still renders a telemetry-native row and a
+container row for the same run; they are *joined* (which is what item 7 asked for)
+but not collapsed. Merging them is a dashboard-rendering change, out of scope here.
+
+#### Correction to §6: the verification gate is missing suites
+
+§6 lists four test suites. `make test` runs **six** — `core`, `workhorse`,
+`workflows`, `ostler`, `farrier`, `groom` — plus `benchmarks`. This item touches
+groom, whose suite is not in §6's list, and it is the suite that caught the drifted
+discovery fixture. Anyone working from §6 alone would have missed five real failures.
+Treat §6's list as a minimum, and run the suite of whatever package you touched.
 
 ### 8. uid/gid host-usability
 `core.sharedRepository`, umask, setgid — verified against a real container writing

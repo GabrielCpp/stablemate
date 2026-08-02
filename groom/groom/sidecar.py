@@ -56,11 +56,21 @@ _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
 
 
 def _identity() -> dict:
+    """Who this container is, for the dashboard row and for joining it to telemetry.
+
+    ``run_id`` is the join key. Workhorse stamps it on every span, metric and log it
+    exports, and groom keys its telemetry store by it — but a dashboard row built
+    from a container had no run id at all, so the lookup fell back to the container
+    id and never hit. The result was a row that could show a container running and a
+    separate set of telemetry for the same run, with nothing connecting them.
+    """
     return {
         "container_id": socket.gethostname()[:12],
         "name": os.environ.get("REPO_NAME", socket.gethostname()),
         "repo_name": os.environ.get("REPO_NAME", ""),
         "repo_branch": os.environ.get("REPO_BRANCH", ""),
+        "run_id": os.environ.get("AGENT_RUN_ID", ""),
+        "workflow": os.environ.get("WORKFLOW", ""),
     }
 
 
