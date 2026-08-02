@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from stablemate_core import base_cache, config
+from workhorse._vendor.stablemate_core import base_cache, config
 
 
 @pytest.fixture(autouse=True)

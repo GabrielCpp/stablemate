@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from farrier import install, layers
-from stablemate_core import config
+from farrier._vendor.stablemate_core import config
 
 
 def make_library(root: Path) -> Path:

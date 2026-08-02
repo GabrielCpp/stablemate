@@ -22,7 +22,7 @@ farrier never bundles content — it only renders whatever library it is aimed a
 ```
 
 Only `library/` is required for farrier to recognise a directory as a library — that is
-the whole of `stablemate_core.layout.is_library_dir`, and a path lacking it gets a setup
+the whole of `farrier._vendor.stablemate_core.layout.is_library_dir`, and a path lacking it gets a setup
 hint. `packs/` and `scaffolds/` are optional and only consulted when
 something selects from them; the base library, for instance, ships `library/` and
 `packs/` and nothing else.

@@ -13,8 +13,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from stablemate_core.config import config_path, read_config
-from stablemate_core.discovery import BASE_DIR_ENV, base_library_dir, is_library_dir
+from farrier._vendor.stablemate_core.config import config_path, read_config
+from farrier._vendor.stablemate_core.discovery import BASE_DIR_ENV, base_library_dir, is_library_dir
 
 # Re-exported: these moved to stablemate_core, but `farrier.layers` is where the rest of
 # farrier (and its tests) has always imported them from. Named in __all__ so ruff does

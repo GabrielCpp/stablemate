@@ -28,7 +28,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stablemate_core.config import resolve_harness_env
+from workhorse._vendor.stablemate_core.config import resolve_harness_env
 
 if TYPE_CHECKING:
     # Annotation-only, and load-bearing that it stays that way: ``config_run`` holds

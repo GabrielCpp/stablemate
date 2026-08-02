@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse import otel
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
