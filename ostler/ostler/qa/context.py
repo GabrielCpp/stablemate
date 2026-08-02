@@ -217,7 +217,15 @@ def build_context(
             )
     contracts = impacted - flows
     for source, target in edges:
-        if source in journeys and target in nodes_by_id:
+        # A flow target is somebody else's journey, never this closure's contract. The two
+        # sets are disjoint by construction one line up, and `_obligations` relies on it:
+        # it runs once per member, and a node in both is walked twice. Only the *base*
+        # obligation carries the role in its id (`:contract` vs `:end-state`), so the
+        # collision surfaces on the bullet-derived ones — a flow filed both ways emits
+        # `:start:1` and `:end:1` twice, `validate_context` reports duplicate ids, and the
+        # documentation gate hands the author a rework brief for a defect that is not in
+        # the book and that no amount of writing can clear.
+        if source in journeys and target in nodes_by_id and target not in flows:
             contracts.add(target)
             direct_reasons.setdefault(target, []).append(
                 {"kind": "flow-contract-closure", "ref": source}
