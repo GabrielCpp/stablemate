@@ -266,6 +266,12 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 problems.append(f"{prefix} must declare exactly one of do, expect, capture")
                 continue
             kind, operation = keys[0], action[keys[0]]
+            if not isinstance(operation, str):
+                problems.append(
+                    f"{prefix} {kind} must name a single operation, not {type(operation).__name__} "
+                    f"{operation!r} — write '{kind}: <operation>' with its arguments as sibling keys"
+                )
+                continue
             if kind == "expect":
                 has_assertion = True
                 if operation not in EXPECTATIONS:

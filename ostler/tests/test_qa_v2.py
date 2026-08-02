@@ -862,3 +862,26 @@ def test_an_uncapturable_status_says_so_instead_of_reporting_None(tmp_path: Path
     assert "no HTTP status captured" in detail
     # Never the bare word that reads as an observed status.
     assert '"a": "None"' not in detail
+
+
+def test_an_operation_written_as_a_mapping_is_reported_not_crashed(tmp_path: Path):
+    """`do: {cmd: ...}` — arguments nested under the verb instead of beside it.
+
+    A plan author who writes it that way gets a problem naming the mistake; the
+    validator must not raise on an unhashable operation before it can say so.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    action = data["scenarios"][0]["actions"][0]
+    action["do"] = {"cmd": action.pop("cmd")}
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_validate(plan, root=tmp_path)
+
+    assert outcome.status == "invalid"
+    assert any(
+        "must name a single operation" in problem for problem in outcome.data["problems"]
+    )
