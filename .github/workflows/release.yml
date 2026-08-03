@@ -22,6 +22,17 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      force_publish:
+        description: >-
+          Upload the versions currently in the manifest even though release-please
+          has nothing new to release. For the case where a release was tagged but
+          the upload did not happen — a failed gate, an expired token, a cancelled
+          run. Without this there is no way back: release-please reports
+          releases_created=false once the tag exists, so publish can never run again
+          for that version.
+        type: boolean
+        default: false
   pull_request:
     types: [closed]
 
@@ -77,7 +88,7 @@ jobs:
   # against the merged tree before anything leaves the runner.
   verify:
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,13 +108,23 @@ jobs:
 
   publish:
     needs: [release-please, verify]
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
     runs-on: ubuntu-latest
     # Named so PyPI's trusted publisher can require it, and so an optional required
     # reviewer here turns "merge the PR" into "approve the upload".
     environment: pypi
     permissions:
       id-token: write
+    env:
+      # Which packages this run uploads. Normally exactly what release-please just
+      # released; under force_publish it is every package, because release-please
+      # reports an empty set once the tags exist and each step below filters on this
+      # list. Whatever is already on PyPI at its current version is skipped, so a
+      # forced run is safe to repeat after a partial upload.
+      RELEASED: >-
+        ${{ needs.release-please.outputs.releases_created == 'true'
+            && needs.release-please.outputs.paths_released
+            || '["ostler","workhorse","farrier","workflows"]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,39 +144,43 @@ jobs:
       # a change to both of their trees and releases through them.
 
       - name: Build ostler
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'ostler')
+        if: contains(fromJSON(env.RELEASED), 'ostler')
         run: uv build --package ostler --out-dir dist/ostler
       - name: Publish ostler
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'ostler')
+        if: contains(fromJSON(env.RELEASED), 'ostler')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          skip-existing: true
           packages-dir: dist/ostler
 
       - name: Build workhorse-agent
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workhorse')
+        if: contains(fromJSON(env.RELEASED), 'workhorse')
         run: uv build --package workhorse-agent --out-dir dist/workhorse-agent
       - name: Publish workhorse-agent
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workhorse')
+        if: contains(fromJSON(env.RELEASED), 'workhorse')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          skip-existing: true
           packages-dir: dist/workhorse-agent
 
       - name: Build farrier
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'farrier')
+        if: contains(fromJSON(env.RELEASED), 'farrier')
         run: uv build --package farrier --out-dir dist/farrier
       - name: Publish farrier
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'farrier')
+        if: contains(fromJSON(env.RELEASED), 'farrier')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          skip-existing: true
           packages-dir: dist/farrier
 
       - name: Build workhorse-workflows
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workflows')
+        if: contains(fromJSON(env.RELEASED), 'workflows')
         run: uv build --package workhorse-workflows --out-dir dist/workhorse-workflows
       - name: Publish workhorse-workflows
-        if: contains(fromJSON(needs.release-please.outputs.paths_released), 'workflows')
+        if: contains(fromJSON(env.RELEASED), 'workflows')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          skip-existing: true
           packages-dir: dist/workhorse-workflows
 
       # groom and saddlebag are versioned and get changelogs, but have no publish step:
