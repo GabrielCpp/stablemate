@@ -1,9 +1,9 @@
-"""Tests for groom.sidecar: inotify-event -> push translation, and the
+"""Tests for groom.sidecar: changed-path -> push translation, and the
 fire-and-forget/silent-on-failure discipline that is the sidecar's core
 safety property (a container with no groom listening must behave exactly as
-it does today). The real inotify_simple.INotify is never exercised here —
-only the pure functions that decide what to do with an already-received
-Event, plus _push()'s HTTP-call wrapping.
+it does today). No real filesystem watch is started here — only the pure
+functions that decide what to do with an already-observed path, plus
+_push()'s HTTP-call wrapping.
 
 Run: uv run python tests/test_sidecar.py   (or via pytest)
 """
@@ -15,30 +15,9 @@ import json
 import tempfile
 import urllib.error
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from groom import cli, sidecar
-from inotify_simple import INotify, flags
-
-
-class _UnusedINotify(INotify):
-    """The notifier `_handle_event` takes and none of these events reaches.
-
-    It is only consulted to watch a newly created *directory*, and every event
-    below is a file — so this stands in without opening an inotify fd, keeping the
-    promise in the module docstring that the real one is never exercised here.
-    """
-
-    def __init__(self) -> None:
-        pass  # deliberately not FileIO's: there is no descriptor to open
-
-    def add_watch(self, path, mask):
-        raise AssertionError("no event in this file should add a watch")
-
-
-def _event(wd, mask, name=""):
-    return SimpleNamespace(wd=wd, mask=mask, cookie=0, name=name)
 
 
 def test_push_progress_posts_expected_shape():
@@ -130,7 +109,6 @@ def test_push_is_silent_on_any_unexpected_exception():
 
 
 def test_handle_event_under_runs_triggers_progress_push():
-    wd_to_path = {1: "/runs/run-20260705-090000"}
     pushed = {}
 
     def _fake_current_node():
@@ -139,17 +117,15 @@ def test_handle_event_under_runs_triggers_progress_push():
     def _fake_push_progress(node):
         pushed["node"] = node
 
-    event = _event(1, flags.CLOSE_WRITE, name="events.jsonl")
-    with patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
+    with patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar, "_current_node", _fake_current_node), \
          patch.object(sidecar, "push_progress", _fake_push_progress):
-        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
+        sidecar._handle_event(Path("/runs/run-20260705-090000/events.jsonl"))
 
     assert pushed["node"] == "resolve_integrity"
 
 
 def test_handle_event_on_awaiting_gate_triggers_blocked_push():
-    wd_to_path = {2: "/workspace/docs/epics/fixes"}
     pushed = {}
 
     def _fake_push_blocked(rel_path, question):
@@ -157,13 +133,12 @@ def test_handle_event_on_awaiting_gate_triggers_blocked_push():
         pushed["question"] = question
 
     gate_text = "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich default?\n"
-    event = _event(2, flags.CLOSE_WRITE, name="gate.md")
 
-    with patch.object(sidecar, "WORKSPACE_DIR", sidecar.Path("/workspace")), \
-         patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
+    with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
+         patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar.Path, "read_text", lambda self: gate_text), \
          patch.object(sidecar, "push_blocked", _fake_push_blocked):
-        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
+        sidecar._handle_event(Path("/workspace/docs/epics/fixes/gate.md"))
 
     assert pushed["rel_path"] == "docs/epics/fixes/gate.md"
     assert pushed["question"] == "Which default?"
@@ -171,22 +146,27 @@ def test_handle_event_on_awaiting_gate_triggers_blocked_push():
 
 def test_handle_event_ignores_files_not_awaiting():
     pushed = []
-    wd_to_path = {2: "/workspace/docs"}
-    event = _event(2, flags.MODIFY, name="notes.md")
 
-    with patch.object(sidecar, "WORKSPACE_DIR", sidecar.Path("/workspace")), \
-         patch.object(sidecar, "RUNS_DIR", sidecar.Path("/runs")), \
+    with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
+         patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar.Path, "read_text", lambda self: "STATUS: CONSUMED\n"), \
          patch.object(sidecar, "push_blocked", lambda *a: pushed.append(a)):
-        sidecar._handle_event(_UnusedINotify(), event, wd_to_path)
+        sidecar._handle_event(Path("/workspace/docs/notes.md"))
 
     assert pushed == []
 
 
-def test_handle_event_ignores_unknown_watch_descriptor():
-    # No exception, no push, when the wd isn't in our map (e.g. a stale watch).
-    with patch.object(sidecar, "push_progress", side_effect=AssertionError("should not push")):
-        sidecar._handle_event(_UnusedINotify(), _event(999, flags.MODIFY, name="x"), {})
+def test_handle_event_ignores_a_path_it_cannot_read():
+    """A directory, or a file already deleted by the time the batch arrives.
+
+    The watch coalesces changes before yielding them, so by then the path may be
+    gone — and every path under the workspace is read to decide whether it is a
+    gate. No exception, no push.
+    """
+    with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
+         patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
+         patch.object(sidecar, "push_blocked", lambda *a: (_ for _ in ()).throw(AssertionError("should not push"))):
+        sidecar._handle_event(Path("/workspace/nonexistent-groom-test-xyz/gone.md"))
 
 
 # --------------------------------------------------------------------------- #

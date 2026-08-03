@@ -20,7 +20,14 @@ classifiers = [
 dependencies = [
   "litestar[standard]>=2.10",
   "workhorse-agent",
-  "inotify-simple>=1.3.5",
+  # The sidecar's filesystem watch. watchfiles rather than a raw inotify binding
+  # because the sidecar and its tests have to run on the machines people develop
+  # on: `inotify_simple` imports fine on macOS and then dies at `INotify()` with a
+  # missing-symbol AttributeError. watchfiles carries inotify/FSEvents/
+  # ReadDirectoryChangesW behind one API, so the Linux container keeps inotify and
+  # nothing else has to be a Linux-only path. It also arrives transitively via
+  # litestar[standard]'s uvicorn, but groom.sidecar imports it directly.
+  "watchfiles>=0.21",
   # The in-container sidecar dials groom as a WebSocket client for its
   # persistent session (see groom/sidecar.py). websockets also arrives
   # transitively via litestar[standard]'s uvicorn, but the sidecar imports it

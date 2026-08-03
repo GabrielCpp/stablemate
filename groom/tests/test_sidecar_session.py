@@ -8,15 +8,14 @@ Run: uv run python tests/test_sidecar_session.py   (or via pytest)
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import subprocess
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from groom import cli, sidecar
-from inotify_simple import flags
 
 
 # --------------------------------------------------------------------------- #
@@ -172,30 +171,70 @@ def test_a_container_launched_without_a_run_id_still_advertises():
     assert identity["container_id"]
 
 
-def _event(wd, mask, name=""):
-    return SimpleNamespace(wd=wd, mask=mask, cookie=0, name=name)
-
-
 def test_classify_event_runs_write_is_progress():
-    wd_to_path = {1: "/runs/run-1"}
     with patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar, "_current_node", lambda: "resolve"):
-        frame = sidecar._classify_event(_event(1, flags.CLOSE_WRITE, name="events.jsonl"), wd_to_path)
+        frame = sidecar._classify_event(Path("/runs/run-1/events.jsonl"))
     assert frame == {"type": "progress", "current_node": "resolve"}
 
 
 def test_classify_event_awaiting_gate_is_blocked():
-    wd_to_path = {2: "/workspace/docs"}
     gate = "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich default?\n"
     with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
          patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar.Path, "read_text", lambda self: gate):
-        frame = sidecar._classify_event(_event(2, flags.CLOSE_WRITE, name="gate.md"), wd_to_path)
+        frame = sidecar._classify_event(Path("/workspace/docs/gate.md"))
     assert frame == {"type": "blocked", "file_path": "docs/gate.md", "question": "Which default?"}
 
 
-def test_classify_event_ignores_unknown_wd():
-    assert sidecar._classify_event(_event(999, flags.MODIFY, name="x"), {}) is None
+def test_classify_event_ignores_a_path_it_cannot_read():
+    with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
+         patch.object(sidecar, "RUNS_DIR", Path("/runs")):
+        assert sidecar._classify_event(Path("/nonexistent-groom-test-xyz/x")) is None
+
+
+# --------------------------------------------------------------------------- #
+# The filesystem watch — portable, and started only for mounts that are there
+# --------------------------------------------------------------------------- #
+def test_the_watch_skips_a_mount_that_is_not_mounted_yet():
+    """`awatch` raises FileNotFoundError on a missing path, and a sidecar can start
+    before its /runs volume exists. Dropping the absent root keeps the session up
+    with a working watch on the other one, rather than failing both."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)), \
+             patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
+            assert sidecar._watch_roots() == [Path(tmp)]
+
+
+def test_the_watch_reports_a_gate_written_after_it_started():
+    """The end-to-end property the port has to keep, exercised against the real
+    watcher on whatever platform this runs on — the point of moving off inotify is
+    that this test can run at all on macOS and Windows, not only in the container.
+    """
+
+    async def _drive():
+        with tempfile.TemporaryDirectory() as tmp:
+            ws_dir = Path(tmp)
+            with patch.object(sidecar, "WORKSPACE_DIR", ws_dir), \
+                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
+                outbox: asyncio.Queue = asyncio.Queue()
+                stop = asyncio.Event()
+                watcher = asyncio.create_task(sidecar._watch_loop(outbox, stop))
+                await asyncio.sleep(0.5)  # let the backend install its watch
+                (ws_dir / "gate.md").write_text(
+                    "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich one?\n"
+                )
+                try:
+                    frame = await asyncio.wait_for(outbox.get(), timeout=15)
+                finally:
+                    stop.set()
+                    watcher.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await watcher
+                return frame
+
+    frame = asyncio.run(_drive())
+    assert frame == {"type": "blocked", "file_path": "gate.md", "question": "Which one?"}
 
 
 # --------------------------------------------------------------------------- #

@@ -2,9 +2,12 @@
 ``groom-sidecar`` (the in-container watcher, invoked from the agent image's
 entrypoint before workhorse's own run command).
 
-``sidecar`` is imported lazily inside :func:`sidecar_main` — it pulls in
-``inotify_simple``, a Linux-only dependency that the host-side ``groom``
-process must never need.
+``sidecar`` is imported lazily inside :func:`sidecar_main` — it pulls in the
+filesystem-watch and WebSocket-client machinery that only the in-container
+process uses, and the host-side ``groom`` server should not pay for on startup.
+(It used to be a portability guard too: the import was ``inotify_simple``, which
+does not work off Linux. It is ``watchfiles`` now, so the sidecar runs anywhere
+groom does — the laziness is only about import cost.)
 """
 
 from __future__ import annotations

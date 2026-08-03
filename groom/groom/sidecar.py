@@ -1,11 +1,21 @@
 """``groom-sidecar`` — runs inside each agent container, watching its own
-``/workspace`` and ``/runs`` mounts with real inotify and holding one
-persistent WebSocket open to the host's ``groom`` process.
+``/workspace`` and ``/runs`` mounts and holding one persistent WebSocket open to
+the host's ``groom`` process.
+
+The watch goes through ``watchfiles``, not ``inotify`` directly. The sidecar's
+normal home is a Linux container, where those are the same thing — watchfiles
+uses inotify there — but they stop being the same thing the moment anyone runs
+the sidecar, or its tests, on the machine they develop on. ``inotify_simple``
+imports cleanly on macOS and then fails at ``INotify()`` with a missing-symbol
+``AttributeError``, which reads as a broken sidecar rather than a Linux-only
+dependency. watchfiles carries the per-platform backend (inotify, FSEvents,
+ReadDirectoryChangesW) behind one API, and recurses into new subdirectories
+itself, so the watch-descriptor bookkeeping this module used to do is gone.
 
 The socket is the container's live session: the sidecar dials groom (it is the
 client, so no inbound reachability into the container is needed), advertises its
 identity + full current state on connect, streams ``progress``/``blocked``
-deltas from inotify, and answers ``getTree``/``getFile``/``getDiff`` RPCs from
+deltas from the watch, and answers ``getTree``/``getFile``/``getDiff`` RPCs from
 local disk — the data plane for groom's Files/Diff panels. A reconnect-with-
 backoff loop (built into ``websockets.connect``) means groom being down is never
 fatal; the sidecar just keeps trying and re-advertises on reconnect.
@@ -34,7 +44,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from inotify_simple import INotify, flags
+from watchfiles import Change, DefaultFilter, awatch
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
@@ -51,8 +61,11 @@ PUSH_TIMEOUT = float(os.environ.get("GROOM_PUSH_TIMEOUT", "1.0"))
 # it as "recopy the edited source and relaunch me", anything else as "stop".
 RELOAD_EXIT_CODE = 3
 
-_WATCH_FLAGS = flags.MODIFY | flags.CLOSE_WRITE | flags.CREATE | flags.MOVED_TO
 _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
+# Spelled from _SKIP_DIR_NAMES rather than left at watchfiles' own (larger) default,
+# so the watch and `scan_gates` prune the same directories. A gate the pull-side scan
+# reports and the watch never fires on would look like a lost event.
+_WATCH_FILTER = DefaultFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
 
 
 def _identity() -> dict:
@@ -132,7 +145,7 @@ def _current_node() -> str:
 
 def _terminal() -> str:
     """The latest run's terminal state (non-empty ⇒ the workflow FINISHED),
-    read from ``<latest>/run.json`` — the pull-side complement to the inotify
+    read from ``<latest>/run.json`` — the pull-side complement to the watch
     loop, which only ever reports the current node.
     """
     run_dir = _latest_run_dir()
@@ -156,7 +169,7 @@ def scan_gates() -> list[dict]:
     """A one-shot sweep of ``/workspace`` for every file whose STATUS line reads
     AWAITING_OPERATOR — the pull-side equivalent of what ``_classify_event``
     emits reactively, so a fresh ``hello`` advertises gates that were already
-    open before any inotify event fired. Same directory skips as the watcher.
+    open before any change event fired. Same directory skips as the watcher.
     """
     gates: list[dict] = []
     if not WORKSPACE_DIR.is_dir():
@@ -186,7 +199,7 @@ def scan_gates() -> list[dict]:
 
 def snapshot() -> dict:
     """The container's full current state: current graph node, terminal state,
-    and every open gate. Pure file reads — no inotify, no network — so it is
+    and every open gate. Pure file reads — no watch, no network — so it is
     safe both as the ``hello`` payload and as the one-shot ``--query`` a legacy
     host uses over ``docker exec``.
     """
@@ -198,70 +211,72 @@ def snapshot() -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# inotify → event classification (shared by the socket session and the residual
-# HTTP path). Pure: given an already-received event it decides which frame, if
+# watch → event classification (shared by the socket session and the residual
+# HTTP path). Pure: given an already-observed path it decides which frame, if
 # any, to emit, without any transport.
 # --------------------------------------------------------------------------- #
-def _add_watches(inotify: INotify, root: Path, wd_to_path: dict[int, str]) -> None:
-    if not root.is_dir():
-        return
-    for dirpath, dirnames, _filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
-        try:
-            wd = inotify.add_watch(dirpath, _WATCH_FLAGS)
-        except OSError:
-            continue
-        wd_to_path[wd] = dirpath
+def _watch_roots() -> list[Path]:
+    """The mounts to hand ``awatch``, minus any that is not there.
 
-
-def _classify_event(event, wd_to_path: dict[int, str]) -> dict | None:
-    """Translate one non-directory inotify event into the frame to send, or
-    ``None`` when it is uninteresting. A ``/runs`` write means graph progress; a
-    ``/workspace`` write whose STATUS flipped to AWAITING_OPERATOR is a new
-    gate. Directory events (new subtree to watch) are handled by the caller,
-    which owns the ``inotify`` handle.
+    ``awatch`` raises ``FileNotFoundError`` for a path that does not exist, and a
+    sidecar whose ``/runs`` volume has not been mounted yet must still open its
+    session and serve RPCs — the watch is the part that degrades, not the session.
+    With neither mount present there is nothing to watch and no watcher is started.
     """
-    parent = wd_to_path.get(event.wd)
-    if parent is None:
-        return None
-    full_path = Path(parent) / event.name
-    if bool(event.mask & flags.ISDIR):
+    return [root for root in (WORKSPACE_DIR, RUNS_DIR) if root.is_dir()]
+
+
+def _under_mount(path: Path, mount: Path) -> Path | None:
+    """``path`` relative to ``mount``, or ``None`` when it is not under it.
+
+    Compared resolved as well as literal, because the watch backend reports the
+    *real* path and a mount reached through a symlink is a different string for
+    the same directory — macOS's ``/var`` -> ``/private/var`` is the one anybody
+    hits first. On a literal-only comparison a gate under such a mount still
+    classifies, but reports an absolute ``file_path``, and groom's Files panel has
+    no repo-relative path left to open.
+    """
+    try:
+        return path.relative_to(mount)
+    except ValueError:
+        pass
+    try:
+        return Path(os.path.realpath(path)).relative_to(os.path.realpath(mount))
+    except ValueError:  # includes a different drive on Windows
         return None
 
-    try:
-        under_runs = full_path.is_relative_to(RUNS_DIR)
-    except ValueError:
-        under_runs = False
-    if under_runs:
+
+def _classify_event(path: Path) -> dict | None:
+    """Translate one changed path into the frame to send, or ``None`` when it is
+    uninteresting. A ``/runs`` write means graph progress; a ``/workspace`` write
+    whose STATUS flipped to AWAITING_OPERATOR is a new gate.
+
+    Directories need no special case: a directory is never readable as text, so
+    it falls out at :meth:`~pathlib.Path.read_text` — and unlike the inotify
+    bookkeeping this replaced, a new subtree needs no watch installed for it,
+    because ``awatch`` recurses on its own.
+    """
+    if _under_mount(path, RUNS_DIR) is not None:
         return {"type": "progress", "current_node": _current_node()}
 
     try:
-        content = full_path.read_text()
+        content = path.read_text()
     except OSError:
         return None
     if status_of(content) != AWAITING:
         return None
-    try:
-        rel_path = str(full_path.relative_to(WORKSPACE_DIR))
-    except ValueError:
-        rel_path = str(full_path)
+    relative = _under_mount(path, WORKSPACE_DIR)
+    rel_path = str(relative) if relative is not None else str(path)
     return {"type": "blocked", "file_path": rel_path, "question": extract_question(content)}
 
 
-def _handle_event(inotify: INotify, event, wd_to_path: dict[int, str]) -> None:
-    """Residual HTTP path: classify one event and fire the matching
+def _handle_event(path: Path) -> None:
+    """Residual HTTP path: classify one changed path and fire the matching
     fire-and-forget push. The socket session (:func:`_run_session`) uses
     :func:`_classify_event` directly instead; this is retained as the
     best-effort push shape and for its focused unit tests.
     """
-    parent = wd_to_path.get(event.wd)
-    if parent is None:
-        return
-    if bool(event.mask & flags.ISDIR):
-        if event.mask & (flags.CREATE | flags.MOVED_TO):
-            _add_watches(inotify, Path(parent) / event.name, wd_to_path)
-        return
-    frame = _classify_event(event, wd_to_path)
+    frame = _classify_event(path)
     if frame is None:
         return
     if frame["type"] == "progress":
@@ -412,35 +427,37 @@ async def _sender_loop(ws, outbox: asyncio.Queue) -> None:
         await ws.send(json.dumps(frame))
 
 
-async def _run_session(ws) -> None:
-    """One connected session: advertise, then serve inotify deltas (outbound via
-    a queue fed by an fd reader) and RPC/reload (inbound) until the socket drops
-    or a reload is requested.
+async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
+    """Feed the outbox from the filesystem watch until ``stop`` is set.
+
+    A task rather than the event loop's fd reader this replaced: ``awatch`` owns
+    its own thread and hands back already-coalesced batches, so there is no
+    descriptor for the loop to poll and nothing here blocks it. Deletions are
+    dropped — the old inotify mask asked for writes and creations only, and a
+    removed run file is not progress.
     """
-    await ws.send(json.dumps(_hello_frame()))
-
-    loop = asyncio.get_running_loop()
-    inotify = INotify()
-    wd_to_path: dict[int, str] = {}
-    _add_watches(inotify, WORKSPACE_DIR, wd_to_path)
-    _add_watches(inotify, RUNS_DIR, wd_to_path)
-    outbox: asyncio.Queue = asyncio.Queue()
-
-    def _on_readable() -> None:
-        # Non-blocking drain from the event loop's fd reader — never blocks the
-        # loop, and new subtrees get their own watch as they appear.
-        for event in inotify.read(timeout=0):
-            if bool(event.mask & flags.ISDIR):
-                if event.mask & (flags.CREATE | flags.MOVED_TO):
-                    parent = wd_to_path.get(event.wd)
-                    if parent:
-                        _add_watches(inotify, Path(parent) / event.name, wd_to_path)
+    roots = _watch_roots()
+    if not roots:
+        return
+    async for changes in awatch(*roots, watch_filter=_WATCH_FILTER, stop_event=stop):
+        for change, raw_path in changes:
+            if change is Change.deleted:
                 continue
-            frame = _classify_event(event, wd_to_path)
+            frame = _classify_event(Path(raw_path))
             if frame is not None:
                 outbox.put_nowait(frame)
 
-    loop.add_reader(inotify.fileno(), _on_readable)
+
+async def _run_session(ws) -> None:
+    """One connected session: advertise, then serve filesystem deltas (outbound
+    via a queue fed by the watch task) and RPC/reload (inbound) until the socket
+    drops or a reload is requested.
+    """
+    await ws.send(json.dumps(_hello_frame()))
+
+    outbox: asyncio.Queue = asyncio.Queue()
+    stop = asyncio.Event()
+    watcher = asyncio.create_task(_watch_loop(outbox, stop))
     sender = asyncio.create_task(_sender_loop(ws, outbox))
     try:
         async for raw in ws:
@@ -454,11 +471,13 @@ async def _run_session(ws) -> None:
             elif mtype == "reload":
                 raise ReloadRequested
     finally:
-        loop.remove_reader(inotify.fileno())
-        sender.cancel()
-        with contextlib.suppress(asyncio.CancelledError, ConnectionClosed):
-            await sender
-        inotify.close()
+        # Both: `stop` lets awatch shut its backend thread down cleanly, and the
+        # cancel covers the window before the next batch is yielded.
+        stop.set()
+        for task in (watcher, sender):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, ConnectionClosed):
+                await task
 
 
 async def _serve() -> int:
