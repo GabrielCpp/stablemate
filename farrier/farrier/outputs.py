@@ -308,27 +308,40 @@ def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
 # under `.agents/` is tracked by default. The cost is that a new *generated*
 # output has to be added here; that failure is loud (a diff full of machine
 # output at review time) where the old one was silent.
+#
+# The entries carry no leading slash. Every one of them has a slash in the middle,
+# and git anchors any pattern containing a non-trailing separator to the directory
+# holding the .gitignore — so `/.agents/runs/` and `.agents/runs/` match exactly
+# the same paths. The leading slash was noise that read as though it meant
+# something.
+#
+# The rendered adapters — `.agents/skills/` and `.agents/prompts/` — are *not*
+# listed. They are generated, but so are `.claude/skills/` and `.github/prompts/`,
+# and those have always been committed. An adapter directory is what a checkout of
+# this repo gives an assistant *before* anyone runs farrier; ignoring one CLI's
+# copy while committing another's meant codex users got nothing from a fresh clone,
+# and `install --check` had no committed baseline to diff against in CI.
 AGENTS_GITIGNORE_BLOCK = (
-    "/.agents/runs/",              # run logs, pids and copied-out artifacts
+    ".agents/runs/",              # run logs, pids and copied-out artifacts
     # Per-run git worktrees, and the staged credentials copy beside each. Both are
     # emphatically not repo content: a worktree is a second checkout of this very
     # repo (committing it nests the repo in itself), and the credentials copy is a
     # secret. This entry is load-bearing rather than tidy.
-    "/.agents/worktrees/",
-    "/.agents/skills/",            # rendered skill adapters
-    "/.agents/prompts/",           # rendered prompt adapters
-    "/.agents/workflows/",         # legacy rendered workflow trees
-    "/.agents/operator/",          # per-run operator gate context files
-    "/.agents/local.compose.yaml",  # generated compose override
-    "/.agents/agents-context.json",  # generated context manifest
-    "/.agents/agents-context.*.json",  # …and its per-CLI variants
+    ".agents/worktrees/",
+    ".agents/workflows/",         # legacy rendered workflow trees
+    ".agents/operator/",          # per-run operator gate context files
+    ".agents/local.compose.yaml",  # generated compose override
+    ".agents/agents-context.json",  # generated context manifest
+    ".agents/agents-context.*.json",  # …and its per-CLI variants
 )
 
 
 #: Lines a previous installer wrote that this block replaces. They are stripped
-#: rather than left in place because every one of them is a catch-all: leaving a
-#: `/.agents/*` behind would keep ignoring the paths the new block deliberately
-#: tracks, and the negations it needed are meaningless without it.
+#: rather than left in place because leaving one behind keeps ignoring a path the
+#: current block deliberately tracks. Three generations are represented: the
+#: wholesale `.agents` ignore, the `/.agents/*` exclude-list whose negations are
+#: meaningless without it, and the slash-prefixed spelling of the current block —
+#: including the two rendered-adapter entries that are no longer ignored at all.
 _SUPERSEDED_GITIGNORE_LINES = (
     ".agents",
     ".agents/",
@@ -337,6 +350,17 @@ _SUPERSEDED_GITIGNORE_LINES = (
     "!/.agents/agents.mk",
     "!/.agents/flavors/",
     ".agents/runs",
+    ".agents/skills/",
+    ".agents/prompts/",
+    "/.agents/runs/",
+    "/.agents/worktrees/",
+    "/.agents/skills/",
+    "/.agents/prompts/",
+    "/.agents/workflows/",
+    "/.agents/operator/",
+    "/.agents/local.compose.yaml",
+    "/.agents/agents-context.json",
+    "/.agents/agents-context.*.json",
 )
 
 
