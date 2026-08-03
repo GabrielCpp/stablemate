@@ -104,8 +104,27 @@ Combine one of those with the layer the skill belongs to: `backend`, `cli`,
 `web`, `mobile`, or `infra`. A skill covering more than one job carries more than
 one tag — `tags: [web, standards, runbook]` answers all three of those queries.
 
+One more tag exists for a different reader:
+
+| Tag | The skill answers |
+| --- | --- |
+| `entrypoint` | where to *start* in that layer — the root skill that fans out to its own testing/QA/codegen siblings |
+
+`entrypoint` is not part of the coder vocabulary; the querier is a repo-root
+instruction (the one `localInstructions` renders into `CLAUDE.md`). That file is
+in context for every single turn, so a root that lists every skill in the layer
+spends the context it was meant to save. `find_by_tags("backend", "entrypoint")`
+returns the one skill to open first and lets it do the fanning out. Exactly one
+skill per layer should carry it.
+
 Tags land in the generated skill's `metadata:` block and in the context manifest,
 so `make agent-install` is what makes a new tag visible to a workflow.
+
+A tag is only as good as the frontmatter around it. `tags:` must sit on its own
+line inside the `---` fences; a block that loses its closing newline parses as no
+front matter at all, which silently strips *every* tag on that skill rather than
+erroring. After a bulk retag, check that each source still opens with a
+well-formed `---` … `---` block before trusting a query that comes back empty.
 
 ## Installing into the working repo
 
