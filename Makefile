@@ -12,11 +12,23 @@ help: ## Show this help
 # so both guards are silently off until someone sets it — and the commit that needed
 # stopping is usually the first one, made before anyone has read this file.
 .PHONY: install
-install: sync hooks ## Set up a fresh clone: sync the workspace venv, then install the git hooks
+install: sync browsers hooks ## Set up a fresh clone: sync the venv, fetch Chromium, install the hooks
 
 .PHONY: sync
 sync: ## Sync the workspace venv (all members) from the root uv.lock
 	uv sync --all-packages
+
+.PHONY: browsers
+browsers: ## Download the Chromium `playwright` drives (separate from the pip package)
+	# `uv sync` installs the playwright *package*; the browser binary it launches is a
+	# separate download, and nothing in the lockfile fetches it. Without this step
+	# ostler's live CDP scan and groom's dynamic a11y suite both import fine, get past
+	# their `importorskip`, and fail at launch — which reads as a broken test rather
+	# than a missing binary. CI does the same thing (release.yml), one step later.
+	# chromium only: it is the one browser any test here drives. No `--with-deps`,
+	# unlike CI — that installs system libraries with sudo, which a developer's
+	# `make install` has no business doing on their own machine.
+	uv run playwright install chromium
 
 .PHONY: hooks
 hooks: ## Install the git hooks (private-name guard + Conventional Commits check)
