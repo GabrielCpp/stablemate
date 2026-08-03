@@ -224,15 +224,15 @@ def test_suggestions_catch_transpositions_difflib_misses(tmp_path: Path) -> None
 def test_suggestions_drop_non_competitive_runners_up(tmp_path: Path) -> None:
     """A shared namespace prefix lifts every sibling over the similarity cutoff, so a plain
     top-N buries the one right answer under near-ties that are not close at all. Real case:
-    'stablemate/stablemate-ostlr' offered ostler, groom and agent-library."""
+    a typo'd 'stablemate/ostlr' offered ostler, groom and agent-library. (It was observed
+    when those skills were still spelled 'stablemate/stablemate-ostler', where the doubled
+    prefix made the effect worse; the bare namespace is enough to reproduce it.)"""
     from farrier.selection_errors import suggestions
 
     catalog = [
-        "stablemate/stablemate-ostler",
-        "stablemate/stablemate-groom",
-        "stablemate/stablemate-agent-library",
-        "stablemate/stablemate-coder-workflow",
+        "stablemate/ostler",
+        "stablemate/groom",
+        "stablemate/agent-library",
+        "stablemate/workhorse-coder-workflow",
     ]
-    assert suggestions("stablemate/stablemate-ostlr", catalog) == [
-        "stablemate/stablemate-ostler"
-    ]
+    assert suggestions("stablemate/ostlr", catalog) == ["stablemate/ostler"]

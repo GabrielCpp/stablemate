@@ -3,7 +3,7 @@ name: stablemate-farrier-setup
 description: "Farrier setup guide — install, configure library, write agents.yml, scaffold new services with `farrier scaffold`, bind skills to local CLAUDE.md files via localInstructions."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-farrier-setup/SKILL.md
+  source: library/skills/stablemate/farrier-setup/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-farrier-setup/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [codegen]
@@ -122,7 +122,7 @@ errors if a `localInstructions` path does not exist yet.
 
 The installed skill name is the prefix (the repo directory name, kebab-cased)
 prepended to the skill's library name. Library names
-already carry a unique domain prefix (`go-*`, `process-*`, `stablemate-*`,
+already carry a unique domain prefix (`go-*`, `process-*`, `workhorse-*`,
 `myapp-*`), and farrier does not double a prefix the name already starts
 with — a skill named `myapp-auth` installed into the `myapp` repo stays
 `myapp-auth`.

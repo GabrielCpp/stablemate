@@ -26,7 +26,7 @@ packs:
 # for real means changing that router line in the shared agent library, which is
 # not this repo's call to make unilaterally -- so `stablemate-groom` says
 # out loud that the stack skill does not apply here.
-# `stablemate/stablemate-repo-docs` governs this repo's prose entry surface --
+# `stablemate/repo-docs` governs this repo's prose entry surface --
 # CLAUDE.md, README.md, and the per-package docs/ folders. Selected directly
 # rather than through the `stablemate` pack because it is generic to any repo,
 # not part of the stablemate toolchain bundle; promote it to a pack once a

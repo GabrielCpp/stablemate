@@ -1,5 +1,5 @@
 ---
-name: stablemate-structured-parsing
+name: structured-parsing
 description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption in scripts/check_parsers.py. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
 applyTo: "**/*.py"
 tags: [standards, backend]

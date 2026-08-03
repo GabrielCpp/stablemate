@@ -256,7 +256,7 @@ A heading, bullet, table row or link inside a fenced code block is not one — t
 out of the token stream rather than being approximated. Line numbers on `Section` and
 `Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line. The
 rule this serves, and the parser for every other format, is the
-`stablemate-structured-parsing` skill in the base library; `make check-parsers` enforces
+`structured-parsing` skill in the base library; `make check-parsers` enforces
 it.
 
 ## The coverage model

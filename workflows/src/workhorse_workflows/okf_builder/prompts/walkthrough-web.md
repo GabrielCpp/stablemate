@@ -9,11 +9,11 @@ it **the way a real user would**. This turn handles exactly **one** worklist ite
 you already wrote as the map (retrieved with `ostler search`), drive the live UI with the Playwright
 MCP, and reconcile what you see with what the book says — correcting, enriching, and discovering.
 
-Load the method and obey it: {{ skill_load_ref("stablemate-okf-modeling", skill_dir() + "/stablemate-okf-modeling/SKILL.md") }}
+Load the method and obey it: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
 Author to **Playbook B (as-built)** judgments — the docs describe the app as it really is — but your
 source of truth this phase is the **running app**, not the code: when the live UI and the book
 disagree, the app wins and you heal the book. The type vocabulary, per-type spec-completeness bar,
-folder layout, and linter rules are in the `stablemate-ostler` skill it links to. Always finish an
+folder layout, and linter rules are in the `ostler` skill it links to. Always finish an
 item by running `ostler fmt <touched>` on what you wrote.
 
 ## The cardinal rule: navigate like a user, never by URL

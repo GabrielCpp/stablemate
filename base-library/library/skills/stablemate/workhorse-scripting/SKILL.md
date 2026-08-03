@@ -1,5 +1,5 @@
 ---
-name: stablemate-workhorse-scripting
+name: workhorse-scripting
 description: "Writing workhorse workflow nodes — the @blueprint.node contract, typed returns, WorkflowFailed routing, the kit git/GitHub/workspace helpers, the in-process ostler facade, and substitution-based testing. Applies to a workflow distribution's Python."
 applyTo: "**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/workflow.py"
 tags: [backend, standards, tests]
@@ -373,7 +373,7 @@ never loads the QA/vet machinery: `okf.qa_context(...)`, `okf.qa_validate(plan, 
 `okf.settle_review(slug, write=True)`. The coder QA nodes route through the thin `qa_cli`
 helpers (`qa_run`/`qa_context`/`qa_validate`/`qa_context_validate`) that wrap these and
 normalize to `(returncode, payload, stderr)`. Full verb→method reference: the
-`stablemate-ostler` skill.
+`ostler` skill.
 
 ## Testing — substitute, don't patch
 

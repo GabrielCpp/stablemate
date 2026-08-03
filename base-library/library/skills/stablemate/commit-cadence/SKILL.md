@@ -1,5 +1,5 @@
 ---
-name: stablemate-commit-cadence
+name: commit-cadence
 description: "Commit as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`. Covers when to commit (each coherent unit, not at the end of the session), what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
 applyTo: ""
 tags: [standards, workflow]

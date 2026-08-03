@@ -1,5 +1,5 @@
 ---
-name: stablemate-coder-workflow
+name: workhorse-coder-workflow
 description: "Architecture and conventions for the epic-coder workhorse workflow — the inputs contract, state topology, self.output threading, ostler path integration, and node authoring rules."
 ---
 
@@ -11,7 +11,7 @@ Load this skill when reading, modifying, or debugging the `coder` workflow —
 
 The engine API those files are written against — states, `Continue`/`Done`/`Await`,
 `self.call`/`agent`/`handoff`/`output` — is `workhorse/docs/AUTHORING.md`. Node-authoring
-rules are the `stablemate-workhorse-scripting` skill. This skill is the coder workflow's
+rules are the `workhorse-scripting` skill. This skill is the coder workflow's
 own architecture, and nothing else.
 
 > **Repo modes (mono-repo vs multi-repo) and the docs root.** Before touching any
@@ -274,7 +274,7 @@ epic folder from a bare slug without paying for a graph load. Full rule and its 
 
 Catch the raise where a fallback is genuinely correct — a path convention the graph cannot
 confirm. Never catch it to emit a **verdict**: a gate that could not read the graph is a
-failure, not a pass. Full verb→method reference: the `stablemate-ostler` skill.
+failure, not a pass. Full verb→method reference: the `ostler` skill.
 
 ---
 
@@ -285,7 +285,7 @@ The three are run **inputs**, listed once as `paths.AMBIENT` and declared as the
 and `self.handoff` fill it from the workflow, so the ordinary callsite says nothing. A
 callsite value always wins, and an empty field injects nothing, so the target's own default
 stands. None of them is ever read from the environment — that is prohibited across every
-workflow (`workflows/README.md`, and the `stablemate-workhorse-scripting` skill) and
+workflow (`workflows/README.md`, and the `workhorse-scripting` skill) and
 enforced by `make check-no-env`; the CLI translates `$FOO` into `--params` at the process
 boundary instead.
 

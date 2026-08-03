@@ -152,7 +152,7 @@ one-stack manifest and holds that line.
 
 The vocabulary the coder prompts query is `runbook`, `standards`, `tests`, `qa` and
 `codegen`, each combined with a layer — `backend`, `cli`, `web`, `mobile`, `infra`. It is
-documented for skill authors in the `stablemate-agent-library` skill, which is where
+documented for skill authors in the `agent-library` skill (base-library), which is where
 someone adding `tags:` to a skill is reading. Adding a *new* tag to a prompt means teaching
 that vocabulary there in the same change; a tag no skill declares silently matches nothing.
 

@@ -1,10 +1,10 @@
 ---
-name: stablemate-documentation
+name: stablemate-ostler-documentation
 description: "How to record or refresh a story's documentation in docs/features/** as OKF Concepts via ostler — the scaffold→author→fmt→doctor loop for the UI-profile node types (screen/component/interaction/cli/command/server/endpoint/invocation/flow/concept/format) and for plain prose features, plus the ostler-owns-structure / you-author-prose rule. Load whenever an agent finishes a story that changes user-facing behavior, a surface, a command, an endpoint, or architecture and needs to write or update its docs."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-documentation/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-documentation/SKILL.md"
+  source: library/skills/stablemate/ostler-documentation/SKILL.md
+  resolve: "farrier source .claude/skills/stablemate-ostler-documentation/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 

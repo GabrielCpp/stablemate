@@ -9,9 +9,9 @@ time. This turn handles exactly **one** worklist item; you document it to the sp
 and **return the deeper items it reveals** so the crawl continues. The crawl is exhaustive: it
 starts at entry points and descends the code **layer by layer**, classifying every finding.
 
-Load the method and obey it: {{ skill_load_ref("stablemate-okf-modeling", skill_dir() + "/stablemate-okf-modeling/SKILL.md") }}
+Load the method and obey it: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
 Use **Playbook B (from existing code)**. The type vocabulary, per-type spec-completeness bar (§8),
-folder layout, and linter rules are in the `stablemate-ostler` skill it links to. Always finish an
+folder layout, and linter rules are in the `ostler` skill it links to. Always finish an
 item by running `ostler fmt <touched>` on what you wrote.
 
 ## Guardrails (this runs unattended — stay in your lane)

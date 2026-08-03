@@ -1,5 +1,5 @@
 ---
-name: stablemate-documentation
+name: ostler-documentation
 description: "How to record or refresh a story's documentation in docs/features/** as OKF Concepts via ostler — the scaffold→author→fmt→doctor loop for the UI-profile node types (screen/component/interaction/cli/command/server/endpoint/invocation/flow/concept/format) and for plain prose features, plus the ostler-owns-structure / you-author-prose rule. Load whenever an agent finishes a story that changes user-facing behavior, a surface, a command, an endpoint, or architecture and needs to write or update its docs."
 ---
 

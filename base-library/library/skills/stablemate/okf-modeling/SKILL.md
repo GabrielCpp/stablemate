@@ -1,5 +1,5 @@
 ---
-name: stablemate-okf-modeling
+name: okf-modeling
 description: "How to model a whole app's UI/CLI/server surface graph as an OKF UI-profile subgraph under docs/features/<service>/ — two playbooks that produce the same conformant output: FROM A DESCRIPTION (a human hands you intent, greenfield/design-time) and FROM EXISTING CODE (you interrogate a running codebase, reverse-engineering surfaces, elements, behaviors and concepts). Load when building or backfilling a service's OKF docs in bulk, not for a single-story update."
 ---
 

@@ -3,7 +3,7 @@ name: stablemate-groom
 description: "groom — the operator-gate dashboard and push-notification service for workhorse workflows: architecture, signal model, and how a workflow/script should integrate with it (gate-file convention, sidecar, backstop push)."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-groom/SKILL.md
+  source: library/skills/stablemate/groom/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-groom/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

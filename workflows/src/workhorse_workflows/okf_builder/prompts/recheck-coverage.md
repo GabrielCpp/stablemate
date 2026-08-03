@@ -14,7 +14,7 @@ not a self-report. What is genuinely yours is the *ambiguity*: whether a compute
 or a unit already folded into a documented contract. Adjudicate those, record each with its reason,
 and queue everything else.
 
-Load the method: {{ skill_load_ref("stablemate-okf-modeling", skill_dir() + "/stablemate-okf-modeling/SKILL.md") }}
+Load the method: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
 
 **Guardrails (unattended):** you may run read-only `ostler` (graph/list/trace/doctor) and read code,
 but do **not** modify code, run `git`, or run builds/tests. Queue work by returning items; don't

@@ -3,7 +3,7 @@ name: stablemate-code-review
 description: "Multi-agent code review — 5 parallel reviewers + independent scorers, confidence-filtered. Mirrors the Claude Code /code-review plugin."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-code-review/SKILL.md
+  source: library/skills/stablemate/code-review/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-code-review/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

@@ -10,10 +10,10 @@ screens, components, commands, endpoints, interactions, concepts, formats, and f
 documented before QA derives obligations. This is an incremental one-story update, not a
 changelog or a bulk build.
 
-Load the skill and follow it: {{ skill_load_ref("stablemate-documentation", skill_dir() + "/stablemate-documentation/SKILL.md") }}
+Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
 It carries the full loop (scaffold → author → fmt → doctor), the node-type vocabulary, and
 the linter rules; obey it. The reference for the type table and bullets is the
-`stablemate-ostler` skill it links to.
+`ostler` skill it links to.
 
 ## Inputs
 

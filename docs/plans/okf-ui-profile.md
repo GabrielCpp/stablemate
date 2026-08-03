@@ -3,7 +3,7 @@
 > **Status:** approved & shipped. This document specifies a *profile* of the ostler
 > Open Knowledge Format (OKF) for describing user interfaces and the concepts they
 > serve. The tooling is implemented (see `docs/ostler-okf-ui-support.md`) and the
-> `stablemate-ostler` / `stablemate-documentation` / `stablemate-okf-modeling` skills
+> `stablemate-ostler` / `stablemate-ostler-documentation` / `stablemate-okf-modeling` skills
 > teach it. Where this draft and the shipped tooling differ, the shipped behavior wins
 > and is called out inline (see §2.4 and §6 on gating vs "warns, never blocks").
 >

@@ -3,7 +3,7 @@ name: stablemate-structured-parsing
 description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption in scripts/check_parsers.py. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-structured-parsing/SKILL.md
+  source: library/skills/stablemate/structured-parsing/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-structured-parsing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, backend]

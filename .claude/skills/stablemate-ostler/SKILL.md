@@ -3,7 +3,7 @@ name: stablemate-ostler
 description: "ostler reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/stablemate-ostler/SKILL.md
+  source: library/skills/stablemate/ostler/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ostler/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
@@ -207,7 +207,7 @@ ostler artifact list     [--json]                      # show registered artifac
 `ostler` ships a library face of the CLI — the analog of GitPython's `Repo` or
 PyGithub's `Github`. **Inside a `workhorse` workflow script, command the graph through
 this, not by shelling out** to the CLI and scraping its JSON (see the
-`stablemate-workhorse-scripting` skill). It is the same functional core the CLI
+`workhorse-scripting` skill). It is the same functional core the CLI
 dispatches to; methods return plain Python objects (`dict`/`list`/`str`, a `Result`
 with `.ok`/`.entity_id`/`.message`, an `EditPlan`, a `QaOutcome`), never JSON text.
 

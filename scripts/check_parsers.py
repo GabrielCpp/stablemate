@@ -11,7 +11,7 @@ fenced code blocks. None of those raised; they returned confidently wrong answer
 
 So this flags **regex pattern literals whose text encodes a known format's grammar** and
 names the parser to use instead. The rule, its boundary and the parser-per-format table
-live in the `stablemate-structured-parsing` skill (base-library).
+live in the `structured-parsing` skill (base-library).
 
 **What this is not.** It is a pattern-shape denylist, not semantic analysis. It knows the
 shapes that have gone wrong here; it cannot prove an arbitrary regex is not parsing a

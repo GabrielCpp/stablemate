@@ -1,5 +1,5 @@
 ---
-name: stablemate-agent-library
+name: agent-library
 description: "Agent Library Maintenance & Install. Applies to agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**."
 applyTo: agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**
 tags: [codegen]
