@@ -87,6 +87,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages
+      # The browser binary installs separately from the `playwright` package, and
+      # ostler's live CDP scan test launches one. Without this the package imports
+      # fine, the test gets past its `importorskip`, and it fails at launch —
+      # blocking a release on a browser nobody had told CI to download.
+      # chromium only: it is the one browser any test here drives.
+      - run: uv run playwright install --with-deps chromium
       - run: make test
 
   publish:
