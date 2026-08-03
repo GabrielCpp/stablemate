@@ -153,7 +153,7 @@ and the visible workflow row state is stored as a [workflow container](../concep
   18. The sidecar session treats an inbound `reload` frame as a control message,
       sends no acknowledgement or RPC result, raises the reload control signal,
       and performs normal session cleanup for watches, file-descriptor readers,
-      sender task, and inotify handle.
+      sender task, and watch task.
   19. The serving loop catches the reload signal, closes the current websocket
       best-effort, returns the reserved reload exit code `3`, and stops
       reconnecting. The runner maps that non-zero result to `SystemExit(3)`, which

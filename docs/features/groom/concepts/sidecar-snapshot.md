@@ -13,7 +13,7 @@ current node from [sidecar run checkpoint data](../sidecar-run-checkpoint-data.m
 the terminal marker from [sidecar run metadata](../sidecar-run-metadata.md), and
 open gates from the container's mounted `/workspace` tree by sweeping for
 awaiting gate context files; it does not open network connections, install
-inotify watches, mutate files, or decide the workflow's state on the host.
+filesystem watches, mutate files, or decide the workflow's state on the host.
 
 - code: groom/groom/sidecar.py::snapshot
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
@@ -26,7 +26,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
 - output: one [sidecar snapshot data](../sidecar-snapshot-data.md) object with
   `current_node`, `terminal`, and `gates` keys present on every successful call.
 - effects: performs local file reads only; emits no HTTP request, websocket frame,
-  stdout text, inotify watch, process exit, or filesystem write.
+  stdout text, filesystem watch, process exit, or filesystem write.
 - current node: reads [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md)
   from the latest available run directory and maps a present `current_id` value
   unchanged to snapshot `current_node`; missing run directories, missing
@@ -90,7 +90,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
 - output: one [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary with
   `current_node`, `terminal`, and `gates` keys in every successful return value.
 - effects: performs the delegated local file reads needed to collect the three
-  fields; performs no network I/O, websocket send, stdout write, inotify
+  fields; performs no network I/O, websocket send, stdout write, watch
   subscription, process exit, or filesystem mutation.
 - calls: [method-_current_node](#method-_current_node),
   [method-_terminal](#method-_terminal), and
@@ -115,7 +115,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
   is not a directory or contains no child directories.
 - effects: reads the runs mount directory entries and tests child paths for
   directory status; performs no workspace scan, file content read, network I/O,
-  inotify subscription, stdout write, process exit, or filesystem mutation.
+  watch subscription, stdout write, process exit, or filesystem mutation.
 - selection rule: only direct children of the runs mount that are directories are
   eligible; files and non-directory entries are ignored.
 - ordering rule: eligible directories are sorted by path order, and the final
@@ -145,7 +145,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
   data](../sidecar-run-checkpoint-data.md) `current_id` value, normally a string;
   a present value is returned unchanged, while no usable value returns `""`.
 - effects: reads at most one `checkpoint.json` file from the latest run
-  directory; performs no workspace scan, network I/O, inotify subscription,
+  directory; performs no workspace scan, network I/O, watch subscription,
   stdout write, process exit, or filesystem mutation.
 - algorithm:
   1. Resolve the latest run directory with `method-_latest_run_dir`.
@@ -174,7 +174,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
   metadata](../sidecar-run-metadata.md) `terminal` field, returned unchanged, or
   `""` when no usable terminal marker is available.
 - effects: reads at most one `run.json` file from the latest run directory;
-  performs no workspace scan, network I/O, inotify subscription, stdout write,
+  performs no workspace scan, network I/O, watch subscription, stdout write,
   process exit, or filesystem mutation.
 - algorithm:
   1. Resolve the latest run directory with `method-_latest_run_dir`.
@@ -202,7 +202,7 @@ inotify watches, mutate files, or decide the workflow's state on the host.
 - effects: recursively reads the workspace directory tree, reads a small prefix
   of each candidate file to classify its status, and reads the full text only for
   awaiting files so the returned question can be extracted; performs no network
-  I/O, inotify subscription, stdout write, process exit, or filesystem mutation.
+  I/O, watch subscription, stdout write, process exit, or filesystem mutation.
 - skip dirs: `.git`, `node_modules`, `__pycache__`, and `.venv` directories are
   pruned at every visited level before files are inspected.
 - status rule: the first 512 characters of each file are decoded with replacement

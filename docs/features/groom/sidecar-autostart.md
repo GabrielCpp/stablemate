@@ -25,7 +25,7 @@ host-side groom (if one is listening).
 - Because the entrypoint (not workhorse) is PID 1, it forwards `SIGTERM` to the
   workflow and, after the run returns, fires a one-shot
   `groom-sidecar --exit-code "$rc"` so groom learns the workflow finished (the
-  container tears down before the inotify loop could report it).
+  container tears down before the watch loop could report it).
 - Entry point: `make agent-run-<workflow>` from farrier's generated
   `.agents/agents.mk`, which mints a run id and launches one container per run; or
   `docker compose -f workhorse/compose.yaml up` by hand, whose service uses

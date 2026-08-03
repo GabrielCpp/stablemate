@@ -5,7 +5,7 @@ title: Sidecar websocket frame
 ---
 # Sidecar websocket frame
 
-The sidecar websocket frame is the JSON message format exchanged on the [websocket-sidecar](http/groom.md#websocket-sidecar) endpoint during [sidecar live sessions](sidecar-live-sessions.md). Incoming sidecar-to-groom frames are consumed by `dashboard_sidecar`; [method-_hello_frame](#method-_hello_frame) creates the full-state `hello` frame from [sidecar identity data](sidecar-identity-data.md) and [sidecar snapshot data](sidecar-snapshot-data.md), while the [sidecar connected session](concepts/sidecar-connected-session.md) and [sidecar outbound sender](concepts/sidecar-outbound-sender.md) emit `progress`, `blocked`, and `rpc_result` frames from inotify events and local data-plane RPC handlers. Groom-to-sidecar `rpc` and `reload` frames are emitted through the registered [sidecar connection](concepts/sidecar-connection.md) held by the [sidecar connection registry](concepts/sidecar-connection-registry.md). `hello` and `blocked` variants create or replace [gate info](concepts/gate-info.md) records when they advertise non-empty gate paths, while `rpc_result.data` embeds the sidecar-produced portions of [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), or [workspace diff data](workspace-diff-data.md).
+The sidecar websocket frame is the JSON message format exchanged on the [websocket-sidecar](http/groom.md#websocket-sidecar) endpoint during [sidecar live sessions](sidecar-live-sessions.md). Incoming sidecar-to-groom frames are consumed by `dashboard_sidecar`; [method-_hello_frame](#method-_hello_frame) creates the full-state `hello` frame from [sidecar identity data](sidecar-identity-data.md) and [sidecar snapshot data](sidecar-snapshot-data.md), while the [sidecar connected session](concepts/sidecar-connected-session.md) and [sidecar outbound sender](concepts/sidecar-outbound-sender.md) emit `progress`, `blocked`, and `rpc_result` frames from filesystem change events and local data-plane RPC handlers. Groom-to-sidecar `rpc` and `reload` frames are emitted through the registered [sidecar connection](concepts/sidecar-connection.md) held by the [sidecar connection registry](concepts/sidecar-connection-registry.md). `hello` and `blocked` variants create or replace [gate info](concepts/gate-info.md) records when they advertise non-empty gate paths, while `rpc_result.data` embeds the sidecar-produced portions of [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), or [workspace diff data](workspace-diff-data.md).
 
 - file: websocket text frames on `WS /sidecar`; no on-disk file.
 - code: groom/groom/app.py::dashboard_sidecar
@@ -296,7 +296,7 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 - identity: the returned frame embeds a fresh [sidecar identity data](sidecar-identity-data.md) object under top-level `identity` for container id, display name, repository name, and repository branch.
 - snapshot: the returned frame embeds a fresh [sidecar snapshot data](sidecar-snapshot-data.md) object under top-level `snapshot` for current node, terminal state, and open gates.
 - freshness: both delegated values are evaluated for this call; the helper does not cache identity or snapshot data across reconnects.
-- effects: performs only the delegated local reads needed by identity and snapshot production; does not serialize JSON, send on a websocket, open or close a socket, install inotify watches, register host-side connections, perform HTTP pushes, mutate workflow state, write files, or decide host workflow state.
+- effects: performs only the delegated local reads needed by identity and snapshot production; does not serialize JSON, send on a websocket, open or close a socket, install filesystem watches, register host-side connections, perform HTTP pushes, mutate workflow state, write files, or decide host workflow state.
 - calls: [Sidecar identity data](sidecar-identity-data.md) and [method-snapshot](concepts/sidecar-snapshot.md#method-snapshot), in that order.
 - algorithm:
 1. Build fresh [sidecar identity data](sidecar-identity-data.md).
@@ -305,34 +305,31 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 
 ### method-_classify_event
 
-- sig: `_classify_event(event, wd_to_path: dict[int, str]) -> dict | None`
+- sig: `_classify_event(path: Path) -> dict | None`
 - abstract: false
-- raises: no intentional exception for unknown watch descriptors, directory events, unreadable workspace files, non-awaiting workspace files, or paths outside configured mounts; unexpected exceptions from the current-node reader or gate text parser can propagate.
+- raises: no intentional exception for directories, unreadable or already-deleted files, non-awaiting workspace files, or paths outside configured mounts; unexpected exceptions from the current-node reader or gate text parser can propagate.
 - code: groom/groom/sidecar.py::_classify_event
 - verify: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
 - verify: groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked
-- verify: groom/tests/test_sidecar_session.py::test_classify_event_ignores_unknown_wd
-- input: one already-received inotify event object with `wd`, `mask`, and `name` attributes, plus the session's watch-descriptor map from watch descriptor integer to watched directory path string.
-- output: one outbound sidecar websocket frame object for an interesting file event, or `None` when the event should not emit a frame.
-- effects: reads local sidecar filesystem state only when a non-directory workspace event must be classified; it does not send websocket text, enqueue frames, install watches, send residual HTTP pushes, mutate files, mutate host workflow state, or raise reload control signals.
-- unknown watch rule: when the event's watch descriptor is absent from `wd_to_path`, returns `None` without inspecting `event.name` or the filesystem.
-- directory rule: when the event mask includes the inotify directory flag, returns `None`; directory create and move-in watch installation belongs to the connected session or residual event handler, not to this classifier.
-- runs rule: when the event's full path is under the configured runs mount, returns a `progress` frame with `type: "progress"` and `current_node` equal to a fresh [method-_current_node](concepts/sidecar-snapshot.md#method-_current_node) read.
-- workspace read rule: non-runs file events are read as text from the observed full path; an `OSError` while reading returns `None`.
+- verify: groom/tests/test_sidecar_session.py::test_classify_event_ignores_a_path_it_cannot_read
+- input: one absolute changed path, as reported by the [sidecar filesystem watch](concepts/sidecar-filesystem-watch.md).
+- output: one outbound sidecar websocket frame object for an interesting file event, or `None` when the path should not emit a frame.
+- effects: reads local sidecar filesystem state only when a non-runs path must be classified; it does not send websocket text, enqueue frames, install watches, send residual HTTP pushes, mutate files, mutate host workflow state, or raise reload control signals.
+- directory rule: no special case is needed. A directory is not readable as text, so it falls out at the read below, and a subtree created inside a watched tree needs no watch installed for it.
+- mount-comparison rule: a path is tested against each mount literally and then with both sides resolved, so a mount reached through a symlink (macOS's `/var` -> `/private/var`) still yields a mount-relative path rather than an absolute one.
+- runs rule: when the changed path is under the configured runs mount, returns a `progress` frame with `type: "progress"` and `current_node` equal to a fresh [method-_current_node](concepts/sidecar-snapshot.md#method-_current_node) read.
+- workspace read rule: non-runs paths are read as text; an `OSError` while reading — a directory, or a file already deleted by the time the coalesced batch arrives — returns `None`.
 - gate status rule: the read file content is classified by [method-status-of](operator-gate-context-file.md#method-status-of), and only the exact awaiting token `AWAITING_OPERATOR` emits a frame.
 - blocked frame rule: an awaiting workspace file returns a `blocked` frame with `type: "blocked"`, the gate `file_path`, and the extracted operator `question` from [method-extract-question](operator-gate-context-file.md#method-extract-question).
 - path rule: the `blocked.file_path` value is workspace-relative when the full event path can be relativized to the configured workspace mount, otherwise it falls back to the observed full path string.
 - freshness: both progress and blocked frame payloads are computed at classification time; the method carries no cursor, debounce state, deduplication cache, timestamp, or previous event memory.
 - calls: [method-_current_node](concepts/sidecar-snapshot.md#method-_current_node) for runs events, [method-status-of](operator-gate-context-file.md#method-status-of) for gate lifecycle classification, and [method-extract-question](operator-gate-context-file.md#method-extract-question) for blocked-question extraction.
 - algorithm:
-  1. Look up the event's watched parent directory from `wd_to_path`; return `None` when it is unknown.
-  2. Combine the watched parent directory and event name to obtain the full observed path.
-  3. Return `None` for directory events.
-  4. If the full observed path is under the runs mount, return a `progress` frame with the latest current node.
-  5. Read the full observed file as text; return `None` if it cannot be read.
-  6. Classify the file status and return `None` unless it is exactly `AWAITING_OPERATOR`.
-  7. Compute the workspace-relative gate path when possible.
-  8. Return a `blocked` frame containing the gate path and extracted operator question.
+  1. If the changed path is under the runs mount, return a `progress` frame with the latest current node.
+  2. Read the changed path as text; return `None` if it cannot be read — which is also how directories and already-deleted files fall out.
+  3. Classify the file status and return `None` unless it is exactly `AWAITING_OPERATOR`.
+  4. Compute the workspace-relative gate path when possible, comparing the mount both literally and resolved.
+  5. Return a `blocked` frame containing the gate path and extracted operator question.
 
 ### method-_handle_rpc
 
@@ -352,7 +349,7 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 - success result: a supported handler that returns data sends `{"type":"rpc_result","id":<request id>,"ok":true,"data":<handler result>}`; `getTree` data follows [workspace file list data](workspace-file-list-data.md), `getFile` data follows [workspace file content data](workspace-file-content-data.md), and `getDiff` data follows [workspace diff data](workspace-diff-data.md).
 - failure result: any exception raised by the selected data-plane handler is caught and sent as `{"type":"rpc_result","id":<request id>,"ok":false,"error":str(exception)}` so path-safety failures and local read failures become protocol failures rather than session crashes.
 - execution rule: runs the selected synchronous data-plane handler off the event loop before sending the result; while this RPC is awaited, the connected session does not consume the next inbound frame.
-- effects: sends one JSON text frame on the websocket; may cause local workspace or runs-volume reads through the selected handler; does not mutate workspace files, mutate host workflow state, register sidecar connections, enqueue inotify frames, perform residual HTTP pushes, close the socket, raise reload control signals, or retry failed sends.
+- effects: sends one JSON text frame on the websocket; may cause local workspace or runs-volume reads through the selected handler; does not mutate workspace files, mutate host workflow state, register sidecar connections, enqueue watch frames, perform residual HTTP pushes, close the socket, raise reload control signals, or retry failed sends.
 - calls: [workspace file list data](workspace-file-list-data.md) producer for `getTree`, [workspace file content data](workspace-file-content-data.md) producer for `getFile`, and [workspace diff data](workspace-diff-data.md) producer for `getDiff`; JSON serialization and event-loop offloading are standard-library concerns.
 - algorithm:
   1. Read the request correlation id, requested method name, and params object from the decoded RPC message.

@@ -26,7 +26,7 @@ up to groom, and groom queries the container's sidecar back down.
 
 ## Container → host (fire-and-forget push)
 
-- `groom-sidecar` watches `/workspace` + `/runs` with `inotify` and POSTs
+- `groom-sidecar` watches `/workspace` + `/runs` with `watchfiles` and POSTs
   `progress` / `blocked` events to the host groom at
   `http://host.docker.internal:8787/push/*`. A one-shot `exited` push is fired
   by the entrypoint after the workflow returns.
@@ -41,7 +41,7 @@ up to groom, and groom queries the container's sidecar back down.
 - For a **running** container, groom asks its sidecar for a one-shot snapshot:
   `docker exec -u nobody -e HOME=/claude-state <cid> uv run groom-sidecar --query`
   prints `{current_node, terminal, gates:[{file_path, question}]}` as JSON
-  (`sidecar.snapshot()` — pure file reads, no network, no inotify).
+  (`sidecar.snapshot()` — pure file reads, no network, no watch).
 - Discovery prefers this fast path for running containers and falls back to
   reading the named volumes via throwaway containers for stopped/legacy ones.
 
@@ -70,7 +70,7 @@ change needed.
 ## Implementation
 
 - `groom/groom/sidecar.py` — `push_progress`/`push_blocked`/`push_exited`,
-  `snapshot`/`scan_gates`, the `run()` inotify loop.
+  `snapshot`/`scan_gates`, the `run()` watch loop.
 - `groom/groom/cli.py::sidecar_main` — `--query` / `--exit-code`.
 - `groom/groom/app.py` — `POST /push/{progress,blocked,exited}`.
 - `groom/groom/docker_io.py::sidecar_query`, `docker_exec`.

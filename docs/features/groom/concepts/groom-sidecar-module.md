@@ -8,7 +8,7 @@ title: Groom sidecar module
 The Groom sidecar module is the in-container runtime implementation behind the
 [`groom-sidecar`](../groom-sidecar.md) command. It owns the sidecar process'
 import-time configuration, local snapshot readers, residual HTTP push producers,
-recursive inotify-backed websocket session, sidecar-local RPC data plane, reload
+recursive watch-backed websocket session, sidecar-local RPC data plane, reload
 control signal, and the blocking handoff from the CLI into [sidecar live
 sessions](../sidecar-live-sessions.md). The module exchanges [sidecar identity
 data](../sidecar-identity-data.md), [sidecar snapshot data](../sidecar-snapshot-data.md),
@@ -65,7 +65,7 @@ exit result.
   `rpc_result` frames, normal websocket closure reconnects, and reload is the only
   intentional non-zero sidecar process status.
 - external boundary: standard-library JSON, filesystem, socket, subprocess, and
-  HTTP helpers, the inotify and websocket packages, Git, and host networking are
+  HTTP helpers, the watch and websocket packages, Git, and host networking are
   below this module and are not Groom graph concepts to descend into.
 
 ## Fields
@@ -77,7 +77,7 @@ exit result.
 - required: true
 - code: groom/groom/sidecar.py::WORKSPACE_DIR
 - meaning: local mount root for repository/workspace reads, gate scanning,
-  workspace inotify watches, and sidecar RPC file-tree/file-content service.
+  workspace watches, and sidecar RPC file-tree/file-content service.
 - source: `GROOM_WORKSPACE_DIR` environment variable when present.
 
 ### field-runs-dir
@@ -87,7 +87,7 @@ exit result.
 - required: true
 - code: groom/groom/sidecar.py::RUNS_DIR
 - meaning: local mount root for workhorse run metadata, latest checkpoint reads,
-  terminal-state reads, and run-progress inotify watches.
+  terminal-state reads, and run-progress watches.
 - source: `GROOM_RUNS_DIR` environment variable when present.
 
 ### field-groom-host
@@ -130,14 +130,18 @@ exit result.
 - used-by: [sidecar serving loop](sidecar-serving-loop.md) and [sidecar live
   session runner](sidecar-live-session-runner.md).
 
-### field-watch-flags
+### field-watch-filter
 
-- type: inotify mask
-- default: `MODIFY | CLOSE_WRITE | CREATE | MOVED_TO`
+- type: `watchfiles.DefaultFilter`
+- default: constructed from [field-skip-dir-names](#field-skip-dir-names)
 - required: true
-- code: groom/groom/sidecar.py::_WATCH_FLAGS
-- meaning: filesystem event classes observed for workspace gate changes, run
-  progress writes, and newly-created or moved-in directories that need watches.
+- code: groom/groom/sidecar.py::_WATCH_FILTER
+- meaning: the directory exclusions applied to the recursive watch. Spelled from
+  the same skip set the pull-side gate scan uses rather than left at the
+  backend's own larger default, so a gate the scan reports is a gate the watch
+  can fire on. Replaces the former inotify event mask: which change classes are
+  interesting is now decided after the fact, by dropping deletions in the
+  [sidecar filesystem watch](sidecar-filesystem-watch.md).
 
 ### field-skip-dir-names
 
@@ -261,7 +265,7 @@ exit result.
   - Reads the latest terminal marker from the latest run metadata.
   - Calls [method-scan-gates](#method-scan-gates) for all currently awaiting gate
     entries.
-  - Performs no network I/O, inotify subscription, stdout write, process exit, or
+  - Performs no network I/O, watch subscription, stdout write, process exit, or
     filesystem mutation.
 
 ### concept: ReloadRequested
@@ -297,9 +301,8 @@ by the container entrypoint.
   - Marks the exact moment a connected sidecar session has accepted a host
     `reload` command.
   - Unwinds the connected session through normal exception propagation after the
-    session cleanup block removes the inotify reader, cancels the outbound sender,
-    suppresses expected cancellation/socket-close cleanup errors, and closes the
-    inotify handle.
+    session cleanup block sets the stop event, cancels the watch and outbound sender
+    tasks, and suppresses expected cancellation/socket-close cleanup errors.
   - Lets the serving loop distinguish intentional reload from ordinary websocket
     closure, so reload stops reconnecting while normal socket closure continues
     the reconnect loop.
@@ -326,14 +329,14 @@ by the container entrypoint.
   - Converts any non-zero returned serving-loop code into a process exit with the
     same numeric code.
   - Performs no parsing, snapshot read, residual HTTP push, websocket connection,
-    or inotify setup before delegating to the serving loop.
+    or watch setup before delegating to the serving loop.
 
 ## Folded Private Helper Contract
 
 - identity producer: `groom/groom/sidecar.py::_identity` is folded into [sidecar identity data](../sidecar-identity-data.md); it derives `container_id`, `name`, `repo_name`, and `repo_branch` from hostname and repository environment variables.
 - residual push core: `groom/groom/sidecar.py::_push` is folded into [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md); it merges identity and event fields, serializes JSON, and performs one best-effort HTTP `POST`.
 - run-state readers: `groom/groom/sidecar.py::_latest_run_dir`, `groom/groom/sidecar.py::_current_node`, and `groom/groom/sidecar.py::_terminal` are folded into [sidecar snapshot](sidecar-snapshot.md); they select the latest run directory, checkpoint current node, and terminal marker.
-- watch installer: `groom/groom/sidecar.py::_add_watches` is folded into [sidecar recursive watch installer](sidecar-recursive-watch-installer.md); it installs recursive inotify watches while pruning skipped directories.
+- filesystem watch: `groom/groom/sidecar.py::_watch_roots` and `groom/groom/sidecar.py::_watch_loop` are folded into [sidecar filesystem watch](sidecar-filesystem-watch.md); together they select the watchable mounts and feed classified frames to the session's outbound queue.
 - event classifiers: `groom/groom/sidecar.py::_classify_event` is folded into [sidecar websocket frame](../sidecar-websocket-frame.md#method-_classify_event); `groom/groom/sidecar.py::_handle_event` is the residual HTTP adapter for the same classification result and emits progress or blocked push wrappers.
 - path guard and repository readers: `groom/groom/sidecar.py::_safe_relpath`, `groom/groom/sidecar.py::_repo_base`, `groom/groom/sidecar.py::_find_repo_dirs`, `groom/groom/sidecar.py::_list_tree`, and `groom/groom/sidecar.py::_git_diff` are folded into [sidecar-local relative path guard](sidecar-local-relative-path-guard.md), [workspace file list data](../workspace-file-list-data.md), and [workspace diff data](../workspace-diff-data.md).
 - RPC handlers: `groom/groom/sidecar.py::_rpc_get_tree`, `groom/groom/sidecar.py::_rpc_get_file`, and `groom/groom/sidecar.py::_rpc_get_diff` are folded into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md); `groom/groom/sidecar.py::_handle_rpc` is folded into [sidecar websocket frame](../sidecar-websocket-frame.md#method-_handle_rpc).

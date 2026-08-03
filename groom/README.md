@@ -13,7 +13,8 @@ a container has genuinely stopped.
 ## How it works
 
 - Each workflow container runs a tiny in-container sidecar, `groom-sidecar`,
-  that watches its own `/workspace` and `/runs` mounts with `inotify` and holds
+  that watches its own `/workspace` and `/runs` mounts (via `watchfiles`, so the
+  container gets inotify and a developer's macOS or Windows box still works) and holds
   one persistent WebSocket open to the host's `groom` (dialing out over
   `host.docker.internal`, so no inbound reachability is needed). It advertises
   full state on connect, streams `progress`/`blocked` deltas, and serves the

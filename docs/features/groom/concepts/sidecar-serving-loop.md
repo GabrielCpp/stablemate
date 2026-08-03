@@ -31,7 +31,7 @@ session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
 - effects: opens outbound websocket client connections to the host groom service,
   delegates each connected socket to the session layer, closes the current socket
   best-effort before returning on reload, and performs no filesystem reads,
-  inotify setup, frame parsing, or frame emission itself.
+  watch setup, frame parsing, or frame emission itself.
 - reconnect rule: a normal websocket close from the connected session is swallowed
   and the connector loop continues, allowing the sidecar to reconnect and
   re-advertise state instead of exiting the process.
@@ -67,5 +67,5 @@ session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
 ## Deeper Calls
 
 - [Sidecar connected session](sidecar-connected-session.md) owns the
-  per-connection hello frame, inotify watches, outbound progress/blocked queue,
+  per-connection hello frame, filesystem watch, outbound progress/blocked queue,
   inbound RPC dispatch, and reload detection for one connected websocket.

@@ -36,7 +36,8 @@ Workflow state lives in named Docker volumes invisible to a host-side `inotify` 
 doesn't poll. Instead:
 
 - **`groom-sidecar`** runs *inside* the agent container (baked into the image via `stablemate`'s
-  shared Dockerfile), watches `/workspace`+`/runs` with real `inotify` (`inotify_simple`), and
+  shared Dockerfile), watches `/workspace`+`/runs` via `watchfiles` (inotify in the container,
+  FSEvents/ReadDirectoryChangesW on a developer machine), and
   POSTs `progress`/`blocked` events to the host's `groom` at `http://host.docker.internal:8787/...`.
 - **Fire-and-forget, always.** Every push is a short-timeout (1.0s) `urllib.request` call wrapped
   in a broad `except: pass` — never retries, never raises. A container with no `groom` listening

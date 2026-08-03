@@ -95,8 +95,11 @@ Instead, **`groom` ships a second console script, [`groom-sidecar`](groom-sideca
 container itself** (installed into the agent image via `stablemate`'s shared Dockerfile;
 `workhorse`'s own package/deps are untouched). `groom-sidecar` (`groom/sidecar.py`):
 
-- watches `/workspace` and `/runs` recursively with real `inotify` (`inotify_simple`), skipping
-  `.git`/`node_modules`/`__pycache__`/`.venv`, on `MODIFY | CLOSE_WRITE | CREATE | MOVED_TO`;
+- watches `/workspace` and `/runs` recursively via `watchfiles`, skipping
+  `.git`/`node_modules`/`__pycache__`/`.venv`, on additions and modifications (deletions are
+  dropped). `watchfiles` uses inotify in the container and FSEvents/ReadDirectoryChangesW
+  elsewhere, so the sidecar and its tests also run on the machine you develop on — a raw
+  `inotify_simple` binding imports fine on macOS and then dies at `INotify()`;
 - on any qualifying event under `/runs` → POSTs a `progress` event (current node, read from the
   latest run dir's `checkpoint.json`) to `/push/progress`;
 - on any file elsewhere whose `STATUS:` line reads `AWAITING_OPERATOR` → POSTs a `blocked` event
@@ -109,7 +112,7 @@ container itself** (installed into the agent image via `stablemate`'s shared Doc
   identically to one with `groom` attached.
 
 **Backstop push, not a teardown race.** The design originally assumed the container tears down
-right after the wait script writes its halt file, racing the sidecar's own inotify callback. That
+right after the wait script writes its halt file, racing the sidecar's own watch callback. That
 premise no longer holds: `await_operator.py`/`await-operator.py` now block in place on their own
 `inotify` watch of the gate file and only ever call `sys.exit(2)` if the raw inotify syscalls fail
 to initialize (a legacy/non-Linux fallback). What they *do* keep, unconditionally, is a
@@ -144,7 +147,7 @@ a trusted machine.
 
 ```
 stablemate/groom/
-    pyproject.toml       # name "groom"; deps: litestar[standard], workhorse-agent (workspace dep), inotify-simple
+    pyproject.toml       # name "groom"; deps: litestar[standard], workhorse-agent (workspace dep), watchfiles
     groom/
         __init__.py
         models.py         # WorkflowState enum; GateInfo, WorkflowContainer, AnswerResult dataclasses
@@ -156,7 +159,7 @@ stablemate/groom/
         discovery.py      # scan(): startup/on-demand reconciliation only, no answer/restart role
         projection.py     # registry -> the JSON payloads; the one shape both /ws and /api/state send
         app.py            # Litestar app: routes + /ws, on_startup=[_spawn_scan, _spawn_rules, _spawn_live]
-        sidecar.py         # groom-sidecar: inotify loop over /workspace + /runs -> push to host groom
+        sidecar.py         # groom-sidecar: watchfiles loop over /workspace + /runs -> push to host groom
         cli.py               # serve(), main(), sidecar_main() entry points
         assets/                # dashboard.js (the Preact islands) + vendored: preact.standalone.js,
                                 # pico.classless.min.css, diff2html.min.{js,css}, marked.min.js,
@@ -166,7 +169,7 @@ stablemate/groom/
     tests/
         test_gates.py       # STATUS parsing + answer_gate orchestration (mocked docker_io)
         test_discovery.py   # mount/env parsing against fixture docker-inspect JSON
-        test_sidecar.py      # inotify-triggered event construction, fire-and-forget behavior
+        test_sidecar.py      # changed-path event construction, fire-and-forget behavior
         test_projection.py    # the JSON payload shapes both transports send
         test_dashboard_client.py # dashboard.js parses; every endpoint read as JSON; htmx really gone
         test_a11y_dynamic.py  # Playwright + axe-core against a live groom, per pane
@@ -258,7 +261,7 @@ open forever.
 
 Automated: `make test` (from `stablemate/groom/`) runs `tests/test_*.py` directly under `uv run
 python` — covers STATUS parsing/`answer_gate` orchestration (`test_gates.py`, mocked `docker_io`),
-mount/env parsing against a fixture `docker inspect` blob (`test_discovery.py`), inotify-triggered
+mount/env parsing against a fixture `docker inspect` blob (`test_discovery.py`), changed-path-triggered
 event construction and fire-and-forget behavior (`test_sidecar.py`), the JSON payload shapes
 both transports send (`test_projection.py`), the shipped client module (`test_dashboard_client.py`),
 accessibility against a live browser (`test_a11y_dynamic.py`), and the throwaway-container helper

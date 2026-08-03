@@ -20,7 +20,7 @@ Progress push payload is the JSON request body accepted by the [receive progress
 
 - shape: a JSON object; arrays, strings, numbers, booleans, and `null` are not valid semantic payloads for this endpoint because the handler expects object-style key lookup.
 - producer: `groom-sidecar` calls `push_progress(current_node)` with a current-node string, then the residual push helper merges [sidecar identity data](sidecar-identity-data.md) with `{"current_node": current_node}` and posts the merged object to `/push/progress`.
-- producer-trigger: an inotify write under the configured `/runs` tree is classified as progress and supplies the sidecar's current-node snapshot; compatible backstop clients may send the same object fields directly.
+- producer-trigger: an observed write under the configured `/runs` tree is classified as progress and supplies the sidecar's current-node snapshot; compatible backstop clients may send the same object fields directly.
 - producer identity: first-party residual pushes include `container_id`, `name`, `repo_name`, and `repo_branch` before the explicit `current_node` field is merged; explicit event payload keys win on collision, though the current progress wrapper supplies only `current_node`.
 - producer endpoint: the sidecar posts the serialized JSON object to `http://{GROOM_HOST}:{GROOM_PORT}/push/progress`, where `GROOM_HOST` defaults to `host.docker.internal` and `GROOM_PORT` defaults to `8787`.
 - producer transport: the first-party sidecar serializes the merged object as UTF-8 JSON, declares `Content-Type: application/json`, performs exactly one HTTP `POST` attempt, closes the response object when a response is opened, ignores the response body, and performs no command-line output for this notice path.
