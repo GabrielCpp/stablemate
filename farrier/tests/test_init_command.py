@@ -24,7 +24,6 @@ def test_init_writes_a_config_the_installer_can_read(tmp_path: Path) -> None:
     assert run(["init", "--repo", str(repo)]) == 0
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
-    assert config["repo"]["name"] == "acme"
     assert config["agents"] == {"claude": True}
     # Present but empty: the selection is the one thing the operator has to fill in,
     # and an absent key would read as "farrier decides".
@@ -79,21 +78,23 @@ def test_init_rejects_a_repo_path_that_is_not_a_directory(tmp_path: Path) -> Non
     assert "not a directory" in str(excinfo.value)
 
 
-def test_init_quotes_a_directory_name_yaml_would_read_as_something_else(
-    tmp_path: Path,
-) -> None:
-    """A repo called `no` is a string, not `False`.
+def test_init_sets_no_repo_name(tmp_path: Path) -> None:
+    """The name is the directory's, so the starter config does not restate it.
 
-    The name becomes the prefix on every installed skill, so a directory whose bare
-    name YAML resolves to a bool or an int has to survive the round trip.
+    A `repo.name` key here would read as settable, and it is not — the installer
+    derives the prefix from the directory and the workflow tooling derives the same
+    name the same way.
     """
-    repo = tmp_path / "no"
+    repo = tmp_path / "acme"
     repo.mkdir()
 
     assert run(["init", "--repo", str(repo)]) == 0
 
-    config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
-    assert config["repo"]["name"] == "no"
+    text = (repo / "agents.yml").read_text(encoding="utf-8")
+    assert yaml.safe_load(text).get("repo") is None
+    # It still *appears*, spelled as the installer derives it, in the comment that
+    # shows what an installed skill from this repo is called.
+    assert "acme-db" in text
 
 
 def test_bare_farrier_prints_help_rather_than_installing(capsys) -> None:

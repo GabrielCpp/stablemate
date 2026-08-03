@@ -25,7 +25,7 @@ from farrier.launcher import (
     render_agents_mk,
 )
 from farrier.layers import available_names, find_in_layers
-from farrier.naming import kebab, relative_reference, yaml_quote
+from farrier.naming import relative_reference, repo_prefix, yaml_quote
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import (
     Asset,
@@ -187,7 +187,11 @@ class Renderer:
         self.repo = repo
         self.prefix = prefix
         self.repo_context = dict(repo_config)
-        self.repo_context.setdefault("name", kebab(repo.name))
+        # Assigned, not `setdefault`: both are derived from the directory now, and a
+        # `repo.name` left over in someone's agents.yml must not shadow the name the
+        # rest of the toolchain (the workflow kit, the run record, a `.code-workspace`
+        # folder entry) reads off the checkout itself.
+        self.repo_context["name"] = repo_prefix(repo)
         self.repo_context["prefix"] = prefix
         self.repo_context["root"] = repo.as_posix()
         self.template_values = template_values

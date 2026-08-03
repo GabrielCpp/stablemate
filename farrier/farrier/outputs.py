@@ -17,7 +17,7 @@ from farrier.launcher import (
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_ROOT_MAKEFILE,
 )
-from farrier.naming import kebab
+from farrier.naming import repo_prefix
 from farrier.renderer import Renderer
 from farrier.selection_errors import (
     suggestions,
@@ -145,9 +145,7 @@ def check_selection(
 
 def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
-    prefix = kebab(
-        str(repo_config.get("prefix") or repo_config.get("name") or repo.name)
-    )
+    prefix = repo_prefix(repo)
     agents = normalize_agents(config)
     if not any(agents.values()):
         raise SystemExit("No agents selected in config")

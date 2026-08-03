@@ -62,11 +62,12 @@ agents:
 
 packs:
   - <pack-name>              # bundles from agents/packs/*.yml
-
-# Optional — the install prefix defaults to the repo directory name.
-repo:
-  name: <repo-name>          # or `prefix:` to set the prefix explicitly
 ```
+
+The repo's name is its **directory** name, kebab-cased. It is not configurable:
+it is the install prefix on every skill generated here and also the name the
+workflow tooling reads off the checkout, so the two agree by construction. To
+change it, rename the directory.
 
 Packs are for bundles reused by ≥2 repos; a repo's own overlays and one-off
 selections go directly under top-level `skills:` / `prompts:` / `workflows:`
@@ -119,8 +120,8 @@ errors if a `localInstructions` path does not exist yet.
 
 ## Skill Naming Convention
 
-The installed skill name is the prefix (`repo.prefix`, else `repo.name`, else
-the repo directory name) prepended to the skill's library name. Library names
+The installed skill name is the prefix (the repo directory name, kebab-cased)
+prepended to the skill's library name. Library names
 already carry a unique domain prefix (`go-*`, `process-*`, `stablemate-*`,
 `myapp-*`), and farrier does not double a prefix the name already starts
 with — a skill named `myapp-auth` installed into the `myapp` repo stays
@@ -233,8 +234,7 @@ is the source of truth. Current packs:
 
 1. Install farrier: `pipx install farrier`
 2. Set library: `farrier config set-library /path/to/vigilant-octo/agents`
-3. `farrier init` at the repo root, then fill in `packs:` (and `repo.name` if
-   the directory name is not the prefix you want)
+3. `farrier init` at the repo root, then fill in `packs:`
 4. Seed the repo layout: `farrier scaffold` to list what's available, then
    e.g. `farrier scaffold shared-docs` and `farrier scaffold go-service
    --param dir=api` for each service folder

@@ -12,9 +12,10 @@ Nothing here reads the library either, so `farrier init` works before
 
 from __future__ import annotations
 
+from pathlib import Path
 from string import Template
 
-from farrier.naming import yaml_quote
+from farrier.naming import repo_prefix
 
 # `$name` is substituted; every brace in here is literal, which is why this is a
 # `string.Template` rather than `str.format` — the file it renders is full of the
@@ -27,11 +28,10 @@ _TEMPLATE = Template("""\
 #
 # Only `agents` is required. Every key, with its accepted spellings and defaults, is
 # documented inline in farrier's agents.example.yml.
-
-# Repository identity. `name` is prepended to every installed skill and prompt
-# (library skill `db.md` -> `<name>-db`), and defaults to this directory's name.
-repo:
-  name: $name
+#
+# The repo's name is this directory's name, kebab-cased. It is not configurable: it is
+# also the prefix on every skill installed here (library skill `db.md` -> `$name-db`)
+# and the name the workflow tooling reads off the checkout, and those must agree.
 
 # Which assistant adapters to generate. At least one must be truthy.
 #   claude  -> .claude/skills/<name>/SKILL.md, .claude/commands/<name>.md
@@ -76,11 +76,12 @@ packs: []
 """)
 
 
-def default_config(repo_name: str) -> str:
-    """Render the starter ``agents.yml`` for a repository directory named *repo_name*.
+def default_config(repo: Path) -> str:
+    """Render the starter ``agents.yml`` for the repository rooted at *repo*.
 
-    The name is quoted through the same helper the renderer uses, so a directory whose
-    name YAML would otherwise read as something else — ``no``, ``2024``, one with a
-    colon in it — still round-trips as the string it is.
+    The repo's name appears only inside a comment — it is derived from the directory
+    rather than configured (see :func:`farrier.naming.repo_prefix`) — so it is spelled
+    exactly as the installer will derive it, which is what makes the example skill name
+    in that comment the real one.
     """
-    return _TEMPLATE.substitute(name=yaml_quote(repo_name))
+    return _TEMPLATE.substitute(name=repo_prefix(repo))

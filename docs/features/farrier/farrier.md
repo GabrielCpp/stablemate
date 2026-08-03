@@ -39,17 +39,17 @@ already current.
   - run: refuse when `<repo>/agents.yml` already exists and `--force` was not given —
     `SystemExit` naming the path, `install` as the command they probably meant, and `--force` as
     the way to overwrite anyway
-  - run: render the starter config from the module template, with `repo.name` set to the repo
-    directory's name, quoted through `yaml_quote` so a directory called `no` or `2024` still reads
-    back as that string
+  - run: render the starter config from the module template; the repo's derived name appears
+    only inside a comment (spelled exactly as `repo_prefix` derives it, so the example skill name
+    in that comment is the real one)
   - run: write it to `<repo>/agents.yml` and print the path plus the next step
 - reads: nothing — no library resolution, no base-library fetch, no home config. It is the one
   command that runs before a repo is configured, so it must work on a machine where
   `farrier config set-library` has never been run.
 - writes: `<repo>/agents.yml`, and nothing else.
-- produces: [`agents.yml`](agents-yml-config.md) with `repo.name`, `agents: {claude: true}` and an
-  empty `packs:` list live, and `skills`/`prompts`/`scaffolds`/`exclude`/`template`/`workflow`
-  present as commented examples.
+- produces: [`agents.yml`](agents-yml-config.md) with `agents: {claude: true}` and an empty
+  `packs:` list live, and `skills`/`prompts`/`scaffolds`/`exclude`/`template`/`workflow` present
+  as commented examples. No `repo:` block: the repo's name is derived from the directory.
 - code: `farrier/farrier/cli.py::_run_init`
 - code: `farrier/farrier/init.py::default_config`
 - verify: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
@@ -90,8 +90,9 @@ the pruned starting point, and the two are kept consistent by hand.
     <path>")` if `config_path` doesn't exist, else parse it with `yaml.safe_load` (an empty file
     yields `{}` rather than `None`), then `SystemExit("Config must be a YAML mapping: <path>")` if
     the parsed value isn't a `dict`
-  - run: derive the install prefix (`repo.prefix` → `repo.name` → the repo dirname, kebab-cased)
-    and validate `agents:` selects at least one of `codex`/`claude`/`copilot` (`normalize_agents`)
+  - run: derive the install prefix — the repo dirname, kebab-cased (`naming.repo_prefix`); it is
+    not readable from `agents.yml` — and validate `agents:` selects at least one of
+    `codex`/`claude`/`copilot` (`normalize_agents`)
     — else `SystemExit("No agents selected in config")`
   - run: resolve the [`agents.yml`](agents-yml-config.md) selection (packs ∪ top-level
     `skills`/`prompts`/`roots`, minus `exclude`) against the library's skill/prompt

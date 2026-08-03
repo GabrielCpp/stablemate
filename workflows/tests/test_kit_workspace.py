@@ -20,25 +20,41 @@ from workhorse_workflows.kit.workspace import _git_network_command, resolve_work
 
 
 def test_resolve_workspace_uses_the_repo_dir_argument_over_cwd():
-    with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as elsewhere:
-        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: acme\n")
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as elsewhere:
+        repo_dir = Path(tmp) / "acme"
+        repo_dir.mkdir()
 
         with patch("workhorse_workflows.kit.workspace.Path.cwd", return_value=Path(elsewhere)):
-            repos = resolve_workspace(repo_dir=repo_dir)
+            repos = resolve_workspace(repo_dir=str(repo_dir))
 
         assert "acme" in repos
-        assert repos["acme"]["path"] == str(Path(repo_dir).resolve())
+        assert repos["acme"]["path"] == str(repo_dir.resolve())
 
 
 def test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir():
-    with tempfile.TemporaryDirectory() as repo_dir:
-        (Path(repo_dir) / "agents.yml").write_text("repo:\n  name: acme\n")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo_dir = Path(tmp) / "acme"
+        repo_dir.mkdir()
 
-        with patch("workhorse_workflows.kit.workspace.Path.cwd", return_value=Path(repo_dir)):
+        with patch("workhorse_workflows.kit.workspace.Path.cwd", return_value=repo_dir):
             repos = resolve_workspace()
 
         assert "acme" in repos
-        assert repos["acme"]["path"] == str(Path(repo_dir).resolve())
+        assert repos["acme"]["path"] == str(repo_dir.resolve())
+
+
+def test_a_repo_is_named_by_its_directory_not_by_its_agents_yml():
+    """agents.yml cannot rename a repo — the key here is also the install prefix
+    farrier derives from the same directory, so a config that could override one and
+    not the other would let a single checkout answer to two names."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo_dir = Path(tmp) / "acme"
+        repo_dir.mkdir()
+        (repo_dir / "agents.yml").write_text("repo:\n  name: globex\n", encoding="utf-8")
+
+        repos = resolve_workspace(repo_dir=str(repo_dir))
+
+        assert list(repos) == ["acme"]
 
 
 def test_git_network_command_uses_configured_token_env():

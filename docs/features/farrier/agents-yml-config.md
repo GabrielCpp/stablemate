@@ -25,14 +25,20 @@ compute the `{output path: content}` map `install`/`install --check` act on.
 - type: `mapping` — required: no — default: `{}`
 
 Repository identity, merged into the Jinja `repo.*` template context every rendered skill/prompt
-sees (`Renderer.repo_context`). Any key placed here (not just the two below) is copied through
-and reachable as `repo.<key>` in library templates.
+sees (`Renderer.repo_context`). Any key placed here is copied through and reachable as
+`repo.<key>` in library templates — *except* the three below, which farrier derives and
+overwrites.
 
-- `name` — type: `string` — required: no — default: the repo directory's basename
-  (`repo.name` in Path terms). Also the fallback source for `prefix` when `prefix` is unset.
-- `prefix` — type: `string` — required: no — default: `name`, else the repo directory's basename.
-  Passed through `kebab()` and prepended to every installed skill/prompt's public name
-  (`<prefix>-<skill-id>`); see `public_name`.
+- `name` — **derived, not settable.** The repo directory's basename through `kebab()`
+  (`naming.repo_prefix`). A value written here is overwritten. The same string is what the
+  workflow kit keys a repo by (`kit/workspace.py::_repo_name_from_dir`), so making it
+  configurable would let one repo answer to two names depending on which tool asked.
+- `prefix` — **derived, not settable.** Equal to `name`, and prepended to every installed
+  skill/prompt's public name (`<prefix>-<skill-id>`); see `public_name`. The former
+  `repo.prefix` / `repo.name` override is gone: it made the generated file set depend on a
+  config value rather than on the checkout, so the same committed `agents.yml` rendered
+  different filenames in a clone under a different directory name, which `install --check`
+  reports as drift with nothing to fix.
 - `root` — always overwritten by farrier; not user-settable. Set to the repo's absolute path in
   the per-run `repo.*` template context, but pinned to `"."` in the generated context manifest
   (`Renderer.context_manifest`) so the committed adapter is machine-independent.
@@ -174,10 +180,6 @@ and those keys are now ignored by everything.
 ## A load-valid sample
 
 ```yaml
-repo:
-  name: myrepo
-  prefix: myrepo
-
 agents:
   claude: true
 

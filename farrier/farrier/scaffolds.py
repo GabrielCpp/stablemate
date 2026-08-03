@@ -11,7 +11,7 @@ from typing import Any
 
 from farrier.frontmatter import read_yaml
 from farrier.layers import layer_dirs
-from farrier.naming import kebab
+from farrier.naming import repo_prefix
 from farrier.sources import collect_selection
 
 
@@ -110,7 +110,7 @@ def resolve_scaffold_params(
             f"Scaffold {scaffold_id!r} requires --param for: {', '.join(missing)}"
         )
 
-    repo_name = kebab(repo.name)
+    repo_name = repo_prefix(repo)
     params.setdefault("repo_name", repo_name)
     params.setdefault("repo_title", repo_name.replace("-", " ").title())
     return params

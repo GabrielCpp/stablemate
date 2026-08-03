@@ -68,9 +68,10 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
      the workspace file's parent directory and folder `path`s resolve relative to it. When it
      returns `None`, fall back to a **single-folder** workspace: the root is
      `find_repo_root(repo_dir)`, i.e. the argument when given and otherwise the upward walk from
-     `Path.cwd()`; its name is that root's `agents.yml` `repo.name` if present, else the directory
-     basename normalized by `_repo_name_from_dir` (the same kebab rule farrier derives a prefix
-     with, so a checkout at `.../Acme` and a config value `acme` resolve to one key); and `ws_dir`
+     `Path.cwd()`; its name is the directory basename normalized by `_repo_name_from_dir` (the
+     same kebab rule farrier derives an install prefix with, so a checkout at `.../Acme` is keyed
+     `acme` here and its skills install as `acme-*`). `agents.yml` is not consulted for it — the
+     name is the directory's, so one repo cannot answer to two names; and `ws_dir`
      is the root's **parent**, so the folder's `path` resolves back to the root itself. The
      argument comes first for the same reason it does in
      [`find_repo_root`](scriptutil.md#find_repo_root) — a bare `Path.cwd()` would key a mono-repo

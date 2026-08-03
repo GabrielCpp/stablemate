@@ -51,8 +51,6 @@ def install(repo: Path, library: Path) -> int:
 
 
 BASE = """\
-repo:
-  name: demo
 agents:
   claude: true
 """
@@ -135,7 +133,7 @@ def test_unknown_root_fails_loudly(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     write_config(
         repo,
-        "repo:\n  name: demo\nagents:\n  copilot: true\n"
+        "agents:\n  copilot: true\n"
         "skills:\n  - demo/real-skill\nroots:\n  - ghost-root\n",
     )
 
@@ -163,7 +161,7 @@ def test_known_root_still_renders(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     write_config(
         repo,
-        "repo:\n  name: demo\nagents:\n  copilot: true\n"
+        "agents:\n  copilot: true\n"
         "skills:\n  - demo/real-skill\nroots:\n  - real-root\n",
     )
 

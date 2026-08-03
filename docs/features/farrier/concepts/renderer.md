@@ -20,11 +20,12 @@ install time — see the [`scaffold` command](../farrier.md#scaffold).)
 `Renderer(repo, prefix, repo_config, template_values, skills, prompts)`:
 
 - `repo` — the target repo root (`Path`), the resolved `--repo`.
-- `prefix` — the kebab-cased install prefix (`repo.prefix` → `repo.name` → the repo dirname; see
-  [`agents.yml`'s `repo` field](../agents-yml-config.md#repo)) — prepended to every generated
-  skill/prompt's public name (`public_name`).
+- `prefix` — the kebab-cased install prefix: the repo dirname through `naming.repo_prefix`, never
+  read from the config (see [`agents.yml`'s `repo` field](../agents-yml-config.md#repo)) —
+  prepended to every generated skill/prompt's public name (`public_name`).
 - `repo_config` — the `agents.yml` `repo:` mapping, copied into `self.repo_context` with `name`
-  defaulted to `repo.name`, `prefix` set to the resolved prefix, and `root` set to `repo`'s absolute
+  **overwritten** with the derived prefix (assigned, not defaulted, so a leftover `repo.name` in a
+  config cannot shadow it), `prefix` set to the same value, and `root` set to `repo`'s absolute
   posix path. This becomes the Jinja `repo.*` context every rendered skill/prompt template sees
   (`context_manifest` later re-pins `root` to `"."` for the committed manifest).
 - `template_values` — the merged `template`/`vars` mapping (`collect_template_values`), exposed to

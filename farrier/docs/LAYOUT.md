@@ -74,9 +74,9 @@ Body markdown — the actual instructions…
 | codex   | `.agents/skills/<prefix>-<name>/SKILL.md` |
 | copilot | `.github/skills/<prefix>-<name>/SKILL.md` |
 
-`<prefix>` is the repo's install prefix (`repo.name`/`repo.prefix` in
-`agents.yml`). A skill whose name already equals or starts with the prefix is
-not double-prefixed.
+`<prefix>` is the repo's install prefix: the repository directory's name,
+kebab-cased. It is derived, not set in `agents.yml`. A skill whose name already
+equals or starts with the prefix is not double-prefixed.
 
 ## `library/prompts/` — prompts
 

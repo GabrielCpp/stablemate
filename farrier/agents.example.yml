@@ -23,12 +23,17 @@
 
 
 # ---------------------------------------------------------------------------
-# repo — repository identity. The prefix is prepended to every installed skill
-# and prompt name (skill `db.md` → `<prefix>-db`).
+# repo — repository identity. The name is the repo DIRECTORY's name, kebab-cased,
+# and is prepended to every installed skill and prompt (skill `db.md` →
+# `<name>-db`). It is derived, not configurable: the workflow tooling reads the
+# same name off the checkout, so a config that could disagree with the directory
+# would rename half the toolchain's view of the repo and not the other half.
+#
+# Any OTHER key here is passed through to Jinja as `repo.<key>` for library
+# templates; `name` and `prefix` are reserved and ignored.
 # ---------------------------------------------------------------------------
-repo:
-  name: myrepo            # identifier; default = the repo directory name
-  prefix: myrepo          # optional; overrides `name` as the install prefix
+# repo:
+#   support_email: team@example.com
 
 
 # ---------------------------------------------------------------------------

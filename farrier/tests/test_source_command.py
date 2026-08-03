@@ -131,7 +131,9 @@ def test_source_prints_every_aggregated_banner_source(tmp_path, capsys):
 
 
 def _repo_with_config(tmp_path: Path, mapped: bool) -> Path:
-    repo = tmp_path / "repo"
+    # Named `demo` because the directory name *is* the install prefix — the mapping
+    # below names `demo-ostler`, and nothing in agents.yml can make that come out.
+    repo = tmp_path / "demo"
     (repo / "svc").mkdir(parents=True, exist_ok=True)
     mapping = (
         "localInstructions:\n  - skill: demo-ostler\n    paths: [svc]\n"
@@ -139,7 +141,6 @@ def _repo_with_config(tmp_path: Path, mapped: bool) -> Path:
         else ""
     )
     (repo / "agents.yml").write_text(
-        "repo:\n  name: demo\n"
         "agents:\n  claude: true\n"
         "skills:\n  - stablemate/ostler\n" + mapping,
         encoding="utf-8",

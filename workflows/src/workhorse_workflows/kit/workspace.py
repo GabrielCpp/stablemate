@@ -28,9 +28,14 @@ from workhorse_workflows.kit import credentials
 
 
 def _repo_name_from_dir(path: Path) -> str:
-    """Fallback repo name when agents.yml carries no ``repo.name``: the directory
-    name normalized the same way farrier's kebab() derives it, so a checkout at
-    ``.../Acme`` and a config value ``acme`` resolve to the same key."""
+    """A repo's name: its directory name, normalized the same way farrier's kebab()
+    derives the install prefix, so the key here and the prefix on that repo's
+    installed skills are the same string by construction.
+
+    It is derived, never configured. ``agents.yml`` used to be able to override it
+    with ``repo.name``, which let a checkout disagree with itself — the name in the
+    run record and the name on the skills came from different places, and a clone
+    under a different directory name changed one of them and not the other."""
     name = re.sub(r"[^a-zA-Z0-9/-]+", "-", path.name.replace(".", "-").replace("_", "-"))
     return re.sub(r"-+", "-", name).strip("-").lower()
 
@@ -74,16 +79,7 @@ def resolve_workspace(
         # the process cwd, which for a node is the workflow's own directory and would
         # name the workspace after the workflow (e.g. "coder") instead of the repo.
         cwd = find_repo_root(repo_dir)
-        agents_yml = cwd / "agents.yml"
-        if agents_yml.exists():
-            try:
-                meta = yaml.safe_load(agents_yml.read_text(encoding="utf-8")) or {}
-                cwd_name = (meta.get("repo") or {}).get("name") or _repo_name_from_dir(cwd)
-            except (yaml.YAMLError, OSError):
-                cwd_name = _repo_name_from_dir(cwd)
-        else:
-            cwd_name = _repo_name_from_dir(cwd)
-        folders = [{"name": cwd_name, "path": str(cwd)}]
+        folders = [{"name": _repo_name_from_dir(cwd), "path": str(cwd)}]
         ws_dir = cwd.parent
 
     repos: dict[str, dict] = {}

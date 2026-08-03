@@ -18,6 +18,20 @@ def kebab(value: str) -> str:
     return value
 
 
+def repo_prefix(repo: Path) -> str:
+    """The install prefix for a repository: its directory name, kebab-cased.
+
+    Derived, never configured. ``agents.yml`` used to be able to override it with
+    ``repo.prefix`` / ``repo.name``, and the override was a way to make a repo
+    disagree with itself: the prefix on its installed skills is also how the workflow
+    kit, the run record and a `.code-workspace` folder entry name the same checkout,
+    and those read the directory. A clone under a different directory name then
+    rendered a different set of files from the same committed config, which
+    `install --check` reports as drift with nothing to fix.
+    """
+    return kebab(repo.name)
+
+
 def normalize_pattern(pattern: str) -> str:
     """Normalize a user-facing glob without destroying glob characters."""
     return (

@@ -3,22 +3,19 @@
 # Place this file at the root of the target repository and run:
 #   farrier --repo /path/to/repo
 #
-# All sections except `repo` and `agents` are optional.
+# All sections except `agents` are optional.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # repo — Repository identity
+#
+# The repo's name is the repository DIRECTORY name, kebab-cased. It is derived,
+# not configured: it is the install prefix on every skill and prompt generated
+# here (a skill `db.md` installs as `myrepo-db`) and it is also the name the
+# workflow tooling reads off the checkout, so the two must agree by construction.
+#
+# Any OTHER key placed under `repo:` is passed through to Jinja as `repo.<key>`
+# for library templates to use. `name` and `prefix` are reserved and ignored.
 # ─────────────────────────────────────────────────────────────────────────────
-repo:
-  # name: used as the install prefix for every skill and prompt generated into
-  # this repository. A skill file named `db.md` in the `service/` namespace
-  # installs as `service-db`. A prompt named `plan-story.md` in `planning/`
-  # installs as `service-plan-story`.
-  # Defaults to the repository directory name if omitted.
-  name: myrepo
-
-  # prefix: override the install prefix independently of `name`.
-  # Omit unless the repo name and desired prefix differ.
-  # prefix: myrepo
 
 # ─────────────────────────────────────────────────────────────────────────────
 # agents — Which AI agent adapters to generate outputs for

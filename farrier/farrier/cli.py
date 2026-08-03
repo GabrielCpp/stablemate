@@ -36,7 +36,7 @@ from farrier.layers import (
     searched_layers,
     set_layers,
 )
-from farrier.naming import kebab
+from farrier.naming import repo_prefix
 from farrier.outputs import (
     check_outputs,
     install_outputs,
@@ -102,10 +102,7 @@ def _run_init(args: argparse.Namespace) -> int:
             f"run `farrier install --repo {args.repo}` to render it, "
             f"or `farrier init --force` to replace the config with a fresh default"
         )
-    # The name farrier would default to anyway, written out rather than left implicit:
-    # it is the prefix on every skill this repo installs, so it is the first thing
-    # worth seeing and the first thing worth being able to change in one place.
-    write_text(target, default_config(repo.name))
+    write_text(target, default_config(repo))
     print(f"Wrote {target}")
     print("Next: list the packs you want under `packs:`, then `farrier install`.")
     return 0
@@ -235,9 +232,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
             "regenerate or remove it."
         )
     repo_config = config.get("repo") or {}
-    prefix = kebab(
-        str(repo_config.get("prefix") or repo_config.get("name") or repo.name)
-    )
+    prefix = repo_prefix(repo)
     include_skills, _, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     skills = selected_sources(
