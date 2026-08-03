@@ -17,7 +17,8 @@ The epic-split review returned changes. Apply them, then return control to the r
 - The review notes above and `{{ epics_dir }}/_author-context.md` when present (operator answers).
 - The backlog, the epics queue (`ostler todo list`, backed by `{{ epics_dir }}/index.md`), and the
   existing `epic.md` files.
-- `{{ instruction_ref('write-epics-and-stories') }}`, `{{ instruction_ref('story-docs') }}`.
+- This repo's planning method and artifact grammar:
+  {{ find_by_tags("planning") | default("(none installed — follow the structure the existing epics establish)", true) }}.
 
 ## Task
 

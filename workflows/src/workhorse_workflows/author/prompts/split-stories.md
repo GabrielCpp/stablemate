@@ -24,11 +24,13 @@ stage does that next.
   is "missing" plus a separate "fidelity" seed become distinct stories; a `prerequisites` note
   drives a dependency edge. Do not size stories from the one-line summary alone. (Read seeds with
   `ostler list --type seed --epic {{ epic }} --json` if you prefer structured output.)
-- `{{ instruction_ref('story-docs') }}` — the `## Stories` grammar (the `covers` / `depends on`
-  edges) and slug rules.
-- `{{ instruction_ref('write-epics-and-stories') }}` — story sizing/sequencing guidance. Where it
-  says "use existing stories as templates", size stories from the **researched seed**, not from how
-  any existing epic split the work — existing breakdowns are references, not templates.
+- This repo's **artifact grammar** — the `## Stories` grammar (the `covers` / `depends on` edges)
+  and slug rules:
+  {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing epic's `## Stories` section)", true) }}.
+- Its **planning method** — story sizing and sequencing guidance:
+  {{ find_by_tags("planning") | default("(none installed — size stories so each is independently shippable)", true) }}.
+  Where it says "use existing stories as templates", size stories from the **researched seed**, not
+  from how any existing epic split the work — existing breakdowns are references, not templates.
 {% block repo_split_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` and the epic's existing `## Stories` section when present.
 

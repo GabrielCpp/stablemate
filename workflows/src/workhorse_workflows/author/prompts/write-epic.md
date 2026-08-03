@@ -18,11 +18,14 @@ is the next stage.
 ## Required reading
 
 - This epic's current `{{ epic_dir }}/epic.md` and the backlog bullets it covers.
-- `{{ instruction_ref('write-epics-and-stories') }}`, `{{ instruction_ref('story-docs') }}`.
+- This repo's planning method — how it decomposes and sizes work:
+  {{ find_by_tags("planning") | default("(none installed — follow the structure the existing epics establish)", true) }}.
+- Its **artifact grammar** — the canonical `epic.md` body and story layout:
+  {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing epic)", true) }}.
 
 > Existing epics are references, not templates: use them only as a pointer to which surfaces exist,
 > then re-research and re-verify every fact against the source-of-truth and the live code. Take
-> structure from `{{ instruction_ref('story-docs') }}`, not from them.
+> structure from the artifact grammar above, not from them.
 {% block repo_epic_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` when present — operator answers to earlier questions.
 {%- if workhorse_var('features_dir') %}
@@ -32,15 +35,10 @@ is the next stage.
   the book is built from code that exists, and an epic is work that does not exist yet.
 {%- endif %}
 - The codebase areas this epic touches — enough to enumerate its in-scope items accurately.
-{%- if isUsingInstruction('react-router') %}
-- The relevant web skills: `{{ instruction_ref('react-router') }}`, `{{ instruction_ref('react-router-architecture') }}`, `{{ instruction_ref('web-api') }}`.
-{%- endif %}
-{%- if isUsingInstruction('go') %}
-- The relevant Go skills: `{{ instruction_ref('go') }}`, `{{ instruction_ref('go-architecture') }}`.
-{%- endif %}
-{%- if isUsingInstruction('flutter') %}
-- The relevant Flutter skills: `{{ instruction_ref('flutter') }}`, `{{ instruction_ref('flutter-architecture') }}`.
-{%- endif %}
+- The layer entrypoints this repository installs, for the layers this epic actually touches:
+  {{ find_by_tags("entrypoint") | default("(none installed — read the repo's own architecture docs)", true) }}.
+  Each one is the root of its layer and fans out to that layer's own architecture, API and testing
+  siblings — follow those links for the layers in scope, and open nothing for the layers that are not.
 
 ## Task
 
@@ -57,8 +55,8 @@ is the next stage.
    evidence; here you research enough to define and size the items correctly.)
 2. **Author `{{ epic_dir }}/epic.md`** (the body was scaffolded by `ostler create epic`; complete
    it): goal, why-this-epic, **method** (how quality is judged — name the source-of-truth
-   explicitly), a scope table, and epic-level acceptance. Use the canonical structure from
-   `{{ instruction_ref('story-docs') }}`. If a prior epic covered this surface, state that this
+   explicitly), a scope table, and epic-level acceptance. Use the canonical structure from the
+   artifact grammar in Required reading. If a prior epic covered this surface, state that this
    epic **supersedes** it and why.
 3. **Record each seed** into the epic's `## Seeds` section with `ostler seed add` (ostler owns the
    mutation — do not hand-edit the section):

@@ -16,7 +16,8 @@ per-epic authoring. Do not write epics or stories.
 
 - The backlog file, the epics queue (`ostler todo list`, backed by `{{ epics_dir }}/index.md`), and
   every `epic.md` just authored.
-- `{{ instruction_ref('write-epics-and-stories') }}` and `{{ instruction_ref('story-docs') }}`.
+- This repo's planning method and artifact grammar — the rules these epics are judged against:
+  {{ find_by_tags("planning") | default("(none installed — judge against the backlog and the epics' own stated method)", true) }}.
 - `{{ epics_dir }}/_author-context.md` when present — operator answers to earlier questions,
   including repo-location mixups from a prior blocked pass.
 

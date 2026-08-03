@@ -24,16 +24,17 @@ stories yet — only the epic list, its order, and a one-screen `epic.md` skelet
   under a `## Filed by coder` heading. Those are adjacent-defect/hardening findings the coder
   workflow's own fix loop drains and prunes directly — do not decompose them into an epic, and
   do not remove them yourself; leave that section alone.
-- `{{ instruction_ref('write-epics-and-stories') }}` — the decomposition method (research-first,
-  dependency-ordered, MVP-aware).
-- `{{ instruction_ref('story-docs') }}` — the canonical layout, the `epic.md` body grammar, the
-  epics queue `{{ epics_dir }}/index.md` (managed via `ostler todo`), and bookkeeping rules.
+- This repo's **planning method** — research-first, dependency-ordered, MVP-aware decomposition:
+  {{ find_by_tags("planning") | default("(none installed — decompose research-first and dependency-ordered, and say so in the epic)", true) }}.
+- Its **artifact grammar** — the canonical layout, the `epic.md` body grammar, the epics queue
+  `{{ epics_dir }}/index.md` (managed via `ostler todo`), and bookkeeping rules:
+  {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing epic)", true) }}.
 - The epics queue (`ostler todo list`) and existing epics, when present — to avoid duplicate epic
   folders. Existing epics are references, not templates — re-verify them against the source-of-truth.
 - `{{ epics_dir }}/_author-context.md` when present — operator answers to earlier questions.
 
-> Existing epics are references, not templates: take structure from the rubric and
-> `{{ instruction_ref('story-docs') }}`, re-verify every factual claim against the source-of-truth,
+> Existing epics are references, not templates: take structure from the rubric and the
+> artifact grammar above, re-verify every factual claim against the source-of-truth,
 > and never copy a prior epic's status markers. Where a prior epic covers the same surface, your new
 > epic **supersedes** it (note that explicitly).
 {% block repo_decompose_rules %}{% endblock %}
@@ -79,8 +80,8 @@ Use a kebab `<slug>`; ostler prefixes it with the sequence number. Then author t
 into the scaffolded `{{ epics_dir }}/$EPIC_DIR/epic.md` body (`ostler path epic <slug>` prints that
 directory at any time): goal, why-this-epic, method (how fidelity/quality will be
 judged — name the **source-of-truth**, which is the running site, not source templates alone), a
-scope table, and epic-level acceptance. Use the canonical structure from
-`{{ instruction_ref('story-docs') }}` — do not copy prior epics verbatim. Seeds and stories are
+scope table, and epic-level acceptance. Use the canonical structure from the artifact grammar in
+Required reading — do not copy prior epics verbatim. Seeds and stories are
 added in the later stages, not here.
 
 ## Final response (REQUIRED, exact shape)

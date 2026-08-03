@@ -37,7 +37,8 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - The parent `epic.md` — read its `## Stories` section to find THIS story's entry (its `covers`
   edge) and its `## Seeds` section for the seeds that story covers, so the Context reflects the
   right scope.
-- `{{ instruction_ref('story-docs') }}` — the story file layout.
+- This repo's **artifact grammar** — the story file layout:
+  {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing story)", true) }}.
 
 {%- if workhorse_var('features_dir') %}
 
