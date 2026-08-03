@@ -1,6 +1,6 @@
 ---
 name: commit-cadence
-description: "Commit and push as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`, pushed before the next concern starts. Covers when to commit (each coherent unit, not at the end of the session), when to push (right after each commit) and how to reconcile a rejected push without forcing, what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit` or `git push`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
+description: "Commit and push as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`, pushed before the next concern starts. Covers when to commit (each coherent unit, not at the end of the session), when to push (right after each commit), how to reconcile a rejected push without forcing, what to do when an SSH push hangs instead of failing (fail fast with BatchMode, then fall back to a GitHub token without persisting it), what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit` or `git push`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
 applyTo: ""
 tags: [standards, workflow]
 ---
@@ -68,6 +68,44 @@ hold a commit back:
 - The work is deliberately staged locally for a rebase you are mid-way through.
 - Pushing would trigger something outward-facing — a deploy, a release, a notification —
   that the user has not agreed to. Ask first; the commit can wait one message.
+
+### When an SSH push hangs, fall back to the token
+
+An `ssh://` or `git@` remote can block forever rather than fail: a passphrase prompt with
+no terminal to answer it, an unknown host key waiting on a `yes`, or an agent socket that
+is not forwarded into the container. A human sees the prompt and types; an agent sees a
+command that never returns, and the commit stays unpushed.
+
+Make the hang fail fast instead, so you find out in seconds:
+
+```bash
+GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' \
+  timeout 60 git push
+```
+
+`BatchMode=yes` turns every interactive prompt into an immediate error, and the `timeout`
+catches the cases it does not cover. When that errors out, push over HTTPS with a GitHub
+token instead:
+
+```bash
+gh auth setup-git && timeout 60 git push          # preferred: gh owns the credential
+```
+
+`gh` writes a credential helper rather than a secret, which is why it is the first choice.
+Without `gh`, pass the token in the URL for that one push:
+
+```bash
+timeout 60 git push "https://x-access-token:${GITHUB_TOKEN}@github.com/<org>/<repo>.git" HEAD
+```
+
+**Never persist that URL.** `git remote set-url` with a token in it writes the secret into
+`.git/config`, where it survives the session, gets read by every later command, and shows
+up in any diagnostic that dumps the remote. Pass it to the single `push` invocation and let
+it disappear. For the same reason, do not echo the token, and do not paste a push command
+containing one into a commit message, an issue, or a PR body.
+
+If no token is available either, say so and leave the commit local — an unpushed commit the
+user knows about is recoverable; a pushed secret is not.
 
 ## The subject is the release input
 
