@@ -64,6 +64,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-parsers
+	$(MAKE) check-library
 	$(MAKE) check-vendor
 
 .PHONY: test-bench
@@ -98,6 +99,16 @@ check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets
 	# cases, and it fails silently in both directions — a `//` inside a JSON string read
 	# as a comment, a link matched inside a fenced code block.
 	uv run python scripts/check_parsers.py
+
+.PHONY: check-library
+check-library: ## Guard the base library's front matter (a broken fence loses tags in silence)
+	# `_front_matter` answers malformed YAML with `{}`, so a skill whose fence does not
+	# parse still installs — minus its description, its applyTo and its tags. Nothing
+	# errors; `find_by_tags` just stops returning it, which looks like a repo that
+	# installs nothing matching. Both paths are pinned at this repo's own base-library so
+	# the gate checks the same files here and in CI, whatever overlay is configured.
+	STABLEMATE_BASE_DIR=$(CURDIR)/base-library \
+	  uv run farrier library --check --strict --library $(CURDIR)/base-library
 
 .PHONY: vendor
 vendor: ## Copy core/stablemate_core into workhorse and farrier (run it with any core change)

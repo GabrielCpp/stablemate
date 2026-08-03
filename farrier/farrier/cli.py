@@ -29,6 +29,7 @@ from farrier.frontmatter import (
 )
 from farrier.init import default_config
 from farrier.layers import (
+    LAYERS,
     ensure_base_library_dir,
     find_in_layers,
     is_library_dir,
@@ -36,6 +37,7 @@ from farrier.layers import (
     searched_layers,
     set_layers,
 )
+from farrier.library_check import check_library, format_findings
 from farrier.naming import repo_prefix
 from farrier.outputs import (
     check_outputs,
@@ -504,10 +506,65 @@ def _build_parser() -> argparse.ArgumentParser:
              "launcher reads at make time.",
     )
 
+    # library
+    library_p = sub.add_parser(
+        "library",
+        help="Validate the library's own sources (front matter, tags)",
+    )
+    library_p.add_argument(
+        "--check",
+        action="store_true",
+        help="Report front-matter problems and exit non-zero on any error. "
+             "Currently the only mode, and required so the verb reads the same as "
+             "`agent-check` in a Makefile.",
+    )
+    library_p.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat warnings (untagged skills, fragile unquoted values) as errors.",
+    )
+    library_p.add_argument(
+        "--library",
+        type=Path,
+        help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+    )
+
     # version
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
+
+
+def _run_library(args: argparse.Namespace) -> int:
+    """`farrier library --check` — the gate on the library's own front matter.
+
+    Checks every layer in the resolution stack, not just the overlay: a base-library
+    skill with a broken fence fails in exactly the same silent way, and the operator
+    running this cannot tell which layer a given skill came from without being told.
+    """
+    if not args.check:
+        raise SystemExit("error: `farrier library` needs --check (the only mode today)")
+    set_layers(resolve_library_dir(args.library))
+    if not LAYERS:
+        raise SystemExit(
+            "error: no library layers to check — none configured, and no base library "
+            "installed. Set one with `farrier config set-library <path>`."
+        )
+    # A stack that names the same directory twice is one library, not two — which is how
+    # a repo pins this gate to its own library regardless of what the operator has
+    # configured: point both the overlay and $STABLEMATE_BASE_DIR at it, and the two
+    # entries collapse to a single pass over a single, machine-independent set of files.
+    roots: list[Path] = []
+    for layer in LAYERS:
+        root = (layer.root / "library").resolve()
+        if root in roots:
+            continue
+        roots.append(root)
+        print(f"# layer: {layer.name}")
+    findings, checked = check_library(roots)
+    print(format_findings(findings, checked))
+    levels = {"error"} if not args.strict else {"error", "warning"}
+    return 1 if any(f.level in levels for f in findings) else 0
 
 
 def _run_workflows(args: argparse.Namespace) -> int:
@@ -570,6 +627,7 @@ def main(argv: list[str] | None = None) -> int:
         "source",
         "scaffold",
         "workflows",
+        "library",
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -597,6 +655,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "workflows":
         return _run_workflows(args)
+
+    if args.command == "library":
+        return _run_library(args)
 
     return _run_install(args)
 
