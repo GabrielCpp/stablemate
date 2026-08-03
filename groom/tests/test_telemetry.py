@@ -49,6 +49,15 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
         if spec.get("node"):
             kv = span.attributes.add()
             kv.key, kv.value.string_value = "workhorse.node", spec["node"]
+        # The workflow's rendered `labels:` — what CHURN reads to tell one unit of
+        # work from the next. Real spans also carry workhorse.seq/depth, which the
+        # signature must ignore; `seq` stamps that in deliberately.
+        if spec.get("seq") is not None:
+            kv = span.attributes.add()
+            kv.key, kv.value.int_value = "workhorse.seq", spec["seq"]
+        for key, value in (spec.get("labels") or {}).items():
+            kv = span.attributes.add()
+            kv.key, kv.value.string_value = key, value
         for name in spec.get("events", []):
             span.events.add().name = name
         if spec.get("error"):
@@ -347,6 +356,56 @@ def test_churn_fires_on_node_repeats_and_resets_on_refuel():
         assert [a.rule for a in fired] == ["CHURN"]
 
 
+def test_a_drain_iterating_over_its_worklist_is_not_churn():
+    """Regression: okf-builder's drain paged as CHURN on its fifth item.
+
+    ``select_item -> investigate -> record -> select_item`` re-completes the same
+    nodes once per worklist item, and the pyflow engine has no gas tank to refuel,
+    so the old rule counted every healthy iteration and never reset. The labels
+    say which item each iteration was for; a changing ``work_id`` is the progress
+    the refuel counter used to report.
+    """
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
+        for index, target in enumerate(["cli:yin", "cli:yin-preflight", "server:api", "env:local"]):
+            drain = otlp.parse_traces(
+                _trace_request(
+                    [
+                        {
+                            "name": node,
+                            "node": node,
+                            "seq": index * 3 + offset,
+                            "labels": {"work_id": target, "progress": f"{index}/9"},
+                        }
+                        for offset, node in enumerate(["select_item", "investigate", "record"])
+                    ]
+                )
+            )
+            assert alerts.ingest_spans(drain, now=10.0 + index) == []
+
+
+def test_churn_still_fires_when_the_same_work_repeats():
+    """The condition the rule exists for, now stated precisely: the same node
+    completing again and again for the SAME unit of work."""
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
+        stuck_item = [
+            {"name": "investigate", "node": "investigate", "seq": seq,
+             "labels": {"work_id": "server:api", "progress": "2/16"}}
+            for seq in range(3)
+        ]
+        assert alerts.ingest_spans(otlp.parse_traces(_trace_request(stuck_item[:1])), now=10.0) == []
+        assert alerts.ingest_spans(otlp.parse_traces(_trace_request(stuck_item[1:2])), now=11.0) == []
+        fired = alerts.ingest_spans(otlp.parse_traces(_trace_request(stuck_item[2:])), now=12.0)
+        assert [a.rule for a in fired] == ["CHURN"]
+        assert "on the same work" in fired[0].message
+        # ...and it retires as soon as the run moves to the next item.
+        moved_on = _trace_request(
+            [{"name": "investigate", "node": "investigate", "seq": 9,
+              "labels": {"work_id": "env:local", "progress": "3/16"}}]
+        )
+        alerts.ingest_spans(otlp.parse_traces(moved_on), now=13.0)
+        assert "CHURN" not in state.RUNS["run-1"].fired
+
+
 def test_agent_turn_retries_do_not_count_as_churn():
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "2"}):
         turns = otlp.parse_traces(
@@ -373,6 +432,56 @@ def test_stall_fires_on_silence_but_heartbeat_suppresses_it():
         # But 91 minutes after the last heartbeat, silence means hang.
         fired = alerts.check_time_rules(now=1000.0 + 89 * 60 + 91 * 60)
         assert [a.rule for a in fired] == ["STALL"]
+
+
+def test_stall_retires_when_the_run_emits_again_and_can_refire():
+    """Regression: a host that idle-slept past the stall window left its run
+    badged STALL forever, however healthily it resumed.
+
+    STALL asserts the process is gone. Anything arriving under the run's id
+    refutes that, so the page is false rather than merely old — and ``fired`` is
+    what the dashboard renders. A run that goes quiet again pages again.
+    """
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "90"}):
+        spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
+        alerts.ingest_spans(spans, now=1000.0)
+        woke = 1000.0 + 100 * 60
+        assert [a.rule for a in alerts.check_time_rules(now=woke)] == ["STALL"]
+
+        # The laptop wakes and the run — never actually dead — beats again.
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")), now=woke
+        )
+        assert "STALL" not in state.RUNS["run-1"].fired
+        assert alerts.check_time_rules(now=woke + 60) == []
+
+        # Genuinely silent this time: the rule is armed again, not spent.
+        assert [a.rule for a in alerts.check_time_rules(now=woke + 91 * 60)] == ["STALL"]
+
+
+def test_stuck_retires_when_the_node_finally_closes():
+    """STUCK says a node is open past the threshold. When it closes the claim is
+    false, not stale — so the badge goes with it."""
+    with _TelemetryEnv(), patch.dict(
+        os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
+    ):
+        now = 1000.0
+        for name, value in (("workhorse.node.active", 1), ("workhorse.node.elapsed_s", 76 * 60)):
+            alerts.ingest_metrics(
+                otlp.parse_metrics(
+                    _metrics_request(name, value=value, node="investigate", gauge=True)
+                ),
+                now=now,
+            )
+        assert [a.rule for a in alerts.check_time_rules(now=now)] == ["STUCK"]
+
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request("workhorse.node.active", value=0, node="investigate", gauge=True)
+            ),
+            now=now + 60,
+        )
+        assert "STUCK" not in state.RUNS["run-1"].fired
 
 
 def test_turn_heartbeat_suppresses_stall_during_a_long_agent_turn():

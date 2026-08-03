@@ -7,6 +7,15 @@ since silence by definition never triggers an ingest. All rules dedupe per
 ``(run_id, rule)`` via ``RunTelemetry.fired`` — one page per failure mode per
 run, not one per span.
 
+``fired`` is also what the dashboard renders as a run's alert badges, so the
+three rules that describe a *current* condition retire themselves when the
+condition lifts: STALL on any signal arriving (see :func:`_note_alive`), STUCK
+when its node closes or the run moves to another, CHURN on forward progress.
+Without that a page is permanent — a laptop that idle-sleeps past the stall
+window marks its run dead for the life of the groom process, however healthily
+it resumes. WATCHDOG and GAVE-UP stay set because they report events that
+happened, and BUDGET because a run past the ceiling does not go back under it.
+
 STALL and STUCK split what used to be one ambiguous rule. Workhorse now beats
 continuously while its process lives, so silence and slowness are different
 observations rather than the same one: STALL means the run stopped emitting
@@ -21,6 +30,15 @@ so tests can patch): ``GROOM_STALL_MIN`` (90), ``GROOM_STUCK_MIN`` (75),
 ``GROOM_MAX_HOURS`` (24), ``GROOM_CHURN_REPEATS`` (5), ``GROOM_GIVEUP_NODES``
 (qa_give_up,fix_give_up — groom, not workhorse, knows these names: the engine
 stays workflow-agnostic and just reports node spans).
+
+CHURN counts repeats *on the same work*, keyed by the workflow's declared
+labels. It used to count bare node repeats and reset only on a gas refuel, which
+made it structurally unfirable-but-always-firing for the pyflow engine: pyflow
+has no gas tank, nothing emits ``workhorse.gas.refuels``, and so a drain-shaped
+workflow tripped the rule on its fifth healthy iteration and never untripped.
+The labels carry which unit each iteration was for, which is the forward-progress
+signal the refuel counter used to report — and the one an engine without a tank
+still emits.
 """
 
 from __future__ import annotations
@@ -132,6 +150,58 @@ def _fire(run: RunTelemetry, rule: str, message: str, alerts: list[Alert]) -> No
     alerts.append(Alert(run_id=run.run_id, rule=rule, message=message))
 
 
+#: Span attribute keys that are workhorse's own, not the workflow's `labels:`.
+#: ``workhorse.seq`` and ``workhorse.depth`` increment on every span, so a
+#: signature that kept them would never match itself and churn could not fire at
+#: all — the mirror of the bug this signature exists to fix.
+_RESERVED_ATTRS = ("workhorse.", "status_message", "events")
+
+
+def _label_signature(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """The workflow-declared dimensions on a span, as a comparable key.
+
+    These are the graph's ``labels:`` — okf-builder stamps ``work_id`` and
+    ``progress``, coder stamps the story — rendered against the live context and
+    stamped on every span of that node visit. They answer "which unit of work was
+    this?", which is precisely what distinguishes a drain iterating over its
+    worklist from a loop rerunning one item forever.
+    """
+    return tuple(
+        sorted(
+            (key, str(value))
+            for key, value in attrs.items()
+            if not key.startswith(_RESERVED_ATTRS[0]) and key not in _RESERVED_ATTRS[1:]
+        )
+    )
+
+
+def _note_progress(run: RunTelemetry) -> None:
+    """Forward progress: retire the churn page it disproves.
+
+    ``fired`` is what the dashboard renders as a run's alert badges, so a CHURN
+    left set after the run demonstrably moved on marks a healthy run as looping
+    for the life of the groom process. It re-fires if the churn recurs.
+    """
+    run.fired.discard("CHURN")
+
+
+def _note_alive(run: RunTelemetry) -> None:
+    """A signal arrived under this run's id: retire STALL.
+
+    STALL asserts the process is *gone* — not slow, gone. Anything arriving for
+    the run refutes that outright, so the page is not merely stale, it is false.
+    A host that suspends mid-run (an idle laptop sleeping past the stall window)
+    produces exactly this: real silence, a true page, and then a recovery the run
+    has no way to announce. If the run goes quiet again, the next periodic tick
+    fires STALL again on its own.
+
+    A late buffered export from a genuinely dead process clears it spuriously —
+    and then nothing further arrives and the next tick re-fires. Self-correcting,
+    which a permanently wrong badge is not.
+    """
+    run.fired.discard("STALL")
+
+
 def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
     """Fold decoded spans into the hot cache and evaluate the ingest-driven
     rules. Returns the alerts that newly fired (already deduped)."""
@@ -143,6 +213,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         if not run_id:
             continue
         run = _run(run_id, now)
+        _note_alive(run)
         run.workflow = span.get("workflow") or run.workflow
         run.repo = span.get("repo") or run.repo
         run.branch = span.get("branch") or run.branch
@@ -184,18 +255,25 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
                 alerts,
             )
 
-        # Churn: node-span repeats since the last refuel. Only completed NODE
-        # spans count (agent_turn retries are the ladder doing its job).
+        # Churn: node-span repeats ON THE SAME WORK. Only completed NODE spans
+        # count (agent_turn retries are the ladder doing its job), and a repeat
+        # under a different label signature is progress, not a repeat.
         node = span.get("node") or ""
         if node and span.get("name") == node:
-            run.node_counts[node] = run.node_counts.get(node, 0) + 1
+            signature = _label_signature(attrs)
+            if run.node_labels.get(node) != signature:
+                run.node_labels[node] = signature
+                run.node_counts[node] = 1
+                _note_progress(run)
+            else:
+                run.node_counts[node] = run.node_counts.get(node, 0) + 1
             if run.node_counts[node] >= _churn_repeats():
                 _fire(
                     run,
                     "CHURN",
                     f"{label}: node '{node}' completed {run.node_counts[node]}× "
-                    f"with no forward progress (no gas refuel) — likely a loop "
-                    f"whose exit condition never trips",
+                    f"on the same work — likely a loop whose exit condition "
+                    f"never trips",
                     alerts,
                 )
     return alerts
@@ -230,6 +308,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         if not run_id:
             continue
         run = _run(run_id, now)
+        _note_alive(run)
         run.workflow = point.get("workflow") or run.workflow
         run.repo = point.get("repo") or run.repo
         run.branch = point.get("branch") or run.branch
@@ -251,14 +330,22 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
             run.last_heartbeat_ts = now
         elif name == "workhorse.gas.refuels":
             run.node_counts.clear()
+            _note_progress(run)
         elif name == "workhorse.node.active":
             if value >= 1:
+                if run.current_node != node:
+                    # Moved to a different node: whatever it was parked in, it is
+                    # demonstrably not parked there now.
+                    run.fired.discard("STUCK")
                 run.current_node = node
             elif run.current_node == node:
                 # Only the node that closed clears the pointer — a stale 0 for an
                 # already-superseded node must not blank the one now running.
                 run.current_node = ""
                 run.node_elapsed_s = 0.0
+                # STUCK asserts this node is open past the threshold. It just
+                # closed, so the assertion is now false rather than merely old.
+                run.fired.discard("STUCK")
         elif name == "workhorse.node.elapsed_s":
             if not run.current_node or run.current_node == node:
                 run.node_elapsed_s = value

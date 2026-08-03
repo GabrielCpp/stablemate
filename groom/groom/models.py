@@ -118,9 +118,17 @@ class RunTelemetry:
     # clears the verdict (see ``alerts._clear_stale_terminal``).
     terminal: str = ""
     terminal_ts: float = 0.0
-    # Node-span repeats since the last gas refuel — the churn signal. A refuel
-    # (forward progress) resets it; the same node re-completing N times on one
-    # tank is a loop that will burn gas for hours before the tank trips.
+    # Node-span repeats on the same work — the churn signal. Reset by forward
+    # progress: a gas refuel, or the node re-completing under a different set of
+    # workflow labels. The same node re-completing N times on the SAME work is a
+    # loop whose exit condition never trips.
     node_counts: dict[str, int] = field(default_factory=dict)
+    # The workflow-declared label signature each node last completed under. This
+    # is what makes a repeat legible without a gas tank: pyflow has none, so a
+    # drain-shaped workflow (select → work → record → select …) would otherwise
+    # count its every healthy iteration as churn. The labels say which item the
+    # iteration was for, so a changing signature IS the forward progress the
+    # refuel counter used to report.
+    node_labels: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     # Alert dedupe: rule names already fired for this run (one page per rule).
     fired: set[str] = field(default_factory=set)
