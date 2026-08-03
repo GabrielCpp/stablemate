@@ -104,6 +104,25 @@ Combine one of those with the layer the skill belongs to: `backend`, `cli`,
 `web`, `mobile`, or `infra`. A skill covering more than one job carries more than
 one tag — `tags: [web, standards, runbook]` answers all three of those queries.
 
+Then add the **stack** the mechanics are specific to — `go`, `python`,
+`flutter`, `react-router`, `pulumi`, and so on. The layer says *which ring of the
+system*, the stack says *which technology*, and they are not the same question: a
+repo with two backends has two `backend` skill sets, and only the stack tag tells
+them apart. A skill that says "here is how this layer is written" without naming
+the technology is a skill a query cannot narrow.
+
+The stack list is open — it is whatever a library actually holds, so name the
+stack as the ecosystem calls itself and reuse the spelling already in the library
+rather than coining a synonym. Skills that are genuinely technology-neutral (the
+ports-and-adapters contract, the accessibility contract, the story-doc layout)
+carry no stack tag at all, which is what keeps them answering every query.
+
+```yaml
+tags: [go, backend, standards]        # how Go code in the API ring is written
+tags: [flutter, mobile, tests]        # how the Flutter app's tests are written
+tags: [standards]                     # language-neutral: applies to every stack
+```
+
 One more tag exists for a different reader:
 
 | Tag | The skill answers |
