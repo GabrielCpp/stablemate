@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import signal
+import subprocess
 import sys
 import time
 import types
@@ -13,6 +16,7 @@ from ostler.artifact.kinds import _qa_evidence_vet
 from ostler.qa.plan import load_plan, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
 from ostler.qa.drivers import SharedPlaywright, _compile_maestro
+from ostler.qa.session import _kill_pid
 
 
 def _context(spec: Path) -> str:
@@ -885,3 +889,39 @@ def test_an_operation_written_as_a_mapping_is_reported_not_crashed(tmp_path: Pat
     assert any(
         "must name a single operation" in problem for problem in outcome.data["problems"]
     )
+
+
+def test_stopping_a_daemon_that_already_exited_is_not_an_error():
+    """Teardown must survive a daemon that stopped on its own.
+
+    `killpg` does not answer the same way everywhere for a group with nothing left
+    in it: on macOS/BSD an unreaped zombie leader gives EPERM (a zombie has no
+    credentials to check the signal against), where Linux gives ESRCH. The kill path
+    guarded only `ProcessLookupError`, so every `ostler qa run` on macOS ended by
+    raising `PermissionError` out of `stop_all_daemons` — the run failed on cleanup
+    after its scenarios had already passed.
+    """
+    proc = subprocess.Popen("exit 0", shell=True, start_new_session=True)
+    pid = proc.pid
+    # Deliberately NOT reaped: the zombie window is exactly the case that broke.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pid, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:
+            break  # macOS: the group is now all-zombie, which is what we want
+        time.sleep(0.02)
+
+    assert _kill_pid(pid) == 0  # gone already, no signal landed
+    proc.wait()
+
+
+def test_a_live_daemon_is_still_stopped_and_reports_its_signal():
+    """The EPERM tolerance above must not turn into "never kills anything"."""
+    proc = subprocess.Popen("sleep 30", shell=True, start_new_session=True)
+    try:
+        assert _kill_pid(proc.pid) in (-signal.SIGINT, -signal.SIGTERM, -signal.SIGKILL)
+    finally:
+        proc.wait()

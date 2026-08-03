@@ -704,6 +704,27 @@ def _resolve_out(out_path: str, spec_dir: Path) -> Path:
     return resolved
 
 
+def _signal_group(pid: int, sig: int) -> bool:
+    """Signal ``pid``'s process group; False once the group has nothing left to signal.
+
+    ``ProcessLookupError`` is the portable "it's gone", but it is not the only one.
+    On macOS/BSD, a group whose members have all exited but not yet been reaped is
+    still a group — ``killpg`` answers **EPERM**, not ESRCH, because a zombie has no
+    credentials to check the signal against. Linux answers ESRCH (or succeeds), which
+    is why a `ProcessLookupError`-only guard passes there and, here, escaped out of
+    teardown and failed the whole QA run over a daemon that had already stopped.
+
+    Reading EPERM as "gone" is the safe direction: these are processes this session
+    itself spawned, so the alternative reading — someone else's process group reusing
+    the pid — is one we could not signal anyway.
+    """
+    try:
+        os.killpg(pid, sig)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
 def _kill_pid(pid: int) -> int:
     """Escalate SIGINT -> SIGTERM -> SIGKILL; return the effective signal (negated,
     like subprocess) that actually stopped the process.
@@ -715,22 +736,16 @@ def _kill_pid(pid: int) -> int:
     escalating fallbacks for a daemon that doesn't respond to SIGINT.
     """
     for sig, grace_seconds in ((signal.SIGINT, 2.0), (signal.SIGTERM, 1.0)):
-        try:
-            os.killpg(pid, sig)
-        except ProcessLookupError:
+        if not _signal_group(pid, sig):
             return 0
         deadline = time.monotonic() + grace_seconds
         while time.monotonic() < deadline:
-            try:
-                os.killpg(pid, 0)  # check still alive
-            except ProcessLookupError:
+            if not _signal_group(pid, 0):  # check still alive
                 return -sig
             time.sleep(0.05)
-    try:
-        os.killpg(pid, signal.SIGKILL)
+    if _signal_group(pid, signal.SIGKILL):
         return -signal.SIGKILL
-    except ProcessLookupError:
-        return 0
+    return 0
 
 
 def _ready_via_url(url: str) -> bool:
