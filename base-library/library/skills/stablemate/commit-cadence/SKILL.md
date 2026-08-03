@@ -1,6 +1,6 @@
 ---
 name: commit-cadence
-description: "Commit as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`. Covers when to commit (each coherent unit, not at the end of the session), what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
+description: "Commit and push as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`, pushed before the next concern starts. Covers when to commit (each coherent unit, not at the end of the session), when to push (right after each commit) and how to reconcile a rejected push without forcing, what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit` or `git push`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
 applyTo: ""
 tags: [standards, workflow]
 ---
@@ -9,7 +9,8 @@ tags: [standards, workflow]
 
 > A finished change that is still only in the working tree is not finished — it is a
 > change one `git checkout` away from never having existed, and it is invisible to
-> everyone reviewing, bisecting, or releasing. Commit each concern as it lands.
+> everyone reviewing, bisecting, or releasing. Commit each concern as it lands, and
+> push it before you start the next one.
 
 ## Commit as you go
 
@@ -34,6 +35,39 @@ whatever branch is checked out.
 **One concern per commit.** This is the same rule as the message format, applied earlier:
 a commit that cannot be labelled by a single type should have been two commits. Split
 first, then label.
+
+## Push as you go
+
+Push each commit as you make it — `git push` right after `git commit`, on the branch you
+are already on. Do not save the pushing for the end of the session either.
+
+A local commit fixes only the first of the three costs above. The other two survive:
+
+- **A local commit is still invisible.** Nobody can review it, CI has not run it, and
+  release-please has not seen it. Work that exists only on one machine is work the rest
+  of the system is still waiting on.
+- **A local commit is still one laptop away from gone.** `git commit` protects against
+  `git checkout`; it does not protect against a dead disk, a discarded container, or a
+  worktree someone cleans up. An agent run in a throwaway environment is the common case
+  here, and its commits vanish with the environment unless they were pushed.
+
+Pushing per commit also keeps the push itself cheap. Twenty commits pushed at once is one
+event that either lands or is rejected as a block; a rejected push after a long session is
+where "just rebase it" turns into an afternoon. Pushing each commit surfaces divergence at
+the first commit that diverged, when it is still one commit to reconcile.
+
+**When a push is rejected, reconcile — do not force.** A rejection means the remote moved,
+which is information, not an obstacle. Fetch, rebase your commit onto the new tip, re-run
+the gate, and push again. `--force` onto a shared branch discards whatever moved it, which
+in a repo several agents are pushing to is somebody else's committed work.
+
+The exceptions are narrow and worth naming, because outside them there is no reason to
+hold a commit back:
+
+- The remote is one you were not asked to publish to, or the branch is not yours to move.
+- The work is deliberately staged locally for a rebase you are mid-way through.
+- Pushing would trigger something outward-facing — a deploy, a release, a notification —
+  that the user has not agreed to. Ask first; the commit can wait one message.
 
 ## The subject is the release input
 
@@ -89,3 +123,7 @@ test package. A commit that fails the gate is a commit someone else has to bisec
 The `commit-msg` hook rejects a subject that violates the format above. `--no-verify`
 bypasses it; that is not a way to get a commit in, it is a way to get an unreleasable
 commit in.
+
+Run the gate *before* the commit, not between the commit and the push. Pushing is the step
+that makes a failure everyone's problem, so the gate belongs on the near side of it — and a
+green gate is the thing that makes pushing immediately safe rather than reckless.

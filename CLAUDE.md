@@ -142,11 +142,16 @@ scopes from the tracked top-level directories so a new workspace member needs no
 message*, an agent's — only ever biases toward this format; the hook is what makes it
 hold.
 
-### Commit as you go (load-bearing)
+### Commit and push as you go (load-bearing)
 
 Commit each concern **as it finishes**, on the branch already checked out — not at the end
 of a session, and not onto a branch you created for the purpose. Uncommitted work is
 invisible to review and to `git bisect`, and a long agent run that dies takes it with it.
+
+**Push each commit as you make it.** A local commit is still invisible to review, to CI and
+to release-please, and it still dies with the machine — which for an agent run in a
+throwaway container is the normal ending, not the unlucky one. Push right after the commit,
+before starting the next concern.
 
 Stage by **explicit path**. `git add -A`, `git add .` and `git commit -a` sweep in whatever
 else is in the tree, and in this repo that regularly means another agent's or another
@@ -156,7 +161,13 @@ process's half-finished work — which then disappears from *their* `git status`
 git status --porcelain                       # look first: whose changes are these?
 git add workflows/src/... workflows/tests/...
 git commit -m "fix(workflows): <description>"
+git push                                     # now, not at the end of the session
 ```
 
-`make lint` from the root before each commit — a commit that fails the gate is one someone
-else has to bisect to. The full rationale is in the `stablemate-commit-cadence` skill.
+When a push is rejected the remote moved: fetch, rebase, re-run the gate, push again. Never
+`--force` a shared branch — several agents push to this repo, and a force discards whichever
+of them got there first.
+
+`make lint` from the root before each commit — the gate belongs on the near side of the
+push, since pushing is what makes a failure everyone's problem. The full rationale is in the
+`stablemate-commit-cadence` skill.
