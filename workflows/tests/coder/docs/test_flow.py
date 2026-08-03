@@ -619,12 +619,19 @@ def test_the_loop_is_bounded_at_four_passes(
 
     Four author passes, not three: `MAX_REWORKS` counts reworks, and the first pass is not
     one. That is the literal `"3"` the YAML's `guard_documentation` compared against.
+
+    The exhausted budget is a `blocked` verdict, not an exception, and that distinction is
+    the whole point: it used to raise, and the run that forced this change spent it on the
+    `finalize` pass — so a story already implemented, reviewed, documented and QA-passed
+    was thrown away uncommitted, along with every epic queued behind it, over one prose
+    finding a fifth pass might have closed.
     """
     agent = _Agent(approve_after=99)
 
-    with pytest.raises(WorkflowFailed, match="did not converge in 4 review passes"):
-        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
+    assert result.status == "blocked", result
+    assert "review did not converge in 4 passes" in result.notes
     assert agent.counts() == {"document-story": 4, "review-story-documentation": 4}
 
 

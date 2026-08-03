@@ -288,6 +288,13 @@ class Docs(Workflow):
         number of rework passes will change — but it ends it with a verdict rather than a
         failure, for the reason `document` gives. `revise`, and a blank taking the YAML's
         `default:`, spends a rework instead.
+
+        **Spending the last rework is the same answer, not a worse one.** A reviewer still
+        saying `revise` on the final pass is a reviewer saying the book cannot be made true
+        of this code within this budget, which is what `blocked` means; raising instead
+        killed the *run*, and at the `finalize` call site that discards a story whose code
+        is written and whose QA has already passed, plus every epic queued behind it. Same
+        reasoning as `Coder.blocked_docs`, one budget later.
         """
         result = self.agent(
             "prompts/review-story-documentation.md",
@@ -315,9 +322,21 @@ class Docs(Workflow):
             )
             return Done(DocsResult(status="blocked", notes=result.notes))
         if review_rework >= self.MAX_REVIEW_REWORKS:
-            raise WorkflowFailed(
-                f"documentation did not converge in {self.MAX_REVIEW_REWORKS + 1} review "
-                f"passes: {result.notes or gate_notes}"
+            self.logger.warning(
+                "documentation review did not converge for %s in %d passes — blocking: %s",
+                self.ctx.story_slug,
+                self.MAX_REVIEW_REWORKS + 1,
+                result.notes,
+            )
+            return Done(
+                DocsResult(
+                    status="blocked",
+                    notes=(
+                        f"documentation review did not converge in "
+                        f"{self.MAX_REVIEW_REWORKS + 1} passes: "
+                        f"{result.notes or gate_notes or 'no notes'}"
+                    ),
+                )
             )
         return self._rework(result, rework, review_rework + 1, gate_notes, result.notes)
 

@@ -1093,6 +1093,43 @@ def test_a_blocked_docs_verdict_costs_its_own_story_and_not_the_rest_of_the_queu
     assert BLOCK_REASON in status, status
 
 
+def test_a_block_on_the_final_docs_pass_still_commits_the_story_it_documented(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The last docs pass runs after the work is done, so blocking it must not undo it.
+
+    `finalize` is the *second* `Docs` handoff for a story: by the time it runs the code is
+    written, reviewed, documented once and QA-passed, and the only step left is `commit`.
+    Observed: a reviewer that never approved spent the review budget on that pass, the flow
+    raised, and a story with hours of verified work behind it — plus the eight epics queued
+    after it — died uncommitted, which is also to say invisible to review and to `git
+    bisect`, and destined to be re-implemented by the next run.
+
+    So a block here is recorded, not obeyed. It is still a real finding about the prose, and
+    the story's own commit is what keeps the code it describes reachable while somebody acts
+    on it.
+    """
+    repo = epic()
+
+    class _BlockingFinal(_Sub):
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            if self.calls.count("Docs") == 1:
+                return DocsResult(status="passed", notes="")
+            return DocsResult(status="blocked", notes=BLOCK_REASON)
+
+    sub = _BlockingFinal(repo).install(monkeypatch)
+
+    result = drive_flow(Coder(), env(), _Agent())
+
+    assert result.has_epic is False, result
+    assert sub.calls.count("Docs") == 2, sub.calls
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert _dirty(repo) == "", _dirty(repo)
+
+
 # ------------------------------------------------------------------- the nested drain
 
 

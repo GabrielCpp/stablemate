@@ -626,6 +626,13 @@ class Coder(Workflow):
         A second `docs` pass, after the drain, so whatever the drain changed is in the book
         before the one commit that covers story and drained fixes together. Story mode goes
         to its own PR tail; epic mode commits and takes the next story.
+
+        A `blocked` verdict here does **not** route to `blocked_docs` and does not fail:
+        by this point the code is written, reviewed, documented once and QA-passed, and the
+        only thing left is to record it. Discarding all of that over a second-pass prose
+        finding would leave the work uncommitted — invisible to review, to `git bisect` and
+        to the next run, which would re-implement it. The block is logged and the story is
+        committed with it.
         """
         result = self.handoff(
             Docs,
@@ -635,7 +642,14 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
         )
-        self._require_documented(result, "story (final pass)")
+        if result.status == "blocked":
+            self.logger.warning(
+                "final documentation pass blocked for %s — committing anyway: %s",
+                self._story.story_slug,
+                result.notes,
+            )
+        else:
+            self._require_documented(result, "story (final pass)")
         if self.mode == "epic":
             return Continue(result, self.commit, epic=epic, zero_diff=zero_diff)
         return Continue(result, self.commit_pr)
