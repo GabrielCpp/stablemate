@@ -59,7 +59,16 @@ the full resolution order and why everything other than install reads the cache 
 
 ## Use
 
-From a repository that has an `agents.yml`:
+In a repository that has no `agents.yml` yet:
+
+```bash
+farrier init                # write a starter agents.yml (--force to replace one)
+```
+
+`init` reads nothing — no library, no config — so it works on a fresh machine before
+`farrier config set-library`. It refuses to overwrite an existing `agents.yml`.
+
+Then, from a repository that has one:
 
 ```bash
 farrier --repo .            # render/install the selected packs
@@ -67,15 +76,16 @@ farrier --repo . --check    # verify generated files are up to date (no writes)
 ```
 
 Rendering is the default action; `farrier install --repo .` is an accepted alias
-of `farrier --repo .`.
+of `farrier --repo .`. A bare `farrier` with no arguments prints the verb listing.
 
-Four more verbs round it out:
+The rest of the verbs:
 
 ```bash
 farrier config show                        # every config key as key=value
 farrier source .claude/skills/x/SKILL.md   # the library file that generated an adapter
 farrier scaffold --list                    # the scaffolds this repo may apply, and their params
 farrier scaffold <id> [--param KEY=VALUE]  # seed repo files from one
+farrier workflows                          # the workflows installed on this machine
 farrier version
 ```
 
@@ -85,7 +95,8 @@ is the one to reach for before editing anything under `.claude/`, `.codex/` or
 
 ## Configuring `agents.yml`
 
-`agents.yml` (at your repo root) selects what farrier renders. Every option —
+`agents.yml` (at your repo root) selects what farrier renders. `farrier init` writes a
+starter one with the common keys as commented examples. Every option —
 `repo`, `agents`, `packs`, `skills`/`prompts`/`roots`, `scaffolds`, `exclude`,
 `localInstructions`, `template`/`vars`, and `workflow` — is documented with
 inline comments in **[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**. Copy it to

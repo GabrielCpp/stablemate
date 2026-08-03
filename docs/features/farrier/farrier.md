@@ -11,8 +11,9 @@ from a [layer stack](concepts/library-directory.md#the-layer-stack): an optional
 located by the `--library` flag, the `$FARRIER_LIBRARY_DIR` env var or `library_dir` in the
 [shared home config file](home-config.md) (set with `farrier config set-library`), stacked above the
 *base* library that ships with stablemate. Either alone is a working setup; with neither, farrier
-exits with a setup hint. A bare `farrier [--repo DIR]` with no recognized subcommand is treated as
-`install` — the dispatch/default-command rule lives in `main`.
+exits with a setup hint. `farrier [--repo DIR]` with a leading flag rather than a recognized
+subcommand is treated as `install`; a bare `farrier` with no arguments at all prints the top-level
+help instead, the same as `farrier --help`. Both rules live in `main`.
 
 - binary: `farrier` (the console script is declared as `farrier.install:main`, which re-exports
   `main` from `farrier.cli` — `install.py` is a compatibility facade that declares nothing of its
@@ -25,6 +26,40 @@ any generated file is missing or would be rewritten, `0` when the repo's generat
 already current.
 
 ## Commands
+
+### init
+- usage: `farrier init [--repo DIR] [--force]`
+- flags:
+  - `--repo <dir>` — repository root to write `agents.yml` into. Default: current working
+    directory.
+  - `--force` — replace an existing `agents.yml` instead of refusing.
+- does:
+  - run: resolve `--repo` to an absolute path; `SystemExit("error: <repo> is not a directory")` if
+    it is not one
+  - run: refuse when `<repo>/agents.yml` already exists and `--force` was not given —
+    `SystemExit` naming the path, `install` as the command they probably meant, and `--force` as
+    the way to overwrite anyway
+  - run: render the starter config from the module template, with `repo.name` set to the repo
+    directory's name, quoted through `yaml_quote` so a directory called `no` or `2024` still reads
+    back as that string
+  - run: write it to `<repo>/agents.yml` and print the path plus the next step
+- reads: nothing — no library resolution, no base-library fetch, no home config. It is the one
+  command that runs before a repo is configured, so it must work on a machine where
+  `farrier config set-library` has never been run.
+- writes: `<repo>/agents.yml`, and nothing else.
+- produces: [`agents.yml`](agents-yml-config.md) with `repo.name`, `agents: {claude: true}` and an
+  empty `packs:` list live, and `skills`/`prompts`/`scaffolds`/`exclude`/`template`/`workflow`
+  present as commented examples.
+- code: `farrier/farrier/cli.py::_run_init`
+- code: `farrier/farrier/init.py::default_config`
+- verify: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
+- verify: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
+- verify: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`
+
+The template is a Python string constant rather than a copy of the repo's
+`farrier/agents.example.yml`: the wheel packages only the `farrier` package, so the example file
+is not on disk beside an installed farrier. `agents.example.yml` stays the full reference; this is
+the pruned starting point, and the two are kept consistent by hand.
 
 ### install
 - usage: `farrier install [--repo DIR] [--config PATH] [--check] [--library DIR]` (also the

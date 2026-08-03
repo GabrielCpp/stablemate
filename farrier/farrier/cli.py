@@ -1,7 +1,7 @@
 """Argument parsing and command dispatch — the ``farrier`` entry point.
 
 Wires the config/layers/sources/renderer/outputs/scaffolds modules together behind
-the subcommands (install, config, source, scaffold, version).
+the subcommands (init, install, config, source, scaffold, version).
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from farrier.frontmatter import (
     mapping_skill_names,
     read_yaml,
 )
+from farrier.init import default_config
 from farrier.layers import (
     ensure_base_library_dir,
     find_in_layers,
@@ -80,6 +81,34 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
+
+
+def _run_init(args: argparse.Namespace) -> int:
+    """`farrier init` — write the starter ``agents.yml`` every other command reads.
+
+    Refusing to overwrite is the whole safety story here, and it is a hard error rather
+    than the scaffold command's "exists (kept)": a scaffold seeds a tree where some
+    files legitimately already exist, whereas someone running `init` in a configured
+    repo has confused it with `install`, and telling them so beats printing a success
+    line that did nothing. `--force` is the escape hatch, and it says what it costs.
+    """
+    repo = args.repo.resolve()
+    if not repo.is_dir():
+        raise SystemExit(f"error: {repo} is not a directory")
+    target = repo / "agents.yml"
+    if target.exists() and not args.force:
+        raise SystemExit(
+            f"error: {target} already exists — this repo is configured; "
+            f"run `farrier install --repo {args.repo}` to render it, "
+            f"or `farrier init --force` to replace the config with a fresh default"
+        )
+    # The name farrier would default to anyway, written out rather than left implicit:
+    # it is the prefix on every skill this repo installs, so it is the first thing
+    # worth seeing and the first thing worth being able to change in one place.
+    write_text(target, default_config(repo.name))
+    print(f"Wrote {target}")
+    print("Next: list the packs you want under `packs:`, then `farrier install`.")
+    return 0
 
 
 def _run_install(args: argparse.Namespace) -> int:
@@ -365,6 +394,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
+    # init
+    init_p = sub.add_parser(
+        "init",
+        help="Write a starter agents.yml so this repository can be configured",
+    )
+    init_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root to write agents.yml into (default: cwd)",
+    )
+    init_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing agents.yml instead of refusing",
+    )
+
     # install (default)
     install_p = sub.add_parser(
         "install", help="Render/install the selected packs into a repository (default)"
@@ -516,14 +562,30 @@ def main(argv: list[str] | None = None) -> int:
 
     # Keep `farrier --repo .` working: if no recognised subcommand is given,
     # inject `install` so existing invocations are unchanged.
-    # Exception: bare --help/-h should show the top-level subcommand listing.
-    _SUBCOMMANDS = {"install", "config", "version", "source", "scaffold", "workflows"}
-    if argv and argv[0] in ("-h", "--help"):
-        pass  # let the top-level parser handle it
-    elif not argv or argv[0] not in _SUBCOMMANDS:
+    # Exceptions: bare --help/-h shows the top-level subcommand listing, and so does
+    # a bare `farrier`. Nothing else on this CLI mutates a repository without being
+    # named, and "render every adapter file into whatever directory I happen to be
+    # standing in" is the last default a bare invocation should have — the verbs are
+    # what someone typing `farrier` alone is looking for.
+    _SUBCOMMANDS = {
+        "init",
+        "install",
+        "config",
+        "version",
+        "source",
+        "scaffold",
+        "workflows",
+    }
+    if not argv or argv[0] in ("-h", "--help"):
+        parser.print_help()
+        return 0
+    if argv[0] not in _SUBCOMMANDS:
         argv = ["install"] + argv
 
     args = parser.parse_args(argv)
+
+    if args.command == "init":
+        return _run_init(args)
 
     if args.command == "version":
         print(importlib.metadata.version("farrier"))

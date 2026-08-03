@@ -48,8 +48,11 @@ The config lives at the platform config dir: `~/.config/farrier/config.toml`
 
 ## Repository Setup
 
-Create `agents.yml` at the repository root (default path `<repo>/agents.yml`;
-override with `farrier --config <path>`):
+`farrier init` writes a starter `agents.yml` at the repository root, with the
+common keys as commented examples; it needs no library configured and refuses to
+overwrite an existing config (`--force` replaces one). The live keys it leaves you
+to fill in (default path `<repo>/agents.yml`; override with `farrier --config
+<path>`):
 
 ```yaml
 agents:
@@ -230,7 +233,7 @@ is the source of truth. Current packs:
 
 1. Install farrier: `pipx install farrier`
 2. Set library: `farrier config set-library /path/to/vigilant-octo/agents`
-3. Create `agents.yml` at repo root with `agents`, `packs` (and `repo.name` if
+3. `farrier init` at the repo root, then fill in `packs:` (and `repo.name` if
    the directory name is not the prefix you want)
 4. Seed the repo layout: `farrier scaffold` to list what's available, then
    e.g. `farrier scaffold shared-docs` and `farrier scaffold go-service
