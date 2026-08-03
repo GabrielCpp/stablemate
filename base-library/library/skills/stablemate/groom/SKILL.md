@@ -1,6 +1,7 @@
 ---
 name: groom
 description: "groom — the operator-gate dashboard and push-notification service for workhorse workflows: architecture, signal model, and how a workflow/script should integrate with it (gate-file convention, sidecar, backstop push)."
+tags: [python, backend, standards]
 ---
 
 # Groom

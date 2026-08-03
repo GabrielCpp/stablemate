@@ -1,7 +1,7 @@
 ---
 name: agent-library
 description: "Agent Library Maintenance & Install. Applies to agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**."
-applyTo: agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**
+applyTo: 'agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**'
 tags: [codegen]
 ---
 
@@ -89,8 +89,9 @@ tags: [web, tests, qa]
 ---
 ```
 
-The vocabulary the `coder` workflow queries — use these spellings, since a tag no
-prompt asks for is a tag nothing will ever read:
+The vocabulary the workflows query — use these spellings, since a tag no prompt
+asks for is a tag nothing will ever read. The `coder` workflow asks for the
+mechanics of writing and verifying code:
 
 | Tag | The skill answers |
 | --- | --- |
@@ -99,6 +100,20 @@ prompt asks for is a tag nothing will ever read:
 | `tests` | how that layer's tests are written and run |
 | `qa` | how to bring the **real** stack up and drive it for verification |
 | `codegen` | which artifacts are generated, and the command that regenerates them |
+
+The `author` workflow asks a different question — not how code is written but how
+work and its record are *shaped* — so it queries two more:
+
+| Tag | The skill answers |
+| --- | --- |
+| `planning` | how this repo decomposes work into epics, stories and seeds — the method, and the sizing and sequencing rules |
+| `docs` | how a written artifact is structured — the epic/story grammar, the docs graph, the prose entry surface |
+
+These two are deliberately narrower than `standards`. Nearly ninety library
+skills answer "how code is written", so a prompt that needs the story grammar and
+asks `find_by_tags("standards")` gets the whole library back and has selected
+nothing. A kind tag earns its place by *excluding* — if adding one to a skill does
+not shrink some query's answer, it is decoration.
 
 Combine one of those with the layer the skill belongs to: `backend`, `cli`,
 `web`, `mobile`, or `infra`. A skill covering more than one job carries more than

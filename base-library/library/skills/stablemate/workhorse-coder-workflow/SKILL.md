@@ -1,6 +1,7 @@
 ---
 name: workhorse-coder-workflow
 description: "Architecture and conventions for the epic-coder workhorse workflow — the inputs contract, state topology, self.output threading, ostler path integration, and node authoring rules."
+tags: [python, backend, standards]
 ---
 
 # Coder Workflow — Architecture Reference

@@ -2,6 +2,7 @@
 name: code-review
 description: "Multi-agent code review — 5 parallel reviewers + independent scorers, confidence-filtered. Mirrors the Claude Code /code-review plugin."
 applyTo: ""
+tags: [standards]
 ---
 
 # Code Review
