@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from farrier._vendor.stablemate_core.config import config_path, read_config
-from farrier._vendor.stablemate_core.discovery import BASE_DIR_ENV, base_library_dir, is_library_dir
+from farrier._vendor.stablemate_core.discovery import (
+    BASE_DIR_ENV,
+    base_library_dir,
+    ensure_base_library_dir,
+    is_library_dir,
+)
 
 # Re-exported: these moved to stablemate_core, but `farrier.layers` is where the rest of
 # farrier (and its tests) has always imported them from. Named in __all__ so ruff does
@@ -26,6 +31,7 @@ __all__ = [
     "Layer",
     "available_names",
     "base_library_dir",
+    "ensure_base_library_dir",
     "find_in_layers",
     "is_library_dir",
     "layer_dirs",
@@ -144,12 +150,18 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
     if candidate is None:
         if base_library_dir() is not None:
             return None
+        # Reached after `farrier install` has already tried to fetch the base, so the
+        # cache route is not something to suggest — it was attempted and did not answer.
+        # What is left is the offline causes and the on-disk routes.
         raise SystemExit(
             "error: no library available — no overlay configured, and the base "
-            "library is not installed.\n"
-            "Install the base:\n"
-            "    pip install stablemate-library\n"
-            "or point farrier at an overlay library:\n"
+            "library could not be fetched.\n"
+            "The base is fetched into ~/.cache/stablemate on install; check that git "
+            "and the network are reachable, and that $STABLEMATE_FETCH_BASE is not "
+            "set to 0.\n"
+            "Or point farrier at a base you already have on disk:\n"
+            "    farrier config set-base <path-to-base-library>\n"
+            "Or at an overlay library:\n"
             "    farrier config set-library <path-to-your-library>\n"
             "(or pass --library DIR / set $FARRIER_LIBRARY_DIR)."
         )

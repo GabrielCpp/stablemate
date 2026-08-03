@@ -47,6 +47,42 @@ indistinguishable, from the outside, from the library being broken.
 - verify: `farrier/tests/test_config_resolution.py::test_bad_library_path_errors`
 - verify: `farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed`
 
+### Fetching and updating the base
+
+The base library resolves through `stablemate_core.discovery` in four steps —
+`$STABLEMATE_BASE_DIR` → the `base_dir` config key → a `stablemate_dir` checkout
+(`<checkout>/base-library`) → the shared cache at `~/.cache/stablemate`. Only the last of those
+can be produced on demand, and [`install`](../farrier.md#install) is the one command that produces
+it: it calls `ensure_base_library_dir(refresh=not --check)` before resolving anything, which
+fetches the cache when absent and updates it to the head of `main` when present.
+
+Two functions, deliberately: `base_library_dir()` is a pure lookup and `ensure_base_library_dir()`
+is the explicit form allowed to reach the network. A resolution that downloads as a side effect is
+a trap — `farrier config show` would trigger it, and so would any test that resolves a path.
+
+**Routes 1–3 are never fetched over, and not even probed.** They each name a base a human chose, so
+`ensure_base_library_dir` returns immediately when one answers. That is what makes the ordering
+guarantee hold under the command that downloads: a checkout you are editing cannot have a copy
+appear underneath it.
+
+**Everything except install reads the cache frozen.** No lookup, no workhorse resume and no timer
+refreshes it — a cache tracking `main` live could resume a week-long run into a different library
+than it started with. Install is exempt because it is an operator asking for a re-render at a
+moment they chose, which is the same authority `rm -rf ~/.cache/stablemate` always carried.
+
+Updating asks the remote for the head of `main` (`git ls-remote`, a few hundred bytes) before
+cloning anything, so an already-current cache costs one round-trip instead of a re-clone. Every
+failure — unreachable remote, `STABLEMATE_FETCH_BASE=0`, a clone that dies, a fetched tree that
+holds no `library/` — leaves the existing cache untouched and returns it. That asymmetry is the
+point: a *fetch* that fails has nothing to hand back, but a *refresh* that fails still has a good
+library, and turning that into "no library" would make an offline machine worse off for asking.
+
+- code: `core/stablemate_core/discovery.py::ensure_base_library_dir`
+- code: `core/stablemate_core/base_cache.py::refresh_cached_base`
+- verify: `core/tests/test_discovery.py::test_ensure_never_fetches_over_a_chosen_base`
+- verify: `core/tests/test_base_cache.py::test_refresh_does_not_clone_when_already_current`
+- verify: `core/tests/test_base_cache.py::test_refresh_keeps_the_cache_when_the_remote_is_unreachable`
+
 ### The layer stack
 
 There is no longer a set of module-global path constants pointing at one library root. `main` calls

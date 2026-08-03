@@ -36,14 +36,26 @@ write.
 **Finding the base library.** farrier discovers the base via, in order,
 `$STABLEMATE_BASE_DIR` → the `base_dir` config key (`farrier config set-base <path>`) →
 a configured `stablemate_dir` checkout (`<checkout>/base-library`) → the shared cache at
-`~/.cache/stablemate`. The env-var and `set-base` routes are the ones that matter under
-`pipx`, which isolates each tool in its own venv: the base is data with no package to
-import, so it can only be found by path. The cache is deliberately last, so a fetched
-copy can never shadow a checkout you are editing — though today nothing populates it on
-your behalf: `farrier._vendor.stablemate_core.base_cache` implements the fetch, but no command calls it
-yet, so in practice one of the first three routes is what makes a base reachable. See the
-[monorepo README](https://github.com/GabrielCpp/stablemate#installing) for how the tools
-are installed.
+`~/.cache/stablemate`. The cache is deliberately last, so a fetched copy can never shadow
+a checkout you are editing.
+
+**`farrier install` fetches the base, and updates it.** It is the only command that
+touches the cache, so under `pipx` — where each tool is its own venv and the base is data
+with no package to import — you get a working base library without configuring anything.
+An update asks the remote for the head of `main` first, so an already-current cache costs
+one round-trip rather than a re-clone. Three qualifications:
+
+- **A base you named is never fetched over.** If `$STABLEMATE_BASE_DIR`, `set-base` or a
+  `stablemate_dir` checkout answers, install returns it without even probing the remote.
+- **`--check` fetches but never updates.** It writes nothing and runs in CI, where a
+  library moving underneath the comparison would make the result depend on the hour.
+- **Failure keeps what works.** Offline, `STABLEMATE_FETCH_BASE=0`, or a broken clone all
+  leave the existing cache in place rather than leaving you with none.
+
+`STABLEMATE_FETCH_BASE=0` forbids the network entirely; `STABLEMATE_CACHE_DIR` relocates
+the cache. See the
+[monorepo README](https://github.com/GabrielCpp/stablemate#finding-the-base-library) for
+the full resolution order and why everything other than install reads the cache frozen.
 
 ## Use
 

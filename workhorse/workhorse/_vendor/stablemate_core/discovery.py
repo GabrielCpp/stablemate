@@ -15,7 +15,13 @@ from . import base_cache
 from .config import get_config_value
 from .layout import is_library_dir
 
-__all__ = ["BASE_DIR_ENV", "CHECKOUT_SUBPATH", "base_library_dir", "is_library_dir"]
+__all__ = [
+    "BASE_DIR_ENV",
+    "CHECKOUT_SUBPATH",
+    "base_library_dir",
+    "ensure_base_library_dir",
+    "is_library_dir",
+]
 
 # An explicit on-disk path. The highest-precedence route, and the one that makes a base
 # reachable from a tool installed in its own isolated pipx venv.
@@ -54,6 +60,27 @@ def base_library_dir() -> Path | None:
     override is skipped rather than raised on — the base is additive, and failing soft
     keeps an overlay-only setup working.
     """
+    explicit = _explicit_base()
+    if explicit is not None:
+        return explicit
+
+    # Called through the module rather than a `from ... import cached_base` binding: a
+    # direct binding is frozen at import, so patching base_cache.cached_base would not
+    # affect this call and a test would silently exercise the real cache instead.
+    cached = base_cache.cached_base()
+    if cached is not None and is_library_dir(cached):
+        return cached.resolve()
+
+    return None
+
+
+def _explicit_base() -> Path | None:
+    """Routes 1-3 only: a base some human named. Never the cache, never the network.
+
+    Split out so :func:`ensure_base_library_dir` can ask "did a human already choose one?"
+    without restating the order — a second copy of these three routes is precisely the
+    duplication this module was created to remove.
+    """
     env = os.environ.get(BASE_DIR_ENV)
     if env:
         candidate = Path(env).expanduser()
@@ -72,11 +99,33 @@ def base_library_dir() -> Path | None:
         if is_library_dir(candidate):
             return candidate.resolve()
 
-    # Called through the module rather than a `from ... import cached_base` binding: a
-    # direct binding is frozen at import, so patching base_cache.cached_base would not
-    # affect this call and a test would silently exercise the real cache instead.
-    cached = base_cache.cached_base()
+    return None
+
+
+def ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None:
+    """:func:`base_library_dir`, but allowed to populate the cache — and, with
+    ``refresh``, to update it.
+
+    The explicit counterpart to the lookup above: same resolution order, except that
+    reaching route 4 fetches instead of merely reading. Call it from a command where a
+    missing base is the actual problem; leave every incidental resolution on
+    :func:`base_library_dir`.
+
+    **A checkout still wins, and is never touched.** Routes 1-3 name a base a human chose,
+    so when one of them answers this returns it without so much as a network probe. That
+    is what keeps the guarantee the ordering exists for: someone editing a base library in
+    place cannot have a download appear underneath them, no matter which command they run.
+
+    ``refresh`` upgrades an existing cache to the head of ``BASE_REPO_REF``. It belongs to
+    operator-invoked commands only — see :mod:`stablemate_core.base_cache` for why
+    everything else must freeze.
+    """
+    explicit = _explicit_base()
+    if explicit is not None:
+        return explicit
+
+    fetch = base_cache.refresh_cached_base if refresh else base_cache.ensure_cached_base
+    cached = fetch(quiet=quiet)
     if cached is not None and is_library_dir(cached):
         return cached.resolve()
-
     return None

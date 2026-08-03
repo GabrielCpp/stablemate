@@ -33,14 +33,14 @@ They look, in order, for `$STABLEMATE_BASE_DIR` → the `base_dir` config key �
 configured `stablemate_dir` checkout (`<checkout>/base-library`, i.e. this directory) →
 a shared cache. Nothing found means overlay-only, exactly as before a base existed.
 
-The cache is the interesting one: it is designed to be **fetched from GitHub into
-`~/.cache/stablemate`** and used from there — a sparse checkout of this directory alone,
-with `.git` dropped once the commit is recorded, so what lands is documents rather than
-a repository. Fetched once and then frozen; `rm -rf ~/.cache/stablemate` is the upgrade
-path. `stablemate_core.base_cache` implements all of that, but **no command calls it
-yet**: today the cache route only resolves a cache someone populated by hand, and a
-working setup comes from one of the first three routes. See the
-[monorepo README](../README.md#installing).
+The cache is the interesting one: it is **fetched from GitHub into `~/.cache/stablemate`**
+and used from there — a sparse checkout of this directory alone, with `.git` dropped once
+the commit is recorded, so what lands is documents rather than a repository.
+`farrier install` is what populates it, and the only thing that updates it: on install the
+base is fetched if absent and brought up to `main` if stale. Every other caller — every
+lookup, and every workhorse resume — reads it frozen, so a run cannot resume into a
+different library than it started with. See the
+[monorepo README](../README.md#finding-the-base-library).
 
 A directory counts as a library if it holds `library/`. That is the whole contract;
 `stablemate_core.layout.is_library_dir` is the one implementation of it.

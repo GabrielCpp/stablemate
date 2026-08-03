@@ -84,6 +84,158 @@ def test_deleting_the_cache_is_the_upgrade_path(monkeypatch):
     assert (first, second) == ("old111", "new222")
 
 
+# --- refresh -----------------------------------------------------------------
+
+
+def _at_remote(monkeypatch, sha: str | None) -> None:
+    monkeypatch.setattr(bc, "remote_commit", lambda: sha)
+
+
+def test_refresh_replaces_the_cache_when_the_remote_moved(monkeypatch):
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    monkeypatch.setattr(
+        bc, "_clone_into", lambda dest: _fake_clone(dest, commit="new222")
+    )
+    _at_remote(monkeypatch, "new222")
+
+    base = bc.refresh_cached_base()
+
+    assert base is not None and base.is_dir()
+    assert bc.cached_commit() == "new222"
+
+
+def test_refresh_does_not_clone_when_already_current(monkeypatch):
+    """The reason `remote_commit` exists: a few hundred bytes instead of ~16M.
+
+    `farrier install` runs often and the cache is usually current, so the common case
+    must not pay for a clone to discover it had nothing to do.
+    """
+    _fake_clone(bc.cached_library_dir(), commit="same333")
+    _at_remote(monkeypatch, "same333")
+    monkeypatch.setattr(
+        bc, "_clone_into", lambda dest: pytest.fail("must not clone when up to date")
+    )
+
+    assert bc.refresh_cached_base() == bc.cached_library_dir() / bc.BASE_SUBPATH
+
+
+def test_refresh_fetches_when_the_cache_is_absent(monkeypatch):
+    monkeypatch.setattr(bc, "_clone_into", lambda dest: _fake_clone(dest, commit="a1"))
+    monkeypatch.setattr(
+        bc, "remote_commit", lambda: pytest.fail("nothing on disk to compare against")
+    )
+
+    base = bc.refresh_cached_base()
+
+    assert base is not None and bc.cached_commit() == "a1"
+
+
+def test_refresh_keeps_the_cache_when_the_remote_is_unreachable(monkeypatch, capsys):
+    """Offline must leave a working library working — that is the whole asymmetry
+    between a failed fetch (nothing to hand back) and a failed refresh (a good cache)."""
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    _at_remote(monkeypatch, None)
+    monkeypatch.setattr(
+        bc, "_clone_into", lambda dest: pytest.fail("must not clone while offline")
+    )
+
+    assert bc.refresh_cached_base() == bc.cached_library_dir() / bc.BASE_SUBPATH
+    assert bc.cached_commit() == "old111"
+    assert "using the cached copy" in capsys.readouterr().out
+
+
+def test_refresh_keeps_the_cache_when_the_clone_fails(monkeypatch):
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    _at_remote(monkeypatch, "new222")
+    monkeypatch.setattr(bc, "_clone_into", lambda dest: False)
+
+    assert bc.refresh_cached_base() is not None
+    assert bc.cached_commit() == "old111"
+    assert list(bc.cache_root().glob(".library-fetch-*")) == []
+
+
+def test_refresh_refuses_to_swap_in_a_non_library(monkeypatch):
+    """A layout that moved upstream must not replace a working cache with a broken one:
+    the damage would outlive the command, and nothing would ever put it back."""
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    _at_remote(monkeypatch, "new222")
+
+    def clone_without_library(dest):
+        dest.mkdir(parents=True)
+        (dest / bc.COMMIT_FILE).write_text("new222\n")
+        return True
+
+    monkeypatch.setattr(bc, "_clone_into", clone_without_library)
+
+    assert bc.refresh_cached_base() is not None
+    assert bc.cached_commit() == "old111"
+
+
+def test_refresh_can_be_disabled(monkeypatch):
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    monkeypatch.setenv(bc.FETCH_ENV, "0")
+    monkeypatch.setattr(
+        bc, "remote_commit", lambda: pytest.fail("must not probe when disabled")
+    )
+
+    assert bc.refresh_cached_base() is not None
+    assert bc.cached_commit() == "old111"
+
+
+def test_a_failed_swap_puts_the_old_cache_back(monkeypatch):
+    """The old cache is moved aside, not deleted, until the new one is in place.
+
+    So the swap failing halfway is recoverable: what must never happen is a refresh that
+    ends with no cache at all, having destroyed a working one to get there.
+    """
+    _fake_clone(bc.cached_library_dir(), commit="old111")
+    _at_remote(monkeypatch, "new222")
+    monkeypatch.setattr(
+        bc, "_clone_into", lambda dest: _fake_clone(dest, commit="new222")
+    )
+
+    real_rename = Path.rename
+    calls: list[int] = []
+
+    def fail_the_second_rename(self, target):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("Cross-device link")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", fail_the_second_rename)
+
+    assert bc.refresh_cached_base() is not None
+    assert bc.cached_commit() == "old111"
+    assert list(bc.cache_root().glob(".library-old-*")) == []
+
+
+def test_remote_commit_parses_ls_remote(monkeypatch):
+    monkeypatch.setattr(
+        bc,
+        "_git",
+        lambda *a, **k: subprocess.CompletedProcess(
+            list(a), 0, stdout="deadbeefcafe\trefs/heads/main\n", stderr=""
+        ),
+    )
+    assert bc.remote_commit() == "deadbeefcafe"
+
+
+def test_remote_commit_is_none_when_the_ref_is_missing(monkeypatch):
+    """`ls-remote` for a ref that matches nothing exits 0 with empty output."""
+    monkeypatch.setattr(
+        bc,
+        "_git",
+        lambda *a, **k: subprocess.CompletedProcess(list(a), 0, stdout="", stderr=""),
+    )
+    assert bc.remote_commit() is None
+
+
+def test_remote_commit_is_none_when_git_cannot_run(monkeypatch):
+    monkeypatch.setattr(bc, "_git", lambda *a, **k: None)
+    assert bc.remote_commit() is None
+
+
 # --- fail-soft ---------------------------------------------------------------
 
 

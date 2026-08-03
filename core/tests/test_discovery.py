@@ -18,6 +18,7 @@ from stablemate_core import config as cfgmod
 from stablemate_core.discovery import (
     BASE_DIR_ENV,
     base_library_dir,
+    ensure_base_library_dir,
     is_library_dir,
 )
 
@@ -150,6 +151,54 @@ def test_resolution_never_fetches(tmp_path, monkeypatch):
         bc, "_clone_into", lambda dest: pytest.fail("resolution must never fetch")
     )
     base_library_dir()
+
+
+# --- the explicit form, which may fetch --------------------------------------
+
+
+def test_ensure_populates_the_cache_when_nothing_else_resolves(tmp_path, monkeypatch):
+    fetched = _make_base(tmp_path / "fetched")
+    monkeypatch.setattr(bc, "cached_base", lambda: None)
+    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, quiet=False: fetched)
+
+    assert ensure_base_library_dir() == fetched.resolve()
+
+
+@pytest.mark.parametrize("refresh", [False, True])
+def test_ensure_never_fetches_over_a_chosen_base(tmp_path, cfg, monkeypatch, refresh):
+    """The ordering guarantee has to survive the command that is allowed to download:
+    someone editing a base in place must never have a copy appear underneath them —
+    not even a network probe fires."""
+    checkout = tmp_path / "checkout"
+    derived = _make_base(checkout / "base-library")
+    cfg(stablemate_dir=str(checkout))
+    for name in ("ensure_cached_base", "refresh_cached_base", "remote_commit"):
+        monkeypatch.setattr(
+            bc, name, lambda *a, **k: pytest.fail("a chosen base must not be refetched")
+        )
+
+    assert ensure_base_library_dir(refresh=refresh) == derived.resolve()
+
+
+def test_ensure_refresh_updates_an_existing_cache(tmp_path, monkeypatch):
+    updated = _make_base(tmp_path / "updated")
+    monkeypatch.setattr(bc, "cached_base", lambda: _make_base(tmp_path / "stale"))
+    monkeypatch.setattr(bc, "refresh_cached_base", lambda *, quiet=False: updated)
+    monkeypatch.setattr(
+        bc,
+        "ensure_cached_base",
+        lambda *, quiet=False: pytest.fail("refresh=True must not take the frozen path"),
+    )
+
+    assert ensure_base_library_dir(refresh=True) == updated.resolve()
+
+
+def test_ensure_is_none_when_the_fetch_fails(monkeypatch):
+    """Fail-soft: an offline host with no cache behaves as it did before this existed."""
+    monkeypatch.setattr(bc, "cached_base", lambda: None)
+    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, quiet=False: None)
+
+    assert ensure_base_library_dir() is None
 
 
 if __name__ == "__main__":

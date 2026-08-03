@@ -84,23 +84,46 @@ fetched copy can never shadow a checkout you are editing:
 4. the shared cache at `~/.cache/stablemate/library`.
 
 A checkout install gets route 3 for free. Under `pipx`, where each tool is its own venv
-and the base is data with no package to import, routes 1 and 2 are what make it
-reachable.
+and the base is data with no package to import, route 4 is what makes it reachable
+without configuring anything.
 
-**The cache is not populated for you yet.** `stablemate_core.base_cache` implements the
-whole fetch — sparse checkout of `base-library/` alone, `.git` dropped once the commit is
-recorded into a `.commit` sidecar, `STABLEMATE_FETCH_BASE=0` to forbid it on air-gapped
-hosts, `STABLEMATE_CACHE_DIR` to relocate it — and it is tested, but **no command calls
-it**. Route 4 today resolves only a cache someone filled by hand; in practice one of the
-first three is what a working setup uses.
+**`farrier install` populates and updates the cache.** It is the one command that does.
+On install the base is fetched if absent and brought up to `main` if present, so a `pipx`
+user gets a working base library by running the command they were going to run anyway:
 
-The design it is waiting on: fetch once, then freeze. Nothing refreshes in the
-background, and `rm -rf ~/.cache/stablemate` is the upgrade path. That is deliberate — a
-run is meant to survive a week unattended and to resume into a checkpointed state machine
-after a crash, and a cache tracking `main` live could resume a run into a different
-library than it started with. Nothing fetched would be executable either: markdown and
-YAML, no `.py` anywhere, so code still reaches you only as a wheel from an index under
-whatever supply-chain posture you already apply to `pip`/`uv`.
+```bash
+farrier --repo .          # fetches the base if absent, updates it if stale, then renders
+farrier --repo . --check  # fetches if absent, but never updates — see below
+```
+
+What lands is a sparse checkout of `base-library/` alone, with `.git` dropped once the
+commit is recorded into a `.commit` sidecar. `STABLEMATE_FETCH_BASE=0` forbids the network
+entirely (air-gapped hosts), and `STABLEMATE_CACHE_DIR` relocates the cache. An update
+first asks the remote for the head of `main` — a few hundred bytes — so an already-current
+cache costs one round-trip rather than a re-clone.
+
+**Everything else freezes, and that is deliberate.** No lookup, no resume and no
+background timer refreshes the cache; `farrier install` is the automated form of the
+`rm -rf ~/.cache/stablemate` that used to be the only upgrade path, not a new polling
+behaviour. A workhorse run is meant to survive a week unattended and to resume into a
+checkpointed state machine after a crash, and a cache tracking `main` live could resume a
+run into a different library than it started with. The corollary worth knowing: running
+`farrier install` while a long run is in flight on the same machine can move the library
+out from under its next resume.
+
+`--check` fetches but does not update, because it writes nothing and runs in CI — a
+library moving underneath the comparison would make a drift report depend on the hour the
+job ran rather than on the commit it ran against.
+
+Failure is soft, and in the direction of keeping what works: an unreachable remote, a
+refused fetch or a broken clone each leave the existing cache in place, so `farrier
+install` on a plane renders the library the machine already has. Nothing fetched is
+executable either: markdown and YAML, no `.py` anywhere, so code still reaches you only as
+a wheel from an index under whatever supply-chain posture you already apply to `pip`/`uv`.
+
+A base you named yourself is never fetched over. Routes 1–3 win outright — not even the
+remote probe fires — so a checkout you are editing cannot have a download appear
+underneath it.
 
 Either way the cache is a **mirror, not a workspace**: never edit it in place. Overlay
 authoring belongs in a `library_dir` (below).

@@ -40,6 +40,13 @@ already current.
   - `--library <dir>` — the library directory (the `agents/` tree). Overrides
     `$FARRIER_LIBRARY_DIR` and the home config's `library_dir` for this invocation.
 - does:
+  - run: check out the [base library](concepts/library-directory.md#fetching-and-updating-the-base)
+    before anything looks for it — `ensure_base_library_dir(refresh=not --check)` fetches it into
+    `~/.cache/stablemate` when absent and updates it to the head of `main` when present. Skipped
+    entirely when `$STABLEMATE_BASE_DIR`, `base_dir` or a `stablemate_dir` checkout already names
+    one. `--check` passes `refresh=False`: it fetches a missing base but never updates a present
+    one, because it writes nothing and runs in CI. A failed fetch is not an error here — it falls
+    through to the resolution below, which raises only if there is no overlay either
   - run: resolve the [library directory](concepts/library-directory.md) (`--library` >
     `$FARRIER_LIBRARY_DIR` > home config) and point the module's library-content globals at it
   - run: resolve `--repo` to an absolute path; resolve the config path to `--config` if given,
@@ -85,6 +92,8 @@ already current.
     rules and a root `Makefile` `include` line pointing at the generated launcher; print the
     count of installed files and return `0`
 - code: `farrier/farrier/cli.py::_run_install`
+- verify: `farrier/tests/test_base_fetch_on_install.py::test_install_refreshes_the_base`
+- verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
 ### config
 - usage: `farrier config <set-library|set-stablemate|set-base|show> [args]`

@@ -28,6 +28,7 @@ from farrier.frontmatter import (
     read_yaml,
 )
 from farrier.layers import (
+    ensure_base_library_dir,
     find_in_layers,
     is_library_dir,
     resolve_library_dir,
@@ -82,6 +83,17 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_install(args: argparse.Namespace) -> int:
+    # Check out the base library, and update it, before anything looks for it. This is the
+    # one command that does: install is an operator asking for a re-render at a moment
+    # they chose, which is the same authority `rm -rf ~/.cache/stablemate` always carried.
+    # It must come first because `resolve_library_dir` reads "no overlay and no base" as a
+    # setup error, and the base is exactly what this call is here to produce.
+    #
+    # `--check` fetches but does not refresh. It writes nothing and runs in CI, where a
+    # library that moved underneath the comparison would turn a drift report into a
+    # coin-flip — the answer would depend on the hour the job ran rather than on the
+    # commit it ran against.
+    ensure_base_library_dir(refresh=not args.check)
     set_layers(resolve_library_dir(args.library))
     repo = args.repo.resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"

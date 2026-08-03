@@ -132,7 +132,12 @@ def test_no_overlay_is_fine_when_base_is_installed():
 
 
 def test_unresolved_errors_with_hint():
-    """No overlay AND no base is the only genuinely unusable case."""
+    """No overlay AND no base is the only genuinely unusable case.
+
+    The hint names the causes that can still produce it now that install fetches the
+    base: by the time this raises, the fetch has already been tried and did not answer,
+    so pointing at a package to install would send someone after the wrong thing.
+    """
 
     def body(tmp: Path):
         clear_env()
@@ -140,7 +145,9 @@ def test_unresolved_errors_with_hint():
             try:
                 install.resolve_library_dir(None)
             except SystemExit as exc:
-                assert "pip install stablemate-library" in str(exc)
+                assert "could not be fetched" in str(exc)
+                assert "STABLEMATE_FETCH_BASE" in str(exc)
+                assert "config set-base" in str(exc)
                 assert "config set-library" in str(exc)
                 return
         raise AssertionError("expected SystemExit with no overlay and no base")
