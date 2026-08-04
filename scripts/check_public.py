@@ -50,9 +50,27 @@ BASE = REPO / "base-library"
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOKS_DIR = ".githooks"
 
-# Every text format the repo ships: prose (md), graphs/configs (yml/toml/json), and
-# scripts (py/sh). A leak hides just as well in a script comment as in a heading.
-TEXT_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".sh", ".json", ".toml", ".txt")
+# Git's own heuristic: a NUL byte in the first 8 kB means binary. This replaced a
+# suffix allowlist (.md/.yml/.py/.sh/.json/.toml/.txt) that had a hole exactly where a
+# leak had been living — `.html` was not on it, so two groom mockups carried a private
+# name through 95 commits without the sweep ever opening them. And neither were `.js`,
+# `.css`, `Makefile`, `Dockerfile` or the hooks themselves. An allowlist has to
+# anticipate every extension the repo will ever hold; this only has to tell text from
+# bytes, and it is wrong in the safe direction — a misread binary is noise in a report,
+# a skipped text file is a leak nobody sees.
+BINARY_SNIFF_BYTES = 8000
+
+
+def _text_of(path: Path) -> str | None:
+    """The file's text, or None if it reads as binary or cannot be opened."""
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(BINARY_SNIFF_BYTES)
+            if b"\0" in head:
+                return None
+            return (head + handle.read()).decode("utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def _private_names_module():
@@ -99,12 +117,11 @@ def check_no_private_names() -> list[str]:
         if pattern.search(rel):
             offenders.append(f"{rel}: (in the path)")
             continue
-        if path.suffix not in TEXT_SUFFIXES or not path.is_file():
+        text = _text_of(path) if path.is_file() else None
+        if text is None:
             continue
         scanned += 1
-        for number, line in enumerate(
-            path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
-        ):
+        for number, line in enumerate(text.splitlines(), start=1):
             if pattern.search(line):
                 offenders.append(f"{rel}:{number}: {line.strip()}")
     if not offenders:
