@@ -34,8 +34,16 @@ types='feat|fix|perf|refactor|docs|test|build|ci|chore|revert'
 # Scopes are derived, not hardcoded: every tracked top-level directory is a valid
 # scope, so adding a workspace member needs no edit here. The extras are the
 # cross-cutting areas that are real but own no directory.
-mapfile -t dirs < <(git ls-tree -d --name-only HEAD 2>/dev/null | grep -v '^\.')
-scopes=("${dirs[@]}" deps release ci lint hooks)
+#
+# Read in a loop rather than with `mapfile`, which is bash 4.0+: /bin/bash on macOS
+# is 3.2, where the builtin does not exist and this hook died on an unbound array
+# before it judged a single subject. `${dirs[@]+...}` for the same era — 3.2 counts
+# expanding an empty array as unbound under `set -u`, which is the first-commit case.
+dirs=()
+while IFS= read -r dir; do
+  [ -n "$dir" ] && dirs+=("$dir")
+done < <(git ls-tree -d --name-only HEAD 2>/dev/null | grep -v '^\.')
+scopes=(${dirs[@]+"${dirs[@]}"} deps release ci lint hooks)
 
 fail() {
   echo "commit-msg: $1" >&2

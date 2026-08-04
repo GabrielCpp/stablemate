@@ -14,16 +14,26 @@ configured and shadows everything:
    overlay. Break this and everything still works here; it fails only for a public user
    who has no overlay at all.
 
-The git pre-commit hook (.githooks/pre-commit) covers (1) for *staged* changes. This is
-the whole-tree sweep it cannot be: it catches anything committed before the hook existed,
-committed with --no-verify, or already in history.
+3. **The guards are actually wired.** ``core.hooksPath`` is unset in a fresh clone, so
+   the hooks are off until someone runs ``make hooks``, and nothing announces it.
+
+The git pre-commit hook (.githooks/pre-commit) runs check (1) from here, via
+``--names-only`` — the same sweep over the same files, so what blocks a commit and what
+fails ``make test`` cannot drift apart. That flag skips (2) and (3) because they need the
+workspace venv and a farrier import, which a hook has no business requiring.
+
+CI cannot stand in for any of this. The names are untracked by construction, so a runner
+has none configured and check (1) skips there — which makes this machine the only place
+the guard exists, and an uninstalled hook a real failure rather than a note.
 
 The names are deliberately absent from this file — a denylist publishes the words it
 bans as surely as a leak does. ``scripts/private_names.py`` reads them from an untracked
-source. With none configured (the public-contributor case), check (1) is skipped.
+source. With none configured (the public-contributor case), checks (1) and (3) are
+skipped.
 
 Run:
-    uv run python scripts/check_public.py
+    uv run python scripts/check_public.py                 # all three
+    python3 scripts/check_public.py --names-only          # what the hook runs
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BASE = REPO / "base-library"
 RESOLVER = REPO / "scripts" / "private_names.py"
+HOOKS_DIR = ".githooks"
 
 # Every text format the repo ships: prose (md), graphs/configs (yml/toml/json), and
 # scripts (py/sh). A leak hides just as well in a script comment as in a heading.
@@ -101,6 +112,37 @@ def check_no_private_names() -> list[str]:
     return offenders
 
 
+def check_hooks_installed() -> list[str]:
+    """The guard has to be plugged in, and git does not plug it in for you.
+
+    ``core.hooksPath`` is unset in a fresh clone — and stays unset through a re-clone, a
+    ``git init``, or a worktree someone made last week — so both hooks are silently off
+    until ``make hooks`` runs. Nothing surfaces that state: commits simply keep working.
+
+    This is the check that would have caught the real incident it was written for. A
+    private name reached a test fixture and survived several commits, not because the
+    hook missed it but because the hook was never running.
+    """
+    private_names = _private_names_module()
+    if not private_names.load():
+        # A public contributor has no list to enforce, so a hook that would be a no-op
+        # anyway is nothing to fail over.
+        return []
+    configured = subprocess.run(
+        ["git", "-C", str(REPO), "config", "--get", "core.hooksPath"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if configured != HOOKS_DIR:
+        return [
+            f"core.hooksPath is {configured or 'unset'}, not {HOOKS_DIR!r} — the "
+            "private-name and commit-message hooks are not running on this clone. "
+            "Fix: make hooks"
+        ]
+    print(f"ok: git hooks resolve to {HOOKS_DIR}/")
+    return []
+
+
 def _isolate_from_the_overlay(install, config, discovery, base_cache) -> list[str]:
     """Resolve as a public user would: base only, no overlay in env or home config."""
     os.environ.pop("FARRIER_LIBRARY_DIR", None)
@@ -154,9 +196,22 @@ def check_base_stands_alone() -> list[str]:
     return problems
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
+    # --names-only is the pre-commit hook's entry point: the leak sweep alone, which is
+    # pure stdlib and needs no venv. The other two import farrier and resolve a library,
+    # which would put `uv run` on the critical path of every commit.
+    unknown = [a for a in argv if a != "--names-only"]
+    if unknown:
+        print(f"usage: check_public.py [--names-only]  (got {unknown})", file=sys.stderr)
+        return 2
+    checks = (
+        (check_no_private_names,)
+        if "--names-only" in argv
+        else (check_no_private_names, check_hooks_installed, check_base_stands_alone)
+    )
+
     failures = 0
-    for check in (check_no_private_names, check_base_stands_alone):
+    for check in checks:
         problems = check()
         if problems:
             failures += 1
@@ -164,10 +219,18 @@ def main() -> int:
             for p in problems:
                 print(f"  {p}", file=sys.stderr)
     if failures:
+        if "--names-only" in argv:
+            print(
+                "\nstablemate is public: replace these with neutral placeholders\n"
+                "(acme, globex, api-service, web-app, mobile-app, example.com).\n"
+                "To commit anyway: git commit --no-verify",
+                file=sys.stderr,
+            )
         return 1
-    print("\nthe public/private split holds")
+    if "--names-only" not in argv:
+        print("\nthe public/private split holds")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

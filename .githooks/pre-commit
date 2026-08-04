@@ -1,36 +1,33 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Block private overlay project names from entering this public repo.
 #
 # The names themselves are NOT here — scripts/private_names.py reads them from
 # $STABLEMATE_PRIVATE_NAMES or $GIT_DIR/private-names, neither of which is
 # tracked. With no list configured this hook is a no-op.
 #
+# /bin/sh, and one `exec` into Python. The previous version was bash and used
+# `mapfile`, which arrived in bash 4.0 — so on macOS, where /bin/bash is still
+# 3.2, it died on an unbound array before it read a single name. A guard that
+# fails on the platform its maintainer commits from is not a guard.
+#
+# The scan is the whole tracked tree rather than the staged diff, and it lives in
+# scripts/check_public.py so that what blocks a commit and what fails `make test`
+# are the same sweep over the same files. Whole-tree matters because this hook is
+# the only enforcement point that exists: the names are untracked by construction,
+# so a CI runner has none and the check skips there. A name that landed while the
+# hook was uninstalled would otherwise stay in the tree forever — which is exactly
+# how the leak that prompted this rewrite survived.
+#
+# `git ls-files` reads the index, so a file `git add`ed for this very commit is
+# already in the scan set.
+#
 # Enable:  make hooks     (sets core.hooksPath to .githooks)
 # Bypass:  git commit --no-verify
-set -uo pipefail
+set -eu
 
-repo_root="$(git rev-parse --show-toplevel)"
-mapfile -t names < <(python3 "$repo_root/scripts/private_names.py")
-[ "${#names[@]}" -eq 0 ] && exit 0
+repo_root=$(git rev-parse --show-toplevel)
 
-# One alternation, matched case-insensitively, against staged paths and staged
-# additions. -U0 so context lines from untouched code cannot trip the hook.
-pattern="$(IFS='|'; echo "${names[*]}")"
-
-paths=$(git diff --cached --name-only --diff-filter=ACMR | grep -inE "$pattern" || true)
-adds=$(git diff --cached --diff-filter=ACMR -U0 \
-        | grep -E '^\+' | grep -v '^+++' | grep -inE "$pattern" || true)
-
-if [ -z "$paths" ] && [ -z "$adds" ]; then
-  exit 0
-fi
-
-echo "pre-commit: private overlay names found in staged changes." >&2
-echo >&2
-[ -n "$paths" ] && { echo "  in file paths:" >&2; echo "$paths" | sed 's/^/    /' >&2; }
-[ -n "$adds" ]  && { echo "  in added lines:" >&2; echo "$adds" | sed 's/^/    /' >&2; }
-echo >&2
-echo "stablemate is public: replace these with neutral placeholders" >&2
-echo "(acme, globex, api-service, web-app, mobile-app, example.com)." >&2
-echo "To commit anyway: git commit --no-verify" >&2
-exit 1
+# No `|| true` anywhere: a missing python3, an unreadable resolver or a crash must
+# block the commit. The failure mode this repo cannot afford is a guard that passes
+# because it never ran.
+exec python3 "$repo_root/scripts/check_public.py" --names-only
