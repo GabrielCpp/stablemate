@@ -78,7 +78,10 @@ judge: {}
 
 repo:
   docs_scaffold: shared-docs:docs
-  packs: product-planning
+  # Identical to every other task's, and derived in `suites/todo-app/benchmark.yaml` from
+  # the workflows' own reference call sites. This one loops the coder over five stories,
+  # which is where a repeatedly-unresolved reference compounds rather than showing once.
+  packs: product-planning,stablemate,infra
 
 surfaces:
   - service: api

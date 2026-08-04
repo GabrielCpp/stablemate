@@ -44,7 +44,9 @@ judge: {}
 
 repo:
   docs_scaffold: shared-docs:docs
-  packs: product-planning
+  # Identical to every other task's, and derived in `suites/todo-app/benchmark.yaml` from
+  # the workflows' own reference call sites.
+  packs: product-planning,stablemate,infra
 
 surfaces:
   - service: api
@@ -57,7 +59,10 @@ surfaces:
 
   - service: web
     service_root: web
-    packs: react-router
+    # `ui` pairs with `react-router` — the react-router `-design-system` and `-a11y`
+    # skills are written on top of the framework-neutral contracts it carries. This is
+    # the only hour-sized task with a view surface, so it is the only one that needs it.
+    packs: react-router,ui
     scaffolds: react-router-web:web
     # --yes to keep it non-interactive; the generator writes into the CWD it is run from,
     # which init-genesis-skeleton.py sets to service_root.

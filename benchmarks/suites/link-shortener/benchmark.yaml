@@ -48,7 +48,11 @@ judge: {}
 
 repo:
   docs_scaffold: shared-docs:docs
-  packs: product-planning
+  # The same repo-level packs every task installs, and for the same reasons —
+  # `suites/todo-app/benchmark.yaml` derives the list from the workflows' own
+  # `instruction_ref` / `skill_load_ref` / `find_by_tags` call sites. A smoke run on a
+  # thinner set would smoke-test a configuration nobody ships, so it stays identical.
+  packs: product-planning,stablemate,infra
 
 surfaces:
   - service: api

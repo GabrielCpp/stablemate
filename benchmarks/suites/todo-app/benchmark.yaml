@@ -61,17 +61,49 @@ repo:
   # Packs the WORKFLOWS need, as opposed to the ones a surface's stack needs. Installed
   # with every surface so they are present regardless of which one runs first.
   #
-  # Missing these is what made author escalate: its prompts resolve planning skills
-  # through `instruction_ref('write-epics-and-stories')` and `instruction_ref('story-docs')`,
-  # both supplied by product-planning. With the pack absent the refs resolved to nothing,
+  # The list is derived, not chosen by taste: for each `instruction_ref` /
+  # `skill_load_ref` / `find_by_tags(...)` call site in the author's and coder's prompts,
+  # which pack supplies something that answers it. A benchmark installing fewer packs
+  # than a real repo of the same shape does not measure an easier version of the
+  # workflows — it measures a configuration nobody ships, and scores the fallback prose.
+  #
+  # `product-planning` — author resolves planning skills through
+  # `instruction_ref('write-epics-and-stories')` and `instruction_ref('story-docs')`, both
+  # supplied here. Its absence is what made author escalate: the refs resolved to nothing,
   # the epic-split gate failed, and `resolve_epics` — the auto-resolver that stands in for
   # a human at an operator gate — had to read the source skills directly to recover. Under
   # `operator_mode: human` that run would have stopped and asked.
-  packs: product-planning
+  #
+  # `stablemate` — the coder's `document_story` and `code_review` nodes do not ask which
+  # skills the repo happens to have; they name two, with `skill_load_ref`:
+  # `ostler-documentation` and `code-review`, both in this pack. That is the difference
+  # that matters. A `find_by_tags` miss degrades to a fallback sentence the agent can act
+  # on; a `skill_load_ref` miss hands it a slash command or a path that does not exist.
+  # This is also the one pack the benchmark uses that lives in `base-library/` rather than
+  # the overlay, so a public clone with no overlay configured still resolves it.
+  #
+  # `infra` — the coder's QA and repair prompts ask `find_by_tags('runbook')` in four
+  # places (triage-qa, apply-review, apply-qa-fixes, qa-fix-item). Without this pack the
+  # answer is empty *library-wide*, so all four render "(none installed)" on every run. It
+  # is repo-level rather than on the pulumi surface for that reason — the question is
+  # asked while working on any surface — and it also carries the CLI/Makefile
+  # command-timeout rules, which is the difference between a hung command and a scored
+  # run.
+  packs: product-planning,stablemate,infra
 
 # service      logical name, and the workspace repo key
 # service_root repo-relative directory the surface lives in
-# packs        farrier packs supplying that stack's skills (resolved from the overlay)
+# packs        farrier packs supplying that stack's skills (resolved from the overlay).
+#              `ui` rides with the two view surfaces because `react-router` and `flutter`
+#              both say to pair with it: their `-design-system` and `-a11y` skills are
+#              written on top of the framework-neutral accessibility and design-system
+#              contracts it carries, so without it those skills cite a contract the repo
+#              does not have. It is per-surface, not repo-level, because the api and infra
+#              surfaces have no view to hold to it.
+# scaffolds    "<scaffold-id>:<dir>" pairs — folder convention + .gitignore hygiene
+# init_cmd     the stack's own init tool; scaffolds do NOT produce a marker file
+# marker       the file whose existence proves the skeleton is real
+# markers      what agents.yml records as this repo's service_markers
 surfaces:
   - service: api
     service_root: api
@@ -83,7 +115,7 @@ surfaces:
 
   - service: web
     service_root: web
-    packs: react-router
+    packs: react-router,ui
     scaffolds: react-router-web:web
     # --yes to keep it non-interactive; the generator writes into the CWD it is run from,
     # which init-genesis-skeleton.py sets to service_root.
@@ -93,7 +125,7 @@ surfaces:
 
   - service: app
     service_root: app
-    packs: flutter
+    packs: flutter,ui
     scaffolds: flutter-app:app
     # `flutter create .` refuses a name with dashes, so the project name is set explicitly.
     init_cmd: flutter create . --project-name todo_app --platforms=android,ios

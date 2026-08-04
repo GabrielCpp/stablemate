@@ -92,6 +92,45 @@ the run to collect.
 A budget is a *diagnostic*, not a target. A run that hits its ceiling has told you
 something — read `watch` before you raise it.
 
+## The packs are derived, not chosen
+
+Every task installs the same repo-level packs — `product-planning`, `stablemate`,
+`infra` — plus its surfaces' stack packs, and `ui` alongside `react-router`/`flutter`.
+That list is not taste. It is what you get by walking the author's and coder's prompts
+for every `instruction_ref` / `skill_load_ref` / `find_by_tags(...)` call site and asking
+which pack supplies an answer.
+
+The reason to derive it rather than pick it: a benchmark installing fewer packs than a
+real repo of the same shape is not an easier version of the benchmark, it is a
+*different* one. The workflows then run against fallback prose — "(none installed —
+follow `AGENTS.md`)" — and the score measures how well an agent copes with a repo nobody
+ships, while the run you actually care about had the skills all along.
+
+Two failure modes, and they are not the same size:
+
+- **`find_by_tags` renders a fallback.** Degraded, not broken — the prompt says what to
+  do instead. Before this list was derived, `find_by_tags('runbook')` matched *nothing in
+  the whole library*, so all four of its call sites (`triage-qa`, `apply-review`,
+  `apply-qa-fixes`, `qa-fix-item`) took the fallback on every run. `infra` is the only
+  pack that answers it.
+- **`skill_load_ref` names a skill that is not there.** Not degraded — the coder's
+  `document_story` and `code_review` prompts do not ask what the repo has, they say "load
+  this and follow it" and name `ostler-documentation` and `code-review`. Absent, the
+  agent is handed a slash command or a path that does not resolve. Both skills are in the
+  `stablemate` pack, which is also the only pack the benchmark uses that ships in
+  `base-library/` rather than the private overlay — so a public clone resolves it.
+
+`architecture` and `testing` are not listed anywhere and do not need to be: `go`,
+`react-router`, `flutter` and `pulumi` all `includes:` them. The prompts-only packs
+(`qa`, `shared-lifecycle`, `shared-docs`) are deliberately left out — a Python workflow
+renders its own package-local prompts and never reads the library's, so installing them
+would add commands nothing invokes. `shared-docs`'s *scaffold* is a separate thing and is
+already named explicitly by `docs_scaffold:`.
+
+Changing this list changes `spec_sha`, which is what marks a frozen gold cell stale. That
+is the intended behavior — a score from before the packs resolved is not comparable to
+one from after.
+
 ## Ports belong to the spec
 
 **The benchmark owns `18080-18099` and nothing else.** Every surface that listens names its
