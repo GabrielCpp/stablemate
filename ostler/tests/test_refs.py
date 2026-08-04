@@ -114,14 +114,3 @@ def test_normalize_ref_strips_a_single_targets_decoration():
     assert refs.normalize_ref(" `api/a.py`, ") == "api/a.py"
 
 
-def test_a_removed_marked_ref_survives_the_grammar_unchanged():
-    """The `~` sigil is not decoration — it must not be stripped by parsing or normalizing."""
-    assert refs.code_refs("`~api/a.py::Handler`") == ["~api/a.py::Handler"]
-    assert refs.normalize_ref(" `~api/a.py::Handler`, ") == "~api/a.py::Handler"
-
-
-def test_is_removed_ref_and_strip_removed():
-    assert refs.is_removed_ref("~api/a.py::Handler")
-    assert not refs.is_removed_ref("api/a.py::Handler")
-    assert refs.strip_removed("~api/a.py::Handler") == "api/a.py::Handler"
-    assert refs.strip_removed("api/a.py::Handler") == "api/a.py::Handler"

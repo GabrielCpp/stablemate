@@ -300,12 +300,10 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
 # is a join key nobody checked. `verify:` stays deferred — its value is a test id as often as a
 # `path::symbol`, so it has no single shape to hold it to.
 #
-# A *legitimate* deletion is not staleness, though, and the QA grounding gate
-# (`workflows`' `verify_story_documentation`) demands exactly the citation this check would
-# otherwise reject: a deleted production symbol still needs a `path::symbol` naming it, or
-# the deletion itself goes undocumented. `refs.REMOVED_MARK` (a leading `~` inside the
-# backticks) is the escape hatch — it tells this check "the target is gone on purpose", and
-# it skips validation instead of flagging a `dangling-code-ref` no rework pass could ever fix.
+# A `code:` ref names something that exists, full stop — there is no escape hatch for a target
+# that has been deleted. The QA grounding gate does not require a deletion to be cited at all
+# (`workflows`' `verify_story_documentation` treats a `changedCode` entry with `status: deleted`
+# as satisfied on its own); documenting the absence of something is not documentation.
 _UI_HEADING_BY_LOWER = {h.lower(): h for h in registry.UI_HEADING_TO_TYPE}
 # A symbol's parts, as a book writes them: `(*FirebaseClaimsWriter).SetRoleClaims` → the receiver
 # and the method; `Alpha.handle` → the class and the method; `Diff` → itself.
@@ -388,11 +386,6 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
         for ref in refs_mod.code_refs(node.meta.get("code")):
-            if refs_mod.is_removed_ref(ref):
-                # `~`-marked: this ref documents a symbol or file the story intentionally
-                # deleted, not a live citation. There is nothing left on the worktree to
-                # check it against, and that absence is the point, not staleness.
-                continue
             target_path, separator, symbol = ref.partition("::")
             target = graph.root / target_path
             if not target.is_file():

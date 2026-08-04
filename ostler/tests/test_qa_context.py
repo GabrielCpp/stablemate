@@ -61,12 +61,10 @@ title: Item
     assert "tests/test_service.py::test_read" in refs
 
 
-def test_a_removed_marked_bullet_grounds_a_deleted_symbol(tmp_path: Path):
-    """A deleted symbol still needs an exact grounding ref (see `docs.py`'s gate) — but a live
-    `code:` citation to it is itself what `ostler doctor` correctly rejects as dangling. The
-    `~` mark is how the book grounds the deletion without tripping that other check: this
-    packet must map it as `changed-code`, the same as a live citation, so the gate is
-    satisfiable at all.
+def test_a_deletion_needs_no_code_bullet_to_be_mapped(tmp_path: Path):
+    """Documenting the absence of something is not documentation — a deletion is satisfied on
+    its own. No node cites the deleted symbol at all, and the change must still not surface
+    as `unmapped-change`.
     """
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -78,16 +76,18 @@ title: Item
 ---
 # Item
 
-- code: `~app/service.py::create_item`
+- code: app/other.py::keep_item
 """,
         encoding="utf-8",
     )
     source = tmp_path / "app/service.py"
     source.write_text("def create_item():\n    return 'old'\n", encoding="utf-8")
+    other = tmp_path / "app/other.py"
+    other.write_text("def keep_item():\n    return 'kept'\n", encoding="utf-8")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "qa@example.com")
     _git(tmp_path, "config", "user.name", "QA")
-    _git(tmp_path, "add", "app")
+    _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "base")
     base = _git(tmp_path, "rev-parse", "HEAD")
 
@@ -97,14 +97,10 @@ title: Item
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
     assert validate_context(packet) == []
-    change = packet["changedCode"][0]
-    assert change["status"] == "deleted"
+    change = next(c for c in packet["changedCode"] if c["status"] == "deleted")
     assert change["baseSymbols"] == ["create_item"]
-    reasons = {
-        item["ref"] for node in packet["directNodes"] for item in node["reasons"]
-        if item["kind"] == "changed-code"
-    }
-    assert "~app/service.py::create_item" in reasons
+    codes = {finding["code"] for finding in packet.get("healthFindings", [])}
+    assert "unmapped-change" not in codes
 
 
 def test_one_code_bullet_citing_two_files_owns_both(tmp_path: Path):
