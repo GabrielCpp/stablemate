@@ -55,6 +55,16 @@ the linter rules; obey it. The reference for the type table and bullets is the
    is `path.go::(*Type).Method`, not `path.go::Type.Method`. Grounding a file the notes
    never mentioned, or half its symbols, spends a rework pass and changes nothing.
 
+   **A symbol or file this story deleted still needs grounding — write the citation as
+   removed, not live.** A gate note naming a symbol whose file no longer exists (or whose
+   file survives but no longer declares it) is exactly this case; a plain `code:` bullet
+   for it will only trade one gate failure for the other, since `ostler doctor` correctly
+   rejects a `code:` target that isn't there. Prefix the path with `~` inside the
+   backticks instead — `` `~old/path.ts::Symbol` `` — which tells doctor the target is
+   gone on purpose and grounds the same obligation without demanding it still exist.
+
+
+
    So a config-only story is normal work, not a no-op: find the node that already describes
    that behavior — the gate notes above name the unowned path — and add the `code:` bullet
    pointing at it. That is a documentation change, so it returns `documented` and lists that

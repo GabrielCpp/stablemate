@@ -421,6 +421,69 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     assert "2 changed production symbol(s)" in gate.notes, gate.notes
 
 
+def test_a_removed_marked_ref_grounds_a_deleted_symbol(
+    docs: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """A deletion is the one grounding obligation a live `code:` bullet cannot satisfy — its
+    target is gone, so `ostler doctor` would rightly reject it as a dangling reference. The
+    `~` mark is the escape hatch: written into the real node's bullet, it must ground the
+    obligation *and* still pass doctor, or the gate would remain unwinnable for every story
+    that deletes something.
+    """
+    deleted = "api/legacy/handler.go"
+    write(
+        docs / "docs/features/widget.md",
+        """---
+type: concept
+slug: widget
+title: Widget
+---
+# Widget
+
+- code: `~api/legacy/handler.go::Handle`
+
+The old handler was retired.
+""",
+    )
+    write_json(
+        docs / SPEC_REL / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": deleted,
+                    "basePath": deleted,
+                    "headPath": "",
+                    "baseSymbols": ["Handle"],
+                    "headSymbols": [],
+                },
+            ],
+            "directNodes": [
+                {
+                    "node": "docs/features/widget.md",
+                    "reasons": [
+                        {"kind": "changed-code", "ref": f"~{deleted}::Handle"},
+                    ],
+                }
+            ],
+        },
+    )
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=("docs/features/widget.md",),
+    )
+
+    assert gate.status == "passed", gate
+
+
 def test_the_snapshot_records_what_was_already_dirty_with_its_bytes(
     docs: Path,
     logger: logging.Logger,

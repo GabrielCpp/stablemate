@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 from git.exc import GitError
 from ostler import Ostler, path as okf_path
+from ostler import refs as refs_mod
 from workhorse.scriptutil import find_docs_root, load_json
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import (
@@ -64,7 +65,10 @@ def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
                 continue
             ref = str(reason.get("ref", ""))
             if reason.get("kind") == "changed-code":
-                exact.add(ref.strip().strip("`, "))
+                # A `~`-marked ref grounds the same plain `path::symbol` obligation a
+                # deletion still owes — the mark is only doctor's cue to not require the
+                # file still exist, not a different identity to compare against.
+                exact.add(refs_mod.strip_removed(ref.strip().strip("`, ")))
             elif reason.get("kind") == "file-owner":
                 files.add(ref)
     return exact, files
