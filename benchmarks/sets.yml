@@ -1,0 +1,101 @@
+# The model sets under test, and the one judge that grades all of them.
+#
+# A *set* is not a model. One `coder` run makes 41 agent turns — 34 at `power="high"`,
+# 12 at `medium`, 2 at `low` — and a set may point each tier at a different model on a
+# different backend. So results are keyed by the set's `label`, never by a model name,
+# and the full mapping is recorded in every scorecard and manifest. "Which model was at
+# `high`?" is then a question you ask of the manifests after the fact, rather than one
+# the directory layout has to have anticipated.
+#
+#   matrix.py sets                     what is defined here
+#   matrix.py gold --task <t>          produce/refresh the frozen reference
+#   matrix.py run                      every set × every task, sequentially
+#   matrix.py report --task <t>        per-bullet delta against gold
+
+# ── The judge ─────────────────────────────────────────────────────────────────────────
+# Applied to EVERY set's scoring, including gold, and deliberately independent of the
+# `cli` each set runs its workflows on. Levels 2 and 3 are behavioral claims made by an
+# agent reading the repo, so the judge is a measuring instrument; letting it vary with
+# the thing being measured makes every delta uninterpretable.
+#
+# Changing anything here invalidates comparisons across the change. It is recorded in
+# each manifest so a score that moved for this reason can be told apart from one that
+# moved because a model did.
+judge:
+  cli: claude
+  model: opus
+  effort: high
+
+# Which set is the reference every other set is scored against. It is an ordinary set —
+# nothing about it is special except that `matrix.py report` subtracts it.
+gold: gold
+
+# ── The sets ──────────────────────────────────────────────────────────────────────────
+# Each set spells out its full mapping rather than inheriting one. That is more typing,
+# and it is what makes a set readable in isolation: an ablation that differs from its
+# neighbour in one tier says so on its own face, and cannot silently drift when the
+# neighbour is edited.
+#
+# `cli` picks the backend ($AGENT_CLI for that set's runs). `power.<tier>` is overlaid
+# onto the spec's own `power` block, so a task spec that pins a tier for budget reasons
+# still loses to the set — the set is the experiment.
+sets:
+  # The reference. Claude Code at the tier real work runs at.
+  - label: gold
+    cli: claude
+    notes: the reference every other set is measured against
+    power:
+      high: {claude: {model: opus, effort: high}}
+      medium: {claude: {model: sonnet, effort: high}}
+      low: {claude: {model: sonnet, effort: low}}
+
+  # Local, mixed by tier: the dense 27B where reasoning is load-bearing, the 3B-active
+  # MoE everywhere else. The shape the hardware note recommends.
+  - label: local-mixed
+    cli: opencode
+    notes: dense 27B at high, 3B-active MoE below it
+    power:
+      high: {opencode: {model: qwen/qwen3.6-27b, effort: high}}
+      medium: {opencode: {model: qwen/qwen3.6-35b-a3b}}
+      low: {opencode: {model: qwen/qwen3-coder-30b-a3b-instruct}}
+
+  # The ablation that pays for the one above: same set, cheap model promoted to `high`.
+  # 34 of coder's 41 turns move, so if the score holds here the dense 27B is not earning
+  # its VRAM.
+  - label: local-cheap-high
+    cli: opencode
+    notes: ablation — does the high tier actually need the dense model?
+    power:
+      high: {opencode: {model: qwen/qwen3.6-35b-a3b}}
+      medium: {opencode: {model: qwen/qwen3.6-35b-a3b}}
+      low: {opencode: {model: qwen/qwen3-coder-30b-a3b-instruct}}
+
+  # Hosted and cheap: 1M context, tools and structured outputs, roughly two orders of
+  # magnitude under gold per token.
+  - label: hosted-cheap
+    cli: aider
+    notes: DeepSeek V4 Flash throughout — the cost floor with a real context window
+    power:
+      high: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+      medium: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+      low: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+
+  # Hosted, strong at the top only. Isolates the same question as `local-cheap-high`
+  # from the other side: buy quality at `high` and nowhere else.
+  - label: hosted-split
+    cli: aider
+    notes: strong hosted model at high, cost floor below it
+    power:
+      high: {aider: {model: openrouter/qwen/qwen3.5-397b-a17b}}
+      medium: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+      low: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+
+# ── The tasks ─────────────────────────────────────────────────────────────────────────
+# Spec paths relative to this file. The three under `tasks/` are sized so one set's
+# genesis→author→coder chain lands inside an hour; `todo-app` is hours and is the only
+# one whose score means "how good are these workflows". Running the full matrix against
+# todo-app is a days-long commitment — start with the task set.
+tasks:
+  - tasks/link-shortener/bench.yml
+  - tasks/bookmarks/bench.yml
+  - tasks/expense-split/bench.yml
