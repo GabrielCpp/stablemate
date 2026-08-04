@@ -270,6 +270,32 @@ def test_report_is_stable_across_runs(tmp_path: Path) -> None:
     assert missing_references(root, context) == first
 
 
+def test_skill_load_ref_is_checked_like_any_other_required_reference(tmp_path: Path) -> None:
+    """It is the *most* required of them — its call sites read "load this and follow it".
+
+    Leaving it out of the checked set is what let the coder's document/review prompts
+    name skills no benchmark repo installed, silently, while every other unresolved
+    reference in the same file was reported.
+    """
+    root = _workflow(tmp_path, doc="{{ skill_load_ref('ostler-documentation') }}")
+    found = missing_references(root, {"_instructions": {"other": "o.md"}})
+    assert [(m.kind, m.name) for m in found] == [("skill", "ostler-documentation")]
+
+
+def test_skill_load_refs_fallback_path_is_not_read_as_a_second_reference(
+    tmp_path: Path,
+) -> None:
+    """Every call site passes `(name, skill_dir() + '/…/SKILL.md')`. The second argument
+    describes where an *uninstalled* skill would live, so treating it as a name to
+    resolve would report a miss for every call, resolved or not."""
+    root = _workflow(
+        tmp_path,
+        doc="{{ skill_load_ref('code-review', skill_dir() + '/code-review/SKILL.md') }}",
+    )
+    context = {"_instructions": {"code-review": ".claude/skills/demo-code-review/SKILL.md"}}
+    assert missing_references(root, context) == []
+
+
 def test_format_missing_names_the_cost_and_the_fix() -> None:
     report = format_missing([MissingReference("skill", "story-docs", "prompts/plan.md")])
     assert "1 reference" in report

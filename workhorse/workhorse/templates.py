@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from collections.abc import Iterable, Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from jinja2 import (
@@ -204,18 +204,36 @@ def _farrier_globals(
         return os.environ.get("AGENT_CLI", "claude").strip().lower()
 
     def skill_load_ref(skill_name: str, skill_path: str = "") -> str:
-        """Return the harness-native syntax for loading a skill.
+        """Return the harness-native instruction for loading a skill.
 
-        For Claude Code, emits a slash-command invocation (``/skill-name``).
-        For every other harness, emits a Read-the-file instruction using the
-        resolved path — first checking the manifest ``instructions`` dict
-        (which holds the correct prefixed path from farrier), then falling back
-        to ``skill_path`` or ``{skill_dir}/{skill_name}/SKILL.md``.
+        This is the imperative sibling of ``instruction_ref``: the call sites say
+        "load this and follow it" rather than citing a path, so an unresolved name is
+        a defect and is reported as one — same ``unresolved`` channel, same reason.
+
+        **Both harness spellings come from the one resolved path.** Farrier installs a
+        skill under the consuming repo's prefix, so ``ostler-documentation`` lands as
+        ``<repo>-ostler-documentation`` — directory and registered command alike. The
+        Claude branch used to emit the caller's bare argument, which therefore named a
+        slash command no repo has: the single failure this helper exists to prevent,
+        produced on every Claude run. Deriving the command from the installed
+        directory's name keeps the two branches saying the same thing about the same
+        file.
+
+        Resolution is ``resolve_instruction``, not an exact ``instructions`` lookup,
+        so a pack that namespaces the skill resolves here exactly as it does for every
+        other helper. The fallbacks — the caller's ``skill_path``, then
+        ``{skill_dir}/{skill_name}/SKILL.md`` — are unchanged and still describe an
+        uninstalled skill, which is the honest thing to say when nothing resolved.
         """
-        cli = agent_cli()
-        if cli == "claude":
-            return f"/{skill_name}"
-        path = instructions.get(skill_name) or skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
+        resolved = resolve_instruction(instructions, skill_name)
+        if resolved is None:
+            unresolved("skill", skill_name)
+        path = resolved or skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
+        if agent_cli() == "claude":
+            # `.claude/skills/<installed-name>/SKILL.md` → `/<installed-name>`. A path
+            # that is not skill-shaped (no parent directory) leaves nothing to derive
+            # from, so the caller's name stands.
+            return f"/{PurePosixPath(path).parent.name or skill_name}"
         return f"Read `{path}` and follow its instructions"
 
     return {

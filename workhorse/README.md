@@ -212,6 +212,16 @@ than leave a dangling "e.g.". Its arguments are never preflight findings, and ne
 references inside an `isUsingInstruction` branch (its `{% else %}` and `{% elif %}` are
 judged on their own, since they render precisely when the guard did not hold).
 
+`skill_load_ref("name", fallback_path)` is the imperative one: where `instruction_ref`
+yields a path for a prompt to cite, this yields the instruction that *loads* the skill in
+whatever harness is running — a `/slash-command` on Claude Code, `Read \`<path>\` and
+follow its instructions` elsewhere. Both spellings are derived from the one resolved
+path, because farrier installs a skill under the consuming repo's prefix
+(`ostler-documentation` → `<repo>-ostler-documentation`) and the registered command is
+that installed name, not the one the prompt asked for. Its first argument **is** a
+required reference and is preflighted like any other; the second is only where an
+uninstalled skill would have lived, and is never checked.
+
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
 > and persistent volumes. It is *not* part of the PyPI package — see

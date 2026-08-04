@@ -42,7 +42,17 @@ from jinja2 import Environment, TemplateSyntaxError, nodes
 from workhorse.manifest import ManifestContext
 
 # The helper names exposed by workhorse.templates, grouped by what they look up.
-SKILL_HELPERS = frozenset({"instruction_ref", "instruction_file", "skill_file"})
+#
+# `skill_load_ref` belongs here even though it renders an instruction rather than a
+# path: it is the *most* required of the singular helpers, since its call sites read
+# "Load the skill and follow it" and name exactly one. Leaving it out is what let the
+# coder's `document_story` and `code_review` prompts point at `ostler-documentation`
+# and `code-review` on repos installing neither — a preflight that reports every other
+# unresolved reference and stays silent about the two that are load-bearing is worse
+# than one that reports nothing, because its silence reads as an answer.
+SKILL_HELPERS = frozenset(
+    {"instruction_ref", "instruction_file", "skill_file", "skill_load_ref"}
+)
 PROMPT_HELPERS = frozenset({"prompt_ref", "prompt_file"})
 
 # …and their plural counterparts, which ask "which of these does this repo have?".
@@ -147,7 +157,9 @@ def _collect(node: nodes.Node, guarded: bool, found: set[tuple[str, str]]) -> No
         name = node.node.name
         if name in SKILL_HELPERS or name in PROMPT_HELPERS:
             kind = "skill" if name in SKILL_HELPERS else "prompt"
-            # Only the first argument names the reference; the rest are formatting.
+            # Only the first argument names the reference. The rest are formatting, or
+            # — for `skill_load_ref(name, path)` — a fallback path, which is by
+            # definition not something the manifest is expected to resolve.
             first = node.args[0] if node.args else None
             if (
                 not guarded

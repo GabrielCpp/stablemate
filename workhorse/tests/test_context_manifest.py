@@ -309,6 +309,49 @@ def test_exact_match_still_wins_over_a_suffix_match():
     assert out == ".claude/skills/demo-story-docs/SKILL.md"
 
 
+# --- skill_load_ref: the imperative sibling of instruction_ref --------------------
+
+
+def test_skill_load_ref_names_the_installed_command_not_the_asked_for_one(monkeypatch):
+    """farrier installs `go` as `demo-go`, so `/go` is a slash command no repo has.
+
+    The Claude branch used to emit the caller's bare argument, which meant the one
+    helper whose whole job is "load this skill" named a nonexistent one on every
+    Claude run — the default backend.
+    """
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    assert render_string("{{ skill_load_ref('go') }}", _ctx()) == "/demo-go"
+
+
+def test_skill_load_ref_reads_the_resolved_path_on_a_read_the_file_harness(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI", "aider")
+    out = render_string("{{ skill_load_ref('go') }}", _ctx())
+    assert out.startswith("Read `") and out.endswith("and follow its instructions")
+    assert "demo-go/SKILL.md" in out
+
+
+def test_skill_load_ref_resolves_through_a_pack_namespace(monkeypatch):
+    """Same resolver as every other helper: an exact-key lookup missed a namespaced
+    skill here while `instruction_ref` found it, so the two disagreed about one file."""
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    assert render_string("{{ skill_load_ref('story-docs') }}", _ns_ctx()) == (
+        "/demo-process-story-docs"
+    )
+
+
+def test_skill_load_ref_unresolved_still_describes_where_the_skill_would_live(monkeypatch):
+    """Nothing resolves, so the caller's fallback path stands and the command is the
+    bare name — the honest answer for a skill this repo has not installed, and
+    unchanged from before the resolver was wired in."""
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    ctx = _ctx()
+    assert render_string("{{ skill_load_ref('nope', 'x/nope/SKILL.md') }}", ctx) == "/nope"
+    monkeypatch.setenv("AGENT_CLI", "aider")
+    assert render_string("{{ skill_load_ref('nope', 'x/nope/SKILL.md') }}", ctx) == (
+        "Read `x/nope/SKILL.md` and follow its instructions"
+    )
+
+
 if __name__ == "__main__":
     import subprocess
     import sys
