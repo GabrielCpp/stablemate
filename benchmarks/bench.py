@@ -183,10 +183,17 @@ class Spec:
     #: because the only thing worth recording is the reason. Empty means the task claims
     #: the hour and is held to it.
     over_hour: str = ""
+    #: The model set this run belongs to, and where its evidence goes. Both are empty on a
+    #: bare `bench.py` invocation, which keeps `.runs/` beside the spec exactly as before.
+    #: `matrix.py` fills them, because a set is the thing that varies while the spec stays
+    #: fixed: N sets driving ONE spec would otherwise overwrite each other's artifacts,
+    #: scorecard and `config.toml`, and the last one to finish would look like all of them.
+    label: str = ""
+    runs_dir: Path | None = None
 
     @property
     def logs(self) -> Path:
-        return self.path.parent / ".runs"
+        return self.runs_dir or self.path.parent / ".runs"
 
     @property
     def artifacts(self) -> Path:
@@ -226,6 +233,32 @@ class Spec:
         })
 
 
+def env_json(name: str) -> dict:
+    """A dict handed in through the environment, or ``{}`` — with a parse error named.
+
+    `matrix.py` drives `bench.py` as a subprocess rather than importing it, so that every
+    set's run is a command a person can retype and get the same result; the per-set
+    overrides therefore travel as environment, the same way ``TARGET`` and ``AGENT_CLI``
+    already do. (The no-environment rule in the root CLAUDE.md is about
+    ``workhorse_workflows``, whose reads land in no checkpoint. This is the process
+    boundary, which is exactly where the environment belongs.)
+
+    A malformed value is fatal rather than silently empty. A set that ran on the
+    operator's ambient config instead of its own still produces a scorecard, and that
+    scorecard is indistinguishable from a real one while measuring something else.
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        die(f"${name} is not valid JSON: {exc}")
+    if not isinstance(parsed, dict):
+        die(f"${name} must be a JSON object, got {type(parsed).__name__}")
+    return parsed
+
+
 def load_spec(path: Path) -> Spec:
     if not path.is_file():
         die(f"no spec at {path}")
@@ -239,6 +272,14 @@ def load_spec(path: Path) -> Spec:
             if not isinstance(c.get(key), str):
                 die(f"{path}: checks[{i}].{key} must be a string, got {c.get(key)!r} "
                     f"(quote it — YAML reads bare true/no/on as booleans)")
+    # The per-set layer. A spec says what the benchmark IS — backlog, surfaces, gates —
+    # and is the thing held constant; a set says which models were pointed at it. One
+    # spec is run by many sets, so the models cannot live in the spec file, and the two
+    # keys a set moves are the only two it is allowed to move.
+    power = {level: dict(backends) for level, backends in (raw.get("power") or {}).items()}
+    for level, backends in env_json("BENCH_POWER").items():
+        power[level] = {**power.get(level, {}), **backends}
+    runs = os.environ.get("BENCH_RUNS")
     return Spec(
         path=path.resolve(),
         target=target.expanduser(),
@@ -246,10 +287,12 @@ def load_spec(path: Path) -> Spec:
         surfaces=raw.get("surfaces") or die("spec has no `surfaces`"),
         repo=raw.get("repo") or {},
         checks=raw.get("checks") or [],
-        judge=raw.get("judge") or {},
+        judge={**(raw.get("judge") or {}), **env_json("BENCH_JUDGE")},
         budget=raw.get("budget") or {},
-        power=raw.get("power") or {},
+        power=power,
         over_hour=raw.get("over_hour") or "",
+        label=os.environ.get("BENCH_SET", ""),
+        runs_dir=Path(runs).expanduser().resolve() if runs else None,
     )
 
 
@@ -1154,8 +1197,17 @@ def judge_backlog(spec: Spec, bullets: list[dict], jobs: int) -> list[dict]:
     if not rubric_path.is_file():
         die(f"no rubric at {rubric_path}")
     rubric = rubric_path.read_text(encoding="utf-8")
-    judge = Judge(get_backend(), AgentResilience.from_env(), SYSTEM_CLOCK)
-    print(f"  judging {len(bullets)} bullet(s) with {judge.backend.name}, "
+    # `judge.cli` outranks $AGENT_CLI, and that precedence is the whole point rather than
+    # a convenience. Comparing model sets means each set runs the workflows on its OWN
+    # backend — `opencode` for a local model, `claude` for the reference — and
+    # `get_backend()` falls back to $AGENT_CLI, so an unpinned judge would switch backends
+    # in step with the thing it is grading. Every set would then be scored by a different
+    # grader, and a delta between two sets would carry no information about either: the
+    # benchmark would be measuring its own instrument. Pinning costs one argument.
+    judge = Judge(get_backend(spec.judge.get("cli")), AgentResilience.from_env(), SYSTEM_CLOCK)
+    pinned = " (pinned by spec/set)" if spec.judge.get("cli") else ""
+    print(f"  judging {len(bullets)} bullet(s) with {judge.backend.name}"
+          f"{'/' + spec.judge['model'] if spec.judge.get('model') else ''}{pinned}, "
           f"{jobs} at a time…", flush=True)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         return list(pool.map(lambda b: judge_one(spec, b, rubric, judge), bullets))
@@ -1306,6 +1358,16 @@ def write_scorecard(spec: Spec, bullets: list[dict], checks: list[dict], pct: fl
     out.write_text(json.dumps({
         "spec": str(spec.path),
         "target": str(spec.target),
+        # Which set produced this, recorded IN the result rather than only in the path
+        # that holds it. A scorecard gets copied, attached to an issue and read months
+        # later; one that cannot say which model was at `high` — or which judge graded
+        # it — is a number with no claim attached.
+        "set": {
+            "label": spec.label,
+            "cli": os.environ.get("AGENT_CLI", "claude"),
+            "power": spec.power,
+            "judge": spec.judge,
+        },
         "satisfaction_pct": round(pct, 1),
         "max_level": MAX_LEVEL,
         "levels": {n: name for n, (name, _) in LEVELS.items()},

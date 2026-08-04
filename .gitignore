@@ -237,3 +237,11 @@ __marimo__/
 /.agents/local.compose.yaml
 /.agents/agents-context.json
 /.agents/agents-context.*.json
+
+# Benchmark matrix output: one built repo per (model set × task), its git bundle, the
+# run artifacts and the scorecard. Untracked for three separate reasons, any one of
+# which is sufficient — it is large (a full app per set), it is derived (re-runnable
+# from sets.yml), and each `data/<set>/<task>/repo` is its OWN git repo, which is the
+# whole point: nesting one working tree inside another is only safe while the outer one
+# cannot see it. `matrix.py` refuses to write here if this entry ever goes missing.
+/data/
