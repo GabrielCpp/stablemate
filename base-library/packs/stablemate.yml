@@ -1,4 +1,4 @@
-description: Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard, the parse-don't-match standard for reading structured formats, and the commit-as-you-go cadence every change lands under. (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
+description: Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, and the commit-as-you-go cadence every change lands under. (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
@@ -18,4 +18,5 @@ skills:
   - stablemate/okf-modeling
   - stablemate/repo-docs
   - stablemate/structured-parsing
+  - stablemate/portability
   - stablemate/commit-cadence

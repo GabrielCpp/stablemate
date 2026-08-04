@@ -900,6 +900,14 @@ def test_stopping_a_daemon_that_already_exited_is_not_an_error():
     guarded only `ProcessLookupError`, so every `ostler qa run` on macOS ended by
     raising `PermissionError` out of `stop_all_daemons` — the run failed on cleanup
     after its scenarios had already passed.
+
+    The **outcome** of that difference is not portable either, and asserting one
+    platform's number is how this test then failed on the other Unix. A zombie is
+    still a process on Linux, so `killpg` *succeeds*: the escalation runs its full
+    SIGINT → SIGTERM window and reports SIGKILL, where macOS stops at the first EPERM
+    and reports that nothing landed. Both are the contract being kept. What this test
+    owns is that teardown **survives** — it returns rather than raising — so it
+    accepts either answer and pins the invariant instead of the platform.
     """
     proc = subprocess.Popen("exit 0", shell=True, start_new_session=True)
     pid = proc.pid
@@ -914,7 +922,9 @@ def test_stopping_a_daemon_that_already_exited_is_not_an_error():
             break  # macOS: the group is now all-zombie, which is what we want
         time.sleep(0.02)
 
-    assert _kill_pid(pid) == 0  # gone already, no signal landed
+    # 0 on macOS (EPERM read as "gone"); -SIGKILL on Linux, where the zombie group is
+    # real enough to signal. Neither is a failure; raising would be.
+    assert _kill_pid(pid) in (0, -signal.SIGKILL)
     proc.wait()
 
 

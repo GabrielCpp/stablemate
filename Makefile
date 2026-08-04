@@ -64,6 +64,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-parsers
+	$(MAKE) check-portability
 	$(MAKE) check-library
 	$(MAKE) check-vendor
 
@@ -99,6 +100,13 @@ check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets
 	# cases, and it fails silently in both directions — a `//` inside a JSON string read
 	# as a comment, a link matched inside a fenced code block.
 	uv run python scripts/check_parsers.py
+
+.PHONY: check-portability
+check-portability: ## Guard the portability tiers (a shipped package runs on the user's OS, not ours)
+	# The container is Ubuntu and CI is ubuntu-latest, so a POSIX-only call in a package
+	# someone pip-installs fails for the first person on a Mac or Windows and for nobody
+	# here. Process supervision genuinely needs those calls and declares itself.
+	uv run python scripts/check_portability.py
 
 .PHONY: check-library
 check-library: ## Guard the base library's front matter (a broken fence loses tags in silence)
