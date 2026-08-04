@@ -55,13 +55,12 @@ the linter rules; obey it. The reference for the type table and bullets is the
    is `path.go::(*Type).Method`, not `path.go::Type.Method`. Grounding a file the notes
    never mentioned, or half its symbols, spends a rework pass and changes nothing.
 
-   **A symbol or file this story deleted still needs grounding — write the citation as
-   removed, not live.** A gate note naming a symbol whose file no longer exists (or whose
-   file survives but no longer declares it) is exactly this case; a plain `code:` bullet
-   for it will only trade one gate failure for the other, since `ostler doctor` correctly
-   rejects a `code:` target that isn't there. Prefix the path with `~` inside the
-   backticks instead — `` `~old/path.ts::Symbol` `` — which tells doctor the target is
-   gone on purpose and grounds the same obligation without demanding it still exist.
+   **A symbol or file this story deleted needs no `code:` citation at all.** The gate
+   exempts a deletion on its own — do not add a bullet pointing at something that no longer
+   exists to satisfy it. `ostler doctor` rejects every `code:` target that isn't there, with
+   no exception, so the correct response to a deletion is to remove any bullet that now cites
+   it (if the node it lived in still documents live behavior) or remove the node entirely (if
+   the node described only what was deleted) — never to invent a citation for something gone.
 
 
 

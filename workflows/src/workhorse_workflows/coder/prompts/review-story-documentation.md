@@ -27,12 +27,11 @@ describes the complete current system rather than this story as a changelog. In 
   invocation, flow, concept, and format has the correct typed node and reachable relationships;
 - structured bullets contain the full behavioral contract, including states, fields,
   preconditions, effects, errors, accessibility, and boundaries where applicable;
-- `code:` and `verify:` cite real implementation and tests without using broad or invented refs.
-  A `` `~path::symbol` `` bullet is not an invented ref — the `~` prefix is how the book grounds
-  a symbol or file this story *deleted*; the deterministic gate demands a citation for every
-  changed unit including deletions, and a plain (unprefixed) `code:` bullet naming a target that
-  no longer exists is what `ostler doctor` correctly rejects. Do not send the author back to
-  delete a `~`-marked bullet — that only reintroduces the gate failure it was written to fix;
+- `code:` and `verify:` cite real implementation and tests without using broad or invented refs,
+  and every ref names something that currently exists — `ostler doctor` rejects a `code:`
+  target that isn't there, with no exception. A symbol or file this story deleted needs no
+  citation at all; do not send the author back to add one, and flag a bullet that still cites
+  something deleted as a defect to remove;
 - unchanged surrounding behavior remains complete, so the documented node could guide a
   behavior-equivalent implementation;
 - author-owned requirements were not weakened to match code;

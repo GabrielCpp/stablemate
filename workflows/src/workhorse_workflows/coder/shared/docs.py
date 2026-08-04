@@ -65,10 +65,7 @@ def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
                 continue
             ref = str(reason.get("ref", ""))
             if reason.get("kind") == "changed-code":
-                # A `~`-marked ref grounds the same plain `path::symbol` obligation a
-                # deletion still owes — the mark is only doctor's cue to not require the
-                # file still exist, not a different identity to compare against.
-                exact.add(refs_mod.strip_removed(ref.strip().strip("`, ")))
+                exact.add(refs_mod.normalize_ref(ref))
             elif reason.get("kind") == "file-owner":
                 files.add(ref)
     return exact, files
@@ -308,6 +305,11 @@ def verify_story_documentation(
     ungrounded: list[str] = []
     for change in packet.get("changedCode", []):
         if not isinstance(change, dict):
+            continue
+        if change.get("status") == "deleted":
+            # Documenting the absence of something is not documentation — a deletion is
+            # satisfied on its own, with no `code:` bullet required. Mirrors
+            # `ostler.qa.context`'s `mapped = change.status == "deleted"`.
             continue
         base_path = str(change.get("basePath", ""))
         head_path = str(change.get("headPath", ""))

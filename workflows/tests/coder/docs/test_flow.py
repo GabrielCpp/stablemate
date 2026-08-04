@@ -421,17 +421,15 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     assert "2 changed production symbol(s)" in gate.notes, gate.notes
 
 
-def test_a_removed_marked_ref_grounds_a_deleted_symbol(
+def test_a_deletion_needs_no_code_bullet(
     docs: Path,
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """A deletion is the one grounding obligation a live `code:` bullet cannot satisfy — its
-    target is gone, so `ostler doctor` would rightly reject it as a dangling reference. The
-    `~` mark is the escape hatch: written into the real node's bullet, it must ground the
-    obligation *and* still pass doctor, or the gate would remain unwinnable for every story
-    that deletes something.
+    """A deletion is satisfied on its own — no `code:` bullet names it, because a live bullet
+    pointing at a gone target is exactly what `ostler doctor` rejects as a dangling reference,
+    and there is no marker that exempts a ref from having to exist.
     """
     deleted = "api/legacy/handler.go"
     write(
@@ -442,8 +440,6 @@ slug: widget
 title: Widget
 ---
 # Widget
-
-- code: `~api/legacy/handler.go::Handle`
 
 The old handler was retired.
 """,
@@ -458,16 +454,10 @@ The old handler was retired.
                     "headPath": "",
                     "baseSymbols": ["Handle"],
                     "headSymbols": [],
+                    "status": "deleted",
                 },
             ],
-            "directNodes": [
-                {
-                    "node": "docs/features/widget.md",
-                    "reasons": [
-                        {"kind": "changed-code", "ref": f"~{deleted}::Handle"},
-                    ],
-                }
-            ],
+            "directNodes": [],
         },
     )
 
