@@ -39,6 +39,24 @@ gold: gold
 # `cli` picks the backend ($AGENT_CLI for that set's runs). `power.<tier>` is overlaid
 # onto the spec's own `power` block, so a task spec that pins a tier for budget reasons
 # still loses to the set — the set is the experiment.
+#
+# **Every non-gold set runs on `opencode`, and that is a constraint, not a coincidence.**
+# The question these sets ask is "how much does the model matter", so the harness has to
+# be the one thing that does not move between them — otherwise a delta is unattributable
+# and the whole matrix is decoration. Gold is the exception by definition: it is claude
+# because that is what real work runs on, and it is the reference rather than a peer.
+#
+# The concrete reason it is opencode and not aider, which the hosted sets used to name:
+# aider is not an agentic harness. It has no read/grep/glob tool loop — each turn is a
+# one-shot `--message` seeing only the tree-sitter repo map — and no resumable session.
+# But the workflows' prompts render *paths* on every non-claude backend and expect the
+# agent to go open them: 30 `find_by_tags(...)` sites listing layer instruction files,
+# and 6 `skill_load_ref(...)` sites reading "Read `<path>` and follow its instructions".
+# Aider can open none of them, so those runs scored a coder workflow with every skill
+# reference silently dead, on top of not being able to search the app it was building.
+# The number that came back measured the harness. opencode takes the same OpenRouter
+# model ids directly (`openrouter/<vendor>/<model>`, no proxy), so nothing was lost in
+# moving — and a set added later should stay on opencode for the same reason.
 sets:
   # The reference. Claude Code at the tier real work runs at.
   - label: gold
@@ -73,22 +91,22 @@ sets:
   # Hosted and cheap: 1M context, tools and structured outputs, roughly two orders of
   # magnitude under gold per token.
   - label: hosted-cheap
-    cli: aider
+    cli: opencode
     notes: DeepSeek V4 Flash throughout — the cost floor with a real context window
     power:
-      high: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
-      medium: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
-      low: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+      high: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
+      medium: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
+      low: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
 
   # Hosted, strong at the top only. Isolates the same question as `local-cheap-high`
   # from the other side: buy quality at `high` and nowhere else.
   - label: hosted-split
-    cli: aider
+    cli: opencode
     notes: strong hosted model at high, cost floor below it
     power:
-      high: {aider: {model: openrouter/qwen/qwen3.5-397b-a17b}}
-      medium: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
-      low: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
+      high: {opencode: {model: openrouter/qwen/qwen3.5-397b-a17b}}
+      medium: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
+      low: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
 
 # ── The tasks ─────────────────────────────────────────────────────────────────────────
 # Spec paths relative to this file. Every task the matrix may run is listed here; which
