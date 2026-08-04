@@ -196,6 +196,20 @@ obligation itself:
   `keyboard`, `route`, `entry` and `params` bullets. Address the element by `role` + `name`
   (`get_by_role("alert", name=…)`); use `selector` only when the node states one; fall back
   to a text locator only when the node documents neither, and say so in the scenario.
+- A node's documented `role` is the *intended* semantic, not a guarantee of what the target
+  engine's accessibility tree actually computes for that markup. Native disclosure elements
+  (`<summary>` inside `<details>`) are the known case: several engines expose the summary as
+  `group`, not `button`, so a `role: button` locator against it times out with zero matches
+  even though the element renders correctly. When the node's underlying element is a native
+  `<summary>`/`<details>` pair, use its `selector` (or a CSS locator scoped to a stable class
+  or `:has-text(...)`) instead of `role`+`name`, and say so in the scenario — don't spend a
+  repair cycle rediscovering this at review time.
+- Playwright's `expect: visible` is strict-mode: it throws (not "false") when a locator
+  resolves to more than one element, even if every match is legitimately present and
+  visible. Before asserting `visible` on a locator, check whether the book or the fixture
+  implies more than one match is possible; if so, scope the locator narrower (a parent
+  container, `:first-child`/`:nth-child`) or assert `count` at the expected number instead
+  of a bare `visible`.
 - A text locator invented by reading the implementation — or guessed from a rendered string —
   is a defect, not a shortcut. It is the thing that breaks on the next copy edit, and it is
   why a plan that "passed" proves nothing about the accessible name the book requires.
