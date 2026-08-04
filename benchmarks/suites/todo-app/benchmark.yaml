@@ -2,7 +2,8 @@
 #
 # This is the only file to edit when the benchmark's stack changes, and the only file to
 # copy when adding a second benchmark app — `bench.py --spec <path>` hardcodes nothing
-# about todo-app.
+# about todo-app. It is a task under `suites/` like the other three; what makes it the
+# full benchmark is its size and its tags, not a place of its own in the tree.
 #
 # Genesis itself carries no stack knowledge either: `scripts/check_public.py` asserts that
 # no base workflow may depend on the private overlay, and the stack packs live there. So
@@ -11,6 +12,20 @@
 
 # Where the benchmark app gets built. Overridable with $TARGET.
 target: /tmp/todo-app
+
+# See suites/README.md for the vocabulary. `long` is the tag that keeps this task out of a
+# `--tag quick` or `--tag hour` sweep: a full matrix cell here is hours, not minutes, so
+# it has to be asked for by name or by `--tag full`.
+tags: [long, full, api, web, app, infra]
+
+# Why this one is not held to the task set's hour. It pins no `power:` and no `budget:`
+# either, and both omissions are the same decision: the score is only meaningful at the
+# tier the operator actually ships on, and a wall-clock ceiling on a run this long would
+# stop it mid-backlog and then score a repo nobody finished. Under the matrix a set still
+# supplies the tier, which is the one case where pinning would be wrong twice over.
+over_hour: >-
+  the full benchmark — four surfaces and eighteen bullets, run at the operator's own tier
+  with no ceiling, because a partial run of this one measures nothing
 
 # The benchmark's input, relative both to this file (the pristine copy) and to the target
 # (where genesis seeds it). Every run starts from the same bullets, so the outcome is
@@ -57,10 +72,6 @@ repo:
 # service      logical name, and the workspace repo key
 # service_root repo-relative directory the surface lives in
 # packs        farrier packs supplying that stack's skills (resolved from the overlay)
-# scaffolds    "<scaffold-id>:<dir>" pairs — folder convention + .gitignore hygiene
-# init_cmd     the stack's own init tool; scaffolds do NOT produce a marker file
-# marker       the file whose existence proves the skeleton is real
-# markers      what agents.yml records as this repo's service_markers
 surfaces:
   - service: api
     service_root: api

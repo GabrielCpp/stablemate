@@ -12,7 +12,7 @@ The base ships the contract, the supervisor, and the scaffold, but no repo has a
 yet — so `ensure_stack` reports `skip` everywhere and the durable path is exercised only by
 unit tests. First real consumers:
 
-- **The greenfield benchmark app** (`benchmarks/todo-app`) — give it a stack with services to
+- **The greenfield benchmark app** (`benchmarks/suites/todo-app`) — give it a stack with services to
   bring up and seed so the author→coder loop actually drives `ensure_stack`. This is the
   cheapest end-to-end proof.
 - **A rewrite-style consumer** — author its manifest from the existing documented targets

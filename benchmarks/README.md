@@ -94,7 +94,7 @@ The three phases recover differently, and the difference decides the command:
   continue one, say so:
 
 ```bash
-uv run python benchmarks/bench.py --spec tasks/link-shortener/bench.yml coder \
+uv run python benchmarks/bench.py --spec suites/link-shortener/benchmark.yaml coder \
   --resume --budget 3600
 ```
 
@@ -120,7 +120,7 @@ stuck, and only the first is worth more time.
 run fails *without* failing: progress, liveness, churn.
 
 ```bash
-uv run python benchmarks/bench.py --spec benchmarks/tasks/link-shortener/bench.yml watch
+uv run python benchmarks/bench.py --spec benchmarks/suites/link-shortener/benchmark.yaml watch
 ```
 
 It **exits non-zero when something needs attention**, so it composes into a wait loop
@@ -147,7 +147,7 @@ Status` block, which names the review that demoted it.
 ### `babysit` — the loop that closes over it
 
 ```bash
-uv run python benchmarks/bench.py --spec benchmarks/tasks/link-shortener/bench.yml babysit \
+uv run python benchmarks/bench.py --spec benchmarks/suites/link-shortener/benchmark.yaml babysit \
   --every 180 --for 3600
 ```
 
@@ -179,17 +179,30 @@ flight; that one is about runs that already ended, is permanently true once you 
 workflow — which fixing today's defect is — and so would end the wait on its first poll
 after every fix. A live run wedged on genuinely old code is the stall check's to report.
 
-## The debugging task set (`tasks/`)
+## The benchmark suites (`suites/`)
 
-`todo-app` is the verdict benchmark: four surfaces, eighteen bullets, hours per run. That is
-the right size for *is the workflow good* and the wrong size for *why did it break* — a
-fix-and-rerun cycle measured in hours is a cycle nobody runs twice.
+Every benchmark is one suite under `suites/<name>/benchmark.yaml`, with its backlog beside
+it. `matrix.py` calls a suite a **task** — one cell of the set × task matrix — and the two
+words name the same thing from either end: `suites/bookmarks/` is the task `bookmarks`.
+They are not the same size, and the size is what you select on.
 
-`tasks/` holds three small specs sized so `author + coder` finishes inside an hour, which is
-what makes the babysitting loop usable. Each isolates a failure class the others cannot
-reach — see [tasks/README.md](tasks/README.md).
+`suites/todo-app` is the verdict benchmark: four surfaces, eighteen bullets, hours per run.
+That is the right size for *is the workflow good* and the wrong size for *why did it break*
+— a fix-and-rerun cycle measured in hours is a cycle nobody runs twice. The other three are
+sized so `author + coder` finishes inside an hour, which is what makes the babysitting loop
+usable. Each isolates a failure class the others cannot reach — see
+[suites/README.md](suites/README.md).
 
-Two spec keys make the hour a property of the spec rather than of the laptop:
+Which is which is `tags:` in the spec, so a sweep asks for a *shape* rather than for names
+somebody has to remember is cheap:
+
+```bash
+uv run python benchmarks/matrix.py sets              # every task and its tags
+uv run python benchmarks/matrix.py run --tag quick   # the cheap ones only
+```
+
+Two spec keys make the hour a property of the spec rather than of the laptop. `todo-app`
+sets neither, and declares why in `over_hour:`:
 
 - **`power:`** — a `power.<level>.<backend>` overlay. Model choice is the largest single term
   in both wall-clock and score, so leaving it to machine config would mean the hour holds
@@ -212,11 +225,18 @@ diffs each result against a frozen Claude Code reference — which is how you an
 should we actually buy?* rather than *is this good?*
 
 ```bash
-uv run python benchmarks/matrix.py sets                    # what is defined
+uv run python benchmarks/matrix.py sets                    # what is defined, and its tags
 uv run python benchmarks/matrix.py gold --task link-shortener   # freeze the reference
-uv run python benchmarks/matrix.py run                     # every set × every task
+uv run python benchmarks/matrix.py run --tag quick         # every set × the cheap tasks
+uv run python benchmarks/matrix.py run                     # every set × EVERY task — days
 uv run python benchmarks/matrix.py report --task link-shortener --write
 ```
+
+`--task` names one task; `--tag` names a shape and takes as many as you like, narrowing
+(AND) rather than widening. A bare `run` is every set × every task including `todo-app`,
+which is a days-long commitment — `--tag quick` is the one to reach for first. A tag no
+task carries is refused rather than run as an empty matrix, because a typo and "nothing to
+do" produce the same silent second of wall clock.
 
 ### A set is not a model
 
@@ -380,27 +400,34 @@ anything the eval would have measured.
 
 ## Adding a benchmark app
 
-Nothing in `bench.py` knows about todo-app. Copy `todo-app/bench.yml`, point it at a new
-target and backlog, and run `bench.py --spec path/to/bench.yml score`. The layout:
+Nothing in `bench.py` knows about any particular app. Copy a `benchmark.yaml` into a new
+`suites/<name>/`, point it at a new target and backlog, tag it, add it to `sets.yml` if the
+matrix should sweep it, and run `bench.py --spec suites/<name>/benchmark.yaml score`. The
+task's name is its directory name — the spec never repeats it. The layout:
 
 ```
 bench.py              the end-to-end harness: one score for the whole workflow chain
 matrix.py             one score per model set, each diffed against a frozen gold run
-sets.yml              the sets under test, the pinned judge, and which set is gold
+sets.yml              the sets under test, the pinned judge, gold, and the task list
 evals.py              the node-replay harness: A/B one change, many samples   (PLANNED)
 evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 tests/                the properties the score rests on
-todo-app/             the verdict benchmark: four surfaces, eighteen bullets, hours
-  bench.yml           the app: target, backlog, surfaces, repo gates
-  docs/backlog.md     the pristine input, copied into the target on every run
-  .runs/              logs, run artifacts, scorecard.json  (gitignored)
-tasks/                the debugging task set: three specs, an hour each
-  README.md           which spec catches what, and why three and not one
-  <task>/bench.yml    same schema, plus `power:` and `budget:`
+suites/               every benchmark, one directory each
+  README.md           which suite catches what, and the tag vocabulary
+  <name>/             the directory name IS the task name
+    benchmark.yaml    the app: target, backlog, surfaces, repo gates, tags
+    docs/backlog.md   the pristine input, copied into the target on every run
+    .runs/            logs, run artifacts, scorecard.json  (gitignored)
 .fixtures/            harvested node inputs                (gitignored — real run content)
 .evals/               eval results and per-sample run dirs (gitignored)
 ```
+
+`suites/benchmark.yaml`, not `tasks/bench.yml`, and both halves of that are the same
+reason: `tasks/` holding short `*.yml` files is Ansible's role layout, so editors that
+guess a YAML file's schema from its path lint these against one they were never going to
+satisfy. Neither name is load-bearing for the harness — `bench.py` takes any `--spec` path
+— but a file that arrives pre-underlined in red is one nobody reads.
 
 The backlog is **copied, never generated**, so every run starts from the same bullets and
 the outcome is attributable to the workflows rather than to input that drifted.

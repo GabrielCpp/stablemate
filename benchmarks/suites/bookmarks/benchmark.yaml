@@ -12,7 +12,11 @@
 target: /tmp/bench-bookmarks
 backlog: docs/backlog.md
 
-# See link-shortener/bench.yml.
+# See suites/README.md for the vocabulary. The only `cross-surface` task under the hour, so
+# `--tag cross-surface` is how you reach two-stack coverage without paying for todo-app.
+tags: [hour, cross-surface, api, web]
+
+# See link-shortener/benchmark.yaml.
 power:
   low: {claude: {model: sonnet, effort: low}}
   medium: {claude: {model: sonnet, effort: low}}

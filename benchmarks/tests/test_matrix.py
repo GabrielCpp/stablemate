@@ -68,7 +68,7 @@ def sets_file(tmp_path: Path):
 
 @pytest.fixture
 def spec_file(tmp_path: Path) -> Path:
-    p = tmp_path / "bench.yml"
+    p = tmp_path / "benchmark.yaml"
     p.write_text(yaml.safe_dump({
         "target": str(tmp_path / "repo"),
         "surfaces": [{"service": "api", "service_root": "api"}],
@@ -190,6 +190,61 @@ def test_a_set_carries_its_whole_mapping_not_a_model_name(sets_file):
                            "BENCH_POWER": json.dumps(cheap.power)}
 
 
+# ── Selecting tasks by tag ────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def tagged(sets_file, tmp_path: Path):
+    """Three tasks whose tags overlap, so AND and OR are distinguishable."""
+    paths = []
+    for name, tags in (("fast-api", ["quick", "api"]),
+                       ("fast-web", ["quick", "web"]),
+                       ("slow-api", ["long", "api"])):
+        p = tmp_path / "suites" / name / "benchmark.yaml"
+        p.parent.mkdir(parents=True)
+        p.write_text(f"target: /tmp/{name}\ntags: {tags}\n"
+                     "surfaces: [{service: api, service_root: api}]\n", encoding="utf-8")
+        paths.append(str(p))
+    return matrix.load_matrix(sets_file(tasks=paths))
+
+
+def test_a_tag_selects_the_tasks_carrying_it(tagged):
+    assert [t.name for t in tagged.select(tags=["quick"])] == ["fast-api", "fast-web"]
+    assert tagged.tags() == ["api", "long", "quick", "web"]
+
+
+def test_repeated_tags_narrow_rather_than_widen(tagged):
+    """AND, not OR. `--tag quick --tag api` asking for four tasks instead of one is the
+    reading that silently costs a night of wall clock."""
+    assert [t.name for t in tagged.select(tags=["quick", "api"])] == ["fast-api"]
+
+
+def test_an_unknown_tag_is_fatal_not_an_empty_run(tagged):
+    """A typo and "nothing needs running" look identical at the shell — a matrix that
+    finishes in a second having run nothing. Only one of them is a result."""
+    with pytest.raises(SystemExit, match="no task tagged 'quik'"):
+        tagged.select(tags=["quik"])
+
+
+def test_a_task_and_a_tag_that_disagree_are_fatal(tagged):
+    """`--task slow-api --tag quick` names an empty set. Running the whole matrix instead,
+    or nothing at all, are both worse than saying so."""
+    with pytest.raises(SystemExit, match="no task matches"):
+        tagged.select("slow-api", ["quick"])
+
+
+def test_an_untagged_task_still_loads(sets_file, tmp_path: Path):
+    """Tags select; they are not a schema. A spec without them is run by name, and
+    `bench.py --spec` never consults them at all."""
+    p = tmp_path / "suites" / "bare" / "benchmark.yaml"
+    p.parent.mkdir(parents=True)
+    p.write_text("target: /tmp/bare\nsurfaces: [{service: api, service_root: api}]\n",
+                 encoding="utf-8")
+    mx = matrix.load_matrix(sets_file(tasks=[str(p)]))
+    assert mx.task("bare").tags == frozenset()
+    assert [t.name for t in mx.select()] == ["bare"]
+
+
 # ── Gold is frozen, and refused when the ground under it moved ────────────────────────
 
 
@@ -204,7 +259,7 @@ def _freeze(monkeypatch, tmp_path: Path, mx, task: str, **manifest) -> None:
 
 @pytest.fixture
 def frozen(sets_file, tmp_path: Path, monkeypatch):
-    spec = tmp_path / "tasks" / "demo" / "bench.yml"
+    spec = tmp_path / "suites" / "demo" / "benchmark.yaml"
     spec.parent.mkdir(parents=True)
     spec.write_text("target: /tmp/x\nsurfaces: [{service: api, service_root: api}]\n",
                     encoding="utf-8")

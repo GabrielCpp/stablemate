@@ -62,7 +62,7 @@ def spec(tmp_path: Path) -> "bench.Spec":
         "# Backlog\n\n- [todo-create] A person adds a todo and it appears immediately.\n"
         "- [todo-delete] A person deletes a todo and is protected from doing so by accident.\n",
         encoding="utf-8")
-    spec_path = tmp_path / "bench.yml"
+    spec_path = tmp_path / "benchmark.yaml"
     spec_path.write_text(
         f"target: {target}\nbacklog: docs/backlog.md\n"
         "surfaces:\n  - service: api\n    service_root: api\n    marker: go.mod\n",
@@ -460,7 +460,7 @@ def test_a_run_with_no_checkpoint_is_not_resumable(spec: "bench.Spec"):
 def test_a_budget_becomes_workhorses_own_ceiling(tmp_path: Path):
     """`budget:` must reach workhorse, which stops between states with the checkpoint
     intact — not a `timeout(1)` that kills mid-node and destroys the evidence."""
-    spec_path = tmp_path / "bench.yml"
+    spec_path = tmp_path / "benchmark.yaml"
     spec_path.write_text(
         f"target: {tmp_path / 'app'}\nsurfaces: [{{service: api, service_root: api}}]\n"
         "budget: {author: 900, coder: 2700}\n", encoding="utf-8")
@@ -479,7 +479,7 @@ def test_the_power_overlay_keeps_the_machines_own_keys(tmp_path: Path, monkeypat
         "library_dir": "/machine/specific/path",
         "power": {"low": {"claude": {"model": "opus"}}, "high": {"codex": {"effort": "high"}}},
     })
-    spec_path = tmp_path / "bench.yml"
+    spec_path = tmp_path / "benchmark.yaml"
     spec_path.write_text(
         f"target: {tmp_path / 'app'}\nsurfaces: [{{service: api, service_root: api}}]\n"
         "power: {low: {claude: {model: sonnet, effort: low}}}\n", encoding="utf-8")
@@ -495,7 +495,7 @@ def test_the_power_overlay_keeps_the_machines_own_keys(tmp_path: Path, monkeypat
 def test_no_power_means_no_config_override(tmp_path: Path):
     """A spec that states no tier must leave the operator's config alone entirely —
     writing one anyway would silently pin every future run to a snapshot of it."""
-    spec_path = tmp_path / "bench.yml"
+    spec_path = tmp_path / "benchmark.yaml"
     spec_path.write_text(
         f"target: {tmp_path / 'app'}\nsurfaces: [{{service: api, service_root: api}}]\n",
         encoding="utf-8")
@@ -505,7 +505,21 @@ def test_no_power_means_no_config_override(tmp_path: Path):
 # ── the shipped task set ──────────────────────────────────────────────────────────────
 
 
-def test_every_task_spec_loads_and_fits_the_hour():
+def test_every_task_spec_loads_and_is_selectable():
+    """Every task, whatever its size, must load and carry a backlog with bullets — and
+    must be reachable by tag, since an untagged task is invisible to every `--tag` sweep
+    and so gets run only by whoever remembers its name."""
+    specs = sorted((Path(__file__).parents[1] / "suites").glob("*/benchmark.yaml"))
+    assert specs, "the task set is missing"
+    for path in specs:
+        spec = bench.load_spec(path)
+        assert spec.tags, f"{path.parent.name}: no tags — nothing can select it"
+        assert (path.parent / spec.backlog).is_file(), f"{path.parent.name}: no backlog"
+        assert bench.parse_backlog(path.parent / spec.backlog), \
+            f"{path.parent.name}: backlog has no `- [id] …` bullets"
+
+
+def test_the_hour_sized_tasks_fit_the_hour():
     """The task set's one promise is that a chain finishes inside an hour. A spec that
     silently lost its `budget:` would keep that promise only by luck.
 
@@ -513,20 +527,19 @@ def test_every_task_spec_loads_and_fits_the_hour():
     network-bound setup that a fix-and-rerun cycle skips, so charging it against the hour
     would price the debugging loop by a step the loop does not take.
 
-    A task may budget past the hour, but only by saying so in `over_hour:` and why. The
-    exception is data rather than a number this test learns to expect, so a budget that
-    grows past the hour by accident still fails — which is the case the assertion is for.
+    A task may sit outside the hour, but only by saying so in `over_hour:` and why —
+    `todo-app` is the one that does, and it pins neither tier nor budget on purpose. The
+    exception is data rather than a list of names this test learns, so a budget that grows
+    past the hour by accident still fails, which is the case the assertions are for.
     """
-    specs = sorted((Path(__file__).parents[1] / "tasks").glob("*/bench.yml"))
-    assert specs, "the debugging task set is missing"
-    for path in specs:
+    specs = sorted((Path(__file__).parents[1] / "suites").glob("*/benchmark.yaml"))
+    held = [p for p in specs if not bench.load_spec(p).over_hour]
+    assert held, "every task claims `over_hour:` — the hour-sized set is gone"
+    for path in held:
         spec = bench.load_spec(path)
         assert spec.power, f"{path.parent.name}: no tier pinned — the hour is not the spec's"
         total = sum(float(spec.budget.get(p) or 0) for p in ("author", "coder"))
         assert total > 0, f"{path.parent.name}: no author/coder budget"
-        assert total <= 3600 or spec.over_hour, \
+        assert total <= 3600, \
             f"{path.parent.name}: budgets total {total}s, not an hour — and no `over_hour:` " \
             f"saying why that is deliberate"
-        assert (path.parent / spec.backlog).is_file(), f"{path.parent.name}: no backlog"
-        assert bench.parse_backlog(path.parent / spec.backlog), \
-            f"{path.parent.name}: backlog has no `- [id] …` bullets"

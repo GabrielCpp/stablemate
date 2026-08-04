@@ -28,9 +28,10 @@ same repo, so a reference that moves would mix model quality into every delta. G
 produced once per task, bundled, and stamped with the workflow sha it ran on; a matrix
 against a different sha is refused rather than quietly compared.
 
-    matrix.py sets                     what is defined, and what has been run
+    matrix.py sets                     what is defined, its tags, and what has been run
     matrix.py gold --task <name>       produce or refresh the frozen reference
     matrix.py run [--set L] [--task T] every set × every task, sequentially
+    matrix.py run --tag quick          only the tasks tagged `quick` (repeat --tag to AND)
     matrix.py report [--task T]        per-bullet delta against gold
     matrix.py status                   which cells are done, running, missing
 
@@ -48,6 +49,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -97,6 +99,18 @@ class ModelSet:
                 "BENCH_POWER": json.dumps(self.power)}
 
 
+@dataclass(frozen=True, slots=True)
+class Task:
+    """One benchmark spec, and the labels it can be selected by."""
+
+    path: Path
+    tags: frozenset[str]
+
+    @property
+    def name(self) -> str:
+        return task_name(self.path)
+
+
 @dataclass(slots=True)
 class Matrix:
     """`sets.yml`, validated."""
@@ -105,7 +119,7 @@ class Matrix:
     judge: dict
     gold: str
     sets: list[ModelSet]
-    tasks: list[Path] = field(default_factory=list)
+    tasks: list[Task] = field(default_factory=list)
 
     def set(self, label: str) -> ModelSet:
         for s in self.sets:
@@ -113,18 +127,57 @@ class Matrix:
                 return s
         die(f"no set {label!r} in {self.path} (have: {', '.join(s.label for s in self.sets)})")
 
-    def task(self, name: str) -> Path:
+    def task(self, name: str) -> Task:
         for t in self.tasks:
-            if task_name(t) == name:
+            if t.name == name:
                 return t
-        die(f"no task {name!r} in {self.path} (have: {', '.join(map(task_name, self.tasks))})")
+        die(f"no task {name!r} in {self.path} "
+            f"(have: {', '.join(t.name for t in self.tasks)})")
+
+    def tags(self) -> list[str]:
+        return sorted({tag for t in self.tasks for tag in t.tags})
+
+    def select(self, name: str = "", tags: Sequence[str] = ()) -> list[Task]:
+        """The tasks a `--task`/`--tag` pair names, narrowing left to right.
+
+        Repeated `--tag` is AND, not OR: `--tag quick --tag web` means the tasks that are
+        both, which is what a filter reads as. OR is spelled by running twice.
+
+        An unknown tag is fatal rather than an empty selection. The two look identical at
+        the shell — a matrix that finishes in a second having run nothing — and one of
+        them is a typo that would otherwise be read as "nothing needs running".
+        """
+        known = self.tags()
+        for tag in tags:
+            if tag not in known:
+                die(f"no task tagged {tag!r} (have: {', '.join(known) or '—'})")
+        chosen = [self.task(name)] if name else list(self.tasks)
+        for tag in tags:
+            chosen = [t for t in chosen if tag in t.tags]
+        if not chosen:
+            die(f"no task matches {' + '.join(filter(None, [name, *tags]))}")
+        return chosen
 
 
 def task_name(spec: Path) -> str:
-    """A task is named by the directory holding its spec — `tasks/bookmarks/bench.yml` is
-    `bookmarks`. Nothing inside the spec names it, and giving it a second name here would
-    let the two disagree the way the repo `name:` key once did."""
+    """A task is named by the directory holding its spec — `suites/bookmarks/benchmark.yaml`
+    is `bookmarks`. Nothing inside the spec names it, and giving it a second name here
+    would let the two disagree the way the repo `name:` key once did."""
     return spec.parent.name
+
+
+def task_tags(spec: Path) -> frozenset[str]:
+    """A spec's `tags:`, normalised the way `bench.load_spec` normalises them.
+
+    Read here rather than imported from `bench` because the matrix only needs this one
+    key, and `load_spec` reads `$TARGET`/`$BENCH_POWER` and dies on a spec missing
+    `surfaces:` — a selection flag must not depend on the ambient environment or on the
+    spec being runnable this minute.
+    """
+    raw = (yaml.safe_load(spec.read_text(encoding="utf-8")) or {}).get("tags") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return frozenset(str(t) for t in raw)
 
 
 def load_matrix(path: Path) -> Matrix:
@@ -149,10 +202,11 @@ def load_matrix(path: Path) -> Matrix:
         dupes = sorted({x for x in seen if seen.count(x) > 1})
         die(f"{path}: duplicate set label(s): {', '.join(dupes)}")
 
-    tasks = [(path.parent / t).resolve() for t in (raw.get("tasks") or [])]
-    for t in tasks:
-        if not t.is_file():
-            die(f"{path}: task spec not found: {t}")
+    paths = [(path.parent / t).resolve() for t in (raw.get("tasks") or [])]
+    for p in paths:
+        if not p.is_file():
+            die(f"{path}: task spec not found: {p}")
+    tasks = [Task(path=p, tags=task_tags(p)) for p in paths]
 
     gold = raw.get("gold") or "gold"
     matrix = Matrix(path=path, judge=raw.get("judge") or {}, gold=gold, sets=sets, tasks=tasks)
@@ -379,7 +433,7 @@ def gold_staleness(mx: Matrix, task: str) -> str:
     if m.get("workflow_sha") != workflow_sha():
         return (f"gold for {task!r} ran on workflow {m.get('workflow_sha', '?')[:7]}, "
                 f"HEAD is {workflow_sha()[:7]} — re-run: matrix.py gold --task {task}")
-    if m.get("spec_sha") != spec_sha(mx.task(task)):
+    if m.get("spec_sha") != spec_sha(mx.task(task).path):
         return (f"gold for {task!r} ran on a different spec/backlog — "
                 f"re-run: matrix.py gold --task {task}")
     if m.get("judge") != mx.judge:
@@ -413,18 +467,23 @@ def cmd_sets(mx: Matrix) -> int:
     for s in mx.sets:
         print(f"  {s.label:<20}{s.cli:<10}{tier_model(s, 'high'):<{w}}"
               f"{tier_model(s, 'medium'):<{w}}{tier_model(s, 'low')}")
-    print(f"\n  {BOLD}tasks{RESET}: {', '.join(map(task_name, mx.tasks))}")
-    print(f"  {DIM}{len(mx.sets)} set(s) × {len(mx.tasks)} task(s) = "
-          f"{len(mx.sets) * len(mx.tasks)} cell(s){RESET}")
+    # Tags are printed beside the task rather than summarised, because the point of the
+    # listing is to answer "what can I pass to --tag?" without opening four spec files.
+    tw = max((len(t.name) for t in mx.tasks), default=8) + 2
+    print(f"\n  {BOLD}tasks{RESET}")
+    for t in mx.tasks:
+        print(f"  {t.name:<{tw}}{DIM}{' '.join(sorted(t.tags)) or '(untagged)'}{RESET}")
+    print(f"\n  {DIM}{len(mx.sets)} set(s) × {len(mx.tasks)} task(s) = "
+          f"{len(mx.sets) * len(mx.tasks)} cell(s) — narrow with --set/--task/--tag{RESET}")
     return 0
 
 
 def cmd_status(mx: Matrix) -> int:
-    print(f"\n  {'set':<20}" + "".join(f"{task_name(t):<20}" for t in mx.tasks))
+    print(f"\n  {'set':<20}" + "".join(f"{t.name:<20}" for t in mx.tasks))
     for s in mx.sets:
         row = f"  {s.label:<20}"
         for t in mx.tasks:
-            m = read_manifest(s.label, task_name(t))
+            m = read_manifest(s.label, t.name)
             if m and is_complete(m):
                 text, colour = f"{m['satisfaction_pct']}%", ""
             elif m:
@@ -438,16 +497,16 @@ def cmd_status(mx: Matrix) -> int:
         print(row)
     print()
     for t in mx.tasks:
-        if stale := gold_staleness(mx, task_name(t)):
+        if stale := gold_staleness(mx, t.name):
             print(f"  {RED}gold: {stale}{RESET}")
     return 0
 
 
-def cmd_run(mx: Matrix, *, only_set: str, only_task: str, jobs: int, redo: bool,
-            gold_only: bool) -> int:
+def cmd_run(mx: Matrix, *, only_set: str, only_task: str, only_tags: Sequence[str],
+            jobs: int, redo: bool, gold_only: bool) -> int:
     guard_data_dir()
     sets = [mx.set(only_set)] if only_set else ([mx.set(mx.gold)] if gold_only else mx.sets)
-    tasks = [mx.task(only_task)] if only_task else mx.tasks
+    tasks = mx.select(only_task, only_tags)
     if not gold_only and not only_set:
         # Gold first, always: every other set is measured against it, and running the
         # cheap sets first only to find the reference missing wastes the whole batch.
@@ -457,17 +516,16 @@ def cmd_run(mx: Matrix, *, only_set: str, only_task: str, jobs: int, redo: bool,
     print(f"{DIM}workflow {workflow_sha()[:7]}"
           f"{' (DIRTY — uncommitted workflow edits)' if workflow_dirty() else ''}{RESET}")
     for ms in sets:
-        for spec in tasks:
-            run_cell(mx, ms, spec, jobs=jobs, redo=redo)
+        for t in tasks:
+            run_cell(mx, ms, t.path, jobs=jobs, redo=redo)
     say("matrix complete")
     return cmd_status(mx)
 
 
-def cmd_report(mx: Matrix, *, only_task: str, write: bool) -> int:
-    tasks = [mx.task(only_task)] if only_task else mx.tasks
+def cmd_report(mx: Matrix, *, only_task: str, only_tags: Sequence[str], write: bool) -> int:
     rc = 0
-    for spec in tasks:
-        task = task_name(spec)
+    for t in mx.select(only_task, only_tags):
+        task = t.name
         if stale := gold_staleness(mx, task):
             print(f"\n{RED}error: {stale}{RESET}", file=sys.stderr)
             rc = 1
@@ -569,6 +627,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sets", default=str(HERE / "sets.yml"), help="the sets file")
     p.add_argument("--set", dest="only_set", default="", help="run only this set")
     p.add_argument("--task", dest="only_task", default="", help="run/report only this task")
+    p.add_argument("--tag", dest="only_tags", action="append", default=[], metavar="TAG",
+                   help="run/report only tasks carrying this tag; repeat to narrow "
+                        "further (AND). `matrix.py sets` lists them")
     p.add_argument("--jobs", type=int, default=4, help="judge turns to run at once")
     p.add_argument("--redo", action="store_true",
                    help="re-run cells that are already complete, discarding what is there")
@@ -582,9 +643,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         return cmd_status(mx)
     if args.command == "report":
-        return cmd_report(mx, only_task=args.only_task, write=args.write)
-    return cmd_run(mx, only_set=args.only_set, only_task=args.only_task, jobs=args.jobs,
-                   redo=args.redo, gold_only=args.command == "gold")
+        return cmd_report(mx, only_task=args.only_task, only_tags=args.only_tags,
+                          write=args.write)
+    return cmd_run(mx, only_set=args.only_set, only_task=args.only_task,
+                   only_tags=args.only_tags, jobs=args.jobs, redo=args.redo,
+                   gold_only=args.command == "gold")
 
 
 if __name__ == "__main__":

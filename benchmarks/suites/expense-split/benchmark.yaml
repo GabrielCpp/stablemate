@@ -13,8 +13,12 @@
 target: /tmp/bench-expense-split
 backlog: docs/backlog.md
 
-# See link-shortener/bench.yml: all tiers flattened onto one cheap setting so wall-clock
-# readings describe the nodes rather than the tier map.
+# See suites/README.md for the vocabulary. `hour`, not `quick`: the five-bullet coder loop
+# is the point, and it spends most of the hour.
+tags: [hour, workload, api]
+
+# See link-shortener/benchmark.yaml: all tiers flattened onto one cheap setting so
+# wall-clock readings describe the nodes rather than the tier map.
 power:
   low: {claude: {model: sonnet, effort: low}}
   medium: {claude: {model: sonnet, effort: low}}

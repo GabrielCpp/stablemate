@@ -91,11 +91,15 @@ sets:
       low: {aider: {model: openrouter/deepseek/deepseek-v4-flash}}
 
 # ── The tasks ─────────────────────────────────────────────────────────────────────────
-# Spec paths relative to this file. The three under `tasks/` are sized so one set's
-# genesis→author→coder chain lands inside an hour; `todo-app` is hours and is the only
-# one whose score means "how good are these workflows". Running the full matrix against
-# todo-app is a days-long commitment — start with the task set.
+# Spec paths relative to this file. Every task the matrix may run is listed here; which
+# ones a given invocation actually runs is `--task` or `--tag`, not this list.
+#
+# The first three are sized so one set's genesis→author→coder chain lands inside an hour.
+# `todo-app` is hours per cell and is the only one whose score means "how good are these
+# workflows" — a bare `matrix.py run` therefore commits to days. Start with
+# `matrix.py run --tag quick`, and reach for todo-app once a set is worth the wall clock.
 tasks:
-  - tasks/link-shortener/bench.yml
-  - tasks/bookmarks/bench.yml
-  - tasks/expense-split/bench.yml
+  - suites/link-shortener/benchmark.yaml
+  - suites/bookmarks/benchmark.yaml
+  - suites/expense-split/benchmark.yaml
+  - suites/todo-app/benchmark.yaml

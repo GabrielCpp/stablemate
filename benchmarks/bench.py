@@ -32,17 +32,17 @@ resolve is capped at 1 and flagged. That check is cheap, deterministic, and catc
 judge's most common failure mode.
 
 Nothing here is specific to any one benchmark app. The app is described entirely by a
-spec file (see ``todo-app/bench.yml``); point ``--spec`` at another one to benchmark the
-same workflows against a different backlog and stack.
+spec file (see ``suites/todo-app/benchmark.yaml``); point ``--spec`` at another one to
+benchmark the same workflows against a different backlog and stack.
 
-    bench.py --spec todo-app/bench.yml genesis   create the repo + service skeletons  (minutes)
-    bench.py --spec todo-app/bench.yml author    backlog.md → epics/stories           (tens of minutes)
-    bench.py --spec todo-app/bench.yml coder     implement every story                (hours)
-    bench.py --spec todo-app/bench.yml all       the three above, in order
-    bench.py --spec todo-app/bench.yml status    what exists so far
-    bench.py --spec todo-app/bench.yml watch     is the RUNNING run progressing?      (free)
-    bench.py --spec todo-app/bench.yml score     THE SCORECARD: quality + reliability
-    bench.py --spec todo-app/bench.yml reset     delete the target and start clean
+    bench.py --spec suites/todo-app/benchmark.yaml genesis   create the repo + service skeletons  (minutes)
+    bench.py --spec suites/todo-app/benchmark.yaml author    backlog.md → epics/stories           (tens of minutes)
+    bench.py --spec suites/todo-app/benchmark.yaml coder     implement every story                (hours)
+    bench.py --spec suites/todo-app/benchmark.yaml all       the three above, in order
+    bench.py --spec suites/todo-app/benchmark.yaml status    what exists so far
+    bench.py --spec suites/todo-app/benchmark.yaml watch     is the RUNNING run progressing?      (free)
+    bench.py --spec suites/todo-app/benchmark.yaml score     THE SCORECARD: quality + reliability
+    bench.py --spec suites/todo-app/benchmark.yaml reset     delete the target and start clean
 
 Phases are separately invocable because they have wildly different costs and failure
 modes, and you almost never want to redo an earlier one to retry a later one. They are
@@ -50,14 +50,19 @@ idempotent by construction — genesis keys each skeleton step on that *service'
 file — so a failed run is resumed by re-running the same command, which is the property
 that makes a benchmark worth having.
 
-**Two sizes of benchmark, for two different jobs.** `todo-app` is the full one: four
-surfaces, seventeen bullets, hours per run, and the only one whose score means "how good
-are these workflows". It is far too slow to *debug* with — a defect in the coder's fifth
-node costs most of a day to reach twice. So the specs under `tasks/` exist alongside it:
-one or two surfaces, a handful of bullets, a cheap model tier pinned in the spec and a
-wall-clock budget, sized so a whole genesis→author→coder chain lands inside an hour.
-Their scores are not comparable to todo-app's and are not meant to be; what they produce
-is *failures, quickly*, which is the input a fix cycle actually runs on.
+**Two sizes of benchmark, for two different jobs.** Every task lives in `suites/<name>/`,
+and they are not all the same size. `todo-app` is the full one: four surfaces, seventeen
+bullets, hours per run, and the only one whose score means "how good are these workflows".
+It is far too slow to *debug* with — a defect in the coder's fifth node costs most of a
+day to reach twice. So the `quick` and `hour` tasks exist alongside it: one or two
+surfaces, a handful of bullets, a cheap model tier pinned in the spec and a wall-clock
+budget, sized so a whole genesis→author→coder chain lands inside an hour. Their scores
+are not comparable to todo-app's and are not meant to be; what they produce is *failures,
+quickly*, which is the input a fix cycle actually runs on.
+
+Which is which is `tags:` in the spec rather than a rule about directory layout, so
+`matrix.py run --tag quick` picks the cheap ones without anyone having to remember their
+names. See `suites/README.md` for the vocabulary.
 """
 
 from __future__ import annotations
@@ -183,6 +188,11 @@ class Spec:
     #: because the only thing worth recording is the reason. Empty means the task claims
     #: the hour and is held to it.
     over_hour: str = ""
+    #: Free-form labels this task is selected by — `matrix.py run --tag quick`. Inert for a
+    #: single `bench.py --spec` invocation, which already named the one spec it runs; they
+    #: exist so a *set* of tasks can be picked by shape ("the cheap ones", "the ones with a
+    #: web surface") without the caller having to remember which names those are.
+    tags: list[str] = field(default_factory=list)
     #: The model set this run belongs to, and where its evidence goes. Both are empty on a
     #: bare `bench.py` invocation, which keeps `.runs/` beside the spec exactly as before.
     #: `matrix.py` fills them, because a set is the thing that varies while the spec stays
@@ -272,6 +282,14 @@ def load_spec(path: Path) -> Spec:
             if not isinstance(c.get(key), str):
                 die(f"{path}: checks[{i}].{key} must be a string, got {c.get(key)!r} "
                     f"(quote it — YAML reads bare true/no/on as booleans)")
+    # `tags: quick` is a string, and a string is iterable — left alone it would silently
+    # become the five tags q/u/i/c/k and match nothing anyone typed. Sequence-or-scalar is
+    # exactly the shape a hand-edited list gets wrong, so it is normalised, not trusted.
+    raw_tags = raw.get("tags") or []
+    tags = [raw_tags] if isinstance(raw_tags, str) else list(raw_tags)
+    for t in tags:
+        if not isinstance(t, str) or not t.strip():
+            die(f"{path}: tags must be non-empty strings, got {t!r}")
     # The per-set layer. A spec says what the benchmark IS — backlog, surfaces, gates —
     # and is the thing held constant; a set says which models were pointed at it. One
     # spec is run by many sets, so the models cannot live in the spec file, and the two
@@ -291,6 +309,7 @@ def load_spec(path: Path) -> Spec:
         budget=raw.get("budget") or {},
         power=power,
         over_hour=raw.get("over_hour") or "",
+        tags=tags,
         label=os.environ.get("BENCH_SET", ""),
         runs_dir=Path(runs).expanduser().resolve() if runs else None,
     )
@@ -1390,7 +1409,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["genesis", "backlog", "author", "coder", "all",
                                        "status", "watch", "babysit", "score", "reset"])
-    p.add_argument("--spec", default=str(HERE / "todo-app" / "bench.yml"),
+    p.add_argument("--spec", default=str(HERE / "suites" / "todo-app" / "benchmark.yaml"),
                    help="the benchmark app's spec file (default: the todo-app benchmark)")
     p.add_argument("--no-judge", action="store_true",
                    help="score structurally only — no agent turns, no behavioral claim")
