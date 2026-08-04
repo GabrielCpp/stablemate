@@ -122,17 +122,17 @@ Output JSON only:
 ```
 ````
 
-## Unattended resilience (defaulted outputs)
+## Unattended resilience (waiting, then a clean stop)
 
-Because runs are meant to survive a week without supervision, the runner will, as a
-last resort, **emit an agent turn's declared output keys as nulls and let the state
-carry on** rather than crash when the model can't be coaxed into a usable answer (after
-transient retries and prompt reframing — see [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)).
+Runs are meant to survive a week without supervision, so the runner absorbs what it can:
+transient retries whose budget is measured in **days**, cap waits that sleep until the
+window reopens, and prompt reframing (see
+[docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md)).
 
-The keys come from the `returns=` model, so a state must be ready for a reply whose
-fields are empty: give the branch it drives a safe arm, the way a long-running machine
-needs a route that keeps moving. To disable defaulting entirely and hard-fail instead,
-set `AGENT_USE_DEFAULT_OUTPUTS=false`.
+What it will **not** do is answer for a node. When every layer is spent the run stops at
+its checkpoint and waits for an operator. So a state never receives a reply whose fields
+the agent didn't produce, and never needs a branch for one — if `self.agent(...)` returns,
+the model said it.
 
 ## A worked example
 

@@ -88,7 +88,15 @@ class AgentResilience:
     #: Additional attempts when the agent-CLI call itself fails for a *transient*
     #: reason (rate limit, overload, network blip). Each retry waits
     #: min(base * 2**attempt, cap) seconds.
-    max_invoke_retries: int = 4
+    #:
+    #: This budget is sized in DAYS, not minutes, because the failure it covers is
+    #: measured in days: a home or office link can be down for a working day, and an
+    #: overloaded provider for hours. With the defaults below the ladder climbs
+    #: 15s→30m and then holds there, spanning ~27h before it gives up — so an
+    #: unattended run sleeps through an outage and resumes on the other side of it
+    #: instead of ending inside it. Nothing is consumed while waiting and the run
+    #: keeps its checkpoint, so a long wait costs only wall clock.
+    max_invoke_retries: int = 60
     #: When invocation + output parsing still fail after the transient retries,
     #: REFRAME the prompt from scratch in a fresh session and try the node again, up
     #: to this many times. A node Claude can't answer as-phrased often succeeds when
@@ -99,18 +107,17 @@ class AgentResilience:
     #: node's progress) this many times before falling through to the reframe
     #: ladder. 0 disables compaction recovery (straight to reframe).
     max_compact_attempts: int = 2
-    #: Final resilience layer: when every reframing fails, return safe default
-    #: outputs so the controller advances to the node's ``next`` instead of crashing
-    #: the run. This worker runs autonomously for days — a single unanswerable node
-    #: must degrade to "continue". Disable only when a hard stop is wanted.
-    use_default_outputs: bool = True
     #: Default per-node wall-clock budget for a single agent turn when the node does
     #: not set its own ``timeout`` (seconds). 1h is long enough for a heavy QA /
     #: build / browser node, short enough that a wedged turn is force-killed and
     #: retried within the hour. Nodes may override per-node (incl. ``infinity``).
     result_timeout_s: float = 3600.0
     invoke_backoff_base_s: float = 15.0
-    invoke_backoff_cap_s: float = 300.0
+    #: Ceiling on a single transient backoff. Half an hour is the coarsest useful
+    #: poll for "is the network back": long enough that a day-long outage costs ~48
+    #: probes rather than thousands, short enough that the run restarts within half
+    #: an hour of the link returning.
+    invoke_backoff_cap_s: float = 1800.0
     #: Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout``
     #: check can only fire BETWEEN reads — if the agent writes a partial line and
     #: then its socket wedges (a stalled API stream, a hung MCP server), the reader
@@ -144,13 +151,12 @@ class AgentResilience:
         e = os.environ if environ is None else environ
         return cls(
             max_output_retries=_int(e, "AGENT_MAX_OUTPUT_RETRIES", 2),
-            max_invoke_retries=_int(e, "AGENT_MAX_INVOKE_RETRIES", 4),
+            max_invoke_retries=_int(e, "AGENT_MAX_INVOKE_RETRIES", 60),
             max_rephrase_attempts=_int(e, "AGENT_MAX_REPHRASE_ATTEMPTS", 3),
             max_compact_attempts=_int(e, "AGENT_MAX_COMPACT_ATTEMPTS", 2),
-            use_default_outputs=_bool(e, "AGENT_USE_DEFAULT_OUTPUTS", True),
             result_timeout_s=_float(e, "AGENT_RESULT_TIMEOUT_S", 3600.0),
             invoke_backoff_base_s=_float(e, "AGENT_INVOKE_BACKOFF_BASE_S", 15.0),
-            invoke_backoff_cap_s=_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 300.0),
+            invoke_backoff_cap_s=_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 1800.0),
             watchdog_grace_s=_float(e, "AGENT_WATCHDOG_GRACE_S", 120.0),
             cap_default_wait_s=_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 3600.0),
             cap_wait_margin_s=_float(e, "AGENT_CAP_WAIT_MARGIN_S", 120.0),

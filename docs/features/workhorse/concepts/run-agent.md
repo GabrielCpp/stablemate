@@ -83,18 +83,18 @@ a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md)
     before invoking, as `<run_dir>/<node.id>/prompt.md`. `None` skips both the write and the
     console echo.
 - **Output:** `tuple[str, dict[str, Any]]` — `(rendered_prompt, outputs)`, the fully-rendered
-  prompt text and the node's extracted/defaulted output dict (for `output.json` and the context
+  prompt text and the node's extracted output dict (for `output.json` and the context
   merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
 - **Raises:** `BackendInvocationError` when a non-recoverable backend failure occurs, or when every
-  layer of the ladder is exhausted and `resilience.use_default_outputs` is off. Never raises for a
-  recoverable failure while that flag is on — see [Layer 4](#the-ladder).
+  layer of the ladder is exhausted. The ladder absorbs a recoverable failure for as long as its
+  budget allows — days, for a transient — but it never returns outputs the agent did not give.
   It is a `RuntimeError`, **not** a `PyflowError`, so it propagates all the way out of
   `pyflow/run.py`'s driver call without passing either of that module's two cleanup handlers — see
   [Related pieces](#related-pieces).
 
 The counters the ladder is tuned by are **not** parameters — they are `resilience` fields:
 `max_output_retries`, `max_invoke_retries`, `max_rephrase_attempts`, `max_compact_attempts`,
-`use_default_outputs`, `result_timeout_s`.
+`result_timeout_s`.
 
 ## Setup (once, before the ladder)
 
@@ -163,8 +163,7 @@ loop:
             self.clock.sleep(min(10 * (rephrase + 1), 60))
             rephrase += 1
             continue
-        # Layer 4 — default to next
-        if resilience.use_default_outputs: return (rendered_prompt, default_outputs(node))
+        # exhausted — stop at the checkpoint, never answer for the node
         raise
 ```
 
@@ -172,8 +171,9 @@ loop:
    (a distinct, lower-level layer — rate limits, overloads, network blips, timeouts, empty results,
    and scheduled-reset caps) before a `BackendInvocationError` ever reaches this loop; see
    [`turn`](agent-turn.md)/[`classify_turn`](classify-turn.md), governed by
-   `resilience.max_invoke_retries` (default `4`) and the cap-wait knobs in
-   `workhorse/docs/GUARDRAILS.md`.
+   `resilience.max_invoke_retries` (default `60`, with `invoke_backoff_cap_s` at `1800`, so the
+   transient ladder spans ~27h and an outage lasting a working day is slept through) and the
+   cap-wait knobs in `workhorse/docs/GUARDRAILS.md`.
 2. **Compact & continue** — an `overflow=True` error (the model's context window was exhausted)
    is retried on the *same* session, summarized via the backend's `/compact`-equivalent
    (`_compact_session` for Claude), preserving the node's progress. Only attempted when
@@ -187,19 +187,15 @@ loop:
    `min(10 * (rephrase + 1), 60)` seconds first — on the **injected clock**, so this pause costs a
    test nothing — so a struggling service isn't hammered back-to-back. Up to
    `resilience.max_rephrase_attempts` times, with an otel `reframe` event each.
-4. **Default to next** — once reframing is exhausted, and only when
-   `resilience.use_default_outputs` (env `AGENT_USE_DEFAULT_OUTPUTS`, default `true`) is on,
-   [`default_outputs(node)`](#related-pieces) returns `{spec.key: spec.default for spec in
-   node.outputs}` — the workflow-declared fallback per
-   [`OutputSpec.default`](../workflow-format.md#returns) (`None` if unset) — so the run
-   advances to the next state instead of aborting, with an otel `default_outputs` error event.
-   Disabling the flag re-raises the last exception for a hard stop and manual resume.
+**There is no fourth layer.** Once reframing is exhausted the last exception is re-raised, with
+an otel `exhausted` error event: the run stops at its checkpoint for an operator to resume. The
+ladder never fabricates the node's answer — a null verdict is not a degraded answer, and every
+state downstream would do real work on it while the run reported success.
 
 **Non-recoverable fast path.** A `BackendInvocationError` that is neither `transient` nor
 `overflow` (a crashed CLI, a hard server error) skips straight to re-raising — reframing can't
-revive a dead CLI, and fabricating default outputs for a node that never really ran risks
-corrupting the workflow (e.g. an empty `write_epic`). This check runs *before* the reframe/default
-layers, so it overrides them regardless of how many attempts remain.
+revive a dead CLI, so the reframe budget would only be spent proving it. This check runs *before*
+the reframe layer, so it overrides it regardless of how many attempts remain.
 
 ## Sessions
 
@@ -246,6 +242,6 @@ into, each in its own module under `workhorse/workhorse/runner/`:
   [`retry_prompt`](retry-prompt.md) / [`timeout_retry_prompt`](timeout-retry-prompt.md) are the
   other two prompt-mutation strategies (a same-session output-retry nudge, and a budget-overrun
   warning fired from inside [`turn`](agent-turn.md) before a failure ever reaches this ladder).
-  All three, plus Layer 4's `default_outputs`, live in `runner/reframe.py`.
+  All three live in `runner/reframe.py`, which holds no fallback *output* by design.
 - `Clock` / `SYSTEM_CLOCK` (`runner/clock.py`) — the two-method protocol (`now`, `sleep`) the
   ladder and the cap-wait helpers are handed instead of importing `time`.

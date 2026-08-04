@@ -146,7 +146,7 @@ def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
         type="agent",
         id="review_implementation",
         prompt="Review the work and decide.",
-        outputs=[OutputSpec(key="decision", default="continue")],
+        outputs=[OutputSpec(key="decision")],
         next="next_node",
     )
     runner = ladder.AgentRunner.from_config(RunConfig(), clock=FakeClock())

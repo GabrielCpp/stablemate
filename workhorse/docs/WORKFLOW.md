@@ -144,12 +144,12 @@ deliberate consequence of what the port bought, not an oversight:
    a node imports its libraries **at module scope** and carries no "if it isn't importable"
    branch — the condition is settled before the package can be imported at all.
 
-2. **`default:` on an OutputSpec.** You could declare the exact value a node would emit
-   after the resilience ladder gave up (`default: {status: blocked}`). The ladder still
-   defaults an exhausted agent turn, but it emits the `returns=` model's declared keys as
-   **nulls**; it is generic and does not guess a value from a key's name. So a state that
-   drives a branch off an agent reply must have a safe arm for the empty reply — the route
-   that keeps a week-long run moving. `AGENT_USE_DEFAULT_OUTPUTS=false` hard-fails instead.
+2. **`default:` on an OutputSpec.** You could declare the value a node would emit after
+   the resilience ladder gave up (`default: {status: blocked}`). There is nothing left to
+   declare it for: an exhausted ladder now **stops the run** at its checkpoint instead of
+   emitting anything. A fallback value is a fabricated answer wearing the workflow author's
+   signature, and every state downstream would treat it as real. A state therefore needs no
+   safe arm for an empty agent reply — it never gets one.
 
 3. **Per-node `activity:` as a declared field.** It is now a flagged log record —
    `logger.info("assessing %s", unit, extra={"activity": True})` — because a state is one

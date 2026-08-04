@@ -71,12 +71,15 @@ through three layers before it can ever crash the run (see
    prompt is rephrased from scratch in a *fresh session* and the node is retried,
    up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt simplifies the ask
    further (`reframe.rephrase_prompt`).
-4. **Default the turn's outputs** — when every reframing fails, the node emits its
-   declared output keys as nulls so the state that asked for the turn gets a reply
-   object and the run advances instead of aborting. The keys come from the model the
-   state declared in `self.agent(..., returns=…)`; the runner is generic and does
-   **not** guess values from their names. Set `AGENT_USE_DEFAULT_OUTPUTS=false` to
-   hard-fail (and resume manually) instead.
+**There is no fourth layer.** When all three are spent the node raises and the run
+stops at its checkpoint, for an operator to look at and resume. The ladder never
+answers *for* a node: a null `decision` from a review node or a null plan from a dev
+node is not a degraded answer but a fabricated one, and every node downstream then
+does real work on it while the run reports success. A run that stops is recoverable
+by resuming it; a run that continued on invented outputs is not recoverable at all,
+because nothing records that the answer was never given. The unattended-run promise
+is kept by layer 1 instead — its budget is measured in days, so the outage a run
+used to die inside is now slept through.
 
 ## Implemented Solutions
 
@@ -98,12 +101,12 @@ The agent includes sophisticated retry logic with:
 Errors are now classified as:
 - **Transient**: Temporary issues that can be resolved by retrying (network, rate limits, timeouts, empty results)
 - **Persistent**: Permanent issues that won't resolve with retries (invalid model, syntax errors)
-- **Scheduled-reset caps** (spending cap, usage/weekly/**session** limit, quota): waited out until the named reset time, then retried — never reframed or defaulted
+- **Scheduled-reset caps** (spending cap, usage/weekly/**session** limit, quota): waited out until the named reset time, then retried — never reframed
 
-### 4. Prompt Reframing & Default Outputs
+### 4. Prompt Reframing, Then a Clean Stop
 
 - **Reframe**: A node Claude can't answer as-phrased is re-asked from scratch in a fresh session, simplifying each time.
-- **Default the outputs**: After reframing is exhausted, the node emits each declared output key as null so an unattended run advances rather than crashing.
+- **Then stop**: After reframing is exhausted the run ends at its checkpoint. Nothing invents the node's answer.
 
 ### 5. Enhanced Logging
 
@@ -113,13 +116,13 @@ Each operation logs:
 - 🔄 When resuming a session / reframing a prompt
 - ⚠️ When errors occur with diagnostics
 - ⏰ When timeouts are reached
-- ⏭ When a node defaults to the next node
+- ✖ When a node exhausts the ladder and the run stops
 
 ### 6. Workflow-Level Recovery
 
 The main controller:
 - Catches and logs errors with context
-- Provides clear resume instructions (when defaulting is disabled)
+- Provides clear resume instructions
 - Preserves workflow state for resumption
 
 ## Configuration
@@ -134,13 +137,12 @@ same CLI configuration as the conversation it is compacting.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_MAX_OUTPUT_RETRIES` | 2 | Additional same-session attempts when Claude's response can't be parsed |
-| `AGENT_MAX_INVOKE_RETRIES` | 4 | Additional attempts for transient agent CLI failures |
+| `AGENT_MAX_INVOKE_RETRIES` | 60 | Additional attempts for transient agent CLI failures. Sized in days, not minutes: with the backoff below the ladder spans ~27h, so a link down for a working day is slept through rather than died inside |
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
-| `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before defaulting the node |
-| `AGENT_USE_DEFAULT_OUTPUTS` | true | Default a failed node's outputs and advance to `next` instead of crashing |
+| `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before the run stops |
 | `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
-| `AGENT_INVOKE_BACKOFF_CAP_S` | 300 | Maximum backoff delay in seconds |
+| `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
 | `AGENT_CAP_DEFAULT_WAIT_S` | 3600 | Default wait when cap reset time can't be parsed |
 | `AGENT_CAP_WAIT_MARGIN_S` | 120 | Extra seconds added after parsed reset time |
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
@@ -366,25 +368,20 @@ export AGENT_RESULT_TIMEOUT_S=1200  # 20 minutes
 workhorse-coder run
 ```
 
-### Aggressive Retries for Unstable Networks
+### Shortening the Wait on a Link You Know Is Gone
+
+The defaults ride out a day-long outage. On a machine you are watching, and would
+rather see fail than wait on:
 
 ```bash
-export AGENT_MAX_INVOKE_RETRIES=10
-export AGENT_INVOKE_BACKOFF_BASE_S=30
+export AGENT_MAX_INVOKE_RETRIES=4
+export AGENT_INVOKE_BACKOFF_CAP_S=60
 workhorse-coder run story
-```
-
-### Hard-Stop Instead of Defaulting
-
-To make a persistently failing node abort the run (so it can be inspected and
-resumed) rather than defaulting past it:
-```bash
-export AGENT_USE_DEFAULT_OUTPUTS=false
 ```
 
 ## Recovery from Failures
 
-When defaulting is disabled and a workflow fails with a transient error:
+When a workflow stops after exhausting the ladder:
 
 1. **Check the error message**: The enhanced logging will indicate if it's transient
 2. **Resume the workflow**: Use the provided resume command
@@ -405,6 +402,6 @@ uv run python tests/test_guardrails.py
 ## Best Practices
 
 1. **Set appropriate timeouts**: Adjust `AGENT_RESULT_TIMEOUT_S` based on your workflow's complexity
-2. **Monitor long runs**: Watch the run log for ⏭ default-to-next markers — they flag nodes Claude couldn't answer
+2. **Monitor long runs**: Watch the run log for ✖ markers — they flag the node the run stopped on
 3. **Handle caps gracefully**: The system automatically waits for spending caps to reset
-4. **Keep defaulting on for unattended runs**: It is what lets a week-long run survive a single bad node
+4. **Expect long transient waits**: A backoff at its 30-minute cap is the ladder riding out an outage, not a hang — the ⏸ tick lines and the cap-wait heartbeat prove it

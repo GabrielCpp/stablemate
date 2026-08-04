@@ -1,9 +1,10 @@
-"""The prompts the recovery ladder sends instead of the node's own, and the outputs
-it falls back to once every one of them has failed."""
+"""The prompts the recovery ladder sends instead of the node's own.
+
+There is no fallback *output* here, deliberately. When every prompt in this module has
+failed the ladder raises and the run stops at its checkpoint; it does not synthesize
+the answer the node never gave."""
 
 from __future__ import annotations
-
-from typing import Any
 
 from workhorse.runner.failure import OutputParseError
 from workhorse.runner.spec import AgentNode
@@ -71,15 +72,3 @@ def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
     ]
     idx = min(attempt - 1, len(strategies) - 1)
     return strategies[idx](original_prompt)
-
-
-def default_outputs(node: AgentNode) -> dict[str, Any]:
-    """Outputs emitted when a node exhausts all retries/reframes and the runner
-    falls back to "default to next node".
-
-    The runner is generic and has no idea what a node's outputs *mean*, so the
-    safe fallback value is whatever the workflow author declared on each output
-    spec (``OutputSpec.default``, defaulting to ``None``). The step's recorded
-    output plus the ⏭ log line make the fallback explicit for later inspection.
-    """
-    return {spec.key: spec.default for spec in node.outputs}

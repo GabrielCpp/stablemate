@@ -21,7 +21,6 @@ from workhorse.runner.failure import (
     is_cap,
 )
 from workhorse.runner.reframe import (
-    default_outputs,
     rephrase_prompt,
     retry_prompt,
     timeout_retry_prompt,
@@ -117,12 +116,13 @@ class AgentRunner:
         """
         Render the prompt, invoke the agent, and parse its declared outputs — resiliently.
 
-        This worker is built to run unattended for days, so one bad node must never
-        crash the whole run. Recovery escalates through four layers:
+        This worker is built to run unattended for days, so a recoverable failure must
+        never crash the whole run. Recovery escalates through three layers:
 
         1. **Transient retries** (inside :meth:`turn`): rate limits, overloads,
            network blips, timeouts, *empty* results and spending caps are retried or
-           waited out with backoff.
+           waited out with backoff. That budget is measured in days, not minutes —
+           an outage the run can sleep through is not a failure.
         2. **Compact & continue** (here): if the node exhausts the model's context
            window (the headless CLI returns instead of auto-compacting), the session
            is compacted and the node retried on it — preserving the node's progress —
@@ -131,9 +131,13 @@ class AgentRunner:
            is rephrased from scratch in a fresh session and the node is retried, up to
            ``resilience.max_rephrase_attempts`` times. A node the agent can't answer
            as-phrased often succeeds when re-asked more simply.
-        4. **Default to next** (here): when every reframing fails, return safe default
-           outputs so the controller advances to ``node.next`` instead of aborting.
-           Set ``AGENT_USE_DEFAULT_OUTPUTS=false`` to hard-fail instead.
+        When all three are spent the node **raises**, ending the run at a resumable
+        checkpoint for an operator to look at. There is deliberately no fourth layer
+        that invents the node's outputs: a null verdict from a review node, or a null
+        plan from a dev node, is not a degraded answer but a fabricated one, and every
+        node downstream then does real work on it. A run that stops is recoverable by
+        resuming it; a run that continues on fabricated outputs is not recoverable at
+        all, because nothing downstream records that the answer was never given.
 
         **Sessions.** Each node is a fresh prompt and starts from a *clean context* —
         we do NOT chain one node's conversation into the next. The persisted agent
@@ -317,16 +321,15 @@ class AgentRunner:
                     rephrase += 1
                     continue
 
-                # Layer 4: don't crash an unattended run on one unanswerable node.
-                if resilience.use_default_outputs:
-                    print(
-                        f"[{node_id}] ⏭ all {resilience.max_rephrase_attempts} "
-                        f"reframings failed "
-                        f"({exc}); using default outputs to advance to the next node",
-                        flush=True,
-                    )
-                    otel.turn_event("default_outputs", error=True, node=node_id)
-                    return rendered_prompt, default_outputs(node)
+                # Nothing left to try. Stop here rather than inventing this node's
+                # answer — the run dir holds the checkpoint, so an operator resumes it.
+                print(
+                    f"[{node_id}] ✖ all {resilience.max_rephrase_attempts} reframings "
+                    f"failed ({exc}); stopping the run — resume it once the cause is "
+                    f"cleared",
+                    flush=True,
+                )
+                otel.turn_event("exhausted", error=True, node=node_id)
                 raise
 
     def _invoke_and_parse(
@@ -479,4 +482,13 @@ class AgentRunner:
                 otel.turn_event(
                     "retry", node=node_id, attempt=short_attempt, delay_s=int(delay)
                 )
-                self.clock.sleep(delay)
+                # Ticked, not silent: once the backoff reaches its cap a single sleep
+                # is half an hour, which to a collector is indistinguishable from a
+                # wedged turn. The same notice loop the cap wait uses proves liveness.
+                sleep_with_notice(
+                    delay,
+                    node_id,
+                    "transient failure",
+                    resilience=resilience,
+                    clock=self.clock,
+                )

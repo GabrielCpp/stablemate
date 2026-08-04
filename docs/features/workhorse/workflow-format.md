@@ -218,9 +218,9 @@ extraction](concepts/extract-outputs.md), all unchanged by the port.
 
 The reply contract, replacing the retired schema's per-key `outputs:` list. The turn's JSON
 is validated into this model, and its fields are what the state reads. When the resilience
-ladder exhausts every recovery, it emits **this model's declared keys as nulls** rather
-than crashing the run — so a state branching on an agent reply needs a safe arm for the
-empty one. `AGENT_USE_DEFAULT_OUTPUTS=false` hard-fails instead.
+ladder exhausts every recovery it **raises**, stopping the run at a resumable checkpoint —
+it does not synthesize this model from nulls. So a reply a state receives is always one the
+agent actually gave.
 
 ### power
 - type: `str` — required: no — default: the backend's own default tier

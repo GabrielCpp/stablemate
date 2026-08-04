@@ -1,8 +1,11 @@
-"""Tests for AgentRunner.run's resilience ladder: transient retry → reframe → default.
+"""Tests for AgentRunner.run's resilience ladder: transient retry → compact → reframe.
 
-The worker runs unattended for days, so a node Claude can't answer must never
-crash the run. These tests script the runner's own ``turn`` (no CLI) over a fake clock
-(no real sleeping) and assert the escalation order and the workflow-advancing fallback.
+The worker runs unattended for days, so a *recoverable* failure must never crash the
+run — the transient budget is sized in days precisely so an outage is slept through.
+What the ladder must never do is answer for the node: when every layer is spent it
+raises, leaving a resumable checkpoint, rather than emitting outputs the agent never
+gave. These tests script the runner's own ``turn`` (no CLI) over a fake clock (no real
+sleeping) and assert both the escalation order and that hard stop.
 
     ./.venv/bin/python tests/test_agent_recovery.py
     ./.venv/bin/python -m pytest tests/test_agent_recovery.py
@@ -19,7 +22,7 @@ from unittest.mock import patch
 from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure, ladder
-from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.failure import BackendInvocationError, OutputParseError
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 
@@ -29,12 +32,7 @@ def _node() -> AgentNode:
         type="agent",
         id="review_implementation",
         prompt="Review the work and decide.",
-        # Declarative fallbacks: the workflow author says what's safe to emit when
-        # this node can't be answered, so the generic runner needn't guess.
-        outputs=[
-            OutputSpec(key="decision", default="continue"),
-            OutputSpec(key="review", default={"status": "auto_approved"}),
-        ],
+        outputs=[OutputSpec(key="decision"), OutputSpec(key="review")],
         next="next_node",
     )
 
@@ -124,60 +122,51 @@ def test_empty_result_then_reframe_succeeds():
     assert calls["n"] == 2, "should reframe once then succeed"
 
 
-def test_persistent_failure_defaults_to_next_node():
-    """When every reframing fails, return safe defaults so the controller can
-    advance to node.next instead of raising."""
+def test_persistent_failure_raises_instead_of_answering_for_the_node():
+    """When every layer is spent the ladder stops the run — it does not invent outputs.
+
+    A null ``decision`` from a review node is not a degraded answer, it is a fabricated
+    one: every node downstream then does real work on a verdict nobody gave, and the
+    run reports success. Raising here ends the run at a checkpoint an operator can
+    resume once the cause is cleared, which is the only outcome that stays recoverable.
+    """
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    _, outputs = _run(_node(), always_fail, max_rephrase_attempts=3)
+    try:
+        _run(_node(), always_fail, max_rephrase_attempts=3)
+        raise AssertionError("the exhausted ladder must raise, not default the outputs")
+    except BackendInvocationError:
+        pass
 
-    # Heuristic defaults keep the workflow moving.
-    assert outputs["decision"] == "continue"
-    assert outputs["review"]["status"] == "auto_approved"
 
-
-def test_reframe_count_then_default():
-    """Exactly max_rephrase_attempts+1 invocations before defaulting."""
+def test_reframe_count_then_stop():
+    """Exactly max_rephrase_attempts+1 invocations before the ladder gives up."""
     calls = {"n": 0}
 
     def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         raise BackendInvocationError("No 'result' event received", transient=True)
 
-    _run(_node(), always_fail, max_rephrase_attempts=2)
+    try:
+        _run(_node(), always_fail, max_rephrase_attempts=2)
+    except BackendInvocationError:
+        pass
 
-    assert calls["n"] == 3, "initial + 2 reframes, then default (no further invoke)"
+    assert calls["n"] == 3, "initial + 2 reframes, then stop (no further invoke)"
 
 
-def test_unparseable_output_reframes_then_defaults():
+def test_unparseable_output_reframes_then_stops():
     """A node that always returns unparseable text exhausts output retries, then
-    reframes, then defaults — never crashes."""
+    reframes, then stops — it never passes off unparsed text as the node's answer."""
     def junk(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         return "I cannot produce JSON, sorry."
 
-    _, outputs = _run(_node(), junk, max_output_retries=1, max_rephrase_attempts=1)
-
-    assert outputs["decision"] == "continue"
-
-
-def test_default_outputs_use_declared_defaults_else_none():
-    """The generic runner emits each output's declared default; an output with no
-    declared default falls back to None (no key-name guessing)."""
-    node = AgentNode(
-        type="agent",
-        id="n",
-        prompt="do it",
-        outputs=[OutputSpec(key="decision", default="continue"), OutputSpec(key="notes")],
-        next="next_node",
-    )
-
-    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise BackendInvocationError("No 'result' event received", transient=True)
-
-    _, outputs = _run(node, always_fail, max_rephrase_attempts=1)
-
-    assert outputs == {"decision": "continue", "notes": None}
+    try:
+        _run(_node(), junk, max_output_retries=1, max_rephrase_attempts=1)
+        raise AssertionError("unparseable output must end the run, not be defaulted")
+    except (BackendInvocationError, OutputParseError):
+        pass
 
 
 def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
@@ -255,23 +244,24 @@ def test_overflow_compacts_then_continues_same_prompt():
 
 
 def test_overflow_falls_back_to_reframe_when_compaction_fails():
-    """If compaction can't help, the runner reframes (fresh session) then defaults."""
+    """If compaction can't help, the runner reframes (fresh session) then stops."""
     def always_overflow(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         raise BackendInvocationError("prompt is too long", overflow=True)
 
     def failed_compact(session_id_path, node_id, model=None, **kwargs):
         return False  # /compact unavailable/ineffective
 
-    _, outputs = _run(
-        _node(),
-        always_overflow,
-        backend=FakeBackend(compact=failed_compact),
-        max_rephrase_attempts=1,
-        max_compact_attempts=1,
-    )
-
-    # Compaction failed → reframe exhausted → declared defaults.
-    assert outputs["decision"] == "continue"
+    try:
+        _run(
+            _node(),
+            always_overflow,
+            backend=FakeBackend(compact=failed_compact),
+            max_rephrase_attempts=1,
+            max_compact_attempts=1,
+        )
+        raise AssertionError("compaction failed and reframing failed — must stop")
+    except BackendInvocationError:
+        pass
 
 
 def test_overflow_compaction_attempts_are_bounded():
@@ -285,22 +275,25 @@ def test_overflow_compaction_attempts_are_bounded():
         compacted["n"] += 1
         return True  # succeeds but the node keeps overflowing anyway
 
-    _run(
-        _node(),
-        always_overflow,
-        backend=FakeBackend(compact=ok_compact),
-        max_rephrase_attempts=1,
-        max_compact_attempts=2,
-    )
+    try:
+        _run(
+            _node(),
+            always_overflow,
+            backend=FakeBackend(compact=ok_compact),
+            max_rephrase_attempts=1,
+            max_compact_attempts=2,
+        )
+    except BackendInvocationError:
+        pass
 
     assert compacted["n"] == 2, "compaction must be bounded by max_compact_attempts"
 
 
 def test_non_recoverable_backend_error_aborts_without_reframe():
     """A non-transient, non-overflow backend failure (e.g. an opencode 'Unexpected
-    server error') is non-recoverable: reframing can't bring back a crashed CLI and
-    fabricating defaults would corrupt the workflow, so the ladder re-raises at once
-    for a clean abort — no reframe, no default outputs."""
+    server error') is non-recoverable: reframing can't bring back a crashed CLI, so
+    it is not worth the reframe budget and the ladder re-raises at once
+    for a clean abort."""
     calls = {"n": 0}
 
     def fatal(prompt, node_id, sid, model=None, timeout=None, **kwargs):
@@ -317,34 +310,62 @@ def test_non_recoverable_backend_error_aborts_without_reframe():
     except BackendInvocationError:
         pass
 
-    assert calls["n"] == 1, "non-recoverable failure must not reframe or default"
+    assert calls["n"] == 1, "non-recoverable failure must not reframe"
 
 
 def test_transient_failure_still_reframes_not_aborts():
-    """Guard for the non-recoverable fast-path: a TRANSIENT failure must still go
-    through reframe→default, NOT the immediate abort path."""
+    """Guard for the non-recoverable fast-path: a TRANSIENT failure must still spend
+    the reframe budget, NOT take the immediate abort path."""
     calls = {"n": 0}
 
     def transient_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         calls["n"] += 1
         raise BackendInvocationError("overloaded", transient=True)
 
-    _, outputs = _run(_node(), transient_fail, max_rephrase_attempts=2)
-
-    assert calls["n"] == 3, "transient failure should reframe (initial + 2) then default"
-    assert outputs["decision"] == "continue"
-
-
-def test_default_outputs_disabled_raises():
-    """With defaulting off, a persistently failing node raises for a hard stop."""
-    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
-        raise BackendInvocationError("No 'result' event received", transient=True)
-
     try:
-        _run(_node(), always_fail, max_rephrase_attempts=1, use_default_outputs=False)
-        raise AssertionError("expected raise when defaulting is disabled")
+        _run(_node(), transient_fail, max_rephrase_attempts=2)
     except BackendInvocationError:
         pass
+
+    assert calls["n"] == 3, "transient failure should reframe (initial + 2), then stop"
+
+
+def test_a_day_long_outage_is_slept_through_not_failed_through():
+    """The transient budget has to outlast the outage it exists for.
+
+    A home or office link can be down for a working day. The old ladder gave a network
+    failure four retries capped at five minutes — about fifteen minutes end to end —
+    so an outage measured in hours ended the run inside it every time. Nothing is
+    consumed while waiting and the checkpoint is untouched, so the only cost of waiting
+    is wall clock; the cost of not waiting is the whole run. This asserts on the
+    seconds the clock was ASKED for, so a day passes in microseconds.
+    """
+    clock = FakeClock()
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(
+            lambda *a, **k: (_ for _ in ()).throw(
+                BackendInvocationError(
+                    "API Error: Unable to connect to API (ENOTIMP)", transient=True
+                )
+            )
+        ),
+        resilience=AgentResilience(),
+        clock=clock,
+    )
+
+    try:
+        runner.turn("p", "n", None, timeout=AgentResilience().result_timeout_s)
+        raise AssertionError("a permanently down link must still end the turn")
+    except BackendInvocationError:
+        pass
+
+    assert sum(clock.slept) > 24 * 3600, (
+        f"the transient ladder rode out only {sum(clock.slept) / 3600:.1f}h — "
+        "an outage lasting a working day would still kill an unattended run"
+    )
+    # Ticked, not one silent 30-minute block: a collector must be able to tell this
+    # wait from a wedged turn, so no single sleep exceeds the notice interval.
+    assert max(clock.slept) <= AgentResilience().cap_tick_s, clock.slept
 
 
 if __name__ == "__main__":

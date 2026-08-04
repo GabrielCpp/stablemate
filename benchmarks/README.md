@@ -365,8 +365,9 @@ Three pieces, all data:
 
 ### What makes the number trustworthy
 
-- **A defaulted output is a failure.** Replay sets `use_default_outputs=False`, so the
-  fail-soft ladder that keeps unattended runs alive cannot quietly score as a pass.
+- **An unanswered node is a failure.** The ladder never fabricates a node's outputs — it
+  stops the run instead — so the resilience that keeps unattended runs alive cannot
+  quietly score as a pass.
 - **The verdict needs two bars.** A change is accepted only when a paired randomization
   test clears `--alpha` *and* the mean per-fixture gain clears `--min-effect` (10 points
   by default). Significance alone is buyable with sample count.

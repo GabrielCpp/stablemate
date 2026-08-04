@@ -57,7 +57,5 @@ there is only ever this one wording — the caller's loop is what bounds how man
 - [`rephrase_prompt`](rephrase-prompt.md) / [`timeout_retry_prompt`](timeout-retry-prompt.md) —
   the other two prompt-mutation strategies in this module, used in different failure paths
   (fresh-session reframe, and a wall-clock-timeout retry respectively).
-- `default_outputs` (`runner/reframe.py`) — the module's fourth function and the ladder's last
-  rung: `{spec.key: spec.default for spec in node.outputs}` once every prompt strategy has failed.
 - [`OutputParseError`](extract-outputs.md) — the exception type this function's `error` parameter
   accepts; raised by `extract_outputs` and defined in `runner/failure.py`.

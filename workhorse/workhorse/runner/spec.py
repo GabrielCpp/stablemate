@@ -15,12 +15,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class OutputSpec(BaseModel):
+    # A key the node must return. There is no companion `default` here on purpose:
+    # a node that never answered has no answer to fall back to, and the ladder stops
+    # the run rather than emitting one (see runner/ladder.py).
     key: str
-    # Value emitted for this key when the node exhausts all retries/reframes and
-    # the runner falls back to "default to next node" (see runner/ladder.py). The
-    # safe fallback is workflow-specific, so it's declared here by the workflow
-    # author rather than guessed by the generic runner. Unset → None.
-    default: Any = None
 
 
 class AgentNode(BaseModel):
