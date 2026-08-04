@@ -24,6 +24,13 @@ def test_transient_error_detection():
         "Network error: ECONNRESET",
         # A stream cut off upstream mid-flight (exit 1): retry, don't hard-fail.
         "API Error: Server error mid-response. The response above may be incomplete.",
+        # The request never left the machine — no marker above matched this one, so a
+        # single blip ended an unattended run mid-epic. Nothing was consumed and the
+        # prompt is fine, so the next turn is the whole fix.
+        "API Error: Unable to connect to API (ENOTIMP)",
+        "connect ECONNREFUSED 127.0.0.1:443",
+        "getaddrinfo ENOTFOUND api.example.com",
+        "socket hang up",
     ]
     
     for msg in transient_messages:

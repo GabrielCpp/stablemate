@@ -70,6 +70,17 @@ _TRANSIENT_MARKERS = (
     "econnreset",
     "etimedout",
     "network",
+    # The turn never reached the API at all — DNS, routing or the socket failed
+    # before a request went out. Observed as "API Error: Unable to connect to API
+    # (ENOTIMP)", which matched no marker above and so killed an unattended run
+    # over a blip that the next turn would not have seen. Nothing was consumed and
+    # nothing is wrong with the prompt, which is what makes it retryable.
+    "unable to connect",
+    "econnrefused",
+    "enotfound",
+    "enetunreach",
+    "eai_again",
+    "socket hang up",
     # A stream that began then was cut off upstream ("API Error: Server error
     # mid-response. The response above may be incomplete.") — a partial 5xx after
     # the result started, exit 1. Retryable: a fresh turn usually completes. Kept
