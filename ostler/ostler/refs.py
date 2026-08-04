@@ -79,4 +79,25 @@ def ref_path(ref: str) -> str:
     return ref.partition("::")[0]
 
 
-__all__ = ["code_refs", "normalize_ref", "ref_path"]
+#: The one way a ``code:`` ref marks "this names a symbol or file the story intentionally
+#: deleted", not a stale citation. Written inside the backticks, ahead of the path:
+#: `` `~old/path.ts::Symbol` ``. A deletion is exactly the case a live citation cannot
+#: survive — the file is gone, so nothing downstream can check the ref against it — and this
+#: is the sigil that tells doctor's grounding check to trust the deletion instead of flagging
+#: the now-dangling reference it necessarily is.
+REMOVED_MARK = "~"
+
+
+def is_removed_ref(ref: str) -> bool:
+    """Whether a normalized ref documents an intentional deletion rather than a live target."""
+    return ref.startswith(REMOVED_MARK)
+
+
+def strip_removed(ref: str) -> str:
+    """*ref* with any removed-marker stripped, back to the plain ``path::symbol`` it names."""
+    return ref[len(REMOVED_MARK):] if is_removed_ref(ref) else ref
+
+
+__all__ = [
+    "REMOVED_MARK", "code_refs", "is_removed_ref", "normalize_ref", "ref_path", "strip_removed",
+]

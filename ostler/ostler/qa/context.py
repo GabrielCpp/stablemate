@@ -155,17 +155,23 @@ def build_context(
         mapped = False
         for node_id, node in nodes_by_id.items():
             cited = refs_mod.code_refs(node.get("bullets", {}).get("code"))
-            exact = sorted(refs.intersection(set(cited)))
+            # A `~`-marked ref documents a deleted symbol, so it never appears in *refs*
+            # (that set only ever names symbols the diff actually still has on one side) —
+            # match it by the plain ref it stands for, but report the marked form, since
+            # that is what tells doctor not to demand the file still exist.
+            cited_by_bare = {refs_mod.strip_removed(item): item for item in cited}
+            exact = sorted(refs.intersection(cited_by_bare))
             file_owned = [
                 item
                 for item in cited
-                if refs_mod.ref_path(item) in {change.base_path, change.head_path}
+                if refs_mod.ref_path(refs_mod.strip_removed(item))
+                in {change.base_path, change.head_path}
             ]
             if exact:
                 mapped = True
                 for ref in exact:
                     direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "changed-code", "ref": ref}
+                        {"kind": "changed-code", "ref": cited_by_bare[ref]}
                     )
             elif file_owned:
                 mapped = True

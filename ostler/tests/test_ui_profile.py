@@ -220,6 +220,20 @@ def test_a_receiver_qualified_symbol_grounds_against_go(repo: Path):
     assert "missing-code-symbol" in codes(bad)
 
 
+def test_a_removed_marked_ref_to_a_deleted_file_is_not_dangling(repo: Path):
+    # A `~`-marked ref documents a symbol the story intentionally deleted — the file is
+    # gone on purpose, so it must not trip the same check that exists to catch drift.
+    report = _concept_report(repo, "~groom/groom/gone.py::Diff")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+
+
+def test_a_removed_marked_ref_to_a_symbol_no_longer_declared_is_not_flagged(repo: Path):
+    # The file can also survive a partial deletion — the symbol itself was removed from it.
+    write(repo / "groom/groom/diff.py", "class Other:\n    pass\n")
+    report = _concept_report(repo, "~groom/groom/diff.py::Diff")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+
+
 def test_a_service_relative_ref_is_caught_as_dangling(repo: Path):
     # §4.4's other job: stop two path conventions coexisting silently. The grammar is
     # repo-root-relative, so a service-relative citation names no file and says so.
