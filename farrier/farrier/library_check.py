@@ -105,6 +105,33 @@ def _top_level_scalars(fence: str) -> dict[str, yaml.ScalarEvent]:
     return events
 
 
+def _retyped_tags(fence: str) -> list[tuple[str, str]]:
+    """``(as written, as installed)`` for each tag YAML did not resolve as a string.
+
+    A tag is a query key, so it only has to survive as *itself*. Most of the vocabulary
+    is safe unquoted — `standards`, `planning`, `go` are plain scalars YAML resolves to
+    the text written. But YAML 1.1 resolves ten-odd words to other types, and
+    ``normalize_tags`` then ``str()``s whatever it is back into a tag: ``[on, docs]``
+    installs ``true``. Nothing errors and no tag goes missing — one is simply spelled
+    differently than the file says, so it answers a query nobody asks.
+    """
+    node = yaml.compose(fence + "\n")
+    if not isinstance(node, yaml.MappingNode):
+        return []
+    retyped: list[tuple[str, str]] = []
+    for key_node, value_node in node.value:
+        if getattr(key_node, "value", None) != "tags":
+            continue
+        items = value_node.value if isinstance(value_node, yaml.SequenceNode) else []
+        for item in items:
+            # `item.tag` is the parser's own resolution, so this asks YAML what it
+            # decided rather than re-deriving the 1.1 bool/null/int tables here.
+            if isinstance(item, yaml.ScalarNode) and item.tag != "tag:yaml.org,2002:str":
+                installed = str(yaml.safe_load(f"[{item.value}]")[0]).strip().lower()
+                retyped.append((item.value, installed))
+    return retyped
+
+
 def _trailing_text(fence: str, event: yaml.ScalarEvent) -> str:
     """Whatever sits between the end of *event*'s value and the end of its line.
 
@@ -192,6 +219,12 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
             add("warning", "fragile",
                 f"`{key}:` is unquoted and contains a template expression; a later edit to "
                 "it can turn the line into a mapping or a parse error. Quote the value.")
+
+    for written, installed in _retyped_tags(fence):
+        add("error", "tag-retyped",
+            f"tag `{written}` is not a string to YAML, so it installs as `{installed}` — "
+            f"a skill that answers find_by_tags({installed!r}) and never "
+            f"find_by_tags({written!r}). Quote it.")
 
     if require_tags and path.name == "SKILL.md" and not data.get("tags"):
         add("warning", "untagged",

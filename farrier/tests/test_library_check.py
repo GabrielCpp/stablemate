@@ -101,6 +101,28 @@ def test_an_unquoted_template_expression_mid_value_is_a_warning():
 # --- what must NOT be reported ------------------------------------------------------
 
 
+def test_a_tag_yaml_reads_as_a_bool_or_null_is_reported_with_the_name_it_installs_under():
+    """`[on, docs]` installs `true`: no tag goes missing, one is just spelled otherwise."""
+    findings = check_text("---\nname: t\ntags: [on, docs]\ndescription: A\n---\n\n# T\n", Path("skills/t/SKILL.md"))
+    assert [f.code for f in findings] == ["tag-retyped"]
+    assert "installs as `true`" in findings[0].message
+
+    for word, installed in (("no", "false"), ("null", "none"), ("~", "none")):
+        text = f"---\nname: t\ntags: [{word}, docs]\ndescription: A\n---\n\n# T\n"
+        assert [f.code for f in check_text(text, Path("skills/t/SKILL.md"))] == ["tag-retyped"], word
+        assert f"installs as `{installed}`" in check_text(text, Path("skills/t/SKILL.md"))[0].message
+
+
+def test_quoting_a_retyped_tag_is_the_fix_the_message_prescribes():
+    assert _codes("---\nname: t\ntags: ['on', docs]\ndescription: A\n---\n\n# T\n") == []
+
+
+def test_the_real_tag_vocabulary_needs_no_quoting():
+    """The answer to "should these be quoted": no — they are plain scalars YAML keeps."""
+    vocab = "standards, planning, docs, go, backend, cli, web, mobile, infra, entrypoint, tests, qa, codegen, runbook"
+    assert _codes(f"---\nname: t\ntags: [{vocab}]\ndescription: A\n---\n\n# T\n") == []
+
+
 def test_a_flow_sequence_is_the_documented_spelling_for_tags_not_a_fragile_value():
     """Regression: `[` is an indicator, so a first draft flagged all 130 tagged skills."""
     assert _codes(_skill("")) == []
