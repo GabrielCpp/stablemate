@@ -200,8 +200,9 @@ which is the gate behind the 3.47 turns/story on `review-story-documentation`.
 `json.dumps(s.get("attrs") or {})`). OTel's attribute model is a flat `dict[str, ...]` with
 dotted-looking keys, so `usage.output_tokens` is written as a **literal dotted key**.
 `json_extract(attrs_json,'$.usage.output_tokens')` therefore returns `NULL` silently —
-only `'$."usage.output_tokens"'` works. `groom/README.md:216-247` demonstrates the broken
-unquoted form.
+only `'$."usage.output_tokens"'` works. `groom/README.md:216-247` never mentions it; its
+own examples happen to use undotted keys (`'$.node'`, which is correct), so a reader
+generalises from them straight into the trap.
 
 Promote the fields every cost query wants to real nullable columns on `spans`:
 `duration_ms INTEGER`, `total_cost_usd REAL`, `input_tokens INTEGER`, `output_tokens INTEGER`,
@@ -228,7 +229,7 @@ directly serves the plan's stated goal. There is no cost or token aggregation an
 groom today: the only span aggregate that exists is `run_summaries` (`store.py:300-332`),
 which computes `COUNT(*)` and `SUM(status='ERROR')`. Nothing in `groom/*.py`, `dashboard.js`
 or `dashboard.html` reads `total_cost_usd` or any token field. The README's "Querying it
-yourself" section is the entire cost story, and its example query is broken.
+yourself" section is the entire cost story, and none of its examples touch cost at all.
 
 So without this item, §3 only makes hand-written SQL less error-prone — the tables in the
 *Evidence* section above still have to be produced by hand every time.

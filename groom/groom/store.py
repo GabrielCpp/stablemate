@@ -312,6 +312,73 @@ def query_logs(
     ]
 
 
+def _promoted_or_attr(column: str, key: str) -> str:
+    """The promoted column, falling back to the attribute it was promoted from.
+
+    The columns are populated at ingest and deliberately not backfilled, so every
+    span already in the store has NULL in them. Without this fallback an aggregate
+    would read as "this run cost nothing" for the whole retention window after the
+    columns ship — a wrong answer, and a much worse one than a slow answer, since
+    nothing about it looks like missing data.
+
+    Note the quoting. OTel attribute keys are flat strings that merely look nested,
+    so the literal key is `usage.output_tokens` and the JSON path has to quote it;
+    unquoted, SQLite reads the dot as navigation and silently returns NULL.
+    """
+    return f"COALESCE({column}, json_extract(attrs_json, '$.\"{key}\"'))"
+
+
+_cost = _promoted_or_attr("total_cost_usd", "total_cost_usd")
+_duration = _promoted_or_attr("duration_ms", "duration_ms")
+_output = _promoted_or_attr("output_tokens", "usage.output_tokens")
+
+
+def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    """Per-node agent spend for a run: where the money and the rework went.
+
+    Only `agent_turn` spans are counted. A node span wraps its turn, so totalling
+    both would double every figure; and a node with no turn under it (an in-process
+    `self.call`) spent no agent money by definition.
+
+    `turns_per_work_id` is the rework signal. A workflow stamps `work_id` as a label
+    (the coder workflow uses the story slug), so a node that averages one turn per
+    work item ran once per story and a node averaging four re-ran three times. That
+    ratio, not the raw turn count, is what separates an expensive node from a
+    *looping* one.
+
+    Cost is summed over rows where it is non-NULL; a harness that does not report
+    money contributes turns but no spend, so `turns` and `cost_usd` can legitimately
+    disagree about which node is biggest.
+    """
+    clauses, params = ["name = 'agent_turn'"], []
+    if run:
+        clauses.append("run_id = ?")
+        params.append(run)
+    conn = _connection()
+    rows = conn.execute(
+        "SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
+        " COUNT(*) AS turns,"
+        " COUNT(DISTINCT json_extract(attrs_json, '$.work_id')) AS work_items,"
+        f" SUM({_cost}) AS cost_usd,"
+        f" SUM({_duration}) / 60000.0 AS minutes,"
+        f" SUM({_output}) AS output_tokens"
+        f" FROM spans WHERE {' AND '.join(clauses)}"
+        " GROUP BY node ORDER BY cost_usd DESC NULLS LAST, turns DESC LIMIT ?",
+        (*params, max(1, min(int(limit), 1000))),
+    ).fetchall()
+    total = sum(row["cost_usd"] or 0.0 for row in rows)
+    return [
+        {
+            **dict(row),
+            "share": (row["cost_usd"] or 0.0) / total if total else 0.0,
+            "turns_per_work_id": (
+                row["turns"] / row["work_items"] if row["work_items"] else None
+            ),
+        }
+        for row in rows
+    ]
+
+
 # The spans-table columns, named explicitly rather than `SELECT *` so a schema
 # migration can't silently change a query result's shape.
 _SPAN_COLUMNS = (

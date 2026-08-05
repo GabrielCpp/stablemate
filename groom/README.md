@@ -213,6 +213,64 @@ you run deliberately and can preview with `--dry-run`, rather than to the ingest
 path, where the same guess would discard evidence unasked. Runs are identified
 by their run dir in both cases, never by name.
 
+### What a run cost (`groom cost`)
+
+Where the money and the rework went, per node:
+
+```console
+$ groom cost --run RUN
+node                         turns  /work      usd  share    min
+----------------------------------------------------------------
+plan-qa                         84   4.67   181.38  21.7%    730
+document-story                  89   4.68   116.54  13.9%    602
+implement-plan                  23   1.21   104.40  12.5%    317
+```
+
+Only `agent_turn` spans are counted — a node span wraps its turn, so totalling
+both would double every figure, and an in-process `self.call` node spent no agent
+money by definition.
+
+`/work` is turns per work item, and it is the column to read first. A workflow
+stamps `work_id` itself (the coder workflow uses the story slug), so a node at
+`1.00` ran once per story while a node at `4.67` re-ran three and a half times on
+average. Raw turn count tells you a node is *busy*; this tells you it is
+*looping*, which is a different and usually more actionable problem.
+
+A harness that does not report cost still contributes turns, so `turns` and `usd`
+can legitimately disagree about which node is biggest.
+
+### The schema, and one footgun
+
+Three tables — `spans`, `metrics`, `logs` — plus `attrs_json` on each, holding
+whatever OpenTelemetry attributes the producer set.
+
+**OTel attribute keys are flat strings that merely look nested.** `set_attribute`
+is called with `usage.output_tokens`, and that reaches `attrs_json` as a literal
+key with a dot in it — not as a nested object. So:
+
+```sql
+json_extract(attrs_json, '$.usage.output_tokens')     -- NULL, always, no error
+json_extract(attrs_json, '$."usage.output_tokens"')   -- 17550
+```
+
+SQLite reads the unquoted dot as navigation into an object that is not there and
+returns NULL silently. **Quote every dotted key.**
+
+The fields most queries want dodge this entirely by being real columns on
+`spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_creation_tokens`, `pid`. They are populated at ingest
+and are **nullable on purpose** — a harness that does not report cost yields NULL,
+never `0.0`, because averaging a real zero together with an unknown understates
+spend. Spans ingested before these columns shipped have NULL in them and are not
+backfilled; `groom cost` falls back to `attrs_json`, and anything else you write
+should too.
+
+Everything else — `workhorse.node`, `backend`, `model`, `session.id`, and whatever
+the workflow declared in `labels()` — stays in `attrs_json`. Adding a column means
+editing both `_SCHEMA` and `_ADDED_SPAN_COLUMNS` in `groom/store.py`: the first
+only runs on a fresh database, so a column added there alone never appears on a
+`groom.db` that already exists.
+
 ### Querying it yourself
 
 There is no privileged view: the dashboard, `groom status`, and any agent all

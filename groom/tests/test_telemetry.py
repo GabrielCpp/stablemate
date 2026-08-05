@@ -308,6 +308,64 @@ def test_promoted_columns_are_added_to_a_database_that_predates_them():
         assert rows["old"]["output_tokens"] is None
 
 
+def _turn(node: str, work_id: str, cost: float, span_id: str) -> dict:
+    return {
+        "name": "agent_turn", "node": node, "span_id": span_id,
+        "labels": {"work_id": work_id},
+        "numbers": {"total_cost_usd": cost, "duration_ms": 60000},
+    }
+
+
+def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        # A looping gate: three turns spread over two stories.
+                        _turn("plan-qa", "story-a", 2.0, "01" * 8),
+                        _turn("plan-qa", "story-a", 2.0, "02" * 8),
+                        _turn("plan-qa", "story-b", 2.0, "03" * 8),
+                        # A node that ran once per story.
+                        _turn("implement-plan", "story-a", 1.0, "04" * 8),
+                        _turn("implement-plan", "story-b", 1.0, "05" * 8),
+                        # A node span wrapping the turns. It must not be counted, or
+                        # every figure doubles.
+                        {"name": "qa", "node": "qa", "span_id": "06" * 8},
+                    ]
+                )
+            )
+        )
+        rows = {row["node"]: row for row in store.node_costs()}
+        assert set(rows) == {"plan-qa", "implement-plan"}
+
+        assert rows["plan-qa"]["turns"] == 3
+        assert rows["plan-qa"]["cost_usd"] == 6.0
+        assert rows["plan-qa"]["minutes"] == 3.0
+        # The rework signal: three turns across two stories.
+        assert rows["plan-qa"]["turns_per_work_id"] == 1.5
+        assert rows["implement-plan"]["turns_per_work_id"] == 1.0
+        # Share is of total agent spend, so the two nodes account for all of it.
+        assert rows["plan-qa"]["share"] == 0.75
+        assert rows["implement-plan"]["share"] == 0.25
+
+
+def test_node_costs_reads_spans_ingested_before_the_columns_existed():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(_trace_request([_turn("plan-qa", "story-a", 3.0, "07" * 8)]))
+        )
+        # Blank the promoted columns, leaving attrs_json — exactly the shape of every
+        # row already in a collector database when this migration lands. Without the
+        # COALESCE fallback the aggregate would report the run as free.
+        conn = store._connection()
+        conn.execute("UPDATE spans SET total_cost_usd = NULL, duration_ms = NULL")
+        conn.commit()
+
+        row = store.node_costs()[0]
+        assert row["cost_usd"] == 3.0 and row["minutes"] == 1.0
+
+
 def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
     with _TelemetryEnv():
         store.insert_spans(

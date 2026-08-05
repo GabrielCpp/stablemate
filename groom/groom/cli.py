@@ -161,6 +161,52 @@ def logs(
     print(_format_logs(rows))
 
 
+def _format_costs(rows: list[dict]) -> str:
+    if not rows:
+        return (
+            "no agent turns recorded.\n"
+            "  Cost and tokens are stamped on agent_turn spans, so a run that has not\n"
+            "  yet finished a turn — or ran with telemetry off — has nothing to total."
+        )
+    header = f"{'node':<28}{'turns':>6}{'/work':>7}{'usd':>9}{'share':>7}{'min':>7}"
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        cost = row["cost_usd"]
+        per = row["turns_per_work_id"]
+        lines.append(
+            f"{row['node'][:27]:<28}{row['turns']:>6}"
+            f"{(f'{per:.2f}' if per else '-'):>7}"
+            f"{(f'{cost:.2f}' if cost is not None else '-'):>9}"
+            f"{row['share'] * 100:>6.1f}%"
+            f"{(row['minutes'] or 0):>7.0f}"
+        )
+    total = sum(row["cost_usd"] or 0.0 for row in rows)
+    minutes = sum(row["minutes"] or 0.0 for row in rows)
+    turns = sum(row["turns"] for row in rows)
+    lines.append("-" * len(header))
+    lines.append(f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{'':>7}{minutes:>7.0f}")
+    return "\n".join(lines)
+
+
+def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
+    """Print per-node agent spend for a run — where the money and the rework went.
+
+    The counterpart to ``status`` and ``logs``: those say where a run is and what it
+    said, this says what it cost. ``/work`` is turns per work item (the workflow's
+    own ``work_id`` label), which is the rework signal — a node at 1.0 ran once per
+    story, a node at 4.6 re-ran three and a half times on average.
+    """
+    import json as _json
+
+    from groom import store
+
+    rows = store.node_costs(run=run, limit=limit)
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    print(_format_costs(rows))
+
+
 def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
     """Evict telemetry that test runs wrote into the store.
 
@@ -224,6 +270,17 @@ def main(argv: list[str] | None = None) -> None:
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
+    cost_parser = subparsers.add_parser(
+        "cost",
+        help="Per-node agent spend for a run: where the money and the rework went. "
+        "Turns per work item is the rework signal.",
+    )
+    cost_parser.add_argument("--run", default="", help="Limit to one run_id.")
+    cost_parser.add_argument("--limit", type=int, default=100, help="Max nodes (default 100).")
+    cost_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable output."
+    )
+
     subparsers.add_parser("db-path", help="Print the telemetry SQLite path and exit.")
 
     purge_parser = subparsers.add_parser(
@@ -251,6 +308,8 @@ def main(argv: list[str] | None = None) -> None:
             run=args.run, node=args.node, level=args.level,
             contains=args.contains, limit=args.limit, as_json=args.as_json,
         )
+    elif args.command == "cost":
+        cost(run=args.run, limit=args.limit, as_json=args.as_json)
     elif args.command == "db-path":
         from groom import store
 
