@@ -1041,3 +1041,8 @@ def test_logs_prune_on_their_own_shorter_window():
         # Span retention (14d) would keep both; the log window (3d) must not.
         store.prune(retention_days=14, now=now)
         assert [r["body"] for r in store.query_logs()] == ["new"]
+
+
+if __name__ == "__main__":
+    import pytest
+    raise SystemExit(pytest.main([__file__, "-q"]))
