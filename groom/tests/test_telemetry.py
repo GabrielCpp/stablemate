@@ -11,6 +11,7 @@ Run: uv run pytest tests/test_telemetry.py
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -58,6 +59,16 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
         for key, value in (spec.get("labels") or {}).items():
             kv = span.attributes.add()
             kv.key, kv.value.string_value = key, value
+        # Numeric attributes, which is what usage/cost actually arrive as. Their keys
+        # only *look* nested (`usage.output_tokens`) — OTel's attribute model is flat,
+        # so these land in attrs_json as literal dotted keys.
+        for key, value in (spec.get("numbers") or {}).items():
+            kv = span.attributes.add()
+            kv.key = key
+            if isinstance(value, float):
+                kv.value.double_value = value
+            else:
+                kv.value.int_value = value
         for name in spec.get("events", []):
             span.events.add().name = name
         if spec.get("error"):
@@ -200,6 +211,101 @@ def test_store_roundtrip_and_query_filters():
             )
         )
         assert len(store.query_spans(node="plan")) == 1
+
+
+_TURN = {
+    "duration_ms": 230746,
+    "total_cost_usd": 1.3442182,
+    "usage.input_tokens": 62,
+    "usage.output_tokens": 17550,
+    "usage.cache_read_input_tokens": 2478104,
+    "usage.cache_creation_input_tokens": 55369,
+}
+
+
+def _columns(span_id: str = "") -> dict:
+    names = "span_id, duration_ms, total_cost_usd, input_tokens, output_tokens"
+    names += ", cache_read_tokens, cache_creation_tokens, pid"
+    rows = store._connection().execute(f"SELECT {names} FROM spans ORDER BY span_id")  # noqa: S608
+    return {row["span_id"]: dict(row) for row in rows}
+
+
+def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        {"name": "agent_turn", "node": "plan-qa", "span_id": "a" * 16,
+                         "numbers": _TURN},
+                        # A node span: no agent turn under it, so no usage at all.
+                        {"name": "assess", "node": "assess", "span_id": "b" * 16},
+                    ],
+                    resource={"run_id": "run-1", "workflow": "coder", "process.pid": "4242"},
+                )
+            )
+        )
+        turn = _columns()["a" * 16]
+        assert turn["duration_ms"] == 230746
+        assert turn["total_cost_usd"] == 1.3442182
+        assert turn["input_tokens"] == 62 and turn["output_tokens"] == 17550
+        assert turn["cache_read_tokens"] == 2478104
+        assert turn["cache_creation_tokens"] == 55369
+        # Parsed from the resource since the collector first shipped, but dropped at
+        # insert for want of a column until now.
+        assert turn["pid"] == 4242
+
+        # Absent is not zero. A harness that does not report cost reports nothing, and
+        # averaging a real 0.0 together with an unknown would understate spend.
+        node = _columns()["b" * 16]
+        assert node["total_cost_usd"] is None and node["output_tokens"] is None
+        assert node["duration_ms"] is None
+
+        # The attributes stay in attrs_json too, so a query written against the old
+        # shape keeps working — provided it quotes the dotted key.
+        conn = store._connection()
+        quoted = "SELECT json_extract(attrs_json, '$.\"usage.output_tokens\"') FROM spans"
+        row = conn.execute(f"{quoted} WHERE span_id = ?", ("a" * 16,)).fetchone()
+        assert row[0] == 17550
+        # And this is the footgun the columns exist to retire: unquoted, SQLite reads
+        # the dot as navigation into an object that isn't there and returns NULL with
+        # no error at all.
+        unquoted = "SELECT json_extract(attrs_json, '$.usage.output_tokens') FROM spans"
+        assert conn.execute(f"{unquoted} WHERE span_id = ?", ("a" * 16,)).fetchone()[0] is None
+
+
+def test_promoted_columns_are_added_to_a_database_that_predates_them():
+    with _TelemetryEnv():
+        # A groom.db from before the columns shipped. CREATE TABLE IF NOT EXISTS is a
+        # no-op on it, so only the ALTER in _migrate can rescue it.
+        legacy = sqlite3.connect(store.db_path())
+        legacy.execute(
+            "CREATE TABLE spans (span_id TEXT PRIMARY KEY, trace_id TEXT NOT NULL,"
+            " parent_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '',"
+            " workflow TEXT NOT NULL DEFAULT '', repo TEXT NOT NULL DEFAULT '',"
+            " branch TEXT NOT NULL DEFAULT '', node TEXT NOT NULL DEFAULT '',"
+            " name TEXT NOT NULL DEFAULT '', start_ts REAL NOT NULL, end_ts REAL NOT NULL,"
+            " status TEXT NOT NULL DEFAULT 'UNSET', attrs_json TEXT NOT NULL DEFAULT '{}')"
+        )
+        legacy.execute(
+            "INSERT INTO spans (span_id, trace_id, start_ts, end_ts) VALUES ('old', 't', 1, 2)"
+        )
+        legacy.commit()
+        legacy.close()
+
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [{"name": "agent_turn", "node": "plan-qa", "span_id": "c" * 16,
+                      "numbers": _TURN}]
+                )
+            )
+        )
+        rows = _columns()
+        assert rows["c" * 16]["output_tokens"] == 17550
+        # The pre-existing row keeps NULL rather than needing a backfill; retention
+        # ages it out on its own.
+        assert rows["old"]["output_tokens"] is None
 
 
 def test_run_summaries_count_spans_and_errors_without_claiming_liveness():

@@ -56,7 +56,14 @@ CREATE TABLE IF NOT EXISTS spans (
     start_ts  REAL NOT NULL,
     end_ts    REAL NOT NULL,
     status    TEXT NOT NULL DEFAULT 'UNSET',
-    attrs_json TEXT NOT NULL DEFAULT '{}'
+    attrs_json TEXT NOT NULL DEFAULT '{}',
+    duration_ms INTEGER,
+    total_cost_usd REAL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_creation_tokens INTEGER,
+    pid INTEGER
 );
 CREATE INDEX IF NOT EXISTS spans_run ON spans(run_id, start_ts);
 CREATE INDEX IF NOT EXISTS spans_node ON spans(node);
@@ -101,7 +108,57 @@ def db_path() -> Path:
 # Columns added to `spans` after the table first shipped. CREATE TABLE IF NOT
 # EXISTS silently does nothing on an existing DB, so a new column has to be
 # ALTERed in or every query naming it fails on a pre-existing groom.db.
-_ADDED_SPAN_COLUMNS = (("run_dir", "TEXT NOT NULL DEFAULT ''"),)
+_ADDED_SPAN_COLUMNS = (
+    ("run_dir", "TEXT NOT NULL DEFAULT ''"),
+    ("duration_ms", "INTEGER"),
+    ("total_cost_usd", "REAL"),
+    ("input_tokens", "INTEGER"),
+    ("output_tokens", "INTEGER"),
+    ("cache_read_tokens", "INTEGER"),
+    ("cache_creation_tokens", "INTEGER"),
+    ("pid", "INTEGER"),
+)
+
+# OTel attribute key -> the `spans` column it is promoted to. OTel's attribute model
+# is a flat dict whose keys merely *look* dotted, so `usage.output_tokens` is stored
+# in attrs_json as a literal key with a dot in it and
+# `json_extract(attrs_json,'$.usage.output_tokens')` silently returns NULL — SQLite
+# reads the dot as navigation. Only `'$."usage.output_tokens"'` works. Rather than
+# make every caller remember that, the handful of fields every cost query wants get
+# real columns. The rest stay in attrs_json (quote the key), and the promoted ones
+# stay there too, so queries written against the old shape keep working.
+_PROMOTED_SPAN_COLUMNS = (
+    ("duration_ms", "duration_ms", int),
+    ("total_cost_usd", "total_cost_usd", float),
+    ("usage.input_tokens", "input_tokens", int),
+    ("usage.output_tokens", "output_tokens", int),
+    ("usage.cache_read_input_tokens", "cache_read_tokens", int),
+    ("usage.cache_creation_input_tokens", "cache_creation_tokens", int),
+)
+
+
+def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
+    """The promoted columns' values for one span, in `_PROMOTED_SPAN_COLUMNS` order.
+
+    A missing or unparseable field yields NULL, never 0. Workhorse's normalizer draws
+    the same distinction on purpose (`runner/usage.py`): a harness that does not report
+    money reports nothing rather than `0.0`, because averaging a real zero together
+    with an unknown understates spend. Coercing to 0 here would throw that away at the
+    last step.
+    """
+    values: list[Any] = []
+    for key, _column, cast in _PROMOTED_SPAN_COLUMNS:
+        raw = attrs.get(key)
+        try:
+            values.append(None if raw is None or isinstance(raw, bool) else cast(raw))
+        except (TypeError, ValueError):
+            values.append(None)
+    raw_pid = span.get("pid")
+    try:
+        values.append(None if raw_pid is None else int(raw_pid))
+    except (TypeError, ValueError):
+        values.append(None)
+    return tuple(values)
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -140,10 +197,13 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
     if not spans:
         return
     conn = _connection()
+    promoted = ", ".join(column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS)
+    placeholders = ", ".join("?" * (len(_PROMOTED_SPAN_COLUMNS) + 1))
     conn.executemany(
         "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
-        " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
+        f" {promoted}, pid)"
+        f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
         [
             (
                 s["span_id"], s["trace_id"], s.get("parent_id", ""), s.get("run_id", ""),
@@ -151,6 +211,7 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
                 s.get("node", ""), s.get("name", ""), s.get("run_dir", ""),
                 s.get("start_ts", 0.0), s.get("end_ts", 0.0), s.get("status", "UNSET"),
                 json.dumps(s.get("attrs") or {}),
+                *_promoted(s, s.get("attrs") or {}),
             )
             for s in spans
         ],
