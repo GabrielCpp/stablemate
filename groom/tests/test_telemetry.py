@@ -366,6 +366,44 @@ def test_node_costs_reads_spans_ingested_before_the_columns_existed():
         assert row["cost_usd"] == 3.0 and row["minutes"] == 1.0
 
 
+def test_prune_expires_liveness_counters_sooner_than_diagnostic_metrics():
+    with _TelemetryEnv():
+        # Two days old: inside the 14-day metric window, outside the 1-day liveness one.
+        now = 10 * 86400
+        old = now - 2 * 86400
+        store.insert_metrics(
+            [
+                {"run_id": "r", "name": "workhorse.run.heartbeat", "ts": old, "value": 1},
+                {"run_id": "r", "name": "workhorse.turn.heartbeat", "ts": old, "value": 1},
+                # A gauge: its history is how a wedged turn is diagnosed, so it keeps
+                # the full window.
+                {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42},
+                # A fresh beat must survive regardless — this is the row live_status reads.
+                {"run_id": "r", "name": "workhorse.run.heartbeat", "ts": now - 60, "value": 2},
+            ]
+        )
+        store.prune(retention_days=14, now=now)
+        kept = store._connection().execute(
+            "SELECT name, ts FROM metrics ORDER BY name, ts"
+        ).fetchall()
+        assert [(row["name"], row["ts"]) for row in kept] == [
+            ("workhorse.run.heartbeat", now - 60),
+            ("workhorse.turn.idle_s", old),
+        ]
+
+
+def test_liveness_retention_never_outlives_the_table_wide_window():
+    with _TelemetryEnv():
+        now = 10 * 86400
+        store.insert_metrics(
+            [{"run_id": "r", "name": "workhorse.run.heartbeat", "ts": now - 7200, "value": 1}]
+        )
+        # A retention shorter than the liveness window must still win; the liveness
+        # rule may only ever delete more, never keep a row the table-wide sweep drops.
+        store.prune(retention_days=0.01, now=now)
+        assert store._connection().execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 0
+
+
 def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
     with _TelemetryEnv():
         store.insert_spans(

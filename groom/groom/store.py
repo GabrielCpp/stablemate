@@ -40,6 +40,22 @@ _LIVE_STATUS_CAP = 500
 # Logs are one row per line, not one per node visit, so they outgrow spans by
 # orders of magnitude on a long run — hence a separate, shorter default window.
 LOG_RETENTION_DAYS = float(os.environ.get("GROOM_LOG_RETENTION_DAYS", "3"))
+# Pure-liveness counters get a shorter window still. They tick every ~10s per open
+# node for the whole life of a run, which on a week-long run is millions of rows:
+# in one real store `workhorse.run.heartbeat` alone was 1.77M of 2.21M metric rows,
+# 1.23M of them from a single run. Nothing reads their history — the alert rules
+# fold heartbeats into an in-memory cache at ingest (groom.alerts.ingest_metrics)
+# and `live_status` reads only the newest point per (run_id, name) — so retaining
+# a fortnight of them buys nothing and costs most of the file. The *gauges*
+# (idle_s, elapsed_s, node.active) are excluded: their history is diagnostic (a
+# climbing idle_s is how a wedged turn looks) and they are two orders of magnitude
+# smaller.
+LIVENESS_RETENTION_DAYS = float(os.environ.get("GROOM_LIVENESS_RETENTION_DAYS", "1"))
+_LIVENESS_METRICS = (
+    "workhorse.run.heartbeat",
+    "workhorse.turn.heartbeat",
+    "workhorse.cap_wait.heartbeat",
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS spans (
@@ -686,13 +702,24 @@ def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> i
     Logs get their own, shorter window (``GROOM_LOG_RETENTION_DAYS``): they are
     the highest-volume table by a wide margin — one row per log line rather than
     one per node visit — so holding them for the span retention would let a few
-    chatty week-long runs dominate the file.
+    chatty week-long runs dominate the file. The liveness counters get a shorter
+    one again (``GROOM_LIVENESS_RETENTION_DAYS``, see ``_LIVENESS_METRICS``), for
+    the same reason one step further: they are the highest-volume *metric* and the
+    only one nothing reads the history of.
     """
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
     conn = _connection()
     removed = conn.execute("DELETE FROM spans WHERE end_ts < ?", (cutoff,)).rowcount
     removed += conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,)).rowcount
+    # Never longer than the table-wide window: a liveness setting above it would
+    # otherwise read as "keep these longer", which the DELETE above cannot honour.
+    liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
+    placeholders = ",".join("?" * len(_LIVENESS_METRICS))
+    removed += conn.execute(
+        f"DELETE FROM metrics WHERE ts < ? AND name IN ({placeholders})",  # noqa: S608
+        (liveness_cutoff, *_LIVENESS_METRICS),
+    ).rowcount
     removed += conn.execute(
         "DELETE FROM logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)
     ).rowcount

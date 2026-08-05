@@ -99,6 +99,16 @@ from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
 `GROOM_RETENTION_DAYS` (14) are pruned at startup and on a periodic tick.
 
+The liveness counters — `workhorse.run.heartbeat`, `workhorse.turn.heartbeat`,
+`workhorse.cap_wait.heartbeat` — expire much sooner
+(`GROOM_LIVENESS_RETENTION_DAYS`, 1). They tick every ~10s for every open node, so
+on long runs they outgrow everything else combined: in one real store the run
+heartbeat alone was 1.77M of 2.21M metric rows. Nothing reads their history — the
+alert rules fold them into memory at ingest and `groom status` reads only the newest
+point — so the full window bought nothing and cost most of the file. The gauges
+(`turn.idle_s`, `node.elapsed_s`, `node.active`) keep the normal window: a climbing
+`idle_s` *is* the diagnosis of a wedged turn, and they are orders of magnitude smaller.
+
 **The pane shows the runs connected right now.** Two weeks of retention means the
 unfiltered strip is mostly runs that ended days ago, and a dashboard is for
 watching, so a run card (and its spans — a span table listing a hidden run's nodes
