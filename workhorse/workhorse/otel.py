@@ -764,6 +764,13 @@ class _Telemetry:
         self._heartbeat_every_s = heartbeat_every_s
         self._lock = threading.RLock()
         self._root: Any = None
+        # `end_run` is called more than once by design — every finalizing branch in
+        # the driver stamps its own status, and a `finally` stamps `aborted` behind
+        # them all as the crash backstop. Only the first may take effect, and that
+        # has to include the flush: a second `_shutdown()` would shut an already-shut
+        # provider, and a second `turn_end(error)` would attach a bogus error to
+        # nothing. Ending is therefore latched, not inferred from `_root`.
+        self._ended = False
         # Open node spans, innermost last: [((node_id, seq), span, started_at), ...].
         # The engine's walk nests strictly (a flow node's children open and close
         # while the flow node span is open), so a stack mirrors the tree. The
@@ -993,6 +1000,10 @@ class _Telemetry:
         error_class: str = "",
         error_kind: str = "",
     ) -> None:
+        with self._lock:
+            if self._ended:
+                return
+            self._ended = True
         # Stop beating before the flush below, so the last export cannot race a
         # tick that would claim the run is still alive after it ended.
         self._stop.set()

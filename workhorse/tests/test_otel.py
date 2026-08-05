@@ -522,6 +522,24 @@ def test_end_run_sweeps_open_spans_and_flags_error():
     assert shutdown["called"] is True
 
 
+def test_end_run_is_idempotent_and_the_first_status_wins():
+    """The driver calls this more than once by design — a finalizing branch stamps its
+    own status and a `finally` stamps `aborted` behind it as the crash backstop. The
+    first must win, and the *whole* call must be latched, not just the root span: a
+    second pass would shut an already-shut provider and hand `turn_end` an error
+    belonging to no turn. (What run.py must call in which order is
+    test_run_terminal.py; this is the rule that makes that ordering meaningful.)"""
+    t, tracer, _, shutdown = _telemetry()
+    t.end_run("terminal")
+    shutdown["called"] = False  # so a second flush is visible rather than hidden
+    t.end_run("aborted", "run aborted before finalize")
+
+    root = tracer.by_name("run:wf")
+    assert root.attrs["workhorse.terminal"] == "terminal", root.attrs
+    assert root.status is None or root.status.code != "ERROR", root.status
+    assert shutdown["called"] is False, "the second end_run flushed again"
+
+
 def test_done_without_matching_enter_is_ignored():
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("ghost", 9, "done", next="x"))

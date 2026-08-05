@@ -242,6 +242,12 @@ def run_pyflow(invocation: RunInvocation) -> int:
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
             return 1
+        # Success is stamped here, *inside* the try, for the same reason every failing
+        # branch above stamps before it returns: the `finally` below runs first
+        # otherwise, and only the first status to arrive is kept. Stamping after it
+        # recorded every successful run as `aborted` with an ERROR status — a whole
+        # store of green runs that read as crashes.
+        otel.end_run("terminal")
     finally:
         # A crash before any branch above finalized leaves the run marked aborted
         # rather than silently open; end_run is idempotent, so the normal paths win.
@@ -249,7 +255,6 @@ def run_pyflow(invocation: RunInvocation) -> int:
 
     verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
-    otel.end_run("terminal")
     return 0
 
 
