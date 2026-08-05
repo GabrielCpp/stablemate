@@ -63,10 +63,11 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     read_operator_context,
@@ -154,6 +155,22 @@ class Dev(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    #: The three bounded budgets, each already a parameter of the state that guards it.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
+        "plan_rework",
+        "reuse_rework",
+        "lint_rework",
+        "plan_blocks",
+    )
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, plus which attempt of which budget the next state is on.
+
+        A state that does not take a given counter reports nothing for it rather than
+        zero — `implement` has no opinion about the reuse budget.
+        """
+        return self.labels() | counter_labels(params, "dev", self.BUDGET_LABELS)
 
     # --- planning -----------------------------------------------------------
 

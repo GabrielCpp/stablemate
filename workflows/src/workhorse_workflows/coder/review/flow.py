@@ -44,10 +44,11 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
@@ -123,6 +124,13 @@ class Review(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    #: The one bounded budget: how many times the reviewer sent the work back.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("review_rework",)
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, plus which review round the next state is on."""
+        return self.labels() | counter_labels(params, "review", self.BUDGET_LABELS)
 
     # --- the two feeder reviews ---------------------------------------------
 

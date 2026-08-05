@@ -39,10 +39,11 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
@@ -102,6 +103,15 @@ class Docs(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    #: The two budgets, split because the grounding gate and the reviewer fail for
+    #: unrelated reasons — see `_rework`. Which one a story spent is the whole point of
+    #: keeping them apart, and it is invisible unless both are labelled.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("rework", "review_rework")
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, plus which attempt of which budget the next state is on."""
+        return self.labels() | counter_labels(params, "docs", self.BUDGET_LABELS)
 
     def start(self) -> Continue | Done:
         """Decide whether there is a book to document into, and how the diff can be read.

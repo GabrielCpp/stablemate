@@ -54,7 +54,7 @@ on loop 2's list, not resolved silently here.
 """
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.cli import console_script
 from workhorse.pyflow import (
@@ -67,6 +67,7 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.dream import Dream
@@ -202,6 +203,14 @@ class Coder(Workflow):
             "epic": pick.epic or self.epic,
             "progress": pick.progress,
         }
+
+    #: The graph's own budgets. `zero_diff` is run-global rather than per-story, so it is
+    #: the one whose label answers "how many stories in a row produced no diff".
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("ci_rework", "merge_rework", "zero_diff")
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, plus which attempt of which budget the next state is on."""
+        return self.labels() | counter_labels(params, "coder", self.BUDGET_LABELS)
 
     # ── mode ──────────────────────────────────────────────────────────────────────────
 

@@ -65,10 +65,11 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
@@ -186,6 +187,31 @@ class Qa(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    #: The budgets worth grouping a query by. All eight of `QaLoop`'s counters, because
+    #: this flow's whole shape is which of them ran out first.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
+        "context_rework",
+        "plan_rework",
+        "plan_validation_rework",
+        "plan_review_rework",
+        "qa_rework",
+        "setup_rework",
+        "regression_fix",
+        "triage_scope",
+    )
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, plus which attempt of which budget the next state is on.
+
+        `QaLoop` is threaded through every transition as a state parameter, so the
+        counters are already in hand here and no state has to stash a copy of them.
+        `start` and `setup` run before any loop exists, and simply report nothing.
+        """
+        loop = params.get("loop")
+        if not isinstance(loop, QaLoop):
+            return self.labels()
+        return self.labels() | counter_labels(loop.model_dump(), "qa", self.BUDGET_LABELS)
 
     # ── context ───────────────────────────────────────────────────────────────────────
 
