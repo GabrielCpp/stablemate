@@ -955,14 +955,14 @@ driven by the repo's `agents.yml`.
 ---
 type: concept
 slug: workflow
-title: Workflow — a YAML-defined agent graph workhorse executes
+title: Workflow — a Python state machine workhorse executes
 ---
 # Workflow
 
-A directed graph of nodes that [workhorse](../workhorse.md) executes fail-soft,
-checkpointing after each node so a run resumes where it stopped. Its on-disk shape
-is the [workflow file format](../workflow-format.md); a run's live state is a
-`WorkflowContext` plus resumable run artifacts (`graph/context.py`, `artifacts.py`).
+A state machine that [workhorse](../workhorse.md) executes fail-soft, checkpointing
+after each state so a run resumes where it stopped. Its shape is the
+[workflow format](../workflow-format.md) — a Python package, not a file; a run's live
+state is a `WorkflowContext` plus resumable run artifacts.
 
 Related: [Flow](flow.md) (a named sub-graph), [Agent](agent.md).
 ```
