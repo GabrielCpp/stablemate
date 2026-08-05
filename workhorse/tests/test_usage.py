@@ -101,6 +101,77 @@ def test_claude_result_keeps_its_own_key_names():
     assert got.duration_ms == 8423
 
 
+# Captured from a real `cline --json` turn (CLI 3.0.50 via OpenRouter, 2026-08-05).
+# The best-instrumented harness of the set — and the one that proved a price table
+# can masquerade as a token count. `model.info.pricing` uses `input`/`output`, the
+# very keys opencode spells its *counts* with.
+CLINE_RUN_RESULT = {
+    "type": "run_result",
+    "finishReason": "completed",
+    "iterations": 1,
+    "usage": {
+        "inputTokens": 6337,
+        "outputTokens": 33,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalCost": 0.00089642,
+    },
+    "aggregateUsage": {"inputTokens": 6337, "outputTokens": 33, "totalCost": 0.00089642},
+    "durationMs": 4542,
+    "text": "OK",
+    "model": {
+        "id": "xiaomi/mimo-v2.5",
+        "provider": "openrouter",
+        "info": {
+            "contextWindow": 1050000,
+            "maxInputTokens": 1050000,
+            "maxTokens": 131072,
+            # Dollars per million tokens — NOT counts.
+            "pricing": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
+        },
+    },
+}
+
+
+def test_cline_reports_tokens_cost_and_duration():
+    """Verified against a live turn, not inferred."""
+    got = usage.normalize(CLINE_RUN_RESULT)
+    assert got.token_counts() == {
+        "input_tokens": 6337,
+        "output_tokens": 33,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }, got
+    assert got.total_cost_usd == 0.00089642, got
+    assert got.duration_ms == 4542, got
+
+
+def test_a_price_table_is_not_a_token_count():
+    """The regression that made `_as_int` reject fractional floats.
+
+    cline's completion event carries `model.info.pricing` — dollars per million
+    tokens — under `input`/`output`, which are exactly opencode's spelling for its
+    counts. With cline's own camelCase keys unrecognized, the tolerant search walked
+    past the real `usage` dict and landed on the price table, where `int(0.14)`
+    truncated to 0. A turn that used 6337 input tokens recorded 0: not a missing
+    attribute but a fabricated one, which is the failure this module is built to
+    make impossible.
+
+    Two things now stop it, and the test pins both: the real keys are recognized so
+    the search never gets that far, and a fractional float is refused outright, so
+    the price table cannot be mistaken for counts even if it is reached.
+    """
+    pricing_only = {"usage": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028}}
+    assert usage.normalize(pricing_only).token_counts() == {}
+
+    # A whole-valued float is still a count: JSON has one number type, so 33.0
+    # means thirty-three.
+    assert usage.normalize({"usage": {"input": 12.0, "output": 33.0}}).token_counts() == {
+        "input_tokens": 12,
+        "output_tokens": 33,
+    }
+
+
 def test_opencode_prices_a_turn_or_not_depending_on_the_provider_behind_it():
     """Both captured from live `opencode run --format json` turns, 2026-08-05.
 

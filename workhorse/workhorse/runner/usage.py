@@ -34,6 +34,16 @@ Verified event shapes (captured from the installed CLIs, 2026-07-27):
            than merely bounded: it is a nested dict of integers sitting directly
            beside `usage`, and an unguarded search would invent token counts out of
            a lines-changed tally.
+- cline    ``{"type":"run_result", "usage":{"inputTokens","outputTokens",
+           "cacheReadTokens","cacheWriteTokens","totalCost"}, "durationMs",
+           "text", "model":{...}}`` (CLI 3.0.50, captured 2026-08-05) — the richest
+           of the set: tokens, the cache split, real money and duration in one
+           terminal event, all in camelCase.
+
+           It also carries ``model.info.pricing`` — dollars per million tokens,
+           keyed ``input``/``output``, which is *opencode's spelling for counts*.
+           That is the shape that forced :func:`_as_int` to reject fractional
+           floats; see its docstring.
 
 That fallback is the reason this is tolerant rather than a per-backend switch: an
 unrecognized shape costs a missing attribute, never an exception. A turn that
@@ -51,18 +61,20 @@ from typing import Any
 # first alias present wins; the lists are disjoint per canonical key, so it does
 # not matter in practice.
 _ALIASES: dict[str, tuple[str, ...]] = {
-    "input_tokens": ("input_tokens", "input", "prompt_tokens"),
-    "output_tokens": ("output_tokens", "output", "completion_tokens"),
+    "input_tokens": ("input_tokens", "input", "prompt_tokens", "inputTokens"),
+    "output_tokens": ("output_tokens", "output", "completion_tokens", "outputTokens"),
     "cache_read_input_tokens": (
         "cache_read_input_tokens",
         "cached_input_tokens",
         "cache_read_tokens",
         "cached_tokens",
+        "cacheReadTokens",
     ),
     "cache_creation_input_tokens": (
         "cache_creation_input_tokens",
         "cache_creation_tokens",
         "cache_write_tokens",
+        "cacheWriteTokens",
     ),
     "reasoning_output_tokens": (
         "reasoning_output_tokens",
@@ -73,7 +85,7 @@ _ALIASES: dict[str, tuple[str, ...]] = {
 # Nested under a `cache: {read, write}` sub-dict (opencode) rather than flattened
 # into the token dict itself.
 _CACHE_SUBKEYS = {"read": "cache_read_input_tokens", "write": "cache_creation_input_tokens"}
-_COST_KEYS = ("total_cost_usd", "cost_usd", "total_cost", "cost")
+_COST_KEYS = ("total_cost_usd", "cost_usd", "total_cost", "cost", "totalCost")
 # Keys whose value is the dict actually holding the counts.
 _USAGE_CONTAINERS = ("usage", "tokens", "token_usage", "usageMetadata")
 # A dict is "token-shaped" if it names at least one of these. Guards the recursive
@@ -180,8 +192,23 @@ def _as_int(value: Any) -> int | None:
     Booleans are rejected explicitly: ``isinstance(True, int)`` is True in Python,
     and a stray ``{"cache": {"read": true}}`` would otherwise land in the store as
     a token count of 1.
+
+    **A fractional float is rejected too, and that is load-bearing rather than
+    fastidious.** A token count is a whole number, so anything with a fraction is
+    some other quantity that happens to sit under a key this table recognizes. The
+    case that forced it: cline's completion event carries a *price table* —
+    ``model.info.pricing = {"input": 0.14, "output": 0.28}`` — dollars per million
+    tokens, under the very keys opencode uses for its counts. Truncating gave
+    ``int(0.14) == 0``, so a run reporting 6337 input tokens recorded 0. A silently
+    fabricated zero is worse than a missing attribute in exactly the way this module
+    exists to prevent, and it is worse still here because it looks like data.
+
+    Whole-valued floats stay acceptable: JSON has one number type, so a backend
+    reporting ``33.0`` means thirty-three.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and value != int(value):
         return None
     return int(value)
 
@@ -264,7 +291,7 @@ def normalize(event: dict[str, Any]) -> TurnUsage:
     return TurnUsage(
         **_find_tokens(event),
         total_cost_usd=_find_cost(event),
-        duration_ms=_as_int(event.get("duration_ms")),
+        duration_ms=_as_int(event.get("duration_ms") or event.get("durationMs")),
     )
 
 
