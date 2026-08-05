@@ -203,21 +203,37 @@ class Workflow(BaseModel):
         the run is *working on*, because that vocabulary is the workflow's.
 
         It is re-read before every transition and sees whatever the instance can —
-        inputs, `self.ctx`, `self.output(node)`. An override may **optionally** take
-        one argument, the parameters the state about to run was bound with:
-
-            def labels(self, params: Mapping[str, Any]) -> dict[str, str]:
-                loop = params.get("loop")
-                return {"attempt": str(loop.rework)} if loop else {}
-
-        That is how a rework counter reaches telemetry. A bounded retry budget is
-        almost always already a state parameter — it has to be, since state
-        parameters are the checkpoint — so the count is right there at the moment
-        the labels are read, and no state has to stash a copy of it on `self` for
-        instrumentation to find. The engine passes the dict it already holds and
-        never inspects it: what counts as a dimension stays the workflow's call.
+        inputs, `self.ctx`, `self.output(node)`. For a dimension that depends on the
+        arguments the *next state* was bound with, override `state_labels` instead.
         """
         return {}
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The same, for dimensions that depend on the state's own arguments.
+
+        `params` is what the state about to run was bound with. This is how a bounded
+        retry budget reaches telemetry:
+
+            def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+                loop = params.get("loop")
+                if loop is None:
+                    return self.labels()
+                return self.labels() | {"plan_rework": str(loop.plan_rework)}
+
+        A budget is almost always already a state parameter — it has to be, since
+        state parameters *are* the checkpoint — so the count is in hand at exactly
+        the moment the labels are read, and no state has to stash a copy of it on
+        `self` for instrumentation to find.
+
+        It is a second hook rather than an argument to `labels()` because a subclass
+        cannot add a parameter its base does not declare without breaking every
+        caller of the base — the type checker rejects it, and rightly. The default
+        delegates, so overriding either one alone is enough.
+
+        The engine passes the dict it already holds and never reads it: what counts
+        as a dimension stays the workflow's call.
+        """
+        return self.labels()
 
     # --- run-scoped reads ---------------------------------------------------
 

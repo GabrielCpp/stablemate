@@ -345,30 +345,17 @@ def drive(
     )
 
 
-def _takes_params(labels: Any) -> bool:
-    """Whether this `labels()` override wants the state's bound parameters.
-
-    Both arities are supported because the zero-argument form was the original
-    contract and most overrides never need more than `self`. Deciding by signature
-    rather than by a flag keeps the intent at the definition site: a `labels` that
-    declares a parameter is asking for it.
-    """
-    try:
-        return bool(inspect.signature(labels).parameters)
-    except (TypeError, ValueError):  # a callable signature() cannot introspect
-        return False
-
-
 def _labels(wf: Workflow, log: logging.Logger, params: dict[str, Any]) -> dict[str, str]:
     """The workflow's own telemetry dimensions. A label that throws costs one
     attribute and nothing else — never the run.
 
     `params` is what the state about to run was bound with, passed through so a
     workflow can report which attempt of a bounded budget this is. It is the
-    workflow's data and the engine does not read it.
+    workflow's data and the engine does not read it. `state_labels` defaults to
+    `labels()`, so a workflow that needs neither pays nothing for either.
     """
     try:
-        declared = wf.labels(params) if _takes_params(wf.labels) else wf.labels()
+        declared = wf.state_labels(params)
     except Exception as exc:  # noqa: BLE001 — instrumentation must not fail a run
         log.debug("[workhorse] labels() raised: %s", exc)
         return {}

@@ -422,15 +422,16 @@ raises costs the labels for that transition and nothing else — never the run.
 
 ### Reporting which attempt this is
 
-An override may take **one optional argument**: the parameters the state about to run
-was bound with.
+For a dimension that depends on the arguments the *next state* was bound with, override
+`state_labels(params)` instead. It defaults to `labels()`, so overriding either one alone
+is enough.
 
 ```python
-    def labels(self, params: Mapping[str, Any]) -> dict[str, str]:
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         loop = params.get("loop")
         if loop is None:
-            return {"work_id": self.ctx.unit_id}
-        return {"work_id": self.ctx.unit_id, "plan_rework": str(loop.plan_rework)}
+            return self.labels()
+        return self.labels() | {"plan_rework": str(loop.plan_rework)}
 ```
 
 This is how a bounded retry budget reaches telemetry, and it needs no bookkeeping in the
@@ -439,6 +440,10 @@ since state parameters *are* the checkpoint — so the count is in hand at exact
 moment the labels are read. The alternative, having each state assign its counter to
 `self` for `labels()` to find, means one edit site per state and instrumentation that is
 silently wrong wherever it was forgotten.
+
+It is a second hook rather than an argument to `labels()` because a subclass cannot add a
+parameter its base does not declare without breaking every caller of the base — the type
+checker rejects it, and rightly.
 
 It is worth the trouble because a label is stamped on **every** span opened while it is
 current — the node spans and the `agent_turn` span alike. So a query can group cost by

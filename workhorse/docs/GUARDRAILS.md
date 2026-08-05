@@ -312,13 +312,14 @@ that renders empty is dropped rather than stamped blank, and a `labels()` that r
 costs the labels for that transition and nothing else — never the run. A sub-flow gets
 its own class's `labels()`.
 
-An override may also take **one optional argument** — the parameters the state about to
-run was bound with — which is how a bounded retry budget becomes a span dimension:
+For a dimension that depends on the arguments the *next state* was bound with, override
+`state_labels(params)` instead — which is how a bounded retry budget becomes a span
+dimension. It defaults to `labels()`:
 
 ```python
-    def labels(self, params: Mapping[str, Any]) -> dict[str, str]:
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         loop = params.get("loop")
-        return {"work_id": self.story_id} | (
+        return self.labels() | (
             {"plan_rework": str(loop.plan_rework)} if loop else {}
         )
 ```

@@ -893,7 +893,7 @@ def test_labels_may_read_the_parameters_the_state_was_bound_with():
         try:
 
             class Retries(Workflow):
-                def labels(self, params: dict) -> dict[str, str]:
+                def state_labels(self, params: dict) -> dict[str, str]:
                     return {"attempt": str(params.get("rework", 0))}
 
                 def start(self) -> Transition:
@@ -945,7 +945,7 @@ def test_a_labels_override_that_raises_costs_only_its_own_labels():
         try:
 
             class Explodes(Workflow):
-                def labels(self, params: dict) -> dict[str, str]:
+                def state_labels(self, params: dict) -> dict[str, str]:
                     return {"attempt": str(params["missing"])}
 
                 def start(self) -> Transition:
