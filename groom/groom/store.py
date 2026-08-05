@@ -373,9 +373,13 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     ratio, not the raw turn count, is what separates an expensive node from a
     *looping* one.
 
-    Cost is summed over rows where it is non-NULL; a harness that does not report
-    money contributes turns but no spend, so `turns` and `cost_usd` can legitimately
-    disagree about which node is biggest.
+    Cost is summed over rows where it is non-NULL, and `cost_turns` reports how many
+    those were. The gap is not noise: **codex reports no money at all under
+    subscription auth** (see `workhorse/runner/usage.py` — absent, deliberately, rather
+    than a fabricated 0.0 that would average into "this turn was free"). So on a codex
+    run every `cost_usd` is NULL, and on a mixed run `share` is a fraction of only the
+    turns that priced themselves. `backends` names who ran each node so a reader can
+    see which case they are in; the CLI says so out loud when coverage is partial.
     """
     clauses, params = ["name = 'agent_turn'"], []
     if run:
@@ -386,11 +390,16 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
         "SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
         " COUNT(*) AS turns,"
         " COUNT(DISTINCT json_extract(attrs_json, '$.work_id')) AS work_items,"
+        f" SUM({_cost} IS NOT NULL) AS cost_turns,"
+        " GROUP_CONCAT(DISTINCT json_extract(attrs_json, '$.backend')) AS backends,"
         f" SUM({_cost}) AS cost_usd,"
         f" SUM({_duration}) / 60000.0 AS minutes,"
         f" SUM({_output}) AS output_tokens"
         f" FROM spans WHERE {' AND '.join(clauses)}"
-        " GROUP BY node ORDER BY cost_usd DESC NULLS LAST, turns DESC LIMIT ?",
+        # Minutes, not turns, breaks the tie: on a run where nothing priced itself the
+        # cost key is uniformly NULL, and ranking the remainder by turn count would put
+        # a node with many cheap turns above one that spent an hour in three.
+        " GROUP BY node ORDER BY cost_usd DESC NULLS LAST, minutes DESC LIMIT ?",
         (*params, max(1, min(int(limit), 1000))),
     ).fetchall()
     total = sum(row["cost_usd"] or 0.0 for row in rows)

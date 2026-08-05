@@ -358,6 +358,33 @@ def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
         assert rows["implement-plan"]["share"] == 0.25
 
 
+def test_node_costs_reports_how_many_turns_actually_priced_themselves():
+    """codex reports no money under subscription auth, so a mixed run's `share` is a
+    fraction of only the turns that priced themselves. Counting them is what stops a
+    codex-heavy node from reading as free."""
+    with _TelemetryEnv():
+        paid = _turn("plan-qa", "story-a", 4.0, "08" * 8)
+        free = {
+            "name": "agent_turn", "node": "implement-plan", "span_id": "09" * 8,
+            "labels": {"work_id": "story-a", "backend": "codex"},
+            "numbers": {"duration_ms": 120000},
+        }
+        paid["labels"] = {**paid["labels"], "backend": "claude"}
+        store.insert_spans(otlp.parse_traces(_trace_request([paid, free])))
+
+        rows = {row["node"]: row for row in store.node_costs()}
+        assert rows["plan-qa"]["cost_turns"] == 1
+        assert rows["plan-qa"]["backends"] == "claude"
+        # The unpriced turn is counted and timed, but contributes no spend — and is
+        # NOT silently folded in as 0.0, which would make it look free rather than
+        # unmeasured.
+        assert rows["implement-plan"]["turns"] == 1
+        assert rows["implement-plan"]["cost_turns"] == 0
+        assert rows["implement-plan"]["cost_usd"] is None
+        assert rows["implement-plan"]["minutes"] == 2.0
+        assert rows["implement-plan"]["backends"] == "codex"
+
+
 def test_node_costs_reads_spans_ingested_before_the_columns_existed():
     with _TelemetryEnv():
         store.insert_spans(

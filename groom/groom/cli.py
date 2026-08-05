@@ -183,8 +183,27 @@ def _format_costs(rows: list[dict]) -> str:
     total = sum(row["cost_usd"] or 0.0 for row in rows)
     minutes = sum(row["minutes"] or 0.0 for row in rows)
     turns = sum(row["turns"] for row in rows)
+    priced = sum(row["cost_turns"] or 0 for row in rows)
     lines.append("-" * len(header))
     lines.append(f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{'':>7}{minutes:>7.0f}")
+    if priced < turns:
+        # Silence here would be a wrong answer, not a missing one: the share column
+        # is a fraction of the priced turns only, so an unpriced backend's nodes read
+        # as free and rank last. codex reports no money under subscription auth.
+        backends = sorted({b for row in rows for b in (row["backends"] or "").split(",") if b})
+        lines.append("")
+        lines.append(
+            f"note: {turns - priced} of {turns} turns reported no cost, so usd and share"
+            f" cover only the {priced} that did."
+        )
+        lines.append(
+            f"      Backends here: {', '.join(backends) or 'unknown'}."
+            " codex reports no money under subscription auth — those turns"
+        )
+        lines.append(
+            "      still spent tokens and wall-clock. Absent is recorded as absent"
+            " rather than as zero."
+        )
     return "\n".join(lines)
 
 

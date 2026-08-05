@@ -246,8 +246,25 @@ stamps `work_id` itself (the coder workflow uses the story slug), so a node at
 average. Raw turn count tells you a node is *busy*; this tells you it is
 *looping*, which is a different and usually more actionable problem.
 
-A harness that does not report cost still contributes turns, so `turns` and `usd`
-can legitimately disagree about which node is biggest.
+**Cost coverage is not uniform across harnesses, and the table says so.** claude,
+opencode and aider each report money; **codex reports none at all under subscription
+auth**, and workhorse records that as absent rather than as a fabricated `0.0` — a
+zero would average into "this turn was free". So on a codex run every `usd` is `-`,
+and on a mixed run `share` is a fraction of only the turns that priced themselves.
+`groom cost` prints a note whenever that is the case, naming the backends involved:
+
+```
+note: 2 of 3 turns reported no cost, so usd and share cover only the 1 that did.
+      Backends here: claude, codex. codex reports no money under subscription auth …
+```
+
+Nodes that reported no cost are ranked among themselves by minutes rather than by
+turn count, so an unpriced node that spent an hour in three turns still sorts above
+one that spent two minutes in twenty.
+
+Duration is comparable across harnesses but not identical: when the CLI reports a
+turn duration that value is used, and when it does not (codex reports none) the
+engine's own wall clock is stamped instead, which includes process spawn.
 
 ### The schema, and one footgun
 
