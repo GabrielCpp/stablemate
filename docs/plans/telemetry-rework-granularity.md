@@ -2,14 +2,24 @@
 type: feature
 slug: telemetry-rework-granularity
 title: Finer-grained telemetry for rework loops, verdicts, cost and wait time
-status: proposed
+status: implemented
 ---
+
+> **Landed 2026-08-05, phases 0-8.** §9 (per-tool-call sub-spans) is deliberately not
+> done — it was always conditional on what §1-§8 leave unanswered, and that question can
+> only be asked of a run recorded *after* these changes. Two design choices changed under
+> implementation and the sections below have been corrected in place: `labels()` gained a
+> sibling hook (`state_labels`) rather than an optional argument, because adding a
+> parameter a base class does not declare violates substitutability and the type checker
+> rejects it; and `groom cost` falls back to `attrs_json` wherever a promoted column is
+> NULL, without which every span already in a store would have read as free for the whole
+> retention window.
 
 > Related: [workhorse-otel.md](workhorse-otel.md) (the three-plane span/metric/log
 > architecture this plan extends), [groom-json-first-reshape.md](groom-json-first-reshape.md)
 > (groom's dashboard layer).
 
-Status: 2026-08-05 proposed, not started. Revised 2026-08-05 against a real collector
+Status: 2026-08-05 implemented. Revised before implementation against a real collector
 database (see *Evidence* below), which changed three of the original design choices and
 added four items the first draft missed.
 
@@ -109,23 +119,16 @@ binds them two lines before it computes labels:
 306:        outcome = bound(**kwargs)
 ```
 
-So the seam is: **pass the state's bound parameters to `labels()`**. In
-`driver.py::_labels` (`:348-356`), inspect the override's signature and call it with the
-params when it accepts them, keeping the zero-arg form working:
+So the seam is: **pass the state's bound parameters to the workflow.** `Workflow` gains
+a sibling hook, `state_labels(params)`, defaulting to `self.labels()`; the driver calls
+it in place of `labels()` at `:281`, with the `kwargs` bound at `:279`.
 
-```python
-def _labels(wf: Workflow, log: logging.Logger, params: dict[str, Any]) -> dict[str, str]:
-    try:
-        declared = wf.labels(params) if _takes_params(wf.labels) else wf.labels()
-    except Exception as exc:  # noqa: BLE001 — instrumentation must not fail a run
-        log.debug("[workhorse] labels() raised: %s", exc)
-        return {}
-    return {str(k): str(v) for k, v in (declared or {}).items() if v not in (None, "")}
-```
-
-Signature-driven binding is already this module's idiom (`coerce_params`, `:83-101`), so
-this is not a new concept. `Workflow.labels` (`pyflow/workflow.py:199-204`) gains the
-documented optional parameter; every existing override keeps working unchanged.
+*(First attempt: an optional argument on `labels()` itself, with the driver picking the
+arity by introspection. ty rejected it, correctly — a subclass that adds a parameter its
+base does not declare cannot stand in for the base, so every workflow adopting the new
+form would have failed the type check this repo requires to be clean. Arity dispatch also
+meant a typo in the signature silently downgraded to the zero-argument call instead of
+erroring. Two ordinary overrides with stable signatures beat one clever one.)*
 
 This stays **workflow-agnostic** per `workhorse/CLAUDE.md`: workhorse hands over the params
 it already holds and never learns what is in them. The workflow decides what is a dimension.
@@ -133,11 +136,10 @@ it already holds and never learns what is in them. The workflow decides what is 
 `Qa` then needs exactly one new method body, not 25 stashes:
 
 ```python
-def labels(self, params: dict[str, Any]) -> dict[str, str]:
-    labels = {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
     loop = params.get("loop")
     if isinstance(loop, QaLoop):
-        labels |= {
+        return self.labels() | {
             "qa.plan_rework": str(loop.plan_rework),
             "qa.plan_validation_rework": str(loop.plan_validation_rework),
             "qa.plan_review_rework": str(loop.plan_review_rework),
@@ -146,7 +148,7 @@ def labels(self, params: dict[str, Any]) -> dict[str, str]:
             "qa.setup_rework": str(loop.setup_rework),
             "qa.regression_fix": str(loop.regression_fix),
         }
-    return labels
+    return self.labels()
 ```
 
 Because it is one mechanism rather than a per-state convention, phase 4 of the original
