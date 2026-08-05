@@ -181,7 +181,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
             print("\n[workhorse] interrupted — run paused.")
             print(f"[workhorse] resume with: workhorse-{name} run "
                   f"--resume-run {writer.run_dir}")
-            otel.end_run("interrupted", error="KeyboardInterrupt")
+            otel.end_run("interrupted", error="KeyboardInterrupt",
+                         error_class="KeyboardInterrupt", error_kind="interrupt")
             raise SystemExit(130) from None
         except PyflowError as exc:
             # Every deliberate failure in the driver — a dead state, a bad checkpoint
@@ -201,7 +202,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 writer.record_interrupt(_state_of(writer), str(exc))
                 print(f"[workhorse] resume with: workhorse-{name} run "
                       f"--resume-run {writer.run_dir}")
-                otel.end_run("fail", error=str(exc))
+                otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+                             error_kind="fatal")
                 return 1
             if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
                 # …with one exception, and only while the workflow declares no
@@ -224,7 +226,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 return 0
             print(f"[workhorse] ERROR: {exc}")
             writer.finish(terminal="fail")
-            otel.end_run("fail", error=str(exc))
+            otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+                             error_kind="fatal")
             return 1
         except Exception as exc:  # noqa: BLE001 — a smoke test reports, it does not raise
             # Only under `--dry-run`, and only because the stand-in values nodes
@@ -236,7 +239,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 raise
             print(f"[workhorse] ERROR: dry-run failed in '{_state_of(writer)}': {exc!r}")
             print("[workhorse] (nodes return stand-in values under --dry-run)")
-            otel.end_run("fail", error=str(exc))
+            otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+                             error_kind="fatal")
             return 1
     finally:
         # A crash before any branch above finalized leaves the run marked aborted

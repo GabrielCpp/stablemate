@@ -18,6 +18,7 @@ from workhorse.runner.extract import extract_outputs
 from workhorse.runner.failure import (
     BackendInvocationError,
     OutputParseError,
+    error_kind,
     is_cap,
 )
 from workhorse.runner.reframe import (
@@ -329,7 +330,17 @@ class AgentRunner:
                     f"cleared",
                     flush=True,
                 )
-                otel.turn_event("exhausted", error=True, node=node_id)
+                # The class and bucket ride the event as well as the turn span: an
+                # OutputParseError is raised after the turn span has already closed
+                # cleanly (the CLI answered; the answer would not parse), so this is
+                # the only place that failure mode is nameable.
+                otel.turn_event(
+                    "exhausted",
+                    error=True,
+                    node=node_id,
+                    error_class=type(exc).__name__,
+                    error_kind=error_kind(exc),
+                )
                 raise
 
     def _invoke_and_parse(
@@ -425,7 +436,11 @@ class AgentRunner:
                 otel.turn_end()
                 return result
             except BackendInvocationError as exc:
-                otel.turn_end(error=str(exc))
+                otel.turn_end(
+                    error=str(exc),
+                    error_class=type(exc).__name__,
+                    error_kind=error_kind(exc),
+                )
                 print(f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True)
                 if not exc.transient:
                     raise

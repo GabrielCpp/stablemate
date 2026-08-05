@@ -25,6 +25,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from workhorse import otel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
@@ -290,6 +291,16 @@ class Engine:
                         attempt,
                         attempts,
                         exc,
+                    )
+                    # The agent ladder's retries have been span events since it had
+                    # spans; a node call's were console-and-log only, so a node that
+                    # succeeded on its second attempt was indistinguishable in the
+                    # trace from one that worked first time.
+                    otel.turn_event(
+                        "node_retry",
+                        node=spec.name,
+                        attempt=attempt,
+                        error_class=type(exc).__name__,
                     )
         assert last is not None
         raise last

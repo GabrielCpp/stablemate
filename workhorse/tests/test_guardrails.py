@@ -8,7 +8,13 @@ import sys
 
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.runner.caps import parse_reset_seconds
-from workhorse.runner.failure import BackendInvocationError, is_cap, is_transient
+from workhorse.runner.failure import (
+    BackendInvocationError,
+    OutputParseError,
+    error_kind,
+    is_cap,
+    is_transient,
+)
 
 
 def test_transient_error_detection():
@@ -125,6 +131,39 @@ def test_error_recovery():
     print("✓ Error recovery tests passed!\n")
 
 
+def test_error_kind_classification():
+    """Each failure lands in the bucket its own recovery layer would send it to."""
+    print("Testing error classification...")
+
+    cases = [
+        (OutputParseError("not JSON"), "parse"),
+        (BackendInvocationError("prompt is too long", overflow=True), "overflow"),
+        (BackendInvocationError("cap", transient=True, reset_at=1.0), "cap"),
+        # A cap detected from message text alone, with no structured resetsAt.
+        (BackendInvocationError("spending cap reached, resets 3:50am", transient=True), "cap"),
+        (BackendInvocationError("overran", transient=True, timed_out=True), "timeout"),
+        (BackendInvocationError("rate limited", transient=True), "transient"),
+        (BackendInvocationError("Invalid model"), "fatal"),
+        (RuntimeError("something else entirely"), "fatal"),
+    ]
+    for exc, expected in cases:
+        actual = error_kind(exc)
+        assert actual == expected, f"{exc!r} classified {actual!r}, expected {expected!r}"
+        print(f"  ✓ {type(exc).__name__}({str(exc)[:32]!r}) → {expected}")
+
+    # Precedence matters and is not arbitrary: a cap-triggered abort also carries
+    # timed_out, because the stream loop reaps the process when the window closes.
+    # Reading that as a timeout would file an eight-day scheduled wait under "the
+    # node ran too long", and hide the one failure that resolves on a clock.
+    capped_and_reaped = BackendInvocationError(
+        "usage limit reached", transient=True, timed_out=True, reset_at=1.0
+    )
+    assert error_kind(capped_and_reaped) == "cap"
+    print("  ✓ a cap that also timed out is still a cap")
+
+    print("✓ Error classification tests passed!\n")
+
+
 def test_environment_variables():
     """Test that environment variables are read correctly."""
     print("Testing environment variable configuration...")
@@ -170,6 +209,7 @@ def main():
         test_cap_detection()
         test_reset_time_parsing()
         test_error_recovery()
+        test_error_kind_classification()
         test_environment_variables()
         
         print("=" * 60)

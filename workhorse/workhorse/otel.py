@@ -269,7 +269,9 @@ class Telemetry(Protocol):
         timeout: float,
         backend: str | None = None,
     ) -> None: ...
-    def turn_end(self, error: str | None = None) -> None: ...
+    def turn_end(
+        self, error: str | None = None, error_class: str = "", error_kind: str = ""
+    ) -> None: ...
     def turn_result(self, usage: TurnUsage) -> None: ...
     def set_labels(self, labels: dict[str, str]) -> None: ...
     def turn_session(self, session_id: str) -> None: ...
@@ -277,7 +279,13 @@ class Telemetry(Protocol):
     def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
     def current_node(self) -> str: ...
-    def end_run(self, status: str, error: str | None = None) -> None: ...
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None: ...
 
 
 class _NullTelemetry:
@@ -302,7 +310,9 @@ class _NullTelemetry:
         timeout: float,
         backend: str | None = None,
     ) -> None: ...
-    def turn_end(self, error: str | None = None) -> None: ...
+    def turn_end(
+        self, error: str | None = None, error_class: str = "", error_kind: str = ""
+    ) -> None: ...
     def turn_result(self, usage: TurnUsage) -> None: ...
     def set_labels(self, labels: dict[str, str]) -> None: ...
     def turn_session(self, session_id: str) -> None: ...
@@ -313,7 +323,13 @@ class _NullTelemetry:
     def current_node(self) -> str:
         return ""
 
-    def end_run(self, status: str, error: str | None = None) -> None: ...
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None: ...
 
 
 #: The one "telemetry is off" instance. Stateless, so one reference serves every
@@ -523,7 +539,13 @@ class TelemetryHost:
             )
             self.active = _NULL
 
-    def end_run(self, status: str, error: str | None = None) -> None:
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None:
         """Close every open span (root last), flush, and shut the SDK down.
         Idempotent — the finally-backstop in ``main.run`` may call it again."""
         telemetry, self.active = self.active, _NULL
@@ -537,7 +559,7 @@ class TelemetryHost:
             logsetup.detach_otel()
         except Exception:
             pass
-        telemetry.end_run(status, error)
+        telemetry.end_run(status, error, error_class, error_kind)
 
 
 #: The process's host. One run per process, so one reference — held here, and here
@@ -569,7 +591,9 @@ def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
     _host.start_run(workflow, run_id, run_dir)
 
 
-def end_run(status: str, error: str | None = None) -> None:
+def end_run(
+    status: str, error: str | None = None, error_class: str = "", error_kind: str = ""
+) -> None:
     """Close the installed host's run. See :meth:`TelemetryHost.end_run`."""
     _host.end_run(status, error)
 
@@ -601,8 +625,8 @@ def turn_start(
     _host.active.turn_start(node_id, model, effort, timeout, backend)
 
 
-def turn_end(error: str | None = None) -> None:
-    _host.active.turn_end(error)
+def turn_end(error: str | None = None, error_class: str = "", error_kind: str = "") -> None:
+    _host.active.turn_end(error, error_class, error_kind)
 
 
 def turn_result(usage: TurnUsage) -> None:
@@ -867,6 +891,14 @@ class _Telemetry:
             elif phase == "done":
                 self._end_node((node_id, seq), next_node=extra.get("next"))
                 self._set_node_active(node_id, 0)
+            elif phase == "error":
+                # `record_interrupt` writes this to events.jsonl when a run is killed
+                # mid-node. Until it was handled here the node's span was swept shut as
+                # "never completed" with no cause on it, so a crash and a hang were the
+                # same shape in the trace — while the reason had been on disk all along.
+                target = self._stack[-1][1] if self._stack else self._root
+                if target is not None:
+                    target.add_event("error", {"error": str(extra.get("error") or "")})
             elif phase == "terminal":
                 # A flow's finish() also emits a terminal (node "<run>") — the
                 # stack scopes it to the enclosing flow-node span; the run's own
@@ -901,7 +933,13 @@ class _Telemetry:
             return self._stack[-1][0][0] if self._stack else ""
 
     @_failsoft(None)
-    def end_run(self, status: str, error: str | None = None) -> None:
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None:
         # Stop beating before the flush below, so the last export cannot race a
         # tick that would claim the run is still alive after it ended.
         self._stop.set()
@@ -918,6 +956,10 @@ class _Telemetry:
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
                 if error:
+                    if error_class:
+                        self._root.set_attribute("error.class", error_class)
+                    if error_kind:
+                        self._root.set_attribute("error.kind", error_kind)
                     self._root.set_status(
                         self._trace.Status(self._trace.StatusCode.ERROR, error)
                     )
@@ -957,7 +999,9 @@ class _Telemetry:
             )
 
     @_failsoft(None)
-    def turn_end(self, error: str | None = None) -> None:
+    def turn_end(
+        self, error: str | None = None, error_class: str = "", error_kind: str = ""
+    ) -> None:
         with self._lock:
             turn, self._turn = self._turn, None
             if turn is None:
@@ -971,6 +1015,14 @@ class _Telemetry:
                 )
             self._turn_started = None
             if error:
+                # The class and the recovery bucket, not just the message. A store can
+                # count failed turns from the status alone; only these say whether they
+                # were rate limits ridden out, context overflows, or a broken CLI —
+                # which are the same number and opposite problems.
+                if error_class:
+                    turn.set_attribute("error.class", error_class)
+                if error_kind:
+                    turn.set_attribute("error.kind", error_kind)
                 turn.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
             turn.end()
 

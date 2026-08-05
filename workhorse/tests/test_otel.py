@@ -171,7 +171,13 @@ class FakeTelemetry(otel._NullTelemetry):
     def enabled(self) -> bool:
         return True
 
-    def end_run(self, status: str, error: str | None = None) -> None:
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None:
         self.ended.append((status, error))
 
 
@@ -385,6 +391,41 @@ def test_enter_done_pairs_a_node_span_and_records_next():
     assert span.attrs["workhorse.seq"] == 1 and not span.ended
     t.record_event(_event("plan", 1, "done", next="build"))
     assert span.ended and span.attrs["workhorse.next"] == "build"
+
+
+def test_an_interrupted_node_records_why_on_its_span():
+    """`record_interrupt` has always written `phase="error"` to events.jsonl, and
+    record_event had no branch for it — so a run killed mid-node left a span swept
+    shut as "never completed" with the cause sitting on disk, unexported."""
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("plan", 1, "enter"))
+    t.record_event(_event("plan", 1, "error", error="KeyboardInterrupt"))
+    span = tracer.by_name("plan")
+    assert span.events[-1] == ("error", {"error": "KeyboardInterrupt"})
+
+
+def test_a_failed_turn_carries_its_class_and_recovery_bucket():
+    """A store can count failed turns from the status alone. Only these say whether
+    they were caps ridden out, overflows, or a broken CLI — same number, opposite
+    problems."""
+    t, tracer, _, _ = _telemetry()
+    t.turn_start("plan", "sonnet", "high", 60.0, backend="claude")
+    t.turn_end(
+        error="usage limit reached",
+        error_class="BackendInvocationError",
+        error_kind="cap",
+    )
+    turn = tracer.by_name("agent_turn")
+    assert turn.attrs["error.class"] == "BackendInvocationError"
+    assert turn.attrs["error.kind"] == "cap"
+
+
+def test_a_clean_turn_carries_no_error_attributes():
+    t, tracer, _, _ = _telemetry()
+    t.turn_start("plan", "sonnet", "high", 60.0, backend="claude")
+    t.turn_end()
+    turn = tracer.by_name("agent_turn")
+    assert "error.class" not in turn.attrs and "error.kind" not in turn.attrs
 
 
 def test_flow_children_nest_under_the_open_flow_node_span():

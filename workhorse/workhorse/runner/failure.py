@@ -156,6 +156,36 @@ class BackendInvocationError(RuntimeError):
         self.reset_at = reset_at
 
 
+def error_kind(exc: BaseException) -> str:
+    """Which recovery layer a failure belongs to, as one low-cardinality word.
+
+    The ladder already draws these distinctions to decide what to do next, but until
+    this existed none of them survived into telemetry: `turn_end` carried `str(exc)`
+    and nothing else, so a store could count failed turns and never say whether they
+    were rate limits riding out an outage, context overflows, or a CLI that was
+    genuinely broken. Those need opposite responses, and telling them apart by
+    grepping message text is exactly the fragility `is_transient` exists to contain.
+
+    The precedence matches `AgentRunner.turn`'s own, and has to. `overflow` is checked
+    first because compaction is a layer above the retry loop, and `cap` before
+    `timeout` because a cap-triggered early abort also carries `timed_out` (the stream
+    loop reaps the process when the window closes) — reading that as a timeout would
+    file an eight-day scheduled wait under "the node ran too long".
+    """
+    if isinstance(exc, OutputParseError):
+        return "parse"
+    if isinstance(exc, BackendInvocationError):
+        if exc.overflow:
+            return "overflow"
+        if exc.reset_at is not None or is_cap(str(exc)):
+            return "cap"
+        if exc.timed_out:
+            return "timeout"
+        if exc.transient:
+            return "transient"
+    return "fatal"
+
+
 def is_transient(diagnostics: str) -> bool:
     low = diagnostics.lower()
     return any(marker in low for marker in _TRANSIENT_MARKERS)
