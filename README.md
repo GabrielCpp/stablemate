@@ -1,12 +1,19 @@
 # stablemate
 
+[![CI](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml)
+[![workhorse-agent](https://img.shields.io/pypi/v/workhorse-agent?label=workhorse-agent)](https://pypi.org/project/workhorse-agent/)
+[![farrier](https://img.shields.io/pypi/v/farrier?label=farrier)](https://pypi.org/project/farrier/)
+[![ostler](https://img.shields.io/pypi/v/ostler?label=ostler)](https://pypi.org/project/ostler/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A [uv](https://docs.astral.sh/uv/) workspace housing the publishable Python
 packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | `workhorse-workflows` (unpublished) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
+| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
@@ -35,43 +42,52 @@ its own clock; the tools a workflow needs are declared by the workflow's own pac
 ## Installing
 
 Install the engines. **The base library is not something you install** — it is content,
-and a checkout already puts it where the tools look (see
+and a tool fetches it on demand (see
 [Finding the base library](#finding-the-base-library)).
 
-**A checkout is the supported install today**, because it is the one arrangement that
-puts every piece in a single interpreter:
+Everything a workflow needs travels with the workflow package. `workhorse-workflows`
+declares the engine and the tools its workflows import — `workhorse-agent`, `ostler` — as
+ordinary dependencies, so one install lands the lot and puts all five `workhorse-<name>`
+commands on your `PATH`:
 
 ```bash
-git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
-make sync                                    # one venv with every member installed
-uv run workhorse-hello-world run --dry-run   # the quick start; needs no agent CLI
+uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
+uv tool install farrier                 # renders the library into a repository
+workhorse-hello-world run --dry-run     # the install check; needs no agent CLI
 ```
 
 That last line is the whole install check — see [Your first run](#your-first-run). The
 other workflows are `author`, `coder`, `okf-builder` and `research`, and they want a
 repository and an agent CLI.
 
-That single-interpreter part is not incidental. Workflow code runs **in workhorse's own
-interpreter** and imports its tools in-process, so a workflow's `workhorse-<name>`
-command only exists in the venv the workflow was installed into, and
-`ostler` being on your `PATH` is not enough — it has to be importable *there*. See
-[Tools a workflow needs](#tools-a-workflow-needs).
+`farrier` is a second `uv tool install` rather than a `--with farrier` on the first,
+because a tool install only exposes the entry points of the package you *named*: `--with`
+would put farrier in that venv and leave its command unreachable. `ostler` needs no line
+of its own — it arrives inside the workflows venv, which is the only place it has to be.
+Install it separately (`uv tool install ostler`) only if you want to run it by hand.
 
-Two of the tools stand alone and are on PyPI, so `pipx` suits them:
+That "inside the workflows venv" part is not incidental. Workflow code runs **in
+workhorse's own interpreter** and imports its tools in-process, so `ostler` on your `PATH`
+from some other venv is not enough — it has to be importable *there*. Declaring it a
+dependency of `workhorse-workflows` is what makes the venv that runs a workflow the same
+venv that has it. See [Tools a workflow needs](#tools-a-workflow-needs).
+
+**Working on stablemate itself** wants a checkout instead — one venv with every member
+installed from source, and the git hooks this repo depends on:
 
 ```bash
-pipx install farrier
-pipx install ostler
+git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
+make install                                 # the workspace venv + the git hooks
+uv run workhorse-hello-world run --dry-run
 ```
 
-The rest are not on PyPI yet: `workhorse-workflows` and `saddlebag` are unpublished, the
-name `groom` on the index belongs to an unrelated project, and the last `workhorse-agent`
-release predates the Python-workflow engine — which is why the checkout above is the path
-this README vouches for. `stablemate-core` is not on that list because it is not a
-distribution at all: `workhorse` and `farrier` each carry a copy of it, so `pipx install
-./workhorse` resolves from the index alone with nothing built locally first.
+`groom` and `saddlebag` are optional add-ons — no base workflow requires either — and
+neither is on PyPI: the name `groom` on the index belongs to an unrelated project, and
+`saddlebag` is not in scope yet. Both run from a checkout.
 
-`groom` and `saddlebag` are optional add-ons — no base workflow requires either.
+`stablemate-core` is on neither list because it is not a distribution at all: `workhorse`
+and `farrier` each carry a copy of it, so an install resolves from the index alone with
+nothing built locally first.
 
 ### Finding the base library
 
@@ -138,8 +154,11 @@ them with it; there is no second manifest to satisfy, and none that can disagree
 what is actually importable.
 
 Which is the whole reason the workflows must land in workhorse's own venv rather than
-beside it. `make sync` arranges that for a checkout; a `pipx` layout needs
-`pipx inject workhorse-agent <the workflows distribution>` to reach the same place.
+beside it — and why the install above names `workhorse-workflows` rather than
+`workhorse-agent`. Installing the workflows pulls the engine in as *their* dependency, so
+the venv the resolver builds is by construction the venv that runs them. Installing the
+engine first and adding workflows to it is the same venv reached backwards, and only if
+you remember the second step. `make sync` arranges the same thing for a checkout.
 
 ### Config
 
@@ -173,7 +192,7 @@ It needs no repository, no context manifest and — under `--dry-run` — no age
 all, so it is the one command that tells you the install worked.
 
 ```bash
-uv run workhorse-hello-world run --dry-run
+workhorse-hello-world run --dry-run     # from a checkout: uv run workhorse-hello-world …
 ```
 
 ```
@@ -340,13 +359,6 @@ that is why.
 Baselines live in [`.release-please-manifest.json`](.release-please-manifest.json) and the
 package map in [`.release-please-config.json`](.release-please-config.json); a new
 distribution is one entry in each, plus its build/publish steps in the workflow.
-
-> **`workhorse` currently carries `"release-as": "1.0.0"`.** It is how the 1.0 line is
-> declared, since the changes that earn it — the Python workflow engine, the retired YAML
-> front-end, the per-command CLI — all landed before `bootstrap-sha` and are invisible to
-> release-please. **Delete that key once 1.0.0 is on PyPI.** `release-as` is not consumed
-> by the release it causes: left in place it pins every later workhorse release to 1.0.0,
-> and the second one fails on the index as a duplicate rather than saying why.
 
 ### One-time setup (not in the repo)
 
