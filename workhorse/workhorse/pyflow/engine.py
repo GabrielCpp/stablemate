@@ -224,7 +224,11 @@ class Engine:
     # --- self.call ----------------------------------------------------------
 
     def call(
-        self, node: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+        self,
+        node: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        span_kind: str = "",
     ) -> Any:
         spec = self._resolve(node)
         writer = self.env.writer
@@ -233,6 +237,9 @@ class Engine:
             spec.name,
             "enter",
             blueprint=spec.blueprint,
+            # The workflow's own classification of this node, forwarded rather than
+            # inferred — see `Workflow.INFRA_NODES`. Absent when it has nothing to say.
+            **({"span_kind": span_kind} if span_kind else {}),
             **_stand_in(self.env.dry_run, spec.stub is not None),
         )
         self.env.log.info(

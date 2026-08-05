@@ -420,6 +420,21 @@ def test_a_failed_turn_carries_its_class_and_recovery_bucket():
     assert turn.attrs["error.kind"] == "cap"
 
 
+def test_a_node_the_workflow_calls_infra_is_marked_as_such():
+    """Bringing a stack up is wall-clock the model spends idle. Without the mark, an
+    aggregate over node duration reads a four-minute boot as four minutes of work."""
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("ensure_stack", 1, "enter", span_kind="infra"))
+    assert tracer.by_name("ensure_stack").attrs["workhorse.span_kind"] == "infra"
+
+
+def test_a_node_the_workflow_says_nothing_about_carries_no_span_kind():
+    """Absent, not "compute": workhorse must not classify a node the workflow did not."""
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("plan", 1, "enter"))
+    assert "workhorse.span_kind" not in tracer.by_name("plan").attrs
+
+
 def test_resume_generation_counts_starts_of_one_run_directory():
     """A resume reuses the run_id and opens a fresh root span, so without this a gap
     between two spans cannot be told apart from a process that sat waiting."""

@@ -455,6 +455,26 @@ Keep the values low-cardinality; a bounded counter is ideal, a free-text note is
 The engine passes the dict it already holds and never inspects it — what counts as a
 dimension stays the workflow's call.
 
+### Nodes that wait on infrastructure
+
+Not every node span is work. `ensure_stack` brings an app stack up and health-gates it,
+which on a real run is minutes of waiting with the model idle — and in an aggregate over
+node duration that is indistinguishable from minutes of effort.
+
+A workflow says which of its own nodes those are:
+
+```python
+class Qa(Workflow):
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack})
+```
+
+Their spans carry `workhorse.span_kind="infra"`; every other node carries nothing, so
+"the workflow did not classify this" stays distinct from "the workflow called it work".
+
+It is declared, never inferred. Workhorse is a generic driver and must not learn what a
+node *means* from its name or module — the workflow already knows which of its own nodes
+do infra work, the same way it already knows its own `labels()`.
+
 These keys are **not** `wf.`-prefixed. The retired YAML engine prefixed them so a
 workflow could not shadow an OTel convention; here the collector reads the unprefixed
 spelling, and nothing is translated on the way out. Both spellings are still promoted

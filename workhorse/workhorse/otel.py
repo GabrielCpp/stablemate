@@ -924,6 +924,13 @@ class _Telemetry:
                         "workhorse.node": node_id,
                         "workhorse.seq": seq,
                         "workhorse.depth": len(self._stack),
+                        # What the workflow said this node is (see
+                        # `Workflow.INFRA_NODES`) — forwarded, never inferred.
+                        **(
+                            {"workhorse.span_kind": str(extra["span_kind"])}
+                            if extra.get("span_kind")
+                            else {}
+                        ),
                         **self._labels,
                     },
                 )

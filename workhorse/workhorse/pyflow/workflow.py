@@ -124,6 +124,18 @@ class Workflow(BaseModel):
     #: still applies.
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
 
+    #: Node functions of this workflow's that spend wall-clock on *infrastructure*
+    #: rather than on the model — bringing a stack up, tearing one down. Their spans
+    #: are marked `workhorse.span_kind=infra`, so an aggregate over node duration can
+    #: subtract them instead of reading a four-minute stack boot as four minutes of
+    #: work.
+    #:
+    #: Declared by the workflow, never inferred here. Workhorse is a generic driver
+    #: and must not learn what a node *means* from its name or module; the workflow
+    #: already knows which of its own nodes do infra work, the same way it already
+    #: knows its own `labels()`.
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset()
+
     #: Bound by the driver before the first state runs.
     _engine: Any = PrivateAttr(default=None)
     _ctx: Any = PrivateAttr(default=None)
@@ -268,7 +280,12 @@ class Workflow(BaseModel):
         here neither passes nor sees it. The node's *ambient* arguments — the fields
         named in `injects` — are filled the same way, and for the same reason.
         """
-        return self._require_engine().call(node, args, self._fill(node, args, kwargs, skip=1))
+        return self._require_engine().call(
+            node,
+            args,
+            self._fill(node, args, kwargs, skip=1),
+            span_kind="infra" if node in type(self).INFRA_NODES else "",
+        )
 
     def agent(
         self,

@@ -188,6 +188,12 @@ class Qa(Workflow):
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
+    #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
+    #: that is minutes of `booting app: … waiting up to 2400s`, and it is the model
+    #: sitting idle, not working. Marking it keeps a slow stack out of any aggregate
+    #: that would otherwise read the wait as effort.
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack})
+
     #: The budgets worth grouping a query by. All eight of `QaLoop`'s counters, because
     #: this flow's whole shape is which of them ran out first.
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
