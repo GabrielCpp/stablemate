@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 
 from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.aider import AiderBackend
+from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -22,7 +22,7 @@ _REGISTRY: dict[str, type[AgentBackend]] = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
     "copilot": CopilotBackend,
-    "aider": AiderBackend,
+    "cline": ClineBackend,
     "opencode": OpenCodeBackend,
 }
 

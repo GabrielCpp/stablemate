@@ -70,7 +70,7 @@ def test_venvs_that_provide_no_workflow_are_not_reported():
             **{
                 "stablemate-library": _venv([], "/home/dev/stablemate/base-library",
                                             pip_args=["--editable"]),
-                "aider-chat": _venv(["aider"], "aider-chat"),
+                "cline": _venv(["cline"], "cline"),
             }
         )
     )

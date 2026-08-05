@@ -324,7 +324,7 @@ def test_skill_load_ref_names_the_installed_command_not_the_asked_for_one(monkey
 
 
 def test_skill_load_ref_reads_the_resolved_path_on_a_read_the_file_harness(monkeypatch):
-    monkeypatch.setenv("AGENT_CLI", "aider")
+    monkeypatch.setenv("AGENT_CLI", "cline")
     out = render_string("{{ skill_load_ref('go') }}", _ctx())
     assert out.startswith("Read `") and out.endswith("and follow its instructions")
     assert "demo-go/SKILL.md" in out
@@ -346,7 +346,7 @@ def test_skill_load_ref_unresolved_still_describes_where_the_skill_would_live(mo
     monkeypatch.setenv("AGENT_CLI", "claude")
     ctx = _ctx()
     assert render_string("{{ skill_load_ref('nope', 'x/nope/SKILL.md') }}", ctx) == "/nope"
-    monkeypatch.setenv("AGENT_CLI", "aider")
+    monkeypatch.setenv("AGENT_CLI", "cline")
     assert render_string("{{ skill_load_ref('nope', 'x/nope/SKILL.md') }}", ctx) == (
         "Read `x/nope/SKILL.md` and follow its instructions"
     )

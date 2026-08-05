@@ -10,14 +10,15 @@ two operations that ARE CLI-specific to the active backend:
 
 The backend is chosen per-run via the ``AGENT_CLI`` env var (or ``--cli``), so a
 single workflow runs entirely on one CLI. The *model* is selectable per node via a
-node's ``model:`` map (a per-CLI map, e.g. ``{claude: opus, aider: openrouter/...}``;
+node's ``model:`` map (a per-CLI map, e.g. ``{claude: opus, cline: openrouter/...}``;
 see ``runner/ladder.py``). To run a node on an OpenRouter model, point an
-OpenRouter-native backend (``aider`` / ``opencode``) at it with ``AGENT_CLI`` and
-give the node an ``openrouter/<slug>`` model — no proxy, since those CLIs speak
-plain chat-completions and (for the MiMo experiment) cache natively.
+OpenRouter-native backend (``cline`` / ``opencode``) at it with ``--cli`` (or
+``AGENT_CLI``, which is what farrier's generated Makefile sets) and give the node
+an ``openrouter/<slug>`` model — no proxy, since those CLIs talk to OpenRouter
+directly and cache natively.
 
 This module declares the port and nothing else: each CLI owns its protocol in its
-own sibling module (``claude``, ``codex``, ``copilot``, ``opencode``, ``aider``),
+own sibling module (``claude``, ``codex``, ``copilot``, ``opencode``, ``cline``),
 and ``registry`` — the only module that imports all of them — maps a name to a
 class. Importing the port therefore drags in no adapter.
 """

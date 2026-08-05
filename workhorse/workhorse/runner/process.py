@@ -251,7 +251,7 @@ class ProcessSupervisor:
         stream (a stalled API response or a hung MCP server), which the in-loop check alone
         can never catch.
 
-        Every harness — Claude, Codex, Copilot, OpenCode, aider — streams through this one
+        Every harness — Claude, Codex, Copilot, OpenCode, Cline — streams through this one
         path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
         browser / JVM grandchildren), and the active-process registration behave identically
         regardless of backend. ``on_line`` receives each raw line (newline included) and does

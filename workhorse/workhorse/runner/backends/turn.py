@@ -1,8 +1,8 @@
 """What one non-Claude turn yielded, and the one place such a turn is classified.
 
-Every adapter that is not Claude ends its turn here: the JSONL backends
-(codex/copilot/opencode) after ``stream_jsonl``, aider after its plain-text
-transcript. The struct and the classifier live together because they are two halves
+Every adapter that is not Claude ends its turn here — the JSONL backends
+(codex/copilot/opencode/cline) after ``stream_jsonl``. The struct and the
+classifier live together because they are two halves
 of one contract — what the stream accumulates, and how the accumulation becomes a
 result or a ``BackendInvocationError``.
 

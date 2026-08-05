@@ -53,7 +53,6 @@ reports nothing still gets ``duration_ms`` stamped by the engine itself (see
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -293,43 +292,3 @@ def normalize(event: dict[str, Any]) -> TurnUsage:
         total_cost_usd=_find_cost(event),
         duration_ms=_as_int(event.get("duration_ms") or event.get("durationMs")),
     )
-
-
-# Aider streams plain text and ends with a line like:
-#   Tokens: 3.4k sent, 213 received. Cost: $0.0123 message, $0.05 session.
-# Unverified against a live run (it needs a provider key), so it is deliberately a
-# best-effort regex over the transcript rather than a parse: no match simply means
-# no usage attributes, exactly as if the CLI had said nothing.
-_AIDER_TOKENS = re.compile(
-    r"Tokens:\s*([\d.]+)([kKmM]?)\s*sent,\s*([\d.]+)([kKmM]?)\s*received", re.I
-)
-_AIDER_COST = re.compile(r"Cost:\s*\$([\d.]+)\s*message", re.I)
-_SUFFIX = {"": 1, "k": 1_000, "m": 1_000_000}
-
-
-def from_text(transcript: str | None) -> TurnUsage:
-    """Best-effort usage for a text-streaming backend (aider). Last report wins —
-    a multi-step turn reprints the line, and the final one is the turn's total.
-
-    ``None`` is accepted, and is not the same question as "did it report usage": a
-    turn whose transcript was never captured has no usage either, and the caller on
-    the hot path of every stream should not have to say so twice."""
-    counts: dict[str, int] = {}
-    matches = _AIDER_TOKENS.findall(transcript or "")
-    if matches:
-        sent, sent_unit, received, received_unit = matches[-1]
-        try:
-            counts = {
-                "input_tokens": int(float(sent) * _SUFFIX[sent_unit.lower()]),
-                "output_tokens": int(float(received) * _SUFFIX[received_unit.lower()]),
-            }
-        except (ValueError, KeyError):
-            counts = {}
-    cost: float | None = None
-    costs = _AIDER_COST.findall(transcript or "")
-    if costs:
-        try:
-            cost = float(costs[-1])
-        except ValueError:
-            cost = None
-    return TurnUsage(**counts, total_cost_usd=cost)

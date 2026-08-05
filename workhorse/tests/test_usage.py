@@ -340,35 +340,6 @@ def test_empty_event_leaves_the_total_alone():
     assert total.is_empty, total
 
 
-# --------------------------------------------------------------------------- #
-# from_text()  (aider — no structured events at all)
-# --------------------------------------------------------------------------- #
-
-
-def test_aider_transcript_last_line_wins():
-    transcript = (
-        "Applied edit to app.py\n"
-        "Tokens: 2.1k sent, 180 received. Cost: $0.0031 message, $0.0031 session.\n"
-        "Applied edit to test_app.py\n"
-        "Tokens: 3.4k sent, 213 received. Cost: $0.0052 message, $0.0083 session.\n"
-    )
-    got = usage.from_text(transcript)
-    assert got.token_counts() == {"input_tokens": 3400, "output_tokens": 213}, got
-    assert got.total_cost_usd == 0.0052, got
-
-
-def test_aider_transcript_without_a_usage_line():
-    got = usage.from_text("I could not find that file.\n")
-    assert got.token_counts() == {}, got
-    assert got.total_cost_usd is None, got
-    assert got.is_empty, got
-
-
-def test_from_text_tolerates_empty_and_none():
-    assert usage.from_text("").is_empty
-    assert usage.from_text(None).is_empty
-
-
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

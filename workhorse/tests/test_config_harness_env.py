@@ -27,7 +27,7 @@ from unittest.mock import patch
 from workhorse._vendor.stablemate_core.config import resolve_harness_env
 from workhorse.config_run import AgentResilience
 from workhorse.runner import backends, failure, process
-from workhorse.runner.backends.aider import AiderBackend
+from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -108,7 +108,7 @@ def _spawn_env(backend, **run_turn_kwargs):
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         seen.update(kwargs)
         # Enough of a successful turn that classification does not raise: the JSONL
-        # backends need a result event, aider needs any text at all.
+        # backends each need their own terminal event.
         for line in (
             '{"type":"result","result":"ok","subtype":"success"}\n',
             '{"type":"turn.completed","result":"ok"}\n',
@@ -155,7 +155,7 @@ def test_every_backend_forwards_its_own_table():
         CodexBackend(),
         CopilotBackend(),
         OpenCodeBackend(),
-        AiderBackend(),
+        ClineBackend(),
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
         cfg = {"harness": {backend.name: {"env": marker}}}

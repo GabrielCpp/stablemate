@@ -28,14 +28,14 @@ from workhorse.context import WorkflowContext
 from workhorse.runner import failure, ladder, process
 from workhorse.runner.backends import (
     AgentBackend,
-    aider,
+    cline,
     codex,
     copilot,
     jsonl,
     opencode,
     turn,
 )
-from workhorse.runner.backends.aider import AiderBackend
+from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -167,12 +167,12 @@ def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
 
 
 def test_non_claude_backends_registered():
-    # codex, copilot, aider, opencode: all stateless, no in-place compaction, and
+    # codex, copilot, cline, opencode: all stateless, no in-place compaction, and
     # no built-in default model (the node/AGENT_MODEL names it).
     for name, cls in (
         ("codex", CodexBackend),
         ("copilot", CopilotBackend),
-        ("aider", AiderBackend),
+        ("cline", ClineBackend),
         ("opencode", OpenCodeBackend),
     ):
         b = get_backend(name)
@@ -562,11 +562,11 @@ def test_classify_turn_records_node_to_session_manifest():
 
 
 def test_classify_turn_without_session_writes_no_manifest():
-    """No session id (e.g. aider, which has none) → nothing to map, no file."""
+    """No session id reported by the turn → nothing to map, no file."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     assert (
         failure.classify_turn(
-            "aider",
+            "cline",
             "impl",
             result_text="done",
             diagnostics="",
@@ -711,65 +711,116 @@ def test_opencode_text_parts_do_not_leak_between_turns():
     assert second.result_text == "second"
 
 
-# ── Aider backend (aider --message, plain-text capture) ─────────────────────────
+# ── Cline backend (cline --json, NDJSON) ────────────────────────────────────────
 
 
-def _fake_text_turn():
-    """Stand-in for _run_text_turn that records the cmd and returns canned text."""
-    captured = {}
+def test_cline_run_turn_fresh_then_resume():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(
+        turn.TurnState(result_text="OK", session_id="conv_1")
+    )
 
-    def fake(backend_name, cmd, node_id, timeout, cwd, session_id_path, **kwargs):
-        captured["cmd"] = cmd
-        captured["cwd"] = cwd
-        captured["env_extra"] = kwargs.get("env_extra")
-        return "AIDER OK"
+    out = _run_turn(
+        ClineBackend(fake), "PROMPT", "n", sidp,
+        model="openrouter/xiaomi/mimo-v2.5", cwd="/repo",
+    )
 
-    return fake, captured
-
-
-def test_aider_run_turn_builds_noninteractive_cmd():
-    fake, captured = _fake_text_turn()
-    with patch.object(aider, "_run_text_turn", fake):
-        out = _run_turn(AiderBackend(),
-            "PROMPT", "n", None, model="openrouter/xiaomi/mimo-v2.5", cwd="/repo"
-        )
-    assert out == "AIDER OK"
+    assert out == "OK"
     cmd = captured["cmd"]
-    assert cmd[0] == "aider"
-    assert cmd[cmd.index("--message") + 1] == "PROMPT"
+    assert cmd[0] == "cline" and "--json" in cmd
+    # The prompt is positional, after a `--` so one starting with '-' still lands
+    # as the message rather than as an unknown option.
+    assert cmd[-2:] == ["--", "PROMPT"]
     assert cmd[cmd.index("--model") + 1] == "openrouter/xiaomi/mimo-v2.5"
-    # Fully non-interactive, no repo/git mutation behind our back.
-    for flag in (
-        "--yes-always",
-        "--no-stream",
-        "--no-pretty",
-        "--no-auto-commits",
-        "--no-gitignore",
-    ):
-        assert flag in cmd
-    assert captured["cwd"] == "/repo"
+    assert cmd[cmd.index("--auto-approve") + 1] == "true"
+    assert cmd[cmd.index("--cwd") + 1] == "/repo"
+    assert "--id" not in cmd  # fresh run: nothing to resume yet
+    assert sidp.read_text() == "conv_1"
+
+    fake2, captured2 = _fake_stream(turn.TurnState(result_text="A2", session_id="conv_1"))
+    _run_turn(ClineBackend(fake2), "P2", "n", sidp)
+    assert captured2["cmd"][captured2["cmd"].index("--id") + 1] == "conv_1"
 
 
-def test_aider_effort_clamped_to_high():
-    for level, expected in (
-        ("low", "low"),
-        ("high", "high"),
-        ("xhigh", "high"),
-        ("max", "high"),
-    ):
-        fake, captured = _fake_text_turn()
-        with patch.object(aider, "_run_text_turn", fake):
-            _run_turn(AiderBackend(), "P", "n", None, model="m", effort=level)
-        assert (
-            captured["cmd"][captured["cmd"].index("--reasoning-effort") + 1] == expected
-        )
+def test_cline_effort_passes_through_unmapped():
+    """cline's reasoning levels are exactly workhorse's, so nothing is clamped —
+    unlike the harnesses whose ranges are narrower."""
+    for level in ("none", "low", "medium", "high", "xhigh"):
+        fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
+        _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort=level)
+        assert captured["cmd"][captured["cmd"].index("--thinking") + 1] == level
 
 
-def test_aider_no_effort_omits_flag():
-    fake, captured = _fake_text_turn()
-    with patch.object(aider, "_run_text_turn", fake):
-        _run_turn(AiderBackend(), "P", "n", None, model="m")
-    assert "--reasoning-effort" not in captured["cmd"]
+def test_cline_unknown_effort_omits_the_flag():
+    """`max` is a workhorse level cline does not have. Passing it through would make
+    the CLI reject the whole turn, so an unrecognized level defers to cline's default
+    rather than guessing at a mapping."""
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
+    _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort="max")
+    assert "--thinking" not in captured["cmd"]
+
+
+def test_cline_on_event_reads_the_terminal_result():
+    """Shapes captured from a live turn (CLI 3.0.50, 2026-08-05)."""
+    state = turn.TurnState()
+    cline._on_event(
+        {"type": "hook_event", "taskId": "conv_1785957902817_357vbvb"}, state, "n"
+    )
+    cline._on_event(
+        {
+            "type": "run_result",
+            "finishReason": "completed",
+            "text": "OK",
+            "durationMs": 4542,
+            "usage": {
+                "inputTokens": 6337,
+                "outputTokens": 33,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "totalCost": 0.00089642,
+            },
+        },
+        state,
+        "n",
+    )
+    assert state.session_id == "conv_1785957902817_357vbvb"
+    assert state.result_text == "OK"
+    assert state.usage.input_tokens == 6337 and state.usage.output_tokens == 33
+    assert state.usage.total_cost_usd == 0.00089642
+    assert state.usage.duration_ms == 4542
+    assert state.diagnostics == []  # a clean completion says nothing
+
+
+def test_cline_reports_an_unclean_finish_reason_as_a_diagnostic():
+    """The adapter does not classify — it hands `classify_turn` the words to judge."""
+    state = turn.TurnState()
+    cline._on_event(
+        {"type": "run_result", "text": "", "finishReason": "max_iterations"}, state, "n"
+    )
+    assert any("max_iterations" in d for d in state.diagnostics)
+
+
+def test_cline_per_iteration_usage_is_not_double_counted():
+    """cline emits a per-iteration `usage` event AND a cumulative `run_result`.
+    Folding both would bill every turn twice; only the terminal event is read."""
+    state = turn.TurnState()
+    cline._on_event(
+        {
+            "type": "agent_event",
+            "event": {"type": "usage", "inputTokens": 6337, "outputTokens": 33,
+                      "cost": 0.00089642},
+        },
+        state,
+        "n",
+    )
+    assert state.usage.is_empty
+    cline._on_event(
+        {"type": "run_result", "text": "OK",
+         "usage": {"inputTokens": 6337, "outputTokens": 33, "totalCost": 0.00089642}},
+        state,
+        "n",
+    )
+    assert state.usage.input_tokens == 6337
 
 
 def test_codex_reset_at_skips_non_openai_models_without_network():

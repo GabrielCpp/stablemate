@@ -88,9 +88,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="NAME",
         help="Agent CLI backend to drive this run: claude (default), codex, copilot, "
-        "aider, or opencode. Overrides the AGENT_CLI env var. Selection is per-run, "
+        "cline, or opencode. Overrides the AGENT_CLI env var. Selection is per-run, "
         "not per-node. To run on an OpenRouter model, use an OpenRouter-native "
-        "backend (aider/opencode) and give nodes an 'openrouter/<slug>' model.",
+        "backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
     )
     parser.add_argument(
         "--dry-run",

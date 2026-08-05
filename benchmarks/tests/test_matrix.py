@@ -167,8 +167,8 @@ def test_sets_yml_requires_a_pinned_judge(sets_file):
 
 
 def test_a_duplicate_label_is_refused(sets_file):
-    dupe = [*SETS["sets"], {"label": "cheap", "cli": "aider",
-                            "power": {"high": {"aider": {"model": "x"}}}}]
+    dupe = [*SETS["sets"], {"label": "cheap", "cli": "cline",
+                            "power": {"high": {"cline": {"model": "x"}}}}]
     with pytest.raises(SystemExit, match="duplicate set label"):
         matrix.load_matrix(sets_file(sets=dupe))
 
@@ -289,7 +289,7 @@ def test_gold_is_refused_when_the_backlog_moved(frozen):
 
 def test_gold_is_refused_when_the_judge_changed(frozen):
     mx, tmp_path, monkeypatch = frozen
-    _freeze(monkeypatch, tmp_path, mx, "demo", judge={"cli": "aider", "model": "cheap"})
+    _freeze(monkeypatch, tmp_path, mx, "demo", judge={"cli": "cline", "model": "cheap"})
     assert "judge" in matrix.gold_staleness(mx, "demo")
 
 
