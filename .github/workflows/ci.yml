@@ -1,0 +1,99 @@
+# The gate on every change, as opposed to `release.yml`, which is the gate on every
+# upload. They run the same command (`make test`) on purpose: a rule that only holds at
+# release time is a rule the branch spends weeks violating, and the release PR is the
+# worst possible place to discover it — the fix has to land, re-trigger release-please
+# and re-open the PR before anything can ship.
+#
+# `make test` already chains lint (ruff + ty) and the repo's own guards — check-public,
+# check-no-env, check-parsers, check-portability — so this file deliberately adds no
+# steps of its own beyond the two the runner cannot infer: the browser binary, and the
+# hooks check below.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # So a contributor can re-run a red job after a flake without pushing an empty commit.
+  workflow_dispatch:
+
+# A force-push or a quick follow-up commit makes the in-flight run answer a tree nobody
+# is looking at any more. Cancel it — except on main, where every commit's verdict is
+# worth having on the record, since that is the history `git bisect` reads.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-public compares against the tracked tree, and the commit-message check
+          # below reads the PR's commits. A shallow clone has neither.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # `--locked` rather than a plain sync: it fails if uv.lock disagrees with the
+      # pyprojects instead of quietly resolving something else, which is the difference
+      # between CI testing the tree a contributor will get and CI testing a tree that
+      # exists only on the runner.
+      - name: Sync the workspace
+        run: uv sync --all-packages --locked
+
+      # The browser binary installs separately from the `playwright` package, and
+      # ostler's live CDP scan test launches one. Without this the package imports fine,
+      # the test gets past its `importorskip`, and it fails at launch. chromium only: it
+      # is the one browser any test here drives. `--with-deps` because a runner has none
+      # of the system libraries — unlike `make browsers`, which must not sudo on a
+      # developer's own machine.
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: make test
+        run: make test
+
+  # Separate job because it answers a different question and its failure means something
+  # different: the suite failing means the code is wrong, this failing means the *commit
+  # message* is wrong. release-please reads nothing but the subject to decide whether a
+  # package ships and at what version, so a mislabelled commit is a defect that silently
+  # withholds a release — and it is unfixable after the merge without a rewrite.
+  #
+  # PR-only: on a push to main the commits already exist and the check could only
+  # complain about history.
+  commit-messages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check every commit subject against .githooks/commit-msg
+        # Explicit, because the loop below uses process substitution — bash, not sh.
+        shell: bash
+        run: |
+          # The hook is the definition — running it here rather than reimplementing its
+          # rules means the two can never drift, and a contributor who ran `make install`
+          # has already seen this verdict locally.
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.event.pull_request.head.sha }}'
+          status=0
+          while read -r sha; do
+            msg=$(mktemp)
+            git log -1 --format=%B "$sha" > "$msg"
+            if ! .githooks/commit-msg "$msg"; then
+              echo "::error::$(git log -1 --format='%h %s' "$sha")"
+              status=1
+            fi
+          done < <(git rev-list "$base..$head" --no-merges)
+          exit $status
