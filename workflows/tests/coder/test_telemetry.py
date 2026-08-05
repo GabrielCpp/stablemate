@@ -50,6 +50,40 @@ def test_verdicts_skip_the_gate_that_has_not_run():
     assert labels == {"qa.audit_verdict": "refuted"}
 
 
+def test_a_recorded_verdict_reaches_the_labels():
+    loop = QaLoop(
+        plan_review_disposition="revise",
+        assessment_disposition="repair_plan",
+        assessment_failure_class="plan",
+    )
+    labels = _sealed(Qa).state_labels({"loop": loop})
+    assert labels["qa.plan_review_disposition"] == "revise"
+    assert labels["qa.assessment_disposition"] == "repair_plan"
+    assert labels["qa.assessment_failure_class"] == "plan"
+    # The audit has not run, so it says nothing rather than claiming a verdict.
+    assert "qa.audit_verdict" not in labels
+
+
+def test_verdicts_are_forgotten_with_the_notes_they_summarise():
+    """`cleared()` blanks each gate's findings before the plan is re-run. A verdict left
+    behind would let a span claim `revise` for a finding already forgotten — the two are
+    the same statement in two forms."""
+    loop = QaLoop(
+        plan_review_disposition="revise",
+        plan_review_notes="the plan does not test the story",
+        audit_verdict="refuted",
+        audit_refutation_class="plan-defect",
+        # A budget is not a finding: `cleared` must not reset the counters, or the loop
+        # it bounds would never end.
+        plan_rework=2,
+    )
+    cleared = loop.cleared()
+    assert cleared.plan_review_disposition == ""
+    assert cleared.plan_review_notes == ""
+    assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
+    assert cleared.plan_rework == 2
+
+
 def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:
     """A flow with `ctx` in place, as the driver leaves it after `setup()`."""
     flow = cls()

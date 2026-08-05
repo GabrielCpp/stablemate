@@ -69,7 +69,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels
+from workhorse_workflows.coder.shared.telemetry import counter_labels, verdict_labels
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
@@ -202,16 +202,26 @@ class Qa(Workflow):
     )
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, plus which attempt of which budget the next state is on.
+        """The same, plus which attempt of which budget the next state is on, and what
+        each gate last decided.
 
-        `QaLoop` is threaded through every transition as a state parameter, so the
-        counters are already in hand here and no state has to stash a copy of them.
-        `start` and `setup` run before any loop exists, and simply report nothing.
+        `QaLoop` is threaded through every transition as a state parameter, so both are
+        already in hand here and no state has to stash a copy of them. `start` and `setup`
+        run before any loop exists, and simply report nothing.
+
+        The verdicts label the spans *after* the turn that produced them, which is the
+        useful direction: what a query wants is the cost of the work a `revise` caused,
+        not the cost of saying the word.
         """
         loop = params.get("loop")
         if not isinstance(loop, QaLoop):
             return self.labels()
-        return self.labels() | counter_labels(loop.model_dump(), "qa", self.BUDGET_LABELS)
+        carried = loop.model_dump()
+        return (
+            self.labels()
+            | counter_labels(carried, "qa", self.BUDGET_LABELS)
+            | verdict_labels(carried, "qa", QaLoop.VERDICT_LABELS)
+        )
 
     # ── context ───────────────────────────────────────────────────────────────────────
 
@@ -367,7 +377,8 @@ class Qa(Workflow):
             },
         )
         loop = loop.update(
-            plan_review_notes=_finding(review.disposition == "approved", review.notes)
+            plan_review_notes=_finding(review.disposition == "approved", review.notes),
+            plan_review_disposition=review.disposition,
         )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
@@ -435,7 +446,9 @@ class Qa(Workflow):
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         loop = loop.update(
-            assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes)
+            assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes),
+            assessment_disposition=assessment.disposition,
+            assessment_failure_class=assessment.failure_class,
         )
 
         if assessment.disposition == "repair_setup":
@@ -515,7 +528,9 @@ class Qa(Workflow):
         loop = loop.update(
             audit_notes=_finding(
                 result.verdict == "stands" and result.refutation_class == "none", result.notes
-            )
+            ),
+            audit_verdict=result.verdict,
+            audit_refutation_class=result.refutation_class,
         )
         if result.verdict == "stands":
             if result.refutation_class == "none":

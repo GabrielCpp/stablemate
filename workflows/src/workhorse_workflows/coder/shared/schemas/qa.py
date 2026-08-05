@@ -19,7 +19,7 @@ becomes one model, because the set is what the script actually returns.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -363,6 +363,31 @@ class QaLoop(CoderResult):
     #: as unset and earns no bonus.
     failure_class: str = ""
 
+    #: The last discrete verdict from each of the three agent gates, carried for telemetry
+    #: and for the give-up record. **Nothing branches on these** — each gate branches on its
+    #: own fresh result, and a stale disposition deciding a later transition is exactly the
+    #: bug the `_finding` docstring describes. They are recorded because the counters alone
+    #: are a cost and not a diagnosis: "four plan-QA attempts" says a story was expensive,
+    #: "four attempts, every one ending `revise`" says which gate made it so.
+    #:
+    #: Blank means the gate has not run yet, which is distinct from a gate that ran and
+    #: found nothing wrong.
+    plan_review_disposition: str = ""  #: approved | revise
+    assessment_disposition: str = ""  #: confirmed | repair_plan | extend_plan | repair_setup
+    assessment_failure_class: str = ""  #: none | product | plan | environment | evidence
+    audit_verdict: str = ""  #: stands | refuted
+    audit_refutation_class: str = ""  #: none | product-contradiction | plan-defect | evidence-defect
+
+    #: Which of the above are worth a span dimension. Each is a closed vocabulary of a
+    #: handful of words, so the label cardinality they add is bounded.
+    VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
+        "plan_review_disposition",
+        "assessment_disposition",
+        "assessment_failure_class",
+        "audit_verdict",
+        "audit_refutation_class",
+    )
+
     #: The bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair, except
     #: `plan_validation_rework` and `plan_review_rework` — see the flow's
     #: `_guard_plan_validation` and `_guard_plan_review`.
@@ -399,6 +424,10 @@ class QaLoop(CoderResult):
         The script replaced five keys wholesale, so the running verdict is blanked too — a
         re-planned story has not failed QA yet. The two *context* fields are not in that set
         and stay, which is the script's behaviour and not an oversight of the port.
+
+        The recorded verdicts blank with the notes they summarise. They are the same
+        statement in two forms, so leaving one behind would let a span claim `revise` for a
+        gate whose finding had already been forgotten.
         """
         return self.model_copy(
             update={
@@ -407,6 +436,7 @@ class QaLoop(CoderResult):
                 "plan_review_notes": "",
                 "assessment_notes": "",
                 "audit_notes": "",
+                **dict.fromkeys(self.VERDICT_LABELS, ""),
             }
         )
 
