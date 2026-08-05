@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in one of the packages behaves incorrectly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report security vulnerabilities here — see
+        [SECURITY.md](https://github.com/GabrielCpp/stablemate/blob/main/SECURITY.md).
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - workhorse (the engine)
+        - workflows (hello-world, author, coder, okf-builder, research)
+        - farrier (the installer)
+        - ostler (the doc-graph validator)
+        - groom (the dashboard)
+        - saddlebag
+        - base-library (skills and packs)
+        - other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        Output of `pip show <package>`, or the commit SHA if you are on a checkout.
+      placeholder: workhorse-agent 1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >-
+        The smallest set of commands that shows it. `workhorse-hello-world run --dry-run`
+        needs no agent CLI and no repository, so a repro built on it is the easiest kind
+        to act on.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: >-
+        The error, plus anything relevant from the run directory
+        (`.agents/runs/<run-id>/` — `run.json`, `events.jsonl`, the failing node's
+        folder). Redact anything private first.
+      render: shell
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Python
+      placeholder: Ubuntu 24.04, Python 3.12.3, installed with uv tool
+    validations:
+      required: true

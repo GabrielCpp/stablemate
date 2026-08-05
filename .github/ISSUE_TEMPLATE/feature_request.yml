@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a capability one of the packages does not have.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - workhorse (the engine)
+        - workflows (hello-world, author, coder, okf-builder, research)
+        - farrier (the installer)
+        - ostler (the doc-graph validator)
+        - groom (the dashboard)
+        - saddlebag
+        - base-library (skills and packs)
+        - other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What are you trying to do, and where does the current design stop you? Describe
+        the situation rather than the fix — it is the part that cannot be guessed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. A sketch of the API, flag or workflow node you would expect.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >-
+        Optional, and useful — a workaround that almost works often says more about the
+        real shape of the gap than the proposal does.
