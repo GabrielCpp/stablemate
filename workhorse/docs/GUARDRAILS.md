@@ -287,12 +287,29 @@ there are deliberate and worth not undoing:
   calls three tools reports three times; only the sum is the turn's cost.
 - **Extraction is tolerant, not a per-backend switch.** An unrecognized shape falls
   back to a bounded search for a token-shaped dict, and finding nothing costs a missing
-  attribute — never an exception on the hot path of every streamed event. (copilot's
-  shape could not be verified against a live run, which is why.)
+  attribute — never an exception on the hot path of every streamed event.
+
+**Coverage is not uniform, and a query over cost has to know it:**
+
+| harness | tokens | cost | notes |
+| --- | --- | --- | --- |
+| claude | yes | yes | the only harness reporting all of tokens, money and duration |
+| opencode | yes | yes | one event per *step*; only the sum is the turn |
+| aider | yes | yes | parsed from the transcript, not JSON |
+| codex | yes | **no** | subscription auth reports no money |
+| copilot | **no** | **no** | bills in *premium requests*; reports neither tokens nor currency |
+
+A harness that reports nothing yields **absent, not zero** — a fabricated `0.0`
+averages into "this turn was free" and understates spend. So a total over
+`total_cost_usd` is a total over the turns that priced themselves, and on a mixed run
+that is a subset. `groom cost` says so out loud rather than presenting a partial sum as
+a complete one.
 
 `duration_ms` is guaranteed on every turn span: when the CLI reports it, that value is
-used; when it doesn't, `turn_end` stamps the engine's own wall clock. Latency is
-therefore comparable across harnesses even where tokens are not.
+used; when it doesn't, `turn_end` stamps the engine's own wall clock. That keeps latency
+coverage total, but the two are not quite the same measurement — the engine's includes
+process spawn, the CLI's does not — so it is sound for spotting an outlier and not for
+comparing harnesses at the margin.
 
 #### `labels()` — the workflow's own dimensions
 

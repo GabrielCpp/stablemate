@@ -37,6 +37,23 @@ CLAUDE_RESULT = {
     },
 }
 
+# Captured from a real `copilot -p … --output-format json` turn (CLI 1.0.65,
+# 2026-08-05) — the shape this module could previously only guess at. Copilot's
+# `usage` names none of the token fields: `premiumRequests` is a *request* count,
+# which is what Copilot actually bills, and the two durations are wall clock.
+COPILOT_RESULT = {
+    "type": "result",
+    "timestamp": "2026-08-05T18:41:09.264Z",
+    "sessionId": "d2c237e8-59b4-4018-b469-a740d3bced99",
+    "exitCode": 0,
+    "usage": {
+        "premiumRequests": 1,
+        "totalApiDurationMs": 2024,
+        "sessionDurationMs": 4743,
+        "codeChanges": {"linesAdded": 0, "linesRemoved": 0, "filesModified": []},
+    },
+}
+
 CODEX_TURN_COMPLETED = {
     "type": "turn.completed",
     "usage": {
@@ -82,6 +99,25 @@ def test_claude_result_keeps_its_own_key_names():
     }, got
     assert got.total_cost_usd == 0.0412
     assert got.duration_ms == 8423
+
+
+def test_copilot_reports_no_tokens_and_no_money():
+    """Verified against a live CLI turn, not inferred.
+
+    Copilot bills in *premium requests*, not tokens, and its result event carries no
+    token counts and no currency at all. Everything is therefore absent — which is the
+    correct answer, and the one the tolerant search has to arrive at without being
+    told: `codeChanges` is a nested dict of integers sitting right beside `usage`, and
+    latching onto it would invent counts out of a lines-changed tally.
+    """
+    got = usage.normalize(COPILOT_RESULT)
+    assert got.token_counts() == {}, got
+    assert got.total_cost_usd is None, got
+    assert got.duration_ms is None, got
+    # And so the whole turn reports nothing, which is what routes it past
+    # `finalize_turn`'s `is_empty` guard: no usage attributes reach the span, and
+    # duration falls back to the engine's own wall clock in `turn_end`.
+    assert got.is_empty, got
 
 
 def test_codex_cached_input_maps_onto_cache_read():

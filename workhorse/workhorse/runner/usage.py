@@ -22,9 +22,18 @@ Verified event shapes (captured from the installed CLIs, 2026-07-27):
 - opencode ``{"type":"step_finish", "part":{"tokens":{"input","output",
            "reasoning","cache":{"read","write"}}, "cost":0}}`` — one event per
            *step*, so a multi-tool turn emits several and they must be summed
-- copilot  unverified (no valid token on the machine this was written on), which
-           is why extraction falls back to a bounded recursive search for a
-           token-shaped dict rather than a hardcoded path
+- copilot  ``{"type":"result", "sessionId", "exitCode", "usage":{
+           "premiumRequests","totalApiDurationMs","sessionDurationMs",
+           "codeChanges":{...}}}`` (CLI 1.0.65, captured 2026-08-05) — **no token
+           counts and no currency of any kind.** Copilot bills in *premium
+           requests*, so there is nothing here to map onto the token fields, and a
+           copilot turn reports empty: it is routed past ``finalize_turn``'s
+           ``is_empty`` guard and carries only the engine's own duration.
+
+           The `codeChanges` sub-dict is why the recursive search is guarded rather
+           than merely bounded: it is a nested dict of integers sitting directly
+           beside `usage`, and an unguarded search would invent token counts out of
+           a lines-changed tally.
 
 That fallback is the reason this is tolerant rather than a per-backend switch: an
 unrecognized shape costs a missing attribute, never an exception. A turn that
