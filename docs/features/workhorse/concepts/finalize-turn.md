@@ -7,9 +7,8 @@ title: finalize_turn — where every non-Claude turn ends
 
 The single call every non-Claude backend makes to turn a finished subprocess turn into a result or
 a raised error: it reports the turn's token/cost usage to the open telemetry span, then delegates
-the verdict to [`classify_turn`](classify-turn.md) so the three JSONL backends (via
-[`stream_jsonl`](stream-jsonl.md)) and the plain-text backend (via
-[`_run_text_turn`](run-text-turn.md)) classify through the exact same ladder the Claude path uses,
+the verdict to [`classify_turn`](classify-turn.md) so the four JSONL backends (via
+[`stream_jsonl`](stream-jsonl.md)) classify through the exact same ladder the Claude path uses,
 producing identical failure messages and transient/overflow/cap/non-recoverable verdicts regardless
 of which CLI ran. It owns no classification rules of its own.
 
@@ -25,12 +24,12 @@ result or a `BackendInvocationError`. Nothing in that module names a CLI.
 
 - **Input:**
   - `backend_name` — the CLI's registry name (`"codex"`, `"copilot"`, `"opencode"`, or
-    [`"aider"`](aider-backend.md)), forwarded to `classify_turn` so its error messages name the
+    [`"cline"`](cline-backend.md)), forwarded to `classify_turn` so its error messages name the
     right CLI.
   - `node_id` — the workflow node this turn belonged to, forwarded verbatim.
   - `state: TurnState` — the [struct](#turnstate) the caller accumulated during the turn
-    (`stream_jsonl`'s per-line loop plus the backend's `on_event`, or `_run_text_turn`'s joined
-    transcript). **One argument, not four:** `result_text`, `session_id`, `diagnostics`,
+    (`stream_jsonl`'s per-line loop plus the backend's `on_event`). **One argument, not four:**
+    `result_text`, `session_id`, `diagnostics`,
     `timed_out` and `returncode` are all read off it here.
   - `session_id_path` — where `classify_turn` persists `state.session_id` on success or overflow,
     forwarded verbatim.
@@ -106,13 +105,11 @@ Two design rules hold this struct in place:
 ## Related pieces
 
 - [`classify_turn`](classify-turn.md) — the function this one delegates its verdict to; owns every
-  transient/overflow/cap/non-recoverable rule. `finalize_turn` exists so its three JSONL callers and
-  the text-turn caller don't each reshape their own state into `classify_turn`'s keyword-only
-  signature independently — and so usage telemetry has exactly one emission point.
+  transient/overflow/cap/non-recoverable rule. `finalize_turn` exists so its four JSONL callers
+  don't each reshape their own state into `classify_turn`'s keyword-only signature independently —
+  and so usage telemetry has exactly one emission point.
 - [`stream_jsonl`](stream-jsonl.md) — produces the `TurnState` this function consumes, for
-  `CodexBackend`, `CopilotBackend`, and `OpenCodeBackend`.
-- [`_run_text_turn`](run-text-turn.md) — the aider path; builds its own `TurnState` from a joined
-  plain-text transcript and calls this once per turn.
+  `CodexBackend`, `CopilotBackend`, `ClineBackend` and `OpenCodeBackend`.
 - [`read_session_id`](read-session-id.md) — the reader for what `classify_turn` persists here; the
   other half of the session-resume loop.
 - [`_codex_reset_at`](codex-reset-at.md) — `OpenCodeBackend.run_turn`'s out-of-band probe for the

@@ -29,7 +29,7 @@ knowledge — the backends import it, never the reverse.
 
 - **Input:**
   - `backend_name: str` (positional) — the running CLI's name (`"claude"`, `"codex"`, `"copilot"`,
-    `"aider"`, `"opencode"`), interpolated into every error message so a shared classifier never
+    `"cline"`, `"opencode"`), interpolated into every error message so a shared classifier never
     hardcodes one backend.
   - `node_id: str` (positional) — the workflow node this turn belonged to, interpolated into every
     message.

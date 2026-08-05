@@ -12,7 +12,7 @@ agent turn, and never learns which CLI it got.
 
 `runner/backends/__init__.py` declares the port **and nothing else**. Each CLI owns its protocol in
 its own sibling module — [`claude`](claude-backend.md), [`codex`](codex-backend.md),
-[`copilot`](copilot-backend.md), [`opencode`](opencode-backend.md), [`aider`](aider-backend.md) —
+[`copilot`](copilot-backend.md), [`opencode`](opencode-backend.md), [`cline`](cline-backend.md) —
 and [`registry`](get-backend.md), the only module that imports all of them, maps a name to a class.
 Importing the port therefore drags in no adapter: a module that only needs the type for an
 annotation pays for one small file.
@@ -106,10 +106,9 @@ Five, each in its own module, each overriding `name` plus `run_turn`/`compact`:
 
 - [`ClaudeBackend`](claude-backend.md) — the default; the only one with real compaction.
 - [`CodexBackend`](codex-backend.md), [`CopilotBackend`](copilot-backend.md),
-  [`OpenCodeBackend`](opencode-backend.md) — the JSONL-streaming three, sharing
-  [`stream_jsonl`](stream-jsonl.md) and [`finalize_turn`](finalize-turn.md).
-- [`AiderBackend`](aider-backend.md) — plain text output, via
-  [`_run_text_turn`](run-text-turn.md).
+  [`ClineBackend`](cline-backend.md), [`OpenCodeBackend`](opencode-backend.md) — the
+  JSONL-streaming four, sharing [`stream_jsonl`](stream-jsonl.md) and
+  [`finalize_turn`](finalize-turn.md).
 
 Selected at runtime by [`get_backend`](get-backend.md), which
 [`workhorse-<name> run`](../workhorse.md#run)'s `--cli` flag and the `AGENT_CLI` env var drive.

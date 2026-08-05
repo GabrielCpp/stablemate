@@ -88,7 +88,7 @@ install that distribution, and workhorse comes along as one of its dependencies.
 You also need the agent CLI you intend to
 drive on your `PATH` and authenticated — by default the [Claude
 CLI](https://docs.claude.com/en/docs/claude-code) (`claude`), authenticated via a
-Claude subscription or `claude setup-token`. `codex`, `copilot`, `aider` and
+Claude subscription or `claude setup-token`. `codex`, `copilot`, `cline` and
 `opencode` are also supported (see
 [Choosing the agent CLI backend](#choosing-the-agent-cli-backend)).
 
@@ -110,7 +110,7 @@ Key flags (run `workhorse-<name> --help` for the full list):
 |---|---|
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<cwd>/.agents/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
-| `--cli {claude,codex,copilot,aider,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
+| `--cli {claude,codex,copilot,cline,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
 | `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
@@ -308,8 +308,8 @@ The controller drives one agent CLI per run, behind a backend port
 
 ```bash
 workhorse-<name> run                      # claude (default)
-workhorse-<name> run --cli codex          # or copilot, aider, opencode
-# Equivalently, set the AGENT_CLI={claude,codex,copilot,aider,opencode} env var.
+workhorse-<name> run --cli codex          # or copilot, cline, opencode
+# Equivalently, set the AGENT_CLI={claude,codex,copilot,cline,opencode} env var.
 ```
 
 | Backend | CLI | Default model | In-place compaction |
@@ -317,7 +317,7 @@ workhorse-<name> run --cli codex          # or copilot, aider, opencode
 | `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) |
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
 | `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
-| `aider` | `aider --message` (plain text) | — (node names it) | no — ladder reframes |
+| `cline` | `cline --json` | — (node names it) | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
 
 JSONL provider error events and logs that identify a transient failure are aborted
@@ -340,7 +340,7 @@ effort = "high"
 The full reference — the `power` and `[default.<backend>]` tables, per-harness
 environment variables, where the config file lives and how its schema version keeps
 workhorse and farrier in step, initial setup, codex config profiles, and running
-OpenRouter models on `aider`/`opencode` (where pinning the upstream endpoint is the
+OpenRouter models on `cline`/`opencode` (where pinning the upstream endpoint is the
 largest cost lever on a long run) — is in
 [docs/BACKENDS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md).
 The resilience and timeout knobs are env vars, documented in

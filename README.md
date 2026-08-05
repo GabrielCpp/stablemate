@@ -218,7 +218,7 @@ ls .agents/runs/hello-world-dry-run/
 `--dry-run` answered both seams from stand-ins the workflow declares itself, which is what
 let it finish with nothing installed — so `greet/prompt.md` holds a placeholder rather than
 a rendered prompt. Drop the flag and it all happens for real; that one needs an agent CLI
-(`claude` by default; `--cli codex|copilot|aider|opencode`):
+(`claude` by default; `--cli codex|copilot|cline|opencode`):
 
 ```bash
 uv run workhorse-hello-world run --params '{"name": "globex"}'

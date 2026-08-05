@@ -5,11 +5,12 @@ title: stream_jsonl — the shared JSONL event loop
 ---
 # stream_jsonl — the shared JSONL event loop
 
-The generic newline-delimited-JSON turn runner shared by the three JSONL-speaking backends —
+The generic newline-delimited-JSON turn runner shared by the four JSONL-speaking backends —
 [`CodexBackend`](codex-backend.md), [`CopilotBackend`](copilot-backend.md),
-[`OpenCodeBackend`](opencode-backend.md). Each backend builds its own `cmd` and supplies an
-`on_event` callback that knows its CLI's own event vocabulary ([`_codex_on_event`](codex-on-event.md),
-[`_copilot_on_event`](copilot-on-event.md), [`_opencode_on_event`](opencode-on-event.md));
+[`ClineBackend`](cline-backend.md), [`OpenCodeBackend`](opencode-backend.md). Each backend builds
+its own `cmd` and supplies an `on_event` callback that knows its CLI's own event vocabulary
+([`_codex_on_event`](codex-on-event.md), [`_copilot_on_event`](copilot-on-event.md),
+[`_cline_on_event`](cline-on-event.md), [`_opencode_on_event`](opencode-on-event.md));
 `stream_jsonl` owns everything vocabulary-agnostic: spawning through
 [`stream_subprocess`](stream-subprocess.md), per-line JSON parsing, non-JSON passthrough, and the
 early-abort scan. A backend's `run_turn` calls it once, then hands the returned
@@ -122,8 +123,8 @@ transient provider failure rather than as a node-budget overrun.
   group-kill.
 - [`finalize_turn`](finalize-turn.md) — the next call in every JSONL backend's `run_turn`, turning
   the returned `TurnState` into the turn's result text or a raised `BackendInvocationError`.
-- [`TurnState`](finalize-turn.md#turnstate) — the struct this function fills and returns; shared
-  with the aider text path so both classify through one signature.
+- [`TurnState`](finalize-turn.md#turnstate) — the struct this function fills and returns; every
+  backend fills the same one, so all of them classify through one signature.
 - [`is_cap`](classify-turn.md#is_cap) / [`is_transient`](classify-turn.md#is_transient) — the
   marker predicates the early-abort checks reuse, so this early exit and `classify_turn`'s own
   detection can never disagree about what a line means.
@@ -132,6 +133,8 @@ transient provider failure rather than as a node-budget overrun.
 - [`_copilot_on_event`](copilot-on-event.md) — the `on_event` implementation for `CopilotBackend`,
   giving `stream_jsonl` its copilot-specific vocabulary (`assistant.message`/`result`/error
   events).
+- [`_cline_on_event`](cline-on-event.md) — the `on_event` implementation for `ClineBackend`, giving
+  `stream_jsonl` its cline-specific vocabulary (`hook_event`/`run_result`/`agent_event`).
 - [`_opencode_on_event`](opencode-on-event.md) — the `on_event` implementation for
   `OpenCodeBackend`, giving `stream_jsonl` its opencode-specific vocabulary (`text`/`error`
   events, and unconditional per-line `sessionID` capture).

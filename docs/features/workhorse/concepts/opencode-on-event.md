@@ -10,10 +10,10 @@ The `on_event` callback [`OpenCodeBackend.run_turn`](opencode-backend.md#contrac
 (`text`, `step_finish`, `error`, and other NDJSON event types keyed by `sessionID`) and is the only
 piece of the shared JSONL loop that does — `stream_jsonl` itself is vocabulary-agnostic and just
 calls `on_event(event, state, node_id)` once per parsed line. Its sibling adapters for the other
-JSONL backends are [codex's `_on_event`](codex-on-event.md) and
-[copilot's `_on_event`](copilot-on-event.md).
+JSONL backends are [codex's `_on_event`](codex-on-event.md),
+[copilot's `_on_event`](copilot-on-event.md) and [cline's `_on_event`](cline-on-event.md).
 
-Alone among the three it is **not** a module-level function but a **bound method on a per-turn
+Alone among the four it is **not** a module-level function but a **bound method on a per-turn
 object**. OpenCode streams one answer as several `text` parts that have to be reassembled in
 arrival order, so this adapter — and only this adapter — carries state across the calls of a single
 turn. That state lives on `_OpenCodeEvents`, a `@dataclass(slots=True)` instantiated fresh inside
@@ -120,8 +120,9 @@ JSON-decode-fails branch instead, per `test_opencode_cap_log_line_aborts_stream_
   adapter's `parts` live.
 - [`finalize_turn`](finalize-turn.md) — reads the `result_text`/`session_id`/`usage` populated here
   and the joined diagnostics to classify the turn once the stream ends.
-- [codex's `_on_event`](codex-on-event.md) / [copilot's `_on_event`](copilot-on-event.md) — the
-  analogous adapters for the other two JSONL backends; each parses a different CLI's event shape
+- [codex's `_on_event`](codex-on-event.md) / [copilot's `_on_event`](copilot-on-event.md) /
+  [cline's `_on_event`](cline-on-event.md) — the
+  analogous adapters for the other three JSONL backends; each parses a different CLI's event shape
   into the same `TurnState`. Both keep only the **last** message text on repeat events; this one is
   the odd one out, **accumulating** every distinct `text` part — which is exactly why it is the
   only adapter that needed an object.

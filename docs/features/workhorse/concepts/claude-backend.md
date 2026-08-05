@@ -42,8 +42,9 @@ imports and the cycle they worked around are both gone.
   module-level [`_run_cli`](run-claude-cli.md), forwarding every argument unchanged plus
   `env_extra=self.harness_env()`. Claude has a native reasoning-effort flag
   (`--effort low|medium|high|xhigh|max`), so `effort` passes straight through rather than being
-  translated or clamped — contrast [CodexBackend](codex-backend.md) and
-  [`_aider_effort`](aider-backend.md#_aider_effort), which clamp `xhigh`/`max` down to `high`.
+  translated or clamped — contrast [CodexBackend](codex-backend.md), which clamps `xhigh`/`max`
+  down to `high`, and [ClineBackend](cline-backend.md#_efforts), which drops a `max` it has no
+  level for.
   Raises the `BackendInvocationError` [`classify_turn`](classify-turn.md#ladder-first-match-wins)
   raises inside `_run_cli`.
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — delegates to
@@ -90,6 +91,6 @@ other adapter.
 - [`get_backend`](get-backend.md) — resolves `"claude"` (or no `--cli`/`AGENT_CLI` at all) to a
   cached `ClaudeBackend()` instance.
 - [CodexBackend](codex-backend.md) / [CopilotBackend](copilot-backend.md) /
-  [OpenCodeBackend](opencode-backend.md) / [AiderBackend](aider-backend.md) — the four sibling
+  [ClineBackend](cline-backend.md) / [OpenCodeBackend](opencode-backend.md) — the four sibling
   adapters, each in its own module under `runner/backends/`, each sharing a generic stream loop,
   and none of which can compact.

@@ -135,7 +135,7 @@ rewritten by substituting the manifest's `skill_dir` prefix for the active backe
 directory — all backends share the `{skill_dir}/{prefix}-{name}/SKILL.md` layout, so a prefix swap
 is sufficient. The active backend's directory comes from a fixed map: `claude` →
 `.claude/skills`, `codex` → `.agents/skills`, `copilot` → `.github/skills`; a backend outside this
-map (`aider`, `opencode`) keeps the manifest's own paths unrewritten. This is what lets one
+map (`cline`, `opencode`) keeps the manifest's own paths unrewritten. This is what lets one
 manifest, generated for one backend, still resolve correctly when a run is launched with
 `--cli codex` against a repo installed for Claude.
 

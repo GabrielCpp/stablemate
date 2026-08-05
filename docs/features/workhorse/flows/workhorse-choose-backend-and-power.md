@@ -57,7 +57,7 @@ edit to the workflow itself.
      <backend>`](../workhorse.md#run) (else the `AGENT_CLI` env var, else `claude`) sets `AGENT_CLI`
      and calls [`get_backend`](../concepts/get-backend.md#contract) once, eagerly — an unknown
      `<backend>` prints an error listing the valid keys and exits `1` before any node runs, rather
-     than failing mid-run. `<backend>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`,
+     than failing mid-run. `<backend>` ∈ `claude` (default) · `codex` · `copilot` · `cline` · `opencode`,
      each the registry key of one [AgentBackend](../concepts/agent-backend.md) implementation.
      `get_backend` caches one stateless instance per key, reused for every node of the run.
   4. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
@@ -84,7 +84,7 @@ edit to the workflow itself.
      [`AgentBackend.run_turn`](../concepts/agent-backend.md#contract)`(prompt, session_id_path,
      model=model, effort=node_effort, …)` on the step-3 backend instance; each concrete backend
      ([claude](../concepts/claude-backend.md), [codex](../concepts/codex-backend.md),
-     [copilot](../concepts/copilot-backend.md), [aider](../concepts/aider-backend.md),
+     [copilot](../concepts/copilot-backend.md), [cline](../concepts/cline-backend.md),
      [opencode](../concepts/opencode-backend.md)) translates `model`/`effort` into its own CLI
      flags.
 - end: the node's turn runs against the model/effort named by the config's

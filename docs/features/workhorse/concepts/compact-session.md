@@ -106,7 +106,7 @@ call (confirmed by the `session_id` field on emitted events matching the origina
   (reframe). Bounded strictly by [`resilience.max_compact_attempts`](run-agent.md#the-ladder),
   which never eats into the reframe budget.
 - [`AgentBackend.compact`](agent-backend.md#compact-abstract) — the abstract port method this
-  implements; the four non-Claude backends (`codex`, `copilot`, `aider`, `opencode`) implement it
+  implements; the four non-Claude backends (`codex`, `copilot`, `cline`, `opencode`) implement it
   as a bare `return False` and declare `supports_compaction = False`.
 - [`stream_subprocess`](stream-subprocess.md) — the supervised-spawn path this call streams
   through, giving the `/compact` turn the same timeout/watchdog/group-kill guarantees as a normal

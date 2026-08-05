@@ -7,12 +7,12 @@ title: read_session_id — the persisted session-id reader
 
 The one-line lookup every JSONL backend's `run_turn` opens with: read the node's persisted
 `.session_id` file, if any, and hand back the id to resume with. Shared by
-[CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md), and
-[OpenCodeBackend](opencode-backend.md) — the three backends that resume a session by id (`codex exec
-resume <sid>`, `copilot --session-id <sid>`, `opencode run --session <sid>`). `ClaudeBackend` and
-[AiderBackend](aider-backend.md) don't call it: Claude reads the same file through its own inline
-check in `runner/backends/claude.py` (it needs the id in two places, including the `/compact` turn),
-and aider has no session-resume concept at all (single-message coder, ladder reframes on failure).
+[CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md),
+[ClineBackend](cline-backend.md) and [OpenCodeBackend](opencode-backend.md) — the four backends that
+resume a session by id (`codex exec resume <sid>`, `copilot --session-id <sid>`, `cline --id <sid>`,
+`opencode run --session <sid>`). `ClaudeBackend` doesn't call it: it reads the same file through its
+own inline check in `runner/backends/claude.py`, because it needs the id in two places, including
+the `/compact` turn.
 
 `session_id_path` itself is a per-node `Path` the caller ([`AgentRunner`](run-agent.md)) computes and
 threads through every backend call; the file at that path is written by

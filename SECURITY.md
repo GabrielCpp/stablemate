@@ -28,7 +28,7 @@ maintained back-ports; the latest release of each distribution is the supported 
 Worth knowing before you assess it, because two of these surprise people:
 
 **It runs an agent CLI, and that agent runs commands.** workhorse drives `claude`, `codex`,
-`copilot`, `aider` or `opencode` as a subprocess against a repository you point it at,
+`copilot`, `cline` or `opencode` as a subprocess against a repository you point it at,
 unattended, for as long as the workflow takes. The agent's own permissions are the
 boundary — workhorse does not sandbox it, and a workflow that reaches an operator gate is
 waiting for a human, not for a policy engine. Run it against code and credentials you are

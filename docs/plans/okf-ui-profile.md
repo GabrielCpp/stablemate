@@ -407,7 +407,7 @@ pointers are checked, not decorative.
     [vars](workflow-format.md#vars) on a *fresh start*; ignored on resume.
   - `--cli <name>` — pick the agent harness for the run: selects an
     [AgentBackend](concepts/agent-backend.md) via [get_backend](concepts/get-backend.md);
-    `<name>` ∈ `claude` (default) · `codex` · `copilot` · `aider` · `opencode`.
+    `<name>` ∈ `claude` (default) · `codex` · `copilot` · `cline` · `opencode`.
   - `--resume-run <id>` / `--resume-latest` — resume a checkpointed run instead of the
     default auto-resume-in-place.
 - code: `workhorse/workhorse/main.py::_run_run`
@@ -1175,7 +1175,7 @@ matches [workhorse run](../commands/run.md)'s `--cli` value.
 
 Implementations (each `extends:` this): [claude](claude-backend.md) (default) ·
 [codex](codex-backend.md) · [copilot](copilot-backend.md) ·
-[opencode](opencode-backend.md) · [aider](aider-backend.md).
+[opencode](opencode-backend.md) · [cline](cline-backend.md).
 Selector: [get_backend](get-backend.md).
 ```
 
@@ -1203,7 +1203,7 @@ the implementations (the value *is* each backend's slug):
 - flags:
   - `--cli <name>` — selects an [AgentBackend](../concepts/agent-backend.md)
     implementation; `<name>` is a backend's registry key: `claude` (default) ·
-    `codex` · `copilot` · `opencode` · `aider`.
+    `codex` · `copilot` · `opencode` · `cline`.
 ```
 
 > **Pattern — abstraction + implementations + selector.** An abstraction is a code

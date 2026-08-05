@@ -6,12 +6,13 @@ title: OpenCodeBackend — the opencode harness
 # OpenCodeBackend — the opencode harness
 
 The [AgentBackend](agent-backend.md) implementation for the OpenCode CLI (`opencode run --format
-json`) — one of the three JSONL-speaking backends alongside [CodexBackend](codex-backend.md) and
-[CopilotBackend](copilot-backend.md). Selected when [run](../workhorse.md#run)'s `--cli` (via
+json`) — one of the four JSONL-speaking backends alongside [CodexBackend](codex-backend.md),
+[CopilotBackend](copilot-backend.md) and [ClineBackend](cline-backend.md). Selected when
+[run](../workhorse.md#run)'s `--cli` (via
 [get_backend](get-backend.md)) resolves to `opencode`. OpenCode speaks plain chat-completions to
 whatever provider its model names, so it drives OpenRouter models directly (e.g.
 `openrouter/example-org/example-model`) with **no proxy** — the same OpenRouter-native role
-[AiderBackend](aider-backend.md) plays. The prompt is passed as a positional argv message (not
+[ClineBackend](cline-backend.md) plays. The prompt is passed as a positional argv message (not
 stdin); sessions resume by id via `--session`; it has no in-place compaction. `run_turn` streams
 the CLI's event log through [`_OpenCodeEvents.on_event`](opencode-on-event.md), the vocabulary
 reader that turns OpenCode's own NDJSON events into the turn's result text, session id and usage,
@@ -115,6 +116,6 @@ variant levels don't line up one-to-one with the Claude-superset effort vocabula
   OAuth backend's `x-codex-primary-reset-at` header for an `openai/*` model, so a Codex usage cap
   hit through OpenCode is waited out until its exact reset instead of a flat default.
 - [`get_backend`](get-backend.md) — resolves `"opencode"` to a cached `OpenCodeBackend()` instance.
-- [`CodexBackend`](codex-backend.md) / [`CopilotBackend`](copilot-backend.md) — the other two JSONL
-  backends sharing `stream_jsonl`/`finalize_turn`; [`AiderBackend`](aider-backend.md) is the
-  plain-text sibling and the other OpenRouter-native backend.
+- [`CodexBackend`](codex-backend.md) / [`CopilotBackend`](copilot-backend.md) /
+  [`ClineBackend`](cline-backend.md) — the other three JSONL backends sharing
+  `stream_jsonl`/`finalize_turn`; cline is the other OpenRouter-native backend.

@@ -1,10 +1,9 @@
 """Cline CLI (``cline --json``) — event vocabulary and adapter.
 
-Took over from the retired `aider` backend as the OpenRouter-native harness — worth
-knowing only because spans in an existing telemetry store still carry
-``backend="aider"``. cline reports far more than that one could: it ends every turn
-with a single structured ``run_result`` carrying tokens, the cache split, real money,
-duration and the model it actually used.
+One of the two OpenRouter-native harnesses (opencode is the other), and the
+best-instrumented backend here: it ends every turn with a single structured
+``run_result`` carrying tokens, the cache split, real money, duration and the model
+it actually used.
 
 Event shapes below were captured from a live turn (CLI 3.0.50, 2026-08-05), not
 inferred:

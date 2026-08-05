@@ -149,10 +149,10 @@ needs no agent CLI at all — see the [README](../README.md#quick-start).
 | `GROOM_HOST` / `GROOM_PORT` | `host.docker.internal` / `8787` | Where the groom-sidecar dials for the gate/progress socket |
 | `CLAUDE_CODE_OAUTH_TOKEN` | _(unset)_ | Optional long-lived OAuth token (`claude setup-token`); skips the credentials-file seed |
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
-| `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `aider`, or `opencode` |
+| `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `cline`, or `opencode` |
 | `AGENT_MODEL` | _(unset)_ | Fallback model override when the node's `power` mapping does not provide one |
 | `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping `power` tiers to backend model/effort settings. `WORKHORSE_CONFIG` is still honored as the pre-unification spelling |
-| `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `aider` / `opencode` backends (no proxy). Pass it into the container |
+| `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `cline` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |
 

@@ -45,8 +45,8 @@ pays for the adapters.
 | `claude` | `ClaudeBackend` | [claude-backend](claude-backend.md) |
 | `codex` | `CodexBackend` | [codex-backend](codex-backend.md) |
 | `copilot` | `CopilotBackend` | [copilot-backend](copilot-backend.md) |
+| `cline` | `ClineBackend` | [cline-backend](cline-backend.md) |
 | `opencode` | `OpenCodeBackend` | [opencode-backend](opencode-backend.md) |
-| `aider` | `AiderBackend` | [aider-backend](aider-backend.md) |
 
 Adding a CLI is therefore two edits and no engine change: a new module implementing the
 [port](agent-backend.md#contract), and one row here.

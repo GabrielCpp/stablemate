@@ -43,7 +43,7 @@ they escape a process whose spans are all still open):
   which moves scripts in-process; the run heartbeat remains the liveness signal for a node that blocks
   the main thread, script or not;
 - `workhorse.turn.heartbeat` / `workhorse.turn.idle_s` — emitted from the top of the `select` loop in
-  `stream_subprocess` (the one path every backend shares, so opencode/codex/aider get it too), which
+  `stream_subprocess` (the one path every backend shares, so opencode/codex/cline get it too), which
   separates *streaming* (idle low) from *wedged* (idle climbing);
 - `run_dir` as a resource attribute — a span now leads back to its own `prompt.md` / `output.json`.
 

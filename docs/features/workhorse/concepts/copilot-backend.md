@@ -6,8 +6,9 @@ title: CopilotBackend — the copilot harness
 # CopilotBackend — the copilot harness
 
 The [AgentBackend](agent-backend.md) implementation for the GitHub Copilot CLI (`copilot -p
---output-format json`) — one of the three JSONL-speaking backends alongside
-[CodexBackend](codex-backend.md) and [OpenCodeBackend](opencode-backend.md). Selected when
+--output-format json`) — one of the four JSONL-speaking backends alongside
+[CodexBackend](codex-backend.md), [ClineBackend](cline-backend.md) and
+[OpenCodeBackend](opencode-backend.md). Selected when
 [run](../workhorse.md#run)'s `--cli` (via [get_backend](get-backend.md)) resolves to `copilot`.
 `--allow-all --no-ask-user` make every turn fully autonomous — no interactive confirmation, since
 the container is the sandbox — and the CLI has no in-place compaction, so the resilience ladder
@@ -45,8 +46,8 @@ importing [the port](agent-backend.md) drags in no adapter.
   4. `--model <model>` only when the caller named one.
   5. `--effort <effort>` only when the caller named one — Copilot has a native reasoning-effort
      flag spanning the same level range as Claude's, passed through verbatim with no clamping (in
-     contrast to [codex](codex-backend.md) and [aider](aider-backend.md#_aider_effort), which top
-     out at `high`).
+     contrast to [codex](codex-backend.md), which tops out at `high`, and
+     [cline](cline-backend.md#_efforts), which drops a `max` it has no level for).
   6. `--add-dir <dir>` once per entry in `add_dirs` — Copilot's own path sandbox only allows CWD,
      its subdirs, and the temp dir by default, so multi-repo dispatch (a node whose `cwd` is one
      service repo but that also needs to read/write a sibling repo) needs each extra directory
@@ -78,6 +79,6 @@ importing [the port](agent-backend.md) drags in no adapter.
 - [`finalize_turn`](finalize-turn.md) — the shared classifier `run_turn` hands the finished
   `TurnState` to, turning it into the turn's result text or a raised `BackendInvocationError`.
 - [`get_backend`](get-backend.md) — resolves `"copilot"` to a cached `CopilotBackend()` instance.
-- [`CodexBackend`](codex-backend.md) / [`OpenCodeBackend`](opencode-backend.md) — the other two
-  JSONL backends sharing `stream_jsonl`/`finalize_turn`; [`AiderBackend`](aider-backend.md) is the
-  plain-text sibling.
+- [`CodexBackend`](codex-backend.md) / [`ClineBackend`](cline-backend.md) /
+  [`OpenCodeBackend`](opencode-backend.md) — the other three JSONL backends sharing
+  `stream_jsonl`/`finalize_turn`.

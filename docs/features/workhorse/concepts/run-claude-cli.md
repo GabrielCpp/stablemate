@@ -32,7 +32,7 @@ in particular; one module per CLI supplies that disambiguation now, so it is sim
   - `session_id_path: Path | None` — the node's persisted
     [`.session_id`](../run-artifacts.md#session_id) file. When it exists and holds a non-blank id,
     the turn resumes that session (`--resume`); the file itself is read here inline (not via
-    [`read_session_id`](read-session-id.md), which the three JSONL backends share instead) and
+    [`read_session_id`](read-session-id.md), which the four JSONL backends share instead) and
     later (re)written by [`classify_turn`](classify-turn.md) on a successful or overflow turn.
   - `model: str | None` (default `None`) — when set, appended as `--model <model>`; when unset the
     CLI's own default applies (`ClaudeBackend.default_model = "sonnet"` is resolved by the caller
@@ -53,8 +53,8 @@ in particular; one module per CLI supplies that disambiguation now, so it is sim
     each becomes its own `--add-dir <dir>` flag. `None` is treated the same as an empty list.
   - `effort: str | None` (default `None`) — Claude's native reasoning-effort flag value
     (`--effort low|medium|high|xhigh|max`); passed straight through with no clamping (contrast
-    [CodexBackend](codex-backend.md) and [`_aider_effort`](aider-backend.md#_aider_effort), which
-    clamp `xhigh`/`max` down to `high`).
+    [CodexBackend](codex-backend.md), which clamps `xhigh`/`max` down to `high`, and
+    [ClineBackend](cline-backend.md#_efforts), which drops a `max` it has no level for).
   - `env_extra: dict[str, str] | None` (**keyword-only**, default `None`) — the operator's
     `[harness.claude].env` table, supplied by
     [`ClaudeBackend.harness_env()`](agent-backend.md#harness_env-concrete) and layered over the
@@ -105,8 +105,9 @@ epoch into [the cap wait](cap-delay-seconds.md) rather than falling back to a bl
   either the returned text or a classified, raised `BackendInvocationError`; also persists
   `session_id` to `session_id_path` on success.
 - [`read_session_id`](read-session-id.md) — the equivalent resume lookup
-  [CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md) and
-  [OpenCodeBackend](opencode-backend.md) share; this function performs the same
+  [CodexBackend](codex-backend.md), [CopilotBackend](copilot-backend.md),
+  [ClineBackend](cline-backend.md) and [OpenCodeBackend](opencode-backend.md) share; this function
+  performs the same
   read-strip-check logic inline instead, since it is the only backend with a `--resume <sid>` flag
   shaped this way.
 - [`_compact_session`](compact-session.md) — the sibling Claude-protocol function that

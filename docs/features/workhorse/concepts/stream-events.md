@@ -43,8 +43,8 @@ positions.
 `diagnostics_text` is a read-only property returning `"\n".join(self.diagnostics)` — the single
 string [`classify_turn`](classify-turn.md#ladder-first-match-wins) scans.
 
-This is deliberately **not** the shared [`TurnState`](finalize-turn.md#turnstate) the four JSONL/
-text backends fill. Those go through [`finalize_turn`](finalize-turn.md), which reads `TurnState`
+This is deliberately **not** the shared [`TurnState`](finalize-turn.md#turnstate) the four JSONL
+backends fill. Those go through [`finalize_turn`](finalize-turn.md), which reads `TurnState`
 and calls `classify_turn` on their behalf; Claude calls `classify_turn` itself, so it needs an
 accumulator shaped for that call rather than for the shared one.
 
@@ -142,7 +142,7 @@ rather than being killed mid-stream.
 - [`_emit_event`](emit-event.md) — the live-echo printer called once per successfully-parsed
   event, independent of the state accumulation above.
 - [`stream_jsonl`](stream-jsonl.md) / [codex's `_on_event`](codex-on-event.md) — the
-  generic-loop-plus-vocabulary-adapter split the other three JSONL backends use instead of this
+  generic-loop-plus-vocabulary-adapter split the four JSONL backends use instead of this
   function's fused approach; see
   [Cap detection](#cap-detection-differs-from-the-jsonl-backends) for the resulting behavioral
   difference.

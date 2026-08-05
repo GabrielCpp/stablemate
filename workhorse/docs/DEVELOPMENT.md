@@ -69,7 +69,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │       │   ├── codex.py       # …
 │       │   ├── copilot.py
 │       │   ├── opencode.py
-│       │   ├── aider.py
+│       │   ├── cline.py
 │       │   ├── turn.py        # TurnState + finalize_turn: what a non-Claude turn accumulates
 │       │   └── jsonl.py       # stream_jsonl: the shared JSONL stream loop
 │       ├── usage.py           # Normalize each harness's token/cost reporting onto one shape

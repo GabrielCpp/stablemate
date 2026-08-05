@@ -72,7 +72,7 @@ book is not an empty gap.
    Watch for the two blind spots that motivated this check:
    - **Every implementation of an interface / ABC is its own node.** If the code has N subclasses of
      a base but the graph documents fewer, queue the missing ones. (e.g. an `AgentBackend` base with
-     `Claude`/`Codex`/`Copilot`/`OpenCode`/`Aider` subclasses ⇒ **five** sibling `concept`s, not one
+     `Claude`/`Codex`/`Copilot`/`OpenCode`/`Cline` subclasses ⇒ **five** sibling `concept`s, not one
      with the rest named in prose.)
    - **Utility / library modules never reached from an entry point** are still surfaces of the
      service — queue them. (e.g. a `scriptutil`/`sdk` helper module imported by *other* tools.)

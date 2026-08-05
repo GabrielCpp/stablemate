@@ -10,8 +10,8 @@ The `on_event` callback [`CopilotBackend.run_turn`](copilot-backend.md) hands to
 vocabulary (`assistant.message`, `result`, error events) and is the only piece of the shared JSONL
 loop that does — `stream_jsonl` itself is vocabulary-agnostic and just calls
 `on_event(event, state, node_id)` once per parsed line. Its sibling adapters for the other JSONL
-backends are [codex's `_on_event`](codex-on-event.md) and
-[`_OpenCodeEvents.on_event`](opencode-on-event.md).
+backends are [codex's `_on_event`](codex-on-event.md), [cline's `_on_event`](cline-on-event.md)
+and [`_OpenCodeEvents.on_event`](opencode-on-event.md).
 
 The name is unqualified: each adapter module owns exactly one `_on_event`, because module scope
 already supplies the disambiguation a `_copilot_` prefix used to.
@@ -76,6 +76,7 @@ non-JSON diagnostic line.
   fills, which is why one classifier can read all of them.
 - [`finalize_turn`](finalize-turn.md) — reads the `result_text`/`session_id`/`usage` populated here
   and the joined diagnostics to classify the turn once the stream ends.
-- [codex's `_on_event`](codex-on-event.md) / [`_OpenCodeEvents.on_event`](opencode-on-event.md) —
-  the analogous adapters for the other two JSONL backends; each parses a different CLI's event
+- [codex's `_on_event`](codex-on-event.md) / [cline's `_on_event`](cline-on-event.md) /
+  [`_OpenCodeEvents.on_event`](opencode-on-event.md) —
+  the analogous adapters for the other three JSONL backends; each parses a different CLI's event
   shape into the same `TurnState`.

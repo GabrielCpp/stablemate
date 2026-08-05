@@ -6,9 +6,9 @@ title: stream_subprocess — the supervised-spawn path
 # stream_subprocess — the supervised-spawn path
 
 The one supervised-spawn path every agent harness streams a CLI turn through — Claude via
-[`_stream_events`](stream-events.md) and [`_compact_session`](compact-session.md),
-Codex/Copilot/OpenCode via [`stream_jsonl`](stream-jsonl.md), and aider via
-[`_run_text_turn`](run-text-turn.md). It owns process-group spawning, exec retry, line-by-line
+[`_stream_events`](stream-events.md) and [`_compact_session`](compact-session.md), and
+Codex/Copilot/Cline/OpenCode via [`stream_jsonl`](stream-jsonl.md). It owns process-group spawning,
+exec retry, line-by-line
 streaming, the dual in-loop + out-of-band timeout, heartbeat telemetry, and group-kill cleanup, so
 every backend gets identical per-node timeout and orphan-reaping behavior regardless of which CLI
 it drives.
@@ -223,10 +223,9 @@ must be, and is, thread-safe.
   directly (not through `stream_jsonl`) with the argv [`_run_cli`](run-claude-cli.md) builds.
 - [`_compact_session`](compact-session.md) — streams the `/compact` turn through this same path, so
   compaction gets the same watchdog and group-kill guarantees as a normal turn.
-- [`stream_jsonl`](stream-jsonl.md) (`runner/backends/jsonl.py`) /
-  [`_run_text_turn`](run-text-turn.md) (`runner/backends/aider.py`) — the Codex/Copilot/OpenCode
-  and aider adapters that stream their own event/text formats through this same path, so timeout
-  and group-kill behavior is identical across every backend.
+- [`stream_jsonl`](stream-jsonl.md) (`runner/backends/jsonl.py`) — the shared loop the
+  Codex/Copilot/Cline/OpenCode adapters stream their own event formats through on this same path,
+  so timeout and group-kill behavior is identical across every backend.
 - [`AgentResilience`](agent-backend.md#run_turn-abstract) — the struct carrying every knob this
   module reads; threaded from the run's configuration rather than consulted from the environment
   here.

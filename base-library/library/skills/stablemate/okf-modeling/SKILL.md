@@ -104,7 +104,7 @@ module / function is either its own node or explicitly folded into a documented 
 Two blind spots to hunt deliberately:
 - **Every implementation of an interface/ABC gets its own node** — not one example with the rest
   named in prose. A base with five subclasses (e.g. an `AgentBackend` → claude/codex/copilot/opencode/
-  aider) is *five* sibling concepts, each with its own contract.
+  cline) is *five* sibling concepts, each with its own contract.
 - **Library/utility modules the entry points never reach** (a `scriptutil`/SDK imported by other
   tooling) are still part of the book — document them too.
 

@@ -46,17 +46,17 @@ gold: gold
 # and the whole matrix is decoration. Gold is the exception by definition: it is claude
 # because that is what real work runs on, and it is the reference rather than a peer.
 #
-# The concrete reason it is opencode and not aider, which the hosted sets used to name:
-# aider is not an agentic harness. It has no read/grep/glob tool loop — each turn is a
-# one-shot `--message` seeing only the tree-sitter repo map — and no resumable session.
-# But the workflows' prompts render *paths* on every non-claude backend and expect the
-# agent to go open them: 30 `find_by_tags(...)` sites listing layer instruction files,
-# and 6 `skill_load_ref(...)` sites reading "Read `<path>` and follow its instructions".
-# Aider can open none of them, so those runs scored a coder workflow with every skill
-# reference silently dead, on top of not being able to search the app it was building.
-# The number that came back measured the harness. opencode takes the same OpenRouter
-# model ids directly (`openrouter/<vendor>/<model>`, no proxy), so nothing was lost in
-# moving — and a set added later should stay on opencode for the same reason.
+# The concrete requirement on that harness is that it be *agentic*, and it is not a
+# preference: the workflows' prompts render *paths* on every non-claude backend and
+# expect the agent to go open them — 30 `find_by_tags(...)` sites listing layer
+# instruction files, and 6 `skill_load_ref(...)` sites reading "Read `<path>` and follow
+# its instructions". A harness with no read/grep/glob tool loop can open none of them,
+# so its runs score a coder workflow with every skill reference silently dead, on top of
+# not being able to search the app it was building — and the number that comes back
+# measures the harness, not the model. That is what an earlier hosted set learned the
+# expensive way. opencode drives a real tool loop and takes OpenRouter model ids
+# directly (`openrouter/<vendor>/<model>`, no proxy), so a set added later should stay
+# on opencode for the same reason.
 sets:
   # The reference. Claude Code at the tier real work runs at.
   - label: gold

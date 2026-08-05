@@ -64,7 +64,7 @@ still shows the subcommand listing.
   - `--cli <name>` — pick the agent harness for the run: selects an
     [AgentBackend](concepts/agent-backend.md) implementation via
     [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` ·
-    `copilot` · `aider` · `opencode`. Per run, not per state.
+    `copilot` · `cline` · `opencode`. Per run, not per state.
   - `--runs-dir <dir>` — where run artifacts are written (default `<cwd>/.agents/runs`).
   - `--run-id <id>` — name the stable run dir (`<workflow>-<id>`). Default: a digest of
     `--params`, so distinct params get distinct dirs and never collide on one run; with no

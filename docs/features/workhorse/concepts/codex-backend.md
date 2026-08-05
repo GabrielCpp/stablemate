@@ -6,9 +6,9 @@ title: CodexBackend — the codex harness
 # CodexBackend — the codex harness
 
 The [AgentBackend](agent-backend.md) implementation for OpenAI's `codex` CLI (`codex exec --json`)
-— one of the three JSONL-speaking backends alongside [CopilotBackend](copilot-backend.md) and
-[OpenCodeBackend](opencode-backend.md). Selected when [run](../workhorse.md#run)'s `--cli` (via
-[get_backend](get-backend.md)) resolves to `codex`. Runs with the sandbox bypassed
+— one of the four JSONL-speaking backends alongside [CopilotBackend](copilot-backend.md),
+[ClineBackend](cline-backend.md) and [OpenCodeBackend](opencode-backend.md). Selected when
+[run](../workhorse.md#run)'s `--cli` (via [get_backend](get-backend.md)) resolves to `codex`. Runs with the sandbox bypassed
 (`--dangerously-bypass-approvals-and-sandbox`) because the worker container is itself the sandbox,
 mirroring Claude's `--dangerously-skip-permissions`; the CLI has no in-place compaction, so the
 resilience ladder reframes on context overflow instead. `run_turn` streams the CLI's event log
@@ -121,6 +121,6 @@ model on the default provider with no profile, lead with `@`.
   [OpenCodeBackend](opencode-backend.md) calls (not this backend) for the exact usage-cap reset
   time when a Codex-provider model hits a cap through OpenCode.
 - [`get_backend`](get-backend.md) — resolves `"codex"` to a cached `CodexBackend()` instance.
-- [`CopilotBackend`](copilot-backend.md) / [`OpenCodeBackend`](opencode-backend.md) — the other two
-  JSONL backends sharing `stream_jsonl`/`finalize_turn`; [`AiderBackend`](aider-backend.md) is the
-  plain-text sibling.
+- [`CopilotBackend`](copilot-backend.md) / [`ClineBackend`](cline-backend.md) /
+  [`OpenCodeBackend`](opencode-backend.md) — the other three JSONL backends sharing
+  `stream_jsonl`/`finalize_turn`.
