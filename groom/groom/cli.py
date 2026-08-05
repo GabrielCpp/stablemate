@@ -184,26 +184,38 @@ def _format_costs(rows: list[dict]) -> str:
     minutes = sum(row["minutes"] or 0.0 for row in rows)
     turns = sum(row["turns"] for row in rows)
     priced = sum(row["cost_turns"] or 0 for row in rows)
+    zeroed = sum(row["zero_cost_turns"] or 0 for row in rows)
     lines.append("-" * len(header))
     lines.append(f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{'':>7}{minutes:>7.0f}")
-    if priced < turns:
-        # Silence here would be a wrong answer, not a missing one: the share column
-        # is a fraction of the priced turns only, so an unpriced backend's nodes read
-        # as free and rank last. codex reports no money under subscription auth.
+    # Silence here would be a wrong answer, not a missing one. A turn can go unpriced
+    # two ways: reporting nothing (a visible gap) or reporting a literal zero while
+    # spending tokens (invisible — it sums, so the total looks complete).
+    if priced < turns or zeroed:
         backends = sorted({b for row in rows for b in (row["backends"] or "").split(",") if b})
         lines.append("")
-        lines.append(
-            f"note: {turns - priced} of {turns} turns reported no cost, so usd and share"
-            f" cover only the {priced} that did."
-        )
-        lines.append(
-            f"      Backends here: {', '.join(backends) or 'unknown'}."
-            " codex reports no money under subscription auth — those turns"
-        )
-        lines.append(
-            "      still spent tokens and wall-clock. Absent is recorded as absent"
-            " rather than as zero."
-        )
+        if priced < turns:
+            lines.append(
+                f"note: {turns - priced} of {turns} turns reported no cost, so usd and"
+                f" share cover only the {priced} that did."
+            )
+        if zeroed:
+            lines.append(
+                f"note: {zeroed} turn(s) reported a cost of exactly 0 while spending"
+                " output tokens. A turn that emitted"
+            )
+            lines.append(
+                "      tokens did not cost nothing — it was not priced. Cost depends on"
+                " the provider behind the"
+            )
+            lines.append(
+                "      harness, not the harness: opencode reports real money through"
+                " OpenRouter and a flat 0"
+            )
+            lines.append(
+                "      through a subscription provider. (A genuinely free model looks"
+                " the same.)"
+            )
+        lines.append(f"      Backends here: {', '.join(backends) or 'unknown'}.")
     return "\n".join(lines)
 
 

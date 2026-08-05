@@ -373,13 +373,24 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     ratio, not the raw turn count, is what separates an expensive node from a
     *looping* one.
 
-    Cost is summed over rows where it is non-NULL, and `cost_turns` reports how many
-    those were. The gap is not noise: **codex reports no money at all under
-    subscription auth** (see `workhorse/runner/usage.py` — absent, deliberately, rather
-    than a fabricated 0.0 that would average into "this turn was free"). So on a codex
-    run every `cost_usd` is NULL, and on a mixed run `share` is a fraction of only the
-    turns that priced themselves. `backends` names who ran each node so a reader can
-    see which case they are in; the CLI says so out loud when coverage is partial.
+    Cost is summed over rows where it is non-NULL, and two counts say how trustworthy
+    that sum is — because a harness can decline to price a turn in two different ways
+    and only one of them is visible as a gap:
+
+    * `cost_turns` — turns carrying any cost at all. codex reports **none** under
+      subscription auth, so on a codex run this is 0 and every `cost_usd` is NULL.
+    * `zero_cost_turns` — turns that reported cost `0` *while reporting output tokens*.
+      This is the dangerous one. opencode's cost depends on the provider behind it, not
+      on opencode: through OpenRouter a turn reports real money, and through a
+      subscription OAuth provider the identical turn reports a literal `0`. A NULL is
+      excluded from the sum and shows up as a gap; a zero is summed, so a run that
+      spent forty minutes totals $0.00 and looks complete. A turn that emitted tokens
+      did not cost nothing — it was not priced. (A genuinely free model reports the
+      same way, which is why this is surfaced rather than corrected.)
+
+    So the unit of cost coverage is **harness × provider**, not harness. `backends`
+    names who ran each node; the CLI says out loud when either count implies the total
+    is partial.
     """
     clauses, params = ["name = 'agent_turn'"], []
     if run:
@@ -391,6 +402,7 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
         " COUNT(*) AS turns,"
         " COUNT(DISTINCT json_extract(attrs_json, '$.work_id')) AS work_items,"
         f" SUM({_cost} IS NOT NULL) AS cost_turns,"
+        f" SUM({_cost} = 0 AND COALESCE({_output}, 0) > 0) AS zero_cost_turns,"
         " GROUP_CONCAT(DISTINCT json_extract(attrs_json, '$.backend')) AS backends,"
         f" SUM({_cost}) AS cost_usd,"
         f" SUM({_duration}) / 60000.0 AS minutes,"

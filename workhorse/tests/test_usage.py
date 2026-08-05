@@ -101,6 +101,51 @@ def test_claude_result_keeps_its_own_key_names():
     assert got.duration_ms == 8423
 
 
+def test_opencode_prices_a_turn_or_not_depending_on_the_provider_behind_it():
+    """Both captured from live `opencode run --format json` turns, 2026-08-05.
+
+    The same harness, the same event shape, the same trivial prompt — and two
+    different cost semantics, because cost belongs to the *provider*, not the CLI in
+    front of it. Through OpenRouter the turn prices itself; through a subscription
+    OAuth provider it reports a literal `0`.
+
+    That zero is the one that hurts. A NULL is excluded from a SUM and shows up as a
+    gap; a zero is summed, so a run that spent real wall-clock totals nothing and looks
+    complete. Nothing here corrects it — a genuinely free model reports identically —
+    but `groom.store.node_costs` counts these separately so a total can say how much of
+    itself is real.
+    """
+    via_openrouter = usage.normalize({
+        "type": "step_finish",
+        "part": {
+            "type": "step-finish",
+            "tokens": {"total": 12766, "input": 11715, "output": 4,
+                       "reasoning": 23, "cache": {"write": 0, "read": 1024}},
+            "cost": 0.0016505272,
+        },
+    })
+    via_subscription = usage.normalize({
+        "type": "step_finish",
+        "part": {
+            "type": "step-finish",
+            "tokens": {"total": 8156, "input": 6615, "output": 5,
+                       "reasoning": 0, "cache": {"write": 0, "read": 1536}},
+            "cost": 0,
+        },
+    })
+
+    assert via_openrouter.total_cost_usd == 0.0016505272, via_openrouter
+    # Zero, not None: the harness said "0", and inventing a None here would be as much
+    # a fabrication as inventing a 0.0 where nothing was said.
+    assert via_subscription.total_cost_usd == 0.0, via_subscription
+    assert via_subscription.total_cost_usd is not None
+
+    # Both price differently and both count tokens identically — and `total`, which
+    # sits right beside the mapped keys, is not mistaken for one of them.
+    assert via_openrouter.input_tokens == 11715 and via_openrouter.output_tokens == 4
+    assert via_subscription.input_tokens == 6615 and via_subscription.output_tokens == 5
+
+
 def test_copilot_reports_no_tokens_and_no_money():
     """Verified against a live CLI turn, not inferred.
 

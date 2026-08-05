@@ -385,6 +385,42 @@ def test_node_costs_reports_how_many_turns_actually_priced_themselves():
         assert rows["implement-plan"]["backends"] == "codex"
 
 
+def test_node_costs_counts_turns_that_priced_themselves_at_exactly_zero():
+    """The failure a NULL check does not catch.
+
+    opencode reports real money through OpenRouter and a literal 0 through a
+    subscription provider. A NULL is excluded from the SUM and shows as a gap; a zero
+    is summed, so a run that spent forty minutes totals $0.00 and looks complete.
+    """
+    with _TelemetryEnv():
+        free_looking = {
+            "name": "agent_turn", "node": "implement-plan", "span_id": "0a" * 8,
+            "labels": {"work_id": "story-a", "backend": "opencode"},
+            "numbers": {"total_cost_usd": 0.0, "usage.output_tokens": 905,
+                        "duration_ms": 1800000},
+        }
+        store.insert_spans(otlp.parse_traces(_trace_request([free_looking])))
+        row = store.node_costs()[0]
+        # It is counted as priced — the harness did report a number — and *also*
+        # counted as suspect, which is what lets the total say how much of itself
+        # is real instead of asserting the run was free.
+        assert row["cost_turns"] == 1
+        assert row["zero_cost_turns"] == 1
+        assert row["cost_usd"] == 0.0
+
+
+def test_a_zero_cost_turn_that_spent_no_tokens_is_not_flagged():
+    """An empty turn really did cost nothing. Flagging it would cry wolf on every run."""
+    with _TelemetryEnv():
+        empty = {
+            "name": "agent_turn", "node": "noop", "span_id": "0b" * 8,
+            "labels": {"work_id": "story-a", "backend": "opencode"},
+            "numbers": {"total_cost_usd": 0.0, "usage.output_tokens": 0},
+        }
+        store.insert_spans(otlp.parse_traces(_trace_request([empty])))
+        assert store.node_costs()[0]["zero_cost_turns"] == 0
+
+
 def test_node_costs_reads_spans_ingested_before_the_columns_existed():
     with _TelemetryEnv():
         store.insert_spans(

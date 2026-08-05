@@ -289,21 +289,32 @@ there are deliberate and worth not undoing:
   back to a bounded search for a token-shaped dict, and finding nothing costs a missing
   attribute — never an exception on the hot path of every streamed event.
 
-**Coverage is not uniform, and a query over cost has to know it:**
+**Coverage is not uniform, and the unit is harness × _provider_, not harness.** All
+verified against live turns:
 
-| harness | tokens | cost | notes |
+| harness | provider | tokens | cost |
 | --- | --- | --- | --- |
-| claude | yes | yes | the only harness reporting all of tokens, money and duration |
-| opencode | yes | yes | one event per *step*; only the sum is the turn |
-| aider | yes | yes | parsed from the transcript, not JSON |
-| codex | yes | **no** | subscription auth reports no money |
-| copilot | **no** | **no** | bills in *premium requests*; reports neither tokens nor currency |
+| claude | Anthropic | yes | yes |
+| opencode | OpenRouter | yes | yes — real money |
+| opencode | subscription OAuth | yes | **a literal `0`** |
+| aider | — | yes | yes (parsed from the transcript, not JSON) |
+| codex | subscription auth | yes | **none reported** |
+| copilot | — | **none** | **none** — bills in *premium requests* |
 
-A harness that reports nothing yields **absent, not zero** — a fabricated `0.0`
-averages into "this turn was free" and understates spend. So a total over
-`total_cost_usd` is a total over the turns that priced themselves, and on a mixed run
-that is a subset. `groom cost` says so out loud rather than presenting a partial sum as
-a complete one.
+The two ways of not pricing a turn are not equally visible, and the second is the
+dangerous one:
+
+- **Nothing reported** yields **absent, not zero** — a fabricated `0.0` would average
+  into "this turn was free". A NULL is excluded from a `SUM` and shows up as a gap.
+- **A reported `0`** is summed. So an opencode run on a subscription provider totals
+  `$0.00` over turns that really spent tokens and wall-clock, and the total *looks*
+  complete. Nothing here corrects it — a genuinely free model reports identically — so
+  `groom cost` counts turns that priced themselves at exactly zero *while emitting
+  output tokens* and says so.
+
+A total over `total_cost_usd` is therefore a total over the turns that priced
+themselves, which on a mixed run is a subset. `groom cost` reports how much of itself
+is real rather than presenting a partial sum as a complete one.
 
 `duration_ms` is guaranteed on every turn span: when the CLI reports it, that value is
 used; when it doesn't, `turn_end` stamps the engine's own wall clock. That keeps latency

@@ -246,17 +246,24 @@ stamps `work_id` itself (the coder workflow uses the story slug), so a node at
 average. Raw turn count tells you a node is *busy*; this tells you it is
 *looping*, which is a different and usually more actionable problem.
 
-**Cost coverage is not uniform across harnesses, and the table says so.** claude,
-opencode and aider each report money; **codex reports none at all under subscription
-auth**, and workhorse records that as absent rather than as a fabricated `0.0` — a
-zero would average into "this turn was free". So on a codex run every `usd` is `-`,
-and on a mixed run `share` is a fraction of only the turns that priced themselves.
-`groom cost` prints a note whenever that is the case, naming the backends involved:
+**Cost coverage is not uniform, and the unit is harness × _provider_.** codex reports
+no money at all under subscription auth. opencode reports real money through OpenRouter
+and a literal `0` through a subscription provider — the same CLI, the same event shape,
+because cost belongs to the provider behind it. copilot reports neither cost nor tokens
+at all (it bills in premium requests).
+
+The two ways of not pricing a turn differ in how visible they are. Nothing-reported is
+recorded as absent rather than a fabricated `0.0`, so it is excluded from the sum and
+shows up as a gap. A reported `0` is *summed* — so a run that spent forty minutes can
+total `$0.00` and look complete. `groom cost` flags both, naming the backends:
 
 ```
 note: 2 of 3 turns reported no cost, so usd and share cover only the 1 that did.
-      Backends here: claude, codex. codex reports no money under subscription auth …
+note: 2 turn(s) reported a cost of exactly 0 while spending output tokens. A turn that
+      emitted tokens did not cost nothing — it was not priced. …
 ```
+
+A turn that emitted no tokens and cost 0 is *not* flagged: it really was free.
 
 Nodes that reported no cost are ranked among themselves by minutes rather than by
 turn count, so an unpriced node that spent an hour in three turns still sorts above
