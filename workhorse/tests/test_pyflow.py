@@ -882,6 +882,82 @@ def test_a_states_flagged_log_line_becomes_the_run_activity():
         }, fake.labels
 
 
+def test_labels_may_read_the_parameters_the_state_was_bound_with():
+    """A bounded retry budget is already a state parameter — it has to be, since
+    state parameters *are* the checkpoint. So the attempt number is in hand at the
+    moment labels are read, and reporting it needs no copy stashed on `self`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
+        try:
+
+            class Retries(Workflow):
+                def labels(self, params: dict) -> dict[str, str]:
+                    return {"attempt": str(params.get("rework", 0))}
+
+                def start(self) -> Transition:
+                    return Continue(None, self.work, rework=0)
+
+                def work(self, rework: int = 0) -> Transition:
+                    if rework < 2:
+                        return Continue(None, self.work, rework=rework + 1)
+                    return Done("ok")
+
+            assert drive(Retries(), env) == "ok"
+        finally:
+            otel.install(previous)
+
+        # One label set per transition: start, then each visit to `work`.
+        assert [labels.get("attempt") for labels in fake.labels] == ["0", "0", "1", "2"]
+
+
+def test_a_zero_argument_labels_override_keeps_working():
+    """The original contract. Deciding by signature means an override written before
+    the parameter existed must not start being handed one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
+        try:
+
+            class Plain(Workflow):
+                def labels(self) -> dict[str, str]:
+                    return {"work_id": "ACME-1"}
+
+                def start(self) -> Transition:
+                    return Done("ok")
+
+            assert drive(Plain(), env) == "ok"
+        finally:
+            otel.install(previous)
+
+        assert fake.labels[-1] == {"work_id": "ACME-1"}
+
+
+def test_a_labels_override_that_raises_costs_only_its_own_labels():
+    """Instrumentation must never fail a run — including a params-reading override
+    handed a state whose parameters are not what it assumed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
+        try:
+
+            class Explodes(Workflow):
+                def labels(self, params: dict) -> dict[str, str]:
+                    return {"attempt": str(params["missing"])}
+
+                def start(self) -> Transition:
+                    return Done("ok")
+
+            assert drive(Explodes(), env) == "ok"
+        finally:
+            otel.install(previous)
+
+        assert fake.labels[-1] == {}
+
+
 # --------------------------------------------------------------------------- dry run
 
 

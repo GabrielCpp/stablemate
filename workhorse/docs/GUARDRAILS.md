@@ -312,6 +312,22 @@ that renders empty is dropped rather than stamped blank, and a `labels()` that r
 costs the labels for that transition and nothing else — never the run. A sub-flow gets
 its own class's `labels()`.
 
+An override may also take **one optional argument** — the parameters the state about to
+run was bound with — which is how a bounded retry budget becomes a span dimension:
+
+```python
+    def labels(self, params: Mapping[str, Any]) -> dict[str, str]:
+        loop = params.get("loop")
+        return {"work_id": self.story_id} | (
+            {"plan_rework": str(loop.plan_rework)} if loop else {}
+        )
+```
+
+A budget is almost always already a state parameter (state parameters *are* the
+checkpoint), so no state has to stash a copy of it for instrumentation to find. The
+label then lands on every span opened while it is current, so cost groups by attempt
+number without a join. See [AUTHORING.md](AUTHORING.md#reporting-which-attempt-this-is).
+
 For the "what is it doing *now*" dimension there is a flagged log record instead
 (`logger.info(msg, extra={"activity": True})`) — the rendered message *is* the activity,
 so it is never written twice. Both ride the live gauges below. Keys are **not**

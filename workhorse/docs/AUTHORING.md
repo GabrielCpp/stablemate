@@ -405,10 +405,9 @@ keeps the parent's world, which is what same-module sub-flows want.
 
 ## Labels, and saying what the run is doing
 
-A workflow declares its telemetry dimensions by overriding `labels()`. It takes no
-arguments and is re-read before every transition, so
-it reads whatever the instance can already see — inputs, `self.ctx`, and `self.output(node)`
-for anything a node recorded:
+A workflow declares its telemetry dimensions by overriding `labels()`. It is re-read
+before every transition, so it reads whatever the instance can already see — inputs,
+`self.ctx`, and `self.output(node)` for anything a node recorded:
 
 ```python
     def labels(self) -> dict[str, str]:
@@ -420,6 +419,36 @@ for anything a node recorded:
 
 Values that render empty are dropped rather than stamped blank, and a `labels()` that
 raises costs the labels for that transition and nothing else — never the run.
+
+### Reporting which attempt this is
+
+An override may take **one optional argument**: the parameters the state about to run
+was bound with.
+
+```python
+    def labels(self, params: Mapping[str, Any]) -> dict[str, str]:
+        loop = params.get("loop")
+        if loop is None:
+            return {"work_id": self.ctx.unit_id}
+        return {"work_id": self.ctx.unit_id, "plan_rework": str(loop.plan_rework)}
+```
+
+This is how a bounded retry budget reaches telemetry, and it needs no bookkeeping in the
+states themselves. A budget is almost always already a state parameter — it has to be,
+since state parameters *are* the checkpoint — so the count is in hand at exactly the
+moment the labels are read. The alternative, having each state assign its counter to
+`self` for `labels()` to find, means one edit site per state and instrumentation that is
+silently wrong wherever it was forgotten.
+
+It is worth the trouble because a label is stamped on **every** span opened while it is
+current — the node spans and the `agent_turn` span alike. So a query can group cost by
+attempt number directly. Without it, a span from the third repair pass is
+indistinguishable from the first, and "how many attempts did this unit spend, and where"
+cannot be answered from the trace at all.
+
+Keep the values low-cardinality; a bounded counter is ideal, a free-text note is not.
+The engine passes the dict it already holds and never inspects it — what counts as a
+dimension stays the workflow's call.
 
 These keys are **not** `wf.`-prefixed. The retired YAML engine prefixed them so a
 workflow could not shadow an OTel convention; here the collector reads the unprefixed
