@@ -420,6 +420,47 @@ def test_a_failed_turn_carries_its_class_and_recovery_bucket():
     assert turn.attrs["error.kind"] == "cap"
 
 
+def test_resume_generation_counts_starts_of_one_run_directory():
+    """A resume reuses the run_id and opens a fresh root span, so without this a gap
+    between two spans cannot be told apart from a process that sat waiting."""
+    with tempfile.TemporaryDirectory() as tmp:
+        assert otel._resume_generation(tmp) == 1
+        assert otel._resume_generation(tmp) == 2
+        assert otel._resume_generation(tmp) == 3
+        # A different run directory counts on its own.
+        with tempfile.TemporaryDirectory() as other:
+            assert otel._resume_generation(other) == 1
+
+
+def test_resume_generation_never_fails_a_run_over_its_own_bookkeeping():
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / otel._GENERATION_FILE).write_text("not a number")
+        # A corrupt counter restarts rather than raising; the boundary property
+        # (consecutive spans differing) survives, only the absolute number is lost.
+        assert otel._resume_generation(tmp) == 1
+    # No run dir at all (telemetry configured without one) is not an error.
+    assert otel._resume_generation(None) == 0
+    assert otel._resume_generation("") == 0
+
+
+def test_a_failed_run_carries_its_class_through_the_module_facade():
+    """Through `otel.end_run`, not the adapter directly. The facade and the host each
+    re-pass these along, and a dropped argument there is invisible — the run still
+    ends, the status is still ERROR, and only the attribute that says *why* is gone."""
+    t, tracer, _, _ = _telemetry()
+    with installed(t):
+        otel.end_run(
+            "fail",
+            error="transition budget exhausted",
+            error_class="RunBudgetExceeded",
+            error_kind="fatal",
+        )
+    root = tracer.by_name("run:wf")
+    assert root.attrs["workhorse.terminal"] == "fail"
+    assert root.attrs["error.class"] == "RunBudgetExceeded"
+    assert root.attrs["error.kind"] == "fatal"
+
+
 def test_a_clean_turn_carries_no_error_attributes():
     t, tracer, _, _ = _telemetry()
     t.turn_start("plan", "sonnet", "high", 60.0, backend="claude")

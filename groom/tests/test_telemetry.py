@@ -225,7 +225,7 @@ _TURN = {
 
 def _columns(span_id: str = "") -> dict:
     names = "span_id, duration_ms, total_cost_usd, input_tokens, output_tokens"
-    names += ", cache_read_tokens, cache_creation_tokens, pid"
+    names += ", cache_read_tokens, cache_creation_tokens, pid, resume_generation"
     rows = store._connection().execute(f"SELECT {names} FROM spans ORDER BY span_id")  # noqa: S608
     return {row["span_id"]: dict(row) for row in rows}
 
@@ -241,7 +241,12 @@ def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
                         # A node span: no agent turn under it, so no usage at all.
                         {"name": "assess", "node": "assess", "span_id": "b" * 16},
                     ],
-                    resource={"run_id": "run-1", "workflow": "coder", "process.pid": "4242"},
+                    resource={
+                        "run_id": "run-1",
+                        "workflow": "coder",
+                        "process.pid": "4242",
+                        "workhorse.resume_generation": "2",
+                    },
                 )
             )
         )
@@ -254,6 +259,9 @@ def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
         # Parsed from the resource since the collector first shipped, but dropped at
         # insert for want of a column until now.
         assert turn["pid"] == 4242
+        # A resume reuses the run_id and opens a fresh root span, so this is what
+        # separates a crash-and-resume gap from a process that sat waiting.
+        assert turn["resume_generation"] == 2
 
         # Absent is not zero. A harness that does not report cost reports nothing, and
         # averaging a real 0.0 together with an unknown would understate spend.

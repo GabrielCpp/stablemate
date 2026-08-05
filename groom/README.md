@@ -268,7 +268,12 @@ returns NULL silently. **Quote every dotted key.**
 
 The fields most queries want dodge this entirely by being real columns on
 `spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
-`cache_read_tokens`, `cache_creation_tokens`, `pid`. They are populated at ingest
+`cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`.
+
+`resume_generation` counts how many times a run directory has been started. A
+resume reuses the `run_id` and opens a fresh root span, so it is what tells a gap
+between two spans apart: one that crosses a generation boundary is a
+crash-and-resume, one that does not is the process waiting or thinking. They are populated at ingest
 and are **nullable on purpose** — a harness that does not report cost yields NULL,
 never `0.0`, because averaging a real zero together with an unknown understates
 spend. Spans ingested before these columns shipped have NULL in them and are not

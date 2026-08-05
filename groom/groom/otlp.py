@@ -105,6 +105,12 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         # producer whose paths don't exist on groom's host.
                         "workspace": str(resource.get("workspace", "")),
                         "pid": _int_or_none(resource.get("process.pid")),
+                        # How many times this run dir has been started. A resume
+                        # reuses the run_id and opens a fresh root span, so this is
+                        # what separates a crash-and-resume gap from an idle one.
+                        "resume_generation": _int_or_none(
+                            resource.get("workhorse.resume_generation")
+                        ),
                         "node": str(attrs.get("workhorse.node", "") or span.name),
                         "name": span.name,
                         "start_ts": span.start_time_unix_nano / _NANOS,

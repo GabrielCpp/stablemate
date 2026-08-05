@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS spans (
     output_tokens INTEGER,
     cache_read_tokens INTEGER,
     cache_creation_tokens INTEGER,
-    pid INTEGER
+    pid INTEGER,
+    resume_generation INTEGER
 );
 CREATE INDEX IF NOT EXISTS spans_run ON spans(run_id, start_ts);
 CREATE INDEX IF NOT EXISTS spans_node ON spans(node);
@@ -133,6 +134,7 @@ _ADDED_SPAN_COLUMNS = (
     ("cache_read_tokens", "INTEGER"),
     ("cache_creation_tokens", "INTEGER"),
     ("pid", "INTEGER"),
+    ("resume_generation", "INTEGER"),
 )
 
 # OTel attribute key -> the `spans` column it is promoted to. OTel's attribute model
@@ -152,6 +154,10 @@ _PROMOTED_SPAN_COLUMNS = (
     ("usage.cache_creation_input_tokens", "cache_creation_tokens", int),
 )
 
+#: Promoted from the decoded span record rather than from its OTel attributes — these
+#: two are *resource* attributes, which `otlp.parse_traces` lifts into named fields.
+_PROMOTED_SPAN_FIELDS = ("pid", "resume_generation")
+
 
 def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
     """The promoted columns' values for one span, in `_PROMOTED_SPAN_COLUMNS` order.
@@ -169,11 +175,12 @@ def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
             values.append(None if raw is None or isinstance(raw, bool) else cast(raw))
         except (TypeError, ValueError):
             values.append(None)
-    raw_pid = span.get("pid")
-    try:
-        values.append(None if raw_pid is None else int(raw_pid))
-    except (TypeError, ValueError):
-        values.append(None)
+    for field in _PROMOTED_SPAN_FIELDS:
+        raw = span.get(field)
+        try:
+            values.append(None if raw is None else int(raw))
+        except (TypeError, ValueError):
+            values.append(None)
     return tuple(values)
 
 
@@ -213,12 +220,16 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
     if not spans:
         return
     conn = _connection()
-    promoted = ", ".join(column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS)
-    placeholders = ", ".join("?" * (len(_PROMOTED_SPAN_COLUMNS) + 1))
+    promoted = ", ".join(
+        [column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS] + list(_PROMOTED_SPAN_FIELDS)
+    )
+    placeholders = ", ".join(
+        "?" * (len(_PROMOTED_SPAN_COLUMNS) + len(_PROMOTED_SPAN_FIELDS))
+    )
     conn.executemany(
         "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
         " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
-        f" {promoted}, pid)"
+        f" {promoted})"
         f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
         [
             (

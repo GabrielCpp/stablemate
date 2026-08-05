@@ -73,6 +73,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlparse
 
@@ -377,6 +378,45 @@ class TelemetryFactory(Protocol):
     ) -> Telemetry | None: ...
 
 
+#: Where the per-run-directory start counter lives, beside the checkpoint and
+#: `sessions.jsonl` — durable state about the run belongs with the run.
+_GENERATION_FILE = "resume_generation"
+
+
+def _resume_generation(run_dir: str | None) -> int:
+    """Read-increment-write this run directory's start counter, and return the new value.
+
+    A resume reuses the run_id and opens a fresh root span, so run_id alone cannot
+    separate "the process died and was restarted here" from "the process sat waiting".
+    That distinction is worth a file: on one real run, 41 of 105 wall-clock hours fell
+    into eleven gaps of more than five minutes, and nothing in the trace said which
+    kind they were — which matters because one is fixed by checkpoint durability and
+    the other by a workflow's own gating.
+
+    It counts starts that got as far as building telemetry, so a run resumed with
+    telemetry off does not advance it. That costs the absolute number and keeps the
+    only property queries rely on: consecutive spans with different generations have a
+    restart between them.
+
+    Never raises. An unwritable or corrupt counter yields 0 — instrumentation does not
+    get to fail a run over its own bookkeeping.
+    """
+    if not run_dir:
+        return 0
+    path = Path(run_dir) / _GENERATION_FILE
+    try:
+        previous = int(path.read_text().strip())
+    except (OSError, ValueError):
+        previous = 0
+    generation = previous + 1
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{generation}\n")
+    except OSError:
+        return previous
+    return generation
+
+
 def _build_logs(resource: Any, endpoint: str) -> Any:
     """The OTLP log pipeline, or None if this SDK build can't provide one.
 
@@ -455,6 +495,12 @@ def _build(
             # workflow's schema and no consumer's name — it forwards a value it is
             # handed, exactly like repo/branch above.
             "workspace": os.environ.get("AGENT_REPO_DIR") or os.getcwd(),
+            # How many times this run directory has been started. A resume opens a
+            # fresh root span under the *same* run_id, so without this a gap between
+            # two spans is unattributable: a crash-and-resume, an Await on an
+            # operator, and a process simply thinking look identical in span timing.
+            # A gap that crosses a generation boundary is the first kind.
+            "workhorse.resume_generation": _resume_generation(run_dir),
         }
     )
     tracer_provider = TracerProvider(resource=resource)
@@ -595,7 +641,7 @@ def end_run(
     status: str, error: str | None = None, error_class: str = "", error_kind: str = ""
 ) -> None:
     """Close the installed host's run. See :meth:`TelemetryHost.end_run`."""
-    _host.end_run(status, error)
+    _host.end_run(status, error, error_class, error_kind)
 
 
 def record_event(event: NodeEvent) -> None:
