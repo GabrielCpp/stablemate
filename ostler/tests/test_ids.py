@@ -38,11 +38,11 @@ def test_prefix_skips_non_alphanumerics_and_handles_short_names(tmp_path: Path):
 
 def test_explicit_prefix_overrides_and_registry_pins_it(tmp_path: Path):
     root = _repo(tmp_path, "stablemate")
-    assert ids.allocate(load(root), prefix="pred").startswith("pred-")
+    assert ids.allocate(load(root), prefix="acme").startswith("acme-")
     # once minted the prefix is pinned — later allocations keep it, with no counter in the registry
-    assert ids.allocate(load(root)).startswith("pred-")
+    assert ids.allocate(load(root)).startswith("acme-")
     registry = json.loads((root / ".agents/ids.json").read_text())
-    assert registry == {"prefix": "pred"}
+    assert registry == {"prefix": "acme"}
 
 
 # ── the ULID body: unique, sortable, coordination-free ───────────────────────────────────

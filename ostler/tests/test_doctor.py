@@ -105,7 +105,7 @@ def _scaffolded(root: Path, slugs: list[str]) -> str:
     """Scaffold the stories under a fresh epic; return its numbered directory name."""
     from ostler import crud
 
-    epic_dir = crud.create_epic(load(root), "billing", "Billing", prefix="pred").entity_name
+    epic_dir = crud.create_epic(load(root), "billing", "Billing", prefix="acme").entity_name
     for slug in slugs:
         crud.create_story(load(root), "billing", slug, slug.title())
     return epic_dir

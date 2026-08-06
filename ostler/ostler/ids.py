@@ -6,7 +6,7 @@ timestamp plus 80 bits of randomness, Crockford Base32 (26 chars). ULIDs are lex
 sortable by creation time, globally unique, and mint **without any coordination** — so concurrent
 worktrees, processes, and clones never collide and there is no counter to lock, merge, or serialize.
 (This replaced a ``<prefix>-<n>`` counter, which was a central-authority sequence that could not be
-distributed across worktrees; earlier ``PRED-42``-style ids keep working — an id is just an opaque,
+distributed across worktrees; earlier ``ACME-42``-style ids keep working — an id is just an opaque,
 sortable string.)
 
 For readability a **short handle** — ``<PREFIX>-<slice of a hash of the ULID>`` — abbreviates an id
@@ -130,7 +130,7 @@ def allocate(graph: Graph, prefix: str | None = None) -> str:
 
 def _split(identifier: str) -> tuple[str, str]:
     """(prefix, ulid) for an id; ('', id) for a legacy/prefixless one. Only the ULID's random tail
-    is meaningful for handles, so a legacy ``PRED-42`` simply has no usable tail."""
+    is meaningful for handles, so a legacy ``ACME-42`` simply has no usable tail."""
     prefix, _, rest = identifier.partition("-")
     return (prefix, rest) if rest else ("", identifier)
 

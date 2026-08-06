@@ -298,7 +298,7 @@ class Ostler:
         return self._apply(backlog_mod.prune(graph, ids_mod.resolve(graph, item_id)))
 
     def allocate_id(self) -> str:
-        """Mint and persist the next repo-prefixed ostler id (``PRED-15``) — the same id space
+        """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space
         stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
         return ids_mod.allocate(self.graph)
 

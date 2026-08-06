@@ -76,7 +76,7 @@ class Epic:
     directory: Path
     title: str = ""
     status: str = ""
-    eid: str = ""                       # allocated id from frontmatter (e.g. "pred-15")
+    eid: str = ""                       # allocated id from frontmatter (e.g. "acme-15")
     epic_md: Path | None = None
     seeds: list[SeedItem] = field(default_factory=list)
     stories: list[Story] = field(default_factory=list)

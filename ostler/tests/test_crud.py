@@ -11,7 +11,7 @@ from conftest import present
 
 def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g = load(tmp_path)
-    res = crud.create_epic(g, "billing", "Billing at parity", prefix="pred")
+    res = crud.create_epic(g, "billing", "Billing at parity", prefix="acme")
     assert res.ok
     # The directory carries the creation order; the slug still names the epic everywhere.
     assert res.entity_name == "0001-billing"
@@ -19,16 +19,16 @@ def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     assert g2.profile == "full"
     epic = select.epic_by_name(g2, "billing")
     assert epic is not None
-    assert epic.eid.startswith("pred-") and epic.title == "Billing at parity"
+    assert epic.eid.startswith("acme-") and epic.title == "Billing at parity"
     assert len(epic.eid.split("-", 1)[1]) == 26   # a ULID body, not a counter
     # registry pins the prefix (no counter — ULIDs need no persisted sequence)
     ids = json.loads((tmp_path / ".agents/ids.json").read_text())
-    assert ids["prefix"] == "pred" and "counter" not in ids
+    assert ids["prefix"] == "acme" and "counter" not in ids
 
 
 def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     g = load(tmp_path)
-    crud.create_epic(g, "billing", "Billing", prefix="pred")
+    crud.create_epic(g, "billing", "Billing", prefix="acme")
     crud.add_seed(load(tmp_path), "billing", "apercu-body", status="researched", summary="the body")
     res = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu body",
                             covers=["apercu-body"], depends=[])
@@ -72,7 +72,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     surrounding text comes back byte-identical.
     """
     g = load(tmp_path)
-    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="pred").entity_name
+    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
     prose = (
@@ -98,7 +98,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
 def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
     """The read half on its own: prose mentioning "QA passed" must not make a story done."""
     g = load(tmp_path)
-    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="pred").entity_name
+    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
     story_md.write_text(
