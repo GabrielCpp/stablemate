@@ -215,8 +215,11 @@ class Research(Workflow):
         return self.agent(
             "prompts/record-result.md",
             returns=RecordResult,
-            # haiku: writes the outcome to the progress file — bookkeeping.
-            power="low",
+            # A gate outcome is bookkeeping — copy a verdict into the progress file.
+            # A *forced* one is not: on `GOAL_BANKED` this turn writes the program's
+            # product, the standalone claim a reader outside the program acts on. That
+            # is the most consequential prose the loop ever emits, and it happens once.
+            power="high" if forced else "low",
             args=args,
         )
 
@@ -273,6 +276,11 @@ class Research(Workflow):
             "prompts/implement-experiment.md",
             returns=ImplResult,
             timeout=MEASUREMENT_TIMEOUT,
+            # Explicit rather than falling through to the backend default: this turn is
+            # long and tool-bound (write the experiment, then wait on hours of CPU), so
+            # the model is not the bottleneck — but the tier it runs at should be a
+            # decision recorded here, not whatever `[default.<backend>]` happens to say.
+            power="medium",
             args=self._program_args(
                 code_root=self.ctx.code_root,
                 gate_id=gate_id,
@@ -302,6 +310,10 @@ class Research(Workflow):
             # The reviewer re-runs the measurement over the FULL seed set — the most
             # expensive turn in the loop — so it gets the full implement budget.
             timeout=MEASUREMENT_TIMEOUT,
+            # And the top tier: this is the adversarial judge. Every PASS the program
+            # ever banks passed through here, so it must not be the weakest reasoner in
+            # the loop — a lenient check is indistinguishable from a real result.
+            power="high",
             # Deliberately not `_program_args`: the reviewer is not shown the progress
             # file. It judges against the gate doc's criteria and its own re-run, and
             # what the implementer claimed is exactly what it must not be anchored on.
@@ -355,6 +367,7 @@ class Research(Workflow):
             "prompts/rework-experiment.md",
             returns=ImplResult,
             timeout=MEASUREMENT_TIMEOUT,
+            power="medium",  # same shape as `implement` — scoped edit, then a long run
             # Also not `_program_args` — the rework turn is scoped to the criteria that
             # failed, not to the program's paperwork.
             args={
