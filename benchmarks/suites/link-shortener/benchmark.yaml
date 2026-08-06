@@ -35,10 +35,28 @@ power:
 # ceiling before the stage finished. A ceiling that only one backend can live under makes
 # every other set's score a reading of the ceiling, so it is raised to a figure no
 # reasonable backend hits — a runaway still stops, a slow model still finishes.
+#
+# `coder` gets more than the other two because it is the only phase whose work scales
+# with the backlog: it runs the whole plan→implement→document→QA chain once per story,
+# where genesis and author each run once per task. A ceiling equal to author's was the
+# same claude-sonnet mistake one level down — local-mixed was killed at 3657s partway
+# through story 1 of 2, and the two bullets story 2 covers scored `planned` for no reason
+# but the clock, which is exactly the reading-the-ceiling failure above.
 budget:
   genesis: 3600
   author: 3600
-  coder: 3600
+  coder: 11000
+
+# Says out loud what the budgets above work out to, which the raise off claude-sonnet
+# readings left unsaid: once a ceiling is set where no reasonable backend hits it, the
+# spec is no longer promising the hour, and the hour test says so. The header still calls
+# this the half-hour smoke task and that is still true of the run it describes — a claude
+# set finishes well inside it. What is not true is the *ceiling* fitting in an hour, and
+# the ceiling is what a slow set is scored against.
+over_hour: >-
+  the ceiling, not the run. A claude set finishes this in about half an hour and that is
+  what the task is for; the budgets are sized so a slower backend's score measures the
+  backend rather than the limit.
 
 # The stack's own gates, run from the target root. Not `make lint` / `make test` like
 # todo-app: nothing scaffolds a Makefile, so those would report a missing target as a red
