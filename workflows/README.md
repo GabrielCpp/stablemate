@@ -1,22 +1,25 @@
 # workhorse-workflows
 
-The stablemate agent workflows as an installable Python distribution: `research`,
-`author`, `okf-builder` and `coder`, each a checkpointed state machine. Workhorse is the
-engine; this is its content.
+The stablemate agent workflows as an installable Python distribution: `hello-world`,
+`research`, `author`, `okf-builder` and `coder`, each a checkpointed state machine.
+Workhorse is the engine; this is its content.
 
-**Not on PyPI yet** — install it from a checkout of the
-[stablemate](https://github.com/GabrielCpp/stablemate) workspace, into the *same*
-interpreter as workhorse, because a workflow runs in workhorse's own process:
+Install it from [PyPI](https://pypi.org/project/workhorse-workflows/) — the engine and
+the tools its workflows import arrive as ordinary dependencies, in the *same*
+interpreter, because a workflow runs in workhorse's own process:
 
 ```bash
-make sync                              # at the workspace root: engine + workflows, one venv
-uv run workhorse-research run          # the workflow's own command
+uv tool install workhorse-workflows    # or: pipx install workhorse-workflows
+workhorse-hello-world run --dry-run    # the install check; needs no agent CLI
 ```
 
-The shape came from the
-[workflow-as-python-state-machine](../docs/plans/workflow-as-python-state-machine.md)
-design brief, which shipped and is now kept only for its reasoning. What is still
-outstanding *here* is noted under [Status](#status).
+Working on the workflows themselves wants a checkout of the
+[stablemate](https://github.com/GabrielCpp/stablemate) workspace instead —
+`make sync` at the workspace root lands engine and workflows in one venv, and
+`uv run workhorse-research run` reaches the same commands from source.
+
+The shape came from an internal workflow-as-python-state-machine design brief, which
+shipped and is now kept only for its reasoning.
 
 ## How a workflow gets a command
 
@@ -205,19 +208,17 @@ and nothing in `shared/` imports a flow.
 How small each of those files has to be is **normative, not per-workflow taste** — one
 subject per module, `nodes/` is a package even when it holds three functions, and
 `~400 lines` is the trigger to apply the rule. This README is where that rule is stated;
-the argument behind it is "One workflow, several files" in the
-[retired design brief](../docs/plans/workflow-as-python-state-machine.md).
-`coder`'s nodes alone run to ~6,600 lines across 18
+the argument behind it is "One workflow, several files" in the retired internal design
+brief. `coder`'s nodes alone run to ~6,600 lines across 18
 modules, and a single `nodes.py` at that size is `scriptutil.py` again.
 
 ## Status
 
-All four workflows are ported and resolve through the entry-point group; the YAML engine
-they came from is retired, so this package is the only place a stablemate workflow lives.
-
-What is still outstanding: this distribution is unpublished, so there is no `pip install`
-route to it and a `pipx` layout needs `pipx inject workhorse-agent <this distribution>`
-to land it in the engine's venv. Farrier also still validates a `workflows:` selection
-against a `workflows/<name>/` directory in a library layer rather than against the entry
-points — see the end of
-[farrier/docs/LAYOUT.md](../farrier/docs/LAYOUT.md).
+Every workflow is ported and reached through its own console script — there is no
+entry-point group and no resolution by name (see
+[How a workflow gets a command](#how-a-workflow-gets-a-command)). The YAML engine they
+came from is retired, so this package is the only place a stablemate workflow lives,
+and the distribution is on PyPI (install line at the top). Farrier installs skills and
+prompts only; it neither selects nor validates workflows — a leftover `workflows:` list
+in a library layer is ignored (see the end of
+[farrier/docs/LAYOUT.md](../farrier/docs/LAYOUT.md)).

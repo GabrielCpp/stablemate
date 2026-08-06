@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/workhorse-agent.svg)](https://pypi.org/project/workhorse-agent/)
 
 **A fail-soft runner for agent workflows written as Python state machines — drives
-an agent CLI (Claude, Codex, or Copilot) unattended for days.**
+an agent CLI (Claude, Codex, Copilot, Cline or OpenCode) unattended for days.**
 
 A workflow is a Python package: its states are methods that return the next state,
 its nodes are plain functions. `workhorse` drives the machine, renders Jinja2

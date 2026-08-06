@@ -33,9 +33,14 @@ stack boots with. They don't overlap.
 
 ## Install
 
+**Not on PyPI** — saddlebag is an optional add-on that runs from a checkout of the
+[stablemate](https://github.com/GabrielCpp/stablemate) workspace; no base workflow
+requires it:
+
 ```bash
-pipx install saddlebag                 # OS keyring backend
-pipx install 'saddlebag[vault]'        # + HashiCorp Vault, for hosts with no keyring
+make sync                              # at the workspace root
+uv run --package saddlebag saddlebag --help
+# the [vault] extra adds HashiCorp Vault, for hosts with no OS keyring
 ```
 
 Requires Python ≥ 3.12. Pool metadata lives in a local SQLite file whose location

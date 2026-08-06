@@ -4,6 +4,7 @@
 [![workhorse-agent](https://img.shields.io/pypi/v/workhorse-agent?label=workhorse-agent)](https://pypi.org/project/workhorse-agent/)
 [![farrier](https://img.shields.io/pypi/v/farrier?label=farrier)](https://pypi.org/project/farrier/)
 [![ostler](https://img.shields.io/pypi/v/ostler?label=ostler)](https://pypi.org/project/ostler/)
+[![workhorse-workflows](https://img.shields.io/pypi/v/workhorse-workflows?label=workhorse-workflows)](https://pypi.org/project/workhorse-workflows/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -12,7 +13,7 @@ packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
-| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex or Copilot — through a checkpointed Python state machine, unattended for days. |
+| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot, Cline or OpenCode — through a checkpointed Python state machine, unattended for days. |
 | [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph — the CLI several base workflows shell out to. |
@@ -259,7 +260,7 @@ why that schema is gone.
 ## Development
 
 ```bash
-make install                         # once per clone: the workspace venv + the git hooks
+make install                         # once per clone: venv + git hooks + test browsers
 make sync                            # just the venv, when that is all that changed
 make test                            # every suite + the benchmark tests + check-public
 make build                           # wheels + sdists for core, workhorse, workflows, farrier
@@ -267,7 +268,8 @@ make -C farrier check                # inspect a built wheel's contents
 make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom)
 ```
 
-`make install` is `sync` plus `hooks`, because git carries no hook configuration: a
+`make install` is `sync` plus `browsers` (the Playwright Chromium some suites drive —
+expect a one-time download) plus `hooks`, because git carries no hook configuration: a
 fresh clone has `core.hooksPath` unset, so the private-name guard and the
 Conventional Commits check are both silently off until something sets it.
 
@@ -363,8 +365,8 @@ distribution is one entry in each, plus its build/publish steps in the workflow.
 ### One-time setup (not in the repo)
 
 1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository
-   `stablemate`, workflow `release.yml`, environment `pypi`. `workhorse-workflows` does
-   not exist on the index yet, so it gets a **pending** publisher, which the first upload
+   `stablemate`, workflow `release.yml`, environment `pypi`. A distribution that does
+   not exist on the index yet gets a **pending** publisher, which its first upload
    converts into the project.
 2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
    in the repository settings. Adding yourself as a required reviewer turns the merge into

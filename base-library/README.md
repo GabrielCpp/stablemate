@@ -12,7 +12,7 @@ farrier install                                   # renders it into a repo
 
 | Path | Contents |
 |---|---|
-| `library/skills/stablemate/` | the ten skills documenting the toolchain |
+| `library/skills/stablemate/` | the skills documenting the toolchain |
 | `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
 | `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
 
@@ -21,8 +21,8 @@ That's the whole payload — markdown and YAML, and **not a line of Python**. No
 
 It used to hold `workflows/` too: four directories of workflow YAML plus the
 `scripts/*.py` its nodes ran. A workflow is a Python package now
-([why](../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)), resolved
-shipped in a wheel with a command of its own — so the code
+([why](../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)), shipped
+in a wheel with a command of its own — so the code
 left, and what stayed is documents. The `scaffolds/` directory went the same way; farrier still
 reads one from any library layer that has it, so an overlay can ship scaffolds even
 though the base does not.
