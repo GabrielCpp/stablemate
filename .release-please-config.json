@@ -3,7 +3,7 @@
   "release-type": "python",
   "separate-pull-requests": false,
   "include-component-in-tag": true,
-  "bootstrap-sha": "beeabb6e3c4221d420b8cfa56e74d44a7935e897",
+  "bootstrap-sha": "c2ecbb6cf8f25289a000ad04bf6d20753113cbd0",
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "feature", "section": "Features" },
