@@ -25,8 +25,10 @@ medium tier?" answerable after the runs rather than only before them.
 
 **Gold is frozen, not re-run.** Two Claude Code runs over one backlog do not produce the
 same repo, so a reference that moves would mix model quality into every delta. Gold is
-produced once per task, bundled, and stamped with the workflow sha it ran on; a matrix
-against a different sha is refused rather than quietly compared.
+produced once per task, bundled, and stamped with the workflow sha it ran on — but
+`gold_staleness()` does not enforce that stamp matches HEAD. It is provenance-blind by
+choice, so a gold frozen against older workflow source is accepted and compared anyway;
+see that function's docstring for what that trades away.
 
     matrix.py sets                     what is defined, its tags, and what has been run
     matrix.py gold --task <name>       produce or refresh the frozen reference
@@ -423,19 +425,17 @@ def read_satisfaction(runs: Path) -> float | None:
 def gold_staleness(mx: Matrix, task: str) -> str:
     """Why the frozen reference cannot be compared against, or "" if it can.
 
-    Refused rather than warned, per the design: a delta computed against a gold that ran
-    on different workflow source, or a different backlog, is a number with no meaning that
-    nonetheless prints and gets quoted.
+    Provenance-blind by choice: this no longer checks the gold manifest's workflow_sha or
+    spec_sha against HEAD, so a gold frozen on older workflow source or an older backlog is
+    accepted as-is. That trades away the guarantee that a report's delta is attributable to
+    the model alone — a gold built by a different workflow revision folds "the workflow
+    changed" into the same number as "the model changed", silently. Reach for
+    `matrix.py gold --task <task>` instead of leaning on this permissiveness once a set is
+    worth measuring for real.
     """
     m = read_manifest(mx.gold, task)
     if not m or not is_complete(m):
         return f"no frozen gold for {task!r} — run: matrix.py gold --task {task}"
-    if m.get("workflow_sha") != workflow_sha():
-        return (f"gold for {task!r} ran on workflow {m.get('workflow_sha', '?')[:7]}, "
-                f"HEAD is {workflow_sha()[:7]} — re-run: matrix.py gold --task {task}")
-    if m.get("spec_sha") != spec_sha(mx.task(task).path):
-        return (f"gold for {task!r} ran on a different spec/backlog — "
-                f"re-run: matrix.py gold --task {task}")
     if m.get("judge") != mx.judge:
         return (f"gold for {task!r} was graded by a different judge "
                 f"({m.get('judge')}) than sets.yml now pins ({mx.judge})")
@@ -563,7 +563,8 @@ def render_report(mx: Matrix, task: str) -> str:
         f"# {task}",
         "",
         f"Gold: `{mx.gold}` at {gold['satisfaction_pct']}% — "
-        f"workflow `{gm['workflow_sha'][:7]}`, spec `{gm['spec_sha']}`, "
+        f"workflow `{(gm.get('workflow_sha') or 'unknown')[:7]}`, "
+        f"spec `{gm.get('spec_sha') or 'unknown'}`, "
         f"judge `{mx.judge.get('cli')}/{mx.judge.get('model', 'default')}`.",
         "",
         "## Headline",

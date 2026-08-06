@@ -245,7 +245,7 @@ def test_an_untagged_task_still_loads(sets_file, tmp_path: Path):
     assert [t.name for t in mx.select()] == ["bare"]
 
 
-# ── Gold is frozen, and refused when the ground under it moved ────────────────────────
+# ── Gold is frozen, and reused regardless of provenance, but not the judge ────────────
 
 
 def _freeze(monkeypatch, tmp_path: Path, mx, task: str, **manifest) -> None:
@@ -275,16 +275,18 @@ def test_a_current_gold_is_usable(frozen):
     assert matrix.gold_staleness(mx, "demo") == ""
 
 
-def test_gold_is_refused_when_the_workflow_moved(frozen):
+def test_gold_is_usable_when_the_workflow_moved(frozen):
+    # Provenance-blind by choice: matrix.py no longer refuses a gold frozen against
+    # older workflow source. See gold_staleness()'s docstring for the tradeoff.
     mx, tmp_path, monkeypatch = frozen
     _freeze(monkeypatch, tmp_path, mx, "demo", workflow_sha="999999")
-    assert "workflow" in matrix.gold_staleness(mx, "demo")
+    assert matrix.gold_staleness(mx, "demo") == ""
 
 
-def test_gold_is_refused_when_the_backlog_moved(frozen):
+def test_gold_is_usable_when_the_backlog_moved(frozen):
     mx, tmp_path, monkeypatch = frozen
     _freeze(monkeypatch, tmp_path, mx, "demo", spec_sha="different")
-    assert "spec/backlog" in matrix.gold_staleness(mx, "demo")
+    assert matrix.gold_staleness(mx, "demo") == ""
 
 
 def test_gold_is_refused_when_the_judge_changed(frozen):
