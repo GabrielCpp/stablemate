@@ -237,3 +237,9 @@ __marimo__/
 .agents/local.compose.yaml
 .agents/agents-context.json
 .agents/agents-context.*.json
+
+# Internal planning notes: maintainer paths, private-project references and
+# retired-engine prose live here by nature. The directory stays (kept by .gitkeep)
+# but its contents never ship.
+docs/plans/*
+!docs/plans/.gitkeep
