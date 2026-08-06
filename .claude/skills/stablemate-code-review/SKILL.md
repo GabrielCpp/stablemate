@@ -6,6 +6,7 @@ metadata:
   source: library/skills/stablemate/code-review/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-code-review/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [standards]
 ---
 
 # Code Review

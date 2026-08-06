@@ -6,6 +6,7 @@ metadata:
   source: library/skills/stablemate/okf-modeling/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-okf-modeling/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [standards, docs]
 ---
 
 # OKF modeling — building a service's surface graph
@@ -108,7 +109,7 @@ module / function is either its own node or explicitly folded into a documented 
 Two blind spots to hunt deliberately:
 - **Every implementation of an interface/ABC gets its own node** — not one example with the rest
   named in prose. A base with five subclasses (e.g. an `AgentBackend` → claude/codex/copilot/opencode/
-  aider) is *five* sibling concepts, each with its own contract.
+  cline) is *five* sibling concepts, each with its own contract.
 - **Library/utility modules the entry points never reach** (a `scriptutil`/SDK imported by other
   tooling) are still part of the book — document them too.
 

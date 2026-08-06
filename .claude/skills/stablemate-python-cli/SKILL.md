@@ -6,6 +6,7 @@ metadata:
   source: library/skills/stacks/python/python-cli/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-cli/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [python, cli, standards, entrypoint]
 ---
 
 # Python CLI — Core Conventions

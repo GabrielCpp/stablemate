@@ -6,6 +6,7 @@ metadata:
   source: library/skills/stablemate/workhorse-coder-workflow/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-workhorse-coder-workflow/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [python, backend, standards]
 ---
 
 # Coder Workflow — Architecture Reference
@@ -51,7 +52,7 @@ there is one copy and a test asserts a cap by *changing it*. Raising a cap is a 
 
 Override any input at launch:
 ```bash
-workhorse run coder --params '{"mode":"story","story":"CASE-1234"}'
+workhorse-coder run --params '{"mode":"story","story":"CASE-1234"}'
 ```
 
 ### Standalone flow invocation
@@ -63,10 +64,10 @@ ostler in its own first state, so only the minimal params are needed:
 
 ```bash
 # QA only, against DEV
-workhorse run coder qa --params '{"story":"CASE-1234","target_env":"dev"}'
+workhorse-coder run qa --params '{"story":"CASE-1234","target_env":"dev"}'
 
 # Dev (plan + implement) only
-workhorse run coder dev --params '{"story":"CASE-1234"}'
+workhorse-coder run dev --params '{"story":"CASE-1234"}'
 ```
 
 `docs_path` and `epic` are optional (empty string = derive from CWD / ostler defaults).
@@ -188,7 +189,7 @@ Local monorepos receive deterministic repository-wide code mapping with document
 multi-repo/non-Git docs roots
 use scoped doctor findings plus the independent semantic reviewer rather than an invalid cross-repo
 diff. CI/merge remediation is contract-preserving and must escalate if behavior would change. Run
-the phase independently with `workhorse run coder docs`.
+the phase independently with `workhorse-coder run docs`.
 
 ### QA control-plane topology
 
@@ -352,7 +353,7 @@ before opening one.
 
 A sub-flow is a `Workflow` subclass in `flows/`, with its own inputs, its own `setup()` and
 its own `labels()`. The parent enters it with `self.handoff(Flow, ...)`; a caller enters it
-by name with `workhorse run coder <flow>`. **Only the arguments passed cross the boundary** —
+by name with `workhorse-coder run <flow>`. **Only the arguments passed cross the boundary** —
 a flow cannot see the parent's `ctx`, parameters or node outputs, which is what makes the
 standalone invocation honest.
 
