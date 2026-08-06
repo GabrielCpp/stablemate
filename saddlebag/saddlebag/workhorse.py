@@ -1,26 +1,19 @@
 """Helpers for the workhorse integration.
 
-A workhorse workflow bookends its agent work with two ``script`` nodes: one that
-scans and leases a credential into ``.workhorse/credential.json``, and one that
-releases the lease afterwards. These helpers own that file's shape.
-
-Two artefacts leave saddlebag carrying a secret — the credential file, and an
-environment rendered by ``saddlebag env render``. Both go through
-:func:`write_private`, so both are owner-only *before* they hold anything. The
-credential file belongs under ``.workhorse/``, which workhorse's default
-scaffolding gitignores; a rendered environment lands wherever the environment's
-target says, which is the repo's own already-gitignored ``.env`` path.
+Exactly one artefact leaves saddlebag carrying a secret: an environment rendered
+by ``saddlebag env render``. It goes through :func:`write_private`, so it is
+owner-only *before* it holds anything, and it lands wherever the environment's
+target says — the repo's own already-gitignored ``.env`` path. There is no
+credential file and no verb that emits a stored value: the vault is opaque, and
+a workflow that needs a credential's *identity* gets it from the lease JSON that
+``scan --select-via`` / ``acquire`` print, which never includes the password.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 from pathlib import Path
-from typing import Any
-
-from saddlebag.models import AcquiredCredential
 
 #: Where workhorse scaffolding expects run-scoped artefacts.
 WORKHORSE_DIR = ".workhorse"
@@ -43,22 +36,3 @@ def write_private(path: Path | str, text: str) -> Path:
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(text)
     return path
-
-
-def write_credential(path: Path | str, acquired: AcquiredCredential) -> Path:
-    """Serialise a leased credential to ``path`` with ``0600`` permissions."""
-    return write_private(path, json.dumps(acquired.to_dict(), indent=2) + "\n")
-
-
-def read_credential(path: Path | str) -> dict[str, Any]:
-    """Load a credential file written by :func:`write_credential`."""
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def lease_id_of(path: Path | str) -> str:
-    """The lease id inside a credential file — what ``release`` needs."""
-    data = read_credential(path)
-    lease_id = data.get("lease_id")
-    if not lease_id:
-        raise ValueError(f"{path} has no lease_id")
-    return str(lease_id)

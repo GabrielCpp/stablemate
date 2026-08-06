@@ -8,10 +8,10 @@ The split is deliberate and load-bearing:
   over, lease state, and an environment's *non-sensitive* ``config`` values.
 
 So a :class:`Credential` never carries a password, and an
-:class:`EnvironmentEntry` carries a value only when its kind is ``config``. The
-only places a secret and its metadata travel together are
-:class:`AcquiredCredential` and a rendered environment file — both of which exist
-solely to be serialised to disk, with owner-only permissions.
+:class:`EnvironmentEntry` carries a value only when its kind is ``config``. No
+object in this module carries a secret at all: the one place a secret and its
+metadata travel together is a rendered environment file, written by ``env
+render`` with owner-only permissions.
 """
 
 from __future__ import annotations
@@ -149,34 +149,6 @@ class Lease:
             "run_id": self.run_id,
             "acquired_at": _iso(self.acquired_at),
             "expires_at": _iso(self.expires_at),
-        }
-
-
-@dataclass(frozen=True)
-class AcquiredCredential:
-    """A leased credential *with* its password, bound for a ``.workhorse/`` file.
-
-    This is the only object in saddlebag that carries a secret. Build it late,
-    serialise it once, and never log it.
-    """
-
-    credential: Credential
-    lease: Lease
-    password: str
-
-    def to_dict(self) -> dict[str, Any]:
-        cred = self.credential
-        return {
-            "id": cred.id,
-            "username": cred.username,
-            "password": self.password,
-            "env": cred.env,
-            "roles": list(cred.roles),
-            "features": list(cred.features),
-            "surface": cred.surface,
-            "lease_id": self.lease.lease_id,
-            "run_id": self.lease.run_id,
-            "expires_at": _iso(self.lease.expires_at),
         }
 
 

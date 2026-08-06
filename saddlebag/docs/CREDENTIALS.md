@@ -126,14 +126,13 @@ This is the command a workhorse workflow calls from a node. It queries the pool,
 renders the available candidates into a prompt, and asks the agent CLI to pick one:
 
 ```bash
-# Emit candidates and let the AI select, lease, and write the result
+# Let the AI select and lease; the lease JSON lands on stdout
 saddlebag scan \
   --env staging \
   --roles admin billing \
   --surface checkout/login \
   --select-via claude \
-  --run-id "$RUN_ID" \
-  --output .workhorse/credential.json
+  --run-id "$RUN_ID" --json
 
 # Or: emit candidates only, and let the workflow's agent turn do the reasoning
 saddlebag scan --env staging --roles admin --json
@@ -159,18 +158,17 @@ Respond with: {"selected": "<id>", "reason": "<one line>"}
 
 The candidate list is built from pool metadata, so **no password is ever placed in
 an agent's context**. If the agent returns an id that was not on the list, saddlebag
-rejects it rather than trusting it. The selected credential is then leased and written
-to the output file.
-
-Prefer `--output PATH` over `--output-json > PATH`: `--output` creates the file with
-mode `0600` before writing the secret, whereas a shell redirect leaves permissions to
-your umask.
+rejects it rather than trusting it. The selected credential is then leased, and what
+is emitted is the lease and the identity — id, username, scope fields, lease id.
+The password stays in the store: the vault is opaque, and the only command that
+turns a stored secret into anything outside it is `env render`, via a
+`credential-ref` entry.
 
 ## Lease management
 
 ```bash
-# Acquire by exact id (bypasses AI selection)
-saddlebag acquire cred-007 --ttl 3600 --output .workhorse/credential.json
+# Acquire by exact id (bypasses AI selection); emits the lease, never the password
+saddlebag acquire cred-007 --ttl 3600 --json
 
 # Release by lease id
 saddlebag release --lease-id <lease_id>

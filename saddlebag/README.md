@@ -63,10 +63,10 @@ printf '%s' "$PASSWORD" | saddlebag add \
   --surface checkout/login
 
 # 2. Ask the pool for something matching, and let the agent CLI choose.
+#    What comes back is the lease and the identity — never the password.
 saddlebag scan \
   --env staging --roles admin billing --surface checkout/login \
-  --select-via claude --run-id "$RUN_ID" \
-  --output .workhorse/credential.json
+  --select-via claude --run-id "$RUN_ID" --json
 
 # 3. …run whatever needed the identity, then give every lease back.
 saddlebag release --run-id "$RUN_ID"
@@ -154,6 +154,11 @@ your shell history, so it cannot honestly be called a secret.
 | `env export` | write the checkable-in YAML manifest |
 | `env render` | materialize the target file (`--check` to diff without writing) |
 
+The vault is **opaque**: no command prints, logs or returns a stored secret — not
+`acquire`, not `scan`, not with any flag. `env render` is the single verb that turns
+a secret into anything outside the store, and what it writes is the environment's
+own `0600` target file, never stdout.
+
 A credential belongs to a **project**, inferred from the enclosing git repository's
 name, so `list` and `scan` show only the current repo's credentials with no flag
 needed; `--project NAME` and `--all-projects` override that.
@@ -171,7 +176,7 @@ Then, by topic:
   environment needs no store at all, and the guarantees each command is built to keep.
 - **[docs/INTEGRATION.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/INTEGRATION.md)**
   — driving saddlebag from a workhorse workflow (acquire and release as blueprint
-  nodes), feeding a scan from ostler seed metadata, and the `.workhorse/` file contract.
+  nodes) and feeding a scan from ostler seed metadata.
 
 ---
 
@@ -186,13 +191,13 @@ saddlebag/
 │                        #   environments and their entries
 ├── store.py             # Secret stores: OS keyring (default) + Vault (fallback)
 ├── selector.py          # AI selection: build prompt, call agent CLI, parse response
-├── models.py            # Credential, Lease, AcquiredCredential, Requirement,
-│                        #   Environment, EnvironmentEntry
+├── models.py            # Credential, Lease, Requirement, Environment,
+│                        #   EnvironmentEntry — none of them carries a secret
 ├── context.py           # Project inference — the enclosing git repo's name
 ├── envfile.py           # Minimal `.env` reader/writer (no python-dotenv)
 ├── manifest.py          # The checkable-in YAML an environment travels as
 ├── render.py            # Resolve an environment to values; the `--check` gate
-└── workhorse.py         # `.workhorse/credential.json` contract (0600 output)
+└── workhorse.py         # `write_private` — the 0600-before-content write
 ```
 
 Two deliberate departures from the original spec: there is no `crypto.py`, because

@@ -12,10 +12,10 @@ from pathlib import Path
 from saddlebag import envfile, manifest, render
 from saddlebag.context import infer_project
 from saddlebag.db import DEFAULT_TTL, Pool, PoolError, default_db_path
-from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, AcquiredCredential, Credential, Environment, EnvironmentEntry, Requirement, parse_cred_ref, utcnow
+from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Credential, Environment, EnvironmentEntry, Requirement, parse_cred_ref, utcnow
 from saddlebag.selector import SelectionError, select
 from saddlebag.store import SecretStore, StoreUnavailableError, open_store
-from saddlebag.workhorse import write_credential, write_private
+from saddlebag.workhorse import write_private
 
 logger = logging.getLogger(__name__)
 
@@ -193,14 +193,20 @@ def cmd_acquire(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) -> int:
+    """Lease ``credential_id`` and emit the lease — never the password.
+
+    The store is probed only to catch pool/store disagreement early; the value is
+    discarded without being bound. Nothing this function prints, logs or writes
+    can carry a secret: the vault is opaque, and ``env render`` is the sole
+    command that turns a stored secret into anything outside it.
+    """
     cred = pool.get(credential_id)
     if cred is None:
         logger.error("no such credential: %s", credential_id)
         return 1
 
     store = _open_store(args)
-    password = store.get(_store_key(cred))
-    if password is None:
+    if store.get(_store_key(cred)) is None:
         logger.error(
             "%s has no password in the %s store — the pool and the store disagree; "
             "run 'saddlebag doctor'",
@@ -210,13 +216,17 @@ def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) ->
         return 1
 
     lease = pool.acquire(credential_id, ttl=args.ttl, run_id=args.run_id)
-    acquired = AcquiredCredential(credential=cred, lease=lease, password=password)
 
-    if args.output:
-        path = write_credential(args.output, acquired)
-        logger.info("wrote %s (mode 0600), lease %s", path, lease.lease_id)
-    elif args.output_json or args.json:
-        _emit(acquired.to_dict())
+    if args.json:
+        _emit({
+            "id": cred.id,
+            "username": cred.username,
+            "env": cred.env,
+            "roles": list(cred.roles),
+            "features": list(cred.features),
+            "surface": cred.surface,
+            **lease.to_dict(),
+        })
     else:
         print(f"leased {cred.id} as {lease.lease_id} until {lease.expires_at:%Y-%m-%d %H:%M:%SZ}")
     return 0
@@ -786,8 +796,6 @@ def _add_requirement_flags(parser: argparse.ArgumentParser) -> None:
 def _add_lease_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ttl", type=int, default=DEFAULT_TTL, help=f"lease seconds (default {DEFAULT_TTL})")
     parser.add_argument("--run-id", help="tag the lease with a workhorse run id")
-    parser.add_argument("--output", metavar="PATH", help="write the credential JSON to PATH, mode 0600")
-    parser.add_argument("--output-json", action="store_true", help="write the credential JSON to stdout")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -828,12 +836,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_requirement_flags(sc)
     _add_lease_flags(sc)
     sc.add_argument("--select-via", metavar="CLI", help="agent CLI that picks the credential, e.g. claude")
-    sc.add_argument("--json", action="store_true", help="emit candidates as JSON (no selection)")
+    sc.add_argument("--json", action="store_true",
+                    help="emit JSON: the candidates without --select-via, the lease with it")
     sc.set_defaults(func=cmd_scan)
 
-    ac = sub.add_parser("acquire", help="lease a credential by exact id")
+    ac = sub.add_parser("acquire", help="lease a credential by exact id (emits the lease, never a secret)")
     ac.add_argument("credential_id", metavar="ID")
-    ac.add_argument("--json", action="store_true")
+    ac.add_argument("--json", action="store_true", help="emit the lease as JSON")
     _add_lease_flags(ac)
     ac.set_defaults(func=cmd_acquire)
 

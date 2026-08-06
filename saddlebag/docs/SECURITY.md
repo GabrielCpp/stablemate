@@ -37,8 +37,10 @@ export VAULT_TOKEN=root
 | Pool database (SQLite) | **metadata** — `username`, `env`, `roles`, `features`, `surface` — and lease state |
 
 The pool DB never contains a password, not even encrypted. `saddlebag list` and
-`saddlebag scan` read only the pool, which is why they *cannot* leak a secret. Only
-`acquire` reads the store, and only to write the password into one output file.
+`saddlebag scan` read only the pool, which is why they *cannot* leak a secret.
+`acquire` probes the store only to verify the password exists — the value is
+discarded, never emitted. The vault is opaque: `env render` is the sole command
+that turns a stored secret into anything outside the store.
 
 **Keyring scoping.** Secrets are namespaced under the service name `saddlebag`. That
 is the whole of the portable cross-OS keyring contract — `(service, username,
@@ -91,14 +93,16 @@ was never a claim that non-secret material must be treated as if it were.
   history. A value supplied on argv is therefore `config`, by definition rather than
   by policy.
 - `list`, `scan`, `env list`, `env show`, `env doctor` and the agent selection prompt
-  read pool metadata only, and so cannot emit a secret. `acquire` and `env render`
-  are the sole readers of the store.
+  read pool metadata only, and so cannot emit a secret. `acquire` reads the store
+  only as a presence probe; `env render` is the sole reader that uses a value.
+- **The vault is opaque.** No command prints, logs, or returns a stored secret —
+  there is no lookup verb and no flag that adds one. `acquire` and
+  `scan --select-via` emit the lease and the identity; the password stays put.
 - **No password ever reaches an agent's context.** The candidate list `scan` renders
   into the selection prompt is built from pool metadata, and an id the agent returns
   that was not on that list is rejected rather than trusted.
-- The credential file written by `--output`, and the file written by `env render`,
-  are created `0600` before the secret is written. `env render` prints only the path
-  it wrote, never the contents.
+- The file written by `env render` is created `0600` before the secret is written,
+  and `env render` prints only the path it wrote, never the contents.
 - The **manifest** (`env export`) is the artefact meant to be committed, and carries
   no secret values by construction. A manifest that tries to smuggle one in is
   rejected on import.

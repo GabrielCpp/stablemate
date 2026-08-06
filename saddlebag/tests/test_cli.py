@@ -289,9 +289,10 @@ def test_two_projects_minting_the_same_id_do_not_collide(tmp_path, monkeypatch, 
 def test_acquire_reads_a_project_prefixed_secret(run, monkeypatch, capsys):
     monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
     run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    # acquire resolves the key from the credential's stored project, not the cwd.
-    assert run("acquire", "cred-001", "--output-json") == 0
-    assert json.loads(out(capsys))["password"] == "pw"
+    # acquire resolves the key from the credential's stored project, not the cwd —
+    # exit 0 proves the store probe found the prefixed key.
+    assert run("acquire", "cred-001", "--json") == 0
+    assert json.loads(out(capsys))["id"] == "cred-001"
 
 
 def test_doctor_checks_the_prefixed_key(run, monkeypatch, capsys, store):
@@ -335,20 +336,18 @@ def test_scan_excludes_leased_credentials(add_one, run, capsys):
     assert json.loads(out(capsys)) == []
 
 
-def test_scan_with_select_via_leases_the_agents_choice(add_one, run, monkeypatch, tmp_path, db_path):
+def test_scan_with_select_via_leases_the_agents_choice(add_one, run, monkeypatch, capsys, db_path):
     add_one()
     monkeypatch.setattr(cli, "select", lambda req, cands, agent: (cands[0], _sel()))
 
-    output = tmp_path / ".workhorse" / "credential.json"
     code = run("scan", "--env", "staging", "--roles", "admin",
-               "--select-via", "claude", "--run-id", "run-42",
-               "--output", str(output))
+               "--select-via", "claude", "--run-id", "run-42", "--json")
     assert code == 0
 
-    data = json.loads(output.read_text(encoding="utf-8"))
+    data = json.loads(out(capsys))
     assert data["id"] == "cred-001"
-    assert data["password"] == "hunter2"
     assert data["run_id"] == "run-42"
+    assert "password" not in data
 
     with Pool(db_path) as pool:
         assert present(pool.get("cred-001")).is_locked()
@@ -374,10 +373,17 @@ def test_scan_reports_a_failed_selection(add_one, run, monkeypatch):
 # -- acquire / release ------------------------------------------------------
 
 
-def test_acquire_emits_the_password_to_stdout_on_output_json(add_one, run, capsys):
+def test_acquire_json_emits_the_lease_and_never_the_password(add_one, run, capsys):
+    """The vault is opaque: no verb emits a stored value, acquire included."""
     add_one()
-    assert run("acquire", "cred-001", "--output-json") == 0
-    assert json.loads(out(capsys))["password"] == "hunter2"
+    assert run("acquire", "cred-001", "--json") == 0
+    raw = out(capsys)
+    assert "hunter2" not in raw
+    data = json.loads(raw)
+    assert data["id"] == "cred-001"
+    assert data["username"] == "admin@staging.example.com"
+    assert data["lease_id"]
+    assert "password" not in data
 
 
 def test_acquire_a_leased_credential_exits_one(add_one, run):
@@ -397,11 +403,10 @@ def test_acquire_when_the_store_lost_the_password_exits_one(add_one, run, store)
     assert run("acquire", "cred-001") == 1
 
 
-def test_release_by_lease_id(add_one, run, tmp_path, db_path):
+def test_release_by_lease_id(add_one, run, capsys, db_path):
     add_one()
-    output = tmp_path / "credential.json"
-    run("acquire", "cred-001", "--output", str(output))
-    lease_id = json.loads(output.read_text(encoding="utf-8"))["lease_id"]
+    run("acquire", "cred-001", "--json")
+    lease_id = json.loads(out(capsys))["lease_id"]
 
     assert run("release", "--lease-id", lease_id) == 0
     with Pool(db_path) as pool:

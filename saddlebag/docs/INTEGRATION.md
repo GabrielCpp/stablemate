@@ -16,13 +16,12 @@ A workhorse workflow is a Python state machine. Credentials flow through it as o
 blueprint nodes that bookend the agent work — acquire before the turn, release after it:
 
 ```python
+import json
 import logging
 
 from pydantic import BaseModel
 from workhorse.pyflow import Blueprint, Continue, Done, Workflow
 from workhorse.scriptutil import run_tool
-
-from saddlebag.workhorse import read_credential
 
 blueprint = Blueprint("checkout-qa")
 
@@ -30,9 +29,11 @@ blueprint = Blueprint("checkout-qa")
 class LeasedCredential(BaseModel):
     """What the workflow carries between states.
 
-    Deliberately **no `password` field**: a node's return value is checkpointed to that
-    node's `output.json`, and the password already has a home — `.workhorse/credential.json`,
-    written `0600`. Carry the identity, leave the secret in the file.
+    Deliberately **no `password` field** — and saddlebag could not supply one if the
+    workflow asked: no verb emits a stored secret. The lease JSON is the identity and
+    the lease, which is exactly what is safe to checkpoint to a node's `output.json`.
+    The secret itself only ever leaves the store through `env render`, into the
+    environment's own `0600` target file.
     """
 
     id: str
@@ -48,10 +49,9 @@ def acquire_credential(
     surface: str,
     run_id: str,
     select_via: str,
-    output: str = ".workhorse/credential.json",
 ) -> LeasedCredential:
     """Scan the pool, let the agent CLI pick a match, and lease it for this run."""
-    run_tool(
+    result = run_tool(
         [
             "saddlebag", "scan",
             "--env", env,
@@ -59,12 +59,12 @@ def acquire_credential(
             "--surface", surface,
             "--select-via", select_via,
             "--run-id", run_id,
-            "--output", output,
+            "--json",
         ],
         check=True,
         logger=logger,
     )
-    record = read_credential(output)
+    record = json.loads(result.stdout)
     return LeasedCredential(
         id=record["id"], username=record["username"], lease_id=record["lease_id"]
     )
@@ -113,7 +113,7 @@ here — every node and every agent turn returns a typed model. Two things carry
 
 **`run_tool` is the seam.** Nodes route every external CLI call through
 `workhorse.scriptutil.run_tool`, so the invocation is logged and `check=True` fails the
-node rather than letting a silent non-zero exit hand the agent an empty credential file.
+node rather than letting a silent non-zero exit hand the workflow an empty lease.
 
 **Release by `--run-id`, not `--lease-id`.** One release node then cleans up every
 credential the run holds, including any acquired in parallel branches:
@@ -122,19 +122,17 @@ credential the run holds, including any acquired in parallel branches:
     def start(self) -> Continue:
         staging = self.call(
             acquire_credential, "staging", "admin", self.surface, self.run_id,
-            self.select_via, ".workhorse/cred-staging.json",
+            self.select_via,
         )
         self.call(
             acquire_credential, "prod", "admin", self.surface, self.run_id,
-            self.select_via, ".workhorse/cred-prod.json",
+            self.select_via,
         )
         return Continue(staging, self.run_test, username=staging.username)
 ```
 
 Both leases carry the same `--run-id`, so the single `release` state at the end gives back
 both. Nothing has to track lease ids by hand.
-
-Output files belong under `.workhorse/`, which workhorse's default scaffolding gitignores.
 
 ### Bringing the stack up
 
@@ -173,8 +171,7 @@ SURFACE=$(echo "$SEED" | jq -r '.surface')
 
 saddlebag scan \
   --env "$ENV" --roles $ROLES --surface "$SURFACE" \
-  --select-via claude --run-id "$RUN_ID" \
-  --output .workhorse/credential.json
+  --select-via claude --run-id "$RUN_ID" --json
 ```
 
 Ostler seed frontmatter can carry two optional fields saddlebag understands:
@@ -193,14 +190,12 @@ the book says the step needs is literally what the scan asks the pool for.
 
 ## The `.workhorse/` contract
 
-`saddlebag.workhorse` is the one Python module a workflow may import, and it exists only
-to keep both sides agreeing on the file:
+`saddlebag.workhorse` is the one Python module a workflow may import:
 
 | Name | What it is |
 |---|---|
 | `WORKHORSE_DIR` | `".workhorse"` — where run-scoped artifacts go |
-| `write_credential` / `read_credential` | the credential JSON, written `0600` before content |
-| `write_private` | the same `0600`-first write for any other run-scoped secret file |
-| `lease_id_of` | pull the lease id back out of a credential file, for a targeted release |
+| `write_private` | the `0600`-before-content write for any run-scoped secret file |
 
-Everything else is the CLI.
+There is deliberately no credential file and no read helper: saddlebag never hands a
+stored secret to a caller, so there is nothing to read back. Everything else is the CLI.
