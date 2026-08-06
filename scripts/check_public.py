@@ -31,9 +31,18 @@ bans as surely as a leak does. ``scripts/private_names.py`` reads them from an u
 source. With none configured (the public-contributor case), checks (1) and (3) are
 skipped.
 
+Check (1) has two halves: the tracked tree, and **reachable git history**. The history
+half exists because of a real leak the tree sweep is structurally blind to: a private
+name was committed, removed a week later, and every clone kept shipping it in history
+while the sweep reported clean. The history check walks every ref — commit messages,
+the paths objects live at, and each unique blob's content once — so removal without a
+rewrite can never read as clean again.
+
 Run:
-    uv run python scripts/check_public.py                 # all three
-    python3 scripts/check_public.py --names-only          # what the hook runs
+    uv run python scripts/check_public.py                 # everything
+    python3 scripts/check_public.py --names-only          # what the hook runs (tree only)
+    python3 scripts/check_public.py --history             # history alone; stdlib-only,
+                                                          # runs in a bare fresh clone
 """
 
 from __future__ import annotations
@@ -43,6 +52,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -126,6 +136,119 @@ def check_no_private_names() -> list[str]:
                 offenders.append(f"{rel}:{number}: {line.strip()}")
     if not offenders:
         print(f"ok: no private project names in {scanned} tracked text files")
+    return offenders
+
+
+def check_no_private_names_in_history() -> list[str]:
+    """No private name anywhere reachable from any ref — messages, paths, blobs.
+
+    The tree sweep above sees only the checkout. A name committed and later removed
+    passes it while shipping in every clone's history, which is exactly how the one
+    real incident survived: added in one commit, removed two hundred commits ago,
+    invisible to every guard that reads the tree. This check walks ``--all`` refs
+    (branches, tags, the stash) so that state can only be reached by an actual
+    history rewrite.
+
+    A blob is scanned once no matter how many commits carry it, so the cost is one
+    object walk plus one ``cat-file`` stream over unique blobs — seconds, not the
+    per-commit tree scan ``git grep $(git rev-list --all)`` would be.
+    """
+    private_names = _private_names_module()
+    pattern = private_names.pattern(private_names.load())
+    if pattern is None:
+        # The tree check already printed the skip note; stay quiet here.
+        return []
+
+    offenders: list[str] = []
+
+    # Commit messages. -z NUL-separates records of "<sha>\n<subject+body>".
+    log = subprocess.run(
+        ["git", "-C", str(REPO), "log", "--all", "-z", "--format=%H%n%B"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for record in log.split("\0"):
+        if not record:
+            continue
+        sha, _, message = record.partition("\n")
+        if pattern.search(message):
+            offenders.append(f"commit {sha[:12]}: (in the commit message)")
+
+    # Every object reachable from any ref, with the path it lives at. Commits have
+    # no path; trees and blobs do. Paths count the same way they do in the tree
+    # sweep — a private name in a historical filename ships too.
+    listing = subprocess.run(
+        ["git", "-C", str(REPO), "rev-list", "--all", "--objects"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    candidates: dict[str, str] = {}  # sha -> path, deduplicated
+    flagged_paths: set[str] = set()
+    for line in listing.splitlines():
+        sha, _, path = line.partition(" ")
+        if not path:
+            continue  # a commit
+        if pattern.search(path) and path not in flagged_paths:
+            flagged_paths.add(path)
+            offenders.append(f"history path {path!r}: (in the path)")
+        candidates.setdefault(sha, path)
+
+    # One cat-file stream over the candidates; only blobs have content to scan.
+    # Streamed, not captured: all historical versions of every file pass through.
+    with subprocess.Popen(
+        ["git", "-C", str(REPO), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    ) as proc:
+        stdin, stdout = proc.stdin, proc.stdout
+        assert stdin is not None and stdout is not None
+
+        def _feed() -> None:
+            for sha in candidates:
+                stdin.write(sha.encode() + b"\n")
+            stdin.close()
+
+        feeder = threading.Thread(target=_feed)
+        feeder.start()
+        scanned = 0
+        while True:
+            header = stdout.readline()
+            if not header:
+                break
+            sha, kind, size_text = header.decode().split()
+            size = int(size_text)
+            body = stdout.read(size)
+            stdout.read(1)  # the trailing newline
+            if kind != "blob":
+                continue
+            if b"\0" in body[:BINARY_SNIFF_BYTES]:
+                continue
+            scanned += 1
+            text = body.decode("utf-8", errors="replace")
+            if pattern.search(text):
+                where = subprocess.run(
+                    [
+                        "git", "-C", str(REPO), "log", "--all", "-1",
+                        f"--find-object={sha}", "--format=%h",
+                    ],
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                offenders.append(
+                    f"blob {sha[:12]} at {candidates[sha]!r} (e.g. commit {where}): "
+                    "(in historical content)"
+                )
+        feeder.join()
+
+    if not offenders:
+        print(f"ok: no private project names in {scanned} historical blobs across all refs")
+    else:
+        offenders.append(
+            "history offenders need a rewrite (git filter-repo --replace-text), "
+            "not a removal commit — removal is what made this class invisible"
+        )
     return offenders
 
 
@@ -214,18 +337,29 @@ def check_base_stands_alone() -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    # --names-only is the pre-commit hook's entry point: the leak sweep alone, which is
-    # pure stdlib and needs no venv. The other two import farrier and resolve a library,
-    # which would put `uv run` on the critical path of every commit.
-    unknown = [a for a in argv if a != "--names-only"]
+    # --names-only is the pre-commit hook's entry point: the tree sweep alone, which is
+    # pure stdlib and needs no venv — the history walk would put seconds on the critical
+    # path of every commit for a state a commit cannot even create. --history is the
+    # standalone history walk, also stdlib-only, so it can verify a bare fresh clone
+    # (post-rewrite, pre-push) where no venv exists. The default run does everything.
+    unknown = [a for a in argv if a not in ("--names-only", "--history")]
     if unknown:
-        print(f"usage: check_public.py [--names-only]  (got {unknown})", file=sys.stderr)
+        print(
+            f"usage: check_public.py [--names-only | --history]  (got {unknown})",
+            file=sys.stderr,
+        )
         return 2
-    checks = (
-        (check_no_private_names,)
-        if "--names-only" in argv
-        else (check_no_private_names, check_hooks_installed, check_base_stands_alone)
-    )
+    if "--names-only" in argv:
+        checks = (check_no_private_names,)
+    elif "--history" in argv:
+        checks = (check_no_private_names_in_history,)
+    else:
+        checks = (
+            check_no_private_names,
+            check_no_private_names_in_history,
+            check_hooks_installed,
+            check_base_stands_alone,
+        )
 
     failures = 0
     for check in checks:
