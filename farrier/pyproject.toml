@@ -39,9 +39,6 @@ Issues = "https://github.com/GabrielCpp/stablemate/issues"
 [project.scripts]
 farrier = "farrier.install:main"
 
-[tool.uv.sources]
-stablemate-core = { workspace = true }
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

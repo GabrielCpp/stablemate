@@ -67,9 +67,6 @@ Issues = "https://github.com/GabrielCpp/stablemate/issues"
 # runner would need to resolve a workflow by name and there is nothing to resolve it
 # against. A workflow distribution binds its own script — see workflows/pyproject.toml.
 
-[tool.uv.sources]
-stablemate-core = { workspace = true }
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
