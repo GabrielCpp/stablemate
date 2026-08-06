@@ -54,9 +54,32 @@ gold: gold
 # so its runs score a coder workflow with every skill reference silently dead, on top of
 # not being able to search the app it was building — and the number that comes back
 # measures the harness, not the model. That is what an earlier hosted set learned the
-# expensive way. opencode drives a real tool loop and takes OpenRouter model ids
-# directly (`openrouter/<vendor>/<model>`, no proxy), so a set added later should stay
-# on opencode for the same reason.
+# expensive way. opencode drives a real tool loop and takes OpenRouter model ids directly
+# (`openrouter/<vendor>/<model>`, no proxy) — see BACKENDS.md's `cline`/`opencode`
+# comparison — so a set added later should stay on opencode for the same reason, unless a
+# fresh ablation is deliberately testing the harness itself rather than the model.
+#
+# opencode over cline specifically because provider-pinning (below) is native to it:
+# `~/.config/opencode/opencode.jsonc`'s `provider.openrouter.models.<id>.options.provider`
+# pins one model to one upstream endpoint without ever changing the model-id string a
+# turn sends — cline has no equivalent, so pinning it to a caching-capable endpoint means
+# appending an OpenRouter *preset* slug to the model string, and cline's own telemetry
+# (`model.info.pricing`) goes missing whenever that string carries a `@preset/` suffix,
+# which would silently zero out every turn's recorded cost. opencode's pins are config,
+# not string surgery, so its cost/cache telemetry stays intact.
+#
+# Every set below, `local-*` included, resolves through OpenRouter for now — the point of
+# `local-mixed`/`local-cheap-high` is to price out the *hardware* before buying it, by
+# running the same-sized models hosted rather than on a card we don't have yet. So every
+# model here is `openrouter/<vendor>/<model>` (confirmed live on OpenRouter's `/models`
+# endpoint). `OpenCodeBackend` passes `-m <model>` on every turn whenever a model string
+# is given (`workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.run_turn`),
+# which is true of every tier of every set here — so the per-turn flag is what picks the
+# model. Which upstream endpoint serves that model is a separate axis, pinned per-model in
+# `opencode.jsonc` (not here) precisely so it can be re-priced against OpenRouter's
+# `/endpoints` catalog without touching this file. An unresolvable model still fails the
+# whole turn rather than falling back silently — so a typo'd or delisted slug is a hard
+# error, not a silent swap to a default.
 sets:
   # The reference. Claude Code at the tier real work runs at.
   - label: gold
@@ -67,15 +90,16 @@ sets:
       medium: {claude: {model: sonnet, effort: high}}
       low: {claude: {model: sonnet, effort: low}}
 
-  # Local, mixed by tier: the dense 27B where reasoning is load-bearing, the 3B-active
-  # MoE everywhere else. The shape the hardware note recommends.
+  # 24GB-card-sized, mixed by tier: the dense 27B where reasoning is load-bearing, the
+  # 3B-active MoE everywhere else — hosted on OpenRouter for now, so the score is in
+  # before the card is bought. The shape the hardware note recommends.
   - label: local-mixed
     cli: opencode
     notes: dense 27B at high, 3B-active MoE below it
     power:
-      high: {opencode: {model: qwen/qwen3.6-27b, effort: high}}
-      medium: {opencode: {model: qwen/qwen3.6-35b-a3b}}
-      low: {opencode: {model: qwen/qwen3-coder-30b-a3b-instruct}}
+      high: {opencode: {model: openrouter/qwen/qwen3.6-27b, effort: high}}
+      medium: {opencode: {model: openrouter/qwen/qwen3.6-35b-a3b}}
+      low: {opencode: {model: openrouter/qwen/qwen3-coder-30b-a3b-instruct}}
 
   # The ablation that pays for the one above: same set, cheap model promoted to `high`.
   # 34 of coder's 41 turns move, so if the score holds here the dense 27B is not earning
@@ -84,9 +108,9 @@ sets:
     cli: opencode
     notes: ablation — does the high tier actually need the dense model?
     power:
-      high: {opencode: {model: qwen/qwen3.6-35b-a3b}}
-      medium: {opencode: {model: qwen/qwen3.6-35b-a3b}}
-      low: {opencode: {model: qwen/qwen3-coder-30b-a3b-instruct}}
+      high: {opencode: {model: openrouter/qwen/qwen3.6-35b-a3b}}
+      medium: {opencode: {model: openrouter/qwen/qwen3.6-35b-a3b}}
+      low: {opencode: {model: openrouter/qwen/qwen3-coder-30b-a3b-instruct}}
 
   # Hosted and cheap: 1M context, tools and structured outputs, roughly two orders of
   # magnitude under gold per token.
