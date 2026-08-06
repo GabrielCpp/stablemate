@@ -60,19 +60,20 @@ the default port when a run starts, and containers dial out to it on their own.
 ## Usage
 
 ```bash
-groom serve                       # binds 0.0.0.0:8787 by default (see note below)
-groom serve --host 127.0.0.1      # loopback only (no container access)
+groom serve                       # binds 127.0.0.1:8787 — loopback only, the default
+groom serve --host 0.0.0.0       # all interfaces: required for containerized runs (see note)
 ```
 
 From a checkout of this workspace, prefix each command with `uv run` (`uv run groom serve`)
 to use the working tree instead of the installed copy.
 
-> **Binding.** groom defaults to `0.0.0.0` so the in-container `groom-sidecar`s
-> can reach it over the docker bridge (`host.docker.internal` → the bridge
-> gateway on Linux, not loopback). groom has **no authentication** — it controls
-> docker and answers operator gates — so only run it on a trusted machine; it
-> prints a one-line warning on any non-loopback bind (`--allow-non-loopback`
-> silences it). Use `--host 127.0.0.1` to bind loopback only.
+> **Binding.** groom binds loopback by default because it has **no
+> authentication** — it controls docker and answers operator gates. The
+> in-container `groom-sidecar`s reach the host over the docker bridge
+> (`host.docker.internal` → the bridge gateway on Linux, not loopback), so
+> containerized runs need `--host 0.0.0.0` — an explicit choice that prints a
+> one-line exposure warning (`--allow-non-loopback` acknowledges it). Only do
+> that on a trusted network.
 
 ## Telemetry collector (OTLP) + AFK alerting
 

@@ -16,12 +16,14 @@ import argparse
 import ipaddress
 import sys
 
-# Default to all interfaces so the in-container groom-sidecars can reach the
-# host over the docker bridge (host.docker.internal → the bridge gateway on
-# Linux, not loopback) with no extra flags. groom has no authentication, so this
-# is only appropriate on a trusted machine — a non-loopback bind prints a
-# warning (below); pass --host 127.0.0.1 to bind loopback only.
-DEFAULT_HOST = "0.0.0.0"
+# Loopback by default: groom has no authentication, and it exposes docker
+# control and gate answers to anything that can reach its port — the safe
+# default cannot be a warning on the dangerous one. In-container groom-sidecars
+# reach the host over the docker bridge (host.docker.internal → the bridge
+# gateway on Linux, not loopback), so containerized runs need an explicit
+# `--host 0.0.0.0`, which prints the exposure warning below unless
+# --allow-non-loopback acknowledges it.
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 
 
@@ -39,9 +41,8 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopb
         print(
             f"warning: binding non-loopback host {host!r} — groom has NO authentication and "
             "exposes docker control + gate answers to anything that can reach this address. "
-            "This is the default so in-container sidecars can reach it over the docker bridge; "
-            "pass --host 127.0.0.1 to bind loopback only, or --allow-non-loopback to silence "
-            "this warning. Only run on a trusted network.",
+            "In-container sidecars need this to reach the host over the docker bridge; "
+            "pass --allow-non-loopback to acknowledge it. Only run on a trusted network.",
             file=sys.stderr,
         )
 
@@ -272,8 +273,9 @@ def main(argv: list[str] | None = None) -> None:
     serve_parser.add_argument(
         "--allow-non-loopback",
         action="store_true",
-        help="Silence the non-loopback exposure warning (the default host is 0.0.0.0). "
-        "groom has no auth — only expose it on a trusted network.",
+        help="Silence the exposure warning printed for a non-loopback --host "
+        "(the default binds loopback only). groom has no auth — only expose it "
+        "on a trusted network.",
     )
 
     status_parser = subparsers.add_parser(
