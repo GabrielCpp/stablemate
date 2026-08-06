@@ -8,6 +8,33 @@
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+## Why
+
+The cheapest way to run an agent for hours is a bash loop around `claude -p`. That
+works right up until it doesn't, and the four ways it doesn't are the reason this
+toolchain exists:
+
+- **A loop dies with its process.** workhorse checkpoints every state transition, so a
+  crash — or a deliberate stop — resumes days later exactly where it left off, with the
+  same inputs it started with.
+- **A loop retries blindly, or not at all.** The engine escalates through a recovery
+  ladder — transient retries with backoff, context compaction, prompt reframing — and
+  when a subscription cap bites, it reads the reset time and sleeps until the window
+  reopens instead of dying inside it.
+- **A loop leaves no trace.** Every run leaves a directory: each prompt exactly as the
+  agent received it, each reply validated into a declared model, the event log, the
+  checkpoint — the artifacts that turn "it did something weird at 3am" into a diff you
+  can read.
+- **A loop can't ask you anything.** Operator gates park a run on a question only a
+  human can answer and resume when it is answered — from the browser, hours later,
+  via [groom](groom/).
+
+The composite is the point: **multi-day, unattended runs on subscription-billed agent
+CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
+asynchronous human gates.
+
+## What's in the box
+
 A [uv](https://docs.astral.sh/uv/) workspace housing the publishable Python
 packages that work alongside an agent prompt library:
 
