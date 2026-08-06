@@ -193,9 +193,7 @@ ostler qa run      docs/specs/<story>/qa-plan.yml --json
 The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md), the
 artifact contracts in
-[docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md),
-and the design rationale in
-[docs/plans/ostler-qa-verification.md](https://github.com/GabrielCpp/stablemate/blob/main/docs/plans/ostler-qa-verification.md).
+[docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).
 
 ## Python API
 

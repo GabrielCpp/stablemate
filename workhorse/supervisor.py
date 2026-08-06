@@ -170,7 +170,7 @@ def seed_claude_home(layout: Layout, env: Mapping[str, str]) -> None:
     elif layout.credentials_src.is_file():
         # A credentials file the host keeps at mode 600 is unreadable to any uid but
         # its owner's — and this container deliberately does not run as the operator
-        # (see the uid discussion in docs/plans/container-concurrent-runs.md §4.8).
+        # (see the uid discussion in the internal container-concurrent-runs plan §4.8).
         # That is a mount the operator has to fix, so say which one and how, rather
         # than dying in a traceback that names only `shutil.copyfile`.
         try:

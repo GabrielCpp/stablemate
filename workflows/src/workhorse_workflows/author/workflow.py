@@ -29,7 +29,7 @@ already answered. Every `resolve_*` state below therefore branches on the resolv
 `decide_integrity_resolve` and the surveyor's `decide_verify_resolve`. This port
 generalizes that pattern to the four gates that lacked it.
 
-`docs/plans/author-workflow-python/` is the rendered reference this follows. Two file-shape
+The internal author-workflow-python plan is the rendered reference this follows. Two file-shape
 divergences from it: the operator gates are folded into their `resolve_*` states rather
 than living in `_gate_*` helpers (only the story-rework and coverage gates keep a helper,
 because three states route into each), and the config models hold repo-relative strings,

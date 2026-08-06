@@ -3,11 +3,10 @@
 Status: **implemented** (2026-07-14).
 
 This document describes the original version-1 command runner. The universal
-version-2 plan, OKF impact packet, Playwright and Maestro adapters, recording
-contract, and coder-workflow integration are specified in
-[`docs/plans/ostler-qa-verification.md`](../../docs/plans/ostler-qa-verification.md).
-That document supersedes this one where the contracts differ, especially the
-placement of `qa-plan.yml` and static inputs outside disposable `qa/`.
+version-2 design — OKF impact packet, Playwright and Maestro adapters, recording
+contract, and coder-workflow integration — lives in an internal plan that
+supersedes this one where the contracts differ, especially the placement of
+`qa-plan.yml` and static inputs outside disposable `qa/`.
 
 ## Why this exists
 
@@ -18,12 +17,12 @@ structural trust problem: the agent is both the executor and the narrator. A rev
 ran — the agent may have issued different commands, gone back and forth investigating, or written
 artifacts that look like outputs of commands it never ran.
 
-Two incidents on CASE-4352 surfaced this concretely:
+Two incidents on ACME-4352 surfaced this concretely:
 
 - The `ttl-invoke-response.json` and `modify-overwrite-invoke-response.json` files returned
   `null` from the agent's own read-back — the files were either empty or fabricated rather than
   captured from a real `aws lambda invoke` response.
-- A synthetic session item (`app_installation_id=1283ef79`) with no traceable originating login
+- A synthetic session item (`app_installation_id=0000abcd`) with no traceable originating login
   was silently reused across the TTL and MODIFY scenarios; this was only discovered by manually
   cross-referencing raw JSON artifacts.
 
@@ -98,8 +97,8 @@ All records share:
 {
   "ts": "2026-07-10T17:09:10Z",
   "kind": "session_start",
-  "run_id": "CASE-4352",
-  "story": "CASE-4352",
+  "run_id": "ACME-4352",
+  "story": "ACME-4352",
   "env": { "aws_profile": "dev-case-management", "region": "us-east-2" }
 }
 ```
@@ -196,7 +195,7 @@ Check types for `ostler qa assert`:
 {
   "ts": "2026-07-10T17:22:01Z",
   "kind": "session_stop",
-  "run_id": "CASE-4352",
+  "run_id": "ACME-4352",
   "step_count": 7,
   "assert_count": 5,
   "pass_count": 5,
@@ -298,8 +297,8 @@ it was confirmed, without cross-referencing a separate `asserts:` section.
 ```yaml
 # qa-plan.yml — agent writes this; human reviews before ostler executes
 
-run_id: CASE-4352
-story: CASE-4352
+run_id: ACME-4352
+story: ACME-4352
 env:
   aws_profile: dev-case-management
   region: us-east-2
@@ -496,7 +495,7 @@ _not_ replaced. It remains the workflow gate's source of truth for per-AC verdic
 
 ```json
 {
-  "runId": "qa-20260710T170910-CASE-4352",
+  "runId": "qa-20260710T170910-ACME-4352",
   "qa_run_log": "qa/qa-run.ndjson",
   ...
 }

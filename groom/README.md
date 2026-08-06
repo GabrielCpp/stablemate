@@ -77,7 +77,7 @@ to use the working tree instead of the installed copy.
 ## Telemetry collector (OTLP) + AFK alerting
 
 `groom` is also the default local **OpenTelemetry collector** for `workhorse`
-runs (see `docs/plans/workhorse-otel.md` at the repo root). The same uvicorn process
+runs. The same uvicorn process
 and port expose standard OTLP/HTTP receivers — `POST /v1/traces`,
 `POST /v1/metrics` and `POST /v1/logs` — so an ordinary run
 

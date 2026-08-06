@@ -17,7 +17,7 @@ differ per developer, churn on every `pipx install`, and — for a workflow inst
 from a local path — carry somebody's home directory into the repo. Make generates
 the per-workflow targets from that list with `$(eval)`, so the targets are real (and
 a typo still gets make's own "No rule to make target") while the file stays the same
-everywhere. See ``docs/plans/container-concurrent-runs.md`` §8.2 and its item-4 note.
+everywhere. See the internal container-concurrent-runs plan §8.2 and its item-4 note.
 """
 from __future__ import annotations
 

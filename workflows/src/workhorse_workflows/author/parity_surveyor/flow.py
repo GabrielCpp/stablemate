@@ -44,7 +44,7 @@ Divergences from the YAML, all deliberate:
   default says "the turn produced nothing" where `"assessed"` claimed the opposite.
 * `verify-records.py` was passed `""` for `ref` and `mark-unit.py` `""` for its
   fallback; both nodes normalize an empty string to their default, so both are omitted.
-* the pre-rendered reference in `docs/plans/author-workflow-python/` deliberately leaves
+* the pre-rendered reference (the internal author-workflow-python plan) deliberately leaves
   this flow out: *"The two sub-graphs under the YAML's `flows:` … are not gathered in.
   They are their own state machines; under this design each is its own `Workflow`
   subclass, reached with `self.handoff(...)`, and each would get this same treatment in

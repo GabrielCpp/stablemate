@@ -226,9 +226,7 @@ ostler qa replay --spec SPEC
 
 `--daemon NAME:CMD` starts a background process for the session; append `:READY_URL` to poll
 before advancing. The full run contract is in
-[docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md),
-and the design rationale in
-[docs/plans/ostler-qa-verification.md](https://github.com/GabrielCpp/stablemate/blob/main/docs/plans/ostler-qa-verification.md).
+[docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md).
 
 ## Artifacts
 

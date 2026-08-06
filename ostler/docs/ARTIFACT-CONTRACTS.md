@@ -1,4 +1,4 @@
-# `ostler artifact` — schema-checked workflow artifacts (design)
+# `ostler artifact` — schema-checked workflow artifacts
 
 Status: **implemented** (2026-07-03) — `ostler/artifact/` (kinds registry, scaffold, vet, CLI wiring, `tests/test_artifact_kinds.py`); consumer workflow gates union its problems in as a pre-check and the planner/QA prompts self-check with it. Registration via `.agents/templates.yml` (schema override/extension) remains future work; kinds are built-in for now. Motivated by two production incidents in the Acme
 `epic-coder` run of 2026-07-02/03, both the same failure class: *an agent wrote a JSON artifact

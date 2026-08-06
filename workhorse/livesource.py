@@ -28,7 +28,7 @@ Two properties fall out, and both are the point:
 
 It is deliberately generic over the package. groom's sidecar is the first caller;
 a workflow distribution installed from a local path (pipx discovery, §4.6 of
-docs/plans/container-concurrent-runs.md) is the second, and it needs no second
+the internal container-concurrent-runs plan) is the second, and it needs no second
 implementation.
 """
 from __future__ import annotations

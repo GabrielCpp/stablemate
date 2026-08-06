@@ -7,8 +7,8 @@ the six counter scripts become one `Budget` parameter, and the five routing node
 become `if`/`elif` inside the state that produced the value they branch on.
 
 The before/after — what the counters cost in YAML, and why the four terminals stay
-distinguishable — is written up in `docs/plans/workflow-as-python-state-machine.md`
-under "What the `research` port shipped, and why it is not the template".
+distinguishable — is written up in the internal workflow-as-python-state-machine
+design brief under "What the `research` port shipped, and why it is not the template".
 """
 from __future__ import annotations
 

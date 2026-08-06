@@ -40,7 +40,7 @@ through three layers before it can ever crash the run (see
    it escalates as a normal transient (the ladder below gives it more time); if it
    *still* does not resolve, it is genuinely absent and fails with an actionable
    non-transient `BackendInvocationError`. (A single-probe check here is what let
-   okf-builder's `web-bf3` run misread a self-update as an absent CLI and fail its
+   an okf-builder run misread a self-update as an absent CLI and fail its
    last item.)
 1. **Transient retries** — rate limits, overloads, network blips, timeouts, and
    *empty results* (the `No 'result' event received` case above) are retried with
@@ -237,7 +237,7 @@ telemetry is being torn down.
 ### Observability (automatic when a collector is reachable)
 
 Install the extra and start a local collector (`groom` by default — it pages you
-on stall/budget/churn; see `docs/workhorse-otel.md` in the repo root). Nothing
+on stall/budget/churn; see the groom README). Nothing
 else is required: at run start workhorse probes the OTLP endpoint and, if
 something is listening, streams spans/metrics/logs to it.
 

@@ -75,7 +75,7 @@ Divergences from the YAML, all deliberate:
 * `resolve-operator.md`'s final response was `{"resolve_status": {"decision", "summary"}}`
   and no branch ever read `summary`. Unwrapping the envelope for `returns=` renamed it to
   `notes`, the name every other reply in this flow uses for the same thing.
-* the pre-rendered reference in `docs/plans/author-workflow-python/` leaves this flow out
+* the pre-rendered reference (the internal author-workflow-python plan) leaves this flow out
   by design — it gathers the main graph only and says the two `flows:` sub-graphs "are
   their own state machines … each is its own `Workflow` subclass, reached with
   `self.handoff(...)`, and each would get this same treatment in its own module." This
