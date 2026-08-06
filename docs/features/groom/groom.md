@@ -16,7 +16,7 @@ status: implemented
 
 Status: **implemented** (2026-07-06) — `stablemate/groom/` (Litestar app, in-container sidecar,
 vendored Preact/htm/diff2html UI, `tests/test_*.py`); wired into `farrier`'s generated compose template
-(`extra_hosts: host.docker.internal`) and into `vigilant-octo/agents`' shared `await_operator.py`
+(`extra_hosts: host.docker.internal`) and into `example-org/agents`' shared `await_operator.py`
 scripts (backstop push). This doc originally shipped as a pre-implementation design brief; it has
 since been rewritten to describe the architecture as built, most notably around the answer/restart
 flow, which turned out simpler than planned once the in-container wait script was redesigned to
@@ -25,7 +25,7 @@ block via `inotify` instead of exiting.
 ## Context
 
 `author`/`coder` autonomous workflows (run via `workhorse` + Docker Compose, defined in the
-central `vigilant-octo/agents` prompt library and consumed by repos like Acme) block on
+central `example-org/agents` prompt library and consumed by repos like Acme) block on
 "operator gates": the in-container wait script (`await_operator.py`/`await-operator.py`) parks on
 an `inotify` watch of the gate file until its `STATUS:` line flips to `ANSWERED`, then resumes in
 place. With more than one workflow running at once, having no aggregate visibility — no dashboard,
@@ -35,7 +35,7 @@ by hand.
 
 `groom` is a standalone `stablemate` package — sibling to `workhorse/` and `farrier/` — that gives
 a local web dashboard with push notifications on new blocks and a one-click answer flow. It ships
-alongside a companion fix in `vigilant-octo/agents` (a self-verification gap in several of
+alongside a companion fix in `example-org/agents` (a self-verification gap in several of
 author's gates, tracked separately, not detailed here) that reduces how often gates re-block in
 the first place.
 

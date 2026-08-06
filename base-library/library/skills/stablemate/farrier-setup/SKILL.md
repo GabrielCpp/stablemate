@@ -11,7 +11,7 @@ Use this skill when setting up farrier in a new repository or adding/modifying
 
 ## What Farrier Does
 
-Farrier renders a shared prompt library (the `vigilant-octo/agents` tree) into
+Farrier renders a shared prompt library (the `example-org/agents` tree) into
 per-repo adapter files for Claude (`.claude/skills/`, `.claude/commands/`,
 local `CLAUDE.md`), Codex, and Copilot, plus workflow bundles under
 `.agents/workflows/` and an `agents.mk` Makefile include.
@@ -29,7 +29,7 @@ Requires Python >= 3.12.
 Point farrier at the shared library (only needed once per machine):
 
 ```bash
-farrier config set-library /path/to/vigilant-octo/agents
+farrier config set-library /path/to/example-org/agents
 ```
 
 Verify with:
@@ -127,9 +127,9 @@ library/skills/process/process-story-docs/SKILL.md
   → installed as: <prefix>-process-story-docs
 ```
 
-So for a repo named `vigilant-octo` using the `product-planning` pack:
-- `process/process-story-docs` → `vigilant-octo-process-story-docs`
-- `process/process-write-epics-and-stories` → `vigilant-octo-process-write-epics-and-stories`
+So for a repo named `globex` using the `product-planning` pack:
+- `process/process-story-docs` → `globex-process-story-docs`
+- `process/process-write-epics-and-stories` → `globex-process-write-epics-and-stories`
 
 ## localInstructions — Binding Skills to Directories
 
@@ -187,7 +187,7 @@ farrier --repo /path/to/repo
 farrier --repo /path/to/repo --check
 
 # Override library location for this run
-farrier --repo /path/to/repo --library /path/to/vigilant-octo/agents
+farrier --repo /path/to/repo --library /path/to/example-org/agents
 ```
 
 The generated `agents.mk` exposes the same operations as Makefile targets:
@@ -228,7 +228,7 @@ is the source of truth. Current packs:
 ## Typical Setup Sequence
 
 1. Install farrier: `pipx install farrier`
-2. Set library: `farrier config set-library /path/to/vigilant-octo/agents`
+2. Set library: `farrier config set-library /path/to/example-org/agents`
 3. `farrier init` at the repo root, then fill in `packs:`
 4. Seed the repo layout: `farrier scaffold` to list what's available, then
    e.g. `farrier scaffold shared-docs` and `farrier scaffold go-service

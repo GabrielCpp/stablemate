@@ -13,7 +13,7 @@ with `make agent-install`.
 
 The library's filesystem location is never hardcoded — resolve it with
 `farrier config show library_dir` (or `farrier config show` for all keys).
-Do not assume it lives at a particular path like `vigilant-octo/agents`; that
+Do not assume it lives at a particular path like `example-org/agents`; that
 is just one possible checkout, and treating it as fixed will conflate a
 specific machine's layout with the library itself.
 

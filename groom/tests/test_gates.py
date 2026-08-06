@@ -1,6 +1,6 @@
 """Tests for groom.gates: STATUS-line parsing/writing and answer_gate's
 orchestration. The regex/constants here must stay byte-compatible with the
-await_operator.py scripts in vigilant-octo/agents, so the parsing tests pin
+await_operator.py scripts in example-org/agents, so the parsing tests pin
 down the exact on-disk shape those scripts themselves produce and expect.
 
 Run: uv run python tests/test_gates.py   (or via pytest)
