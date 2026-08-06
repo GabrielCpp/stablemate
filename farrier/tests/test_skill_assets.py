@@ -286,3 +286,25 @@ def test_a_removed_reference_is_reported_as_extra(tmp_path, capsys):
 
     assert check_outputs(tmp_path, stale) == 1
     assert "extra: .claude/skills/demo-qa/references/notes.md" in capsys.readouterr().out
+
+
+# --- the template gate ------------------------------------------------------------
+
+
+def test_raw_tags_are_honoured_in_a_file_that_names_no_helper(tmp_path):
+    """`{% raw %}` is the only way to protect a literal `{{ }}`, so it must open the gate.
+
+    Rendering is skipped for content naming no helper — otherwise every `{{ }}` in a code
+    sample is a Jinja syntax error. But a skipped file never strips its own raw tags, so
+    an author escaping a Helm/Actions/mockery template would see `{% raw %}` land in the
+    installed skill verbatim.
+    """
+    root = _library(tmp_path)
+    _skill(root, "helm", body="Use `{% raw %}{{ .Values.arn }}{% endraw %}` in the chart.\n")
+    renderer = _renderer(tmp_path, root, ["helm"])
+
+    outputs = renderer.render(agents={"claude": True}, roots=set())
+    rendered = outputs[tmp_path / ".claude" / "skills" / "demo-helm" / "SKILL.md"]
+
+    assert "{{ .Values.arn }}" in rendered
+    assert "raw" not in rendered

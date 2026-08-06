@@ -290,9 +290,16 @@ class Renderer:
         raise SystemExit(f"Unknown skill dir target: {target}")
 
     def render_templates(self, content: str, target: str, from_file: Path) -> str:
+        # Rendering is skipped for content that names no helper — most library files are
+        # plain markdown and paying Jinja for them means every `{{ }}` in a code sample
+        # becomes a syntax error. `{%` has to open the gate too: it is how an author says
+        # "this IS a template", and `{% raw %}` in particular is the *only* way to protect
+        # a literal `{{ }}`. Skipping a file that uses it would leak the tags into the
+        # output verbatim — the opposite of what the author asked for.
         if not any(
             token in content
             for token in [
+                "{%",
                 "instruction_file(",
                 "instruction_ref(",
                 "skill_file(",
