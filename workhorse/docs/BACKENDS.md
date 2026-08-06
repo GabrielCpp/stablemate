@@ -58,28 +58,45 @@ For running OpenRouter models (e.g. MiMo) on `cline` / `opencode`, see
 
 ### Node power selection
 
-An agent turn's optional `power=` argument is one of `high`, `medium`, or `low`. It is
-not a model name; it is resolved through the shared config file for the active
-backend (see [Config file location](#config-file-location) below):
+An agent turn's optional `power=` argument is one of `low`, `medium`, `high`, `smart` or
+`extra-smart` — cheapest first. It is not a model name; it is resolved through the shared
+config file for the active backend (see [Config file location](#config-file-location)
+below):
 
 ```python
 verdict = self.agent("prompts/lead-review.md", returns=Verdict, power="high")
 ```
 
+The two tiers above `high` exist because "the strongest thing available" is not one
+decision. `high` is the good model for real work — the tier most turns in a working
+workflow want. `smart` is frontier reasoning, for the handful of turns whose judgment the
+whole run rests on. `extra-smart` is the premium model, chosen knowing what it costs.
+Collapsing those into one rung forces the operator to price every `high` turn at the rate
+of the rarest one, which in practice means the top tier gets configured down until it is
+no longer a top tier.
+
 Example config:
 
 ```toml
-[power.high.claude]
-model = "opus"
-effort = "high"
+[power.low.claude]
+model = "haiku"
+effort = "low"
 
 [power.medium.claude]
 model = "sonnet"
+effort = "medium"
+
+[power.high.claude]
+model = "sonnet"
 effort = "high"
 
-[power.low.claude]
-model = "haiku"
+[power.smart.claude]
+model = "opus"
 effort = "high"
+
+[power.extra-smart.claude]
+model = "fable"
+effort = "medium"
 
 [power.high.codex]
 model = "@gpt-5.5"
@@ -89,6 +106,10 @@ effort = "high"
 model = "openai/gpt-5.5"
 effort = "high"
 ```
+
+A tier you leave unmapped for a backend falls through to `[default.<backend>]`, so a
+workflow may name `extra-smart` on a backend where you have not defined it without
+failing the run — it simply runs at that backend's default.
 
 #### Per-backend default model (`[default.<backend>]`)
 

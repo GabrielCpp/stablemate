@@ -18,8 +18,8 @@ edit to the workflow itself.
 - start: an installed workflow whose `workhorse-<name>` command is on `PATH`, a config file
   (possibly empty — no `library_dir`/`power`
   table yet required) and a workflow whose [agent turns](../workflow-format.md#the-agent-turn)
-  carry an optional [`power`](../workflow-format.md#power) tier (`low`/`medium`/`high`, default
-  unset).
+  carry an optional [`power`](../workflow-format.md#power) tier
+  (`low`/`medium`/`high`/`smart`/`extra-smart`, cheapest first, default unset).
 - steps:
   1. **Populate the power table.** No command writes the nested `power` table
      — [`write_config_key`](../concepts/config.md#write_config_key) sets one top-level key at a

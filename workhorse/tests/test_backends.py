@@ -23,6 +23,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from _fakes import FakeClock
+from pydantic import ValidationError
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner import failure, ladder, process
@@ -610,6 +611,29 @@ def test_agentnode_power_is_optional():
     assert node.power is None
     node2 = AgentNode(type="agent", id="n2", prompt="p", power="high", next="done")
     assert node2.power == "high"
+
+
+def test_agentnode_accepts_every_tier_and_rejects_invented_ones():
+    """The ladder is five rungs, and a typo is not a sixth.
+
+    `power` resolves through a plain dict lookup in the config, so an unmapped tier
+    degrades silently to the backend default — which means a misspelling would run the
+    whole workflow at the wrong tier and never say so. The model is where that is caught.
+    """
+    def node(power: str) -> dict[str, str]:
+        # `model_validate` on a dict, not the typed constructor: ty already rejects a
+        # bad literal at the call site, so a constructor call could not express the
+        # invalid case. The dict is also the real shape — a spec loaded from a file.
+        return {"type": "agent", "id": "n", "prompt": "p", "power": power, "next": "done"}
+
+    for tier in ("low", "medium", "high", "smart", "extra-smart"):
+        assert AgentNode.model_validate(node(tier)).power == tier
+    for typo in ("extra_smart", "extrasmart", "highest", "smartest"):
+        try:
+            AgentNode.model_validate(node(typo))
+        except ValidationError:
+            continue
+        raise AssertionError(f"{typo!r} must not validate as a power tier")
 
 
 # ── OpenCode backend (opencode run --format json) ───────────────────────────────

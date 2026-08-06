@@ -225,10 +225,19 @@ agent actually gave.
 ### power
 - type: `str` — required: no — default: the backend's own default tier
 
-An abstract tier (`low` / `medium` / `high`), resolved per backend through
-`~/.config/stablemate/config.toml` at `power.<tier>.<backend>` into a concrete model and
-reasoning effort. A workflow names the tier it needs; the operator's config decides what
-that costs. See [BACKENDS.md](../../../workhorse/docs/BACKENDS.md).
+An abstract tier — `low` / `medium` / `high` / `smart` / `extra-smart`, cheapest first —
+resolved per backend through `~/.config/stablemate/config.toml` at `power.<tier>.<backend>`
+into a concrete model and reasoning effort. A workflow names the tier it needs; the
+operator's config decides what that costs. See
+[BACKENDS.md](../../../workhorse/docs/BACKENDS.md).
+
+The ladder is five rungs rather than three because the top of it stopped being one
+decision. `high` is *the good model for real work*; `smart` is *frontier reasoning, for the
+few turns whose judgment the whole run rests on*; `extra-smart` is *the premium model, and
+you are choosing to spend that*. A turn that needs the first must not be silently billed
+for the third, which is what happens when three intents share one rung. A backend with no
+table for the named tier falls through to `[default.<backend>]`, so naming a tier the
+operator hasn't mapped degrades to that backend's default instead of failing the run.
 
 ### timeout
 - type: `float` (seconds) — required: no — default: `3600` (one hour)
