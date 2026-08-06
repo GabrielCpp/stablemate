@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -424,10 +425,15 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
 
         op = action["expect"]
         timeout = float(action.get("timeout", 30)) * 1000
-        value = self.session.expand(str(action.get("value", "")), self.variables)
         if op == "url":
-            expect(page).to_have_url(value, timeout=timeout)
+            if "contains" in action:
+                needle = self.session.expand(str(action["contains"]), self.variables)
+                expect(page).to_have_url(re.compile(re.escape(needle)), timeout=timeout)
+            else:
+                value = self.session.expand(str(action.get("value", "")), self.variables)
+                expect(page).to_have_url(value, timeout=timeout)
             return
+        value = self.session.expand(str(action.get("value", "")), self.variables)
         locator = self._locator(page, action["locator"])
         calls = {
             "visible": lambda: expect(locator).to_be_visible(timeout=timeout),

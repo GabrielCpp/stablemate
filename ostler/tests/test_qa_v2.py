@@ -15,8 +15,8 @@ import yaml
 from ostler.artifact.kinds import _qa_evidence_vet
 from ostler.qa.plan import load_plan, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
-from ostler.qa.drivers import SharedPlaywright, _compile_maestro
-from ostler.qa.session import _kill_pid
+from ostler.qa.drivers import PlaywrightDriver, SharedPlaywright, _compile_maestro
+from ostler.qa.session import QaSession, _kill_pid
 
 
 def _context(spec: Path) -> str:
@@ -299,6 +299,77 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path):
         encoding="utf-8",
     )
     assert cmd_validate(plan, root=tmp_path).status == "passed"
+
+
+def _playwright_url_plan(spec: Path, obligation: str, expectation: dict) -> Path:
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["targets"] = {"web": {"driver": "playwright", "base_url": "http://localhost:3000"}}
+    data["scenarios"][0]["target"] = "web"
+    data["scenarios"][0]["actions"] = [{"expect": "url", **expectation}]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return plan
+
+
+def test_expect_url_accepts_contains_as_an_alternative_to_an_exact_value(tmp_path: Path):
+    """A URL with a non-deterministic piece (query param, encoded return-path) can only be
+
+    asserted by substring — `value:` demands the whole string match. `contains:` was silently
+    accepted by the plan schema without being wired to any real check, so a typo'd assertion
+    passed validation and then no-op'd true at run time. It must now either work or be rejected.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+
+    contains_plan = _playwright_url_plan(spec, obligation, {"contains": "#configuration"})
+    assert cmd_validate(contains_plan, root=tmp_path).status == "passed"
+
+    value_plan = _playwright_url_plan(spec, obligation, {"value": "http://localhost:3000/x"})
+    assert cmd_validate(value_plan, root=tmp_path).status == "passed"
+
+
+def test_expect_url_rejects_neither_or_both_of_value_and_contains(tmp_path: Path):
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+
+    neither = _playwright_url_plan(spec, obligation, {})
+    result = cmd_validate(neither, root=tmp_path)
+    assert result.status == "invalid"
+    assert any("exactly one of value" in problem for problem in result.data["problems"])
+
+    both = _playwright_url_plan(
+        spec, obligation, {"value": "http://localhost:3000/x", "contains": "/x"}
+    )
+    result = cmd_validate(both, root=tmp_path)
+    assert result.status == "invalid"
+    assert any("exactly one of value" in problem for problem in result.data["problems"])
+
+
+def test_expect_url_contains_matches_a_url_with_a_non_deterministic_suffix(tmp_path: Path, monkeypatch):
+    """The Playwright driver's assertion, not just the schema — the substring must actually
+    match against a URL it does not equal.
+    """
+    class _Page:
+        url = "http://localhost:3000/fr/guide-complet?token=abc123#configuration"
+
+    class _Expect:
+        def __init__(self, page):
+            self.page = page
+
+        def to_have_url(self, pattern, timeout):
+            assert pattern.search(self.page.url), f"{pattern.pattern!r} did not match {self.page.url!r}"
+
+    fake = types.ModuleType("playwright.sync_api")
+    fake.__dict__["expect"] = _Expect
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
+
+    driver = PlaywrightDriver.__new__(PlaywrightDriver)
+    driver.session = QaSession(tmp_path)
+    driver.session._data = {"run_id": "qa-run-1", "story": "story-1"}
+    driver.variables = {}
+    driver._expect(_Page(), {"expect": "url", "contains": "#configuration"})
 
 
 def test_two_browser_targets_share_one_playwright(monkeypatch):

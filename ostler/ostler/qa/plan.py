@@ -276,6 +276,17 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 has_assertion = True
                 if operation not in EXPECTATIONS:
                     problems.append(f"{prefix} has unsupported expectation {operation!r}")
+                if operation == "url":
+                    has_value, has_contains = "value" in action, "contains" in action
+                    if has_value == has_contains:
+                        problems.append(
+                            f"{prefix} expect: url must set exactly one of value (exact match) "
+                            "or contains (substring match)"
+                        )
+                elif "contains" in action:
+                    problems.append(
+                        f"{prefix} contains is only supported by expect: url — use value for {operation!r}"
+                    )
             elif kind == "capture" and operation not in CAPTURES:
                 problems.append(f"{prefix} has unsupported capture {operation!r}")
             elif kind == "do":
