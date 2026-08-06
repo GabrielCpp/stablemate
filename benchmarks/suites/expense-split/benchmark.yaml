@@ -62,9 +62,19 @@ power:
 # into a reading of the ceiling rather than of the model. `coder` keeps 11000 because it is
 # not a safety margin — it is the measured cost of five stories, and 3600 would buy under
 # two.
+#
+# The flat hour was then measured missing too, and by the same mechanism one level up:
+# local-mixed reached 3630s having decomposed 3 epics and authored 4 of 5 stories through
+# 8 audit→rework cycles, and was cut mid-way through the coverage-driven re-split that
+# closes the run. The trace is monotonic — every rework loop it entered it also left — so
+# the ceiling did not stop a model going in circles, it stopped one going slowly. At the
+# ~900s per reworked story that run measured, five stories plus the ~250s of epic-level
+# decomposition is ~4750s, and the number below leaves room for roughly two more rework
+# cycles than that run needed. Sized off the slow backend on purpose: a ceiling calibrated
+# to the fast one is not measuring the slow one, it is measuring itself.
 budget:
   genesis: 3600
-  author: 3600
+  author: 7200
   coder: 11000
 
 # Says out loud what the paragraph above works out: this task does not claim the hour. The
