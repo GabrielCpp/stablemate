@@ -508,6 +508,32 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     assert set(agent.cwds) == {str(backlogged)}
 
 
+def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """`epics_dir` and `backlog` reach a prompt as what `load_config` resolved.
+
+    Both parameters default to blank, and blank is the *normal* case — it means "ask
+    ostler". The prompts rendered the raw parameter, so every default run told its agent
+    `Epics directory: ``, and every path the prompt built from it came out rooted at `/`.
+    An agent handed no epics directory goes looking for one, and on a machine holding more
+    than one checkout it finds the wrong repo's: two benchmark runs decomposed the
+    *harness'* backlog into the target and left the target's epics index empty.
+    """
+    agent = _Agent(backlogged)
+    _drive(_env(tmp_path), agent)
+
+    for stem in ("decompose-epics", "review-epics"):
+        for args in agent.args_for(stem):
+            assert args["epics_dir"] == EPICS, (stem, args)
+            assert args["backlog"] == BACKLOG, (stem, args)
+    for args in agent.args_for("write-epic"):
+        assert args["backlog"] == BACKLOG, args
+        assert args["epic_dir"] == EPIC_DIR, args
+    for args in agent.args_for("review-coverage"):
+        assert args["backlog"] == BACKLOG, args
+
+
 def test_the_commit_leaves_work_the_run_did_not_do_alone(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:

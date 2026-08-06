@@ -130,6 +130,13 @@ class Author(Workflow):
     backlog: str = ""
     #: Where epics live, one directory each. Blank means ostler's answer, which reads
     #: `docRoots:`; set it only to point a run at a tree ostler does not configure.
+    #:
+    #: Blank is the *normal* case, so this field is the unresolved input and nothing but
+    #: `load_config` may read it. A prompt rendered `{{ epics_dir }}` from it instead and
+    #: therefore told every author run its epics directory was the empty string — the
+    #: agent then hunted for one and decomposed whatever tree it found. Prompts and the
+    #: path helpers read `self.ctx.epics_dir` / `self.ctx.backlog_path`, which are what
+    #: `load_config` resolved.
     epics_dir: str = ""
     #: `survey` mode: the rubric handed to the surveyor sub-flow.
     rubric: str = "docs/survey/rubric.md"
@@ -197,7 +204,7 @@ class Author(Workflow):
         `epics_dir` and the slug, so deriving it here is the same string with one fewer
         parameter in every story-loop signature.
         """
-        return paths.epic_dir(self.epics_dir, epic)
+        return paths.epic_dir(self.ctx.repo_root, epic, self.ctx.epics_dir)
 
     def _abs(self, rel: str) -> Path:
         """A repo-relative path made absolute, which is what `Await` writes to."""
@@ -206,7 +213,7 @@ class Author(Workflow):
     def _author_context(self) -> str:
         """The run-wide operator context file, repo-relative: the epic-split and
         whole-graph gates all record their Q&A here."""
-        return paths.author_context(self.epics_dir)
+        return paths.author_context(self.ctx.repo_root, self.ctx.epics_dir)
 
     def _activity(self, message: str, node: Callable[..., Any]) -> None:
         """The YAML's `activity:` line: what is being authored, plus queue progress.
@@ -331,7 +338,7 @@ class Author(Workflow):
             # high: the split decides the shape of every epic and story below it.
             power="high",
             cwd=self.ctx.repo_root,
-            args={"backlog": self.backlog, "epics_dir": self.epics_dir},
+            args={"backlog": self.ctx.backlog_path, "epics_dir": self.ctx.epics_dir},
         )
         return Continue(result, self.review_epics, resolves=resolves)
 
@@ -346,7 +353,7 @@ class Author(Workflow):
             returns=EpicReview,
             power="high",
             cwd=self.ctx.repo_root,
-            args={"backlog": self.backlog, "epics_dir": self.epics_dir},
+            args={"backlog": self.ctx.backlog_path, "epics_dir": self.ctx.epics_dir},
         )
         if result.status == "approved":
             return Continue(result, self.next_epic)
@@ -369,8 +376,8 @@ class Author(Workflow):
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "backlog": self.backlog,
-                "epics_dir": self.epics_dir,
+                "backlog": self.ctx.backlog_path,
+                "epics_dir": self.ctx.epics_dir,
                 "review_notes": notes,
             },
         )
@@ -383,7 +390,7 @@ class Author(Workflow):
         unconditionally. Re-entering `split_epics` *is* the re-verification: the split
         and the review both re-read the context file the resolver just answered.
         """
-        result = self._resolve("epic-split", notes, self._author_context(), self.epics_dir)
+        result = self._resolve("epic-split", notes, self._author_context(), self.ctx.epics_dir)
         if result.decision == "answered":
             return Continue(result, self.split_epics, resolves=resolves + 1)
         return Await(self._abs(self._author_context()), notes, self.split_epics, resolves=resolves + 1)
@@ -416,7 +423,7 @@ class Author(Workflow):
             args={
                 "epic": epic,
                 "epic_dir": self._epic_dir(epic),
-                "backlog": self.backlog,
+                "backlog": self.ctx.backlog_path,
                 "features_dir": self.ctx.features_dir,
             },
         )
@@ -896,7 +903,7 @@ class Author(Workflow):
             returns=CoverageReview,
             power="high",
             cwd=self.ctx.repo_root,
-            args={"epic": epic, "epic_dir": epic_dir, "backlog": self.backlog},
+            args={"epic": epic, "epic_dir": epic_dir, "backlog": self.ctx.backlog_path},
         )
         if review.status == "ok":
             pruned = self.call(prune_backlog, self.backlog, epic_dir)
@@ -984,7 +991,7 @@ class Author(Workflow):
         resolver's say-so, and `escalated` skips that recheck because the resolver has
         told us the state is unchanged.
         """
-        result = self._resolve("reconciliation", notes, self._author_context(), self.epics_dir)
+        result = self._resolve("reconciliation", notes, self._author_context(), self.ctx.epics_dir)
         if result.decision == "escalated":
             return Await(self._abs(self._author_context()), notes, self.integrity)
         return Continue(result, self.reconcile, resolves=resolves + 1)
@@ -1022,7 +1029,7 @@ class Author(Workflow):
             cwd=self.ctx.repo_root,
             args={
                 "context_path": self._author_context(),
-                "epics_dir": self.epics_dir,
+                "epics_dir": self.ctx.epics_dir,
                 "integrity_errors": notes,
             },
         )
