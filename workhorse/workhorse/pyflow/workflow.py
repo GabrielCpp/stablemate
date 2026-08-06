@@ -303,9 +303,11 @@ class Workflow(BaseModel):
         The one surviving `dict[str, Any]`: a prompt genuinely has no signature to
         check arguments against.
 
-        `power` is the abstract tier ("low"/"medium"/"high"/"smart"/"extra-smart",
-        cheapest first) the operator's config maps
-        to a concrete model per backend; `timeout` is this turn's wall-clock budget in
+        `power` is an abstract tier name — an opaque string the operator's config maps
+        to a concrete model per backend, conventionally "low"/"medium"/"high"/"smart"/
+        "extra-smart" (cheapest first) but free to be any name a config declares;
+        an unmapped one falls through to the backend's default. `timeout` is this turn's
+        wall-clock budget in
         seconds. `cwd` is the working directory the agent CLI is launched in — which is
         what decides whose CLAUDE.md, skills and git context the turn sees — and
         `add_dirs` are further directories it may read. All four default to None =

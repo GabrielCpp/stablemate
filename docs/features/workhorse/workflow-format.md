@@ -225,19 +225,25 @@ agent actually gave.
 ### power
 - type: `str` — required: no — default: the backend's own default tier
 
-An abstract tier — `low` / `medium` / `high` / `smart` / `extra-smart`, cheapest first —
-resolved per backend through `~/.config/stablemate/config.toml` at `power.<tier>.<backend>`
-into a concrete model and reasoning effort. A workflow names the tier it needs; the
-operator's config decides what that costs. See
+An abstract tier, resolved per backend through `~/.config/stablemate/config.toml` at
+`power.<tier>.<backend>` into a concrete model and reasoning effort. A workflow names the
+tier it needs; the operator's config decides what that costs. See
 [BACKENDS.md](../../../workhorse/docs/BACKENDS.md).
 
-The ladder is five rungs rather than three because the top of it stopped being one
-decision. `high` is *the good model for real work*; `smart` is *frontier reasoning, for the
-few turns whose judgment the whole run rests on*; `extra-smart` is *the premium model, and
-you are choosing to spend that*. A turn that needs the first must not be silently billed
-for the third, which is what happens when three intents share one rung. A backend with no
-table for the named tier falls through to `[default.<backend>]`, so naming a tier the
-operator hasn't mapped degrades to that backend's default instead of failing the run.
+**The tier is an opaque string, not an enum.** The names are the operator's vocabulary:
+whatever `[power.<tier>.<backend>]` tables a config declares are the tiers that exist, and
+a workflow with a rung of its own (`verdict`, `cheap-bulk`) writes it here and has its
+operator map it. Nothing in the engine validates the name — a tier no table matches falls
+through to `[default.<backend>]`, so an unmapped or misspelled tier degrades to that
+backend's default rather than failing the run.
+
+The tiers the shipped workflows use, cheapest first, are `low` / `medium` / `high` /
+`smart` / `extra-smart` — a convention worth following so one config serves every workflow.
+The top of that ladder is three rungs rather than one because it is three decisions:
+`high` is *the good model for real work*, `smart` is *frontier reasoning, for the few turns
+whose judgment the whole run rests on*, `extra-smart` is *the premium model, and you are
+choosing to spend that*. A turn that needs the first should not be silently billed for the
+third.
 
 ### timeout
 - type: `float` (seconds) — required: no — default: `3600` (one hour)

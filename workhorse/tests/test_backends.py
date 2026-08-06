@@ -23,7 +23,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from _fakes import FakeClock
-from pydantic import ValidationError
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner import failure, ladder, process
@@ -613,27 +612,21 @@ def test_agentnode_power_is_optional():
     assert node2.power == "high"
 
 
-def test_agentnode_accepts_every_tier_and_rejects_invented_ones():
-    """The ladder is five rungs, and a typo is not a sixth.
+def test_agentnode_power_is_an_opaque_tier_name():
+    """`power` is the operator's vocabulary, so the engine must not police the name.
 
-    `power` resolves through a plain dict lookup in the config, so an unmapped tier
-    degrades silently to the backend default — which means a misspelling would run the
-    whole workflow at the wrong tier and never say so. The model is where that is caught.
+    The shipped workflows use low/medium/high/smart/extra-smart, but the tier is only
+    ever a key into the operator's own `[power.<level>.<backend>]` tables — a workflow is
+    free to name a rung this repo never imagined and have its operator map it. An enum
+    here would make that a validation error instead of a config entry.
     """
     def node(power: str) -> dict[str, str]:
-        # `model_validate` on a dict, not the typed constructor: ty already rejects a
-        # bad literal at the call site, so a constructor call could not express the
-        # invalid case. The dict is also the real shape — a spec loaded from a file.
+        # A dict through `model_validate`: this is the shape a spec really arrives in,
+        # and it is the path an operator-invented tier travels.
         return {"type": "agent", "id": "n", "prompt": "p", "power": power, "next": "done"}
 
-    for tier in ("low", "medium", "high", "smart", "extra-smart"):
+    for tier in ("low", "medium", "high", "smart", "extra-smart", "verdict", "cheap-bulk"):
         assert AgentNode.model_validate(node(tier)).power == tier
-    for typo in ("extra_smart", "extrasmart", "highest", "smartest"):
-        try:
-            AgentNode.model_validate(node(typo))
-        except ValidationError:
-            continue
-        raise AssertionError(f"{typo!r} must not validate as a power tier")
 
 
 # ── OpenCode backend (opencode run --format json) ───────────────────────────────

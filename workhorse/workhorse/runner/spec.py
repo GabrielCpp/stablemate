@@ -27,18 +27,23 @@ class AgentNode(BaseModel):
     prompt: str
     args: dict[str, str] = Field(default_factory=dict)
     outputs: list[OutputSpec] = Field(default_factory=list)
-    # Abstract capacity tier for this node, ordered cheapest → most capable. The active
-    # backend maps this through the shared stablemate config (`power.<level>.<backend>`)
-    # to concrete model/effort. Missing config deliberately leaves model/effort unset so
-    # the backend's default behavior applies. See workhorse/config.py and runner/ladder.py.
+    # Abstract capacity tier for this node. Deliberately an **opaque string**, not a
+    # closed enum: the tier names are the operator's vocabulary, defined by whatever
+    # `[power.<level>.<backend>]` tables their config declares. A workflow that wants a
+    # rung this repo never thought of ("cheap-bulk", "verdict") writes it here and the
+    # operator maps it; nothing in the engine needs to learn the name.
     #
-    # `smart` and `extra-smart` sit above `high` because "the strongest model available"
-    # stopped being one rung: a tier that means *frontier reasoning* and a tier that
-    # means *the premium model, spend accordingly* are different decisions, and a node
-    # that wants the first should not silently get billed for the second. A backend with
-    # no table for a tier falls through to `[default.<backend>]`, so declaring a tier no
-    # backend maps degrades to that backend's default rather than failing the run.
-    power: Literal["low", "medium", "high", "smart", "extra-smart"] | None = None
+    # The names the shipped workflows use, cheapest → most capable, are `low` / `medium`
+    # / `high` / `smart` / `extra-smart` — a convention, not a constraint. `smart` and
+    # `extra-smart` sit above `high` because "the strongest model available" stopped
+    # being one rung: *frontier reasoning* and *the premium model, spend accordingly*
+    # are different decisions, and a node wanting the first should not silently get
+    # billed for the second.
+    #
+    # A tier no backend table maps falls through to `[default.<backend>]`, so an unknown
+    # (or misspelled) tier degrades to that backend's default rather than failing the
+    # run. See workhorse/config.py and runner/ladder.py.
+    power: str | None = None
     # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 3600s
     # (1 hour) — research/implementation nodes routinely run a benchmark that
     # exceeds the old 600s ceiling. Set explicitly per node to widen or tighten it

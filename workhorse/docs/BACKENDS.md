@@ -58,16 +58,25 @@ For running OpenRouter models (e.g. MiMo) on `cline` / `opencode`, see
 
 ### Node power selection
 
-An agent turn's optional `power=` argument is one of `low`, `medium`, `high`, `smart` or
-`extra-smart` — cheapest first. It is not a model name; it is resolved through the shared
-config file for the active backend (see [Config file location](#config-file-location)
-below):
+An agent turn's optional `power=` argument is not a model name — it is an abstract tier
+resolved through the shared config file for the active backend (see [Config file
+location](#config-file-location) below):
 
 ```python
 verdict = self.agent("prompts/lead-review.md", returns=Verdict, power="high")
 ```
 
-The two tiers above `high` exist because "the strongest thing available" is not one
+**The tier name is an opaque string.** Workhorse validates nothing about it: the tiers
+that exist are whatever `[power.<tier>.<backend>]` tables the operator's config declares,
+so a workflow with a rung of its own — `verdict`, `cheap-bulk`, whatever fits its shape —
+just names it and has the operator map it. A tier no table matches falls through to
+`[default.<backend>]`, so an unmapped or misspelled tier quietly runs at the backend
+default rather than failing the run. That is the trade for the openness, and it is worth
+knowing when a workflow seems to be ignoring its tiering.
+
+The convention the shipped workflows follow, cheapest first, is `low` / `medium` / `high`
+/ `smart` / `extra-smart`, and following it means one config serves every workflow. The
+top of that ladder is three rungs because "the strongest thing available" is not one
 decision. `high` is the good model for real work — the tier most turns in a working
 workflow want. `smart` is frontier reasoning, for the handful of turns whose judgment the
 whole run rests on. `extra-smart` is the premium model, chosen knowing what it costs.
