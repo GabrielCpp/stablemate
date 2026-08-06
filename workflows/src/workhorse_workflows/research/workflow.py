@@ -219,7 +219,7 @@ class Research(Workflow):
             # A *forced* one is not: on `GOAL_BANKED` this turn writes the program's
             # product, the standalone claim a reader outside the program acts on. That
             # is the most consequential prose the loop ever emits, and it happens once.
-            power="high" if forced else "low",
+            power="smart" if forced else "low",
             args=args,
         )
 
@@ -541,8 +541,12 @@ class Research(Workflow):
         review = self.agent(
             "prompts/lead-goal-review.md",
             returns=GoalReview,
-            # opus: decides whether the program is done, dead, or must grow.
-            power="high",
+            # The one turn the whole program's ending rests on: it decides whether the
+            # program is done, dead, shippable, or must grow. It fires at most a handful
+            # of times per program, so `smart` costs almost nothing here and a cheaper
+            # judge costs the program its verdict — the failure this loop was rebuilt to
+            # prevent is exactly a lead that defaults to "not yet, extend".
+            power="smart",
             args=self._program_args(
                 code_root=self.ctx.code_root,
                 goal=self.ctx.goal,
