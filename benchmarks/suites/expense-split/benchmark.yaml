@@ -55,9 +55,16 @@ power:
 # The budget below buys a complete five-story run so the loop failures the bullet count
 # exists to expose can actually be reached; whether the benchmark should instead shrink to
 # fit the hour is a separate call, and deliberately not made here.
+#
+# Every figure above is a claude-sonnet reading, and `genesis`/`author` are now raised off
+# them to a flat hour. The first non-claude set to run this spec spent 342s in genesis and
+# died in author, and a ceiling only one backend fits under turns every other set's score
+# into a reading of the ceiling rather than of the model. `coder` keeps 11000 because it is
+# not a safety margin — it is the measured cost of five stories, and 3600 would buy under
+# two.
 budget:
-  genesis: 600
-  author: 1500
+  genesis: 3600
+  author: 3600
   coder: 11000
 
 # Says out loud what the paragraph above works out: this task does not claim the hour. The

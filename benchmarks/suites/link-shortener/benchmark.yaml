@@ -28,10 +28,17 @@ power:
 # Per-phase wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S). Checked between
 # states, so an over-budget run halts on a node boundary with its checkpoint intact —
 # score it, then resume it with `--resume-latest` if you want the rest.
+#
+# One hour per phase, flat. The earlier 600/600/1200 was measured against claude sonnet
+# and is a claude-sonnet figure, not a property of the task: the first non-claude set to
+# run this spec spent 657s inside a single `decompose-epics` turn and met the 600s author
+# ceiling before the stage finished. A ceiling that only one backend can live under makes
+# every other set's score a reading of the ceiling, so it is raised to a figure no
+# reasonable backend hits — a runaway still stops, a slow model still finishes.
 budget:
-  genesis: 600
-  author: 600
-  coder: 1200
+  genesis: 3600
+  author: 3600
+  coder: 3600
 
 # The stack's own gates, run from the target root. Not `make lint` / `make test` like
 # todo-app: nothing scaffolds a Makefile, so those would report a missing target as a red
