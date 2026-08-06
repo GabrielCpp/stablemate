@@ -276,11 +276,14 @@ class Research(Workflow):
             "prompts/implement-experiment.md",
             returns=ImplResult,
             timeout=MEASUREMENT_TIMEOUT,
-            # Explicit rather than falling through to the backend default: this turn is
-            # long and tool-bound (write the experiment, then wait on hours of CPU), so
-            # the model is not the bottleneck — but the tier it runs at should be a
-            # decision recorded here, not whatever `[default.<backend>]` happens to say.
-            power="medium",
+            # The turn is long and tool-bound, which argues for a cheap tier — but what
+            # it writes is the experiment, and validity is decided here: an oracle in
+            # the eval path, a control that isn't matched, a metric computed over the
+            # wrong split. That error is not cheap to hold: it burns the hours of CPU
+            # that follow, a rework cycle, and — if the check misses it — banks a
+            # result that is false. The model premium is a rounding error against the
+            # turn's own cost, so this runs at the working tier, not below it.
+            power="high",
             args=self._program_args(
                 code_root=self.ctx.code_root,
                 gate_id=gate_id,
@@ -310,10 +313,13 @@ class Research(Workflow):
             # The reviewer re-runs the measurement over the FULL seed set — the most
             # expensive turn in the loop — so it gets the full implement budget.
             timeout=MEASUREMENT_TIMEOUT,
-            # And the top tier: this is the adversarial judge. Every PASS the program
-            # ever banks passed through here, so it must not be the weakest reasoner in
-            # the loop — a lenient check is indistinguishable from a real result.
-            power="high",
+            # And a tier above the work it judges: this is the adversarial reviewer, and
+            # every PASS the program ever banks came through it. A lenient check is
+            # indistinguishable from a real result — nothing downstream can recover the
+            # difference, and `goal_review` reasoning over a ladder of leniently-approved
+            # gates is worth exactly as much as the checks were. It fires once or twice
+            # per gate, so the tier costs little against what it protects.
+            power="smart",
             # Deliberately not `_program_args`: the reviewer is not shown the progress
             # file. It judges against the gate doc's criteria and its own re-run, and
             # what the implementer claimed is exactly what it must not be anchored on.
@@ -367,7 +373,7 @@ class Research(Workflow):
             "prompts/rework-experiment.md",
             returns=ImplResult,
             timeout=MEASUREMENT_TIMEOUT,
-            power="medium",  # same shape as `implement` — scoped edit, then a long run
+            power="high",  # same code and the same validity risk as `implement`
             # Also not `_program_args` — the rework turn is scoped to the criteria that
             # failed, not to the program's paperwork.
             args={
@@ -436,9 +442,11 @@ class Research(Workflow):
         review = self.agent(
             "prompts/research-lead-review.md",
             returns=LeadReview,
-            # opus: the program's direction turns on this call, so it is worth the
-            # stronger reasoning (mirrors epic-coder's opus review_plan gate).
-            power="high",
+            # The program's direction turns on this call — revive, redirect, or die —
+            # and it fires at most `MAX_LEAD_REVIEWS` times per program. Same class of
+            # decision as `goal_review`, so the same tier: a program-level verdict is
+            # not something to buy at the working rate.
+            power="smart",
             args=self._program_args(
                 goal=self.ctx.goal,
                 gate_id=gate_id,
