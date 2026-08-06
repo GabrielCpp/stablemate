@@ -10,7 +10,7 @@ import shutil
 import signal
 import subprocess
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +18,7 @@ from workhorse import otel
 from workhorse.config_run import AgentResilience
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.redact import SecretRedactor
 
 
 def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
@@ -243,6 +244,7 @@ class ProcessSupervisor:
         stdin_data: str | None = None,
         cwd: str | None = None,
         env_extra: dict[str, str] | None = None,
+        secrets: Iterable[str] | None = None,
     ) -> tuple[bool, int]:
         """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to
         ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an
@@ -264,7 +266,20 @@ class ProcessSupervisor:
         ``[harness.<backend>].env`` table, resolved by the backend that knows its own
         name. It is applied last, so a harness knob configured for a run wins over the
         same variable inherited from the launching shell.
+
+        Every line is passed through a ``SecretRedactor`` before ``on_line`` ever sees
+        it, so a leaked key never reaches the transcript, the checkpoint, or telemetry —
+        this is the one choke point every backend streams through, and the realistic
+        leak is a CLI echoing a key in an error body, not a clever agent. ``secrets`` are
+        the caller's known values to redact verbatim, on top of the built-in prefix
+        heuristics that run unconditionally; workhorse itself never decides what counts
+        as a secret, the same way it never assembles ``env_extra``.
         """
+        redactor = SecretRedactor(secrets or ())
+
+        def redacted_on_line(raw: str) -> object:
+            return on_line(redactor.redact(raw))
+
         env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
         proc = self.spawn(
             cmd,
@@ -326,7 +341,7 @@ class ProcessSupervisor:
                 if not raw:  # EOF
                     break
                 last_line_at = self.clock.monotonic()
-                if on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
+                if redacted_on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
                     timed_out = True
                     break
             # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
@@ -384,6 +399,7 @@ def stream_subprocess(
     stdin_data: str | None = None,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
+    secrets: Iterable[str] | None = None,
 ) -> tuple[bool, int]:
     """Stream a turn on the installed supervisor — see :meth:`ProcessSupervisor.stream`.
 
@@ -401,6 +417,7 @@ def stream_subprocess(
         stdin_data=stdin_data,
         cwd=cwd,
         env_extra=env_extra,
+        secrets=secrets,
     )
 
 
