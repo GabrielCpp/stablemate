@@ -122,6 +122,19 @@ sets:
       medium: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
       low: {opencode: {model: openrouter/deepseek/deepseek-v4-flash}}
 
+  # Hosted, one frontier-vendor model throughout. Priced within a rounding error of the
+  # cost floor on input and ~3.4x it on output, with the same 1M-token context — so a
+  # score above `hosted-cheap` here is bought for very little, and a score at parity says
+  # the floor was already enough. Native `reasoning_effort`, so `high` is a real tier
+  # rather than the same call under a different name.
+  - label: hosted-luna
+    cli: opencode
+    notes: GPT-5.6 Luna throughout — frontier vendor at near-floor prices
+    power:
+      high: {opencode: {model: openrouter/openai/gpt-5.6-luna, effort: high}}
+      medium: {opencode: {model: openrouter/openai/gpt-5.6-luna}}
+      low: {opencode: {model: openrouter/openai/gpt-5.6-luna, effort: low}}
+
   # Hosted, strong at the top only. Isolates the same question as `local-cheap-high`
   # from the other side: buy quality at `high` and nowhere else.
   - label: hosted-split
