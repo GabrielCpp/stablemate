@@ -21,6 +21,7 @@ from workhorse_workflows.research.nodes import (
     clone_repo,
     load_program,
     publish_results,
+    record_spend,
 )
 from workhorse_workflows.research.schemas import (
     Budget,
@@ -41,9 +42,18 @@ from workhorse_workflows.research.schemas import (
 #: literals inside the guard branches with a comment asking the next editor to keep the
 #: two copies in sync; here the guards read these names, so there is one copy.
 MAX_REWORKS = 3
+#: Program-scoped, like `MAX_EXTENSIONS` — the guard adds `Budget`'s count to what the
+#: ledger says prior runs already spent.
 MAX_LEAD_REVIEWS = 4
-#: Bounds program self-extension. The lead's `reached`/`impossible` verdict is the
-#: intended stop and this is only the runaway backstop, so it stays generous.
+#: Bounds program self-extension. The lead's `reached`/`banked`/`impossible` verdict is
+#: the intended stop and this is only the runaway backstop, so it stays generous.
+#:
+#: It is only a backstop if it binds the **program**, though, and `Budget` counts one
+#: run. A relaunch — a shell loop, a resumed container, an operator running the same
+#: command tomorrow — used to start every counter over, so this cap could be spent an
+#: unbounded number of times and a program could extend itself forever. The spend is
+#: therefore persisted to the program's ledger (`nodes/program.py`) and read back into
+#: `Program.extensions_spent`, and the guards below compare against the sum.
 MAX_EXTENSIONS = 6
 
 #: Wall-clock for the three nodes that run the program's measurement — a multi-map,
@@ -59,6 +69,17 @@ HALTED_LEAD_REVIEW_BUDGET = "HALTED_LEAD_REVIEW_BUDGET"
 HALTED_EXTENSION_BUDGET = "HALTED_EXTENSION_BUDGET"
 GOAL_REACHED = "GOAL_REACHED"
 GOAL_IMPOSSIBLE = "GOAL_IMPOSSIBLE"
+#: A shippable partial result, recorded as one. See `goal_review`.
+GOAL_BANKED = "GOAL_BANKED"
+
+#: What each clean goal terminal writes into the ledger's `status`. Any of the three
+#: stops the *next* run at `load_program` until somebody reauthorizes it, which is what
+#: makes ending clean mean something rather than being where the shell loop restarts.
+GOAL_STATUS = {
+    GOAL_REACHED: "reached",
+    GOAL_IMPOSSIBLE: "impossible",
+    GOAL_BANKED: "banked",
+}
 
 #: The gate id the goal terminals record under — the verdict is about the program, not
 #: about any one gate.
@@ -73,7 +94,8 @@ class Research(Workflow):
     record the outcome, and — on a kill — hand off to a research lead that either
     revives the gate or defines a new direction. When the ladder is exhausted the loop
     does **not** terminate: a lead judges the program against its own North star and
-    either declares it reached, declares it impossible, or extends it with a new gate.
+    either declares it reached, banks the strongest result, declares it impossible, or
+    extends it with a new gate.
     """
 
     #: Which program to run, as a repo-relative dir. Empty → `load_program` selects it
@@ -91,6 +113,12 @@ class Research(Workflow):
     #: means the driver's own working directory.
     launch_dir: str = ""
 
+    #: Continue a program a prior run already concluded (banked, reached or declared
+    #: impossible). Off by default, and deliberately not something the loop can set
+    #: for itself: a banked result is only worth banking if somebody has to look at it
+    #: before the program keeps running.
+    reauthorize: bool = False
+
     def setup(self) -> Program:
         """Get a checkout, then read the program manifest out of it.
 
@@ -104,7 +132,13 @@ class Research(Workflow):
             repo_url=self.repo_url,
             repo_branch=self.repo_branch,
         )
-        return self.call(load_program, self.program, repo.repo_dir, self.launch_dir)
+        return self.call(
+            load_program,
+            self.program,
+            repo.repo_dir,
+            self.launch_dir,
+            reauthorize=self.reauthorize,
+        )
 
     def labels(self) -> dict[str, str]:
         """What the run is working on — telemetry the engine cannot know."""
@@ -140,6 +174,30 @@ class Research(Workflow):
             self.ctx.repo_dir,
             self.ctx.result_branch,
             self.ctx.program_dir,
+        )
+
+    def _spent(self, budget: Budget) -> tuple[int, int]:
+        """`(extensions, lead_reviews)` this **program** has spent, not this run.
+
+        The ledger's count plus the run's. Both guards read it, and so does the goal
+        prompt — a lead deciding whether to extend has to see how many extensions the
+        program is already carrying, or it is judging with the number hidden.
+        """
+        return (
+            self.ctx.extensions_spent + budget.extensions,
+            self.ctx.lead_reviews_spent + budget.lead_reviews,
+        )
+
+    def _persist(self, budget: Budget, *, status: str = "active") -> None:
+        """Write the program's spend to its ledger, before the publish that commits it."""
+        extensions, lead_reviews = self._spent(budget)
+        self.call(
+            record_spend,
+            repo_dir=self.ctx.repo_dir,
+            program_dir=self.ctx.program_dir,
+            extensions=extensions,
+            lead_reviews=lead_reviews,
+            status=status,
         )
 
     def _record(self, gate_id: str, *, forced: str = "") -> RecordResult:
@@ -376,7 +434,7 @@ class Research(Workflow):
                 notes=notes,
             ),
         )
-        if budget.lead_reviews >= MAX_LEAD_REVIEWS:
+        if self._spent(budget)[1] >= MAX_LEAD_REVIEWS:
             return Continue(
                 review, self.halt, outcome=HALTED_LEAD_REVIEW_BUDGET, gate_id=gate_id
             )
@@ -420,8 +478,10 @@ class Research(Workflow):
                 gate_id=gate_id, gate_doc_path=gate_doc_path, lead_review=review
             ),
         )
+        spent = budget.reviewed()
+        self._persist(spent)
         self._publish()
-        return Continue(result, self.start, budget=budget.reviewed())
+        return Continue(result, self.start, budget=spent)
 
     def new_direction(
         self,
@@ -443,8 +503,10 @@ class Research(Workflow):
                 lead_review=review,
             ),
         )
+        spent = budget.reviewed()
+        self._persist(spent)
         self._publish()
-        return Continue(result, self.start, budget=budget.reviewed())
+        return Continue(result, self.start, budget=spent)
 
     # --- self-extension -----------------------------------------------------
 
@@ -452,20 +514,41 @@ class Research(Workflow):
         """Every reachable gate passed — so judge the program against its North star.
 
         `lead_goal_review` + `guard_extend` + `route_goal_verdict`.
+
+        Four verdicts, not three. With only `reached`/`impossible`/`extend`, a program
+        whose North star is genuinely ambitious has exactly one verdict available for
+        years: neither the end-state capability nor a proved dead-end, so `extend` —
+        again, and again. Every real result it produces along the way is reclassified
+        as insufficient the moment it lands, because the only thing the loop can say
+        about a partial result is "not the goal yet". `bank` is the missing verdict:
+        the result is worth shipping *now*, the program stops clean, and continuing it
+        costs a human decision (`reauthorize`) rather than another lap.
         """
+        extensions_spent, _ = self._spent(budget)
         review = self.agent(
             "prompts/lead-goal-review.md",
             returns=GoalReview,
             # opus: decides whether the program is done, dead, or must grow.
             power="high",
-            args=self._program_args(code_root=self.ctx.code_root, goal=self.ctx.goal),
+            args=self._program_args(
+                code_root=self.ctx.code_root,
+                goal=self.ctx.goal,
+                # The lead sees its own spend. Judging "is another gate worth it?"
+                # without knowing this is the fifth extension is judging blind.
+                extensions_spent=extensions_spent,
+                extensions_max=MAX_EXTENSIONS,
+            ),
         )
-        if budget.extensions >= MAX_EXTENSIONS:
+        if extensions_spent >= MAX_EXTENSIONS:
             return Continue(review, self.halt, outcome=HALTED_EXTENSION_BUDGET)
         if review.verdict == "reached":
-            return Continue(review, self.record_goal, outcome=GOAL_REACHED)
+            return Continue(review, self.record_goal, outcome=GOAL_REACHED, budget=budget)
+        if review.verdict == "banked":
+            return Continue(review, self.record_goal, outcome=GOAL_BANKED, budget=budget)
         if review.verdict == "impossible":
-            return Continue(review, self.record_goal, outcome=GOAL_IMPOSSIBLE)
+            return Continue(
+                review, self.record_goal, outcome=GOAL_IMPOSSIBLE, budget=budget
+            )
         if review.verdict == "extend":
             return Continue(
                 review,
@@ -487,19 +570,24 @@ class Research(Workflow):
                 code_root=self.ctx.code_root, goal=self.ctx.goal, goal_review=review
             ),
         )
+        spent = budget.extended()
+        self._persist(spent)
         self._publish()
-        return Continue(result, self.start, budget=budget.extended())
+        return Continue(result, self.start, budget=spent)
 
     # --- terminals ----------------------------------------------------------
 
-    def record_goal(self, outcome: str) -> Done:
-        """Record a goal verdict, publish, and end clean.
+    def record_goal(self, outcome: str, budget: Budget = Budget()) -> Done:
+        """Record a goal verdict, conclude the program in its ledger, publish, end clean.
 
-        `record_reached` / `record_impossible`. `impossible` is a valid scientific
-        conclusion — a recorded negative — not an apparatus failure, so it terminates
-        the same way `reached` does.
+        `record_reached` / `record_impossible`, plus `banked`. `impossible` is a valid
+        scientific conclusion — a recorded negative — not an apparatus failure, so it
+        terminates the same way `reached` does; `banked` is a positive one that is
+        simply smaller than the North star, and terminates the same way for the same
+        reason.
         """
         result = self._record(GOAL, forced=outcome)
+        self._persist(budget, status=GOAL_STATUS.get(outcome, "active"))
         self._publish()
         return Done(result)
 

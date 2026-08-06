@@ -4,7 +4,8 @@ Importing this package registers every node on the shared `blueprint`, which is 
 name `workflow.py` needs from here. The submodules are the subjects, one each:
 
 * `setup` — get a working tree (`clone_repo`)
-* `program` — which program, and what its manifest says (`load_program`)
+* `program` — which program, what its manifest says, and what its budget ledger has
+  already spent (`load_program`, `record_spend`)
 * `publish` — get the gate's work off this machine (`publish_results`)
 
 Ported from `base-library/workflows/research/scripts/{setup,load_config,publish}.py`.
@@ -27,8 +28,8 @@ land in the checkpoint. See the rule in `workflows/README.md`.
 from __future__ import annotations
 
 from workhorse_workflows.research.nodes._blueprint import blueprint
-from workhorse_workflows.research.nodes.program import load_program
+from workhorse_workflows.research.nodes.program import load_program, record_spend
 from workhorse_workflows.research.nodes.publish import publish_results
 from workhorse_workflows.research.nodes.setup import clone_repo
 
-__all__ = ["blueprint", "clone_repo", "load_program", "publish_results"]
+__all__ = ["blueprint", "clone_repo", "load_program", "publish_results", "record_spend"]

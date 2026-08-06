@@ -12,10 +12,28 @@ from pathlib import Path
 
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.research.nodes._blueprint import blueprint
-from workhorse_workflows.research.schemas import Program
+from workhorse_workflows.research.schemas import Ledger, Program
 
 #: Keys `program.yml` must carry for the gate loop to have anything to run.
 REQUIRED = ["code_root"]
+
+#: The program-scoped counter file, beside `program.yml` and committed with it.
+#: Separate from the manifest because the manifest is written by a human and this is
+#: written by the loop — an operator resetting a program deletes this, not that.
+LEDGER_NAME = "ledger.yml"
+
+#: Statuses that mean a prior run *concluded* the program. Continuing past one is a
+#: decision a person makes, not something a relaunch should do silently.
+CONCLUDED = ("banked", "reached", "impossible")
+
+LEDGER_HEADER = """\
+# Written by the research loop; read at the top of every run.
+#
+# These counters are program-scoped, not run-scoped: they are what makes
+# MAX_EXTENSIONS / MAX_LEAD_REVIEWS bound the *program* rather than one invocation of
+# it. Delete this file to reset the program's budget; set `status: active` to
+# re-authorize a concluded one (or pass --params '{"reauthorize": true}' once).
+"""
 
 
 def parse_flat_yaml(text: str, source: str) -> dict[str, str]:
@@ -118,9 +136,73 @@ def read_pointer(repo_root: Path) -> str:
     return ""
 
 
+def ledger_path(repo_root: Path, program_dir: str) -> Path:
+    return repo_root / program_dir / LEDGER_NAME
+
+
+def read_ledger(path: Path) -> Ledger:
+    """The program's spent counters, or a zeroed ledger when it has none yet.
+
+    Tolerant on the way in: a hand-edited count that is not an integer reads as 0
+    rather than failing the run, because a malformed counter must not be the thing
+    that stops a program from being worked on.
+    """
+    if not path.is_file():
+        return Ledger(path=str(path))
+    cfg = parse_flat_yaml(path.read_text(), str(path))
+
+    def count(key: str) -> int:
+        try:
+            return max(0, int(cfg.get(key, "0")))
+        except ValueError:
+            return 0
+
+    return Ledger(
+        path=str(path),
+        extensions=count("extensions"),
+        lead_reviews=count("lead_reviews"),
+        status=cfg.get("status") or "active",
+    )
+
+
+@blueprint.node
+def record_spend(
+    logger: logging.Logger,
+    repo_dir: str,
+    program_dir: str,
+    extensions: int = 0,
+    lead_reviews: int = 0,
+    status: str = "active",
+) -> Ledger:
+    """Write the program's spend back to its ledger, for the next run to read.
+
+    Called on every arm that spends one — the two lead-review arms and the extension
+    arm — and just before `publish_results`, so the counter travels with the work it
+    accounts for rather than living only in this run's checkpoint.
+    """
+    path = ledger_path(Path(repo_dir), program_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"{LEDGER_HEADER}status: {status}\n"
+        f"extensions: {extensions}\n"
+        f"lead_reviews: {lead_reviews}\n"
+    )
+    logger.info(
+        "ledger %s: status=%s extensions=%d lead_reviews=%d",
+        path, status, extensions, lead_reviews,
+    )
+    return Ledger(
+        path=str(path), extensions=extensions, lead_reviews=lead_reviews, status=status
+    )
+
+
 @blueprint.node
 def load_program(
-    logger: logging.Logger, program: str, repo_dir: str, launch_dir_path: str = ""
+    logger: logging.Logger,
+    program: str,
+    repo_dir: str,
+    launch_dir_path: str = "",
+    reauthorize: bool = False,
 ) -> Program:
     """Select a research program and read its manifest into the run's config.
 
@@ -136,6 +218,10 @@ def load_program(
     Rung 1 lost its `$RESEARCH_PROGRAM` alternative: `program` is already a workflow
     parameter, so the environment spelling was a second way to say the same thing that no
     checkpoint recorded.
+
+    This is also where the program's ledger is read, and where a *concluded* program
+    stops: `reauthorize` is the human in the loop that a banked result is worth
+    nothing without.
     """
     program_dir = program.strip().strip("/")
     repo_root = resolve_repo_root(repo_dir.strip(), launch_dir_path)
@@ -188,6 +274,23 @@ def load_program(
             cfg["code_root"], repo_root,
         )
 
+    ledger = read_ledger(ledger_path(repo_root, program_dir))
+    if ledger.status in CONCLUDED and not reauthorize:
+        raise WorkflowFailed(
+            f"program {program_dir} is {ledger.status} — a prior run concluded it and "
+            f"recorded that in {program_dir}/{LEDGER_NAME}. Read the result first. To "
+            "continue it anyway, relaunch with --params '{\"reauthorize\": true}', or "
+            f"set `status: active` in {program_dir}/{LEDGER_NAME}."
+        )
+    if ledger.status in CONCLUDED:
+        logger.warning(
+            "continuing %s past its %r verdict — reauthorized.", program_dir, ledger.status
+        )
+    logger.info(
+        "program budget already spent: extensions=%d lead_reviews=%d",
+        ledger.extensions, ledger.lead_reviews,
+    )
+
     return Program(
         repo_dir=str(repo_root),
         program=program_dir,
@@ -197,8 +300,14 @@ def load_program(
         result_branch=cfg.get("result_branch") or f"{slug(program_dir)}/auto",
         # Empty → the leads read the README's "North star" section instead.
         goal=cfg.get("goal", ""),
+        extensions_spent=ledger.extensions,
+        lead_reviews_spent=ledger.lead_reviews,
+        # Reauthorizing does not un-conclude the program on disk; the loop writes the
+        # status back itself on the arm that spends. Carrying `active` here keeps the
+        # in-run reading of `self.ctx.status` about *this* run.
+        status="active" if reauthorize else ledger.status,
     )
 
 
 
-__all__ = ["load_program"]
+__all__ = ["load_program", "read_ledger", "record_spend"]

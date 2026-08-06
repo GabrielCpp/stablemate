@@ -131,36 +131,48 @@ def _env(root: Path, repo: Path, agent: _Agent) -> RunEnv:
     )
 
 
-def _drive(script: dict[str, list[dict[str, Any]]]) -> tuple[Any, WorkflowFailed | None, _Agent]:
+def _drive(
+    script: dict[str, list[dict[str, Any]]],
+    ledger: str = "",
+    **inputs: Any,
+) -> tuple[Any, WorkflowFailed | None, _Agent]:
     """Drive `Research` against a real repo until it terminates, either way.
 
     A fail terminal is a `raise`, so the agent transcript has to survive it — the
-    budget tests below assert on how many turns ran *before* the halt.
+    budget tests below assert on how many turns ran *before* the halt. `ledger` seeds
+    the program's spend file, which is how a *prior run's* budget gets into a test
+    without running one.
     """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         repo = _program_repo(root)
+        if ledger:
+            (repo / PROGRAM_DIR / "ledger.yml").write_text(ledger)
         agent = _Agent(script)
         result: Any = None
         error: WorkflowFailed | None = None
         try:
-            result = drive(research.Research(program=PROGRAM_DIR), _env(root, repo, agent))
+            result = drive(
+                research.Research(program=PROGRAM_DIR, **inputs), _env(root, repo, agent)
+            )
         except WorkflowFailed as exc:
             error = exc
         return result, error, agent
 
 
-def _run(script: dict[str, list[dict[str, Any]]]) -> tuple[Any, _Agent]:
+def _run(script: dict[str, list[dict[str, Any]]], **kwargs: Any) -> tuple[Any, _Agent]:
     """Drive to a clean terminal, or fail the test with the halt that happened."""
-    result, error, agent = _drive(script)
+    result, error, agent = _drive(script, **kwargs)
     if error is not None:
         raise AssertionError(f"expected a clean terminal, halted: {error}")
     return result, agent
 
 
-def _run_failing(script: dict[str, list[dict[str, Any]]]) -> tuple[WorkflowFailed, _Agent]:
+def _run_failing(
+    script: dict[str, list[dict[str, Any]]], **kwargs: Any
+) -> tuple[WorkflowFailed, _Agent]:
     """Drive to a fail terminal, or fail the test with the result it ended on."""
-    result, error, agent = _drive(script)
+    result, error, agent = _drive(script, **kwargs)
     if error is None:
         raise AssertionError(f"expected a fail terminal, ended clean: {result!r}")
     return error, agent
@@ -333,6 +345,114 @@ def test_an_impossible_verdict_ends_clean_and_a_budget_does_not():
     )
     assert isinstance(result, RecordResult), result
     assert result.outcome == research.GOAL_IMPOSSIBLE, result
+
+
+# -------------------------------------------------- banking, and the program budget
+
+
+def test_a_banked_result_ends_clean_like_the_other_two_verdicts():
+    """The fourth verdict. `reached`/`impossible`/`extend` leave a program whose North
+    star is ambitious with exactly one available answer — `extend` — so it can defer
+    success forever and conclude nothing. `banked` is the way out that is still a
+    `Done`: a shippable partial result, recorded and stopped on."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = _program_repo(root)
+        agent = _Agent(
+            {
+                "select-next-gate": [{"gate_id": "none"}],
+                "lead-goal-review": [
+                    {
+                        "verdict": "banked",
+                        "banked_result": "corrective beats no-update, 3 seeds",
+                    }
+                ],
+                "record-result": [{"status": "ok", "outcome": research.GOAL_BANKED}],
+            }
+        )
+        result = drive(research.Research(program=PROGRAM_DIR), _env(root, repo, agent))
+        ledger = (repo / PROGRAM_DIR / "ledger.yml").read_text()
+
+    assert isinstance(result, RecordResult), result
+    assert result.outcome == research.GOAL_BANKED, result
+    # And the verdict is on disk, which is what stops the next launch.
+    assert "status: banked" in ledger, ledger
+
+
+def test_the_extension_cap_counts_what_earlier_runs_spent():
+    """The cap is program-scoped, and this is the half `Budget` alone cannot give.
+
+    `Budget` counts one invocation. A program driven by a shell loop, a resumed
+    container or an operator running the same command tomorrow used to start every
+    counter at zero, so `MAX_EXTENSIONS` bounded a run and bounded the program at
+    nothing. Seeded here at the cap by a prior run's ledger, this run must halt on its
+    *first* goal review without extending once.
+    """
+    script = {
+        "select-next-gate": [{"gate_id": "none"}],
+        "lead-goal-review": [{"verdict": "extend"}],
+        "extend-program": [{"status": "ok", "new_gate_id": "G9"}],
+        "record-result": [{"status": "ok"}],
+    }
+    with patch.object(research, "MAX_EXTENSIONS", 2):
+        error, agent = _run_failing(script, ledger="status: active\nextensions: 2\n")
+
+    assert research.HALTED_EXTENSION_BUDGET in str(error), error
+    assert "extend-program" not in agent.counts(), agent.counts()
+
+
+def test_extending_writes_the_spend_where_the_next_run_reads_it():
+    """The other half: the counter has to survive the process that incremented it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = _program_repo(root)
+        agent = _Agent(
+            {
+                "select-next-gate": [{"gate_id": "none"}],
+                "lead-goal-review": [{"verdict": "extend"}],
+                "extend-program": [{"status": "ok", "new_gate_id": "G9"}],
+                "record-result": [{"status": "ok"}],
+            }
+        )
+        with patch.object(research, "MAX_EXTENSIONS", 1):
+            try:
+                drive(research.Research(program=PROGRAM_DIR), _env(root, repo, agent))
+            except WorkflowFailed:
+                pass  # the cap, on the second review; the first one extended
+
+        ledger = (repo / PROGRAM_DIR / "ledger.yml").read_text()
+
+    assert "extensions: 1" in ledger, ledger
+    assert agent.counts()["extend-program"] == 1, agent.counts()
+    # And the lead saw its own spend rather than judging blind.
+    args = agent.args[agent.calls.index("lead-goal-review")]
+    assert args["extensions_spent"] == 0, args
+    assert args["extensions_max"] == 1, args
+
+
+def test_a_concluded_program_needs_a_human_before_it_runs_again():
+    """Banking is only worth something if the next launch stops at it.
+
+    Otherwise the loop that produced the banked result simply carries on past it —
+    which is the same "nothing ever concludes" failure, one level up.
+    """
+    banked = "status: banked\nextensions: 1\n"
+    error, agent = _run_failing({}, ledger=banked)
+    assert "banked" in str(error), error
+    assert "reauthorize" in str(error), error
+    # It stopped in `setup`: no turn ran at all.
+    assert agent.calls == [], agent.calls
+
+    result, _ = _run(
+        {
+            "select-next-gate": [{"gate_id": "none"}],
+            "lead-goal-review": [{"verdict": "impossible"}],
+            "record-result": [{"status": "ok", "outcome": research.GOAL_IMPOSSIBLE}],
+        },
+        ledger=banked,
+        reauthorize=True,
+    )
+    assert isinstance(result, RecordResult), result
 
 
 # -------------------------------------------------------------- the recorded run

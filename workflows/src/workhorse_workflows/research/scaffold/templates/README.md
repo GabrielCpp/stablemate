@@ -19,6 +19,25 @@ one gate doc each.
 <2–4 sentences: the falsifiable end state. What capability, at what cost saving,
 under what controls, that would make this program a success.>
 
+### Frozen target
+
+**Fill this in before the first gate runs, and do not move it.** The goal review reads
+this table and nothing else to decide `reached`; prose alone is not checkable, and a
+North star that is only prose can be re-read as "not quite yet" indefinitely, which is
+how a program with real results still concludes nothing.
+
+| Field | Value |
+|-------|-------|
+| Metric | <the single headline number, as defined in the equivalence section below> |
+| Dataset / split | <the exact held-out set it is measured on — name + version + split> |
+| Threshold | <the comparison that counts as reached, e.g. `>= 0.62`> |
+| Deadline | <YYYY-MM-DD — after this date an unmet threshold is banked or recorded negative, not extended> |
+
+Raising the threshold or moving the deadline is **starting a new program**, not
+updating this one: record the old target's verdict first, then scaffold the successor.
+The point of freezing them is that a bar which rises whenever a result approaches it
+can never be cleared.
+
 ---
 
 ## Single source of truth: the equivalence / success definition

@@ -108,7 +108,9 @@ def main(logger: logging.Logger) -> None:
         logger.info("set default program -> %s", pointer)
 
     logger.info(
-        "done. Next: fill README ladder + %s thresholds, then\n"
+        "done. Next: fill the README's Frozen target table (metric/split/threshold/"
+        "deadline — the goal review reads it to decide `reached`), the ladder, and %s's "
+        "thresholds, then\n"
         "  workhorse-research run%s",
         gate,
         "" if args.set_default else f" --params '{{\"program\":\"{program_dir}\"}}'",

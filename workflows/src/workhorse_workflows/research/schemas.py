@@ -74,6 +74,29 @@ class Program(ResearchResult):
     #: Empty on purpose: the leads then read the README's "North star" section.
     goal: str = ""
 
+    # ── the ledger, read once here so the caps are program-scoped ────────────
+    #
+    # `Budget`'s counters are *this run's*. A program driven by six successive runs
+    # (or by a shell loop that relaunches on every exit) would spend the whole
+    # extension budget six times over, which makes `MAX_EXTENSIONS` bound nothing.
+    # These three carry what the program already spent, so the guards can add.
+
+    #: Extensions this program has already spent, over every prior run.
+    extensions_spent: int = 0
+    #: Lead reviews this program has already spent, over every prior run.
+    lead_reviews_spent: int = 0
+    #: `active`, or one of the terminal statuses a prior run banked/recorded.
+    status: str = "active"
+
+
+class Ledger(ResearchResult):
+    """What `record_spend` wrote — the program-scoped counters, on disk."""
+
+    path: str = ""
+    extensions: int = 0
+    lead_reviews: int = 0
+    status: str = "active"
+
 
 class PublishResult(ResearchResult):
     published: bool = False
@@ -190,12 +213,25 @@ class NewDirectionResult(ResearchResult):
 class GoalReview(ResearchResult):
     """`prompts/lead-goal-review.md` — the ladder is exhausted; now what?
 
-    `verdict` is `reached`, `impossible`, or `extend`.
+    `verdict` is `reached`, `banked`, `impossible`, or `extend`.
+
+    `banked` is the verdict a ladder-shaped program otherwise cannot express: the
+    North star is not reached, no path is ruled out, and yet the strongest result is
+    already worth shipping. Without it the only way to keep a program alive is
+    `extend`, so a program can defer success indefinitely and never declare anything
+    — which is the failure mode the fourth verdict exists to stop. It ends the run
+    clean and requires an operator to re-authorize before the program continues.
     """
 
     verdict: str = ""
     north_star_gap: str = ""
     evidence_or_deadends: str = ""
+    #: For `banked`: the standalone result being recorded as shippable.
+    banked_result: str = ""
+    #: For `extend`: the evidence class no gate on the passed ladder has produced.
+    #: The burden of proof `extend` carries — naming one is what distinguishes a real
+    #: next gate from another lap of the same one.
+    new_evidence_class: str = ""
     next_gate_title: str = ""
     next_gate_question: str = ""
     next_gate_cheapest_kill: str = ""
@@ -274,6 +310,7 @@ __all__ = [
     "GoalReview",
     "ImplResult",
     "LeadReview",
+    "Ledger",
     "NewDirectionResult",
     "Program",
     "PublishResult",
