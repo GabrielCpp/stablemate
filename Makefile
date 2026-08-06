@@ -60,6 +60,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C ostler test
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
+	$(MAKE) -C saddlebag test
 	$(MAKE) test-bench
 	$(MAKE) check-public
 	$(MAKE) check-no-env

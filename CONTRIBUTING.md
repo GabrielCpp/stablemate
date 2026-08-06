@@ -25,7 +25,7 @@ something sets it — and the commit that needed stopping is usually the first o
 | --- | --- |
 | `make lint` | ruff + ty over the whole workspace. Zero findings is the bar. |
 | `make test` | lint, then every package's suite, then the repo's guards. |
-| `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`). |
+| `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`, `saddlebag`). |
 
 Run `make lint` from the **repo root**, not from a package: a member that lints itself
 lints a different tree than CI does.
