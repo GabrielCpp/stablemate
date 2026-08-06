@@ -185,6 +185,9 @@ def _verify_finding(spec_dir: Path, finding: dict) -> str:
         if not (spec_dir / rel).is_file():
             return f"{fid}: cited artifact '{rel}' does not exist"
     for a in finding.get("assertions", []) or []:
+        if not isinstance(a, dict):
+            return (f"{fid}: assertion must be an object {{file, pointer, equals}}, "
+                     f"got {a!r}")
         afile = a.get("file", "")
         pointer = a.get("pointer", "")
         expected = a.get("equals")
