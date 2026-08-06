@@ -190,6 +190,49 @@ def test_group_children_are_reaped():
     assert alive is False, f"grandchild {child_pid} survived the group kill (orphan)"
 
 
+def test_the_child_pwd_matches_the_cwd_it_was_spawned_in(tmp_path):
+    """A CLI that resolves its project root from ``$PWD`` (OpenCode does) must land in
+    the node's repo, not the one workhorse was launched from.
+
+    ``Popen(cwd=…)`` alone leaves the inherited ``PWD`` behind, and the benchmark
+    harness launches every phase from the stablemate checkout — so every agent turn
+    read and wrote stablemate instead of the target repo.
+    """
+    target = tmp_path / "target-repo"
+    target.mkdir()
+    lines: list[str] = []
+    process.stream_subprocess(
+        [sys.executable, "-u", "-c", "import os; print(os.environ['PWD'])"],
+        "test_node",
+        30,
+        lines.append,
+        resilience=AgentResilience(),
+        cwd=str(target),
+    )
+    assert "".join(lines).strip() == str(target.resolve())
+
+
+def test_the_stale_oldpwd_is_dropped_when_the_child_moves(tmp_path):
+    """``cd -`` in an agent's shell must not jump to the launcher's directory: the
+    child never performed the ``cd`` that ``OLDPWD`` describes."""
+    target = tmp_path / "target-repo"
+    target.mkdir()
+    os.environ["OLDPWD"] = str(tmp_path / "somewhere-else")
+    lines: list[str] = []
+    try:
+        process.stream_subprocess(
+            [sys.executable, "-u", "-c", "import os; print(os.environ.get('OLDPWD', '<unset>'))"],
+            "test_node",
+            30,
+            lines.append,
+            resilience=AgentResilience(),
+            cwd=str(target),
+        )
+    finally:
+        os.environ.pop("OLDPWD", None)
+    assert "".join(lines).strip() == "<unset>"
+
+
 if __name__ == "__main__":
     test_clean_stream_completes_without_timeout()
     test_the_turn_deadline_is_measured_on_the_injected_clock()

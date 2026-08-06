@@ -12,6 +12,7 @@ import subprocess
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from workhorse import otel
@@ -19,6 +20,37 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.redact import SecretRedactor
+
+
+def _align_pwd(popen_kwargs: dict[str, Any]) -> None:
+    """Make the child's ``$PWD`` agree with the working directory it is spawned in.
+
+    ``Popen(cwd=…)`` changes the child's working directory but leaves the inherited
+    ``PWD`` pointing at the *launcher's* directory — only a shell's ``cd`` maintains
+    that variable. A CLI that trusts ``PWD`` over ``getcwd()`` therefore works in the
+    wrong repository whenever the two disagree, and OpenCode does exactly that: it
+    resolves its project root from ``PWD``, so a node handed ``cwd=<target repo>``
+    read and wrote the repo *workhorse itself* was launched from. The benchmark
+    harness launches every phase from its own checkout, so every author run there
+    decomposed that checkout's backlog no matter which repo it was pointed at.
+
+    Corrected here rather than in the OpenCode adapter because the disagreement is a
+    property of ``Popen``, not of one CLI: any agent CLI may read ``PWD``, and every
+    one of them is spawned through this method.
+    """
+    cwd = popen_kwargs.get("cwd")
+    if not cwd:
+        return
+    env = popen_kwargs.get("env")
+    if env is None:
+        # No explicit env means "inherit", and what would be inherited is exactly the
+        # stale PWD this exists to correct — so materialise the environment to fix it.
+        env = dict(os.environ)
+        popen_kwargs["env"] = env
+    env["PWD"] = str(Path(cwd).resolve())
+    # OLDPWD describes a `cd` this process never made; leaving the launcher's value
+    # would send `cd -` in an agent's shell somewhere arbitrary.
+    env.pop("OLDPWD", None)
 
 
 def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
@@ -177,6 +209,7 @@ class ProcessSupervisor:
         update escalates as ``transient=True`` (the outer backoff gives it more time); an
         absent CLI is ``transient=False`` (fail fast, resumable).
         """
+        _align_pwd(popen_kwargs)
         attempt = 0
         while True:
             try:
