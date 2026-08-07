@@ -68,11 +68,14 @@ gold: gold
 # which would silently zero out every turn's recorded cost. opencode's pins are config,
 # not string surgery, so its cost/cache telemetry stays intact.
 #
-# Every set below, `local-*` included, resolves through OpenRouter for now — the point of
-# `local-mixed`/`local-cheap-high` is to price out the *hardware* before buying it, by
-# running the same-sized models hosted rather than on a card we don't have yet. So every
-# model here is `openrouter/<vendor>/<model>` (confirmed live on OpenRouter's `/models`
-# endpoint). `OpenCodeBackend` passes `-m <model>` on every turn whenever a model string
+# Every set below resolves through OpenRouter (`openrouter/<vendor>/<model>`, confirmed
+# live on OpenRouter's `/models` endpoint) with **one** exception, and the split is the
+# point: `local-mixed`/`local-cheap-high` price out the *hardware* before buying it, by
+# running same-sized models hosted rather than on a card we don't have yet, whereas
+# `local-mixed-attempt-2` runs on the card (here, the CPU) this machine actually has, via
+# the local ollama provider — `ollama/<tag>`, no OpenRouter in the path. Read the first
+# kind as "what would this class of model score", the second as "what does this box
+# score". `OpenCodeBackend` passes `-m <model>` on every turn whenever a model string
 # is given (`workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.run_turn`),
 # which is true of every tier of every set here — so the per-turn flag is what picks the
 # model. Which upstream endpoint serves that model is a separate axis, pinned per-model in
@@ -125,25 +128,29 @@ sets:
   # separates "these workflows need more than a 24GB card" from "that family cannot hold
   # a JSON schema".
   #
-  # Mistral Small 3.2 rather than another qwen: dense 24B (~13GB at 4-bit, leaving the
-  # card room for a long agentic turn's KV cache), 256k context, and the 3.2 point release
-  # is the one that tightened function-calling and cut the repetitive generations that eat
-  # a turn's budget. It advertises no `reasoning_effort`, so no tier here sets `effort` —
-  # unlike `local-mixed`, whose `effort: high` on qwen3.6-27b is inert, that model not
-  # listing the parameter as supported. A tier that silently means nothing is worse than
-  # one that visibly does, and with one model at every tier the honest reading is that
-  # this set has no tiers at all.
+  # `gpt-oss-20b` rather than another qwen or a dense Mistral 24B, and — unlike every
+  # other set here — served **locally**, by the ollama container this machine runs
+  # (`ollama/<tag>`, provider configured in `~/.config/opencode/opencode.jsonc`). That
+  # makes it the one set whose score is not a proxy for hardware but a measurement of it.
   #
-  # That is the trade it accepts. `gpt-oss-20b` is the one model in this class with native
-  # `reasoning_effort` and would keep three real tiers on a single set of weights — worth
-  # reaching for if the flat map turns out to be what loses this run, rather than the model.
+  # Which is also why the model is a 20B MoE and not the dense 24B this set first named.
+  # Inference here is CPU-only, and generation speed on a CPU is roughly memory bandwidth
+  # divided by bytes-read-per-token: ~2.2GB/token for a 3.6B-active MoE against ~14GB for
+  # a 4-bit dense 24B, i.e. the difference between single-digit tokens per second and
+  # roughly one. Against this suite's phase budgets the dense model does not finish a
+  # phase, so its score would read as the DDR3 in this box rather than as the model — the
+  # exact unattributable result the harness note above exists to prevent.
+  #
+  # It also keeps the tiers honest: gpt-oss advertises native `reasoning_effort`, unlike
+  # `local-mixed`, whose `effort: high` on qwen3.6-27b is inert (that model does not list
+  # the parameter as supported). One set of weights at every tier, three real efforts.
   - label: local-mixed-attempt-2
     cli: opencode
-    notes: one model everywhere — dense Mistral 24B, sized for a single 24GB card
+    notes: one local model everywhere — gpt-oss 20B MoE on ollama, CPU inference
     power:
-      high: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
-      medium: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
-      low: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
+      high: {opencode: {model: ollama/gpt-oss:20b, effort: high}}
+      medium: {opencode: {model: ollama/gpt-oss:20b, effort: medium}}
+      low: {opencode: {model: ollama/gpt-oss:20b, effort: low}}
 
   # Hosted and cheap: 1M context, tools and structured outputs, roughly two orders of
   # magnitude under gold per token.
