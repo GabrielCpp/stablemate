@@ -254,10 +254,51 @@ class Ostler:
         """
         return self._apply(crud.create_epic(self._fresh(), name, title, prefix))
 
+    def create_milestone(
+        self,
+        name: str,
+        title: str,
+        *,
+        source_items: builtins.list[str] | None = None,
+        prefix: str | None = None,
+    ) -> Result:
+        """Create a milestone with a generated full id and backlog ownership."""
+        graph = self._fresh()
+        return self._apply(crud.create_milestone(
+            graph,
+            name,
+            title,
+            [ids_mod.resolve(graph, item) for item in (source_items or [])],
+            prefix,
+        ))
+
+    def create_backlog_item(
+        self,
+        text: str,
+        *,
+        section: str = "",
+        prefix: str | None = None,
+    ) -> Result:
+        """File a backlog item with a generated full id."""
+        return self._apply(backlog_mod.create(self._fresh(), text, section, prefix))
+
+    def set_milestone_source_items(
+        self,
+        name: str,
+        source_items: builtins.list[str],
+    ) -> Result:
+        """Replace a milestone's owned backlog ids, accepting short handles as input."""
+        graph = self._fresh()
+        return self._apply(crud.set_milestone_source_items(
+            graph,
+            name,
+            [ids_mod.resolve(graph, item) for item in source_items],
+        ))
+
     def create_story(self, epic: str, slug: str, title: str, *,
-                     covers: builtins.list[str] | None = None,
-                     depends: builtins.list[str] | None = None,
-                     prefix: str | None = None) -> Result:
+                      covers: builtins.list[str] | None = None,
+                      depends: builtins.list[str] | None = None,
+                      prefix: str | None = None) -> Result:
         """Create a story under ``epic`` (``ostler create story``).
 
         ``covers`` may name seeds by short handle; what is written into the epic is always the
@@ -268,12 +309,16 @@ class Ostler:
             graph, epic, slug, title,
             [ids_mod.resolve(graph, c) for c in (covers or [])], depends or [], prefix))
 
+    def delete_story(self, slug: str) -> Result:
+        """Delete a story by slug (``ostler delete story``)."""
+        return self._apply(crud.delete_story(self._fresh(), slug))
+
     def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
         """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent."""
         return self._apply(crud.create_spec(self._fresh(), slug, doc, title))
 
     def add_seed(self, epic: str, seed_id: str, *, status: str, summary: str = "",
-                 meta: dict | None = None) -> Result:
+                  meta: dict | None = None) -> Result:
         """Add a seed to ``epic`` (``ostler seed add``).
 
         ``seed_id`` may be a short handle. That matters here more than for a read: `seed add` is
@@ -284,6 +329,11 @@ class Ostler:
         return self._apply(crud.add_seed(
             graph, epic, ids_mod.resolve(graph, seed_id), status, summary, meta or {}))
 
+    def remove_seed(self, epic: str, seed_id: str) -> Result:
+        """Remove a seed from ``epic`` (``ostler seed remove``)."""
+        graph = self._fresh()
+        return self._apply(crud.remove_seed(graph, epic, ids_mod.resolve(graph, seed_id)))
+
     def set_status(self, slug: str, status: str) -> Result:
         """Set a story's status (``ostler set-status``)."""
         return self._apply(crud.set_status(self._fresh(), slug, status))
@@ -291,6 +341,10 @@ class Ostler:
     def backlog_add(self, item_id: str, text: str, section: str = "") -> Result:
         """Append a backlog item (``ostler backlog add``)."""
         return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
+
+    def backlog_adopt(self, path: str = "", *, prefix: str | None = None) -> Result:
+        """Assign ids to unnamed direct work bullets in an existing backlog."""
+        return self._apply(backlog_mod.adopt(self._fresh(), path, prefix))
 
     def backlog_prune(self, item_id: str) -> Result:
         """Remove a backlog item (``ostler backlog prune``) — ``item_id`` may be a short handle."""

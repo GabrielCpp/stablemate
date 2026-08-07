@@ -389,7 +389,7 @@ def _validate_background(background: Any) -> list[str]:
     `background` was the one top-level block nobody validated, and it is the block whose
     entries reach a `subprocess` and a readiness poll. An unrunnable shape therefore failed
     at *run* time, where the only route back to the plan agent is a status and a sentence —
-    while everything caught here is handed to it as a diagnostic naming the field. That gap
+    while everything caught here is handed to it as a diagnostic naming the field. That omission
     is not academic: a `ready_check` mapping crashed the runner, and the coder loop spent
     its whole rework budget re-planning a plan that was never wrong.
     """

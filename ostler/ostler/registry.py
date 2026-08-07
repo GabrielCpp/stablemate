@@ -135,7 +135,7 @@ class EntityType:
     *schema* is the bundled JSON Schema validated against the frontmatter (None = conformance only).
     """
     name: str
-    doc_root: str                      # one of: epics, knowledge, features, specs
+    doc_root: str                      # one of: epics, milestones, features, specs
     location: str                      # glob relative to doc_root
     required: tuple[str, ...] = ()
     schema: str | None = None
@@ -149,14 +149,14 @@ REGISTRY: tuple[EntityType, ...] = (
         note="Source of truth for an epic: narrative + `## Seeds` + `## Stories` (the DAG).",
     ),
     EntityType(
+        name="milestone", doc_root="milestones", location="*.md",
+        required=("type", "id", "title"), schema="milestone.schema.json",
+        note="Product/workflow milestone: a dependency-ordered group of epics.",
+    ),
+    EntityType(
         name="story", doc_root="epics", location="*/stories/*/story.md",
         required=("type", "slug", "status"), schema="story.schema.json",
         note="Leaf story spec. Edges (covers/depends) live in the epic's `## Stories` section.",
-    ),
-    EntityType(
-        name="knowledge", doc_root="knowledge", location="**/*.md",
-        required=("type", "surface"), schema="knowledge-record.schema.json",
-        note="Surface knowledge record (markdown + frontmatter).",
     ),
     EntityType(
         name="feature", doc_root="features", location="**/*.md",

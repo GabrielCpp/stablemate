@@ -18,7 +18,10 @@ stage does that next.
 
 ## Required reading
 
-- `{{ epic_dir }}/epic.md`, especially its `## Seeds` section — the in-scope seeds to cover, each
+- `{{ epic_dir }}/epic.md`, especially its `## User Journeys`,
+  `## Delivered Experience`, acceptance, and `## Seeds` sections. The story set must deliver the
+  actor's complete journey, not merely distribute technical seeds.
+- The epic's in-scope seeds, each
   already carrying research (`surface`, `legacySurface`, `backing`, `prerequisites`, and the seed's
   summary/prose). **Use that detail to size and sequence stories** — e.g. a seed whose `surface`
   is "missing" plus a separate "fidelity" seed become distinct stories; a `prerequisites` note
@@ -33,6 +36,9 @@ stage does that next.
   from how any existing epic split the work — existing breakdowns are references, not templates.
 {% block repo_split_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` and the epic's existing `## Stories` section when present.
+- The milestone file under `docs/milestones/` that lists this epic. Cross-epic readiness belongs in the milestone graph, not
+  in a sibling-story `depends on:` edge. A `depends on:` value may name only a story in this same
+  epic; use milestone `dependsOn` for cross-epic sequencing.
 
 ## Task
 
@@ -45,9 +51,15 @@ stage does that next.
      whose work is purely *"verify already-built X still matches"* is **not** a standalone story:
      fold that verification into the acceptance criteria / QA of the story that builds X, or — if
      the surface genuinely needs new work — scope the story around that new work and let the
-     parity check ride along as its QA. Watch for this when an epic layers a "fidelity" seed item
-     over a surface a sibling story already implements: that's usually one story (build + verify
-     parity), not a build story plus a verify story.
+   parity check ride along as its QA. Watch for this when an epic layers a "fidelity" seed item
+   over a surface a sibling story already implements: that's usually one story (build + verify
+   parity), not a build story plus a verify story.
+   - A story may be a technical enabler only when it directly unlocks a named step in this epic's
+     user journey and has an externally observable boundary. Hosting, API, storage, schema, and
+     infrastructure work remain stories inside the earliest journey that needs them; they never
+     justify a separate epic.
+   - By the final story, the actor must be able to complete the epic journey end to end in the
+     running system. A set of green technical stories that leaves no usable journey is incomplete.
 3. **Order with `--depends`.** A story depends on another only when it genuinely needs it
    first (e.g. a shared shell/navbar before pages that live in it). Keep the graph acyclic.
 4. **Create each story with `ostler` — it allocates the id and scaffolds the files.** Pass a

@@ -40,20 +40,16 @@ def test_resolved_seed_not_required_to_be_covered(repo: Path):
     assert "orphan-seed" not in codes(report)
 
 
-def test_markdown_records_parsed(repo: Path):
+def test_feature_records_parsed(repo: Path):
     graph = load(repo)
-    surfaces = {r.surface for r in graph.knowledge}
-    assert {"area/rec", "area/rec2"} <= surfaces
-    # the surface came from YAML frontmatter
-    md = next(r for r in graph.knowledge if r.surface == "area/rec2")
-    assert md.fmt == "md"
-    assert md.data["surface"] == "area/rec2"
+    features = {r.key for r in graph.features}
+    assert {"area/rec", "area/rec2"} <= features
 
 
 def test_missing_type_is_flagged(repo: Path):
-    # a knowledge Concept without `type` violates OKF conformance
-    write(repo / "docs/knowledge/area/rec.md",
-          "---\nsurface: area/rec\n---\n# rec\n\nbody\n")
+    # a feature Concept without `type` violates OKF conformance
+    write(repo / "docs/features/area/rec.md",
+          "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
@@ -175,3 +171,76 @@ def test_a_waiver_downgrades_an_unwritten_story_without_hiding_it(tmp_path: Path
     assert waived["01-a"].severity == "warn" and waived["01-a"].waived
     assert "fill-01-a" in waived["01-a"].message
     assert waived["02-b"].severity == "error", "the waiver is scoped to the ref it names"
+
+
+def test_story_status_mismatch_is_flagged(repo: Path):
+    story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    story.write_text(
+        story.read_text(encoding="utf-8").replace(
+            "- **Status**: Not started", "- **Status**: QA passed"),
+        encoding="utf-8",
+    )
+
+    report = doctor.run(load(repo))
+
+    assert "story-status-mismatch" in codes(report)
+
+
+def test_missing_milestones_directory_does_not_fail(repo: Path):
+    report = doctor.run(load(repo))
+
+    assert not any(f.code.startswith("milestone") for f in report.findings)
+    assert "epic-without-milestone" not in codes(report)
+
+
+def test_milestone_files_assign_epics(repo: Path):
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+---
+# Foundation
+""")
+    write(repo / "docs/milestones/feature.md", """---
+type: milestone
+id: m1
+title: Feature
+status: planned
+dependsOn:
+  - m0
+epics:
+  - epic-b
+---
+# Feature
+""")
+
+    graph = load(repo)
+    report = doctor.run(graph)
+
+    assert {m.eid for m in graph.milestones} == {"m0", "m1"}
+    assert "epic-without-milestone" not in codes(report)
+
+
+def test_backlog_item_cannot_belong_to_multiple_milestones(repo: Path):
+    source_item = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
+    for name in ("first", "second"):
+        write(repo / f"docs/milestones/{name}.md", f"""---
+type: milestone
+id: {name}
+title: {name.title()}
+status: planned
+dependsOn: []
+sourceItems:
+  - {source_item}
+epics: []
+---
+# {name.title()}
+""")
+
+    report = doctor.run(load(repo))
+
+    assert "backlog-item-in-multiple-milestones" in codes(report)

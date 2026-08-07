@@ -20,7 +20,6 @@ Two layers, deliberately kept separate:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
 import yaml
@@ -30,10 +29,6 @@ from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.front_matter import front_matter_plugin
 
 _FENCE = "---"
-
-#: A repo-relative path mentioned in prose. Not a markdown construct — no grammar to parse,
-#: so this one stays a regex (declared in scripts/check_parsers.py).
-KNOWLEDGE_PATH_RE = re.compile(r"docs/knowledge/[^\s)\]'\"`]+\.(?:json|md)")
 
 #: `table` is off in the bare commonmark preset, so a table used to arrive as an
 #: undifferentiated paragraph; the library's docs are full of them. `front_matter_plugin`
@@ -152,7 +147,6 @@ def code_line_spans(text: str) -> list[tuple[int, int]]:
 
 @dataclass
 class References:
-    knowledge_paths: list[str] = field(default_factory=list)
     links: list[tuple[str, str]] = field(default_factory=list)  # (text, href)
 
     @property
@@ -177,7 +171,6 @@ class References:
 
 def extract_refs(text: str) -> References:
     return References(
-        knowledge_paths=sorted(set(KNOWLEDGE_PATH_RE.findall(text))),
         links=[(label, href) for label, href, _line in iter_links(text)],
     )
 
@@ -283,7 +276,7 @@ class Section:
         """The section's text **without its own heading line** (the preamble has none).
 
         ``text`` includes the heading, which makes "does this section say anything?"
-        unanswerable without re-splitting the string — the gap that had every caller
+        unanswerable without re-splitting the string — the omission that had every caller
         writing its own scan.
         """
         return "\n".join(self.body_lines[self._content_start:self.line_end])

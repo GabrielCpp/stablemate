@@ -1,6 +1,6 @@
 ---
 name: stablemate-testing-design
-description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, and cover the composition and not only the units. Load whenever writing or reviewing tests; a stack skill (go-testing, python-testing, flutter-testing, react-router-qa, pulumi-qa) supplies the concrete mechanics. Applies to test files in any language."
+description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, and cover the composition and not only the units. Load whenever writing or reviewing tests; a stack skill (go-testing, python-testing, flutter-testing, react-router-qa, pulumi-qa) supplies the concrete mechanics, and the e2e-testing skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
 metadata:
   generated_by: farrier
   source: library/skills/testing/testing-design/SKILL.md
@@ -19,6 +19,7 @@ tool — are stack-specific. Pair this with the matching stack skill:
 - Python → the `python-testing` skill
 - Flutter / Dart → the `flutter-testing` skill
 - React Router / TypeScript → the `react-router-qa` skill
+- End-to-end / journey specs (any driver) → the `e2e-testing` skill, plus the stack's driver mechanics (e.g. `react-router-playwright`)
 
 **A green suite is not evidence. A suite that has failed for the right reason is.** Expensive
 bugs rarely survive because nobody wrote a test; they survive because the tests that were
@@ -96,6 +97,11 @@ nothing.
 At least one test must run the **real composition** with the edges intact — the graph, the
 router, the state machine, the DI container — and assert on *which steps executed*, not only on
 the final value. Fake the expensive leaves (network, model calls, clock), never the wiring.
+
+An end-to-end spec driving the running system through its UI is the outermost composition test,
+and it carries failure modes of its own (locator brittleness, wait races, cold-start noise) — the
+[`../stablemate-e2e-testing/SKILL.md`](../stablemate-e2e-testing/SKILL.md) skill is this
+contract extended to that layer.
 
 ## 7. Every gate needs a test that proves it rejects
 

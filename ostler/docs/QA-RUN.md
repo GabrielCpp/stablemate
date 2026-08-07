@@ -221,7 +221,7 @@ ostler qa start <run-id> --story <story-id> --spec <spec-dir>
     first daemon starts. A plan may therefore redirect a command straight into
     qa/steps/ (curl -o, a shell >) without making the directory first; curl
     cannot create a missing parent and exits 23 there, and the empty capture
-    that follows reads as a product defect rather than as a layout gap.
+    that follows reads as a product defect rather than as a layout issue.
     Fails if a session is already open for this spec-dir (prevents nesting).
 
 ostler qa step --id <id> --label <text> --mechanism live|synthetic|fixture
@@ -438,7 +438,7 @@ FAIL) but report a non-zero exit code at the end. Use `--stop-on-fail` to halt i
 path the step does not declare as its `out:`, a shell `>` — has nothing to compare against.
 That still fails, because the plan cannot prove what it claims, but the assertion record says
 `no HTTP status captured` rather than reporting a status of `None`. The two read very
-differently: one is a plan gap, the other looks like the service answering wrongly, and
+differently: one is a plan omission, the other looks like the service answering wrongly, and
 mistaking the first for the second sends a QA loop off repairing working code.
 
 ### Substitution rules
@@ -519,7 +519,7 @@ The full `ostler qa` surface can be built in three stages without breaking the e
 
 1. **Log writer only** (`ostler qa start/step/stop`): no daemons, no assertions. Steps record
    commands and outputs. The agent still queries eventbridge-tail manually but captures results
-   via `ostler qa step --out`. This alone closes the "log what actually ran" gap.
+   via `ostler qa step --out`. This alone closes the "log what actually ran" omission.
 
 2. **Assertions** (`ostler qa assert`): adds the CloudWatch confirm check and the event-present
    check. The agent no longer decides pass/fail for these.

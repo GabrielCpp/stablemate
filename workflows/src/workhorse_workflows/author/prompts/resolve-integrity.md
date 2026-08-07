@@ -22,9 +22,9 @@ reference point at the *real* entity. Use **only** `ostler edit`:
 
 ```bash
 ostler trace <id|slug|path>          # localize: walk the graph from the broken node first
-ostler edit set-owner <gap> <story>  # point a knowledge gap at the story that owns it
 ostler edit relink <old-path> <new>  # fix a moved reference everywhere it appears
 ostler edit rename <old-slug> <new>  # rename a story/epic slug and cascade all references
+ostler edit settle-review <slug>     # settle a story's review artifacts when that is the block
 # edits are dry-run by default — inspect the diff, then re-run with --write to apply
 ```
 
@@ -35,17 +35,12 @@ an **escalation**, not a deletion.
 
 ## Playbook by finding code
 
-- **`dangling-owner`** (gap owned by a story that doesn't exist): find the story that actually
-  owns it (`ostler trace`, read the epic's `## Stories` section / the stories themselves). If the story was
-  renamed, `ostler edit rename <old> <new>` (cascades). Otherwise `ostler edit set-owner`. If no
-  story owns it because the work was deferred/dropped, set the gap's disposition accordingly in
-  its knowledge record — do not blank the owner to dodge the check.
 - **`cross-epic-seed` / `cross-epic-dependency`**: the story references a seed/story that lives in
   another epic. Usually a wrong/stale slug → `relink`/`rename` to this epic's real entity. If it
   is a genuine inter-epic dependency that shouldn't exist, remove the *dependency relationship*
   cleanly (not by deleting the target) or escalate.
-- **`dangling-seed` / `dangling-dependency` / `dangling-knowledge-path`**: a reference to a
-  nonexistent seed / story / knowledge file → `relink` to the real one, or escalate if it points
+- **`dangling-seed` / `dangling-dependency`**: a reference to a
+  nonexistent seed / story → `relink` to the real one, or escalate if it points
   at something that was never created.
 - **`missing-story-file`**: a story entry with no `story.md` — the artifact itself is missing.
   This is not a reference fix; **escalate** (or, only if clearly in-scope and safe, regenerate the

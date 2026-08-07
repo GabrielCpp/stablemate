@@ -14,17 +14,21 @@ gate before QA.
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_path') }}`
 - Features root: `{{ workhorse_var('features_root') }}`
+- Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 - Author status: `{{ workhorse_var('author_status') }}`
 - Author notes: `{{ workhorse_var('author_notes') }}`
 - Deterministic gate: `{{ workhorse_var('gate_notes') }}`
 
-Read the story, plan context, working tree, branch commits since the story/epic base, and affected
-OKF nodes. Include QA, regression, CI, merge-resolution, and inline-fix mutations made after the
-initial review. Approve only when the book
+Read the story, the parent epic's `## User Journeys`, plan context, working tree, branch commits since
+the story/epic base, and affected OKF nodes. Include QA, regression, CI, merge-resolution, and
+inline-fix mutations made after the initial review. Approve only when the book
 describes the complete current system rather than this story as a changelog. In particular:
 
 - every new or changed service, screen, component, interaction, CLI command, endpoint,
   invocation, flow, concept, and format has the correct typed node and reachable relationships;
+- any greenfield journey slice implemented by this story has a `flow` node under
+  `docs/features/<service>/flows/` with linked `steps:` through the as-built surfaces; the author
+  journey plan alone is not OKF documentation;
 - structured bullets contain the full behavioral contract, including states, fields,
   preconditions, effects, errors, accessibility, and boundaries where applicable;
 - `code:` and `verify:` cite real implementation and tests without using broad or invented refs,

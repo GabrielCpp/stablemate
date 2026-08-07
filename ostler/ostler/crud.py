@@ -54,6 +54,66 @@ def dump_frontmatter(fm: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# milestones
+# ---------------------------------------------------------------------------
+def create_milestone(
+    graph: Graph,
+    name: str,
+    title: str,
+    source_items: list[str] | None = None,
+    prefix: str | None = None,
+) -> Result:
+    """Create a release milestone with a generated id and backlog ownership."""
+    path = graph.doc_roots["milestones"] / f"{name}.md"
+    if path.exists():
+        return Result(False, f"milestone '{name}' already exists")
+    eid = ids.allocate(graph, prefix)
+    fm = {
+        "type": "milestone",
+        "id": eid,
+        "title": title,
+        "status": "planned",
+        "dependsOn": [],
+        "sourceItems": source_items or [],
+        "epics": [],
+    }
+    text = f"---\n{dump_frontmatter(fm)}---\n# {title}\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return Result(
+        True,
+        f"created milestone '{name}' ({eid})",
+        [path],
+        entity_id=eid,
+        entity_name=name,
+    )
+
+
+def set_milestone_source_items(
+    graph: Graph,
+    name: str,
+    source_items: list[str],
+) -> Result:
+    """Replace a milestone's owned backlog ids while preserving its prose."""
+    milestone = graph.milestone_by_name(name)
+    if milestone is None:
+        return Result(False, f"no milestone '{name}'")
+    doc = markdown.split(milestone.path.read_text(encoding="utf-8"))
+    fm = dict(doc.frontmatter or {})
+    fm["sourceItems"] = source_items
+    doc.frontmatter = fm
+    doc.raw_frontmatter = dump_frontmatter(fm)
+    milestone.path.write_text(doc.render(), encoding="utf-8")
+    return Result(
+        True,
+        f"set {len(source_items)} source item(s) on milestone '{milestone.name}'",
+        [milestone.path],
+        entity_id=milestone.eid,
+        entity_name=milestone.name,
+    )
+
+
+# ---------------------------------------------------------------------------
 # epics
 # ---------------------------------------------------------------------------
 def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) -> Result:

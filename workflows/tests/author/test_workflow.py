@@ -36,6 +36,7 @@ What the port could get wrong, and what is therefore under test here:
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -56,17 +57,23 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
+from workhorse_workflows.author.nodes.artifacts import validate_artifacts
+from workhorse_workflows.author.nodes.epics import select_epic
 from workhorse_workflows.author.shared.survey import record_slug
+from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.workflow import Author
 
 BACKLOG = "docs/backlog.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
+SECOND_EPIC = "profiles"
 #: ostler numbers epic directories in creation order, so the folder is `0001-accounts` — the
 #: name the run carries once `select_epic` has resolved the queue entry. Every ostler call
 #: still takes the bare `EPIC` slug.
 EPIC_NAME = f"0001-{EPIC}"
+SECOND_EPIC_NAME = f"0002-{SECOND_EPIC}"
 EPIC_DIR = f"{EPICS}/{EPIC_NAME}"
+SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
 #: The run-wide operator context file — `paths.author_context(epics_dir)`.
 CONTEXT = f"{EPICS}/_author-context.md"
 
@@ -86,7 +93,9 @@ STORIES = (
     ("01-sign-in", "Sign in", "b1"),
     ("02-reset-password", "Reset password", "b2"),
 )
+SECOND_STORIES = (("01-edit-profile", "Edit profile", "p1"),)
 SLUGS = [slug for slug, _, _ in STORIES]
+SECOND_SLUGS = [slug for slug, _, _ in SECOND_STORIES]
 
 # The surveyor sub-flow's paths, for the `survey` mode hand-off.
 SURVEY_DIR = "docs/survey"
@@ -180,6 +189,26 @@ def _bullets(repo: Path) -> list[str]:
 def _stories(repo: Path) -> dict[str, bool]:
     """`{slug: authored}` for every story ostler can see."""
     return {str(s["slug"]): bool(s.get("authored")) for s in Ostler(repo).list("story")}
+
+
+def _milestone(repo: Path, *epics: str) -> None:
+    lines = [
+        "---",
+        "type: milestone",
+        "id: account-mvp",
+        "title: Account MVP",
+        "status: planned",
+        "dependsOn: []",
+        "epics:",
+        *(f"  - {epic}" for epic in epics),
+        "---",
+        "# Account MVP",
+        "",
+        "A visitor can access and recover their account.",
+    ]
+    path = repo / "docs/milestones/account-mvp.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 # ------------------------------------------------------------------ what the agent writes
@@ -294,6 +323,7 @@ class _Agent:
         *,
         review_epics: list[str] | None = None,
         coverage_verdicts: list[str] | None = None,
+        two_epics: bool = False,
         unwritten: set[str] | None = None,
         fail_audit: set[str] | None = None,
         feedback: dict[str, str] | None = None,
@@ -303,6 +333,7 @@ class _Agent:
         self.repo = repo
         self.review_epics = review_epics or ["approved"]
         self.coverage_verdicts = coverage_verdicts or ["ok"]
+        self.two_epics = two_epics
         self.unwritten = set(unwritten or ())
         self.fail_audit = set(fail_audit or ())
         self.feedback = dict(feedback or {})
@@ -311,6 +342,7 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
+        self.backlog_at_decompose = ""
 
     # -- the seam ---------------------------------------------------------
 
@@ -332,14 +364,14 @@ class _Agent:
     # -- the epic split ---------------------------------------------------
 
     def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Create the epic, queue it, and record one seed per backlog bullet."""
+        """Create journey epic shells in one release milestone; `write-epic` records seeds."""
+        self.backlog_at_decompose = (self.repo / data["backlog"]).read_text(encoding="utf-8")
         okf = Ostler(self.repo)
         if not (self.repo / EPIC_DIR / "epic.md").is_file():
-            okf.create_epic(EPIC, "Accounts")
-            okf.todo_add(EPIC)
-        for seed_id, text in SEEDS.items():
-            okf.add_seed(EPIC, seed_id, status="researched", summary=text,
-                         meta={"sourceBullet": text})
+            okf.create_epic(EPIC, "Account holder accesses their account")
+        if self.two_epics and not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
+            okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
+        _milestone(self.repo, EPIC, *(SECOND_EPIC,) if self.two_epics else ())
         return {"status": "complete", "notes": f"one epic from {len(SEEDS)} bullet(s)"}
 
     def _rework_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -353,16 +385,32 @@ class _Agent:
     # -- the per-epic loop ------------------------------------------------
 
     def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        okf = Ostler(self.repo)
+        epic = str(data["epic"])
+        if epic.endswith(SECOND_EPIC):
+            okf.add_seed(
+                SECOND_EPIC,
+                "p1",
+                status="researched",
+                summary="[p1] Users can edit their profile",
+                meta={"sourceBullet": "[p1] Users can edit their profile"},
+            )
+            return {"status": "complete", "notes": "profile seed recorded"}
+        for seed_id, text in SEEDS.items():
+            okf.add_seed(EPIC, seed_id, status="researched", summary=text,
+                         meta={"sourceBullet": text})
         return {"status": "complete", "notes": "seeds already recorded"}
 
     def _split_stories(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Register one story per seed. Idempotent: the coverage loop re-enters here."""
         okf = Ostler(self.repo)
-        existing = {str(s["slug"]) for s in okf.list("story", epic=EPIC)}
-        for slug, title, seed in STORIES:
+        epic = SECOND_EPIC if str(data["epic"]).endswith(SECOND_EPIC) else EPIC
+        stories = SECOND_STORIES if epic == SECOND_EPIC else STORIES
+        existing = {str(s["slug"]) for s in okf.list("story", epic=epic)}
+        for slug, title, seed in stories:
             if slug not in existing:
-                okf.create_story(EPIC, slug, title, covers=[seed])
-        return {"status": "complete", "notes": f"{len(STORIES)} stories"}
+                okf.create_story(epic, slug, title, covers=[seed])
+        return {"status": "complete", "notes": f"{len(stories)} stories"}
 
     # -- the per-story loop -----------------------------------------------
 
@@ -375,7 +423,7 @@ class _Agent:
         slug = str(data["story_slug"])
         if slug in self.explode:
             raise RuntimeError(f"killed while writing {slug}")
-        title = dict((s, t) for s, t, _ in STORIES).get(slug, slug)
+        title = dict((s, t) for s, t, _ in (*STORIES, *SECOND_STORIES)).get(slug, slug)
         _write_story_doc(self.repo / data["story_path"], title, authored=slug not in self.unwritten)
         return {"status": "written", "notes": "acceptance criteria and context"}
 
@@ -386,7 +434,7 @@ class _Agent:
         # audit objection — that is what the rework budget is for, and what makes the
         # give-up arm reachable.
         self.unwritten.discard(slug)
-        title = dict((s, t) for s, t, _ in STORIES).get(slug, slug)
+        title = dict((s, t) for s, t, _ in (*STORIES, *SECOND_STORIES)).get(slug, slug)
         _write_story_doc(self.repo / data["story_path"], title)
         return {"status": "written", "notes": "rewritten"}
 
@@ -456,6 +504,10 @@ def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     return drive(Author(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
+def _drive_story_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
+    return drive(StoryEdit(**inputs), replace(env, agent_runner=StubRunner(agent)))
+
+
 # --------------------------------------------------------------------------- epic mode
 
 
@@ -508,6 +560,46 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     assert set(agent.cwds) == {str(backlogged)}
 
 
+def test_epic_mode_adopts_unnamed_scope_before_decomposition(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    backlog = backlogged / BACKLOG
+    backlog.write_text(
+        backlog.read_text(encoding="utf-8")
+        + "\n## Later intake\n\n- Recover a local draft\n\n"
+        + "## Filed by coder\n\n- Fix an adjacent defect\n",
+        encoding="utf-8",
+    )
+    agent = _Agent(backlogged)
+
+    _drive(_env(tmp_path), agent)
+
+    assert "- [ACME-" in agent.backlog_at_decompose
+    assert "] Recover a local draft" in agent.backlog_at_decompose
+    assert "- Fix an adjacent defect" in agent.backlog_at_decompose
+
+
+def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> None:
+    okf = Ostler(backlogged)
+    okf.create_epic(EPIC, "Accounts")
+    _milestone(backlogged, EPIC)
+    okf.add_seed(EPIC, "b1", status="researched", summary=SEEDS["b1"],
+                 meta={"sourceBullet": SEEDS["b1"]})
+    okf.create_story(EPIC, "01-sign-in", "Sign in", covers=["b1"])
+
+    logger = logging.getLogger("test")
+    pick = select_epic(logger, repo_dir=str(backlogged))
+
+    assert pick.has_epic is True
+    assert pick.epic == EPIC_NAME
+
+    story = backlogged / EPIC_DIR / "stories/01-sign-in/story.md"
+    _write_story_doc(story, "Sign in")
+    report = validate_artifacts(logger, repo_dir=str(backlogged))
+
+    assert report.ok, report.errors
+
+
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -532,6 +624,27 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
         assert args["epic_dir"] == EPIC_DIR, args
     for args in agent.args_for("review-coverage"):
         assert args["backlog"] == BACKLOG, args
+
+
+def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_path: Path) -> None:
+    """The main author flow has two epic worklists, not one single-pass epic loop."""
+    agent = _Agent(backlogged, two_epics=True)
+
+    _drive(_env(tmp_path), agent)
+
+    first_split = agent.calls.index("split-stories")
+    write_epic_positions = [i for i, stem in enumerate(agent.calls) if stem == "write-epic"]
+    assert len(write_epic_positions) == 2, agent.calls
+    assert all(i < first_split for i in write_epic_positions), agent.calls
+    assert [args["epic"] for args in agent.args_for("write-epic")] == [
+        EPIC_NAME,
+        SECOND_EPIC_NAME,
+    ]
+    assert [args["epic"] for args in agent.args_for("split-stories")] == [
+        EPIC_NAME,
+        SECOND_EPIC_NAME,
+    ]
+    assert _stories(backlogged) == {slug: True for slug in [*SLUGS, *SECOND_SLUGS]}
 
 
 def test_the_commit_leaves_work_the_run_did_not_do_alone(
@@ -758,6 +871,49 @@ def test_story_mode_refuses_an_epic_that_does_not_exist(backlogged: Path, tmp_pa
         _drive(_env(tmp_path), _Agent(backlogged), mode="story", epic="nope", bullet="b1")
 
 
+# -------------------------------------------------------------------------- story-edit flow
+
+
+def test_story_edit_add_authors_one_story_and_commits(with_epic: Path, tmp_path: Path) -> None:
+    agent = _Agent(with_epic)
+
+    _drive_story_edit(_env(tmp_path), agent, action="add", epic=EPIC, bullet="b1")
+
+    stories = _stories(with_epic)
+    assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
+    assert all(stories.values()), stories
+    assert _bullets(with_epic) == [SURFACE, f"- {SEEDS['b2']}"]
+    assert _subject(with_epic).startswith("author: accounts"), _subject(with_epic)
+
+
+def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
+    with_epic: Path, tmp_path: Path
+) -> None:
+    okf = Ostler(with_epic)
+    assert okf.create_story(EPIC, "01-extra", "Extra").ok
+    _commit(with_epic, "story scaffold")
+
+    result = _drive_story_edit(_env(tmp_path), _Agent(with_epic), action="remove", story="01-extra")
+
+    assert result.changed is True
+    assert "01-extra" not in {s["slug"] for s in Ostler(with_epic).list("story")}
+    assert "remove 01-extra" in _subject(with_epic)
+
+
+def test_story_edit_remove_refuses_a_started_story_without_force(
+    with_epic: Path, tmp_path: Path
+) -> None:
+    from workhorse.pyflow import WorkflowFailed
+
+    okf = Ostler(with_epic)
+    assert okf.create_story(EPIC, "01-started", "Started").ok
+    assert okf.set_status("01-started", "Reviewed").ok
+    _commit(with_epic, "started story")
+
+    with pytest.raises(WorkflowFailed, match="refusing to delete"):
+        _drive_story_edit(_env(tmp_path), _Agent(with_epic), action="remove", story="01-started")
+
+
 # ------------------------------------------------------------------------------- handoff
 
 
@@ -866,8 +1022,8 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     assert seen[0] == {}, seen[0]
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
-    # The epic is the label until a story is picked, which is what the YAML rendered too —
-    # and `progress` is absent rather than blank, because the driver drops empty values.
+    # The epic is the label until a story is picked, and `progress` is absent rather than
+    # blank because the driver drops empty values.
     assert stamped[0] == {"work_id": EPIC_NAME, "epic": EPIC_NAME}, stamped[0]
     assert {labels["work_id"] for labels in stamped} == {EPIC_NAME, *SLUGS}, stamped
     # `progress` is the worklist's own count, so a dashboard can read it without knowing

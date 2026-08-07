@@ -40,10 +40,10 @@ def test_a_name_that_already_carries_a_number_is_taken_literally(tmp_path: Path)
     assert _create(tmp_path, "next") == "0008-next"
 
 
-def test_a_gap_in_the_middle_never_renumbers_its_survivors(tmp_path: Path):
+def test_a_missing_number_in_the_middle_never_renumbers_its_survivors(tmp_path: Path):
     """The sequence is derived from what is on disk, so deleting the *last* epic frees its
     number — harmless, since the number is a rank and not an identity. What must never happen
-    is the other repair: shifting `0003-` down to close a gap, which would invalidate every
+    is the other repair: shifting `0003-` down to close the missing number, which would invalidate every
     path already written into a plan, a branch or a link."""
     _create(tmp_path, "a")
     _create(tmp_path, "b")

@@ -23,7 +23,7 @@ STABLEMATE_DIR ?= $(shell farrier config show stablemate_dir)
 # farrier regenerates these adapters from the prompt library. Default uses the
 # installed farrier binary. SRC=1 runs the local source under $(STABLEMATE_DIR)/farrier.
 # The library CONTENT is located via `farrier config set-library`; when a
-# vigilant-octo checkout exists at $(AGENTS_DIR) we pass --library explicitly.
+# library checkout exists at $(AGENTS_DIR) we pass --library explicitly.
 ifeq ($(SRC),1)
 FARRIER ?= uv run --project $(STABLEMATE_DIR)/farrier farrier
 endif

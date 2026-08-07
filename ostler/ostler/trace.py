@@ -1,5 +1,7 @@
-"""`ostler trace` — walk the organization graph from any node (seed id, story slug,
-surface or doc path) and print the chain of references and their statuses."""
+"""`ostler trace` — walk the organization graph from any node.
+
+Accepted tokens are seed ids, story slugs, UI node ids, section anchors, or doc paths.
+"""
 
 from __future__ import annotations
 
@@ -91,21 +93,7 @@ def run(graph: Graph, token: str) -> tuple[list[str], bool]:
             out.append("  covered by: NOTHING (orphan)" if seed.active else "  covered by: — (inactive)")
         return out, True
 
-    # 3) surface
-    rec = next((r for r in graph.knowledge if r.surface == token), None)
-    if rec:
-        out.append(f"surface {rec.surface}   ({rec.fmt}: {rec.path})")
-        return out, True
-
-    # 4) path
-    referrers = [s.slug for e in graph.epics for s in e.stories if token in s.knowledge_refs]
-    if referrers:
-        out.append(f"path   {token}")
-        for slug in referrers:
-            out.append(f"  referenced by story  {slug}")
-        return out, True
-
-    # 5) UI-profile node (screen/component/interaction/… — walks resolved path links)
+    # 3) UI-profile node (screen/component/interaction/… — walks resolved path links)
     ui = _trace_ui(graph, token)
     if ui is not None:
         return ui, True

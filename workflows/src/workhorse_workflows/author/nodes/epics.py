@@ -5,14 +5,113 @@ Ported from `base-library/workflows/author/scripts/select-epic.py`.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from ostler import Ostler
+from ostler.select import epic_by_name
 from workhorse import worklist as wl
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import EpicChoice
+
+
+def _milestone_ordered_epics(okf: Ostler) -> list[str]:
+    """Epics in milestone order, used when the legacy todo queue is absent.
+
+    `docs/epics/index.md` is now a compatibility view, not a required authoring artifact.
+    A fresh milestone-based run may therefore have no todo list at all; the milestone files are
+    the durable sequencing model. If a repo has not adopted milestones yet, fall back to graph
+    order so older fixtures and repos still author.
+    """
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for milestone in okf.graph.milestones:
+        for epic in milestone.epics:
+            slug = str(epic).strip()
+            if slug and slug not in seen:
+                ordered.append(slug)
+                seen.add(slug)
+    if ordered:
+        return ordered
+    return [epic.name for epic in okf.graph.epics]
+
+
+def _epic_documented(okf: Ostler, epic: str) -> bool:
+    """Whether the epic-level pass has produced this epic's durable authoring inputs."""
+    found = epic_by_name(okf.graph, epic)
+    return found is not None and found.epic_md is not None and bool(found.seeds)
+
+
+def _pick_epic(
+    logger: logging.Logger,
+    epics_dir: str,
+    repo_dir: str,
+    *,
+    done: Callable[[Ostler, str], bool],
+    finished_reason: str,
+    selected_reason: str,
+) -> EpicChoice:
+    root = survey_repo_root(repo_dir)
+    okf = Ostler(root)
+
+    try:
+        queue = okf.todo() or _milestone_ordered_epics(okf)
+    except (OSError, ValueError, RuntimeError):
+        reason = "could not read the epics queue or milestone graph via ostler"
+        logger.warning(reason)
+        return EpicChoice(reason=reason)
+
+    if not queue:
+        # No index/milestones/epics yet -> the epic-split stage must create them.
+        reason = "no epics found — the epic-split stage must create milestones and epics"
+        logger.info(reason)
+        return EpicChoice(reason=reason)
+
+    items = [
+        wl.WorkItem(id=str(epic), status="done" if done(okf, str(epic)) else "pending")
+        for epic in queue
+    ]
+
+    snap = wl.snapshot(items)
+    pick = wl.select_next(items)
+    if pick is None:
+        logger.info(finished_reason)
+        return EpicChoice(reason=finished_reason, progress=snap.progress)
+
+    # The queue entry may be written as a bare slug while the directory on disk is numbered
+    # (`0001-checkout-flow`), so the name the rest of the run carries is the one ostler
+    # resolves it to. Every path downstream is built from it.
+    epic = Path(okf.epic_path(pick.id)).name or pick.id
+    logger.info("selected epic '%s' — %s", epic, selected_reason)
+    return EpicChoice(
+        has_epic=True,
+        epic=epic,
+        epic_dir=paths.epic_dir(root, epic, epics_dir),
+        reason=selected_reason,
+        progress=snap.progress,
+    )
+
+
+@blueprint.node
+def select_epic_document(
+    logger: logging.Logger, epics_dir: str = "", repo_dir: str = ""
+) -> EpicChoice:
+    """The first queued epic whose milestone/epic authoring pass is not complete.
+
+    The author workflow runs two epic worklists. This first pass completes every queued
+    epic's milestone-level documentation, `epic.md`, and researched seeds before any story bodies
+    are written. A rerun resumes at the first epic that still lacks those inputs.
+    """
+    return _pick_epic(
+        logger,
+        epics_dir,
+        repo_dir,
+        done=_epic_documented,
+        finished_reason="every epic in the queue has epic docs and researched seeds",
+        selected_reason="epic needs epic.md completion or researched seeds",
+    )
 
 
 @blueprint.node
@@ -33,51 +132,14 @@ def select_epic(
     the dashboard its epic progress. `has_epic` false is not a failure; it means the
     backlog is decomposed and the flow moves on to the whole-repo checks.
     """
-    root = survey_repo_root(repo_dir)
-    okf = Ostler(root)
-
-    try:
-        queue = okf.todo()
-    except (OSError, ValueError, RuntimeError):
-        reason = "could not read the epics queue via `ostler todo list`"
-        logger.warning(reason)
-        return EpicChoice(reason=reason)
-
-    if not queue:
-        # No index yet → the epic-split stage must create the epics and queue them.
-        reason = "epics queue is empty — the epic-split stage must create + queue epics"
-        logger.info(reason)
-        return EpicChoice(reason=reason)
-
-    # Items stay in queue order (no `order` key → sequence order preserved).
-    items = [
-        wl.WorkItem(
-            id=str(epic), status="done" if okf.epic_authored(str(epic)) else "pending"
-        )
-        for epic in queue
-    ]
-
-    snap = wl.snapshot(items)
-    pick = wl.select_next(items)
-    if pick is None:
-        reason = "every epic in the queue is fully authored"
-        logger.info(reason)
-        return EpicChoice(reason=reason, progress=snap.progress)
-
-    # The queue entry may be written as a bare slug while the directory on disk is numbered
-    # (`0001-checkout-flow`), so the name the rest of the run carries is the one ostler
-    # resolves it to. Every path downstream is built from it.
-    epic = Path(okf.epic_path(pick.id)).name or pick.id
-    logger.info(
-        "selected epic '%s' — missing epic.md, has no stories, or a story is unwritten", epic
-    )
-    return EpicChoice(
-        has_epic=True,
-        epic=epic,
-        epic_dir=paths.epic_dir(root, epic, epics_dir),
-        reason="epic missing epic.md, has no stories, or a story is still unwritten",
-        progress=snap.progress,
+    return _pick_epic(
+        logger,
+        epics_dir,
+        repo_dir,
+        done=lambda okf, epic: okf.epic_authored(epic),
+        finished_reason="every epic in the queue is fully authored",
+        selected_reason="epic missing stories, or a story is still unwritten",
     )
 
 
-__all__ = ["select_epic"]
+__all__ = ["select_epic", "select_epic_document"]

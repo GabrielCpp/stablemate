@@ -29,10 +29,7 @@ def _old_repo(root: Path) -> None:
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
           "# Story: Foo\n\n## Context\n\nWhy Foo matters.\n\n"
           "## Implementation Status\n\n- **Status**: Not started\n\n"
-          "## Acceptance Criteria\n\n- works\n\nSee `docs/knowledge/area/rec.json`.\n")
-    write(root / "docs/knowledge/area/rec.json", json.dumps({
-        "surface": "area/rec", "route": "/rec",
-    }))
+          "## Acceptance Criteria\n\n- works\n")
     write(root / "docs/features/inventory.json", json.dumps({
         "surfaces": [{"area": "area", "slug": "rec", "title": "Rec", "route": "/rec"}],
     }))
@@ -55,11 +52,6 @@ def test_migration_is_lossless(tmp_path: Path):
     epic_text = (tmp_path / "docs/epics/epic-a/epic.md").read_text()
     assert "build it" in epic_text and "## Seeds" in epic_text and "## Stories" in epic_text
 
-    # knowledge converted; story ref followed .json → .md
-    assert (tmp_path / "docs/knowledge/area/rec.md").exists()
-    story_text = (tmp_path / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
-    assert "rec.md" in story_text and "rec.json" not in story_text
-
     # feature concept from inventory; queue index
     assert (tmp_path / "docs/features/area/rec.md").exists()
     assert todo.list_epics(load(tmp_path)) == ["epic-a"]
@@ -68,8 +60,7 @@ def test_migration_is_lossless(tmp_path: Path):
     report = doctor.run(g)
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
     leftovers = list(tmp_path.rglob("seed.json")) + list(tmp_path.rglob("dependencies.json")) \
-        + list(tmp_path.rglob("epics-todo.json")) + list(tmp_path.rglob("inventory.json")) \
-        + list((tmp_path / "docs/knowledge").rglob("*.json"))
+        + list(tmp_path.rglob("epics-todo.json")) + list(tmp_path.rglob("inventory.json"))
     assert leftovers == []
 
 

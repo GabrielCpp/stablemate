@@ -5,7 +5,7 @@
 The coder/QA workflow proves "the story is done" by artifact existence (`evidence/*.png`
 present) and JSON-pointer assertions (`qa/observations.json`), gated fail-closed by
 `edit.py::settle_review`. None of that actually looks at whether the UI *renders* as intended.
-That gap has been filled ad hoc by asking a VLM to judge a whole screenshot — non-deterministic,
+That missing check has been filled ad hoc by asking a VLM to judge a whole screenshot — non-deterministic,
 expensive, and prone to hallucinated findings.
 
 `ostler vet` replaces whole-page VLM judgment with a deterministic cross-check between two

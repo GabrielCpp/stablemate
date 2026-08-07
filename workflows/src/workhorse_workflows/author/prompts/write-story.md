@@ -24,12 +24,14 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - Operator answers: `{{ workhorse_var('story_dir') }}/context.md` when present.
 {%- if workhorse_var('mockup_path') %}
 - Design mockup (new screen): `{{ workhorse_var('mockup_path') }}` — a generated visual reference in the
-  app's style; link it from Context as the source of truth the criteria are judged against.
+  app's style, usually story-local as `./mockup.html`; link it from Context as the source of truth the
+  criteria are judged against.
 {%- endif %}
 {%- if workhorse_var('features_dir') %}
 - **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built
-  from the code by the okf-builder. **Read it; never write to it.** This is where the story's
-  grounding comes from — see *Ground the story in the book* below.
+  by the okf-builder. **Read it; never write to it.** This is where the story's grounding comes
+  from — see *Ground the story in the book* below. Do not inspect the app or source code to discover
+  surfaces; cite only OKF nodes that already exist.
 {%- endif %}
 
 ## Required reading
@@ -44,10 +46,10 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 
 ## Ground the story in the book (cite node ids)
 
-The OKF book under `{{ workhorse_var('features_dir') }}` already describes every surface the code
-has — screens, components, interactions, flows, endpoints, commands. **That gathering is done; do
-not redo it and do not add to it.** Your job is to find the handful of nodes this story touches and
-*cite* them.
+The OKF book under `{{ workhorse_var('features_dir') }}` already describes the surfaces author may
+reference — screens, components, interactions, flows, endpoints, commands. **That gathering is done;
+do not redo it and do not add to it.** Your job is to find the handful of existing nodes this story
+touches and *cite* them.
 
 A node's id **is** its location: a repo-relative path for a whole document (`docs/okf/web/settings.md`),
 and `path#anchor` for a section inside one (`docs/okf/web/settings.md#profile-form`). So a citation is
@@ -79,13 +81,15 @@ and what "done" means at a high level (e.g. "at parity with the legacy X editor"
 by **linking its OKF node ids** (above) so the scope is grounded rather than asserted. Link the
 **visual reference** the criteria are judged against: a running legacy surface (rewrite projects),
 or — when there is no live reference — the **design mockup** for this surface (the `mockup_path` input
-above if set, else the manifest entry's `mockup` image under the repo's mockup dir). A spec, legacy
+above if set, normally `./mockup.html`, else the manifest entry's `mockup`). A spec, legacy
 route, or captured evidence all qualify. This orients the coder; it is **not** a spec and not a build plan.
 
 ## Acceptance Criteria (how it's judged — observable, user-facing)
 
-A checklist of the **observable outcomes** that must be true when the goal is met, phrased as what a
-person *using the app* would see or do — never as DOM selectors or implementation details:
+A checklist of the **observable outcomes** that must be true when the goal is met, phrased as what
+the journey actor sees or does. A technical-enabler story may instead use what an operator can
+verify at the running system boundary, but must name the epic journey step it unlocks. Never use DOM
+selectors, file presence, framework setup, or implementation details:
 
 - Behaviour and correctness (e.g. "typing in one field changes only that field; checking one box
   checks only that box").
@@ -110,9 +114,9 @@ The criteria MUST also cover what the nodes you cited say — read from the book
   that then disappears"), not merely that a control exists.
 {%- endif %}
 
-One check per item, each independently verifiable by **looking at or using the running app**. These
-criteria are the contract the coder's QA verifies against the source of truth, so make them about
-real, user-visible behaviour — not the mere presence of an element in the DOM.
+One check per item, each independently verifiable from user-visible behavior once built. These
+criteria are the contract the coder's QA verifies against the cited source of truth, so make them
+about real behavior — not the mere presence of an element in the DOM.
 
 ## Write `{{ workhorse_var('story_path') }}`
 

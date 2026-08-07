@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown
+from ostler import Ostler, markdown, select
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.author.nodes._blueprint import blueprint
@@ -35,10 +35,6 @@ from workhorse_workflows.author.shared.paths import launch_repo_root, survey_rep
 from workhorse_workflows.author.shared.schemas.main import Committed, Defects, PullRequest, VerifyReport
 from workhorse_workflows.kit import branch_exists, commit_paths, remote_urls, show_file
 from workhorse_workflows.kit import github as github_kit
-
-#: Story statuses that mean the coder has nothing left to do with it.
-_DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
-
 
 # ── reconciliation: what this run silently dropped ──────────────────────────
 
@@ -170,7 +166,7 @@ def verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "")
     lines = [
         "ostler doctor found referential-integrity errors in the planning-doc graph.",
         "Each is a graph break (a reference that resolves to nothing, or to the wrong epic).",
-        "Reconcile each with `ostler edit` (set-owner / relink / rename) or escalate — never",
+        "Reconcile each with `ostler edit` (relink / rename) or escalate — never",
         "delete a reference or fabricate an entity to silence the check.",
         "",
     ]
@@ -185,8 +181,21 @@ def verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "")
 
 
 def _is_done(status: str) -> bool:
-    s = (status or "").strip().lower()
-    return any(tok in s for tok in _DONE_TOKENS)
+    return select.is_done(status)
+
+
+def _canonical_epic_names(okf: Ostler, names: list[str]) -> list[str]:
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        try:
+            epic = Path(okf.epic_path(name)).name
+        except (OSError, ValueError, RuntimeError):
+            epic = name
+        if epic not in seen:
+            resolved.append(epic)
+            seen.add(epic)
+    return resolved
 
 
 @blueprint.node(stub=_stubs.clean)
@@ -215,8 +224,19 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
         logger.warning(reason)
         return Defects(errors=reason)
     if not queue:
-        logger.info("the epics index lists no epics")
-        return Defects(errors="the epics index lists no epics")
+        seen: set[str] = set()
+        for milestone in okf.graph.milestones:
+            for epic in milestone.epics:
+                name = str(epic).strip()
+                if name and name not in seen:
+                    queue.append(name)
+                    seen.add(name)
+    if not queue:
+        queue = [epic.name for epic in okf.graph.epics]
+    queue = _canonical_epic_names(okf, queue)
+    if not queue:
+        logger.info("no epics found in todo, milestones, or graph")
+        return Defects(errors="no epics found in todo, milestones, or graph")
 
     by_epic: dict[str, list[dict]] = {}
     for s in okf.list("story"):

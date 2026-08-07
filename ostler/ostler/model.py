@@ -48,7 +48,7 @@ class Story:
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
     status: str = ""
-    knowledge_refs: list[str] = field(default_factory=list)
+    body_status: str = ""
     # Every in-repo document this story links to, verbatim as written (relative to story.md
     # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
     # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
@@ -87,11 +87,15 @@ class Epic:
 
 
 @dataclass
-class KnowledgeRecord:
-    surface: str
+class Milestone:
+    name: str
     path: Path
-    fmt: str  # always "md" in this format; retained for callers
-    data: dict
+    title: str = ""
+    status: str = ""
+    eid: str = ""
+    depends_on: list[str] = field(default_factory=list)
+    source_items: list[str] = field(default_factory=list)
+    epics: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -137,7 +141,7 @@ class Graph:
     profile: str  # "full" | "exploration"
     doc_roots: dict[str, Path]
     epics: list[Epic] = field(default_factory=list)
-    knowledge: list[KnowledgeRecord] = field(default_factory=list)
+    milestones: list[Milestone] = field(default_factory=list)
     features: list[FeatureRecord] = field(default_factory=list)
     ui_nodes: list[UINode] = field(default_factory=list)
     ids: dict | None = None
@@ -201,6 +205,12 @@ class Graph:
     def all_story_slugs(self) -> set[str]:
         return {s.slug for e in self.epics for s in e.stories}
 
+    def milestone_by_name(self, name: str) -> Milestone | None:
+        for milestone in self.milestones:
+            if name in (milestone.name, milestone.eid):
+                return milestone
+        return None
+
     def find_story(self, slug: str) -> tuple[Epic, Story] | None:
         for e in self.epics:
             for s in e.stories:
@@ -212,22 +222,24 @@ class Graph:
 # ---------------------------------------------------------------------------
 # epic.md body parsing  (## Seeds / ## Stories → SeedItem / Story)
 # ---------------------------------------------------------------------------
-def section_gaps(doc: markdown.MarkdownDoc,
-                 specs: tuple[registry.SectionSpec, ...]) -> list[tuple[registry.SectionSpec, str]]:
+def required_section_problems(
+    doc: markdown.MarkdownDoc,
+    specs: tuple[registry.SectionSpec, ...],
+) -> list[tuple[registry.SectionSpec, str]]:
     """``(spec, "missing"|"empty")`` for every required section the body does not honor.
 
     The one implementation of the required-section rule: the story contract
     (``registry.STORY_SECTIONS``) and the UI profile's ``required_sections`` both check here,
     so a scaffolded heading can never satisfy a check that meant "written".
     """
-    gaps: list[tuple[registry.SectionSpec, str]] = []
+    problems: list[tuple[registry.SectionSpec, str]] = []
     for spec in specs:
         section = doc.find_section(spec.heading)
         if section is None:
-            gaps.append((spec, "missing"))
+            problems.append((spec, "missing"))
         elif spec.filled and section.is_empty:
-            gaps.append((spec, "empty"))
-    return gaps
+            problems.append((spec, "empty"))
+    return problems
 
 
 def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
@@ -255,6 +267,12 @@ def story_status(doc: markdown.MarkdownDoc) -> str:
         bullet = status_bullet(doc)
         status = bullet.value if bullet else ""
     return str(status or "")
+
+
+def story_body_status(doc: markdown.MarkdownDoc) -> str:
+    """The visible ``- **Status**:`` value in the story body, or ``""`` when absent."""
+    bullet = status_bullet(doc)
+    return str(bullet.value if bullet else "" or "")
 
 
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
@@ -402,7 +420,7 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     """
     cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
     roots = {key: root / cfg.get(key, f"docs/{key}")
-             for key in ("features", "epics", "knowledge", "specs")}
+             for key in ("features", "epics", "milestones", "specs")}
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / cfg.get(kind.doc_root, kind.default_path))
     return roots
@@ -419,15 +437,19 @@ def load(cwd: Path | None = None) -> Graph:
     if config.get("profile") in ("full", "exploration"):
         profile = config["profile"]
     else:
-        profile = "full" if roots["epics"].is_dir() else "exploration"
+        profile = (
+            "full"
+            if roots["epics"].is_dir() or roots["milestones"].is_dir()
+            else "exploration"
+        )
 
     graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=roots,
                   template_kinds=template_kinds)
 
-    _load_knowledge(graph)
     _load_features(graph)
     _load_ui_nodes(graph)
     if profile == "full":
+        _load_milestones(graph)
         _load_epics(graph)
         _load_ids(graph)
     return graph
@@ -440,23 +462,6 @@ def _load_ids(graph: Graph) -> None:
             graph.ids = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             graph.ids = None
-
-
-def _load_knowledge(graph: Graph) -> None:
-    kroot = graph.doc_roots["knowledge"]
-    if not kroot.is_dir():
-        return
-    for path in sorted(kroot.rglob("*.md")):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
-            continue
-        try:
-            doc = _read_frontmatter(path)
-        except OSError:
-            continue
-        data = doc.frontmatter or {}
-        surface = str(data.get("surface") or path.relative_to(kroot).with_suffix("").as_posix())
-        graph.knowledge.append(KnowledgeRecord(surface=surface, path=path, fmt="md",
-                                               data=data))
 
 
 def _load_features(graph: Graph) -> None:
@@ -476,6 +481,44 @@ def _load_features(graph: Graph) -> None:
         area = str(data.get("area") or (rel.parent.as_posix() if rel.parent.as_posix() != "." else ""))
         title = str(data.get("title") or slug)
         graph.features.append(FeatureRecord(slug=slug, area=area, title=title, path=path, data=data))
+
+
+def _as_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if _is_list_value(str(v).strip())]
+    return [p.strip() for p in str(value).split(",") if _is_list_value(p.strip())]
+
+
+def _is_list_value(value: str) -> bool:
+    return bool(value) and value.lower() not in {"none", "(none)", "[]"}
+
+
+def _load_milestones(graph: Graph) -> None:
+    mroot = graph.doc_roots["milestones"]
+    if not mroot.is_dir():
+        return
+    for path in sorted(mroot.glob("*.md")):
+        if not path.is_file() or path.name in registry.RESERVED_FILES:
+            continue
+        try:
+            doc = _read_frontmatter(path)
+        except OSError:
+            continue
+        fm = doc.frontmatter or {}
+        if registry.base_type(registry.type_of(fm)) != "milestone":
+            continue
+        graph.milestones.append(Milestone(
+            name=path.stem,
+            path=path,
+            title=str(fm.get("title") or path.stem),
+            status=str(fm.get("status") or ""),
+            eid=str(fm.get("id") or path.stem),
+            depends_on=_as_list(fm.get("dependsOn") or fm.get("depends_on")),
+            source_items=_as_list(fm.get("sourceItems") or fm.get("source_items")),
+            epics=_as_list(fm.get("epics")),
+        ))
 
 
 _ANCHOR_STRIP_RE = re.compile(r"[^\w\s-]")
@@ -631,9 +674,10 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.story_md = c
             doc = markdown.split(c.read_text(encoding="utf-8"))
             refs = doc.refs
-            story.knowledge_refs = refs.knowledge_paths
             story.doc_refs = refs.doc_hrefs
             story.status = story_status(doc)
-            story.unwritten_sections = [s.heading for s, _ in
-                                        section_gaps(doc, registry.STORY_SECTIONS)]
+            story.body_status = story_body_status(doc)
+            story.unwritten_sections = [
+                s.heading for s, _ in required_section_problems(doc, registry.STORY_SECTIONS)
+            ]
             return

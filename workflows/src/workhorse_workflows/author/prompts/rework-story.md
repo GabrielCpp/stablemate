@@ -12,9 +12,14 @@ The per-story validator rejected this story. Fix exactly what it flagged, then r
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
+{%- if workhorse_var('mockup_path') %}
+- Design mockup: `{{ workhorse_var('mockup_path') }}` — keep the story's Context linked to this visual
+  source of truth when the validation issue does not supersede it.
+{%- endif %}
 {%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation the story
-  cites by node id from its `## Context`. Read it; never write to it.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation the
+  story cites by node id from its `## Context`. Read it; never write to it, and do not inspect the
+  app or source code to discover replacement nodes.
 {%- endif %}
 - Deterministic validation errors to fix: `{{ workhorse_var('validation_errors') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`

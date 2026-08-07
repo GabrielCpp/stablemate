@@ -87,7 +87,7 @@ title: Dashboard
   - projectId: from [submit-sign-in](sign-in.md#submit-sign-in)
 """
 
-# Documented, but nothing navigates to it — and its preconditions are never stated. Both gaps
+# Documented, but nothing navigates to it — and its preconditions are never stated. Both omissions
 # `reach` exists to surface, deliberately in one fixture.
 ORPHAN = """\
 ---

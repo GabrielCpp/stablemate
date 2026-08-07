@@ -164,13 +164,24 @@ def _build_parser() -> argparse.ArgumentParser:
     ns.add_argument("--json", action="store_true")
 
     # ---- CRUD -------------------------------------------------------------
-    cr = sub.add_parser("create", help="create an epic/story/feature (allocates an id)")
+    cr = sub.add_parser("create", help="create a planning entity (allocates an id)")
     crs = cr.add_subparsers(dest="what", required=True)
     cre = crs.add_parser("epic")
     cre.add_argument("name")
     cre.add_argument("--title", required=True)
     cre.add_argument("--prefix")
     cre.add_argument("--json", action="store_true")
+    crm = crs.add_parser("milestone")
+    crm.add_argument("name")
+    crm.add_argument("--title", required=True)
+    crm.add_argument("--source-items", default="", dest="source_items")
+    crm.add_argument("--prefix")
+    crm.add_argument("--json", action="store_true")
+    crb = crs.add_parser("backlog-item")
+    crb.add_argument("text")
+    crb.add_argument("--section", default="")
+    crb.add_argument("--prefix")
+    crb.add_argument("--json", action="store_true")
     crt = crs.add_parser("story")
     crt.add_argument("epic")
     crt.add_argument("slug")
@@ -272,8 +283,17 @@ def _build_parser() -> argparse.ArgumentParser:
     bla.add_argument("id")
     bla.add_argument("text")
     bla.add_argument("--section", default="")
+    blad = bls.add_parser("adopt")
+    blad.add_argument("--path", default="")
+    blad.add_argument("--prefix")
     bls.add_parser("prune").add_argument("id")
     bls.add_parser("list").add_argument("--json", action="store_true")
+
+    ml = sub.add_parser("milestone", help="manage milestone backlog ownership")
+    mls = ml.add_subparsers(dest="op", required=True)
+    mlss = mls.add_parser("set-source-items")
+    mlss.add_argument("name")
+    mlss.add_argument("ids", nargs="+")
 
     td = sub.add_parser("todo", help="manage the epics queue (docs/epics/index.md)")
     tds = td.add_subparsers(dest="op", required=True)
@@ -1039,6 +1059,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "create":
         if args.what == "epic":
             res = crud.create_epic(graph, args.name, args.title, args.prefix)
+        elif args.what == "milestone":
+            res = crud.create_milestone(
+                graph,
+                args.name,
+                args.title,
+                [ids_mod.resolve(graph, item) for item in _split(args.source_items)],
+                args.prefix,
+            )
+        elif args.what == "backlog-item":
+            res = backlog_mod.create(graph, args.text, args.section, args.prefix)
         elif args.what == "story":
             res = crud.create_story(
                 graph,
@@ -1086,11 +1116,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
     if c == "backlog":
         if args.op == "add":
             return _result(backlog_mod.add(graph, args.id, args.text, args.section))
+        if args.op == "adopt":
+            return _result(backlog_mod.adopt(graph, args.path, args.prefix))
         if args.op == "prune":
             return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
         return _emit(
             [{"id": i, "text": t} for i, t in backlog_mod.items(graph)], args.json
         )
+    if c == "milestone":
+        return _result(crud.set_milestone_source_items(
+            graph,
+            args.name,
+            [ids_mod.resolve(graph, item) for item in args.ids],
+        ))
     if c == "todo":
         if args.op == "add":
             return _result(todo_mod.add(graph, args.name, front=args.front))

@@ -78,7 +78,7 @@ def load_inventory(path: str | Path) -> dict:
 def load_waivers(path: str | Path | None) -> dict[str, str]:
     """Adjudicated non-units → the reason each was waived, keyed by ``code:`` target.
 
-    A waiver is the agent's recorded judgement that a computed miss is not a real gap (a helper
+    A waiver is the agent's recorded judgement that a computed miss is not real missing coverage (a helper
     folded into a documented contract, a deliberate non-unit). It is committed, diffable and
     reviewable, so the verdict survives the round instead of being re-litigated every time.
     A missing file is not an error — it means nothing has been waived.

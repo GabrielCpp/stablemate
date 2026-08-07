@@ -1,7 +1,7 @@
 """`ostler doctor` — deterministic referential-integrity checks over the organization graph.
 
 Computes (never asserts) per-epic seed/story counts and flags cross-epic references, orphan seeds,
-missing story files, and dangling dependencies / knowledge paths.
+missing story files, and dangling dependencies.
 """
 
 from __future__ import annotations
@@ -11,11 +11,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
-                    registry, schemas)
+                    registry, schemas, select)
 from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
-from ostler.model import Graph, Epic, section_gaps
+from ostler.model import Graph, Epic, required_section_problems
 
 
 @dataclass
@@ -72,7 +72,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
-    _check_surfaces(graph, f)
     _check_ui(graph, f)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
@@ -89,6 +88,8 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
         return report
 
     all_story_slugs = graph.all_story_slugs()
+
+    _check_milestones(graph, f)
 
     for epic in graph.epics:
         if epic_filter and not _epic_matches(epic, epic_filter):
@@ -213,6 +214,13 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                              f"story '{story.slug}' has no story.md (path: {story.path or '?'})",
                              epic.name, story.slug))
         else:
+            if story.body_status and story.status.strip() != story.body_status.strip():
+                rel = story.story_md.relative_to(graph.root).as_posix()
+                f.append(Finding(
+                    "error", "story-status-mismatch",
+                    f"story '{story.slug}' frontmatter status '{story.status}' differs from "
+                    f"its `## Implementation Status` value '{story.body_status}'",
+                    epic.name, story.slug, path=rel, line=1))
             # story.md says something — a file that is still the scaffold `ostler create story`
             # wrote is not an authored story, and must not pass as one just by existing.
             if story.unwritten_sections:
@@ -222,13 +230,6 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                                  f"{', '.join(story.unwritten_sections)} "
                                  f"{'is' if len(story.unwritten_sections) == 1 else 'are'} empty",
                                  epic.name, story.slug, path=rel, line=1))
-            # knowledge paths referenced in prose exist on disk
-            for ref in story.knowledge_refs:
-                if not (graph.root / ref).exists():
-                    f.append(Finding("error", "dangling-knowledge-path",
-                                     f"story '{story.slug}' links '{ref}' which does not exist",
-                                     epic.name, ref))
-
         # only meaningful when the epic uses seeds at all (a wholly-seedless epic is a valid mode)
         if not story.seed_items and epic.seeds:
             f.append(Finding("warn", "story-covers-no-seed",
@@ -240,6 +241,132 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
             f.append(Finding("error", "orphan-seed",
                              f"active seed '{s.id}' ({s.status or 'no-status'}) is covered by no "
                              f"story", epic.name, s.id))
+
+
+def _epic_ref(epic_name: str) -> str:
+    return registry.epic_slug(epic_name.strip())
+
+
+def _epic_by_ref(graph: Graph, epic_name: str) -> Epic | None:
+    ref = _epic_ref(epic_name)
+    return next((e for e in graph.epics if e.name == epic_name or _epic_ref(e.name) == ref), None)
+
+
+def _milestone_ref_by_epic(graph: Graph) -> dict[str, list[str]]:
+    owners: dict[str, list[str]] = {}
+    for milestone in graph.milestones:
+        for epic_name in milestone.epics:
+            owners.setdefault(_epic_ref(epic_name), []).append(milestone.name)
+    return owners
+
+
+def _milestone_done(graph: Graph, milestone_name: str) -> bool:
+    milestone = graph.milestone_by_name(milestone_name)
+    if milestone is None:
+        return False
+    for epic_name in milestone.epics:
+        epic = _epic_by_ref(graph, epic_name)
+        if epic is None or not epic.stories or not all(select.is_done(story.status) for story in epic.stories):
+            return False
+    return True
+
+
+def _transitive_milestone_deps(graph: Graph, milestone_name: str) -> set[str]:
+    deps: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in visiting:
+            return
+        visiting.add(name)
+        milestone = graph.milestone_by_name(name)
+        if milestone is None:
+            visiting.discard(name)
+            return
+        for dep in milestone.depends_on:
+            if dep not in deps:
+                deps.add(dep)
+                visit(dep)
+        visiting.discard(name)
+
+    visit(milestone_name)
+    return deps
+
+
+def _check_milestone_cycles(graph: Graph, f: list[Finding]) -> None:
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(name: str) -> None:
+        if name in stack:
+            cycle = stack[stack.index(name):] + [name]
+            f.append(Finding(
+                "error", "milestone-cycle",
+                f"milestone dependency cycle: {' -> '.join(cycle)}", ref=name))
+            return
+        if name in visited:
+            return
+        visited.add(name)
+        stack.append(name)
+        milestone = graph.milestone_by_name(name)
+        if milestone is not None:
+            for dep in milestone.depends_on:
+                visit(dep)
+        stack.pop()
+
+    for milestone in graph.milestones:
+        visit(milestone.name)
+
+
+def _check_milestones(graph: Graph, f: list[Finding]) -> None:
+    if not graph.milestones:
+        return
+
+    owners = _milestone_ref_by_epic(graph)
+    source_owners: dict[str, list[str]] = {}
+    for milestone in graph.milestones:
+        for source_item in milestone.source_items:
+            source_owners.setdefault(source_item, []).append(milestone.name)
+    known_milestones = {m.name for m in graph.milestones} | {m.eid for m in graph.milestones}
+
+    for milestone in graph.milestones:
+        rel = milestone.path.relative_to(graph.root).as_posix()
+        for dep in milestone.depends_on:
+            if dep not in known_milestones:
+                f.append(Finding(
+                    "error", "dangling-milestone-dependency",
+                    f"milestone '{milestone.name}' depends on unknown milestone '{dep}'",
+                    ref=dep, path=rel, line=1))
+        for epic_name in milestone.epics:
+            if _epic_by_ref(graph, epic_name) is None:
+                f.append(Finding(
+                    "error", "dangling-milestone-epic",
+                    f"milestone '{milestone.name}' lists unknown epic '{epic_name}'",
+                    ref=epic_name, path=rel, line=1))
+
+    for epic in graph.epics:
+        refs = owners.get(_epic_ref(epic.name), [])
+        if not refs:
+            f.append(Finding(
+                "error", "epic-without-milestone",
+                f"epic '{epic.name}' is not assigned to any milestone", epic=epic.name, ref=epic.name))
+        elif len(refs) > 1:
+            f.append(Finding(
+                "error", "epic-in-multiple-milestones",
+                f"epic '{epic.name}' is assigned to multiple milestones: {', '.join(refs)}",
+                epic=epic.name, ref=epic.name))
+
+    for source_item, milestones in source_owners.items():
+        if len(milestones) > 1:
+            f.append(Finding(
+                "error",
+                "backlog-item-in-multiple-milestones",
+                f"backlog item '{source_item}' is assigned to multiple milestones: "
+                f"{', '.join(milestones)}",
+                ref=source_item,
+            ))
+
+    _check_milestone_cycles(graph, f)
 
 
 def _check_conformance(graph: Graph, f: list[Finding]) -> None:
@@ -345,13 +472,13 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
 
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":
-        for spec, gap in section_gaps(doc, ftype.required_sections):
-            code = "missing-required-section" if gap == "missing" else "empty-required-section"
-            state = "is missing" if gap == "missing" else "leaves empty"
+        for spec, problem in required_section_problems(doc, ftype.required_sections):
+            code = "missing-required-section" if problem == "missing" else "empty-required-section"
+            state = "is missing" if problem == "missing" else "leaves empty"
             f.append(Finding("error", code,
                              f"{rel}: {ftype.name} {state} its required `## {spec.heading}` "
                              f"section", path=rel, line=1,
-                             suggestion=f"## {spec.heading}", fixable=(gap == "missing")))
+                             suggestion=f"## {spec.heading}", fixable=(problem == "missing")))
 
 
 def _declares(path: Path, text: str, symbol: str) -> bool:
@@ -592,41 +719,3 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                                      f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
                                      f"heading not found", path=rel, line=line, ref=href,
                                      fixable=True))
-
-
-def _norm(s: object) -> str:
-    """Lowercase, route-/path-insensitive token for generous surface matching."""
-    return re.sub(r"[^a-z0-9]+", "-", str(s or "").strip().lower().strip("/")).strip("-")
-
-
-def _inventory_keys(graph: Graph) -> set[str] | None:
-    """Surface identifiers derived from the feature Concepts (``docs/features/**/*.md``), or None
-    if there are no features yet (a greenfield repo before its surface registry exists → skip)."""
-    if not graph.features:
-        return None
-    keys: set[str] = set()
-    for feat in graph.features:
-        for v in (feat.slug, feat.key, feat.data.get("route")):
-            if v:
-                keys.add(_norm(v))
-    return keys
-
-
-def _check_surfaces(graph: Graph, f: list[Finding]) -> None:
-    """Spec ↔ surface-registry edge: every knowledge record describes a screen, so its surface
-    must exist in the feature inventory that the coder builds against. A surface absent from the
-    inventory means the spec graph and the implementation registry have drifted apart. (The
-    registry ↔ running-code edge — does the route actually render — is framework-specific and
-    lives in the coder's QA health gate, not here.) Generous substring match, warn-level."""
-    keys = _inventory_keys(graph)
-    if not keys:
-        return  # no inventory registry → nothing to ground against
-    for record in graph.knowledge:
-        needles = [_norm(record.surface), _norm(record.data.get("route") or "")]
-        needles = [n for n in needles if len(n) >= 3]
-        if needles and not any(n in k or k in n for n in needles for k in keys):
-            f.append(Finding("warn", "ungrounded-surface",
-                             f"knowledge surface '{record.surface}' is not in the feature "
-                             f"inventory (inventory.json) — add its feature doc or fix the "
-                             f"surface so spec and implementation registry stay in sync",
-                             ref=record.surface))

@@ -15,10 +15,10 @@ Intro preamble line.
 
 ## Acceptance Criteria
 
-- First criterion works. See `docs/knowledge/area/first.md`.
+- First criterion works. See [first](docs/features/area/first.md).
 - Second one too.
-  - a nested detail in `docs/knowledge/area/nested.md`
-- Links to `docs/knowledge/area/rec.json`.
+  - a nested detail in [nested](docs/features/area/nested.md)
+- Links to [record](docs/features/area/rec.md).
 
 ## Evidence
 
@@ -47,13 +47,19 @@ def test_section_tree_nesting():
 def test_section_scoped_refs():
     doc = markdown.split(DOC)
     ac = doc.section("Acceptance Criteria")
-    assert ac.refs.knowledge_paths == ["docs/knowledge/area/first.md",
-                                      "docs/knowledge/area/nested.md",
-                                      "docs/knowledge/area/rec.json"]
+    assert ac.refs.doc_hrefs == [
+        "docs/features/area/first.md",
+        "docs/features/area/nested.md",
+        "docs/features/area/rec.md",
+    ]
     # the Evidence section's link does not leak into Acceptance Criteria
     ev = doc.section("Evidence")
     assert ev.refs.links == [("old shot", "docs/evidence/old.png")]
-    assert ac.refs.links == []
+    assert ac.refs.links == [
+        ("first", "docs/features/area/first.md"),
+        ("nested", "docs/features/area/nested.md"),
+        ("record", "docs/features/area/rec.md"),
+    ]
 
 
 def test_bullets_and_nesting():
@@ -63,8 +69,8 @@ def test_bullets_and_nesting():
     second = ac.bullets[1]
     assert second.children and "nested detail" in second.children[0].text
     # a bullet exposes its own refs
-    assert ac.bullets[0].refs.knowledge_paths == ["docs/knowledge/area/first.md"]
-    assert second.children[0].refs.knowledge_paths == ["docs/knowledge/area/nested.md"]
+    assert ac.bullets[0].refs.doc_hrefs == ["docs/features/area/first.md"]
+    assert second.children[0].refs.doc_hrefs == ["docs/features/area/nested.md"]
 
 
 def test_source_spans_map_back_to_body():

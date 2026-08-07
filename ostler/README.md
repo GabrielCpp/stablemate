@@ -3,8 +3,9 @@
 > Tend your documentation graph.
 
 `ostler` is the single system-of-record for a repository's `docs/` knowledge graph. It **defines,
-validates, searches and mutates** your planning docs — epics, stories, seeds, knowledge records and
-features — as plain markdown **Concepts** (a strict profile of the
+validates, searches and mutates** your planning docs — backlog items, milestones, epics, stories,
+seeds, features and specs —
+as plain markdown **Concepts** (a strict profile of the
 [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)).
 
 Everything is markdown. An epic's seeds and its story dependency-DAG live inside its `epic.md`; there
@@ -13,7 +14,7 @@ allocation and is the one tool that reads and writes the graph — so structure 
 humans (or agents) author the prose.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
-roots default to `<cwd>/docs/{epics,knowledge,features,specs}` and the organization name to the repo
+roots default to `<cwd>/docs/{epics,features,specs}` and the organization name to the repo
 folder name. Point it at any repo with `-C/--chdir`.
 
 ## Install
@@ -40,19 +41,24 @@ Ostler creates the *structure and ids*; you author the *content* into the skelet
 # 1. See if the graph is healthy
 ostler doctor
 
-# 2. Scaffold an epic (allocates an id, writes docs/epics/0001-checkout-flow/epic.md —
+# 2. Capture intake and its release boundary (both allocate immutable ids)
+ostler create backlog-item "Ship checkout parity" --section Scope --json
+ostler create milestone checkout-mvp --title "Checkout MVP" \
+  --source-items <full-backlog-id> --json
+
+# 3. Scaffold an epic (allocates an id, writes docs/epics/0001-checkout-flow/epic.md —
 #    the directory carries the order it was created in; `--json` reports the name it used)
 ostler create epic checkout-flow --title "Checkout Flow at Parity"
 
-# 3. Record a seed (a unit of intended work) in that epic's ## Seeds
+# 4. Record a seed (a unit of intended work) in that epic's ## Seeds
 ostler seed add checkout-flow address-step --status researched \
   --surface checkout/address --summary "Collect & validate the shipping address"
 
-# 4. Cut a story that covers the seed (adds it to the epic's ## Stories, scaffolds story.md)
+# 5. Cut a story that covers the seed (adds it to the epic's ## Stories, scaffolds story.md)
 ostler create story checkout-flow 01-address-step \
   --title "Address step" --covers address-step
 
-# 5. Ask what to work on next, then list the epic's stories as JSON
+# 6. Ask what to work on next, then list the epic's stories as JSON
 ostler next-story checkout-flow
 ostler list --type story --epic checkout-flow --json
 ```
@@ -67,16 +73,16 @@ A **Concept** is one `.md` file with a YAML **frontmatter** block (whose only ha
 non-empty `type`) and a markdown **body** using conventional headings.
 
 **Identity is the path.** A Concept's id is its bundle-relative path without `.md`
-(`docs/knowledge/profile/preference-summary.md` → `profile/preference-summary`). The reserved
+(`docs/features/profile/preference-summary.md` → `profile/preference-summary`). The reserved
 filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are not Concepts.
 
 ### Entity types
 
 | `type` | Location (repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
+| `milestone` | `docs/milestones/<slug>.md` | generated `id`; readable `<slug>` names the file | `type`, `id`, `title` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 
@@ -90,8 +96,22 @@ the directory itself, and read `--json`'s `name` back after `create epic` rather
 `spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
 `ostler create spec <slug> <doc>`, which is idempotent and also retro-stamps free-form docs.
-**Not Concepts** (managed markdown, left in place): `docs/backlog.md` (an intake list)
+**Not Concepts** (managed markdown, left in place): `docs/backlog.md` (an identified intake list)
 and `docs/epics/index.md` (the epics queue).
+
+### Planning intake identity
+
+Use `create backlog-item` for new work. It allocates a full id and writes
+`- [<full-id>] <text>` under the requested `##` section. If a person has already entered plain
+bullets, `backlog adopt` assigns ids to direct unnamed bullets under `##` headings without changing
+their prose. It deliberately leaves preamble bullets, nested detail bullets, already named bullets,
+and the `## Filed by coder` section untouched; repeated adoption is a no-op.
+
+A milestone's generated `id` is independent of its readable filename and title. Its `sourceItems`
+contains the full ids of the backlog intake it owns. Use `milestone set-source-items` to update that
+set when an active milestone absorbs more intake. `doctor` rejects a backlog id owned by multiple
+milestones. Never persist a short handle: handles are display/input conveniences and may lengthen
+after a collision; Ostler resolves command inputs and writes full ids.
 
 ### `epic.md` — single source of truth for an epic
 
@@ -148,7 +168,7 @@ accepted as input either way).
 |---|---|
 | `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
 | `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
-| `create` `delete` `seed` `set-status` `backlog` `todo` | mutate it — scaffold an epic/story/feature/spec, record a seed, move the queue |
+| `create` `delete` `seed` `set-status` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` | the `docs/features/` node/edge book — see below |
@@ -216,11 +236,16 @@ okf.doctor()                          # {...} referential-integrity report (ostl
 
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
+item = okf.create_backlog_item("Ship checkout parity", section="Scope")
+milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id])
+okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
+okf.backlog_adopt("docs/backlog.md")  # name direct unnamed work bullets in place
+okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
 okf.set_status("01-cart", "QA passed")
 ```
 
 The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
-(`create_*`/`add_seed`/`set_status`/`backlog_*`/`todo_*`/`settle_review`) applies
+(`create_*`/`add_seed`/`set_status`/`backlog_*`/`set_milestone_*`/`todo_*`/`settle_review`) applies
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object
@@ -349,7 +374,7 @@ ostler remove <kind> <name>
 ```
 
 See
-[SPEC.md §10](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#10-templates-and-template-declared-kinds)
+[SPEC.md §9](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#9-templates-and-template-declared-kinds)
 for the full YAML schema, a worked 3-level nesting example, and the bundle-vs-leaf shape rules.
 
 ## Versioning

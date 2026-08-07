@@ -15,7 +15,7 @@ def test_list_by_type(repo: Path):
     assert {r["name"] for r in query.list_entities(g, "epic")} == {"epic-a", "epic-b"}
     assert {r["slug"] for r in query.list_entities(g, "story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in query.list_entities(g, "seed")} == {"seed-a1", "seed-a2", "seed-b1"}
-    assert {r["surface"] for r in query.list_entities(g, "knowledge")} == {"area/rec", "area/rec2"}
+    assert {r["slug"] for r in query.list_entities(g, "feature")} == {"rec", "rec2"}
 
 
 def test_list_filters(repo: Path):
@@ -50,6 +50,36 @@ def test_next_epic_and_story(repo: Path):
     # mark 01-foo done → no runnable story left in epic-a
     crud.set_status(load(repo), "01-foo", "QA passed")
     assert select.next_story(load(repo), "epic-a") is None
+
+
+def test_next_epic_uses_milestone_dependency_order(repo: Path):
+    write(repo / "docs/milestones/feature.md", """---
+type: milestone
+id: m1
+title: Feature
+status: planned
+dependsOn:
+  - m0
+epics:
+  - epic-b
+---
+# Feature
+""")
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+---
+# Foundation
+""")
+
+    ne = present(select.next_epic(load(repo)))
+
+    assert ne["name"] == "epic-a"
 
 
 def test_next_story_respects_dependencies(tmp_path: Path):
@@ -102,7 +132,7 @@ def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
 
 
 def test_backlog(tmp_path: Path):
-    write(tmp_path / "docs/knowledge/.keep", "")  # make it a repo root with docs/
+    write(tmp_path / "docs/features/.keep", "")  # make it a repo root with docs/
     g = load(tmp_path)
     assert backlog.add(g, "b1", "do a thing").ok
     assert backlog.add(load(tmp_path), "b2", "do another", section="Filed by coder").ok

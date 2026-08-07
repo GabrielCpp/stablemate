@@ -42,7 +42,7 @@ CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 #: Doc kinds whose *directory existing* means the same thing without any configuration at
 #: all. Named by kind rather than by path so the probe follows a repo that moved them:
 #: `ostler.path` turns each into the directory this repo actually configures.
-MANAGED_KINDS = ("epics", "knowledge")
+MANAGED_KINDS = ("epics", "features")
 
 #: The reason kinds that make a doc node *directly* implicated by the diff, as opposed to
 #: implicated through the surface it happens to sit under.

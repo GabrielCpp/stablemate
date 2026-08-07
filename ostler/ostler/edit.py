@@ -70,7 +70,7 @@ class EditPlan:
 
 def _doc_files(graph: Graph) -> list[Path]:
     files: list[Path] = []
-    for key in ("epics", "knowledge", "specs"):
+    for key in ("epics", "specs"):
         root = graph.doc_roots[key]
         if root.is_dir():
             files.extend(p for p in root.rglob("*")

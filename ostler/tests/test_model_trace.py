@@ -22,17 +22,17 @@ def test_markdown_no_frontmatter():
 
 
 def test_exploration_profile_when_no_epics(tmp_path: Path):
-    (tmp_path / "docs/knowledge/area").mkdir(parents=True)
-    (tmp_path / "docs/knowledge/area/note.md").write_text(
-        "---\nsurface: area/note\n---\nhi\n", encoding="utf-8")
+    (tmp_path / "docs/features/area").mkdir(parents=True)
+    (tmp_path / "docs/features/area/note.md").write_text(
+        "---\ntype: feature\nslug: note\ntitle: Note\n---\nhi\n", encoding="utf-8")
     graph = load(tmp_path)
     assert graph.profile == "exploration"
     assert graph.org_name == tmp_path.name
-    assert len(graph.knowledge) == 1
+    assert len(graph.features) == 1
 
 
 def test_org_name_override_from_config(tmp_path: Path):
-    (tmp_path / "docs/knowledge").mkdir(parents=True)
+    (tmp_path / "docs/features").mkdir(parents=True)
     (tmp_path / "ostler.yml").write_text(
         "organization:\n  name: custom-org\n", encoding="utf-8")
     graph = load(tmp_path)
@@ -46,9 +46,6 @@ def test_trace_story_and_seed(repo: Path):
 
     lines, found = trace.run(graph, "seed-a1")
     assert found and any("covered by story" in ln and "01-foo" in ln for ln in lines)
-
-    lines, found = trace.run(graph, "area/rec")
-    assert found and any("surface" in ln for ln in lines)
 
     lines, found = trace.run(graph, "does-not-exist")
     assert not found

@@ -21,9 +21,8 @@ Concepts). A **Concept** is one `.md` file with:
 - a markdown **body** using conventional section headings.
 
 **Identity is the path.** A Concept's id is its bundle-relative path without the `.md` suffix
-(`docs/knowledge/profile/preference-summary.md` → `profile/preference-summary`). Cross-references
-are bundle-relative paths or plain markdown links. The `surface:` key on a knowledge Concept is a
-retained **alias** for its path identity (back-reference for prose that names a surface).
+(`docs/features/profile/preference-summary.md` → `profile/preference-summary`). Cross-references
+are bundle-relative paths or plain markdown links.
 
 Reserved filenames per bundle (OKF): **`index.md`** (an ordered listing of the bundle) and
 **`log.md`** (chronological history, newest first). All other `.md` files are Concepts.
@@ -37,7 +36,6 @@ Every Concept declares `type`. Ostler knows these types (the machine registry is
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 
@@ -48,7 +46,7 @@ changes — so every command that takes an epic *name* accepts either form: `000
 the bare `checkout-flow` name the same epic. A name that already carries a number is matched
 literally, so `0009-checkout-flow` is a miss rather than a silent re-point at `0007-`. Directories
 that predate the numbering are left unnumbered and keep resolving; survivors are never renumbered
-to close a gap.
+to close a missing number.
 
 `spec.*` Concepts are coder **process artifacts**. They are typed and conformance-checked
 (`type` present) but ostler does not own their internal schema or relocate them.
@@ -144,18 +142,10 @@ surface: account-billing/apercu-billing-body   # optional
 - **Status**: Not started        # legacy status line still honored if frontmatter absent
 ```
 
-Edges (`covers`/`depends on`) live in the epic's `## Stories` section, **not** here. Prose may carry
-`docs/knowledge/…` references; ostler resolves them.
+Edges (`covers`/`depends on`) live in the epic's `## Stories` section, **not** here. Prose may link
+to `docs/features/…` OKF nodes with ordinary markdown links.
 
-## 5. The knowledge Concept
-
-Markdown + frontmatter (already the globex shape; Acme `.json` records convert to this). Required:
-`type: knowledge`, `surface`. Typed fields (`route`, `sourceRefs`, `old[]`, `new[]`,
-`openGaps[]`, `journeys[]`, `provenance`) live in frontmatter; the body is free prose
-(`## Components`, …). A record **describes** a surface; it does not carry a worklist. What a story
-should build comes from its epic's seeds, not from the knowledge record.
-
-## 6. The feature Concept and the epics index
+## 5. The feature Concept and the epics index
 
 - **Feature** Concepts (`type: feature`) are per-surface markdown under `docs/features/`. The feature
   **inventory** is *derived* from these via `ostler list --type feature`; there is no `inventory.json`.
@@ -163,7 +153,7 @@ should build comes from its epic's seeds, not from the knowledge record.
   worked (the former `epics-todo.json`). Ostler manages its order via `ostler todo`. The coder's
   runtime queue sidecar (untracked) consumes this ordering.
 
-## 7. Id allocation
+## 6. Id allocation
 
 Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `ostler epic|story|feature create` allocates an
 id, scaffolds the canonical markdown, and (for stories) adds the `### <slug>` block to the epic's
@@ -182,35 +172,35 @@ output and prints full ids under `--json` (`--handles` / `--full-ids` override e
 a handle wherever it accepts an id regardless of how the run prints. Because a handle lengthens when
 a colliding id is later minted, **only the full id is ever written into a document**.
 
-## 8. Conformance and validation (`ostler doctor`)
+## 7. Conformance and validation (`ostler doctor`)
 
 A bundle is **OKF-conformant** when every non-reserved `.md` parses as frontmatter + body with a
 non-empty `type` (`okf-missing-type` otherwise). On top of conformance, ostler enforces the typed
 referential-integrity contract over the graph parsed from the markdown:
 
 `cross-epic-seed`, `dangling-seed`, `cross-epic-dependency`, `dangling-dependency`,
-`missing-story-file`, `dangling-knowledge-path`, `story-covers-no-seed`
-(warn), `orphan-seed`, `ungrounded-surface` (warn),
+`missing-story-file`, `story-covers-no-seed`
+(warn), `orphan-seed`,
 `frozen-removed`, `frozen-mutated`, plus `schema` (warn) for per-type frontmatter schema violations.
 
-## 9. Versioning
+## 8. Versioning
 
 This profile is versioned `<major>.<minor>`; the current version is **1.0**. A repo may record
 `okf_version: "0.1"` (the base OKF version) and `ostler_profile: "1.0"` in `docs/epics/index.md`.
 Minor bumps add backward-compatible fields; major bumps may change required frontmatter or the
 `epic.md` grammar.
 
-## 10. Templates and template-declared kinds
+## 9. Templates and template-declared kinds
 
 The entity types in §2 are **built in** (`ostler/registry.py`) and fixed for every repo. A repo
 that needs a *different* OKF hierarchy — its own Concept kinds, nesting, required frontmatter,
 and status enums — declares one in a **per-repo** file: `.agents/templates.yml`. This sits
-alongside `.agents/ids.json` (§7): `.agents/` is ostler's repo-local, non-`docs/` state, and
+alongside `.agents/ids.json` (§6): `.agents/` is ostler's repo-local, non-`docs/` state, and
 `.agents/templates.yml` extends that same convention rather than a global `~/.config/` store.
 
 A template kind is **live the moment it's written** — `ostler new/find/set/remove` and `ostler
 doctor` pick it up on every run via `model.load()`, with no separate activation step. A kind
-behaves exactly like a built-in `type` for conformance purposes (§8: a non-reserved `.md` under
+behaves exactly like a built-in `type` for conformance purposes (§7: a non-reserved `.md` under
 its `location` glob must carry a non-empty `type`), but its required-field and enum validation is
 enforced only by ostler's own CRUD (`new`/`set`), not by `doctor`.
 

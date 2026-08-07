@@ -81,3 +81,26 @@ def test_template_delete_parses_name():
 def test_template_apply_parses_name():
     args = parse(["template", "apply", "research"])
     assert args.op == "apply" and args.name == "research"
+
+
+def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
+    backlog = parse(["create", "backlog-item", "Ship the MVP", "--section", "Scope"])
+    assert backlog.what == "backlog-item" and backlog.text == "Ship the MVP"
+    assert backlog.section == "Scope"
+
+    milestone = parse([
+        "create", "milestone", "docs-app-mvp", "--title", "Docs App MVP",
+        "--source-items", "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC",
+    ])
+    assert milestone.what == "milestone" and milestone.name == "docs-app-mvp"
+    assert milestone.source_items == "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
+
+
+def test_backlog_adopt_parses_optional_path():
+    args = parse(["backlog", "adopt", "--path", "docs/backload.md"])
+    assert args.op == "adopt" and args.path == "docs/backload.md"
+
+
+def test_milestone_source_items_parse():
+    args = parse(["milestone", "set-source-items", "docs-app-mvp", "A-1", "A-2"])
+    assert args.name == "docs-app-mvp" and args.ids == ["A-1", "A-2"]

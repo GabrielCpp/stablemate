@@ -1,21 +1,21 @@
-"""`ostler next-epic` / `next-story` — selection over the markdown graph + epics index.
+"""`ostler next-epic` / `next-story` — selection over the markdown graph.
 
 Replaces the workflows' select-next-epic / select-next-story scripts. ``next-epic`` returns the
-front of the epics queue that still has unfinished work; ``next-story`` returns the next runnable
-story (dependencies satisfied, not yet done) in dependency order.
+first milestone-ordered epic that still has unfinished work; ``next-story`` returns the next
+runnable story (dependencies satisfied, not yet done) in dependency order.
 """
 
 from __future__ import annotations
 
-from ostler import registry, todo
+from ostler import registry
 from ostler.model import Epic, Graph, Story
 
-_DONE_TOKENS = ("qa passed", "passed", "done", "merged", "complete")
+_DONE_STATUSES = {"qa passed", "passed", "done", "merged", "complete"}
 
 
 def is_done(status: str) -> bool:
     s = (status or "").strip().lower()
-    return any(tok in s for tok in _DONE_TOKENS)
+    return s in _DONE_STATUSES
 
 
 def epic_by_name(graph: Graph, name: str) -> Epic | None:
@@ -45,6 +45,26 @@ def epic_authored(epic: Epic) -> bool:
     """
     return (epic.epic_md is not None and bool(epic.stories)
             and all(s.authored for s in epic.stories))
+
+
+def _milestone_epic_order(graph: Graph) -> list[str]:
+    order: list[str] = []
+    visited: set[str] = set()
+    by_name = {m.name: m for m in graph.milestones}
+    by_name.update({m.eid: m for m in graph.milestones if m.eid})
+
+    def visit(name: str) -> None:
+        milestone = by_name.get(name)
+        if milestone is None or milestone.name in visited:
+            return
+        visited.add(milestone.name)
+        for dep in milestone.depends_on:
+            visit(dep)
+        order.extend(milestone.epics)
+
+    for milestone in graph.milestones:
+        visit(milestone.name)
+    return order
 
 
 def dag_order(epic: Epic) -> list[Story]:
@@ -81,8 +101,8 @@ def dag_order(epic: Epic) -> list[Story]:
 
 
 def next_epic(graph: Graph) -> dict | None:
-    """First queued epic with unfinished work; falls back to graph order if no index."""
-    order = todo.list_epics(graph) or [e.name for e in graph.epics]
+    """First milestone-ordered epic with unfinished work; falls back to graph order."""
+    order = _milestone_epic_order(graph) or [e.name for e in graph.epics]
     for name in order:
         epic = epic_by_name(graph, name)
         if epic is None:

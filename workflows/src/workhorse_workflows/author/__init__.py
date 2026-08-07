@@ -7,6 +7,7 @@ Ported from `base-library/workflows/author/`. The package has the layout
 * `nodes/` — the non-agent work only that machine calls, grouped by subject
 * `surveyor/`, `parity_surveyor/` — the sub-graphs `self.handoff(...)` reaches: each
   `flow.py` beside the `nodes/` only it calls
+* `story_edit/` — the standalone manual story repair flow
 * `shared/` — what a second machine also reaches: `paths`, `schemas`, and the `survey`
   library both survey flows walk
 * `prompts/` — every agent turn's Markdown, at the package root because a sub-flow's

@@ -274,6 +274,10 @@ def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     assert _output(run_env, classify_documentation_context)["mode"] == "semantic"
     assert not (run_env.writer.run_dir / build_okf_context.__name__).exists()
     assert agent.counts() == {"document-story": 1, "review-story-documentation": 1}
+    assert agent.args_for("document-story")[0]["epic_path"] == "docs/epics/EPIC-1/epic.md"
+    assert agent.args_for("review-story-documentation")[0]["epic_path"] == (
+        "docs/epics/EPIC-1/epic.md"
+    )
 
 
 def test_sources_inside_the_docs_worktree_take_the_local_route(

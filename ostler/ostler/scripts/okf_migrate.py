@@ -1,7 +1,7 @@
 """One-shot, idempotent migration from the legacy JSON+markdown layout to the OKF markdown format.
 
 Folds ``seed.json`` + ``dependencies.json`` into each ``epic.md`` (``## Seeds`` / ``## Stories``),
-stamps ``type`` frontmatter on every Concept, converts knowledge ``.json`` → ``.md``, turns
+stamps ``type`` frontmatter on every Concept, turns
 ``epics-todo.json`` into ``docs/epics/index.md``, and converts ``features/inventory.json`` entries
 into ``feature`` Concepts. Legacy JSON is deleted. Re-running is a no-op.
 
@@ -11,7 +11,6 @@ Run:  ``python -m ostler.scripts.okf_migrate [REPO_ROOT]``
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -155,32 +154,6 @@ def _stamp_stories(edir: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
-# knowledge: .json → .md, stamp type on .md
-# ---------------------------------------------------------------------------
-def _migrate_knowledge(kroot: Path) -> int:
-    n = 0
-    for path in sorted(kroot.rglob("*.json")):
-        data = _read_json(path)
-        data.setdefault("type", "knowledge")
-        surface = data.get("surface") or path.relative_to(kroot).with_suffix("").as_posix()
-        data["surface"] = surface
-        out = path.with_suffix(".md")
-        body = f"# Surface knowledge: {surface}\n"
-        out.write_text(f"---\n{_dump_fm(data)}---\n{body}", encoding="utf-8")
-        path.unlink()
-        n += 1
-    for path in sorted(kroot.rglob("*.md")):
-        doc = markdown.split(path.read_text(encoding="utf-8"))
-        fm = (doc.frontmatter or {}) if doc.has_frontmatter else {}
-        if fm.get("type") == "knowledge":
-            continue
-        fm = {"type": "knowledge", **fm}
-        path.write_text(f"---\n{_dump_fm(fm)}---\n{doc.body}", encoding="utf-8")
-        n += 1
-    return n
-
-
-# ---------------------------------------------------------------------------
 # features: stamp type on .md; convert inventory.json entries to Concepts
 # ---------------------------------------------------------------------------
 def _migrate_features(froot: Path) -> int:
@@ -268,21 +241,10 @@ def _migrate_todo(eroot: Path) -> bool:
     return True
 
 
-def _rewrite_knowledge_refs(docs: Path) -> None:
-    """Story/epic prose that links ``docs/knowledge/…​.json`` must follow the ``.json`` → ``.md``
-    conversion."""
-    pat = re.compile(r"(docs/knowledge/[^\s)\]'\"`]+)\.json")
-    for path in docs.rglob("*.md"):
-        text = path.read_text(encoding="utf-8")
-        new = pat.sub(r"\1.md", text)
-        if new != text:
-            path.write_text(new, encoding="utf-8")
-
-
 def migrate(root: Path) -> dict:
     root = Path(root)
     docs = root / "docs"
-    report = {"epics": 0, "stories": 0, "knowledge": 0, "features": 0, "specs": 0, "todo": False}
+    report = {"epics": 0, "stories": 0, "features": 0, "specs": 0, "todo": False}
     eroot = docs / "epics"
     if eroot.is_dir():
         for edir in sorted(eroot.iterdir()):
@@ -292,14 +254,10 @@ def migrate(root: Path) -> dict:
                 report["epics"] += 1
             report["stories"] += _stamp_stories(edir)
         report["todo"] = _migrate_todo(eroot)
-    if (docs / "knowledge").is_dir():
-        report["knowledge"] = _migrate_knowledge(docs / "knowledge")
     if (docs / "features").is_dir():
         report["features"] = _migrate_features(docs / "features")
     if (docs / "specs").is_dir():
         report["specs"] = _migrate_specs(docs / "specs")
-    if docs.is_dir():
-        _rewrite_knowledge_refs(docs)
     return report
 
 

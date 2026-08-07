@@ -195,5 +195,5 @@ making it conformant over leaving it orphaned from the graph.
   [[ostler]] ("The OKF UI profile").
 - **Modeling a whole app's surface graph** from scratch (from a description) or from existing code
   → [[okf-modeling]]. This skill is the one-story increment; that one is the bulk build.
-- **The wider planning graph** — epics, stories, seeds, knowledge records, `docs/specs/**`
+- **The wider planning graph** — epics, stories, seeds, `docs/specs/**`
   workflow artifacts, the coverage model, `next-epic`/`next-story` — → [[ostler]].

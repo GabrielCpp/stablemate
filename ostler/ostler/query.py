@@ -57,6 +57,12 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         for e in graph.epics:
             rows.append({"type": "epic", "name": e.name, "id": e.eid, "title": e.title,
                          "status": e.status, "seeds": len(e.seeds), "stories": len(e.stories)})
+    elif etype == "milestone":
+        for m in graph.milestones:
+            rows.append({"type": "milestone", "name": m.name, "id": m.eid, "title": m.title,
+                          "status": m.status, "dependsOn": m.depends_on, "epics": m.epics,
+                          "sourceItems": m.source_items,
+                          "path": m.path.relative_to(graph.root).as_posix()})
     elif etype == "story":
         for e in graph.epics:
             for s in e.stories:
@@ -65,11 +71,6 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         for e in graph.epics:
             for s in e.seeds:
                 rows.append(_seed_row(e, s))
-    elif etype == "knowledge":
-        for r in graph.knowledge:
-            rows.append({"type": "knowledge", "surface": r.surface,
-                         "route": str(r.data.get("route", "")),
-                         "path": r.path.relative_to(graph.root).as_posix()})
     elif etype == "feature":
         for f in graph.features:
             rows.append({"type": "feature", "slug": f.slug, "area": f.area, "title": f.title,
@@ -102,17 +103,17 @@ def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
     ql = q.lower()
     hits: list[dict] = []
     types = [etype] if etype else (
-        ["epic", "story", "seed", "knowledge", "feature", *registry.UI_TYPES_BY_NAME])
+        ["epic", "milestone", "story", "seed", "feature", *registry.UI_TYPES_BY_NAME])
     for t in types:
         for row in list_entities(graph, t):
             hay = " ".join(str(v) for v in row.values()).lower()
-            if t in ("story", "knowledge", "feature") or t in registry.UI_TYPES_BY_NAME:
+            if t in ("milestone", "story", "feature") or t in registry.UI_TYPES_BY_NAME:
                 path = None
-                if t == "story":
+                if t == "milestone":
+                    path = next((m.path for m in graph.milestones if m.name == row["name"]), None)
+                elif t == "story":
                     found = graph.find_story(row["slug"])
                     path = found[1].story_md if found else None
-                elif t == "knowledge":
-                    path = next((r.path for r in graph.knowledge if r.surface == row["surface"]), None)
                 elif t == "feature":
                     path = next((f.path for f in graph.features if f.slug == row["slug"]), None)
                 else:  # UI node — resolve by identity
@@ -138,7 +139,7 @@ def query(graph: Graph, name: str, arg: str) -> list[dict]:
 
 
 def _surfaces_referenced(graph: Graph, story) -> list[dict]:
-    """Every surface a story points at: legacy knowledge records **and** OKF book nodes.
+    """Every surface a story points at through OKF book nodes.
 
     The book is the current channel — a story grounds itself by citing the ids of the
     surface/component/interaction/flow nodes it works on, and a UI node's id is a
@@ -155,8 +156,8 @@ def _surfaces_referenced(graph: Graph, story) -> list[dict]:
     likelier typo of the two. An anchor into any other document stays ``file`` — ordinary
     markdown deep-links into a spec or a sibling story are not node citations to begin with.
     """
-    rows: list[dict] = [{"path": ref, "kind": "knowledge"} for ref in story.knowledge_refs]
-    seen = {r["path"] for r in rows}
+    rows: list[dict] = []
+    seen: set[str] = set()
     for href in story.doc_refs:
         ident = graph.resolve_doc_ref(href, origin=story.story_md)
         if not ident or ident in seen:

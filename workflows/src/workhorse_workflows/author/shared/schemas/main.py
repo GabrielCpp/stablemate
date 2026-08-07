@@ -93,6 +93,17 @@ class SeededStory(AuthorResult):
     reason: str = ""
 
 
+class StoryMutation(AuthorResult):
+    """A standalone story graph edit made outside the main author loop."""
+
+    changed: bool = False
+    epic: str = ""
+    story_slug: str = ""
+    story_dir: str = ""
+    story_path: str = ""
+    reason: str = ""
+
+
 class Defects(AuthorResult):
     """The four validators' shared shape: does it hold, and if not, what is wrong.
 
@@ -250,6 +261,7 @@ __all__ = [
     "PullRequest",
     "RunContext",
     "SeededStory",
+    "StoryMutation",
     "StoryChoice",
     "StorySplit",
     "VerifyReport",

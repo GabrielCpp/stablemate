@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from ostler import Ostler, markdown, registry
-from ostler.model import section_gaps, status_bullet
+from ostler.model import required_section_problems, status_bullet
 from workhorse import gates
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
@@ -28,6 +28,7 @@ from workhorse_workflows.author.shared.schemas.main import (
     Pruned,
     SeededStory,
     StoryChoice,
+    StoryMutation,
 )
 
 #: The backlog scope-item contract, shared with the coverage validator: `- [id] …`, read off
@@ -213,6 +214,58 @@ def seed_story(
     )
 
 
+@blueprint.node
+def remove_story(
+    logger: logging.Logger,
+    story: str = "",
+    force: bool = False,
+    repo_dir: str = "",
+) -> StoryMutation:
+    """Delete one story from the planning graph, guarded for manual use.
+
+    The standalone story-edit flow is a scalpel, not a rewrite pass. By default it only
+    removes untouched story scaffolds; reviewed, implemented or QA'd stories require an
+    explicit ``force`` parameter so a manual repair cannot erase work by typo.
+    """
+    slug = story.strip()
+    if not slug:
+        raise WorkflowFailed(
+            "no story supplied — remove mode needs --params '{\"story\":\"<slug>\"}'"
+        )
+
+    okf = Ostler(survey_repo_root(repo_dir))
+    row = next((s for s in okf.list("story") if str(s.get("slug", "")).strip() == slug), None)
+    if row is None:
+        reason = f"story '{slug}' is already absent — idempotent no-op"
+        logger.info(reason)
+        return StoryMutation(story_slug=slug, reason=reason)
+
+    status = str(row.get("status", "")).strip()
+    if status.lower() != "not started" and not force:
+        raise WorkflowFailed(
+            f"story '{slug}' has status '{status or '<blank>'}' — refusing to delete work that "
+            "may already be planned, implemented or reviewed; rerun with "
+            "--params '{\"action\":\"remove\",\"story\":\"<slug>\",\"force\":true}' "
+            "if this deletion is intentional"
+        )
+
+    res = okf.delete_story(slug)
+    if not res.ok:
+        raise WorkflowFailed(res.message or f"could not delete story '{slug}'")
+
+    epic = str(row.get("epic", ""))
+    path = str(row.get("path", ""))
+    logger.info("deleted story '%s' from epic '%s'", slug, epic)
+    return StoryMutation(
+        changed=True,
+        epic=epic,
+        story_slug=slug,
+        story_dir=str(Path(path).parent) if path else "",
+        story_path=path,
+        reason=res.message,
+    )
+
+
 # ── epic mode's story loop ──────────────────────────────────────────────────
 
 
@@ -335,7 +388,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
     bullet the coder's selector reads, and no open questions shipped to the coder.
 
     **The contract is ostler's, not this node's.** Sections are checked with
-    `section_gaps` against ostler's own declaration and the Status field is located with
+    `required_section_problems` against ostler's own declaration and the Status field is located with
     `status_bullet`, so this gate and `ostler doctor`'s `unwritten-story` finding can never
     disagree. The story is parsed as a standalone file rather than looked up in the graph:
     this runs right after a story is written, and a `story.md` not yet listed in its epic's
@@ -360,8 +413,8 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
             f"`## {registry.STORY_STATUS_HEADING}` (coder's selector reads this)"
         )
 
-    for spec, gap in section_gaps(doc, registry.STORY_SECTIONS):
-        errors.append(f"required section `## {spec.heading}` is {gap}")
+    for spec, problem in required_section_problems(doc, registry.STORY_SECTIONS):
+        errors.append(f"required section `## {spec.heading}` is {problem}")
 
     errors.extend(_open_questions(doc))
 

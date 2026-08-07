@@ -39,9 +39,11 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse.scriptutil import find_docs_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
@@ -185,6 +187,7 @@ class Docs(Workflow):
                 "story_slug": self.ctx.story_slug,
                 "docs_path": self.docs_path,
                 "features_root": self._features_root,
+                "epic_path": self._epic_path,
                 "context_mode": classification.mode,
                 "context_notes": classification.notes,
                 "gate_notes": gate_notes,
@@ -318,6 +321,7 @@ class Docs(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,
                 "features_root": self._features_root,
+                "epic_path": self._epic_path,
                 "author_status": author.status,
                 "author_notes": author.notes,
                 "gate_notes": gate_notes,
@@ -388,6 +392,12 @@ class Docs(Workflow):
     def _features_root(self) -> str:
         """Where the OKF feature docs live, as the detector resolved it."""
         return self.output(detect_okf_docs).features_root
+
+    @property
+    def _epic_path(self) -> str:
+        """The parent epic whose user journeys this story advances."""
+        root = Path(find_docs_root(self.docs_path, self.repo_dir))
+        return f"{paths.epic_dir_rel(root, self.ctx.story_epic)}/epic.md"
 
     def _dirs(self) -> list[str]:
         """Every directory this run's agent turns may read."""

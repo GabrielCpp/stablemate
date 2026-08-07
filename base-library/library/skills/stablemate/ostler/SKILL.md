@@ -1,13 +1,13 @@
 ---
 name: ostler
-description: "ostler reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, knowledge, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
+description: "ostler reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
 tags: [cli, python, docs]
 ---
 
 # Ostler
 
 Load this skill when a workflow node, script, or prompt needs to read or mutate a repo's planning
-docs (`docs/epics`, `docs/knowledge`, `docs/features`, `docs/specs`) — or when authoring a new
+docs (`docs/epics`, `docs/features`, `docs/specs`) — or when authoring a new
 `workhorse` workflow that should integrate with the doc graph instead of hand-rolling its own
 JSON state files.
 
@@ -33,7 +33,6 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `knowledge` | `docs/knowledge/<area>/<name>.md` | path (`surface` alias) | `type`, `surface` |
 | `feature` | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
 
@@ -96,14 +95,14 @@ into a document: it lengthens as soon as a colliding id is minted. From Python, 
 **Inspect**
 ```bash
 ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
-ostler trace  <id|slug|gap|surface|path>             # walk the graph from any node
+ostler trace  <id|slug|surface|path>                 # walk the graph from any node
 ```
 
 **Retrieve**
 ```bash
-ostler list   --type epic|story|knowledge|feature|spec|seed|gap [--epic E] [--status S] [--json]
-ostler search <query> [--type T] [--owner O] [--tag G] [--json]   # full-text match over node prose
-ostler query  gaps-in-story|stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
+ostler list   --type epic|story|knowledge|feature|spec|seed [--epic E] [--status S] [--json]
+ostler search <query> [--type T] [--json]                         # full-text match over node prose
+ostler query  stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
 ostler graph  [selectors…] [--tree|--ids|--json]     # query the node/edge/bullet graph
 ```
 
@@ -156,9 +155,9 @@ ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorde
 
 **Repair / approve**
 ```bash
-ostler edit set-owner <gap> <story> [--write]   # dry-run by default; --write applies
 ostler edit relink    <old-path> <new-path> [--write]
 ostler edit rename    <old-slug> <new-slug> [--write]
+ostler edit settle-review <slug> [--write]
 ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as immutable ground truth
 ostler unfreeze <ident>
 ```
@@ -269,16 +268,18 @@ read-only script never pays for the QA/vet machinery.
 ## The coverage model
 
 ```
-knowledge gaps[].owner  ->  story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
+story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
+docs/features OKF nodes     ->  code:/links:/reachability/coverage obligations
 ```
 
+Open questions and missing behavioral coverage belong in `docs/features/` as OKF nodes, links, and
+coverage/reachability obligations, or in the epic/story planning graph as seeds and stories.
 `ostler doctor` checks OKF conformance (every Concept has a non-empty `type`) plus the typed
 referential-integrity contract:
 
 - **cross-epic references** — an id/slug used inside epic E that only resolves in another epic
 - **orphan seeds** — an active seed no story covers
-- **dangling references** — a `[gap:…]` tag, knowledge path, or sibling slug that resolves to nothing
-- **stale owners** — a non-resolved gap whose `owner` is empty or points at a missing story
+- **dangling references** — a seed id or sibling slug that resolves to nothing
 - **frozen drift** — an approved (frozen) story/seed that changed or vanished
 
 It exits non-zero when any error-level finding is present (safe to gate a workflow node on).
@@ -436,9 +437,9 @@ UI-node bodies; `ostler trace <id|slug|anchor>` walks a node's outbound links (w
   `reconcile-artifacts.py`/`check-story-grounding.py`/an `ostler doctor` check) → shell out to
   `ostler doctor`/`ostler query` and branch on exit code or `--json` output, never re-implement
   referential-integrity checks by hand.
-- Any resolver prompt that fixes a graph problem (dangling owner, orphan seed, cross-epic
-  contamination) → `ostler edit set-owner/relink/rename` or `ostler seed`/`set-status`, never a raw
-  edit of `epic.md`'s generated sections.
+- Any resolver prompt that fixes a graph problem (dangling references, orphan seed, cross-epic
+  contamination) → `ostler edit relink/rename`, `ostler seed`, or `set-status`, never a raw edit of
+  `epic.md`'s generated sections.
 - Any node that documents a UI/CLI/server surface or a domain/code concept → the OKF UI profile
   (`scaffold`/`fmt`/`doctor`) above; for the create-or-refresh loop after a story, load
   [[documentation]]; to model a whole app's surface graph from scratch or from existing code, load

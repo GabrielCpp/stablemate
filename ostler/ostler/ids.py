@@ -197,6 +197,9 @@ def known(graph: Graph) -> list[str]:
         out.add(epic.eid)
         out.update(s.id for s in epic.seeds)
         out.update(s.eid for s in epic.stories)
+    for milestone in graph.milestones:
+        out.add(milestone.eid)
+        out.update(milestone.source_items)
     out.update(str(f.data.get("id") or "") for f in graph.features)
     # The backlog is markdown ostler manages but does not load into the graph, and its ids are
     # exactly the ones a person retypes most (`backlog prune <id>`) — so they are in the universe.

@@ -24,7 +24,7 @@ its own identifiers, which are not citations::
 
 Reading every code span as a ref there invents three, two of which resolve to nothing. So a
 span counts only while the text separating it from the previous one is whitespace or a comma;
-the first gap carrying anything else (an em-dash, a parenthetical, any prose) closes the list.
+the first separator carrying anything else (an em-dash, a parenthetical, any prose) closes the list.
 That also drops a trailing gloss rather than gluing it on, fixing a single-ref case that was
 mangled too::
 

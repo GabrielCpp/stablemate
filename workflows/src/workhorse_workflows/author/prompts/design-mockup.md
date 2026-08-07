@@ -17,20 +17,22 @@ cannot produce one, say so and return cleanly; the writer falls back to the feat
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
 {%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation built from the
-  code. **Read it; never write to it.** It is both the test for "is this screen new?" (below) and,
-  when the screen exists in part, the content the mockup must depict.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation.
+  **Read it; never write to it.** It is the only test for "is this screen new?" (below) and, when
+  the screen exists in part, the content the mockup must depict. Do not inspect the app or source
+  code to discover surfaces.
 {%- endif %}
 {%- if workhorse_var('surface_manifest') %}
 - Surface manifest: `{{ workhorse_var('surface_manifest') }}` — set this surface's `mockup` field to the
   file you produce, so the writer resolves it.
 {%- endif %}
-- Mockup dir: `{{ workhorse_var('mockup_dir') }}` — write the mockup under `<mockup_dir>/local/`.
+- Prior mockup/design reference dir: `{{ workhorse_var('mockup_dir') }}` — read existing examples from
+  here when present, but do not write the new story's source of truth there.
+- Story-local mockup path: `{{ workhorse_var('story_dir') }}/mockup.html` — write the mockup here.
 
 ## Decide first: is this a new screen?
 
-The book is the test: the okf-builder documents what the code actually has, so a screen the book
-already carries is a screen that already exists.
+The book is the test: a screen the book already carries is a screen author treats as existing.
 
 Pass-through (return `status: "skipped"`) when **any** holds:
 - the book has a `screen` node for this surface (it's an edit of a built screen, not a new one);
@@ -44,7 +46,7 @@ a mockup.
 
 1. **Learn the app's style.** Read the project's design system before drawing anything: its design
    tokens (colors, typography, spacing, radii, shadows), a `.superdesign/` design-system file if present,
-   and 1–2 existing mockups under `<mockup_dir>/local/` as exemplars. The mockup MUST use these tokens —
+   and 1–2 existing mockups under the prior mockup/design reference dir as exemplars. The mockup MUST use these tokens —
    never invent a new palette, type scale, or component language.
 2. **Generate with superdesign when available.** Prefer the **superdesign** design skill if it is
    installed — it analyses the repo's design tokens and produces mockups in the app's style. The
@@ -60,11 +62,10 @@ a mockup.
    nodes this screen takes part in — and the states the goal implies (happy path **plus** empty /
    loading / error), using the content from the book and the story's seeds, not lorem-ipsum.
 4. **Write and register it.**
-   - Save to `<mockup_dir>/local/<surface-key>.html` (derive `<surface-key>` from the surface's route
-     or its intended node path — the same key the book would use).
-   - If an `index.html` / `README.md` mockup gallery exists in that dir, add an entry for the new file.
-   - If a `surface_manifest` is configured, set this surface's `mockup` field to the new file's repo path
-     (create the surface entry if absent), so `write_story` links it.
+   - Save to `{{ workhorse_var('story_dir') }}/mockup.html`. The story owns the mockup; do not put the
+     new source of truth under a global `docs/design/local/` gallery.
+   - If a `surface_manifest` is configured, set this surface's `mockup` field to the story-local repo
+     path (create the surface entry if absent), so `write_story` links it.
 
 {% block repo_design_rules %}{% endblock %}
 
@@ -74,7 +75,7 @@ a mockup.
 {
   "status": "created" | "skipped" | "failed",
   "surface": "<area>/<surface-key>",
-  "mockup": "<mockup_dir>/local/<surface-key>.html, or '' when skipped/failed",
+  "mockup": "<story_dir>/mockup.html, or '' when skipped/failed",
   "notes": "Why skipped (existing surface), what was drawn, or why it failed."
 }
 ```

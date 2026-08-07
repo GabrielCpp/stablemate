@@ -51,7 +51,7 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
 
 
 def story_md(slug: str, title: str, status: str,
-             knowledge_ref: str | None = None) -> str:
+             doc_ref: str | None = None) -> str:
     # A written story: every `filled` section of registry.STORY_SECTIONS carries prose, so the
     # fixture repo is authored and `doctor` stays green. Leave one blank and it reports
     # `unwritten-story` — which is the point of the check.
@@ -60,17 +60,9 @@ def story_md(slug: str, title: str, status: str,
             f"Why {title} matters.", "", "## Implementation Status", "",
             f"- **Status**: {status}", "", "## Acceptance Criteria", ""]
     body.append("- The thing works.")
-    if knowledge_ref:
-        body += ["", f"Knowledge record: `{knowledge_ref}`."]
+    if doc_ref:
+        body += ["", f"Feature doc: [reference]({doc_ref})."]
     return "\n".join(body) + "\n"
-
-
-def knowledge_md(surface: str, route: str = "") -> str:
-    out = ["---", "type: knowledge", f"surface: {surface}"]
-    if route:
-        out.append(f"route: {route}")
-    out += ["---", f"# {surface}", "", "body text", ""]
-    return "\n".join(out) + "\n"
 
 
 def feature_md(slug: str, title: str, area: str = "", route: str = "") -> str:
@@ -85,7 +77,7 @@ def feature_md(slug: str, title: str, area: str = "", route: str = "") -> str:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A clean two-epic repo with two markdown knowledge records."""
+    """A clean two-epic repo with feature docs cited by story prose."""
     root = tmp_path
 
     # epic-a: story 01-foo covers seed-a1; seed-a2 is resolved (inactive).
@@ -95,7 +87,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-foo", "Foo", ["seed-a1"], [])],
     ))
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", "docs/knowledge/area/rec.md"))
+          story_md("01-foo", "Foo", "Not started", "../../../features/area/rec.md"))
 
     # epic-b: story 01-bar covers seed-b1.
     write(root / "docs/epics/epic-b/epic.md", epic_md(
@@ -106,8 +98,8 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/epics/epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started"))
 
-    # knowledge: two surface records, referenced from story prose by path
-    write(root / "docs/knowledge/area/rec.md", knowledge_md("area/rec"))
-    write(root / "docs/knowledge/area/rec2.md", knowledge_md("area/rec2"))
+    # features: docs referenced from story prose by ordinary markdown links
+    write(root / "docs/features/area/rec.md", feature_md("rec", "Rec", area="area"))
+    write(root / "docs/features/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
 
     return root

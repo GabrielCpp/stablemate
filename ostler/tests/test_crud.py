@@ -26,6 +26,28 @@ def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     assert ids["prefix"] == "acme" and "counter" not in ids
 
 
+def test_create_milestone_allocates_id_and_records_source_items(tmp_path: Path):
+    source = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
+
+    res = crud.create_milestone(
+        load(tmp_path), "docs-app-mvp", "Docs App MVP", [source], prefix="acme"
+    )
+
+    assert res.ok and res.entity_name == "docs-app-mvp"
+    assert res.entity_id.startswith("acme-")
+    milestone = load(tmp_path).milestone_by_name("docs-app-mvp")
+    assert milestone is not None
+    assert milestone.eid == res.entity_id
+    assert milestone.title == "Docs App MVP"
+    assert milestone.source_items == [source]
+
+    updated = crud.set_milestone_source_items(load(tmp_path), "docs-app-mvp", [source, "B-2"])
+    assert updated.ok
+    milestone = load(tmp_path).milestone_by_name("docs-app-mvp")
+    assert milestone is not None
+    assert milestone.source_items == [source, "B-2"]
+
+
 def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     g = load(tmp_path)
     crud.create_epic(g, "billing", "Billing", prefix="acme")

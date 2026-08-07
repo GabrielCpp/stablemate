@@ -1,7 +1,7 @@
 """User-declared OKF hierarchies — per-repo ``.agents/templates.yml``.
 
 A template lets a repo define its own Concept **kinds** (beyond the built-in
-epic/story/knowledge/feature/spec in ``registry.py``) with their own directory shape, required
+epic/story/feature/spec in ``registry.py``) with their own directory shape, required
 frontmatter, and status enums. ``model.load()`` merges each discovered kind's ``doc_root`` into
 ``Graph.doc_roots``; ``doctor.py`` and ``crud_generic.py`` consult ``Graph.template_kinds``
 generically. ``registry.py`` itself stays built-ins-only — this module never touches it.

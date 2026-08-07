@@ -21,6 +21,7 @@ the linter rules; obey it. The reference for the type table and bullets is the
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_path') }}`
 - OKF features root: `{{ workhorse_var('features_root') }}`
+- Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 - Context mode: `{{ workhorse_var('context_mode') }}`
 - Context notes: `{{ workhorse_var('context_notes') }}`
 - Previous deterministic gate notes: `{{ workhorse_var('gate_notes') }}`
@@ -28,10 +29,11 @@ the linter rules; obey it. The reference for the type table and bullets is the
 
 ## Steps
 
-1. **Scope what changed.** Read the story's acceptance criteria and its `spec_dir`
-   (`plan-context.json` lists the services/repos it touched). Inspect both the working tree and
-   commits made on the current story/epic branch since its base, including QA, regression, CI, and
-   merge remediation. From that complete implementation delta,
+1. **Scope what changed.** Read the story's acceptance criteria, its parent epic's `## User
+   Journeys`, and the story's `spec_dir` (`plan-context.json` lists the services/repos it
+   touched). Inspect both the working tree and commits made on the current story/epic branch
+   since its base, including QA, regression, CI, and merge remediation. From that complete
+   implementation delta,
    identify what *user-facing surface, element, behavior, concept, or format* the story
    added or changed — a screen/component/interaction (GUI), a cli/command (CLI), a
    server/endpoint/invocation (HTTP/WS), a domain or code `concept`, a `flow`, or a
@@ -79,7 +81,16 @@ the linter rules; obey it. The reference for the type table and bullets is the
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
-5. **Converge:** run `ostler fmt <the docs you touched>` then `ostler doctor` (from the
+5. **Materialize implemented greenfield journeys as OKF flows.** The author journey plan is
+   planning prose, not the feature book. If the current story implements a journey slice named
+   there and the book has no matching `flow` node yet, create one with `ostler scaffold flow
+   <journey-slug> --service <service> --title "<Journey title>"`, then fill its `start:`, linked
+   `steps:`, `end:`, and `verify:` bullets from the as-built surfaces and tests. A greenfield
+   journey is not complete until the book contains the surfaced nodes it traverses and the `flow`
+   links those steps. If this story only implements an internal prerequisite for a later journey,
+   say that precisely and document the prerequisite contract instead; do not invent a flow before
+   a user can traverse it.
+6. **Converge:** run `ostler fmt <the docs you touched>` then `ostler doctor` (from the
    docs root, `-C` if needed). Fix any error by its named remedy until `doctor` is green
    for the nodes you touched. In `semantic` multi-repo mode, repository-local doctor cannot
    resolve service-repo `code:` paths beneath the separate docs root: report its

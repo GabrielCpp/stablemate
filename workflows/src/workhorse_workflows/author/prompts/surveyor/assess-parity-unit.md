@@ -4,8 +4,8 @@ agent: agent
 
 # Compare one baseline surface with the current OKF book
 
-Assess exactly one baseline surface. This is an inventory diff, not gap discovery: do not write
-knowledge nodes, gap nodes, epics, stories, or source code. Write only the survey finding record.
+Assess exactly one baseline surface. This is an inventory diff, not backlog discovery: do not write
+feature nodes, epics, stories, or source code. Write only the survey finding record.
 
 ## Inputs
 

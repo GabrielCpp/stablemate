@@ -74,11 +74,6 @@ def specs_root_in(root: Path) -> Path:
     return doc_root_in(root, "specs")
 
 
-def knowledge_root_in(root: Path) -> Path:
-    """Where knowledge Concepts live under *root*."""
-    return doc_root_in(root, "knowledge")
-
-
 def backlog_path_in(root: Path) -> Path:
     """The intake list, ``docs/backlog.md`` under *root*.
 

@@ -903,7 +903,7 @@ def _command_verdict(check: str, expected: Any, record: dict[str, Any]) -> tuple
                 "a": "<no HTTP status captured — this step's stdout reached ostler empty, so "
                 "there was nothing to compare. expect_http reads curl's `-w '%{http_code}'` "
                 "trailing line or the status line of a `-D` dump named as this step's `out:`; "
-                "a command that sends both elsewhere records no status. This is a plan gap, "
+                "a command that sends both elsewhere records no status. This is a plan omission, "
                 "not an observed status.>",
                 "b": str(int(expected)),
             }

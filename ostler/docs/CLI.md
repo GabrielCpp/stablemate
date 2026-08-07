@@ -6,14 +6,14 @@ ostler is, how to install it, and the shortest path to a first epic; this file i
 exhaustive listing you come back to for a flag.
 
 Ostler operates relative to the **current working directory** — roots default to
-`<cwd>/docs/{epics,knowledge,features,specs}`. Every read command accepts `--json`; every
+`<cwd>/docs/{milestones,epics,features,specs}` plus `docs/backlog.md`. Every read command accepts `--json`; every
 mutating command allocates ids as needed and writes canonical markdown in place.
 
 The commands fall into three surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `backlog` `todo` `edit` `freeze` `path` | `docs/epics/`, `docs/knowledge/`, `docs/specs/` |
+| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/backlog.md`, `docs/milestones/`, `docs/epics/`, `docs/specs/` |
 | **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/features/` — the node/edge book |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
@@ -65,7 +65,7 @@ Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/
 `path epic` rather than joining `docs/epics/<slug>` yourself. Every command below still takes the
 bare slug — the number orders the listing, it is not the epic's identity.
 
-`--type` accepts the planning types (`epic`, `story`, `knowledge`, `feature`, `spec`,
+`--type` accepts the planning types (`epic`, `story`, `feature`, `spec`,
 `seed`), every UI-profile node type (`screen`, `cli`, `server`, `concept`, `format`, `flow`,
 `runbook`, `environment`, `component`, `command`, `endpoint`, `interaction`, `invocation`,
 `method`, `field`, `step`, `untyped`), and any kind a repo declared in its own template.
@@ -74,6 +74,8 @@ bare slug — the number orders the listing, it is not the epic's identity.
 
 ```bash
 ostler create epic    <name> --title T [--prefix P] [--json]
+ostler create milestone <name> --title T [--source-items id,id] [--prefix P] [--json]
+ostler create backlog-item <text> [--section S] [--prefix P] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
 ostler create feature <slug> --title T [--area A] [--route R] [--prefix P] [--json]
 ostler create spec    <slug> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
@@ -84,13 +86,25 @@ ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \
 ostler seed remove <epic> <id>
 ostler set-status <slug> <status>
 
+ostler backlog adopt [--path P]
 ostler backlog add <id> <text> [--section S] | backlog prune <id> | backlog list [--json]
+ostler milestone set-source-items <name> <id> [id ...]
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
 
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>",
 "message": "…"}`. For `create epic` the `name` is the numbered directory that was written
 (`0001-checkout-flow`) — read it back rather than assuming which number the epic got.
+
+`create backlog-item` is the normal entry point for new intake: it allocates and persists a full
+id. `backlog add` remains available when importing an externally assigned id. `backlog adopt`
+allocates ids for direct unnamed bullets under `##` sections, preserving prose and ignoring
+preamble bullets, nested details, named bullets, and `## Filed by coder`; it is idempotent.
+
+`create milestone` allocates an id independent of the readable `<name>` used for its filename and
+records full backlog ids in `sourceItems`. `milestone set-source-items` replaces that ownership set
+on an existing milestone and accepts full ids or unambiguous short handles. `doctor` reports an
+error if one backlog id is owned by more than one milestone.
 
 ## Repair and approve
 
@@ -127,7 +141,7 @@ ostler remove <kind> <name> [--json]
 ```
 
 The schema, a worked 3-level nesting example, and the bundle-vs-leaf shape rules are in
-[SPEC.md §10](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#10-templates-and-template-declared-kinds).
+[SPEC.md §9](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#9-templates-and-template-declared-kinds).
 
 ## The feature graph (UI profile)
 

@@ -68,14 +68,57 @@ def test_create_story_is_visible_to_the_next_read(repo: Path):
     assert "02-baz" in {r["slug"] for r in okf.list("story")}
 
 
+def test_delete_story_is_visible_to_the_next_read(repo: Path):
+    okf = Ostler(repo)
+    assert "01-foo" in {r["slug"] for r in okf.list("story")}
+
+    res = okf.delete_story("01-foo")
+
+    assert res.ok
+    assert "01-foo" not in {r["slug"] for r in okf.list("story")}
+
+
+def test_remove_seed_is_visible_to_the_next_read(repo: Path):
+    okf = Ostler(repo)
+    assert "seed-a1" in {r["id"] for r in okf.list("seed", epic="epic-a")}
+
+    res = okf.remove_seed("epic-a", "seed-a1")
+
+    assert res.ok
+    assert "seed-a1" not in {r["id"] for r in okf.list("seed", epic="epic-a")}
+
+
 def test_backlog_and_todo_round_trip(repo: Path):
     okf = Ostler(repo)
     assert okf.backlog() == []
-    okf.backlog_add("BUG-1", "fix the thing")
-    assert okf.backlog() == [{"id": "BUG-1", "text": "fix the thing"}]
+    result = okf.create_backlog_item("fix the thing")
+    assert result.entity_id
+    assert okf.backlog() == [{"id": result.entity_id, "text": "fix the thing"}]
 
     okf.todo_add("epic-a")
     assert "epic-a" in okf.todo()
+
+
+def test_create_milestone_is_visible_to_the_next_read(repo: Path):
+    okf = Ostler(repo)
+    source = okf.create_backlog_item("ship the MVP").entity_id
+
+    result = okf.create_milestone("docs-app-mvp", "Docs App MVP", source_items=[source])
+
+    assert result.ok
+    assert okf.list("milestone") == [{
+        "type": "milestone",
+        "name": "docs-app-mvp",
+        "id": result.entity_id,
+        "title": "Docs App MVP",
+        "status": "planned",
+        "dependsOn": [],
+        "sourceItems": [source],
+        "epics": [],
+        "path": "docs/milestones/docs-app-mvp.md",
+    }]
+
+    assert okf.set_milestone_source_items("docs-app-mvp", [source]).ok
 
 
 # -- QA / artifact / edit subsystem facades ---------------------------------

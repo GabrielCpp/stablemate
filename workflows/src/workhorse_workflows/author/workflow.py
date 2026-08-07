@@ -53,6 +53,7 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.author.nodes import (
+    adopt_backlog,
     blueprint,
     branch_author,
     check_story_feedback,
@@ -65,6 +66,7 @@ from workhorse_workflows.author.nodes import (
     record_attempt,
     seed_story,
     select_epic,
+    select_epic_document,
     select_story,
     validate_artifacts,
     validate_coverage,
@@ -87,6 +89,7 @@ from workhorse_workflows.author.shared.schemas import (
     WriteStoryResult,
 )
 from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
+from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.surveyor import Surveyor
 
 #: Reworks of one stage before it is handed to the operator: the epic decomposition, one
@@ -194,6 +197,10 @@ class Author(Workflow):
         """`select_epic`'s epic, or blank before the first pick."""
         try:
             return self.output(select_epic).epic
+        except NodeNotRunError:
+            pass
+        try:
+            return self.output(select_epic_document).epic
         except NodeNotRunError:
             return ""
 
@@ -311,6 +318,7 @@ class Author(Workflow):
             # backlog and stops, it does not go on to author what it found.
             return Done(result)
         if self.mode == "story":
+            self.call(adopt_backlog, self.ctx.backlog_path)
             seeded = self.call(seed_story, self.epic, self.epics_dir, self.bullet, self.backlog)
             return Continue(
                 seeded,
@@ -332,13 +340,17 @@ class Author(Workflow):
         reset it too, which is why it is not a parameter. The resolve budget is one,
         since the operator gate loops back through here and must not get a fresh one.
         """
+        self.call(adopt_backlog, self.ctx.backlog_path)
         result = self.agent(
             "prompts/decompose-epics.md",
             returns=DecomposeResult,
             # high: the split decides the shape of every epic and story below it.
             power="high",
             cwd=self.ctx.repo_root,
-            args={"backlog": self.ctx.backlog_path, "epics_dir": self.ctx.epics_dir},
+            args={
+                "backlog": self.ctx.backlog_path,
+                "epics_dir": self.ctx.epics_dir,
+            },
         )
         return Continue(result, self.review_epics, resolves=resolves)
 
@@ -353,7 +365,10 @@ class Author(Workflow):
             returns=EpicReview,
             power="high",
             cwd=self.ctx.repo_root,
-            args={"backlog": self.ctx.backlog_path, "epics_dir": self.ctx.epics_dir},
+            args={
+                "backlog": self.ctx.backlog_path,
+                "epics_dir": self.ctx.epics_dir,
+            },
         )
         if result.status == "approved":
             return Continue(result, self.next_epic)
@@ -395,18 +410,19 @@ class Author(Workflow):
             return Continue(result, self.split_epics, resolves=resolves + 1)
         return Await(self._abs(self._author_context()), notes, self.split_epics, resolves=resolves + 1)
 
-    # --- 2. the per-epic loop -------------------------------------------------
+    # --- 2. the epic-document loop -------------------------------------------
 
     def next_epic(self) -> Continue:
-        """Take the next unauthored epic, or fall through to the whole-run gates.
+        """Take the next undocumented epic, or enter the story-authoring pass.
 
-        `select_epic` + `decide_epic` + the two budget resets its arms led to. "No epic
-        left" is the loop's success exit: a fully decomposed backlog has nothing to pick.
+        `select_epic_document` is the first worklist: complete each queued epic's milestone,
+        `epic.md`, and seeds before any story split runs. "No epic left" means every epic is
+        ready for the story worklist.
         """
-        pick = self.call(select_epic, self.epics_dir)
+        pick = self.call(select_epic_document, self.epics_dir)
         if pick.has_epic:
             return Continue(pick, self.author_epic, epic=pick.epic)
-        return Continue(pick, self.reconcile)
+        return Continue(pick, self.next_story_epic)
 
     def author_epic(self, epic: str, resolves: int = 0) -> Continue | Await:
         """Write one epic's `epic.md` and its seeds.
@@ -414,7 +430,7 @@ class Author(Workflow):
         `reset_write_epic_resolve` + `write_epic` + `decide_write_epic` +
         `gate_write_epic` + `guard_write_epic_resolve`. `complete` is the default arm.
         """
-        self._activity(f"authoring epic {epic}", select_epic)
+        self._activity(f"authoring epic {epic}", select_epic_document)
         result = self.agent(
             "prompts/write-epic.md",
             returns=WriteEpicResult,
@@ -428,7 +444,7 @@ class Author(Workflow):
             },
         )
         if result.status != "blocked":
-            return Continue(result, self.split_stories, epic=epic)
+            return Continue(result, self.next_epic)
         context = paths.epic_context(self._epic_dir(epic))
         if self.operator_mode == "human" or resolves >= MAX_WRITE_EPIC_RESOLVES:
             return Await(self._abs(context), result.notes, self.author_epic, epic=epic, resolves=resolves)
@@ -448,7 +464,16 @@ class Author(Workflow):
             return Continue(result, self.author_epic, epic=epic, resolves=resolves + 1)
         return Await(self._abs(context), notes, self.author_epic, epic=epic, resolves=resolves + 1)
 
-    # --- 2b. story split ------------------------------------------------------
+    # --- 2b. the story-authoring epic loop -----------------------------------
+
+    def next_story_epic(self) -> Continue:
+        """Take the next epic whose story graph or story bodies still need authoring."""
+        pick = self.call(select_epic, self.epics_dir)
+        if pick.has_epic:
+            return Continue(pick, self.split_stories, epic=pick.epic)
+        return Continue(pick, self.reconcile)
+
+    # --- 2c. story split ------------------------------------------------------
 
     def split_stories(
         self,
@@ -540,7 +565,7 @@ class Author(Workflow):
             return Continue(result, self.split_stories, **params)
         return Await(self._abs(context), notes, self.split_stories, **params)
 
-    # --- 2c. the per-story loop -----------------------------------------------
+    # --- 2d. the per-story loop -----------------------------------------------
 
     def next_story(self, epic: str, cov_reworks: int = 0, split_resolves: int = 0) -> Continue:
         """Take the next unwritten story of this epic, or check the epic's coverage.
@@ -767,6 +792,7 @@ class Author(Workflow):
                 "story_dir": story_dir,
                 "features_dir": self.ctx.features_dir,
                 "mockup_dir": self.ctx.mockup_dir,
+                "mockup_path": mockup,
                 "validation_errors": notes,
                 "prior_attempts": ledger.prior_attempts,
             },
@@ -872,6 +898,7 @@ class Author(Workflow):
                 "story_dir": story_dir,
                 "features_dir": self.ctx.features_dir,
                 "mockup_dir": self.ctx.mockup_dir,
+                "mockup_path": mockup,
                 # None — the operator's feedback is the work.
                 "validation_errors": "",
                 "operator_feedback": notes,
@@ -880,7 +907,7 @@ class Author(Workflow):
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
         return Continue(result, self.check_story, **story, reworks=reworks, resolves=resolves)
 
-    # --- 2d. epic coverage ----------------------------------------------------
+    # --- 2e. epic coverage ----------------------------------------------------
 
     def check_coverage(
         self, epic: str, cov_reworks: int = 0, split_resolves: int = 0
@@ -907,7 +934,7 @@ class Author(Workflow):
         )
         if review.status == "ok":
             pruned = self.call(prune_backlog, self.backlog, epic_dir)
-            return Continue(pruned, self.next_epic)
+            return Continue(pruned, self.next_story_epic)
         if review.status == "blocked":
             return self._gate_coverage(review, review.notes, epic, split_resolves)
         # `gaps` is also the default arm: a review that returns nothing legible has not
@@ -1070,12 +1097,19 @@ class Author(Workflow):
 workflow = (
     Registry("author")
     .add_blueprints(blueprint, survey_blueprint)
-    .add_flows(surveyor=Surveyor, **{"parity-surveyor": ParitySurveyor})
+    .add_flows(
+        surveyor=Surveyor,
+        **{
+            "parity-surveyor": ParitySurveyor,
+            "story-edit": StoryEdit,
+        },
+    )
     .stub_agents(
         {
             "review-epics": {"status": "approved"},
             "write-epic": {"status": "complete"},
             "split-stories": {"status": "complete"},
+            "design-mockup": {"status": "skipped"},
             "write-story": {"status": "written"},
             "audit-story": {"status": "passed"},
             "review-coverage": {"status": "ok"},

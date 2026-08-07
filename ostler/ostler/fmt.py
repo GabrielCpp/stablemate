@@ -2,7 +2,7 @@
 
 Paired with the linter the way ``ruff format`` pairs with ``ruff check``: it mechanically fixes
 *shape* (frontmatter key order, bullet order/spacing, heading casing, ``### id`` anchors, wikilink
-rewriting) so ``doctor`` only ever hard-errors on *semantic* gaps. Driven entirely by the per-type
+rewriting) so ``doctor`` only ever hard-errors on semantic defects. Driven entirely by the per-type
 ``UINodeType`` spec in ``registry.py`` — the same single source of truth the loader and scaffolder
 read, so the three tools never drift.
 

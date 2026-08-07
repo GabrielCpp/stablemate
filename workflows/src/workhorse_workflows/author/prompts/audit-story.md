@@ -22,8 +22,9 @@ coder could actually build and a QA could actually verify, grounded in the resea
 - Story path: `{{ workhorse_var('story_path') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
 {%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, and the
-  grounding source of truth. Read it; never write to it.
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation, and
+  the grounding source of truth. Read it; never write to it. Do not inspect the app or source code to
+  discover missing OKF nodes or surfaces.
 {%- endif %}
 
 ## Read
@@ -39,9 +40,11 @@ coder could actually build and a QA could actually verify, grounded in the resea
 
 ## How to audit — try to refute on each axis
 
-1. **Observable + verifiable.** Each AC must be a thing a person *using the running app* could see
-   or do — not a DOM selector, not an implementation detail, and not vague ("works correctly",
-   "looks right", "is performant"). An un-observable or untestable AC → **refuted**.
+1. **Observable + verifiable.** Each AC must be a thing the journey actor could see or do once the
+   coder has built the story. A technical enabler may instead be verified by an operator at the
+   running system boundary, but it must name the epic journey step it unlocks. A DOM selector, file
+   presence, framework setup, implementation detail, or vague claim ("works correctly", "looks
+   right", "is performant") → **refuted**.
 2. **Grounded.** Each AC must trace to a cited OKF node (or other cited evidence — a design mockup,
    a spec, a legacy surface). An AC asserting behaviour nothing cited establishes — invented scope —
    → **refuted**. A citation that resolves to no node is not grounding either; the deterministic gate

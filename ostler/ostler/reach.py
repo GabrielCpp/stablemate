@@ -232,7 +232,7 @@ def reachability(graph: Graph, *, surface: str | None = None, start: str) -> dic
     """Route every documented screen on *surface* from *start*; report the ones with no path.
 
     The unreachable list is the actionable half: each entry is a screen the book documents but
-    never says how to arrive at, which is exactly the gap a walk cannot close on its own.
+    never says how to arrive at, which is exactly the missing coverage a walk cannot close on its own.
     """
     data = graph_mod.build(graph, surface=surface)
     by_id = {n["id"]: n for n in data["nodes"]}
