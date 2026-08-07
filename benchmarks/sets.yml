@@ -112,36 +112,38 @@ sets:
       medium: {opencode: {model: openrouter/qwen/qwen3.6-35b-a3b}}
       low: {opencode: {model: openrouter/qwen/qwen3-coder-30b-a3b-instruct}}
 
-  # `local-mixed` again with the model family as the only moving part: same 24GB-class
-  # shape (dense at `high`, small-active MoE below), different vendors. It exists because
-  # `local-mixed`'s expense-split run is not cleanly attributable — the coder reached 3 of
-  # 5 bullets verified with `go build`/`go test` green, and the failure that stopped it was
-  # four `plan-qa` schema rejections, which is the same wall the gold claude run hit three
-  # times. Re-running the shape on other families is what separates "these workflows need
-  # more than a 24GB card" from "that particular family cannot hold a JSON schema".
+  # The retry after `local-mixed`, and deliberately *not* mixed: one model at all three
+  # tiers. A tier map is free when the models are hosted and a per-turn flag picks one,
+  # but this set is pricing out a card, and on a card each distinct model is a separate
+  # set of weights to hold or to swap in mid-run. Flattening the map is what makes the
+  # score describe something you could actually run at home.
   #
-  # `high` is Mistral Small 3.2 rather than another qwen: dense 24B (~13GB at 4-bit, so the
-  # KV cache for a long agentic turn still fits the card), 256k context, and the 3.2 point
-  # release is specifically the one that tightened function-calling and cut the repetitive
-  # generations that eat a turn's budget. It advertises no `reasoning_effort`, so no
-  # `effort` is set here — unlike `local-mixed`, whose `effort: high` on qwen3.6-27b is
-  # inert, that model not listing the parameter as supported. A tier that silently means
-  # nothing is worse than one that visibly does.
+  # It exists because `local-mixed`'s expense-split run is not cleanly attributable: the
+  # coder reached 3 of 5 bullets verified with `go build`/`go test` green, and the failure
+  # that stopped it was four `plan-qa` schema rejections — the same wall the gold claude
+  # run hit three times. Re-running with the family as the only moving part is what
+  # separates "these workflows need more than a 24GB card" from "that family cannot hold
+  # a JSON schema".
   #
-  # `medium`/`low` are gpt-oss-20b, the one model in this size class with *native*
-  # `reasoning_effort`, so its two tiers differ by more than a label. Its 131k context is
-  # the smallest here and is the thing to watch: if this set dies where `local-mixed` did
-  # not, suspect context before capability and check the turn that failed.
+  # Mistral Small 3.2 rather than another qwen: dense 24B (~13GB at 4-bit, leaving the
+  # card room for a long agentic turn's KV cache), 256k context, and the 3.2 point release
+  # is the one that tightened function-calling and cut the repetitive generations that eat
+  # a turn's budget. It advertises no `reasoning_effort`, so no tier here sets `effort` —
+  # unlike `local-mixed`, whose `effort: high` on qwen3.6-27b is inert, that model not
+  # listing the parameter as supported. A tier that silently means nothing is worse than
+  # one that visibly does, and with one model at every tier the honest reading is that
+  # this set has no tiers at all.
   #
-  # It is also ~6x cheaper than `local-mixed` on input and ~14x on output, so a score at
-  # parity is already a result.
+  # That is the trade it accepts. `gpt-oss-20b` is the one model in this class with native
+  # `reasoning_effort` and would keep three real tiers on a single set of weights — worth
+  # reaching for if the flat map turns out to be what loses this run, rather than the model.
   - label: local-mixed-attempt-2
     cli: opencode
-    notes: dense Mistral 24B at high, gpt-oss MoE below it — local-mixed's shape, other families
+    notes: one model everywhere — dense Mistral 24B, sized for a single 24GB card
     power:
       high: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
-      medium: {opencode: {model: openrouter/openai/gpt-oss-20b, effort: medium}}
-      low: {opencode: {model: openrouter/openai/gpt-oss-20b, effort: low}}
+      medium: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
+      low: {opencode: {model: openrouter/mistralai/mistral-small-3.2-24b-instruct}}
 
   # Hosted and cheap: 1M context, tools and structured outputs, roughly two orders of
   # magnitude under gold per token.
