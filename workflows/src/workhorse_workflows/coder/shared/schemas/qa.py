@@ -410,6 +410,15 @@ class QaLoop(CoderResult):
     #: Whether the one verification-only bonus pass past `MAX_QA_REWORKS` has been spent.
     bonus_used: bool = False
 
+    @property
+    def plan_rework_total(self) -> int:
+        """Repairs spent across validation, review, and post-run plan gates.
+
+        Derived from the durable stage counters so old checkpoints retain what they
+        already spent and no duplicated total can drift from its components.
+        """
+        return self.plan_rework + self.plan_validation_rework + self.plan_review_rework
+
     def update(self, **changes: object) -> QaLoop:
         """The same loop with some fields replaced — the port of an `incr`/`emit-kv` node."""
         return self.model_copy(update=changes)
@@ -464,7 +473,7 @@ class QaFlowResult(CoderResult):
     `spent` exists because `qa_rework` alone cannot describe why the flow gave up. Four
     separate budgets end it `exhausted` — context repairs, plan repairs, code reworks, and the
     operator loop — and the parent stamped the story with the code-rework count whichever one
-    ran out. A story that burned all three QA-plan repairs and never reached a code fix was
+    ran out. A story that burned its QA-plan repairs and never reached a code fix was
     committed as `[QA FAILED after 0 attempts — needs manual review]`, which reads as "the
     loop never tried" and is the opposite of what happened.
     """
@@ -475,7 +484,7 @@ class QaFlowResult(CoderResult):
     triage_scope: int = 0
     operator_notes: str = ""
     #: Which budget ran out and how much of it was spent, as the phrase that goes in the
-    #: give-up marker ("3 QA-plan repair"). Empty unless the flow ended `exhausted`.
+    #: give-up marker ("4 total QA-plan repair"). Empty unless the flow ended `exhausted`.
     spent: str = ""
 
 

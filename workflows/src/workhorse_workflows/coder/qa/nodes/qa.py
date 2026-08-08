@@ -87,8 +87,8 @@ def record_qa_giveup(
     builds the result. They are simply dropped there, because `QaFlowResult` carries the
     *code*-rework verdict and the plan gates never touch it.
 
-    A live run made the cost concrete. `group-membership` gave up after three QA-plan
-    repairs; the review gate's refusal was specific and correct — three scenarios asserted a
+    A live run made the cost concrete. `group-membership` exhausted its QA-plan repairs;
+    the review gate's refusal was specific and correct — three scenarios asserted a
     raw substring against a validation error body the API double-JSON-encodes, so they could
     never match — and the only copy of it was a run-dir artifact that the next story's QA
     flow overwrote within the hour. The retry starts from the same blank story and walks into

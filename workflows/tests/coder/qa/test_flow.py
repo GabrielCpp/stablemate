@@ -715,20 +715,20 @@ def test_an_epic_scoped_answer_hands_the_story_back_to_replan(
 # --------------------------------------------------------------------------- the plan gate
 
 
-def test_an_unrunnable_plan_is_replanned_three_times_then_gives_up(
+def test_an_unrunnable_plan_spends_the_total_repair_budget_then_gives_up(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`guard_qa_plan`: three reworks buys four plan turns, and never reaches the stack."""
+    """Four total repairs buy five plan turns and never reach the stack."""
     okf = ostler(plan_invalid=9)
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"plan-qa": 4}, agent.counts()
+    assert agent.counts() == {"plan-qa": 5}, agent.counts()
     assert okf.runs == 0, "an invalid plan must never be executed"
 
 
@@ -738,81 +738,54 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The semantic half of the plan gate has its own three reworks, and buys four reviews."""
+    """The semantic plan gate can spend all four shared repairs."""
     okf = ostler()
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"plan-qa": 4, "review-qa-plan": 4}, agent.counts()
+    assert agent.counts() == {"plan-qa": 5, "review-qa-plan": 5}, agent.counts()
     assert okf.runs == 0
 
 
-def test_a_malformed_plan_does_not_spend_the_reviewers_budget(
+def test_validation_and_review_share_the_total_plan_repair_budget(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`_guard_plan_validation`: schema slips are charged to the schema loop, not the reviewer.
-
-    Both guards re-plan, and the YAML spent one counter for both. So a plan that failed
-    `ostler qa validate` twice before parsing arrived at `review_plan` with one rework left —
-    the reviewer got a single revision round out of a budget of three, and the two turns it
-    lost had been spent on a missing key.
-
-    That is not a hypothetical. One benchmark run lost two stories to exactly this shape:
-    `group-membership` and `expense-record` each failed validation on plan attempts 1 and 2,
-    passed on 3, then got one round against a specific and correct reviewer finding before the
-    flow gave up and flagged both epics blocked. `review_plan` is the `power="high"` turn that
-    judges whether the plan tests the story at all — it is the last gate that should be
-    rationed by how many times a matcher was misspelled.
-
-    Two leading validation failures, and the reviewer must still get its full four passes.
-    """
-    okf = ostler(plan_invalid=2)
-    agent = _Agent(docs, review="revise")
+    """Two validation and two review repairs leave no post-run repair."""
+    okf = ostler(plan_invalid=2, fail_runs=1)
+    agent = _Agent(docs, revise_plans=2)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    # Six plan turns: two burnt on the schema, four the reviewer actually asked for.
-    assert agent.counts() == {"plan-qa": 6, "review-qa-plan": 4}, agent.counts()
-    assert okf.plan_validations == 6
-    assert okf.runs == 0, "a plan the reviewer never approved must never be executed"
+    assert agent.counts() == {
+        "plan-qa": 5,
+        "review-qa-plan": 3,
+        "qa-story": 1,
+    }, agent.counts()
+    assert okf.plan_validations == 5
+    assert okf.runs == 1
+    assert result.spent == "4 total QA-plan repair"
 
 
-def test_the_reviewers_revisions_do_not_spend_the_repair_budget(
+def test_three_review_revisions_leave_one_post_run_repair(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`_guard_plan_review`: a prediction must not spend a budget reserved for findings.
-
-    The split above took the *mechanical* gate off the semantic budget. This is the other
-    half: `review_plan` judges a plan it has only read, so its refusals are predictions,
-    while `assess`, `verify_evidence` and `audit` judge a plan the runner has executed
-    against assert files on disk. Sharing a counter lets the predictions spend the findings'
-    budget, and the predictions always go first.
-
-    `04-docs-api-scaffold` is the live case. The reviewer refused three good, specific plans
-    in a row, approved the fourth, and the run executed it: 22 of 23 assertions passed with
-    real behavioural proof. The 23rd failed on a self-inflicted locator bug the assessor
-    diagnosed exactly, naming the one-line repair. There was no budget left to apply it, so
-    a story whose product was correct and whose fix was already written was flagged `needs
-    manual review` and its epic blocked.
-
-    Three revisions and then a failing run: the assessment must still buy its re-plan.
-    """
+    """The fourth and final shared repair can address a post-run finding."""
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, revise_plans=3)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    # Five plan turns: four the reviewer asked for, one the failing run did.
+    # Five plan turns: three reviewer repairs and one post-run repair after the initial plan.
     assert agent.counts() == {
         "plan-qa": 5,
         "review-qa-plan": 5,
@@ -833,7 +806,7 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     `flag_qa_failure` appends `<spec_dir>/qa.md` to the `needs manual review` status only if
     the file is there, and on this path nothing had ever written one — no plan was ever
     approved, so no run, no assessment. The human was sent to review a story whose whole
-    account of itself was the phrase "3 QA-plan review revision attempts".
+    account of itself was only an aggregate attempt count.
 
     The findings existed the entire time. `review_plan` puts the reviewer's refusal on
     `QaLoop.plan_review_notes` on the very transition that reaches the guard, and `_exhausted`
@@ -851,8 +824,8 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     giveup = docs / SPEC_REL / "qa.md"
     assert giveup.is_file(), "the give-up must leave the file its status points at"
     text = giveup.read_text(encoding="utf-8")
-    assert "review pass 4" in text, text
-    assert "3 QA-plan review revision" in text, text
+    assert "review pass 5" in text, text
+    assert "4 total QA-plan repair" in text, text
 
 
 def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None:
@@ -1052,7 +1025,7 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     assert result.status == "exhausted", result
     assert agent.counts()["audit-qa"] == 0, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
-    assert agent.counts()["plan-qa"] == 4, agent.counts()
+    assert agent.counts()["plan-qa"] == 5, agent.counts()
 
 
 def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
@@ -1144,7 +1117,7 @@ def test_each_exhaustion_names_the_budget_it_spent(
 
     The parent stamps this phrase into the give-up marker commit and the story frontmatter,
     and for a while it stamped `qa_rework` no matter which budget ended the flow. A story
-    that burned all three QA-plan repairs and so never reached a code fix was filed as
+    that burned its QA-plan repairs and so never reached a code fix was filed as
     `[QA FAILED after 0 attempts]` — which reads as a story the loop never tried, and sends
     whoever triages the marker looking in the wrong place. Each arm now says its own name.
     """
@@ -1153,29 +1126,26 @@ def test_each_exhaustion_names_the_budget_it_spent(
     assert result.status == "exhausted", result
     assert result.spent == "3 OKF-context repair", result.spent
 
-    # The three plan budgets are separate loops and name themselves separately: a story that
-    # never got a parseable plan, one whose plan the reviewer kept refusing, and one whose
-    # executed plan kept needing repair are three different problems for whoever reads the
-    # marker, and only the first is about the schema.
+    # The three plan stages retain separate diagnostics but exhaust one aggregate budget.
     okf = ostler(plan_invalid=9)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
     assert result.status == "exhausted", result
-    assert result.spent == "3 QA-plan validation repair", result.spent
+    assert result.spent == "4 total QA-plan repair", result.spent
     assert okf.runs == 0
 
     okf = ostler()
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs, review="revise"))
     assert result.status == "exhausted", result
-    assert result.spent == "3 QA-plan review revision", result.spent
+    assert result.spent == "4 total QA-plan repair", result.spent
     assert okf.runs == 0
 
     # The post-run budget, reached only through a plan the reviewer approved and the runner
-    # executed — four runs, each one an assessment that did not reach the objective.
+    # executed — five runs, each one an assessment that did not reach the objective.
     okf = ostler(fail_runs=99)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
     assert result.status == "exhausted", result
-    assert result.spent == "3 QA-plan repair", result.spent
-    assert okf.runs == 4
+    assert result.spent == "4 total QA-plan repair", result.spent
+    assert okf.runs == 5
 
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))

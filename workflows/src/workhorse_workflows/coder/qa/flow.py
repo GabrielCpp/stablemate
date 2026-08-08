@@ -32,16 +32,13 @@ Divergences from the YAML, all deliberate:
   the same condition; `qa`'s `decide_qa_story` routed to `mark_qa_exhausted`, and the parent
   graph's `decide_qa_outcome` has an arm for it. Preserved as the YAML had it.
 * the budgets are `ClassVar` ints. None is declared in `flows.qa.vars` — the guards carry
-  branch literals (`"3"`, `"3"`, `"3"`, `"2"`, `"3"`) and the comments cite `vars.max_*`
+  branch literals and the comments cite `vars.max_*`
   names that do not exist. Same inert-var finding as `dev`'s `max_validate_reworks`;
   recorded in the progress ledger.
-* **the QA-plan budget is three budgets here, not one.** The YAML spent a single
-  `qa_plan_rework_count` for the schema validator, the pre-run reviewer, and every refusal
-  raised after the plan had run, so a plan with two malformed matchers arrived at the
-  reviewer with one round left, and a reviewer that used its rounds left the run itself with
-  none. `_guard_plan_validation` carries the mechanical loop, `_guard_plan_review` the
-  reviewer's predictions, and `_guard_plan` the post-run findings; each divergence and the
-  run that forced it are documented on the guard.
+* **the QA-plan budget is one total across three attributed counters.** Schema validation,
+  pre-run review, and post-run findings retain separate counters for diagnosis, but all draw
+  from one four-repair ceiling. The total is derived from those checkpointed counters, so an
+  old resume neither resets its allowance nor needs a state migration.
 * `clear_qa_gate_state` is `QaLoop.cleared()`, called on the way out of the plan turn rather
   than as a node. It blanked five keys and left the two context ones alone; the model does
   the same, and says so.
@@ -124,7 +121,7 @@ def _finding(passed: bool, notes: str) -> str:
     OKF-context rebuild is the standing case. A coder run did exactly this, and the agent
     read the brief correctly: it answered "I'm leaving both files unchanged", the plan then
     failed validation on the defect nobody had told it about, and the no-op turn cost one
-    of three plan reworks.
+    of the shared plan-repair budget.
 
     Each gate spells its own success differently (`status == "passed"`, `disposition ==
     "approved"`, a verdict plus a refutation class), so the predicate stays at the call
@@ -173,9 +170,7 @@ class Qa(Workflow):
     #: declared — each guard carries a branch literal. See the module docstring.
     MAX_QA_REWORKS: ClassVar[int] = 3
     MAX_CONTEXT_REWORKS: ClassVar[int] = 3
-    MAX_PLAN_REWORKS: ClassVar[int] = 3
-    MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
-    MAX_PLAN_REVIEW_REWORKS: ClassVar[int] = 3
+    MAX_TOTAL_PLAN_REWORKS: ClassVar[int] = 4
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
@@ -201,6 +196,7 @@ class Qa(Workflow):
         "plan_rework",
         "plan_validation_rework",
         "plan_review_rework",
+        "plan_rework_total",
         "qa_rework",
         "setup_rework",
         "regression_fix",
@@ -222,7 +218,7 @@ class Qa(Workflow):
         loop = params.get("loop")
         if not isinstance(loop, QaLoop):
             return self.labels()
-        carried = loop.model_dump()
+        carried = loop.model_dump() | {"plan_rework_total": loop.plan_rework_total}
         return (
             self.labels()
             | counter_labels(carried, "qa", self.BUDGET_LABELS)
@@ -966,40 +962,15 @@ class Qa(Workflow):
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
-        """`guard_qa_plan` + `incr_qa_plan`: re-plan, or give up on the story.
-
-        Spent by the refusals that come *after* the plan has actually run — the run
-        assessment, the evidence gate, the auditor. `ostler qa validate` and the pre-run
-        reviewer each have their own budget; see `_guard_plan_validation` and
-        `_guard_plan_review` for why none of the three can share one.
-        """
-        if loop.plan_rework >= self.MAX_PLAN_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_rework} QA-plan repair")
+        """Spend the post-run component of the shared QA-plan repair budget."""
+        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
         return Continue(result, self.plan, loop=loop.update(plan_rework=loop.plan_rework + 1))
 
     def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
-        """The same re-plan leg, on the schema validator's own budget.
-
-        Both guards send the story back to `plan`, and the YAML spent one counter for both.
-        That counter is a *semantic* budget in practice, and letting a mechanical gate draw
-        on it means the cheap loop starves the expensive one. `ostler qa validate` is
-        deterministic and converges in a turn or two — a missing key, a malformed matcher —
-        while `review_plan` is a `power="high"` turn judging whether the plan actually tests
-        the story, and its refusals are the ones worth spending turns on.
-
-        Two live stories in one benchmark run made the arithmetic concrete. Both
-        `group-membership` and `expense-record` failed validation on plan attempts 1 and 2,
-        passed on 3, and then reached the reviewer with one repair left out of three. Both
-        got a single revision round against a specific, correct finding, and both gave up —
-        the story was flagged `needs manual review` and its epic blocked, on a budget that
-        had been spent almost entirely on schema slips the reviewer never saw.
-
-        Splitting them does not raise the ceiling on either loop; it stops one from
-        deciding the other's. Worst case the plan turn runs six times instead of three,
-        which is the price of the reviewer actually getting its three rounds.
-        """
-        if loop.plan_validation_rework >= self.MAX_PLAN_VALIDATION_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_validation_rework} QA-plan validation repair")
+        """Spend the validation component of the shared QA-plan repair budget."""
+        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
         return Continue(
             result,
             self.plan,
@@ -1007,31 +978,9 @@ class Qa(Workflow):
         )
 
     def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Done:
-        """The same re-plan leg again, on the pre-run reviewer's own budget.
-
-        The split above separated the *mechanical* gate from the *semantic* ones. This one
-        separates the two semantic gates from each other, along the line that matters most:
-        whether the plan has been run yet. `review_plan` judges a plan it has only read, so
-        its refusals are predictions. `assess`, `verify_evidence` and `audit` judge a plan
-        the runner has executed, against assert files on disk — their refusals are findings.
-        Sharing a counter lets the predictions spend the findings' budget, and the
-        predictions always go first.
-
-        `04-docs-api-scaffold` is the case in full. The reviewer refused three good, specific
-        plans in a row — a `go run` that does not forward SIGTERM, shutdown log lines checked
-        less strictly than startup's, an `assert_contains: "1"` a route count of 21 would
-        pass — approved the fourth, and the run then executed it: 22 of 23 assertions passed
-        with real behavioural proof. The 23rd was a self-inflicted locator bug, an unanchored
-        `grep -q depends_on` matching a comment that says there is deliberately no
-        `depends_on`. The assessor diagnosed it exactly and named the one-line repair. There
-        was no budget left to apply it, so a story whose product was correct and whose fix
-        was already written was flagged `needs manual review` and its epic blocked.
-
-        As with the validation split, neither ceiling moves; the reviewer simply stops
-        deciding how many evidence-backed repairs the story is allowed.
-        """
-        if loop.plan_review_rework >= self.MAX_PLAN_REVIEW_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_review_rework} QA-plan review revision")
+        """Spend the review component of the shared QA-plan repair budget."""
+        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
         return Continue(
             result,
             self.plan,

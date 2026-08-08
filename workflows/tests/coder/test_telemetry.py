@@ -76,12 +76,14 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
         # A budget is not a finding: `cleared` must not reset the counters, or the loop
         # it bounds would never end.
         plan_rework=2,
+        plan_validation_rework=1,
     )
     cleared = loop.cleared()
     assert cleared.plan_review_disposition == ""
     assert cleared.plan_review_notes == ""
     assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
     assert cleared.plan_rework == 2
+    assert cleared.plan_rework_total == 3
 
 
 def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:
@@ -99,6 +101,7 @@ def test_qa_reports_every_budget_on_its_loop():
     assert labels["work_id"] == "04-tabs"
     assert labels["qa.plan_rework"] == "2"
     assert labels["qa.plan_review_rework"] == "1"
+    assert labels["qa.plan_rework_total"] == "3"
     assert labels["qa.qa_rework"] == "3"
     # Every budget is reported, including the ones still at zero — the loop carries them
     # all, so "this story has not spent its setup budget" is a fact, not an absence.
