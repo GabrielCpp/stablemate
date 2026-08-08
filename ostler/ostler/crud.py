@@ -8,6 +8,7 @@ layout (``SPEC.md`` / ``registry.py``) stay correct. Writers apply immediately a
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 import yaml
 
@@ -113,6 +114,16 @@ def set_milestone_source_items(
     )
 
 
+def _set_milestone_epics(milestone: model.Milestone, epics: list[str]) -> None:
+    """Replace one milestone's epic membership while preserving its prose and other fields."""
+    doc = markdown.split(milestone.path.read_text(encoding="utf-8"))
+    fm = dict(doc.frontmatter or {})
+    fm["epics"] = epics
+    doc.frontmatter = fm
+    doc.raw_frontmatter = dump_frontmatter(fm)
+    milestone.path.write_text(doc.render(), encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # epics
 # ---------------------------------------------------------------------------
@@ -146,13 +157,39 @@ def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) 
 
 def delete_epic(graph: Graph, name: str) -> Result:
     edir = path_mod.epic_dir(graph, name)
-    if not (edir / "epic.md").exists():
-        return Result(False, f"no epic '{name}'")
-    shutil.rmtree(edir)
+    existed = (edir / "epic.md").exists()
+    changed: list[Path] = []
+    target_refs = {
+        name,
+        registry.epic_slug(name),
+        edir.name,
+        registry.epic_slug(edir.name),
+    }
+    for milestone in graph.milestones:
+        remaining = [epic for epic in milestone.epics if epic not in target_refs]
+        if remaining != milestone.epics:
+            _set_milestone_epics(milestone, remaining)
+            changed.append(milestone.path)
     removed = ""
-    if todo_mod.prune(graph, edir.name).ok:
+    todo_result = todo_mod.prune(graph, name)
+    if todo_result.ok:
         removed = " (removed from epics index)"
-    return Result(True, f"deleted epic '{edir.name}'{removed}", [edir], entity_name=edir.name)
+        changed.extend(todo_result.paths)
+    if edir.exists():
+        shutil.rmtree(edir)
+    if not existed:
+        return Result(
+            True,
+            f"epic '{name}' already absent; cleanup complete{removed}",
+            changed,
+            entity_name=name,
+        )
+    return Result(
+        True,
+        f"deleted epic '{edir.name}'{removed}",
+        [edir, *changed],
+        entity_name=edir.name,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +256,53 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     story_md.write_text(f"---\n{dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
     return Result(True, f"created story '{slug}' ({sid}) in epic '{epic_name}'",
                   [epic_md, story_md], entity_id=sid)
+
+
+def update_story(
+    graph: Graph,
+    slug: str,
+    *,
+    title: str,
+    covers: list[str],
+    depends: list[str],
+) -> Result:
+    """Replace a story's graph metadata without touching its id, body, status, or extra fields."""
+    found = graph.find_story(slug)
+    if found is None:
+        return Result(False, f"no story '{slug}'")
+    epic, _story = found
+    epic_md = epic.epic_md
+    if epic_md is None:
+        return Result(False, f"epic '{epic.name}' has no epic.md to update the story in")
+
+    doc = markdown.split(epic_md.read_text(encoding="utf-8"))
+    section = doc.find_section(registry.STORIES_HEADING)
+    story_section = next(
+        (child for child in section.children if child.title.strip() == slug),
+        None,
+    ) if section is not None else None
+    if story_section is None:
+        return Result(False, f"no story '{slug}'")
+
+    values = {
+        "title": title,
+        registry.STORY_COVERS_KEY: ", ".join(covers) if covers else "(none)",
+        registry.STORY_DEPENDS_KEY: ", ".join(depends) if depends else "(none)",
+    }
+    lines = doc.body.split("\n")
+    seen: set[str] = set()
+    for bullet in story_section.bullets:
+        if bullet.label not in values:
+            continue
+        head, sep, _old = lines[bullet.line_start].partition(":")
+        if sep:
+            lines[bullet.line_start] = f"{head}: {values[bullet.label]}"
+            seen.add(bullet.label)
+    if missing := [label for label in values if label not in seen]:
+        return Result(False, f"story '{slug}' is missing metadata: {', '.join(missing)}")
+    doc.replace_body(lines)
+    epic_md.write_text(doc.render(), encoding="utf-8")
+    return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md])
 
 
 def delete_story(graph: Graph, slug: str) -> Result:

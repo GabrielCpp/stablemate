@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
-from ostler import crud, doctor, select
+import pytest
+from ostler import crud, doctor, select, todo
 from ostler.model import load
 
 from conftest import present
@@ -139,6 +141,108 @@ def test_delete_story_removes_block_and_dir(repo: Path):
     assert not (repo / "docs/epics/epic-a/stories/01-foo").exists()
     g = load(repo)
     assert g.find_story("01-foo") is None
+
+
+def test_update_story_changes_edges_without_touching_story_body(tmp_path: Path):
+    assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
+    assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
+    assert crud.add_seed(load(tmp_path), "accounts", "raw-xml", status="researched").ok
+    assert crud.create_story(
+        load(tmp_path), "accounts", "sign-in", "Sign in", covers=["sign-in"]
+    ).ok
+    assert crud.create_story(load(tmp_path), "accounts", "editor", "Editor").ok
+    story_path = tmp_path / "docs/epics/0001-accounts/stories/editor/story.md"
+    story_path.write_text(
+        story_path.read_text(encoding="utf-8") + "\nHand-authored contract.\n",
+        encoding="utf-8",
+    )
+    before = story_path.read_bytes()
+    epic_path = tmp_path / "docs/epics/0001-accounts/epic.md"
+    epic_path.write_text(
+        epic_path.read_text(encoding="utf-8").replace(
+            "### editor\n- title: Editor\n",
+            "### editor\n- title: Editor\n- effort: small\n\nKeep this note.\n",
+        ),
+        encoding="utf-8",
+    )
+    original = present(load(tmp_path).find_story("editor"))[1]
+
+    result = crud.update_story(
+        load(tmp_path),
+        "editor",
+        title="Interactive and raw XML editor",
+        covers=["raw-xml"],
+        depends=["sign-in"],
+    )
+
+    assert result.ok
+    updated = present(load(tmp_path).find_story("editor"))[1]
+    assert updated.title == "Interactive and raw XML editor"
+    assert updated.seed_items == ["raw-xml"]
+    assert updated.dependencies == ["sign-in"]
+    assert updated.eid == original.eid
+    assert story_path.read_bytes() == before
+    epic_text = epic_path.read_text(encoding="utf-8")
+    assert "- effort: small" in epic_text
+    assert "Keep this note." in epic_text
+
+
+def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    assert created.ok
+    assert crud.create_epic(load(tmp_path), "profiles", "Profiles", prefix="t").ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    milestone_path = tmp_path / "docs/milestones/mvp.md"
+    milestone_path.write_text(
+        milestone_path.read_text(encoding="utf-8").replace(
+            "epics: []", "epics:\n- accounts\n- profiles"
+        )
+        + "\nMilestone prose survives.\n",
+        encoding="utf-8",
+    )
+
+    result = crud.delete_epic(load(tmp_path), "accounts")
+
+    assert result.ok
+    graph = load(tmp_path)
+    milestone = graph.milestone_by_name("mvp")
+    assert milestone is not None
+    assert milestone.epics == ["profiles"]
+    assert "Milestone prose survives." in milestone_path.read_text(encoding="utf-8")
+    assert not (tmp_path / f"docs/epics/{created.entity_name}").exists()
+
+
+def test_delete_epic_finishes_cleanup_after_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    assert created.ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    milestone_path = tmp_path / "docs/milestones/mvp.md"
+    milestone_path.write_text(
+        milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
+    )
+    assert crud.create_story(load(tmp_path), "accounts", "sign-in", "Sign in").ok
+    assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
+    assert todo.add(load(tmp_path), "accounts").ok
+    real_rmtree = shutil.rmtree
+
+    def interrupt_after_removal(path: str | Path) -> None:
+        real_rmtree(path)
+        raise RuntimeError("interrupted after directory removal")
+
+    monkeypatch.setattr(crud.shutil, "rmtree", interrupt_after_removal)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        crud.delete_epic(load(tmp_path), "accounts")
+    monkeypatch.setattr(crud.shutil, "rmtree", real_rmtree)
+
+    resumed = crud.delete_epic(load(tmp_path), "accounts")
+
+    assert resumed.ok
+    assert not (tmp_path / f"docs/epics/{created.entity_name}").exists()
+    milestone = load(tmp_path).milestone_by_name("mvp")
+    assert milestone is not None and milestone.epics == []
+    assert todo.list_epics(load(tmp_path)) == []
 
 
 def test_seed_add_remove(repo: Path):

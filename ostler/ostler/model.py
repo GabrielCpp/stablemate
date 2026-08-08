@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -426,12 +426,19 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     return roots
 
 
-def load(cwd: Path | None = None) -> Graph:
+def load(
+    cwd: Path | None = None,
+    *,
+    root_overrides: Mapping[str, str | Path] | None = None,
+) -> Graph:
     root = find_root(cwd or Path.cwd())
     config = _load_config(root)
 
     template_kinds = dynamic_registry.load_kinds(root)
     roots = doc_roots(root, template_kinds, config)
+    for kind, configured in (root_overrides or {}).items():
+        configured_path = Path(configured)
+        roots[kind] = configured_path if configured_path.is_absolute() else root / configured_path
 
     org_name = config.get("name") or root.name
     if config.get("profile") in ("full", "exploration"):

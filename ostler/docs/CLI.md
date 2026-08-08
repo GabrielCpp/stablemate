@@ -79,6 +79,7 @@ ostler create backlog-item <text> [--section S] [--prefix P] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
 ostler create feature <slug> --title T [--area A] [--route R] [--prefix P] [--json]
 ostler create spec    <slug> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
+ostler update story   <slug> --title T --covers a,b --depends a,b
 ostler delete epic <name> | delete story <slug> | delete feature <slug>
 
 ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \

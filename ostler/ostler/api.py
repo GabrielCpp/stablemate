@@ -35,7 +35,7 @@ from __future__ import annotations
 # as. The method keeps its name: it is the public API spelling of the CLI verb.
 import builtins
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,8 +62,14 @@ class Ostler:
         as the CLI's ``-C`` does); ``None`` uses the current working directory.
     """
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path | None = None,
+        *,
+        doc_roots: Mapping[str, str | Path] | None = None,
+    ) -> None:
         self._root = Path(root) if root is not None else None
+        self._doc_roots = dict(doc_roots or {})
         self._graph: Graph | None = None
 
     # -- graph lifecycle ----------------------------------------------------
@@ -71,7 +77,7 @@ class Ostler:
     def graph(self) -> Graph:
         """The cached graph snapshot, loaded on first access."""
         if self._graph is None:
-            self._graph = load(self._root)
+            self._graph = load(self._root, root_overrides=self._doc_roots)
         return self._graph
 
     @property
@@ -87,7 +93,7 @@ class Ostler:
 
     def _fresh(self) -> Graph:
         """A freshly loaded graph for a mutation to read current state from."""
-        self._graph = load(self._root)
+        self._graph = load(self._root, root_overrides=self._doc_roots)
         return self._graph
 
     # -- retrieval ----------------------------------------------------------
@@ -312,6 +318,30 @@ class Ostler:
     def delete_story(self, slug: str) -> Result:
         """Delete a story by slug (``ostler delete story``)."""
         return self._apply(crud.delete_story(self._fresh(), slug))
+
+    def update_story(
+        self,
+        slug: str,
+        *,
+        title: str,
+        covers: builtins.list[str],
+        depends: builtins.list[str],
+    ) -> Result:
+        """Replace a story's graph metadata while preserving its authored document."""
+        graph = self._fresh()
+        return self._apply(
+            crud.update_story(
+                graph,
+                slug,
+                title=title,
+                covers=[ids_mod.resolve(graph, cover) for cover in covers],
+                depends=depends,
+            )
+        )
+
+    def delete_epic(self, name: str) -> Result:
+        """Delete an epic and remove its milestone and legacy queue references."""
+        return self._apply(crud.delete_epic(self._fresh(), name))
 
     def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
         """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent."""

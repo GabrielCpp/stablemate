@@ -209,6 +209,14 @@ def _build_parser() -> argparse.ArgumentParser:
     dls.add_parser("story").add_argument("slug")
     dls.add_parser("feature").add_argument("slug")
 
+    up = sub.add_parser("update", help="update built-in planning entity metadata")
+    ups = up.add_subparsers(dest="what", required=True)
+    upst = ups.add_parser("story", help="replace story title, coverage, and dependencies")
+    upst.add_argument("slug")
+    upst.add_argument("--title", required=True)
+    upst.add_argument("--covers", required=True)
+    upst.add_argument("--depends", required=True)
+
     # ---- template-declared kinds: generic instance CRUD + hierarchy CRUD --
     gn = sub.add_parser("new", help="create an instance of a template-declared kind")
     gn.add_argument("kind")
@@ -1092,6 +1100,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         if args.what == "story":
             return _result(crud.delete_story(graph, args.slug))
         return _result(crud.delete_feature(graph, args.slug))
+    if c == "update":
+        return _result(
+            crud.update_story(
+                graph,
+                args.slug,
+                title=args.title,
+                covers=[ids_mod.resolve(graph, seed) for seed in _split(args.covers)],
+                depends=_split(args.depends),
+            )
+        )
     if c == "seed":
         if args.op == "add":
             meta = {

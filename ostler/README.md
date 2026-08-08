@@ -168,7 +168,7 @@ accepted as input either way).
 |---|---|
 | `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
 | `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
-| `create` `delete` `seed` `set-status` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, record a seed, move the queue |
+| `create` `update` `delete` `seed` `set-status` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` | the `docs/features/` node/edge book — see below |
@@ -227,6 +227,7 @@ Python: you load the graph once and get back plain objects (`dict`/`list`/`str`,
 from ostler import Ostler
 
 okf = Ostler("path/to/repo")          # graph root discovered upward, like `-C DIR`; None ⇒ cwd
+scoped = Ostler("path/to/repo", doc_roots={"epics": "product/epics"})
 
 okf.todo()                            # ["checkout-flow", …]        (ostler todo list)
 okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler list --type story)
@@ -236,16 +237,20 @@ okf.doctor()                          # {...} referential-integrity report (ostl
 
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
+okf.update_story("02-pay", title="Payment", covers=["seed-1"], depends=["01-cart"])
 item = okf.create_backlog_item("Ship checkout parity", section="Scope")
 milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id])
 okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
 okf.backlog_adopt("docs/backlog.md")  # name direct unnamed work bullets in place
 okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
+okf.delete_epic("checkout-flow")        # also removes milestone and legacy queue references
 okf.set_status("01-cart", "QA passed")
 ```
 
-The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
-(`create_*`/`add_seed`/`set_status`/`backlog_*`/`set_milestone_*`/`todo_*`/`settle_review`) applies
+`doc_roots` overrides configured roots for that facade's reads and mutations; relative values
+resolve from the discovered repository root. The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
+(`create_*`/`update_story`/`delete_*`/`add_seed`/`set_status`/`backlog_*`/
+`set_milestone_*`/`todo_*`/`settle_review`) applies
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object

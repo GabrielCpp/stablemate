@@ -68,6 +68,17 @@ def test_create_story_is_visible_to_the_next_read(repo: Path):
     assert "02-baz" in {r["slug"] for r in okf.list("story")}
 
 
+def test_doc_root_override_is_used_for_reads_and_mutations(tmp_path: Path) -> None:
+    okf = Ostler(tmp_path, doc_roots={"epics": "product/epics"})
+
+    result = okf.create_epic("accounts", "Accounts")
+
+    assert result.ok
+    assert (tmp_path / "product/epics/0001-accounts/epic.md").is_file()
+    assert not (tmp_path / "docs/epics").exists()
+    assert [row["name"] for row in okf.list("epic")] == ["0001-accounts"]
+
+
 def test_delete_story_is_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
     assert "01-foo" in {r["slug"] for r in okf.list("story")}
@@ -76,6 +87,27 @@ def test_delete_story_is_visible_to_the_next_read(repo: Path):
 
     assert res.ok
     assert "01-foo" not in {r["slug"] for r in okf.list("story")}
+
+
+def test_update_story_and_delete_epic_are_visible_to_the_next_read(repo: Path):
+    okf = Ostler(repo)
+    body = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    before = body.read_bytes()
+
+    updated = okf.update_story(
+        "01-foo", title="Updated", covers=["seed-a2"], depends=[]
+    )
+
+    assert updated.ok
+    row = present(next((r for r in okf.list("story") if r["slug"] == "01-foo"), None))
+    assert row["title"] == "Updated"
+    assert row["covers"] == ["seed-a2"]
+    assert body.read_bytes() == before
+
+    deleted = okf.delete_epic("epic-a")
+
+    assert deleted.ok
+    assert "epic-a" not in {r["name"] for r in okf.list("epic")}
 
 
 def test_remove_seed_is_visible_to_the_next_read(repo: Path):

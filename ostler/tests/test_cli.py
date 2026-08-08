@@ -104,3 +104,15 @@ def test_backlog_adopt_parses_optional_path():
 def test_milestone_source_items_parse():
     args = parse(["milestone", "set-source-items", "docs-app-mvp", "A-1", "A-2"])
     assert args.name == "docs-app-mvp" and args.ids == ["A-1", "A-2"]
+
+
+def test_update_story_metadata_parse():
+    args = parse([
+        "update", "story", "raw-editor", "--title", "Raw editor",
+        "--covers", "raw-xml,validation", "--depends", "document-tree",
+    ])
+
+    assert args.command == "update" and args.what == "story"
+    assert args.slug == "raw-editor" and args.title == "Raw editor"
+    assert args.covers == "raw-xml,validation"
+    assert args.depends == "document-tree"
