@@ -27,12 +27,25 @@ from __future__ import annotations
 
 import re
 
+from markdown_it import MarkdownIt
+
 #: A whole-line `KEY: value`, matched at the start of any line, value being the first
 #: run of non-whitespace. Tabs are allowed after the colon because a human hand-edits
 #: these files.
 _STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
 _SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
-_QUESTIONS_RE = re.compile(r"^##[ \t]+Questions?[ \t]+from[ \t]+the[ \t]+agent[ \t]*$", re.MULTILINE | re.IGNORECASE)
+_MARKDOWN = MarkdownIt("commonmark")
+_QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
+
+
+def _has_question_heading(text: str) -> bool:
+    tokens = _MARKDOWN.parse(text)
+    for opening, title in zip(tokens, tokens[1:], strict=False):
+        if opening.type != "heading_open" or opening.tag != "h2" or title.type != "inline":
+            continue
+        if " ".join(title.content.split()).casefold() in _QUESTION_HEADINGS:
+            return True
+    return False
 
 
 def status_of(text: str) -> str:
@@ -72,7 +85,7 @@ def format_operator_gate(questions: str) -> str:
     only re-armed so its sections are not wrapped or duplicated.
     """
     body = questions.strip()
-    if status_of(body) or _QUESTIONS_RE.search(body):
+    if status_of(body) or _has_question_heading(body):
         return set_status(body, "AWAITING_OPERATOR").rstrip() + "\n"
     return (
         "STATUS: AWAITING_OPERATOR\n\n"

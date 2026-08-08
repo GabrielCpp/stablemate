@@ -36,6 +36,9 @@ dependencies = [
   # input, which is the right answer for an agent reply and the wrong one for a config
   # file the operator wrote and expects to be told about.
   "json5>=0.9",
+  # Recognize canonical operator-gate headings without mistaking examples inside fenced
+  # code for document structure.
+  "markdown-it-py>=3.0",
 ]
 # Deliberately short. The engine is workflow-agnostic, so anything a *workflow* reads
 # belongs on `workhorse-workflows`, not here: YAML (pyyaml/ruamel.yaml) left with the

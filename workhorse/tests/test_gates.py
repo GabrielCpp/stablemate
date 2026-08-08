@@ -95,6 +95,16 @@ def test_structured_operator_gate_is_rearmed_without_double_wrapping():
     assert "SCOPE: story" in formatted
 
 
+def test_a_question_heading_inside_a_code_fence_does_not_make_the_gate_structured():
+    text = "Example output:\n\n```markdown\n## Questions from the agent\n```\n"
+
+    formatted = gates.format_operator_gate(text)
+
+    assert formatted.startswith(
+        "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nExample output:"
+    )
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
