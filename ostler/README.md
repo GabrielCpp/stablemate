@@ -12,6 +12,8 @@ Everything is markdown. An epic's seeds and its story dependency-DAG live inside
 is **no** `seed.json`, `dependencies.json`, `inventory.json` or `epics-todo.json`. Ostler owns id
 allocation and is the one tool that reads and writes the graph — so structure stays consistent while
 humans (or agents) author the prose.
+The one-shot migration can consume and delete a legacy `features/inventory.json`; no Ostler command
+or Python API creates one.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
 roots default to `<cwd>/docs/{epics,features,specs}` and the organization name to the repo

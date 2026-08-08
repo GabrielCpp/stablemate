@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import pytest
 from ostler.cli import _build_parser
 
 
 def parse(argv):
     return _build_parser().parse_args(argv)
+
+
+def test_no_inventory_builder_command_is_exposed() -> None:
+    with pytest.raises(SystemExit):
+        parse(["inventory", "build"])
 
 
 def test_write_flag_accepted_after_subcommand():
