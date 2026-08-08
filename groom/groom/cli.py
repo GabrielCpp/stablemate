@@ -239,6 +239,62 @@ def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
     print(_format_costs(rows))
 
 
+def _format_profile(result: dict | None) -> str:
+    if result is None:
+        return "no telemetry found for that run."
+    time_s = result["time_s"]
+    work = result["work"]
+    waits = ", ".join(
+        f"{kind}={seconds / 3600:.2f}h"
+        for kind, seconds in time_s["waits_by_kind"].items()
+    ) or "none"
+    cost = f"${work['cost_usd']:.2f}" if work["cost_usd"] is not None else "-"
+    lines = [
+        f"{result['run_id']}  [{result['workflow'] or '?'}]",
+        "time (disjoint observed wall clock)",
+        f"  wall={time_s['wall'] / 3600:.2f}h  agent={time_s['agent'] / 3600:.2f}h"
+        f"  deterministic={time_s['deterministic'] / 3600:.2f}h"
+        f"  infra={time_s['infra'] / 3600:.2f}h",
+        f"  waits={time_s['wait'] / 3600:.2f}h ({waits})"
+        f"  resume={time_s['resume_gap'] / 3600:.2f}h"
+        f"  unclassified={time_s['unclassified'] / 3600:.2f}h",
+        "work",
+        f"  turns={work['turns']}  work_items={work['work_items']}"
+        f"  turns/work={work['turns_per_work'] if work['turns_per_work'] is not None else '-'}"
+        f"  agent={work['agent_s'] / 3600:.2f}h",
+        f"  cost={cost}"
+        f"  priced={work['cost_turns']}/{work['turns']}"
+        f"  suspect-zero={work['zero_cost_output_turns']}",
+    ]
+    for title, key in (
+        ("attempt groups", "attempt_groups"),
+        ("verdict groups", "verdict_groups"),
+    ):
+        rows = result[key]
+        if not rows:
+            continue
+        lines.append(title)
+        for row in rows:
+            lines.append(
+                f"  {row['dimension']}={row['value']}  {row['node']}"
+                f"  turns={row['turns']}  agent={row['agent_s'] / 60:.1f}m"
+            )
+    return "\n".join(lines)
+
+
+def profile(run: str, as_json: bool = False) -> None:
+    """Show what occupied one run and where attempts/verdicts spent agent time."""
+    import json as _json
+
+    from groom import store
+
+    result = store.run_profile(run)
+    if as_json:
+        print(_json.dumps(result, indent=2))
+        return
+    print(_format_profile(result))
+
+
 def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
     """Evict telemetry that test runs wrote into the store.
 
@@ -314,6 +370,15 @@ def main(argv: list[str] | None = None) -> None:
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
+    profile_parser = subparsers.add_parser(
+        "profile",
+        help="Partition one run's wall time and group agent work by attempt and verdict.",
+    )
+    profile_parser.add_argument("--run", required=True, help="The run_id to profile.")
+    profile_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable output."
+    )
+
     subparsers.add_parser("db-path", help="Print the telemetry SQLite path and exit.")
 
     purge_parser = subparsers.add_parser(
@@ -343,6 +408,8 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "cost":
         cost(run=args.run, limit=args.limit, as_json=args.as_json)
+    elif args.command == "profile":
+        profile(run=args.run, as_json=args.as_json)
     elif args.command == "db-path":
         from groom import store
 

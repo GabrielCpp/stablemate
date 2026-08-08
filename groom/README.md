@@ -276,6 +276,26 @@ Duration is comparable across harnesses but not identical: when the CLI reports 
 turn duration that value is used, and when it does not (codex reports none) the
 engine's own wall clock is stamped instead, which includes process spawn.
 
+### What occupied the wall clock (`groom profile`)
+
+For one retained run, partition observed wall time and group agent work by the
+workflow's attempt and verdict labels:
+
+```bash
+groom profile --run RUN
+groom profile --run RUN --json
+```
+
+The time buckets are disjoint: agent turns, deterministic nodes, infrastructure,
+explicit waits, gaps between resume generations, and unclassified time sum to the
+reported wall clock without counting nested spans twice. Wait time is also split by
+kind (`operator`, `cap`, `retry`, `reframe`, or `exec-retry`).
+
+Attempt and verdict groups report turns, agent time, work items, cost coverage, and
+tokens for each telemetry label value. `profile` reads every retained span for the
+named run rather than the paginated trace search, so a long run is not silently
+truncated. As with `cost`, absent and suspicious zero pricing remain visible.
+
 ### The schema, and one footgun
 
 Three tables — `spans`, `metrics`, `logs` — plus `attrs_json` on each, holding
