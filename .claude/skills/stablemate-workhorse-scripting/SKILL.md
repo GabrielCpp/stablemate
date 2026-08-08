@@ -359,12 +359,14 @@ spec    = okf.spec_path("01-foo")          # "docs/specs/01-foo"      (ostler pa
 report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
 
 res = okf.create_story("epic-a", "02-baz", "Baz", covers=["seed-1"])  # Result(.ok, .entity_id, .message)
+okf.update_story("02-baz", title="Baz", covers=["seed-1"], depends=["01-foo"])
+okf.delete_epic("epic-a")
 okf.add_seed("epic-a", "seed-2", status="researched", meta={"sourceBullet": "…"})
 okf.set_status("01-foo", "QA passed")
 ```
 
 The graph is a **snapshot** read at load time: reads reuse one cached snapshot (the win over
-a subprocess-per-call); mutations (`create_*` / `add_seed` / `set_status` / `backlog_*` /
+a subprocess-per-call); mutations (`create_*` / `update_story` / `delete_*` / `add_seed` / `set_status` / `backlog_*` /
 `todo_*` / `settle_review`) apply against a fresh load and invalidate the cache, so the next
 read sees them (`reload()` forces a refresh). A read never returns `None` — on a genuinely
 unloadable graph the call raises `(OSError, ValueError, RuntimeError)`; catch that to take a

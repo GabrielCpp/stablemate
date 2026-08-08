@@ -97,6 +97,12 @@ ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | tod
 "message": "…"}`. For `create epic` the `name` is the numbered directory that was written
 (`0001-checkout-flow`) — read it back rather than assuming which number the epic got.
 
+`update story` replaces the title, seed coverage and sibling dependencies stored in the parent
+`epic.md`. All three options are required so the command expresses one complete metadata state.
+It preserves the story id, `story.md` bytes, status, optional metadata and subsection prose.
+`delete epic` removes the numbered epic directory and its references from every milestone and the
+legacy todo queue; numbering gaps are preserved.
+
 `create backlog-item` is the normal entry point for new intake: it allocates and persists a full
 id. `backlog add` remains available when importing an externally assigned id. `backlog adopt`
 allocates ids for direct unnamed bullets under `##` sections, preserving prose and ignoring
