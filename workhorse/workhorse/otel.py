@@ -953,9 +953,8 @@ class _Telemetry:
                 self._set_node_active(node_id, 0)
             elif phase == "error":
                 # `record_interrupt` writes this to events.jsonl when a run is killed
-                # mid-node. Until it was handled here the node's span was swept shut as
-                # "never completed" with no cause on it, so a crash and a hang were the
-                # same shape in the trace — while the reason had been on disk all along.
+                # mid-node. Mirror it into the open span so a crash and a hang do not
+                # look identical while the reason sits on disk only.
                 target = self._stack[-1][1] if self._stack else self._root
                 if target is not None:
                     target.add_event("error", {"error": str(extra.get("error") or "")})
@@ -970,8 +969,7 @@ class _Telemetry:
                     )
 
     def _end_node(self, key: tuple[str, int], next_node: Any) -> None:
-        """End the span for ``key``, sweeping (as errored) anything left open
-        above it — a node that raised never gets a done event of its own."""
+        """End the span for ``key``, sweeping anything left open above it."""
         if all(k != key for k, _, _ in self._stack):
             return
         while self._stack:
@@ -981,9 +979,6 @@ class _Telemetry:
                     span.set_attribute("workhorse.next", str(next_node))
                 span.end()
                 return
-            span.set_status(
-                self._trace.Status(self._trace.StatusCode.ERROR, "never completed")
-            )
             span.end()
 
     @_failsoft(_NO_OPEN_NODE)
@@ -1010,20 +1005,21 @@ class _Telemetry:
         if self._beat_thread is not None:
             self._beat_thread.join(timeout=2)
             self._beat_thread = None
+        failed = status in {"fail", "aborted"} and error is not None
         with self._lock:
-            self.turn_end(error)
+            self.turn_end(error if failed else None)
             while self._stack:
                 _, span, _ = self._stack.pop()
-                if error:
+                if failed:
                     span.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
                 span.end()
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
-                if error:
-                    if error_class:
-                        self._root.set_attribute("error.class", error_class)
-                    if error_kind:
-                        self._root.set_attribute("error.kind", error_kind)
+                if error_class:
+                    self._root.set_attribute("error.class", error_class)
+                if error_kind:
+                    self._root.set_attribute("error.kind", error_kind)
+                if failed:
                     self._root.set_status(
                         self._trace.Status(self._trace.StatusCode.ERROR, error)
                     )

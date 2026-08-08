@@ -72,6 +72,10 @@ exports are best-effort, so a collector that dies *mid-run* can never slow or we
 a run either. Any standard OTLP/HTTP backend
 (Jaeger, Grafana Tempo) works unchanged.
 
+A resumable interruption closes open spans without OpenTelemetry `ERROR` status; the root still
+carries `error.class` and `error.kind` so the pause reason remains queryable. A workflow failure or
+an unexpected `aborted` crash marks the root and every swept open span as an error.
+
 **Turn spans are comparable across backends.** Every harness reports what a turn
 consumed and every one spells it differently, so workhorse normalizes them onto one
 set of attribute names (Claude's, since those spans are already in the store): tokens

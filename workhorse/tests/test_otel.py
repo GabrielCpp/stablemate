@@ -395,8 +395,8 @@ def test_enter_done_pairs_a_node_span_and_records_next():
 
 def test_an_interrupted_node_records_why_on_its_span():
     """`record_interrupt` has always written `phase="error"` to events.jsonl, and
-    record_event had no branch for it — so a run killed mid-node left a span swept
-    shut as "never completed" with the cause sitting on disk, unexported."""
+    record_event had no branch for it — so a run killed mid-node left its cause
+    sitting on disk, unexported."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("plan", 1, "enter"))
     t.record_event(_event("plan", 1, "error", error="KeyboardInterrupt"))
@@ -499,6 +499,20 @@ def test_flow_children_nest_under_the_open_flow_node_span():
     assert tracer.by_name("qa_flow").ended
 
 
+def test_unfinished_nested_spans_close_without_error_status():
+    """A recovered non-terminal interruption leaves an unfinished child span, but
+    that span did not cause the flow to enter its failure terminal."""
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("parent", 1, "enter"))
+    t.record_event(_event("child", 2, "enter"))
+
+    t.record_event(_event("parent", 1, "done", next="recover"))
+
+    child = tracer.by_name("child")
+    assert child.ended
+    assert child.status is None or child.status.code != "ERROR"
+
+
 def test_loop_revisits_pair_by_seq():
     """The same node visited twice (a loop) gets two distinct spans, each done
     event closing its own visit's span via the (node, seq) key."""
@@ -511,7 +525,7 @@ def test_loop_revisits_pair_by_seq():
     assert spans[0].ended and not spans[1].ended
 
 
-def test_end_run_sweeps_open_spans_and_flags_error():
+def test_failed_end_run_sweeps_open_spans_and_flags_error():
     t, tracer, _, shutdown = _telemetry()
     t.record_event(_event("stuck", 1, "enter"))
     t.end_run("fail", "out of gas")
@@ -520,6 +534,46 @@ def test_end_run_sweeps_open_spans_and_flags_error():
     assert root.ended and root.attrs["workhorse.terminal"] == "fail"
     assert root.status.code == "ERROR"
     assert shutdown["called"] is True
+
+
+def test_interrupted_end_run_sweeps_open_spans_without_error_status():
+    t, tracer, _, shutdown = _telemetry()
+    t.record_event(_event("stuck", 1, "enter"))
+
+    t.end_run(
+        "interrupted",
+        "KeyboardInterrupt",
+        error_class="KeyboardInterrupt",
+        error_kind="interrupt",
+    )
+
+    stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
+    assert stuck.ended
+    assert stuck.status is None or stuck.status.code != "ERROR"
+    assert root.ended and root.attrs["workhorse.terminal"] == "interrupted"
+    assert root.status is None or root.status.code != "ERROR"
+    assert root.attrs["error.class"] == "KeyboardInterrupt"
+    assert root.attrs["error.kind"] == "interrupt"
+    assert shutdown["called"] is True
+
+
+def test_aborted_end_run_remains_an_error() -> None:
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("stuck", 1, "enter"))
+
+    t.end_run(
+        "aborted",
+        "run aborted before finalize",
+        error_class="RuntimeError",
+        error_kind="fatal",
+    )
+
+    stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
+    assert stuck.ended and stuck.status.code == "ERROR"
+    assert root.ended and root.attrs["workhorse.terminal"] == "aborted"
+    assert root.status.code == "ERROR"
+    assert root.attrs["error.class"] == "RuntimeError"
+    assert root.attrs["error.kind"] == "fatal"
 
 
 def test_end_run_is_idempotent_and_the_first_status_wins():
