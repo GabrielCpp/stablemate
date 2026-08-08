@@ -26,7 +26,8 @@ Divergences from the YAML, all deliberate:
   waits. The consume half of `await_operator.py` is `read_operator_context`, a node.
 * `review_rework_count` was a var with `seed`/`incr` nodes; it is the `review_rework`
   parameter. The re-seed that `apply_review_resolved → reset_review` performed is the
-  transition back to `start` not carrying it.
+  transition back to `start` not carrying it. `review_blocks` is the cumulative outer
+  budget that does survive that transition, so repeated operator cycles terminate.
 * `guard_review`'s comment cites `vars.max_review_reworks`, which neither this flow nor any
   caller declares — the literal `"3"` on the branch is the only budget there is. It is
   `MAX_REVIEW_REWORKS` here, a `ClassVar` rather than an input, so the port does not invent
@@ -46,9 +47,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
@@ -68,6 +68,7 @@ from workhorse_workflows.coder.shared.schemas.review import (
     ReviewVerdict,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
+from workhorse_workflows.kit.telemetry import counter_labels
 
 #: `timeout: infinity` — the resolver stands in for a human and must not be cut off
 #: mid-resolution. A finite number of seconds here caps it.
@@ -108,6 +109,10 @@ class Review(Workflow):
     #: exposed no var for it — see the module docstring.
     MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
+    #: Trips through the operator gate before review is declared a dead end. This outer
+    #: budget survives the local rework reset after an operator answer.
+    MAX_REVIEW_BLOCKS: ClassVar[int] = 3
+
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths, the workspace to directories, and the repos to review.
 
@@ -125,8 +130,8 @@ class Review(Workflow):
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
-    #: The one bounded budget: how many times the reviewer sent the work back.
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("review_rework",)
+    #: The local rework and cumulative operator-cycle budgets.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("review_rework", "review_blocks")
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         """The same, plus which review round the next state is on."""
@@ -134,7 +139,7 @@ class Review(Workflow):
 
     # --- the two feeder reviews ---------------------------------------------
 
-    def start(self) -> Continue:
+    def start(self, review_blocks: int = 0) -> Continue:
         """Run the native code-review skill over each affected repo's local changes.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
@@ -142,9 +147,9 @@ class Review(Workflow):
         comments too. The findings ride forward in the result so the implementation reviewer
         sees them without re-deriving them.
 
-        This is also where the operator loop comes back to, which is what re-seeds the rework
-        budget: an operator who actually answered gets a clean allowance and a fresh read of
-        the code, rather than re-escalating immediately on a spent counter.
+        This is also where the operator loop comes back to, which re-seeds the local rework
+        budget while preserving `review_blocks`: an operator who actually answered gets a
+        clean allowance and a fresh read of the code, but not an unbounded number of cycles.
         """
         self.logger.info("reviewing %s", self.ctx.story_slug, extra={"activity": True})
         result = self.agent(
@@ -162,9 +167,9 @@ class Review(Workflow):
                 "pr_number": self.pr_number,
             },
         )
-        return Continue(result, self.reuse, code_review=result)
+        return Continue(result, self.reuse, code_review=result, review_blocks=review_blocks)
 
-    def reuse(self, code_review: CodeReviewResult) -> Continue:
+    def reuse(self, code_review: CodeReviewResult, review_blocks: int = 0) -> Continue:
         """Hunt the reuse problems the diff introduced: duplication, and hand-rolled helpers.
 
         A dedicated pass rather than one of five things the implementation reviewer juggles.
@@ -185,7 +190,13 @@ class Review(Workflow):
                 "affected_repo_paths": self._repos,
             },
         )
-        return Continue(result, self.review, code_review=code_review, code_reuse=result)
+        return Continue(
+            result,
+            self.review,
+            code_review=code_review,
+            code_reuse=result,
+            review_blocks=review_blocks,
+        )
 
     # --- the review loop ----------------------------------------------------
 
@@ -194,6 +205,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_rework: int = 0,
+        review_blocks: int = 0,
     ) -> Continue | Await:
         """Review the implementation against the story, and route on the verdict.
 
@@ -228,8 +240,16 @@ class Review(Workflow):
                 code_review=code_review,
                 code_reuse=code_reuse,
                 review_rework=review_rework,
+                review_blocks=review_blocks,
             )
-        return self._guard(result, result.notes, code_review, code_reuse, review_rework)
+        return self._guard(
+            result,
+            result.notes,
+            code_review,
+            code_reuse,
+            review_rework,
+            review_blocks,
+        )
 
     def apply(
         self,
@@ -237,6 +257,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_rework: int,
+        review_blocks: int = 0,
     ) -> Continue | Await:
         """Resolve the findings, then let ostler decide whether they are actually resolved.
 
@@ -279,10 +300,18 @@ class Review(Workflow):
                 code_review=code_review,
                 code_reuse=code_reuse,
                 review_rework=review_rework,
+                review_blocks=review_blocks,
             )
         if settled.status == "blocked":
-            return self._gate(settled, notes, code_review, code_reuse)
-        return self._guard(settled, notes, code_review, code_reuse, review_rework + 1)
+            return self._gate(settled, notes, code_review, code_reuse, review_blocks)
+        return self._guard(
+            settled,
+            notes,
+            code_review,
+            code_reuse,
+            review_rework + 1,
+            review_blocks,
+        )
 
     def _guard(
         self,
@@ -291,6 +320,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_rework: int,
+        review_blocks: int,
     ) -> Continue | Await:
         """`guard_review`: another apply pass, or the operator.
 
@@ -298,7 +328,7 @@ class Review(Workflow):
         decide the review stage is stuck. `_`-prefixed so state discovery does not pick it up.
         """
         if review_rework >= self.MAX_REVIEW_REWORKS:
-            return self._gate(result, notes, code_review, code_reuse)
+            return self._gate(result, notes, code_review, code_reuse, review_blocks)
         return Continue(
             result,
             self.apply,
@@ -306,6 +336,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_rework=review_rework,
+            review_blocks=review_blocks,
         )
 
     def _gate(
@@ -314,6 +345,7 @@ class Review(Workflow):
         notes: str,
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
+        review_blocks: int,
     ) -> Continue | Await:
         """`gate_review`: hand the block to the auto-operator, or halt for a human.
 
@@ -321,7 +353,14 @@ class Review(Workflow):
         unresolvable. Both are real: an unsatisfiable finding may need a product decision
         that no amount of re-applying will produce.
         """
-        if self.operator_mode == "human":
+        if review_blocks >= self.MAX_REVIEW_BLOCKS:
+            raise WorkflowFailed(
+                f"the review for story {self.ctx.story_slug!r} was still blocked after "
+                f"{review_blocks} operator resolution(s); giving up rather than looping. "
+                f"Last block: {notes or '(no notes given)'}"
+            )
+        review_blocks += 1
+        if self.operator_mode in {"human", "operator"}:
             return Await(
                 self._context,
                 notes,
@@ -329,6 +368,7 @@ class Review(Workflow):
                 notes=notes,
                 code_review=code_review,
                 code_reuse=code_reuse,
+                review_blocks=review_blocks,
             )
         return Continue(
             result,
@@ -336,12 +376,17 @@ class Review(Workflow):
             notes=notes,
             code_review=code_review,
             code_reuse=code_reuse,
+            review_blocks=review_blocks,
         )
 
     # --- the operator arm ---------------------------------------------------
 
     def resolve_review(
-        self, notes: str, code_review: CodeReviewResult, code_reuse: CodeReuseResult
+        self,
+        notes: str,
+        code_review: CodeReviewResult,
+        code_reuse: CodeReuseResult,
+        review_blocks: int = 0,
     ) -> Continue | Await:
         """Stand in for the operator on the unresolved findings, or escalate to a human.
 
@@ -373,6 +418,7 @@ class Review(Workflow):
                 notes=notes,
                 code_review=code_review,
                 code_reuse=code_reuse,
+                review_blocks=review_blocks,
             )
         # No ask — see `dev.flow.resolve_plan`: the escalating resolver's note is already in
         # this file, and `Await` writes its `questions` over the top of whatever is there.
@@ -383,10 +429,15 @@ class Review(Workflow):
             notes=notes,
             code_review=code_review,
             code_reuse=code_reuse,
+            review_blocks=review_blocks,
         )
 
     def read_operator(
-        self, notes: str, code_review: CodeReviewResult, code_reuse: CodeReuseResult
+        self,
+        notes: str,
+        code_review: CodeReviewResult,
+        code_reuse: CodeReuseResult,
+        review_blocks: int = 0,
     ) -> Continue:
         """Consume the answer and apply it as the work.
 
@@ -403,6 +454,7 @@ class Review(Workflow):
             operator_context=answer.content,
             code_review=code_review,
             code_reuse=code_reuse,
+            review_blocks=review_blocks,
         )
 
     def apply_resolved(
@@ -411,6 +463,7 @@ class Review(Workflow):
         operator_context: str,
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
+        review_blocks: int = 0,
     ) -> Continue:
         """Apply the operator's resolution, then start the review over with a fresh budget.
 
@@ -430,7 +483,7 @@ class Review(Workflow):
                 "operator_feedback": operator_context,
             },
         )
-        return Continue(result, self.start)
+        return Continue(result, self.start, review_blocks=review_blocks)
 
     # --- the non-blocking feedback checkpoint -------------------------------
 
@@ -439,6 +492,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_rework: int,
+        review_blocks: int = 0,
     ) -> Continue | Done:
         """Did a human drop notes into the story's inbox while the run was busy?
 
@@ -457,6 +511,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_rework=review_rework,
+            review_blocks=review_blocks,
         )
 
     def apply_feedback(
@@ -465,6 +520,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_rework: int,
+        review_blocks: int = 0,
     ) -> Continue:
         """Rework against the operator's notes, then re-review.
 
@@ -491,6 +547,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_rework=review_rework,
+            review_blocks=review_blocks,
         )
 
     # --- shared -------------------------------------------------------------

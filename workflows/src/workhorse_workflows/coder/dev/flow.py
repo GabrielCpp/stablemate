@@ -67,7 +67,6 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     read_operator_context,
@@ -90,6 +89,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     ReuseResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
+from workhorse_workflows.kit.telemetry import counter_labels
 
 #: `timeout: infinity` — the resolver stands in for a human and must not be cut off
 #: mid-resolution. A finite number of seconds here caps it.
@@ -223,7 +223,7 @@ class Dev(Workflow):
                 f"Last block: {notes or '(no summary given)'}"
             )
         plan_blocks += 1
-        if self.operator_mode == "human":
+        if self.operator_mode in {"human", "operator"}:
             return Await(
                 self._context, notes, self.read_operator, notes=notes, plan_blocks=plan_blocks
             )

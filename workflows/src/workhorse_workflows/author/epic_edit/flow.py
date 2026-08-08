@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.author.epic_edit.nodes import (
@@ -39,6 +40,7 @@ from workhorse_workflows.author.shared.schemas import (
     StoryChoice,
     WriteStoryResult,
 )
+from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
 
@@ -70,6 +72,11 @@ class EpicEdit(Workflow):
 
     def labels(self) -> dict[str, str]:
         return {"work_id": self.epic or self.intent.epic, "epic": self.epic or self.intent.epic}
+
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks",)
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        return self.labels() | counter_labels(params, "epic_edit", self.BUDGET_LABELS)
 
     def _abs(self, rel: str) -> Path:
         return Path(self.ctx.repo_root) / rel
@@ -121,7 +128,14 @@ class EpicEdit(Workflow):
         if "[E_PLANNER_MUTATION]" in report.errors:
             raise WorkflowFailed(report.errors)
         if report.ok:
-            return Continue(report, self.review_plan, intent=intent, snapshot=snapshot, plan=plan)
+            return Continue(
+                report,
+                self.review_plan,
+                intent=intent,
+                snapshot=snapshot,
+                plan=plan,
+                reworks=reworks,
+            )
         if reworks >= MAX_REWORKS:
             context = paths.epic_context(snapshot.epic_dir)
             return Await(

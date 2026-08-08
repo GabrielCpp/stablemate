@@ -338,6 +338,7 @@ class _Agent:
         escalate: bool = False,
         explode: set[str] | None = None,
         edit_plans: list[dict[str, Any]] | None = None,
+        edit_reviews: list[str] | None = None,
         existing_surface: bool = False,
     ) -> None:
         self.repo = repo
@@ -350,6 +351,7 @@ class _Agent:
         self.escalate = escalate
         self.explode = set(explode or ())
         self.edit_plans = list(edit_plans or ())
+        self.edit_reviews = edit_reviews or ["approved"]
         self.existing_surface = existing_surface
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -468,7 +470,11 @@ class _Agent:
         return self._default_edit_plan(data)
 
     def _review_epic_edit_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"status": "approved", "notes": "scope and journeys agree"}
+        status = self.edit_reviews[min(nth, len(self.edit_reviews)) - 1]
+        return {
+            "status": status,
+            "notes": "scope and journeys agree" if status == "approved" else "journey drift",
+        }
 
     def _rewrite_epic_edit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         path = self.repo / data["epic_dir"] / "epic.md"
@@ -935,6 +941,35 @@ def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
     assert agent.counts()["review-coverage"] == 2, agent.counts()
 
 
+def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """Coverage answers cannot reset the epic's cumulative autonomous resolution count."""
+    seen: list[str] = []
+    labels: list[dict[str, str]] = []
+    agent = _Agent(backlogged, coverage_verdicts=["blocked"])
+    real_rebase = pyflow_activity.ActivityLog.rebase
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text())
+        agent.coverage_verdicts = ["ok"]
+
+    def capture(self: Any, current: dict[str, str]) -> Any:
+        labels.append(dict(current))
+        return real_rebase(self, current)
+
+    with (
+        patch.object(pyflow_driver, "poll_until_touched", answered),
+        patch.object(pyflow_activity.ActivityLog, "rebase", capture),
+    ):
+        _drive(_env(tmp_path), agent)
+
+    assert agent.counts()["resolve-operator"] == 2, agent.counts()
+    assert len(seen) == 1 and "the reset flow is unclaimed" in seen[0], seen
+    reset_laps = [row for row in labels if row.get("author.split_resolves") == "1"]
+    assert any("author.cov_reworks" not in row for row in reset_laps), labels
+
+
 # ------------------------------------------------------------------- the operator gates
 
 
@@ -981,7 +1016,7 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
 
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     assert agent.counts()["rework-epics"] == 0, agent.counts()
-    assert seen == ["one epic is two"], seen
+    assert len(seen) == 1 and "one epic is two" in seen[0], seen
     assert (backlogged / CONTEXT).is_file()
     # The gate looped back into the split, so the run finished on the second review.
     assert agent.counts()["review-epics"] == 2, agent.counts()
@@ -1207,6 +1242,36 @@ def test_epic_edit_static_findings_drive_a_replacement_plan(
     assert stories["raw-xml-editor"]["authored"] is True
 
 
+def test_epic_edit_semantic_review_reworks_are_bounded(
+    with_epic: Path, tmp_path: Path
+) -> None:
+    """Validation must carry the cumulative plan rework count into semantic review."""
+    okf = Ostler(with_epic)
+    assert okf.add_seed(EPIC, "remove", status="researched", summary="Remove").ok
+    assert okf.create_story(EPIC, "remove-story", "Remove", covers=["remove"]).ok
+    _write_story_doc(with_epic / EPIC_DIR / "stories/remove-story/story.md", "Remove")
+    _commit(with_epic, "story to remove")
+    seen: list[str] = []
+    agent = _Agent(with_epic, edit_reviews=["needs_rework"] * 4)
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text())
+        agent.edit_reviews = ["approved"]
+
+    with patch.object(pyflow_driver, "poll_until_touched", answered):
+        _drive_story_edit(
+            _env(tmp_path),
+            agent,
+            action="remove",
+            story="remove-story",
+            reason="Remove obsolete scope",
+        )
+
+    assert agent.counts()["refine-epic-edit-plan"] == 3, agent.counts()
+    assert len(seen) == 1 and "journey drift" in seen[0], seen
+    assert not (with_epic / EPIC_DIR).exists()
+
+
 # ------------------------------------------------------------------------------- handoff
 
 
@@ -1322,5 +1387,7 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     # `progress` is the worklist's own count, so a dashboard can read it without knowing
     # anything about authoring.
     assert any(labels.get("progress") for labels in stamped), stamped
+    assert any(labels.get("author.cov_reworks") == "0" for labels in stamped), stamped
+    assert any(labels.get("author.split_resolves") == "0" for labels in stamped), stamped
     # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen

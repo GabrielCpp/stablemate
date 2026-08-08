@@ -19,10 +19,10 @@ three shapes the YAML had no other way to write:
   `decide_verify_resolve` — twelve of them, every one an `if` written across two nodes
   because a script cannot route.
 * **counters.** `reset_plan_rework` / `incr_plan` / `guard_plan` and its three siblings
-  (record fixes, partition reworks, verify resolves) are twelve nodes implementing four
-  integers. Here each is a state parameter: reset is a default argument, increment is
-  `+ 1`, and the guard is the `if` that reads it. `init_counter.py` and
-  `incr_counter.py` are not ported.
+  (record fixes, partition reworks, verify resolves) become state parameters: reset is a
+  default argument, increment is `+ 1`, and the guard is the `if` that reads it. Cumulative
+  `plan_resolve` and `partition_resolve` parameters additionally bound the autonomous cycles
+  across those local resets. `init_counter.py` and `incr_counter.py` are not ported.
 * **fan-in terminals.** `survey_failed` is a `type: fail` node reached from one branch;
   each site raises `WorkflowFailed` with the errors it actually saw, which is the one
   place this port says more than the YAML did — a shared fail node cannot name the gate
@@ -56,9 +56,10 @@ Divergences from the YAML, all deliberate:
 * `verify_resolve` is threaded through **every** state of the per-unit loop, because in
   the YAML it is a workflow var that survives the loop and is read at the coverage gate
   on the way out. It is the only counter that does.
-* `await_verify` does **not** reset its counter (the other two awaits do, and pass `0`).
-  Kept: once a run has burned its two auto-resolutions, every later coverage failure
-  goes straight to the human, which is the YAML read literally.
+* `await_verify` does **not** reset its counter. The plan and partition awaits reset their
+  local rework counters but preserve the cumulative resolver counters: once a run has burned
+  two auto-resolutions at any of the three gates, every later failure there goes straight to
+  the human.
 * `decide_verify` routes only the literal `"no"` to the gate, so `verify_records`'
   third answer — `"skip"`, nothing was surveyed — *passes*. `VerifyResult` models that
   as `holds=True, nothing_surveyed=True`, so the gate here is plain `if not holds`. The
@@ -84,6 +85,7 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, ClassVar
 
 from workhorse.pyflow import (
     Await,
@@ -110,15 +112,20 @@ from workhorse_workflows.author.shared.schemas import (
     SurveyConfig,
     UnitAssessment,
 )
+from workhorse_workflows.kit.telemetry import counter_labels
 
 #: Granularity replans before the plan stage is handed to the operator. The YAML wrote
 #: this as the string `"2"` in `vars` and compared it with a `>=` branch condition.
 MAX_PLAN_REWORKS = 2
+#: Autonomous plan-stage resolutions before every later block goes to a human.
+MAX_PLAN_RESOLVES = 2
 #: Bounded repairs of one invalid finding record before the unit is marked `blocked` and
 #: the loop moves on. A unit must never wedge the survey.
 MAX_RECORD_FIXES = 2
 #: Partition reworks before the clustering stage is handed to the operator.
 MAX_PARTITION_REWORKS = 3
+#: Autonomous partition-stage resolutions before every later block goes to a human.
+MAX_PARTITION_RESOLVES = 2
 #: Autonomous resolutions of a coverage failure before every later one goes to a human.
 MAX_VERIFY_RESOLVES = 2
 #: The three operator-resolution turns run under `timeout: infinity` in the YAML. They
@@ -172,6 +179,19 @@ class Surveyor(Workflow):
             return {}
         return {"work_id": pick.unit_id, "progress": pick.progress}
 
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
+        "plan_rework",
+        "plan_resolve",
+        "record_fix",
+        "verify_resolve",
+        "partition_rework",
+        "partition_resolve",
+    )
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The work labels plus the bounded attempt counters carried by this state."""
+        return self.labels() | counter_labels(params, "surveyor", self.BUDGET_LABELS)
+
     @property
     def _context(self) -> Path:
         """The operator context file, absolute — what an `Await` writes its ask to."""
@@ -192,7 +212,9 @@ class Surveyor(Workflow):
             return Continue(check, self.plan)
         return Continue(check, self.expand)
 
-    def plan(self, plan_rework: int = 0, plan_errors: str = "") -> Continue | Await:
+    def plan(
+        self, plan_rework: int = 0, plan_errors: str = "", plan_resolve: int = 0
+    ) -> Continue | Await:
         """One bounded judgment: what a unit *is* for this rubric, in this repo.
 
         `plan_units` + `decide_plan_result`. The planner writes the enumeration rules;
@@ -215,10 +237,15 @@ class Surveyor(Workflow):
             },
         )
         if result.status == "blocked":
-            return self._gate_plan(result, result.notes or plan_errors)
-        return Continue(result, self.expand, plan_rework=plan_rework)
+            return self._gate_plan(result, result.notes or plan_errors, plan_resolve)
+        return Continue(
+            result,
+            self.expand,
+            plan_rework=plan_rework,
+            plan_resolve=plan_resolve,
+        )
 
-    def expand(self, plan_rework: int = 0) -> Continue | Await:
+    def expand(self, plan_rework: int = 0, plan_resolve: int = 0) -> Continue | Await:
         """Materialize the frozen unit list from the rules — or consume the frozen one.
 
         `expand_inventory` + `decide_expand` + `guard_plan` + `incr_plan`. An inventory
@@ -234,26 +261,35 @@ class Surveyor(Workflow):
         if expansion.expand_ok:
             return Continue(expansion, self.pick)
         if plan_rework >= MAX_PLAN_REWORKS:
-            return self._gate_plan(expansion, expansion.expand_errors)
+            return self._gate_plan(expansion, expansion.expand_errors, plan_resolve)
         return Continue(
             expansion,
             self.plan,
             plan_rework=plan_rework + 1,
             plan_errors=expansion.expand_errors,
+            plan_resolve=plan_resolve,
         )
 
-    def _gate_plan(self, result: object, notes: str) -> Continue | Await:
+    def _gate_plan(
+        self, result: object, notes: str, plan_resolve: int
+    ) -> Continue | Await:
         """`gate_plan`: hand the granularity block to the resolver, or to the human.
 
         Not a state — it is the routing half of a branch, and it is called from the two
         states that can decide the plan stage is stuck. `_`-prefixed so state discovery
         does not pick it up.
         """
-        if self.operator_mode == "human":
-            return Await(self._context, notes, self.plan, plan_rework=0)
-        return Continue(result, self.resolve_plan, notes=notes)
+        if self.operator_mode == "human" or plan_resolve >= MAX_PLAN_RESOLVES:
+            return Await(
+                self._context,
+                notes,
+                self.plan,
+                plan_rework=0,
+                plan_resolve=plan_resolve,
+            )
+        return Continue(result, self.resolve_plan, notes=notes, plan_resolve=plan_resolve)
 
-    def resolve_plan(self, notes: str) -> Continue | Await:
+    def resolve_plan(self, notes: str, plan_resolve: int = 0) -> Continue | Await:
         """Stand in for the operator on a granularity block, or escalate to one.
 
         `resolve_plan` + the `await_plan` that followed it unconditionally. See the
@@ -277,8 +313,19 @@ class Surveyor(Workflow):
             },
         )
         if result.decision == "answered":
-            return Continue(result, self.plan, plan_rework=0)
-        return Await(self._context, notes, self.plan, plan_rework=0)
+            return Continue(
+                result,
+                self.plan,
+                plan_rework=0,
+                plan_resolve=plan_resolve + 1,
+            )
+        return Await(
+            self._context,
+            notes,
+            self.plan,
+            plan_rework=0,
+            plan_resolve=plan_resolve + 1,
+        )
 
     # --- the per-unit loop --------------------------------------------------
 
@@ -496,7 +543,10 @@ class Surveyor(Workflow):
     # --- clustering, and the artifacts author reads -------------------------
 
     def partition(
-        self, partition_rework: int = 0, partition_errors: str = ""
+        self,
+        partition_rework: int = 0,
+        partition_errors: str = "",
+        partition_resolve: int = 0,
     ) -> Continue | Await:
         """Cluster the findings into work items, losslessly.
 
@@ -522,29 +572,47 @@ class Surveyor(Workflow):
             },
         )
         if result.status == "blocked":
-            return self._gate_partition(result, result.notes or partition_errors)
+            return self._gate_partition(
+                result, result.notes or partition_errors, partition_resolve
+            )
         check = self.call(validate_partition, self.ctx.partition, self.ctx.inventory)
         if check.partition_ok:
             return Continue(check, self.emit)
         if partition_rework >= MAX_PARTITION_REWORKS:
-            return self._gate_partition(check, check.partition_errors)
+            return self._gate_partition(check, check.partition_errors, partition_resolve)
         return Continue(
             check,
             self.partition,
             partition_rework=partition_rework + 1,
             partition_errors=check.partition_errors,
+            partition_resolve=partition_resolve,
         )
 
-    def _gate_partition(self, result: object, notes: str) -> Continue | Await:
+    def _gate_partition(
+        self, result: object, notes: str, partition_resolve: int
+    ) -> Continue | Await:
         """`gate_partition`: hand the clustering block to the resolver, or to the human.
 
         The `_gate_plan` shape again, at the flow's other end. Not a state.
         """
-        if self.operator_mode == "human":
-            return Await(self._context, notes, self.partition, partition_rework=0)
-        return Continue(result, self.resolve_partition, notes=notes)
+        if self.operator_mode == "human" or partition_resolve >= MAX_PARTITION_RESOLVES:
+            return Await(
+                self._context,
+                notes,
+                self.partition,
+                partition_rework=0,
+                partition_resolve=partition_resolve,
+            )
+        return Continue(
+            result,
+            self.resolve_partition,
+            notes=notes,
+            partition_resolve=partition_resolve,
+        )
 
-    def resolve_partition(self, notes: str) -> Continue | Await:
+    def resolve_partition(
+        self, notes: str, partition_resolve: int = 0
+    ) -> Continue | Await:
         """Stand in for the operator on a clustering block, or escalate to one.
 
         `resolve_partition` + the unconditional `await_partition` after it — same
@@ -565,8 +633,19 @@ class Surveyor(Workflow):
             },
         )
         if result.decision == "answered":
-            return Continue(result, self.partition, partition_rework=0)
-        return Await(self._context, notes, self.partition, partition_rework=0)
+            return Continue(
+                result,
+                self.partition,
+                partition_rework=0,
+                partition_resolve=partition_resolve + 1,
+            )
+        return Await(
+            self._context,
+            notes,
+            self.partition,
+            partition_rework=0,
+            partition_resolve=partition_resolve + 1,
+        )
 
     def emit(self) -> Done:
         """Write the generated backlog bullets and the unit-level manifest.

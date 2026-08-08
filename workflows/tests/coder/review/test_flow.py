@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -460,6 +461,22 @@ def test_a_blocked_settlement_escalates_without_spending_the_budget(
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 
+def test_repeated_operator_cycles_fail_after_the_outer_bound(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Local rework resets cannot buy unbounded review/operator cycles."""
+    agent = _Agent(docs, needs_changes=99, apply_status="blocked")
+
+    with pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"):
+        drive_flow(Review(story=STORY), env(), agent)
+
+    assert agent.counts()["resolve-operator"] == Review.MAX_REVIEW_BLOCKS, agent.counts()
+    assert agent.counts()["code-review"] == Review.MAX_REVIEW_BLOCKS + 1, agent.counts()
+
+
 # --------------------------------------------------------------------- the settlement gate
 
 
@@ -514,13 +531,15 @@ def test_a_story_with_no_verdict_sidecar_passes_the_claim_through(
 # --------------------------------------------------------------------------- the operator
 
 
-def test_human_operator_mode_waits_on_the_story_context_file(
+@pytest.mark.parametrize("operator_mode", ["human", "operator"])
+def test_human_operator_modes_wait_on_the_story_context_file(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    operator_mode: str,
 ) -> None:
-    """`operator_mode=human` skips the resolver entirely and blocks on the file.
+    """Canonical `human` and legacy `operator` skip the resolver and block on the file.
 
     The questions are the reviewer's notes, written next to the story — where
     `await_operator.py` put them and where the operator is reading the story they are about.
@@ -529,11 +548,11 @@ def test_human_operator_mode_waits_on_the_story_context_file(
     agent = _Agent(docs, needs_changes=1, apply_status="blocked")
 
     with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
-        result = drive_flow(Review(story=STORY, operator_mode="human"), env(), agent)
+        result = drive_flow(Review(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "approved", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert seen == ["the handler ignores the timeout"], seen
+    assert len(seen) == 1 and "the handler ignores the timeout" in seen[0], seen
 
 
 def test_an_escalating_resolver_falls_through_to_the_human(
@@ -649,7 +668,8 @@ def test_a_run_killed_mid_review_resumes_on_the_review_state(
     assert resume.flow == "Review", resume
     # Only what the transition actually bound is checkpointed; `review_rework` keeps its
     # default on the way back in, which is the same 0 the killed run was carrying.
-    assert sorted(resume.params) == ["code_reuse", "code_review"], resume.params
+    assert sorted(resume.params) == ["code_reuse", "code_review", "review_blocks"], resume.params
+    assert resume.params.pop("review_blocks") == 0
     assert resume.params["code_review"]["findings_summary"] == "one minor finding (pass 1)"
 
     agent = _Agent(docs)

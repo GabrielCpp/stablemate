@@ -36,7 +36,7 @@ state parameter or `self.output(node)`.
 | `docs_path` | `""` | Docs repo root. Empty → the run's `repo_dir` (the docs sit beside the code) |
 | `story` | `""` | Story slug (e.g. `"CASE-1234"`). Required in story mode; ignored in epic mode |
 | `epic` | `""` | Optional: override which epic to run, skips the queue pick |
-| `operator_mode` | `"auto"` | `"auto"` = the `resolve-operator` agent stands in; `"operator"` = escalate to a human. Does not reach the CI gate, which is always human |
+| `operator_mode` | `"auto"` | `"auto"` = the `resolve-operator` agent stands in; `"human"` = escalate to a human. The shipped legacy value `"operator"` remains an alias for `"human"`. Does not reach the CI gate, which is always human |
 | `target_env` | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment |
 | `qa_stack_manifest` | `"qa-stack.yml"` | The stack manifest `qa` reads to bring services up |
 

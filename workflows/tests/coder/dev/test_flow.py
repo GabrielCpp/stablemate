@@ -635,13 +635,15 @@ def test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned(
     assert agent.counts()["implement-plan"] == 0, agent.counts()
 
 
-def test_human_operator_mode_waits_on_the_story_context_file(
+@pytest.mark.parametrize("operator_mode", ["human", "operator"])
+def test_human_operator_modes_wait_on_the_story_context_file(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    operator_mode: str,
 ) -> None:
-    """`operator_mode=human` skips the resolver entirely and blocks on the file.
+    """Canonical `human` and legacy `operator` skip the resolver and block on the file.
 
     The questions are written next to the story, which is where `await_operator.py` put them
     and where the operator answering is reading the story they are about.
@@ -650,11 +652,11 @@ def test_human_operator_mode_waits_on_the_story_context_file(
     agent = _Agent(docs, blocked=1)
 
     with patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)):
-        result = drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
+        result = drive_flow(Dev(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert seen == ["the prod bucket may not exist"], seen
+    assert len(seen) == 1 and "the prod bucket may not exist" in seen[0], seen
 
 
 def test_an_escalating_resolver_falls_through_to_the_human(

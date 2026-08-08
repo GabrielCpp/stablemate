@@ -1,6 +1,6 @@
 """The rework budgets, as span dimensions.
 
-`shared/telemetry.py` is pure shaping over a state's bound parameters, so these are unit
+`kit/telemetry.py` is pure shaping over a state's bound parameters, so these are unit
 tests over dicts. What they pin is the two rules that decide whether an aggregate over a
 real run is readable: a counter the current state does not carry must be *absent* rather
 than zero, and a bool must never be mistaken for an attempt count.
@@ -17,9 +17,10 @@ from workhorse.pyflow import Continue, Done, Workflow
 from workhorse.pyflow.driver import drive
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.author.epic_edit.flow import EpicEdit
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.coder.shared.telemetry import counter_labels, verdict_labels
+from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 
 
 def test_counters_are_prefixed_and_stringified():
@@ -53,6 +54,16 @@ def test_verdicts_skip_the_gate_that_has_not_run():
     source = {"audit_verdict": "refuted", "plan_review_disposition": ""}
     labels = verdict_labels(source, "qa", ("audit_verdict", "plan_review_disposition"))
     assert labels == {"qa.audit_verdict": "refuted"}
+
+
+def test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters():
+    flow = EpicEdit(epic="accounts")
+    assert flow.state_labels({"reworks": 2}) == {
+        "work_id": "accounts",
+        "epic": "accounts",
+        "epic_edit.reworks": "2",
+    }
+    assert "epic_edit.reworks" not in flow.state_labels({})
 
 
 def test_a_recorded_verdict_reaches_the_labels():

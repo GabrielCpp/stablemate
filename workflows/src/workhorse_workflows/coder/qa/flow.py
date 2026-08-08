@@ -66,7 +66,6 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels, verdict_labels
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
@@ -102,6 +101,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     SetupResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
+from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 
 UNBOUNDED = float("inf")
 
@@ -1043,7 +1043,7 @@ class Qa(Workflow):
 
     def _gate(self, result: object, loop: QaLoop) -> Continue | Await:
         """`gate_qa`: hand the block to the auto-operator, or halt for a human."""
-        if self.operator_mode == "human":
+        if self.operator_mode in {"human", "operator"}:
             return Await(self._context, loop.block_notes, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
 

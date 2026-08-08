@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from workhorse.cli import console_script
 from workhorse.pyflow import (
@@ -95,6 +95,7 @@ from workhorse_workflows.author.shared.survey.blueprint import blueprint as surv
 from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import blueprint as story_edit_blueprint
 from workhorse_workflows.author.surveyor import Surveyor
+from workhorse_workflows.kit.telemetry import counter_labels
 
 #: Reworks of one stage before it is handed to the operator: the epic decomposition, one
 #: story, and one epic's story coverage all share this bound (`vars.max_reworks`).
@@ -107,6 +108,7 @@ MAX_AUDIT_REWORKS = 1
 #: own attempts, and they are equal because nothing yet argues for different bounds.
 MAX_EPICS_RESOLVES = 2
 MAX_WRITE_EPIC_RESOLVES = 2
+#: Story-split and coverage blocks share one epic-scoped autonomous resolution budget.
 MAX_SPLIT_RESOLVES = 2
 MAX_WRITE_STORY_RESOLVES = 2
 MAX_RECONCILE_RESOLVES = 2
@@ -195,6 +197,18 @@ class Author(Workflow):
             "epic": epic,
             "progress": pick.progress,
         }
+
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
+        "reworks",
+        "resolves",
+        "audit_reworks",
+        "cov_reworks",
+        "split_resolves",
+    )
+
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """The work labels plus the bounded attempt counters carried by this state."""
+        return self.labels() | counter_labels(params, "author", self.BUDGET_LABELS)
 
     # --- what the states say twice -------------------------------------------
     #
@@ -1067,14 +1081,13 @@ class Author(Workflow):
     ) -> Continue | Await:
         """Stand in for the operator on a coverage block, or escalate to one.
 
-        `resolve_coverage` + `await_coverage`. This is the one gate the YAML gave no
-        retry budget — the coverage loop's own `cov_rework_count` is the bound — so there
-        is no `resolves` here, and `await_coverage` reset the rework counter on the way
-        back into `split_stories`.
+        `resolve_coverage` + `await_coverage`. Coverage shares the epic-scoped
+        `split_resolves` budget so resetting the local `cov_reworks` counter after an answer
+        cannot create an unbounded autonomous cycle.
         """
         context = paths.epic_context(self._epic_dir(epic))
         result = self._resolve("coverage", notes, context, self._epic_dir(epic))
-        params = {"epic": epic, "split_resolves": split_resolves}
+        params = {"epic": epic, "split_resolves": split_resolves + 1}
         if result.decision == "answered":
             return Continue(result, self.split_stories, **params)
         return Await(self._abs(context), notes, self.split_stories, **params)
@@ -1086,10 +1099,11 @@ class Author(Workflow):
 
         Reached from three places — a `blocked` review, a coverage loop that will not
         converge, and the splitter's `standoff` — so it is a helper. Both arms re-enter
-        `split_stories` with the rework budget reset, as `await_coverage` did.
+        `split_stories` with the rework budget reset, as `await_coverage` did, while the
+        epic-scoped resolution budget survives.
         """
         context = paths.epic_context(self._epic_dir(epic))
-        if self.operator_mode == "human":
+        if self.operator_mode == "human" or split_resolves >= MAX_SPLIT_RESOLVES:
             return Await(
                 self._abs(context), notes, self.split_stories, epic=epic, split_resolves=split_resolves
             )

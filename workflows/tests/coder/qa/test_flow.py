@@ -678,19 +678,21 @@ def test_an_unrepairable_packet_goes_to_the_auto_operator(
     assert "the diff touches code" in agent.args_for("resolve-operator")[0]["block_notes"]
 
 
-def test_human_operator_mode_waits_on_the_story_context_file(
+@pytest.mark.parametrize("operator_mode", ["human", "operator"])
+def test_human_operator_modes_wait_on_the_story_context_file(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    operator_mode: str,
 ) -> None:
-    """`operator_mode=human` skips the resolver and blocks on `<story>/context.md`."""
+    """Canonical `human` and legacy `operator` block on `<story>/context.md`."""
     ostler(context_invalid=1)
     seen: list[str] = []
     agent = _Agent(docs, repair="blocked")
 
     with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
-        result = drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
+        result = drive_flow(Qa(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()

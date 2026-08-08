@@ -45,7 +45,6 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
 from workhorse.scriptutil import find_docs_root
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
@@ -61,6 +60,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationReview,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
+from workhorse_workflows.kit.telemetry import counter_labels
 
 
 class Docs(Workflow):

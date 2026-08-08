@@ -67,7 +67,6 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.telemetry import counter_labels
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.dream import Dream
@@ -85,6 +84,7 @@ from workhorse_workflows.coder.shared.backlog import (
 )
 from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
+from workhorse_workflows.kit.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     resolve_impl_context,
@@ -148,7 +148,8 @@ class Coder(Workflow):
     story: str = ""
     #: The epic to work, when it should not be read off the front of the queue.
     epic: str = ""
-    #: `auto` lets the sub-flows resolve their own blocks; `operator` escalates to a human.
+    #: `auto` lets the sub-flows resolve their own blocks; `human` escalates to a human.
+    #: The shipped legacy value `operator` remains an alias for `human`.
     #: It does not reach the CI gate, which is always human — see `_ci_gate`.
     operator_mode: str = "auto"
     #: Which environment QA runs against, passed through to `dev`, `docs` and `qa`.

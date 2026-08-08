@@ -194,6 +194,7 @@ class _Agent:
         unfixable: bool = False,
         escalate: bool = False,
         orphan_first: bool = False,
+        block_repeats: int = 1,
     ) -> None:
         self.repo = repo
         self.blocked = blocked or set()
@@ -204,6 +205,7 @@ class _Agent:
         self.unfixable = unfixable
         self.escalate = escalate
         self.orphan_first = orphan_first
+        self.block_repeats = block_repeats
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
@@ -226,7 +228,7 @@ class _Agent:
     # -- one handler per prompt -------------------------------------------
 
     def _plan_units(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if "plan-units" in self.blocked and nth == 1:
+        if "plan-units" in self.blocked and nth <= self.block_repeats:
             return {"status": "blocked", "notes": "is the design system in scope?"}
         glob = "src/nowhere/*" if self.empty_rules_first and nth == 1 else "src/components/*"
         (self.repo / data["rules_path"]).write_text(_rules(glob))
@@ -259,7 +261,7 @@ class _Agent:
         return {"status": "fixed", "notes": "closed the front-matter fence"}
 
     def _partition_findings(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if "partition-findings" in self.blocked and nth == 1:
+        if "partition-findings" in self.blocked and nth <= self.block_repeats:
             return {"status": "blocked", "notes": "one story or one per area?"}
         orphan = self.orphan_first and nth == 1
         (self.repo / data["partition_path"]).write_text(_partition(self.repo, orphan=orphan))
@@ -523,6 +525,46 @@ def test_a_blocked_plan_is_resolved_by_the_operator_stand_in_without_waiting(
     assert resolve["context_path"] == CONTEXT, resolve
 
 
+def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
+    surveyed: Path, tmp_path: Path
+) -> None:
+    """Two autonomous answers exhaust the outer budget even though plan rework resets."""
+    seen: list[str] = []
+    agent = _Agent(surveyed, blocked={"plan-units"}, block_repeats=99)
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text())
+        agent.block_repeats = agent.counts()["plan-units"]
+
+    with patch.object(pyflow_driver, "poll_until_touched", answered):
+        result = _drive(_env(tmp_path), agent)
+
+    assert result.emit_ok is True, result
+    assert agent.counts()["resolve-operator"] == 2, agent.counts()
+    assert agent.counts()["plan-units"] == 4, agent.counts()
+    assert len(seen) == 1 and "is the design system in scope?" in seen[0], seen
+
+
+def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
+    surveyed: Path, tmp_path: Path
+) -> None:
+    """Partition rework resets after answers without resetting autonomous resolutions."""
+    seen: list[str] = []
+    agent = _Agent(surveyed, blocked={"partition-findings"}, block_repeats=99)
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text())
+        agent.block_repeats = agent.counts()["partition-findings"]
+
+    with patch.object(pyflow_driver, "poll_until_touched", answered):
+        result = _drive(_env(tmp_path), agent)
+
+    assert result.emit_ok is True, result
+    assert agent.counts()["resolve-operator"] == 2, agent.counts()
+    assert agent.counts()["partition-findings"] == 4, agent.counts()
+    assert len(seen) == 1 and "one story or one per area?" in seen[0], seen
+
+
 def test_an_escalated_partition_block_waits_on_the_operator_context_file(
     surveyed: Path, tmp_path: Path
 ) -> None:
@@ -545,8 +587,8 @@ def test_an_escalated_partition_block_waits_on_the_operator_context_file(
     assert agent.counts()["partition-findings"] == 2, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_stage"] == "partition"
     # The question the operator was woken for is in the file they were pointed at.
-    assert seen == ["one story or one per area?"], seen
-    assert (surveyed / CONTEXT).read_text() == "one story or one per area?"
+    assert len(seen) == 1 and "one story or one per area?" in seen[0], seen
+    assert "one story or one per area?" in (surveyed / CONTEXT).read_text()
 
 
 def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
@@ -570,7 +612,7 @@ def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
     assert result.emit_ok is True, result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     assert agent.counts()["plan-units"] == 2, agent.counts()
-    assert seen == ["is the design system in scope?"], seen
+    assert len(seen) == 1 and "is the design system in scope?" in seen[0], seen
 
 
 # ------------------------------------------------------------------------- resume
@@ -646,5 +688,7 @@ def test_the_labels_name_the_unit_and_the_progress(surveyed: Path, tmp_path: Pat
     # `progress` is the worklist's own count, so the dashboard can read it without
     # knowing anything about surveys.
     assert stamped[0]["progress"], stamped[0]
+    assert any(labels.get("surveyor.plan_rework") == "0" for labels in seen), seen
+    assert any(labels.get("surveyor.plan_resolve") == "0" for labels in seen), seen
     # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen
