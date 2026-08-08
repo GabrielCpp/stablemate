@@ -67,6 +67,18 @@ are deleted. The complete behavior is recorded in the [epic edit](https://github
 and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-story-edit.md)
 flows.
 
+## Coder documentation convergence
+
+Coder documents a story after implementation and review, before QA. A clean QA pass then
+commits without repeating that agent flow. Any QA state that may edit code, setup, or OKF
+grounding sets a checkpointed `docs_recheck_required` taint; the nested backlog-fix drain
+sets the same taint. Tainted stories must pass Docs again before commit.
+
+The taint is monotonic and defaults to required for old checkpoints and old QA results, so
+missing state never authorizes publishing stale documentation. If the required recheck is
+blocked, epic mode records a docs-blocked marker and moves on without the normal story
+commit; story mode fails because there is no queue in which to contain the block.
+
 ## How a workflow gets a command
 
 Each workflow binds one, and that is the only way it is reached:

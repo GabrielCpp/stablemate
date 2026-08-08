@@ -131,10 +131,9 @@ class DocsResult(CoderResult):
     """What the docs flow hands back: `passed`, `not_applicable` or `blocked`.
 
     The first two are the ones every caller accepts. `blocked` is the author's or the
-    reviewer's refusal — the book cannot be made true of this code — and only the main
-    `document` pass places it, by failing that story and taking the next one; the `failed
-    story` and `final pass` call sites still treat it as fatal, because there is no next
-    story to move to from either.
+    reviewer's refusal — the book cannot be made true of this code. The main pass and a
+    required post-mutation recheck contain it by failing that story and taking the next one;
+    the `failed story` call site still treats it as fatal.
 
     Everything else still raises out of the flow rather than returning, because the YAML's
     `documentation_failed` was a `type: fail` — so `failed`, the `default:` the four call

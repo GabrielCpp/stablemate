@@ -410,6 +410,11 @@ class QaLoop(CoderResult):
     #: Whether the one verification-only bonus pass past `MAX_QA_REWORKS` has been spent.
     bonus_used: bool = False
 
+    #: A post-documentation mutation may have changed the as-built truth. True is the
+    #: fail-closed default for checkpoints written before this field existed; `Qa.start`
+    #: explicitly establishes False for a fresh, known-clean QA pass.
+    docs_recheck_required: bool = True
+
     @property
     def plan_rework_total(self) -> int:
         """Repairs spent across validation, review, and post-run plan gates.
@@ -426,6 +431,10 @@ class QaLoop(CoderResult):
     def with_qa(self, qa: QaResult) -> QaLoop:
         """The same loop carrying a new running verdict."""
         return self.model_copy(update={"qa": qa})
+
+    def require_docs_recheck(self) -> QaLoop:
+        """Mark a possible as-built mutation; this taint is monotonic within the flow."""
+        return self.model_copy(update={"docs_recheck_required": True})
 
     def cleared(self) -> QaLoop:
         """`clear-qa-gate-state.py`: forget every gate's findings before re-running them.
@@ -483,6 +492,8 @@ class QaFlowResult(CoderResult):
     qa_rework: int = 0
     triage_scope: int = 0
     operator_notes: str = ""
+    #: Whether the parent must document again before committing. Missing old results recheck.
+    docs_recheck_required: bool = True
     #: Which budget ran out and how much of it was spent, as the phrase that goes in the
     #: give-up marker ("4 total QA-plan repair"). Empty unless the flow ended `exhausted`.
     spent: str = ""

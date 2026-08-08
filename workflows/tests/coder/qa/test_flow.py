@@ -521,6 +521,7 @@ def test_one_clean_pass_through_every_gate(
 
     assert result.status == "passed", result
     assert result.qa_rework == 0
+    assert result.docs_recheck_required is False
     assert agent.counts() == {
         "plan-qa": 1,
         "review-qa-plan": 1,
@@ -596,6 +597,7 @@ def test_an_unmappable_packet_is_repaired_and_rebuilt(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
+    assert result.docs_recheck_required is True
     assert agent.counts()["repair-qa-context"] == 1, agent.counts()
     # The packet was genuinely rebuilt rather than re-validated in place.
     assert okf.contexts == 2, okf.contexts
@@ -872,6 +874,7 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
+    assert result.docs_recheck_required is True
     assert agent.counts()["setup-fix"] == 1, agent.counts()
     assert results == [], "the stack was never brought up a second time"
     # The fixer is told which manifest to repair, or it authors one the run never reads.
@@ -1063,6 +1066,7 @@ def test_a_product_defect_is_triaged_fixed_and_re_qad(
 
     assert result.status == "passed", result
     assert result.qa_rework == 1
+    assert result.docs_recheck_required is True
     assert agent.counts()["triage-qa"] == 1, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
     assert okf.runs == 2, okf.runs
@@ -1255,6 +1259,7 @@ def test_a_dropped_operator_note_buys_exactly_one_re_qa(
     assert okf.runs == 2, okf.runs
     # Feedback is not a failure of the fix loop, so no rework is spent on it.
     assert result.qa_rework == 0
+    assert result.docs_recheck_required is True
     assert "TODO" in agent.args_for("apply-qa-fixes")[0]["operator_feedback"]
     # The inbox is stamped consumed, which is what stops the second pass looping.
     assert "CONSUMED" in (docs / SPEC_REL / "feedback.md").read_text()
@@ -1286,6 +1291,7 @@ def test_a_failing_journey_suite_is_fixed_and_the_story_is_re_qad(
     result = drive_flow(Qa(story=STORY), run_env, agent)
 
     assert result.status == "passed", result
+    assert result.docs_recheck_required is True
     assert agent.counts()["fix-regression"] == 1, agent.counts()
     # Three suite runs: the failure, the green re-run after the fix, and the re-QA's.
     assert len(suite.calls) == 3, suite.calls

@@ -306,9 +306,8 @@ class Docs(Workflow):
         **Spending the last rework is the same answer, not a worse one.** A reviewer still
         saying `revise` on the final pass is a reviewer saying the book cannot be made true
         of this code within this budget, which is what `blocked` means; raising instead
-        killed the *run*, and at the `finalize` call site that discards a story whose code
-        is written and whose QA has already passed, plus every epic queued behind it. Same
-        reasoning as `Coder.blocked_docs`, one budget later.
+        killed the *run*. Returning `blocked` lets `Coder.blocked_docs` contain the finding
+        to this story, including when a post-QA mutation made the final recheck mandatory.
         """
         result = self.agent(
             "prompts/review-story-documentation.md",

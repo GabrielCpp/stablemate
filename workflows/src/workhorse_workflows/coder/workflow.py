@@ -429,7 +429,13 @@ class Coder(Workflow):
             return Continue(result, self.give_up, epic=epic, zero_diff=zero_diff,
                             attempts=result.spent or result.qa_rework)
         # `passed`, and the YAML's `default:` arm, which was also the drain.
-        return Continue(result, self.drain, epic=epic, zero_diff=zero_diff)
+        return Continue(
+            result,
+            self.drain,
+            epic=epic,
+            zero_diff=zero_diff,
+            docs_recheck_required=result.docs_recheck_required,
+        )
 
     def replan(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> Continue:
         """`replan_epic`: rewrite the epic from what the operator said, and re-select.
@@ -496,7 +502,12 @@ class Coder(Workflow):
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────
 
-    def drain(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def drain(
+        self,
+        epic: str = "",
+        zero_diff: int = 0,
+        docs_recheck_required: bool = True,
+    ) -> Continue:
         """`decide_post_sentinel` + `select_fix_item` + `seed_fix_story` + the seeding.
 
         The draw does not touch the backlog file — a bullet leaves it only at `_fix_prune`
@@ -510,7 +521,13 @@ class Coder(Workflow):
         """
         pick = self.call(select_fix_item, self.docs_path)
         if not pick.has_fix:
-            return Continue(pick, self.finalize, epic=epic, zero_diff=zero_diff)
+            return Continue(
+                pick,
+                self.finalize,
+                epic=epic,
+                zero_diff=zero_diff,
+                docs_recheck_required=docs_recheck_required,
+            )
         self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
         seed = self.call(
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
@@ -629,20 +646,22 @@ class Coder(Workflow):
 
     # ── the far end of a story ────────────────────────────────────────────────────────
 
-    def finalize(self, epic: str = "", zero_diff: int = 0) -> Continue:
-        """`decide_post_drain` + `final_docs` + `decide_final_docs`: document, then commit.
+    def finalize(
+        self,
+        epic: str = "",
+        zero_diff: int = 0,
+        docs_recheck_required: bool = True,
+    ) -> Continue:
+        """Recheck documentation after a mutation, then commit the story.
 
-        A second `docs` pass, after the drain, so whatever the drain changed is in the book
-        before the one commit that covers story and drained fixes together. Story mode goes
-        to its own PR tail; epic mode commits and takes the next story.
-
-        A `blocked` verdict here does **not** route to `blocked_docs` and does not fail:
-        by this point the code is written, reviewed, documented once and QA-passed, and the
-        only thing left is to record it. Discarding all of that over a second-pass prose
-        finding would leave the work uncommitted — invisible to review, to `git bisect` and
-        to the next run, which would re-implement it. The block is logged and the story is
-        committed with it.
+        A clean QA pass needs no redundant second Docs handoff. QA repairs and the nested
+        backlog drain set a monotonic taint; only those paths re-enter Docs. Defaults are
+        fail-closed so an old checkpoint with no taint still performs the recheck.
         """
+        if not docs_recheck_required:
+            if self.mode == "epic":
+                return Continue(None, self.commit, epic=epic, zero_diff=zero_diff)
+            return Continue(None, self.commit_pr)
         result = self.handoff(
             Docs,
             story=self._story.story_slug,
@@ -652,13 +671,14 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
         )
         if result.status == "blocked":
-            self.logger.warning(
-                "final documentation pass blocked for %s — committing anyway: %s",
-                self._story.story_slug,
-                result.notes,
+            return Continue(
+                result,
+                self.blocked_docs,
+                epic=epic,
+                zero_diff=zero_diff,
+                notes=result.notes,
             )
-        else:
-            self._require_documented(result, "story (final pass)")
+        self._require_documented(result, "story (final pass)")
         if self.mode == "epic":
             return Continue(result, self.commit, epic=epic, zero_diff=zero_diff)
         return Continue(result, self.commit_pr)
@@ -893,14 +913,26 @@ class Coder(Workflow):
         """`prune_fix_item`: the drained fix shipped, so its bullet leaves the backlog."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.call(prune_fix_item, bullet, self.docs_path)
-        return Continue(result, self.drain, epic=epic, zero_diff=zero_diff)
+        return Continue(
+            result,
+            self.drain,
+            epic=epic,
+            zero_diff=zero_diff,
+            docs_recheck_required=True,
+        )
 
     def _fix_flag(self, result: object, epic: str, zero_diff: int) -> Continue:
         """`fix_give_up`: annotate the bullet in place and draw the next one."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.logger.info("flagging %s as blocked", bullet)
         self.call(mark_fix_blocked, bullet, BLOCKED_NOTE, self.docs_path)
-        return Continue(result, self.drain, epic=epic, zero_diff=zero_diff)
+        return Continue(
+            result,
+            self.drain,
+            epic=epic,
+            zero_diff=zero_diff,
+            docs_recheck_required=True,
+        )
 
     def _fix_qa(self) -> QaResult:
         """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.

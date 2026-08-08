@@ -17,7 +17,7 @@ from workhorse.pyflow import Continue, Done, Workflow
 from workhorse.pyflow.driver import drive
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
-from workhorse_workflows.coder.shared.schemas.qa import QaLoop
+from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.telemetry import counter_labels, verdict_labels
 
@@ -41,6 +41,11 @@ def test_a_counter_the_state_does_not_carry_is_absent_not_zero():
 def test_a_bool_is_not_an_attempt_count():
     """`bool` is an `int` subclass in Python, and `QaLoop` carries flags beside counters."""
     assert counter_labels({"bonus_used": True}, "qa", ("bonus_used",)) == {}
+
+
+def test_missing_documentation_taint_fails_closed():
+    assert QaLoop().docs_recheck_required is True
+    assert QaFlowResult(status="passed").docs_recheck_required is True
 
 
 def test_verdicts_skip_the_gate_that_has_not_run():
@@ -77,6 +82,7 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
         # it bounds would never end.
         plan_rework=2,
         plan_validation_rework=1,
+        docs_recheck_required=True,
     )
     cleared = loop.cleared()
     assert cleared.plan_review_disposition == ""
@@ -84,6 +90,7 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
     assert cleared.plan_rework == 2
     assert cleared.plan_rework_total == 3
+    assert cleared.docs_recheck_required is True
 
 
 def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:

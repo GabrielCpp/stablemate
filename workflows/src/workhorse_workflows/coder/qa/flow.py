@@ -245,7 +245,12 @@ class Qa(Workflow):
         self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
         okf = self.call(detect_okf_docs, self.docs_path)
         return Continue(
-            okf, self.build_context, loop=QaLoop(triage_scope=self.triage_scope_count)
+            okf,
+            self.build_context,
+            loop=QaLoop(
+                triage_scope=self.triage_scope_count,
+                docs_recheck_required=False,
+            ),
         )
 
     def build_context(self, loop: QaLoop) -> Continue | Await | Done:
@@ -305,7 +310,7 @@ class Qa(Workflow):
                 "context_notes": loop.context_notes,
             },
         )
-        loop = loop.with_qa(reply.qa_result)
+        loop = loop.require_docs_recheck().with_qa(reply.qa_result)
         if reply.qa_context_repair.status == "repaired":
             return Continue(
                 reply, self.build_context, loop=loop.update(context_rework=loop.context_rework + 1)
@@ -603,6 +608,7 @@ class Qa(Workflow):
                     qa=loop.qa,
                     qa_rework=loop.qa_rework,
                     triage_scope=loop.triage_scope + 1,
+                    docs_recheck_required=True,
                 )
             )
         return self._fixable(triage, loop)
@@ -632,6 +638,7 @@ class Qa(Workflow):
                 qa=loop.qa,
                 qa_rework=loop.qa_rework,
                 triage_scope=loop.triage_scope,
+                docs_recheck_required=loop.docs_recheck_required,
                 # Not a budget that ran out — a dev target never fixes — but the parent's
                 # give-up marker is written from this either way, and "0 attempts" on a story
                 # nobody was ever going to rework is the same misreading in a different place.
@@ -661,7 +668,11 @@ class Qa(Workflow):
         YAML's wiring — feedback is not a failure of the fix loop.
         """
         result = self._apply_fixes(qa_notes="", operator_feedback=content, power="medium")
-        return Continue(result, self.build_context, loop=loop.with_qa(result))
+        return Continue(
+            result,
+            self.build_context,
+            loop=loop.require_docs_recheck().with_qa(result),
+        )
 
     def regression(self, loop: QaLoop) -> Continue:
         """Which committed journey suites, if any, this plan put at risk.
@@ -767,7 +778,9 @@ class Qa(Workflow):
             run,
             self.run_regression,
             loop=loop.update(
-                regression_fix=loop.regression_fix + 1, regression_fix_applied=True
+                regression_fix=loop.regression_fix + 1,
+                regression_fix_applied=True,
+                docs_recheck_required=True,
             ),
         )
 
@@ -793,6 +806,7 @@ class Qa(Workflow):
                 qa=loop.qa,
                 qa_rework=loop.qa_rework,
                 triage_scope=loop.triage_scope,
+                docs_recheck_required=loop.docs_recheck_required,
             )
         )
 
@@ -817,6 +831,7 @@ class Qa(Workflow):
                 qa=loop.qa,
                 qa_rework=loop.qa_rework,
                 triage_scope=loop.triage_scope,
+                docs_recheck_required=loop.docs_recheck_required,
             )
         )
 
@@ -833,7 +848,11 @@ class Qa(Workflow):
         return Continue(
             result,
             self.build_context,
-            loop=loop.update(qa=result, qa_rework=loop.qa_rework + 1),
+            loop=loop.update(
+                qa=result,
+                qa_rework=loop.qa_rework + 1,
+                docs_recheck_required=True,
+            ),
         )
 
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
@@ -875,7 +894,10 @@ class Qa(Workflow):
                 "qa_stack": impl.qa_stack,
             },
         )
-        loop = loop.update(setup_rework=loop.setup_rework + 1)
+        loop = loop.update(
+            setup_rework=loop.setup_rework + 1,
+            docs_recheck_required=True,
+        )
         if result.status == "unfixable":
             return self._gate(result, loop)
         return Continue(result, self.stack, loop=loop)
@@ -930,6 +952,7 @@ class Qa(Workflow):
                     qa_rework=loop.qa_rework,
                     triage_scope=loop.triage_scope,
                     operator_notes=answer.content,
+                    docs_recheck_required=loop.docs_recheck_required,
                 )
             )
         return Continue(answer, self.apply_resolved, loop=loop, content=answer.content)
@@ -953,7 +976,11 @@ class Qa(Workflow):
         result = self._apply_fixes(
             qa_notes=loop.qa.notes, operator_feedback=content, power="medium"
         )
-        loop = loop.update(qa=result, qa_rework=loop.qa_rework + 1)
+        loop = loop.update(
+            qa=result,
+            qa_rework=loop.qa_rework + 1,
+            docs_recheck_required=True,
+        )
         if loop.qa_rework >= self.MAX_QA_REWORKS:
             self.logger.info("operator loop is out of QA reworks — ending the flow exhausted")
             return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
@@ -1053,6 +1080,7 @@ class Qa(Workflow):
                 qa_rework=loop.qa_rework,
                 triage_scope=loop.triage_scope,
                 spent=spent,
+                docs_recheck_required=loop.docs_recheck_required,
             )
         )
 

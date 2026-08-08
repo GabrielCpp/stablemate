@@ -227,6 +227,7 @@ class _Sub:
         docs_notes: str = "",
         qa_status: str = "passed",
         qa_spent: str = "",
+        qa_docs_recheck_required: bool = False,
         ci_status: str = "passed",
         explode: set[str] | None = None,
     ) -> None:
@@ -237,6 +238,7 @@ class _Sub:
         self.docs_notes = docs_notes
         self.qa_status = qa_status
         self.qa_spent = qa_spent
+        self.qa_docs_recheck_required = qa_docs_recheck_required
         self.ci_status = ci_status
         self.explode = explode or set()
         self.calls: list[str] = []
@@ -297,6 +299,7 @@ class _Sub:
             triage_scope=child.triage_scope_count,
             operator_notes="",
             spent=self.qa_spent,
+            docs_recheck_required=self.qa_docs_recheck_required,
         )
 
     def _fix_ci(self, child: _StubFlow) -> CiChecks:
@@ -377,11 +380,8 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
 ) -> None:
     """The whole loop in one pass: queue → story → PR → CI → merge → empty queue.
 
-    The five sub-flows come back in the YAML's order and `docs` twice — once as the story's
-    own documentation pass and once as `final_docs`, after the drain, which is the pass that
-    exists so a fix drained behind the story is in the book before the single commit that
-    covers both. Both are asserted, because collapsing them is the obvious wrong
-    simplification and nothing else in the graph would notice.
+    The four sub-flows come back in order. Clean QA reports that nothing changed after the
+    first Docs pass, so the redundant final documentation handoff is skipped.
     """
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
@@ -390,7 +390,7 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Docs"], sub.calls
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa"], sub.calls
     # The story built, and its work landed as one commit.
     assert _output(run_env, commit_story)["committed"] is True
     assert _dirty(repo) == "", _dirty(repo)
@@ -399,6 +399,22 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
     # ...and the run ended because the queue is empty, not because anything failed.
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
+
+
+def test_a_qa_mutation_requires_final_documentation_before_commit(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The QA result's durable taint controls the second Docs handoff."""
+    repo = epic()
+    sub = _Sub(repo, qa_docs_recheck_required=True).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Docs"], sub.calls
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
 def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
@@ -775,7 +791,7 @@ def test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr(
     result = drive_flow(Coder(mode="story", story="STORY-1", epic=EPIC), run_env, _Agent())
 
     assert result.story_pr == "skipped", result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Docs"], sub.calls
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa"], sub.calls
     # The queue was never consulted, and the epic PR cluster was never entered.
     assert not (run_env.writer.run_dir / select_epic.__name__).exists()
     assert not (run_env.writer.run_dir / open_pr.__name__).exists()
@@ -1093,25 +1109,13 @@ def test_a_blocked_docs_verdict_costs_its_own_story_and_not_the_rest_of_the_queu
     assert BLOCK_REASON in status, status
 
 
-def test_a_block_on_the_final_docs_pass_still_commits_the_story_it_documented(
+def test_a_required_final_docs_block_is_contained_without_normal_commit(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The last docs pass runs after the work is done, so blocking it must not undo it.
-
-    `finalize` is the *second* `Docs` handoff for a story: by the time it runs the code is
-    written, reviewed, documented once and QA-passed, and the only step left is `commit`.
-    Observed: a reviewer that never approved spent the review budget on that pass, the flow
-    raised, and a story with hours of verified work behind it — plus the eight epics queued
-    after it — died uncommitted, which is also to say invisible to review and to `git
-    bisect`, and destined to be re-implemented by the next run.
-
-    So a block here is recorded, not obeyed. It is still a real finding about the prose, and
-    the story's own commit is what keeps the code it describes reachable while somebody acts
-    on it.
-    """
+    """A tainted story cannot publish normally when its required recheck blocks."""
     repo = epic()
 
     class _BlockingFinal(_Sub):
@@ -1121,13 +1125,39 @@ def test_a_block_on_the_final_docs_pass_still_commits_the_story_it_documented(
             return DocsResult(status="blocked", notes=BLOCK_REASON)
 
     sub = _BlockingFinal(repo).install(monkeypatch)
+    sub.qa_docs_recheck_required = True
 
     result = drive_flow(Coder(), env(), _Agent())
 
     assert result.has_epic is False, result
     assert sub.calls.count("Docs") == 2, sub.calls
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1" not in _subjects(repo), _subjects(repo)
+    assert any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
     assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_story_mode_fails_when_the_required_final_docs_recheck_blocks(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story mode has no queue in which to contain a stale-documentation finding."""
+    repo = epic()
+
+    class _BlockingFinal(_Sub):
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            if self.calls.count("Docs") == 1:
+                return DocsResult(status="passed", notes="")
+            return DocsResult(status="blocked", notes=BLOCK_REASON)
+
+    sub = _BlockingFinal(repo, qa_docs_recheck_required=True).install(monkeypatch)
+
+    with pytest.raises(WorkflowFailed, match="there is no queue"):
+        drive_flow(Coder(mode="story", story="STORY-1", epic=EPIC), env(), _Agent())
+
+    assert sub.calls.count("Docs") == 2, sub.calls
+    assert "feat(acme): story STORY-1" not in _subjects(repo), _subjects(repo)
 
 
 # ------------------------------------------------------------------- the nested drain
@@ -1154,7 +1184,7 @@ def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
     write(repo / "docs" / "backlog.md", BACKLOG)
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "File one fix")
-    _Sub(repo).install(monkeypatch)
+    sub = _Sub(repo).install(monkeypatch)
     run_env = env()
     agent = _Agent()
 
@@ -1169,6 +1199,7 @@ def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
     assert _output(run_env, prune_fix_item)["pruned"] is True
     assert BULLET not in (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
     assert _output(run_env, commit_story)["committed"] is True
+    assert sub.calls.count("Docs") == 2, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
 
 
@@ -1228,7 +1259,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
 
     assert result.has_epic is False, result
     assert "Dev" not in sub.calls, sub.calls
-    assert sub.calls == ["Qa", "Docs"], sub.calls
+    assert sub.calls == ["Qa"], sub.calls
 
 
 # ----------------------------------------------------------------- the CI operator gate
