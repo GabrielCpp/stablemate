@@ -71,6 +71,30 @@ def test_read_after_write_round_trips():
         assert gates.status_of(gates.set_status(text, "CONSUMED")) == "CONSUMED"
 
 
+def test_plain_questions_format_as_a_discoverable_operator_gate():
+    text = gates.format_operator_gate("which branch?")
+
+    assert text == (
+        "STATUS: AWAITING_OPERATOR\n\n"
+        "## Questions from the agent\n\n"
+        "which branch?\n"
+    )
+    assert gates.status_of(text) == "AWAITING_OPERATOR"
+
+
+def test_structured_operator_gate_is_rearmed_without_double_wrapping():
+    text = (
+        "STATUS: ANSWERED\nSCOPE: story\n\n"
+        "## Questions from the agent\n\nWhich behavior?\n"
+    )
+
+    formatted = gates.format_operator_gate(text)
+
+    assert formatted.splitlines()[0] == "STATUS: AWAITING_OPERATOR"
+    assert formatted.count("## Questions from the agent") == 1
+    assert "SCOPE: story" in formatted
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

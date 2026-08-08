@@ -21,7 +21,7 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from workhorse import otel
+from workhorse import gates, otel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
@@ -202,7 +202,7 @@ def _ask(path: Path, questions: str, log: logging.Logger) -> float | None:
     """Write the ask, and return the baseline mtime the wait compares against."""
     if questions:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(questions)
+        path.write_text(gates.format_operator_gate(questions))
     return _mtime(path)
 
 

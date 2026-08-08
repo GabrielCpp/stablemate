@@ -281,7 +281,7 @@ A state returns one of three things, or raises:
 |---|---|
 | `Continue(result, self.next_state, **params)` | go to `next_state` with those parameters |
 | `Done(result)` | the flow is finished; `result` is what a `handoff` caller receives |
-| `Await(path, questions, self.next_state, **params)` | write `questions` to `path`, checkpoint, and wait for a human to touch the file |
+| `Await(path, questions, self.next_state, **params)` | write a canonical `STATUS: AWAITING_OPERATOR` gate to `path`, checkpoint, and wait for a human to touch the file; blank questions preserve a gate another node already authored |
 | `raise WorkflowFailed(reason)` | end the run as failed |
 
 The target is positional, and its keyword arguments are bound against its signature *at
@@ -498,4 +498,3 @@ logger object, so both work identically.
 It is **sticky**: the last flagged line stands until another replaces it, so a state that
 flags once and then works for an hour stays correctly labelled. Nothing flagged yet falls
 back to the node id, which the gauges stamp anyway.
-

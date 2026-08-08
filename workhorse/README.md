@@ -440,6 +440,10 @@ pip install 'workhorse-agent[otel]'
 groom serve                                                # now every run is observed
 ```
 
+Live gauges distinguish an open agent turn, an explicit operator/cap/retry wait, and
+ordinary deterministic node work. Turn idle and elapsed values are cleared when the turn
+closes, so a later operator wait cannot inherit stale evidence that an agent is streaming.
+
 **Enablement is auto by default.** With `WORKHORSE_OTEL` unset, `start_run` opens one
 short TCP connection to the endpoint and enables telemetry only if something answers — so
 a machine running a collector gets spans with no env var, and one without stays a complete

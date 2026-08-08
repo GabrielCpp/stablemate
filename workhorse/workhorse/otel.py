@@ -820,11 +820,13 @@ class _Telemetry:
         self._stack: list[tuple[tuple[str, str, int], Any, float]] = []
         self._wait_seq = 0
         self._wait_keys: dict[int, tuple[str, str, int]] = {}
+        self._wait_live: dict[int, tuple[str, str, float]] = {}
         self._turn: Any = None
         # Wall-clock bounds of the open turn, so a harness that reports no duration
         # still gets one (see turn_end); the flag stops that fallback from clobbering
         # a duration the backend did report.
         self._turn_started: float | None = None
+        self._turn_node = ""
         self._turn_has_duration = False
         # Workflow-declared dimensions (the graph's `labels:`), already rendered
         # against the live context by the caller. Stamped onto every node and turn
@@ -857,9 +859,21 @@ class _Telemetry:
                 "workhorse.node.active",
                 description="1 while a node visit is open, 0 once it completes",
             )
+            self._wait_active = meter.create_gauge(
+                "workhorse.wait.active",
+                description="1 while an explicit runtime wait is open, 0 once it closes",
+            )
+            self._wait_elapsed = meter.create_gauge(
+                "workhorse.wait.elapsed_s",
+                description="Seconds the current explicit runtime wait has been open",
+            )
             self._turn_beats = meter.create_counter(
                 "workhorse.turn.heartbeat",
                 description="Agent-turn liveness ticks (a streaming turn is not hung)",
+            )
+            self._turn_active = meter.create_gauge(
+                "workhorse.turn.active",
+                description="1 while an agent turn is open, 0 once it closes",
             )
             self._turn_idle = meter.create_gauge(
                 "workhorse.turn.idle_s",
@@ -881,7 +895,9 @@ class _Telemetry:
             self._gas = self._gas_capacity = self._refuels = None
             self._heartbeats = self._cap_remaining = None
             self._node_active = None
-            self._turn_beats = self._turn_idle = self._turn_elapsed = None
+            self._wait_active = self._wait_elapsed = None
+            self._turn_beats = self._turn_active = None
+            self._turn_idle = self._turn_elapsed = None
             self._run_beats = self._node_elapsed = None
 
     def enabled(self) -> bool:
@@ -946,12 +962,19 @@ class _Telemetry:
         """Emit one liveness tick for whatever node is open (or none)."""
         with self._lock:
             top = self._stack[-1] if self._stack else None
+            wait = next(reversed(self._wait_live.values()), None)
         node = top[0][1] if top else ""
         attrs = self._live_attrs(node)
         if self._run_beats is not None:
             self._run_beats.add(1, attrs)
         if top is not None and self._node_elapsed is not None:
             self._node_elapsed.set(time.monotonic() - top[2], attrs)
+        if wait is not None and self._wait_elapsed is not None:
+            wait_node, kind, started = wait
+            self._wait_elapsed.set(
+                time.monotonic() - started,
+                self._wait_attrs(wait_node, kind),
+            )
 
     def _parent_ctx(self) -> Any:
         parent = self._stack[-1][1] if self._stack else self._root
@@ -1027,6 +1050,8 @@ class _Telemetry:
             token = self._wait_seq
             key = ("wait", node_id, token)
             self._wait_keys[token] = key
+            started = time.monotonic()
+            self._wait_live[token] = (node_id, kind, started)
             self._start_execution(
                 key,
                 f"wait:{kind}",
@@ -1037,12 +1062,18 @@ class _Telemetry:
                 },
                 mark_active=False,
             )
+            attrs = self._wait_attrs(node_id, kind)
+            if self._wait_active is not None:
+                self._wait_active.set(1, attrs)
+            if self._wait_elapsed is not None:
+                self._wait_elapsed.set(0.0, attrs)
             return token
 
     @_failsoft(None)
     def wait_end(self, token: int, outcome: str = "completed") -> None:
         with self._lock:
             key = self._wait_keys.pop(token, None)
+            live = self._wait_live.pop(token, None)
             if key is None:
                 return
             self._end_execution(
@@ -1050,6 +1081,16 @@ class _Telemetry:
                 next_name=None,
                 end_attributes={"workhorse.wait_outcome": outcome},
             )
+            if live is not None:
+                node_id, kind, started = live
+                attrs = self._wait_attrs(node_id, kind)
+                if self._wait_elapsed is not None:
+                    self._wait_elapsed.set(time.monotonic() - started, attrs)
+                if self._wait_active is not None:
+                    self._wait_active.set(0, attrs)
+
+    def _wait_attrs(self, node_id: str, kind: str) -> dict[str, str]:
+        return {**self._live_attrs(node_id), "wait_kind": kind}
 
     def _start_execution(
         self,
@@ -1123,6 +1164,8 @@ class _Telemetry:
             self._beat_thread = None
         failed = status in {"fail", "aborted"} and error is not None
         with self._lock:
+            for token in list(self._wait_live):
+                self.wait_end(token, "interrupted")
             self.turn_end(error if failed else None)
             while self._stack:
                 _, span, _ = self._stack.pop()
@@ -1155,8 +1198,9 @@ class _Telemetry:
     ) -> None:
         with self._lock:
             if self._turn is not None:  # defensive: never leak an open turn
-                self._turn.end()
+                self.turn_end()
             self._turn_started = time.monotonic()
+            self._turn_node = node_id
             self._turn_has_duration = False
             self._turn = self._tracer.start_span(
                 "agent_turn",
@@ -1173,6 +1217,13 @@ class _Telemetry:
                     **self._labels,
                 },
             )
+            attrs = self._live_attrs(node_id)
+            if self._turn_active is not None:
+                self._turn_active.set(1, attrs)
+            if self._turn_idle is not None:
+                self._turn_idle.set(0.0, attrs)
+            if self._turn_elapsed is not None:
+                self._turn_elapsed.set(0.0, attrs)
 
     @_failsoft(None)
     def turn_end(
@@ -1180,6 +1231,7 @@ class _Telemetry:
     ) -> None:
         with self._lock:
             turn, self._turn = self._turn, None
+            node_id, self._turn_node = self._turn_node, ""
             if turn is None:
                 return
             # Every turn gets a duration, even from a harness that reports none —
@@ -1201,6 +1253,13 @@ class _Telemetry:
                     turn.set_attribute("error.kind", error_kind)
                 turn.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
             turn.end()
+            attrs = self._live_attrs(node_id)
+            if self._turn_active is not None:
+                self._turn_active.set(0, attrs)
+            if self._turn_idle is not None:
+                self._turn_idle.set(0.0, attrs)
+            if self._turn_elapsed is not None:
+                self._turn_elapsed.set(0.0, attrs)
 
     @_failsoft(None)
     def turn_result(self, usage: TurnUsage) -> None:
@@ -1280,6 +1339,9 @@ class _Telemetry:
             and self._turn_idle is not None
             and self._turn_elapsed is not None
         ):
-            self._turn_beats.add(1, {"node": node_id})
-            self._turn_idle.set(max(0.0, idle_s), {"node": node_id})
-            self._turn_elapsed.set(max(0.0, elapsed_s), {"node": node_id})
+            attrs = self._live_attrs(node_id)
+            self._turn_beats.add(1, attrs)
+            if self._turn_active is not None:
+                self._turn_active.set(1, attrs)
+            self._turn_idle.set(max(0.0, idle_s), attrs)
+            self._turn_elapsed.set(max(0.0, elapsed_s), attrs)

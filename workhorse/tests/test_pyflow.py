@@ -590,7 +590,11 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
 
         assert clock.slept == [env.config.await_poll_s], clock.slept
         assert len(observed) == 1, observed
-        assert observed[0]["ask"] == "which branch?", observed[0]
+        assert observed[0]["ask"] == (
+            "STATUS: AWAITING_OPERATOR\n\n"
+            "## Questions from the agent\n\n"
+            "which branch?\n"
+        ), observed[0]
         assert observed[0]["state"] == "resumed", observed[0]
         assert observed[0]["params"] == {"answer": "pending"}, observed[0]
         assert observed[0]["waiting_on"] == str(ask), observed[0]
@@ -607,6 +611,29 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
             ("start", "resumed", 3, None),
             ("end", "resumed", 3, None),
         ], fake.states
+
+
+def test_await_with_no_questions_preserves_a_pre_authored_gate():
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\ncustom context\n")
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "", self.resumed)
+
+            def resumed(self) -> Transition:
+                return Done(ask.read_text())
+
+        class AnsweringClock(FakeClock):
+            def sleep(self, seconds: float) -> None:
+                assert ask.read_text() == "STATUS: AWAITING_OPERATOR\n\ncustom context\n"
+                ask.write_text("STATUS: ANSWERED\n\ncustom context\n")
+                stamp = ask.stat().st_mtime + 3600
+                os.utime(ask, (stamp, stamp))
+                super().sleep(seconds)
+
+        assert drive(Blocks(), _env(tmp, clock=AnsweringClock())).startswith("STATUS: ANSWERED")
 
 
 # ---------------------------------------------------------------------- self.handoff

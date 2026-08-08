@@ -64,13 +64,17 @@ Emitted: a root span per run, a span per node visit (nested through flows), a sp
 per agent-CLI turn with duration + token usage + cost (and a `session.id` attribute
 linking it to the CLI session transcript), span events for the recovery ladder
 (retry/reframe/compact/watchdog-kill), **log records** from the driver and the node
-functions it calls (`groom logs`), and a **cap-wait heartbeat**
+functions it calls (`groom logs`), live turn/wait active and elapsed gauges, and a
+**cap-wait heartbeat**
 metric each pause tick — the signal that lets a collector distinguish a legitimate
 multi-day spending-cap sleep (heartbeating = alive) from a hang (silence). With no
 collector reachable, telemetry is a complete no-op and adds no dependencies;
 exports are best-effort, so a collector that dies *mid-run* can never slow or wedge
 a run either. Any standard OTLP/HTTP backend
-(Jaeger, Grafana Tempo) works unchanged.
+(Jaeger, Grafana Tempo) works unchanged. `turn.idle_s` is current only while
+`turn.active` is `1`; the producer clears turn idle and elapsed when the turn closes.
+Explicit waits export `wait.active`, `wait.elapsed_s`, and `wait_kind` independently
+because the corresponding wait span does not leave the process until the wait ends.
 
 A resumable interruption closes open spans without OpenTelemetry `ERROR` status; the root still
 carries `error.class` and `error.kind` so the pause reason remains queryable. A workflow failure or

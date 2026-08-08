@@ -439,9 +439,24 @@ def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
     assert meter.instruments["workhorse.node.active"].records == [
         ("set", 1, {"node": "review"})
     ]
+    wait_attrs = {"node": "review-qa-plan", "wait_kind": "cap"}
+    assert meter.instruments["workhorse.wait.active"].records == [
+        ("set", 1, wait_attrs)
+    ]
+    assert meter.instruments["workhorse.wait.elapsed_s"].records == [
+        ("set", 0.0, wait_attrs)
+    ]
+    t._beat_once()
+    assert meter.instruments["workhorse.wait.elapsed_s"].records[-1][0] == "set"
+    assert meter.instruments["workhorse.wait.elapsed_s"].records[-1][2] == wait_attrs
     t.wait_end(token)
     assert wait_span.ended
     assert wait_span.attrs["workhorse.wait_outcome"] == "completed"
+    assert meter.instruments["workhorse.wait.active"].records[-1] == (
+        "set",
+        0,
+        wait_attrs,
+    )
 
 
 def test_an_interrupted_node_records_why_on_its_span():
@@ -752,6 +767,30 @@ def test_turn_heartbeat_reports_idleness_not_just_liveness():
     assert meter.instruments["workhorse.turn.elapsed_s"].records == [
         ("set", 300.0, {"node": "investigate"})
     ]
+
+
+def test_turn_lifecycle_clears_stale_idle_when_the_turn_ends():
+    t, _, meter, _ = _telemetry()
+
+    t.turn_start("investigate", "sonnet", "high", 300.0)
+    t.turn_heartbeat("investigate", 42.0, 120.0)
+    t.turn_end()
+
+    assert meter.instruments["workhorse.turn.active"].records == [
+        ("set", 1, {"node": "investigate"}),
+        ("set", 1, {"node": "investigate"}),
+        ("set", 0, {"node": "investigate"}),
+    ]
+    assert meter.instruments["workhorse.turn.idle_s"].records[-1] == (
+        "set",
+        0.0,
+        {"node": "investigate"},
+    )
+    assert meter.instruments["workhorse.turn.elapsed_s"].records[-1] == (
+        "set",
+        0.0,
+        {"node": "investigate"},
+    )
 
 
 def test_run_heartbeat_tick_reports_the_open_node_and_its_age():

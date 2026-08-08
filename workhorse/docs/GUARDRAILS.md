@@ -389,7 +389,10 @@ span state:
 | `workhorse.node.elapsed_s` {node} | how long it has been there |
 | `workhorse.run.heartbeat` {node} | the process is alive, whatever node type it is in |
 | `workhorse.turn.heartbeat` {node} | the agent CLI turn is alive |
+| `workhorse.turn.active` {node} | whether an agent turn is open; closing it clears stale idle and elapsed values |
 | `workhorse.turn.idle_s` {node} | seconds since the agent last wrote a line — **small = streaming, climbing = wedged** |
+| `workhorse.wait.active` {node, wait_kind} | whether an explicit operator/cap/retry/reframe wait is open |
+| `workhorse.wait.elapsed_s` {node, wait_kind} | seconds spent in that still-open explicit wait |
 | `workhorse.cap_wait.heartbeat` {node} | a spending-cap sleep is alive, not hung |
 
 Together they separate the three states a long-running node can be in, which are

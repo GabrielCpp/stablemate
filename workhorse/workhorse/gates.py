@@ -1,8 +1,8 @@
 """The `STATUS:` / `SCOPE:` header on the file an `Await` waits on.
 
-`Await(path, questions, …)` writes the ask and polls the file's mtime; what the file
-*says* once someone has written back is this header — two whole lines, each a keyword and
-a token:
+`Await(path, questions, …)` writes a canonical operator ask and polls the file's mtime;
+what the file says before and after someone writes back is this header — two whole lines,
+each a keyword and a token:
 
     STATUS: AWAITING_OPERATOR
     SCOPE: epic
@@ -32,6 +32,7 @@ import re
 #: these files.
 _STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
 _SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
+_QUESTIONS_RE = re.compile(r"^##[ \t]+Questions?[ \t]+from[ \t]+the[ \t]+agent[ \t]*$", re.MULTILINE | re.IGNORECASE)
 
 
 def status_of(text: str) -> str:
@@ -61,3 +62,20 @@ def set_status(text: str, status: str) -> str:
     if _STATUS_RE.search(text):
         return _STATUS_RE.sub(f"STATUS: {status}", text, count=1)
     return f"STATUS: {status}\n\n{text}"
+
+
+def format_operator_gate(questions: str) -> str:
+    """Return a canonical, Groom-discoverable operator gate.
+
+    A workflow may hand :class:`~workhorse.pyflow.Await` either plain questions or a
+    complete context file. Plain text gets the standard heading; structured content is
+    only re-armed so its sections are not wrapped or duplicated.
+    """
+    body = questions.strip()
+    if status_of(body) or _QUESTIONS_RE.search(body):
+        return set_status(body, "AWAITING_OPERATOR").rstrip() + "\n"
+    return (
+        "STATUS: AWAITING_OPERATOR\n\n"
+        "## Questions from the agent\n\n"
+        f"{body}\n"
+    )
