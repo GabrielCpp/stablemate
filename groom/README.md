@@ -294,10 +294,16 @@ explicit waits, gaps between resume generations, and unclassified time sum to th
 reported wall clock without counting nested spans twice. Wait time is also split by
 kind (`operator`, `cap`, `retry`, `reframe`, or `exec-retry`).
 
-Attempt and verdict groups report turns, agent time, work items, cost coverage, and
-tokens for each telemetry label value. `profile` reads every retained span for the
-named run rather than the paginated trace search, so a long run is not silently
-truncated. As with `cost`, absent and suspicious zero pricing remain visible.
+Attempt and verdict groups report workflow visits separately from agent turns. A visit
+is one trace-scoped parent node span; every agent CLI invocation is a turn, so turns that
+share a visit are backend retries rather than another pass through the workflow.
+`visits/work` is therefore the convergence signal, while `backend_retries` exposes
+provider or parsing instability without inflating it. Groups also report agent time,
+work items, cost coverage, and tokens for each telemetry label value. `profile` reads
+every retained span for the named run rather than the paginated trace search, so a long
+run is not silently truncated. As with `cost`, absent and suspicious zero pricing remain
+visible. Older spans without a parent id count as one visit per turn rather than being
+collapsed together.
 
 ### The schema, and one footgun
 

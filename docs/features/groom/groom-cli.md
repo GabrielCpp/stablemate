@@ -13,9 +13,11 @@ The `groom` CLI is the manually launched host-side surface for the
 `groom` without a command is an argument error. [`serve`](#serve) starts the
 local [groom server](http/groom.md) and keeps it running until the server exits;
 `status`, `logs` and `db-path` read the collected telemetry, and
-[`purge-tests`](#purge-tests) evicts the part of it a test process wrote. The
-[`Groom CLI entrypoints module`](concepts/groom-cli-entrypoints-module.md) owns
-this executable root and the companion [`groom-sidecar`](groom-sidecar.md)
+[`profile`](#profile) partitions a retained run's wall clock and distinguishes
+workflow revisits from backend retries. [`purge-tests`](#purge-tests) evicts the
+part of it a test process wrote. The [Groom CLI entrypoints
+module](concepts/groom-cli-entrypoints-module.md) owns this executable root and
+the companion [`groom-sidecar`](groom-sidecar.md)
 console script; `groom-sidecar` is separate, not a subcommand of `groom`, and its
 container protocol is documented in [sidecar protocol](sidecar-protocol.md).
 
@@ -115,6 +117,56 @@ standard usage/error path.
   - none specific: a store with nothing to purge is a successful no-op, and a
     second pass over an already-purged store removes zero rows.
 
+### profile
+- usage: `groom profile --run RUN [--json]`
+- parent: [groom](#groom)
+- flags:
+  - `--run RUN`
+    - type: string
+    - required: true
+    - default: none
+    - Selects one exact retained `run_id`; omitting the flag is rejected by the
+      argument parser, while an explicitly empty value produces the normal
+      no-telemetry result.
+  - `--json`
+    - type: boolean
+    - required: false
+    - default: `false`
+    - Emits the complete profile object as indented JSON instead of the
+      human-readable summary.
+- args:
+  - none: `profile` accepts no positional arguments.
+- does:
+  - Reads every retained span for the selected run without applying the trace
+    search page limit, and includes retained metric timestamps when determining
+    the observed start and end.
+  - Partitions observed wall time into disjoint agent, deterministic,
+    infrastructure, explicit-wait, cross-resume-gap, and unclassified buckets;
+    explicit waits are additionally grouped by wait kind.
+  - Reports agent turns as raw CLI invocations and workflow visits as distinct
+    trace-scoped parent node spans. Additional turns under the same visit are
+    reported as `backend_retries`; a legacy turn with no parent id counts as its
+    own visit.
+  - Reports `visits_per_work` from distinct workflow visits and the workflow's
+    `work_id` labels, so backend retries do not inflate the convergence ratio.
+  - Groups agent work by integer attempt labels and closed verdict labels,
+    preserving turn, visit, backend-retry, duration, token, backend, and cost
+    coverage totals for each group.
+  - Prints `no telemetry found for that run.` in text mode, or JSON `null` in
+    JSON mode, when neither spans nor metrics exist for the selected run.
+- code: groom/groom/cli.py::profile
+- detail: [retained-run profiler](../../../groom/README.md#what-occupied-the-wall-clock-groom-profile)
+- errors:
+  - Missing `--run`, unknown flags, extra positional arguments, and malformed
+    command lines are parser errors; argparse writes usage/error text and exits
+    with status 2 before querying telemetry.
+  - SQLite read failures and malformed retained attribute JSON propagate through
+    Python's normal unhandled-exception path.
+- exits:
+  - A found profile and the no-telemetry result both return normally and exit
+    with status 0 when output succeeds.
+  - Parser failures exit with status 2 before the command handler runs.
+
 ## Invocations
 
 ### groom-serve
@@ -159,6 +211,7 @@ standard usage/error path.
   - `port` integer from `--port`, default `8787`.
   - `allow_non_loopback` boolean from `--allow-non-loopback`, default `false`.
   - [groom server](http/groom.md) application produced for this invocation.
+- code: groom/groom/cli.py::serve
 - errors:
   - Parser errors exit before this invocation starts.
   - Server app construction, bind, startup, and runtime failures propagate from
@@ -171,5 +224,4 @@ standard usage/error path.
     handler can still return normally.
   - Leaves uncaught server startup/runtime exceptions to Python's normal
     unhandled-exception process exit behavior.
-- code: groom/groom/cli.py::serve
 - refs: [loopback host classifier](concepts/loopback-host-classifier.md)

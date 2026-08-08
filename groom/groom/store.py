@@ -437,6 +437,12 @@ def _profile_turn_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
         for turn in turns
         if (value := turn["attrs"].get("work_id") or turn["attrs"].get("wf.work_id"))
     }
+    visits = len(
+        {
+            (turn["trace_id"], turn["parent_id"] or turn["span_id"])
+            for turn in turns
+        }
+    )
     costs = [float(turn["profile_cost_usd"]) for turn in turns if turn["profile_cost_usd"] is not None]
     zeroed = sum(
         turn["profile_cost_usd"] == 0 and (turn["profile_output_tokens"] or 0) > 0
@@ -445,8 +451,11 @@ def _profile_turn_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     seconds = sum(max(0.0, turn["end_ts"] - turn["start_ts"]) for turn in turns)
     return {
         "turns": len(turns),
+        "visits": visits,
+        "backend_retries": len(turns) - visits,
         "work_items": len(work_items),
         "turns_per_work": len(turns) / len(work_items) if work_items else None,
+        "visits_per_work": visits / len(work_items) if work_items else None,
         "agent_s": seconds,
         "cost_usd": sum(costs) if costs else None,
         "cost_turns": len(costs),

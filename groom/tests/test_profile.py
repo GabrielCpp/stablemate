@@ -151,6 +151,7 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
                     "agent_turn",
                     0,
                     10,
+                    parent="visit-1",
                     node="plan-qa",
                     attrs={
                         "work_id": "story-1",
@@ -166,12 +167,13 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
                     "agent_turn",
                     10,
                     20,
+                    parent="visit-1",
                     node="plan-qa",
                     attrs={
                         "work_id": "story-1",
                         "backend": "claude",
-                        "qa.plan_rework": "1",
-                        "qa.plan_review_disposition": "approved",
+                        "qa.plan_rework": "0",
+                        "qa.plan_review_disposition": "revise",
                         "usage.output_tokens": 50,
                     },
                 ),
@@ -180,11 +182,13 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
                     "agent_turn",
                     20,
                     30,
+                    parent="visit-2",
                     node="plan-qa",
                     attrs={
                         "work_id": "story-2",
                         "backend": "opencode",
                         "qa.plan_rework": "1",
+                        "qa.plan_review_disposition": "approved",
                         "total_cost_usd": 0.0,
                         "usage.output_tokens": 25,
                     },
@@ -196,8 +200,11 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
         assert profile is not None
         assert profile["work"] == {
             "turns": 3,
+            "visits": 2,
+            "backend_retries": 1,
             "work_items": 2,
             "turns_per_work": 1.5,
+            "visits_per_work": 1.0,
             "agent_s": 30.0,
             "cost_usd": 2.0,
             "cost_turns": 2,
@@ -207,14 +214,36 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
             "output_tokens": 175,
             "backends": ["claude", "opencode"],
         }
-        attempt_one = next(
-            row for row in profile["attempt_groups"] if row["value"] == "1"
+        attempt_zero = next(
+            row for row in profile["attempt_groups"] if row["value"] == "0"
         )
-        assert attempt_one["turns"] == 2 and attempt_one["work_items"] == 2
+        assert attempt_zero["turns"] == 2
+        assert attempt_zero["visits"] == 1
+        assert attempt_zero["backend_retries"] == 1
         revised = next(
             row for row in profile["verdict_groups"] if row["value"] == "revise"
         )
-        assert revised["turns"] == 1 and revised["cost_usd"] == 2.0
+        assert revised["turns"] == 2 and revised["visits"] == 1
+        assert revised["cost_usd"] == 2.0
+
+        rendered = cli._format_profile(profile)
+        assert "visits=2  backend_retries=1  turns=3" in rendered
+        assert "visits/work=1.0" in rendered
+
+
+def test_profile_does_not_collapse_unparented_legacy_turns_into_one_visit() -> None:
+    with _DB():
+        store.insert_spans(
+            [
+                _span("legacy-turn-1", "agent_turn", 0, 1, node="plan"),
+                _span("legacy-turn-2", "agent_turn", 1, 2, node="plan"),
+            ]
+        )
+
+        profile = store.run_profile("run-1")
+        assert profile is not None
+        assert profile["work"]["visits"] == 2
+        assert profile["work"]["backend_retries"] == 0
 
 
 def test_profile_cli_emits_the_complete_json_object(capsys) -> None:

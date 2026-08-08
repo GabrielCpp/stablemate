@@ -273,8 +273,9 @@ def _format_profile(result: dict | None) -> str:
         f"  resume={time_s['resume_gap'] / 3600:.2f}h"
         f"  unclassified={time_s['unclassified'] / 3600:.2f}h",
         "work",
-        f"  turns={work['turns']}  work_items={work['work_items']}"
-        f"  turns/work={work['turns_per_work'] if work['turns_per_work'] is not None else '-'}"
+        f"  visits={work['visits']}  backend_retries={work['backend_retries']}"
+        f"  turns={work['turns']}  work_items={work['work_items']}",
+        f"  visits/work={work['visits_per_work'] if work['visits_per_work'] is not None else '-'}"
         f"  agent={work['agent_s'] / 3600:.2f}h",
         f"  cost={cost}"
         f"  priced={work['cost_turns']}/{work['turns']}"
@@ -291,13 +292,14 @@ def _format_profile(result: dict | None) -> str:
         for row in rows:
             lines.append(
                 f"  {row['dimension']}={row['value']}  {row['node']}"
+                f"  visits={row['visits']}  backend_retries={row['backend_retries']}"
                 f"  turns={row['turns']}  agent={row['agent_s'] / 60:.1f}m"
             )
     return "\n".join(lines)
 
 
 def profile(run: str, as_json: bool = False) -> None:
-    """Show what occupied one run and where attempts/verdicts spent agent time."""
+    """Show one run's wall time, workflow visits, backend retries, and verdicts."""
     import json as _json
 
     from groom import store
@@ -386,7 +388,7 @@ def main(argv: list[str] | None = None) -> None:
 
     profile_parser = subparsers.add_parser(
         "profile",
-        help="Partition one run's wall time and group agent work by attempt and verdict.",
+        help="Partition one run's wall time and separate workflow visits from backend retries.",
     )
     profile_parser.add_argument("--run", required=True, help="The run_id to profile.")
     profile_parser.add_argument(
