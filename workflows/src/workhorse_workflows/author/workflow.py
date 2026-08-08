@@ -620,7 +620,6 @@ class Author(Workflow):
                 "story_slug": story_slug,
                 "story_dir": story_dir,
                 "features_dir": self.ctx.features_dir,
-                "surface_manifest": self.ctx.surface_manifest,
                 "mockup_dir": self.ctx.mockup_dir,
             },
         )

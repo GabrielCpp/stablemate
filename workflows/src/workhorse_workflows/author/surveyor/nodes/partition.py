@@ -201,10 +201,9 @@ def emit_artifacts(
 ) -> EmitResult:
     """Write the generated backlog bullets and the unit-level manifest.
 
-    The manifest plays the role `cfg.surface_manifest` plays in author today, with a
-    survey-produced list instead of feature docs: author's per-story stages read a unit's
-    entry for its route and components, and every unit also carries the bullet ids that
-    cover it, which is what keeps the traceability chain readable end to end.
+    The generated backlog is the author handoff. The unit manifest remains survey
+    traceability: every unit carries the bullet ids that cover it, but author does not read
+    or mutate it while writing stories.
 
     Runs after `validate_partition` passed, so the partition is trusted here.
     """

@@ -525,6 +525,7 @@ The running system is the source of truth.
     def _design_mockup(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # A story on an existing surface: the mockup stage is a pass-through, and
         # `write_story` falls back to the feature docs.
+        assert "surface_manifest" not in data
         return {"status": "skipped", "surface": "", "mockup": "", "notes": "existing surface"}
 
     def _write_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:

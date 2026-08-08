@@ -113,7 +113,7 @@ class PartitionCheck(AuthorResult):
 
 
 class EmitResult(AuthorResult):
-    """`emit_artifacts` — the backlog bullets and unit manifest the survey hands on."""
+    """`emit_artifacts` — author backlog bullets plus survey-owned traceability."""
 
     emit_ok: bool = False
     emit_errors: str = ""

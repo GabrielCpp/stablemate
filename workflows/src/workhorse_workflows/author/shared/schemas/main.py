@@ -27,7 +27,6 @@ class Config(AuthorResult):
     repo_root: str = ""
     backlog_path: str = ""
     epics_dir: str = ""
-    surface_manifest: str = ""
     features_dir: str = ""
     mockup_dir: str = ""
     layers: list[str] = []

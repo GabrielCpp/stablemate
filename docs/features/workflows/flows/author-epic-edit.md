@@ -27,8 +27,10 @@ title: Author epic edit
       statuses survive metadata updates, and empty-epic deletion can safely resume after interruption.
   7. A model rewrites only human-owned epic prose. A parsed Markdown validator requires every epic
      section and at least one journey while Ostler-owned Seeds and Stories remain structural data.
-  8. Newly added and explicitly affected stories run through mockup, authoring, static validation,
-     grounding and independent audit loops. Unaffected stories are not rewritten.
+   8. Newly added and explicitly affected stories run through mockup, authoring, static validation,
+      grounding and independent audit loops. A new visual reference is written only as the story's
+      `mockup.html`; the OKF feature book stays read-only and no inventory is created. Unaffected
+      stories are not rewritten.
   9. Per-epic coverage, semantic coverage review and whole-graph integrity pass before a backlog item
      is pruned and the edit is committed. An empty approved epic skips prose/story work and is deleted.
 - end: The operator's intent is reflected consistently in epic journeys, seeds, story contracts,

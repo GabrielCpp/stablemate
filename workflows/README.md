@@ -58,6 +58,8 @@ findings back to the plan refiner: every active seed remains covered, dependenci
 and acyclic, the requested add/remove is satisfied, and every changed story needing new prose is
 in the affected worklist. Only then does Ostler apply structural mutations, the model revise epic
 prose and affected story bodies, and coverage/integrity gates permit backlog pruning and commit.
+Design turns may write `mockup.html` only inside the current story directory. The feature book is
+read-only: author never creates an inventory or registers a mockup outside its story.
 
 Removing the last story does not silently strand scope. Its plan must also remove the last
 seeds; once both resulting sets are empty, the epic and its milestone/legacy queue references

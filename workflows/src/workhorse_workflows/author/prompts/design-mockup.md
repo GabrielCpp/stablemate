@@ -22,10 +22,6 @@ cannot produce one, say so and return cleanly; the writer falls back to the feat
   the screen exists in part, the content the mockup must depict. Do not inspect the app or source
   code to discover surfaces.
 {%- endif %}
-{%- if workhorse_var('surface_manifest') %}
-- Surface manifest: `{{ workhorse_var('surface_manifest') }}` — set this surface's `mockup` field to the
-  file you produce, so the writer resolves it.
-{%- endif %}
 - Prior mockup/design reference dir: `{{ workhorse_var('mockup_dir') }}` — read existing examples from
   here when present, but do not write the new story's source of truth there.
 - Story-local mockup path: `{{ workhorse_var('story_dir') }}/mockup.html` — write the mockup here.
@@ -61,11 +57,11 @@ a mockup.
 3. **Depict the real screen, all states.** Cover the documented user journey(s) — the book's `flow`
    nodes this screen takes part in — and the states the goal implies (happy path **plus** empty /
    loading / error), using the content from the book and the story's seeds, not lorem-ipsum.
-4. **Write and register it.**
+4. **Write it inside the story.**
    - Save to `{{ workhorse_var('story_dir') }}/mockup.html`. The story owns the mockup; do not put the
-     new source of truth under a global `docs/design/local/` gallery.
-   - If a `surface_manifest` is configured, set this surface's `mockup` field to the story-local repo
-     path (create the surface entry if absent), so `write_story` links it.
+      new source of truth under a global `docs/design/local/` gallery.
+   - Do not create or update any inventory, manifest, or OKF book file. Return the story-local path in
+     `mockup`; the workflow passes it directly to `write_story`.
 
 {% block repo_design_rules %}{% endblock %}
 

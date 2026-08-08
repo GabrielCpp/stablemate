@@ -573,8 +573,8 @@ class Surveyor(Workflow):
 
         `emit_artifacts` + `decide_emit` + `survey_done` / `survey_failed`. Unlike the
         parity flow, emission failing is fatal here — the YAML routes its `default:` arm
-        to a `fail` node — because the manifest is what author's per-story stages read,
-        and a survey that produced no manifest has produced nothing author can consume.
+        to a `fail` node — because a partial backlog/traceability pair cannot prove the
+        generated work covers the completed survey.
 
         The result is what `handoff` hands back to `author`.
         """

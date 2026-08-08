@@ -50,10 +50,8 @@ def load_config(
     may override under `template.*` in `agents.yml`; the base workflow never branches on
     those values, it only passes them to the prompts.
 
-    The three convention paths stay **inert until the file they name exists**, which is
-    what makes them safe to default: a greenfield repo with no OKF book is simply not
-    asked to cite one. `surface_manifest` is the one picked up by presence — an unpinned
-    manifest prefers the surveyor's `unit-manifest.json` when a survey has run.
+    The feature book is read-only grounding for author prompts. New visual references are
+    story-local mockups; author never creates a feature inventory or registers mockups in one.
     """
     root = survey_repo_root(repo_dir)
     backlog = paths.backlog_file(root, backlog)
@@ -72,13 +70,6 @@ def load_config(
 
     features_dir = paths.features_dir(root, template.get("features_dir") or "")
 
-    surface_manifest = template.get("surface_manifest") or ""
-    if not surface_manifest:
-        survey_manifest = "docs/survey/unit-manifest.json"
-        surface_manifest = (
-            survey_manifest if (root / survey_manifest).is_file()
-            else f"{features_dir}/inventory.json"
-        )
     mockup_dir = template.get("mockup_dir") or "docs/design"
 
     # Best-effort layer list, a hint for layer-aware prompts only: the prompts use
@@ -96,7 +87,6 @@ def load_config(
         repo_root=str(root),
         backlog_path=backlog,
         epics_dir=epics_dir,
-        surface_manifest=str(surface_manifest),
         features_dir=str(features_dir),
         mockup_dir=str(mockup_dir),
         layers=layers,

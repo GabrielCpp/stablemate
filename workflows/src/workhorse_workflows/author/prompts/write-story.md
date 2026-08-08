@@ -80,9 +80,9 @@ A few sentences in the user's terms: what surface or behaviour this story is abo
 and what "done" means at a high level (e.g. "at parity with the legacy X editor"). Name the surface
 by **linking its OKF node ids** (above) so the scope is grounded rather than asserted. Link the
 **visual reference** the criteria are judged against: a running legacy surface (rewrite projects),
-or — when there is no live reference — the **design mockup** for this surface (the `mockup_path` input
-above if set, normally `./mockup.html`, else the manifest entry's `mockup`). A spec, legacy
-route, or captured evidence all qualify. This orients the coder; it is **not** a spec and not a build plan.
+or — when there is no live reference — the **story-local design mockup** for this surface (the
+`mockup_path` input above, normally `./mockup.html`). A spec, legacy route, or captured evidence all
+qualify. This orients the coder; it is **not** a spec and not a build plan.
 
 ## Acceptance Criteria (how it's judged — observable, user-facing)
 

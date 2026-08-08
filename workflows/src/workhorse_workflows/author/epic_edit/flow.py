@@ -327,7 +327,6 @@ class EpicEdit(Workflow):
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "surface_manifest": self.ctx.surface_manifest,
                 "mockup_dir": self.ctx.mockup_dir,
             },
         )
