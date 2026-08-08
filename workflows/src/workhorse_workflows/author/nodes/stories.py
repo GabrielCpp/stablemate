@@ -12,7 +12,7 @@ import logging
 import re
 from pathlib import Path
 
-from ostler import Ostler, markdown, registry
+from ostler import Ostler, backlog as ostler_backlog, markdown, registry
 from ostler.model import required_section_problems, status_bullet
 from workhorse import gates
 from workhorse import worklist as wl
@@ -644,22 +644,14 @@ def prune_bullet(
     # work left in it. Removing by id and counting by anything else is two contracts.
     doc = markdown.split(raw)
     offset = doc.body_offset
-    drop: set[int] = set()
-    removed = 0
-    remaining = 0
-    for item in doc.walk_bullets():
-        if item.line_start + offset in drop:
-            continue  # a sub-bullet already carried off inside the matched item's span
-        bid = item.bracketed[0]
-        if not bid:
-            continue
-        if bid == bullet_id:
-            removed += 1
-            # The span, not the first line: an item with a continuation or sub-bullets goes
-            # whole, rather than leaving its tail under whatever bullet follows.
-            drop.update(range(item.line_start + offset, item.line_end + offset))
-        else:
-            remaining += 1
+    bullets = doc.walk_bullets()
+    targets = [item for item in bullets if item.bracketed[0] == bullet_id]
+    body_drop = ostler_backlog.removal_lines(targets)
+    drop = {line + offset for line in body_drop}
+    removed = sum(1 for item in targets if item.line_start in body_drop)
+    remaining = sum(
+        1 for item in bullets if item.bracketed[0] and item.line_start + offset not in drop
+    )
 
     lines = raw.splitlines(keepends=True)
     kept = [line for i, line in enumerate(lines) if i not in drop]

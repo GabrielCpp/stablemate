@@ -16,15 +16,13 @@ You do NOT write stories yet — only milestone files and a one-screen `epic.md`
 > The backlog is a **live worklist**: once an epic is fully authored, its consumed bullets are
 > pruned from the backlog automatically. So treat whatever bullets remain in the file as the
 > outstanding scope, and never re-create an epic that already exists in the milestone graph.
-> Before this turn, author intake assigns an Ostler id to every unnamed direct work bullet. Treat
+> Before this turn, author intake assigns an Ostler id to every unnamed bullet. Treat
 > bracketed ids as opaque identities; never derive identity from bullet prose.
 
 ## Required reading
 
-- The backlog file above (every bullet is in scope — none may be dropped) **except** bullets
-  under a `## Filed by coder` heading. Those are adjacent-defect/hardening findings the coder
-  workflow's own fix loop drains and prunes directly — do not decompose them into an epic, and
-  do not remove them yourself; leave that section alone.
+- The backlog file above. Every bullet is an identified item in scope; none may be dropped. Context
+  and constraints that are not work items belong in prose, not bullets.
 - This repo's **planning method** — research-first, dependency-ordered, MVP-aware decomposition:
   {{ find_by_tags("planning") | default("(none installed — decompose research-first and dependency-ordered, and say so in the epic)", true) }}.
 - Its **artifact grammar** — the canonical layout, milestone files under `docs/milestones/`,
@@ -60,7 +58,7 @@ You do NOT write stories yet — only milestone files and a one-screen `epic.md`
    contract, reader, authoring, or publishing phase. One MVP target means one milestone; internal
    roadmap phases stay inside it. Preserve an existing source milestone's filename, title, epic
    membership, and order exactly even when authoring into a separate sandbox.
-3. **Own and drain this intake.** Every eligible bracketed backlog item belongs to exactly one
+3. **Own and drain this intake.** Every bracketed backlog item belongs to exactly one
    milestone's `sourceItems` using its full id, never a short display handle. Reuse an existing
    target milestone only when it is not done, the remaining ids are already a subset of its
    `sourceItems`, and the product outcome is unchanged. A disjoint fresh intake creates a new

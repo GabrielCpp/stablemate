@@ -47,7 +47,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
-from ostler import Ostler
+from ostler import Ostler, markdown
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
@@ -59,6 +59,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows import author
 from workhorse_workflows.author.nodes.artifacts import validate_artifacts
 from workhorse_workflows.author.nodes.epics import select_epic
+from workhorse_workflows.author.nodes.stories import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
@@ -84,11 +85,8 @@ SEEDS = {
     "b1": "[b1] Users can sign in with an email and a password",
     "b2": "[b2] Users can reset a forgotten password",
 }
-#: A prose bullet in the backlog's preamble, of the kind every real backlog carries — a
-#: surfaces list, a format note. It is not a scope item: it has no `[id]` handle, so nothing
-#: downstream can address it, and both prune tails must leave it alone *and* keep it out of
-#: their "remaining" count. Counting it made an emptied backlog report work still in it.
-SURFACE = "- **api** — the only surface, and the only writer of stored data"
+#: Supporting backlog context is prose rather than a bullet, so intake does not turn it into work.
+SURFACE = "**api** is the only surface and the only writer of stored data."
 #: What the scripted `split-stories` registers, one story per seed.
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
@@ -192,7 +190,11 @@ def _stories(repo: Path) -> dict[str, bool]:
     return {str(s["slug"]): bool(s.get("authored")) for s in Ostler(repo).list("story")}
 
 
-def _milestone(repo: Path, *epics: str) -> None:
+def _milestone(
+    repo: Path,
+    *epics: str,
+    source_items: tuple[str, ...] = (),
+) -> None:
     lines = [
         "---",
         "type: milestone",
@@ -200,6 +202,11 @@ def _milestone(repo: Path, *epics: str) -> None:
         "title: Account MVP",
         "status: planned",
         "dependsOn: []",
+        *(
+            ["sourceItems:", *(f"  - {item}" for item in source_items)]
+            if source_items
+            else []
+        ),
         "epics:",
         *(f"  - {epic}" for epic in epics),
         "---",
@@ -374,7 +381,17 @@ class _Agent:
             okf.create_epic(EPIC, "Account holder accesses their account")
         if self.two_epics and not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
             okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
-        _milestone(self.repo, EPIC, *(SECOND_EPIC,) if self.two_epics else ())
+        intake = tuple(
+            item_id
+            for bullet in markdown.split(self.backlog_at_decompose).walk_bullets()
+            if (item_id := bullet.bracketed[0])
+        )
+        _milestone(
+            self.repo,
+            EPIC,
+            *(SECOND_EPIC,) if self.two_epics else (),
+            source_items=intake,
+        )
         return {"status": "complete", "notes": f"one epic from {len(SEEDS)} bullet(s)"}
 
     def _rework_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -655,9 +672,8 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     # The whole-graph gate ran on a clean graph: no error-level findings left.
     assert not [f for f in Ostler(backlogged).doctor()["findings"] if f["severity"] == "error"]
 
-    # The coverage tail pruned the two bullets the epic consumed, and left the heading —
-    # and the preamble's prose bullet, which was never scope to begin with.
-    assert _bullets(backlogged) == [SURFACE]
+    # The coverage tail pruned both work items. Supporting context is prose, not a bullet.
+    assert _bullets(backlogged) == []
     assert "## Scope items" in (backlogged / BACKLOG).read_text()
     # Nothing outstanding — asserted on the log line, because in epic mode the prune tail's
     # count reaches a human only there (the run's result is the PR node's). The surviving
@@ -689,7 +705,37 @@ def test_epic_mode_adopts_unnamed_scope_before_decomposition(
 
     assert "- [ACME-" in agent.backlog_at_decompose
     assert "] Recover a local draft" in agent.backlog_at_decompose
-    assert "- Fix an adjacent defect" in agent.backlog_at_decompose
+    assert "] Fix an adjacent defect" in agent.backlog_at_decompose
+    intake = {
+        item_id
+        for bullet in markdown.split(agent.backlog_at_decompose).walk_bullets()
+        if (item_id := bullet.bracketed[0])
+    }
+    milestone = Ostler(backlogged).list("milestone")[0]
+    assert set(milestone["sourceItems"]) == intake
+
+
+def test_story_prune_preserves_a_parent_with_nested_work(backlogged: Path) -> None:
+    backlog = backlogged / BACKLOG
+    original = (
+        "# Backlog\n\n"
+        "## Scope items\n\n"
+        "- [parent] Ship draft recovery\n"
+        "  - [child] Preserve ten snapshots\n"
+    )
+    backlog.write_text(original, encoding="utf-8")
+
+    result = prune_bullet(
+        logging.getLogger("test"),
+        backlog=BACKLOG,
+        bullet_id="parent",
+        from_backlog=True,
+        repo_dir=str(backlogged),
+    )
+
+    assert result.removed == 0
+    assert result.remaining == 2
+    assert backlog.read_text(encoding="utf-8") == original
 
 
 def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> None:
@@ -968,9 +1014,8 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
     stories = _stories(with_epic)
     assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
     assert all(stories.values()), stories
-    # The bullet it consumed is pruned; the other one is still work, and the preamble's
-    # prose bullet is neither — kept in the file, counted as nothing.
-    assert _bullets(with_epic) == [SURFACE, f"- {SEEDS['b2']}"]
+    # The bullet it consumed is pruned; the other identified item remains.
+    assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
     assert result.removed == 1, result
     assert result.remaining == 1, result
     assert _commit_count(with_epic) == before, "story mode must not commit"
@@ -995,7 +1040,7 @@ def test_story_edit_add_authors_one_story_and_commits(with_epic: Path, tmp_path:
     stories = _stories(with_epic)
     assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
     assert all(stories.values()), stories
-    assert _bullets(with_epic) == [SURFACE, f"- {SEEDS['b2']}"]
+    assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
     assert _subject(with_epic).startswith("author: accounts"), _subject(with_epic)
 
 

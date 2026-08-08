@@ -24,7 +24,7 @@ The epic-split review returned changes. Apply them, then return control to the r
 
 Address every point in the review notes and preserve the source plan's release milestone, including
 its filename, title, epic membership, and order. A fresh target milestone keeps its generated Ostler
-id rather than copying the source graph's id. Ensure every eligible full backlog id is owned by
+id rather than copying the source graph's id. Ensure every full backlog id is owned by
 exactly one milestone `sourceItems`; update an active reused milestone with
 `ostler milestone set-source-items`, and never reopen a done milestone. Fix
 milestone membership and order in milestone files, split or merge overlapping epics, and add all

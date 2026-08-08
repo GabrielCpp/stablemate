@@ -16,7 +16,7 @@ def adopt_backlog(
     backlog: str = "",
     repo_dir: str = "",
 ) -> Result:
-    """Mint ids for unnamed direct work bullets before decomposition or story lookup."""
+    """Mint ids for every unnamed backlog bullet before decomposition or story lookup."""
     result = Ostler(survey_repo_root(repo_dir)).backlog_adopt(backlog)
     if not result.ok:
         raise WorkflowFailed(result.message)

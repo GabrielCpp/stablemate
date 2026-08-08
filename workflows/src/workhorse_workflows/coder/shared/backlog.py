@@ -24,6 +24,8 @@ punted.
 iteration ends at `prune_fix_item` (shipped) or `mark_fix_blocked` (stuck). Blocking
 annotates in place rather than removing, so the item stays visible to a human while every
 later draw skips it — which is what keeps a permanently-stuck fix from spinning the loop.
+The section is a priority queue, not a separate ownership class: any item still present when
+Author runs is identified and planned with the rest of the backlog.
 
 Nothing changes about the rules on either end — the three de-dup signals, the section
 placement, the backlog scaffold, the reconciled-items unlink, the selection predicate, the

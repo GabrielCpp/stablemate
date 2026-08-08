@@ -35,7 +35,7 @@ repo root the same way it does for every node in this workflow.
    When the source checkout already has a milestone, target filename, title, epic membership, and
    order match it; the target has its own generated full Ostler id. Internal implementation phases
    have not been promoted into separate milestones. One MVP release produces one milestone.
-3. **Intake ownership** — every eligible backlog id appears in exactly one milestone's `sourceItems`.
+3. **Intake ownership** — every backlog id appears in exactly one milestone's `sourceItems`.
    Full ids, not short handles, are persisted. A reused milestone is active and owns the remaining
    intake; a done milestone was not reopened; a disjoint fresh intake received a new milestone.
 4. **Coding order** — milestone dependencies put prerequisites before dependents.

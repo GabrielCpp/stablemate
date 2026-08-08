@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown
+from ostler import Ostler, backlog as ostler_backlog, markdown
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
 from workhorse_workflows.author.shared import paths
@@ -145,16 +145,14 @@ def prune_backlog(
     doc = markdown.split(raw)
     offset = doc.body_offset
     bullets = doc.walk_bullets()
-    drop: set[int] = set()
-    removed = 0
-    for bullet in bullets:
-        if bullet.line_start + offset in drop:
-            continue  # already carried off inside a matched parent's span
-        if _matches(bullet.text.strip().lower(), seed_norms):
-            removed += 1
-            # The bullet's span covers its continuation and nested lines, so a consumed
-            # item with sub-bullets does not leave them orphaned under the next one.
-            drop.update(range(bullet.line_start + offset, bullet.line_end + offset))
+    targets = [
+        bullet
+        for bullet in bullets
+        if _matches(bullet.text.strip().lower(), seed_norms)
+    ]
+    body_drop = ostler_backlog.removal_lines(targets)
+    drop = {line + offset for line in body_drop}
+    removed = sum(1 for bullet in targets if bullet.line_start in body_drop)
     remaining = sum(
         1 for b in bullets if b.bracketed[0] and b.line_start + offset not in drop
     )
