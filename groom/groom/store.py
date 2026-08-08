@@ -739,6 +739,10 @@ def run_summaries(
 _LIVE_METRICS = (
     "workhorse.run.heartbeat",
     "workhorse.node.elapsed_s",
+    "workhorse.wait.active",
+    "workhorse.wait.elapsed_s",
+    "workhorse.turn.active",
+    "workhorse.turn.elapsed_s",
     "workhorse.turn.idle_s",
     "workhorse.gas",
 )
@@ -780,7 +784,7 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
         WITH latest AS (
             SELECT run_id, name, value, attrs_json, ts,
                    ROW_NUMBER() OVER (
-                       PARTITION BY run_id, name ORDER BY ts DESC
+                        PARTITION BY run_id, name ORDER BY ts DESC, rowid DESC
                    ) AS rn
             FROM metrics
             WHERE name IN ({placeholders}) AND run_id != '' AND ts >= ? {run_clause}
@@ -797,7 +801,9 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
             row["run_id"],
             {
                 "run_id": row["run_id"], "workflow": "", "run_dir": "", "node": "",
-                "node_elapsed_s": 0.0, "turn_idle_s": 0.0, "gas": None,
+                "node_elapsed_s": 0.0, "turn_active": None,
+                "turn_elapsed_s": 0.0, "turn_idle_s": 0.0,
+                "wait_kind": "", "wait_elapsed_s": 0.0, "gas": None,
                 "last_beat_ts": 0.0, "alive": False,
             },
         )
@@ -809,10 +815,25 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
         elif row["name"] == "workhorse.node.elapsed_s":
             entry["node_elapsed_s"] = row["value"]
             entry["node"] = entry["node"] or attrs.get("node", "")
+        elif row["name"] == "workhorse.wait.active":
+            if row["value"] >= 1:
+                entry["wait_kind"] = attrs.get("wait_kind", "unknown")
+        elif row["name"] == "workhorse.wait.elapsed_s":
+            entry["wait_elapsed_s"] = row["value"]
+        elif row["name"] == "workhorse.turn.active":
+            entry["turn_active"] = row["value"] >= 1
+        elif row["name"] == "workhorse.turn.elapsed_s":
+            entry["turn_elapsed_s"] = row["value"]
         elif row["name"] == "workhorse.turn.idle_s":
             entry["turn_idle_s"] = row["value"]
         elif row["name"] == "workhorse.gas":
             entry["gas"] = row["value"]
+    for entry in runs.values():
+        if entry["turn_active"] is False:
+            entry["turn_idle_s"] = 0.0
+            entry["turn_elapsed_s"] = 0.0
+        if not entry["wait_kind"]:
+            entry["wait_elapsed_s"] = 0.0
 
     # workflow/run_dir live on the resource, which only the spans table carries.
     for run_id, entry in runs.items():

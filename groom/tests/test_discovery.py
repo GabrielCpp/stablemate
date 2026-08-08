@@ -175,7 +175,7 @@ def test_scan_marks_blocked_workflow_and_finished_run():
 
     def _fake_read_file(volume, rel_path):
         if volume == "author-1-runs" and rel_path.endswith("checkpoint.json"):
-            return '{"current_id": "resolve_integrity"}'
+            return '{"engine": "pyflow", "state": "resolve_integrity"}'
         if volume == "coder-2-runs" and rel_path.endswith("run.json"):
             return '{"terminal": "done"}'
         if volume == "author-1-workspace" and rel_path == "docs/gate.md":

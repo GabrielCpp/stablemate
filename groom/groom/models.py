@@ -27,6 +27,9 @@ class GateInfo:
     file_path: str
     question: str = ""
     status: str = "AWAITING_OPERATOR"
+    # A pyflow checkpoint can identify an older gate whose file predates the
+    # canonical STATUS header. It remains answerable while that checkpoint is live.
+    legacy_headerless: bool = False
 
 
 @dataclass
@@ -111,6 +114,13 @@ class RunTelemetry:
     # Seconds since the streaming agent last wrote a line. Small = streaming and
     # healthy however long the turn runs; climbing = wedged.
     turn_idle_s: float = 0.0
+    # Lifecycle metrics make idle meaningful only while a turn is actually open.
+    # None is an older producer that never emitted turn.active.
+    turn_active: bool | None = None
+    turn_elapsed_s: float = 0.0
+    # Explicit runtime wait. Empty kind means no current wait (or an older producer).
+    wait_kind: str = ""
+    wait_elapsed_s: float = 0.0
     # The root span's terminal status, and the timestamp it reported. "" while the
     # run is live. Both are scoped to ONE session: a run_id is derived from the run
     # dir, so ``--resume-run`` reuses it, and an earlier session's root span must

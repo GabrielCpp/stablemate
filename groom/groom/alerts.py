@@ -198,6 +198,11 @@ def _note_alive(run: RunTelemetry) -> None:
     run.fired.discard("STALL")
 
 
+def _activity(attrs: dict[str, Any]) -> str:
+    """Current activity from pyflow, with the retired prefixed spelling as fallback."""
+    return str(attrs.get("activity") or attrs.get("wf.activity") or "")
+
+
 def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
     """Fold decoded spans into the hot cache and evaluate the ingest-driven
     rules. Returns the alerts that newly fired (already deduped)."""
@@ -220,8 +225,8 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         run.last_span_ts = now
         _clear_stale_terminal(run, float(span.get("end_ts") or 0.0))
         attrs = span.get("attrs") or {}
-        if attrs.get("wf.activity"):
-            run.activity = str(attrs["wf.activity"])
+        if activity := _activity(attrs):
+            run.activity = activity
         events = {event.get("name") for event in attrs.get("events") or []}
         label = f"{run.workflow or 'run'} {run_id}"
 
@@ -317,11 +322,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         attrs = point.get("attrs") or {}
         node = str(attrs.get("node", ""))
         value = float(point.get("value") or 0.0)
-        # The live gauges carry wf.activity (workhorse stamps the two dashboard
-        # dimensions on node.active + the heartbeats), so the row's "what is it
-        # doing" tracks the current node without waiting for a span to export.
-        if attrs.get("wf.activity"):
-            run.activity = str(attrs["wf.activity"])
+        if activity := _activity(attrs):
+            run.activity = activity
         if name in _LIVENESS_METRICS:
             run.last_heartbeat_ts = now
         elif name == "workhorse.gas.refuels":
@@ -345,8 +347,30 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         elif name == "workhorse.node.elapsed_s":
             if not run.current_node or run.current_node == node:
                 run.node_elapsed_s = value
+        elif name == "workhorse.wait.active":
+            if value >= 1:
+                run.wait_kind = str(attrs.get("wait_kind") or "unknown")
+                run.fired.discard("STUCK")
+            else:
+                run.wait_kind = ""
+                run.wait_elapsed_s = 0.0
+        elif name == "workhorse.wait.elapsed_s":
+            if run.wait_kind:
+                run.wait_elapsed_s = value
+        elif name == "workhorse.turn.active":
+            run.turn_active = value >= 1
+            if not run.turn_active:
+                run.turn_idle_s = 0.0
+                run.turn_elapsed_s = 0.0
+                run.fired.discard("STUCK")
+        elif name == "workhorse.turn.elapsed_s":
+            if run.turn_active is not False:
+                run.turn_elapsed_s = value
         elif name == "workhorse.turn.idle_s":
-            run.turn_idle_s = value
+            if run.turn_active is not False:
+                run.turn_idle_s = value
+                if value <= _stuck_after_s():
+                    run.fired.discard("STUCK")
     return []
 
 
@@ -381,17 +405,26 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
                 + (f" (last seen in '{run.current_node}')" if run.current_node else ""),
                 alerts,
             )
-        elif run.current_node and run.node_elapsed_s > _stuck_after_s():
+        elif run.wait_kind:
+            continue
+        elif run.turn_active is True and run.turn_idle_s > _stuck_after_s():
+            _fire(
+                run,
+                "STUCK",
+                f"{label}: agent turn in '{run.current_node}' has been silent for "
+                f"{int(run.turn_idle_s / 60)} min while the process keeps heartbeating",
+                alerts,
+            )
+        elif (
+            run.turn_active is not True
+            and run.current_node
+            and run.node_elapsed_s > _stuck_after_s()
+        ):
             _fire(
                 run,
                 "STUCK",
                 f"{label}: alive (heartbeating) but node '{run.current_node}' has "
                 f"been open {int(run.node_elapsed_s / 60)} min"
-                + (
-                    f", agent silent for {int(run.turn_idle_s / 60)} min"
-                    if run.turn_idle_s > 60
-                    else ""
-                )
                 + " — the run is not hung, it is not progressing",
                 alerts,
             )

@@ -326,7 +326,32 @@ def test_run_metrics_cell_order_is_the_layout():
     # would hand that decision to whichever serializer touched it last.
     now = 1_700_000_000.0
     m = projection.metrics(_wf("x", state=WorkflowState.RUNNING), _tel("x"), {}, now=now)
-    assert [cell["key"] for cell in m["cells"]][:3] == ["node", "in node", "agent idle"]
+    assert [cell["key"] for cell in m["cells"]][:6] == [
+        "node",
+        "in node",
+        "wait",
+        "in wait",
+        "in turn",
+        "agent idle",
+    ]
+
+
+def test_wait_takes_precedence_over_stale_turn_details() -> None:
+    tel = _tel(
+        "x",
+        current_node="write_story",
+        node_elapsed_s=7200,
+        turn_active=False,
+        turn_idle_s=1,
+        wait_kind="operator",
+        wait_elapsed_s=3600,
+    )
+
+    row = projection.run_row(_wf("x", state=WorkflowState.RUNNING), tel)
+
+    assert row["mini"] == "waiting operator 1.0h"
+    assert row["wait_kind"] == "operator"
+    assert row["turn_active"] is False
 
 
 def test_run_metrics_empty_without_any_telemetry():

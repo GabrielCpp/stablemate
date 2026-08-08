@@ -28,6 +28,7 @@ from litestar.static_files import create_static_files_router
 
 from groom import (
     alerts,
+    checkpoints,
     discovery,
     docker_io,
     localfs,
@@ -38,7 +39,7 @@ from groom import (
     state,
     store,
 )
-from groom.gates import answer_gate
+from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 ASSETS_DIR = Path(__file__).parent / "assets"
@@ -179,6 +180,37 @@ async def _ensure_volumes(container_id: str) -> None:
     )
 
 
+def _native_gate(run: RunTelemetry) -> GateInfo | None:
+    """The exact gate named by a native pyflow checkpoint, if still pending."""
+    if not run.run_dir or not run.workspace:
+        return None
+    raw = localfs.read_file(run.run_dir, "checkpoint.json")
+    if raw is None:
+        return None
+    waiting_on = checkpoints.parse_position(raw).waiting_on
+    if not waiting_on:
+        return None
+    workspace = Path(run.workspace).resolve()
+    path = Path(waiting_on)
+    candidate = path.resolve() if path.is_absolute() else (workspace / path).resolve()
+    try:
+        relative = candidate.relative_to(workspace)
+    except ValueError:
+        return None
+    content = localfs.read_file(str(workspace), str(relative))
+    if content is None:
+        return None
+    status = status_of(content)
+    if status not in {"", AWAITING}:
+        return None
+    return GateInfo(
+        workflow_id=run.run_id,
+        file_path=str(relative),
+        question=extract_question(content),
+        legacy_headerless=not status,
+    )
+
+
 def _sync_native_row(run: RunTelemetry) -> bool:
     """Project a run's telemetry hot-cache entry onto a dashboard row when the run
     is **native** — i.e. its dir exists on groom's own host, which is both the test
@@ -204,11 +236,14 @@ def _sync_native_row(run: RunTelemetry) -> bool:
         return False
     before = state.WORKFLOWS.get(run.run_id)
     prev = (
-        (before.state, before.current_node, before.activity) if before else None
+        (before.state, before.current_node, before.activity, tuple(before.gates))
+        if before
+        else None
     )
+    gate = None if run.terminal else _native_gate(run)
     if not projection.is_live(run, time.time()):
         new_state = WorkflowState.FINISHED
-    elif before and before.gates:
+    elif gate is not None:
         new_state = WorkflowState.BLOCKED
     else:
         new_state = WorkflowState.RUNNING
@@ -230,7 +265,16 @@ def _sync_native_row(run: RunTelemetry) -> bool:
     )
     if run.terminal:
         wf.gates.clear()
-    return prev is None or prev != (wf.state, wf.current_node, wf.activity)
+    elif gate is not None:
+        wf.gates = {gate.file_path: gate}
+    else:
+        wf.gates.clear()
+    return prev is None or prev != (
+        wf.state,
+        wf.current_node,
+        wf.activity,
+        tuple(wf.gates),
+    )
 
 
 async def _project_native_rows(records: list) -> None:
@@ -245,13 +289,27 @@ async def _project_native_rows(records: list) -> None:
     than up to one tick late.
     """
     run_ids = {r.get("run_id") for r in records if r.get("run_id")}
-    changed = [
-        _sync_native_row(state.RUNS[rid]) for rid in run_ids if rid in state.RUNS
-    ]
+    changed = []
+    newly_blocked = []
+    for run_id in run_ids:
+        run = state.RUNS.get(run_id)
+        if run is None:
+            continue
+        existing = state.WORKFLOWS.get(run_id)
+        was_blocked = existing is not None and existing.state == WorkflowState.BLOCKED
+        changed.append(_sync_native_row(run))
+        wf = state.WORKFLOWS.get(run_id)
+        if wf is not None and wf.state == WorkflowState.BLOCKED and not was_blocked:
+            newly_blocked.append(wf)
     if any(changed):
         await _broadcast_shell()
         for run_id in run_ids:
             await _push_detail(run_id)
+    for wf in newly_blocked:
+        gate = next(iter(wf.gates.values()))
+        await _broadcast_notify(
+            f"{wf.workflow_type or wf.name} is waiting on {gate.file_path}"
+        )
 
 
 @get("/", include_in_schema=False)
@@ -679,12 +737,23 @@ async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> Non
     answer = str(data.get("answer", ""))
     wf = state.WORKFLOWS.get(container_id)
     workspace_volume = wf.workspace_volume if wf else ""
+    gate = wf.gates.get(file_path) if wf else None
+    allow_headerless = bool(gate and gate.legacy_headerless)
+    if allow_headerless:
+        run = state.RUNS.get(container_id)
+        current = _native_gate(run) if run is not None else None
+        allow_headerless = bool(
+            current
+            and current.file_path == file_path
+            and current.legacy_headerless
+        )
     result = await answer_gate(
         container_id,
         file_path,
         answer,
         workspace_volume=workspace_volume,
         native=bool(wf and wf.native),
+        allow_headerless=allow_headerless,
     )
     state.record_log(
         {"event": "answer", "container_id": container_id, "file_path": file_path, "ok": result.ok, "message": result.message}

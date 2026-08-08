@@ -107,8 +107,9 @@ on long runs they outgrow everything else combined: in one real store the run
 heartbeat alone was 1.77M of 2.21M metric rows. Nothing reads their history — the
 alert rules fold them into memory at ingest and `groom status` reads only the newest
 point — so the full window bought nothing and cost most of the file. The gauges
-(`turn.idle_s`, `node.elapsed_s`, `node.active`) keep the normal window: a climbing
-`idle_s` *is* the diagnosis of a wedged turn, and they are orders of magnitude smaller.
+(`turn.active`, `turn.idle_s`, `wait.active`, `wait.elapsed_s`, `node.elapsed_s`,
+`node.active`) keep the normal window: climbing idle on an active turn diagnoses a
+wedged agent, while an explicit wait is expected parked work.
 
 **The pane shows the runs connected right now.** Two weeks of retention means the
 unfiltered strip is mostly runs that ended days ago, and a dashboard is for
@@ -120,7 +121,7 @@ naming a run is asking for that run, finished or not.
 
 **Native runs are first-class dashboard rows, not just telemetry.** A run on
 groom's own host advertises its `run_dir`, workspace path, pid, and per-node
-`wf.activity` on the OTLP resource; groom materializes a fleet row from that
+`activity` label on the OTLP resource; groom materializes a fleet row from that
 (keyed by `run_id`), shows what it is doing ("coder · reviewing ACME-A2JX"), and —
 because it shares the host — serves the row's Files/Diff panels and answers its
 operator gates straight from the local filesystem (`groom.localfs`), no docker
@@ -136,7 +137,7 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | Rule | Fires when | Knob (default) |
 |---|---|---|
 | STALL | a live run emits **nothing** — no span, no heartbeat | `GROOM_STALL_MIN` (90) |
-| STUCK | the run **is** heartbeating but has sat in one node too long | `GROOM_STUCK_MIN` (75) |
+| STUCK | a live agent turn is silent too long, or deterministic work has sat in one node too long; explicit waits are excluded | `GROOM_STUCK_MIN` (75) |
 | CHURN | the same node span repeats with no gas refuel | `GROOM_CHURN_REPEATS` (5) |
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
@@ -168,8 +169,10 @@ Read it like this:
 | Reading | Means |
 |---|---|
 | `alive`, node age small | working normally |
-| `alive`, node age large, agent `idle` small | a long but **streaming** turn — healthy |
-| `alive`, node age large, agent `idle` large | **wedged** inside the node (hung tool/API/script) |
+| `alive`, explicit wait | operator/cap/retry wait — parked deliberately |
+| `alive`, active turn age large, agent `idle` small | a long but **streaming** turn — healthy |
+| `alive`, active turn, agent `idle` large | **wedged** agent/tool/API inside the node |
+| `alive`, no turn or wait, node age large | **wedged deterministic work** inside the node |
 | no heartbeat (`DEAD?`) | the process is gone — SIGKILL, OOM, crashed host |
 
 ## What was it saying? (`groom logs`)

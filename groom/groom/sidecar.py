@@ -48,6 +48,7 @@ from watchfiles import Change, DefaultFilter, awatch
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
+from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
 
 WORKSPACE_DIR = Path(os.environ.get("GROOM_WORKSPACE_DIR", "/workspace"))
@@ -138,8 +139,8 @@ def _current_node() -> str:
     if not checkpoint.is_file():
         return ""
     try:
-        return json.loads(checkpoint.read_text()).get("current_id", "")
-    except (OSError, json.JSONDecodeError):
+        return parse_position(checkpoint.read_text()).current_node
+    except OSError:
         return ""
 
 

@@ -82,6 +82,16 @@ def _format_status(rows: list[dict], now: float) -> str:
         beat_age = now - row["last_beat_ts"]
         if not row["alive"]:
             verdict = f"DEAD? no heartbeat for {int(beat_age)}s"
+        elif row.get("wait_kind"):
+            verdict = (
+                f"waiting {row['wait_kind']} for "
+                f"{int(row.get('wait_elapsed_s', 0) / 60)} min"
+            )
+        elif row.get("turn_active"):
+            verdict = (
+                f"active turn {int(row.get('turn_elapsed_s', 0) / 60)} min, "
+                f"idle {int(row['turn_idle_s'])}s"
+            )
         elif row["node_elapsed_s"] > 900:
             verdict = f"alive, but in this node {int(row['node_elapsed_s'] / 60)} min"
         else:
@@ -91,7 +101,11 @@ def _format_status(rows: list[dict], now: float) -> str:
             f"  node    : {row['node'] or '(between nodes)'}"
             f"  ({int(row['node_elapsed_s'])}s in node)\n"
             f"  status  : {verdict}  (last beat {int(beat_age)}s ago)\n"
-            f"  agent   : idle {int(row['turn_idle_s'])}s"
+            + (
+                f"  agent   : idle {int(row['turn_idle_s'])}s"
+                if row.get("turn_active") is not False
+                else "  agent   : no active turn"
+            )
             + (f"   gas: {int(row['gas'])}" if row["gas"] is not None else "")
             + (f"\n  run_dir : {row['run_dir']}" if row["run_dir"] else "")
         )

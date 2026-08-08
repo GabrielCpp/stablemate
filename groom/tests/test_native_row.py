@@ -47,7 +47,7 @@ def test_native_run_becomes_a_row(tmp_path):
     alerts.ingest_metrics([
         _metric("R1", "workhorse.node.active", 1, run_dir=str(run_dir),
                 workspace=str(tmp_path), pid=4242, node="plan",
-                **{"wf.activity": "planning PRED-1"}),
+                **{"activity": "planning PRED-1"}),
     ])
     run = state.RUNS["R1"]
     assert groom_app._sync_native_row(run) is True
@@ -205,6 +205,53 @@ def test_answer_gate_native_writes_local_file(tmp_path):
     written = gate.read_text()
     assert "STATUS: ANSWERED" in written
     assert "yes, proceed" in written
+
+
+def test_native_pyflow_wait_materializes_and_answers_a_legacy_gate(tmp_path):
+    _reset()
+    run_dir = tmp_path / "runs" / "author-r1"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "docs" / "context.md"
+    run_dir.mkdir(parents=True)
+    gate.parent.mkdir(parents=True)
+    gate.write_text("Which interaction policy should the story use?\n")
+    (run_dir / "checkpoint.json").write_text(
+        "{"
+        '"engine":"pyflow","state":"write_story",'
+        f'"waiting_on":"{gate}"'
+        "}"
+    )
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "A1",
+                "workhorse.run.heartbeat",
+                1,
+                run_dir=str(run_dir),
+                workspace=str(workspace),
+                node="write_story",
+            )
+        ],
+        now=time.time(),
+    )
+
+    assert groom_app._sync_native_row(state.RUNS["A1"]) is True
+    wf = state.WORKFLOWS["A1"]
+    assert wf.state == WorkflowState.BLOCKED
+    assert wf.gates["docs/context.md"].legacy_headerless is True
+
+    result = asyncio.run(
+        gates.answer_gate(
+            "A1",
+            "docs/context.md",
+            "Define it consistently with the epic and mockup.",
+            workspace_volume=str(workspace),
+            native=True,
+            allow_headerless=True,
+        )
+    )
+    assert result.ok is True
+    assert gate.read_text().startswith("STATUS: ANSWERED")
 
 
 if __name__ == "__main__":

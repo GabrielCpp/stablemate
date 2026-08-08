@@ -195,9 +195,13 @@ def row_mini(tel: RunTelemetry | None) -> str:
     if tel is None:
         return ""
     bits = []
-    if tel.node_elapsed_s:
+    if tel.wait_kind:
+        bits.append(f"waiting {tel.wait_kind} {fmt_duration(tel.wait_elapsed_s)}")
+    elif tel.turn_active is True:
+        bits.append(f"in turn {fmt_duration(tel.turn_elapsed_s)}")
+    elif tel.node_elapsed_s:
         bits.append(f"in node {fmt_duration(tel.node_elapsed_s)}")
-    if tel.turn_idle_s > 60:
+    if tel.turn_active is not False and tel.turn_idle_s > 60:
         bits.append(f"agent idle {fmt_duration(tel.turn_idle_s)}")
     return " · ".join(bits)
 
@@ -244,10 +248,16 @@ def run_row(
         "silence_s": silence_of(tel, now),
         "node": wf.current_node or (tel.current_node if tel else ""),
         "node_elapsed_s": tel.node_elapsed_s if tel else 0.0,
+        "wait_kind": tel.wait_kind if tel else "",
+        "wait_elapsed_s": tel.wait_elapsed_s if tel else 0.0,
+        "turn_active": tel.turn_active if tel else None,
+        "turn_elapsed_s": tel.turn_elapsed_s if tel else 0.0,
         "turn_idle_s": tel.turn_idle_s if tel else 0.0,
         "mini": row_mini(tel),
         "activity": wf.activity or (tel.activity if tel else ""),
-        "doing": gate.file_path if gate else (hint or wf.activity or wf.current_node),
+        "doing": gate.file_path if gate else (
+            hint or wf.activity or (tel.activity if tel else "") or wf.current_node
+        ),
         "question": question_preview(gate.question) if gate and wf.state == WorkflowState.BLOCKED else "",
         "gate_path": gate.file_path if gate else "",
         "gate_count": len(gates),
@@ -395,6 +405,14 @@ def metrics(
     node = (tel.current_node if tel else "") or str(facts.get("node") or "")
     elapsed = (tel.node_elapsed_s if tel else 0.0) or float(facts.get("node_elapsed_s") or 0.0)
     idle = (tel.turn_idle_s if tel else 0.0) or float(facts.get("turn_idle_s") or 0.0)
+    turn_active = tel.turn_active if tel and tel.turn_active is not None else facts.get("turn_active")
+    turn_elapsed = (tel.turn_elapsed_s if tel else 0.0) or float(
+        facts.get("turn_elapsed_s") or 0.0
+    )
+    wait_kind = (tel.wait_kind if tel else "") or str(facts.get("wait_kind") or "")
+    wait_elapsed = (tel.wait_elapsed_s if tel else 0.0) or float(
+        facts.get("wait_elapsed_s") or 0.0
+    )
     last_beat = max(
         (tel.last_heartbeat_ts if tel else 0.0), float(facts.get("last_beat_ts") or 0.0)
     )
@@ -403,7 +421,13 @@ def metrics(
     cells = [
         {"key": "node", "value": node or "—"},
         {"key": "in node", "value": fmt_duration(elapsed) if elapsed else "—"},
-        {"key": "agent idle", "value": fmt_duration(idle) if idle else "—"},
+        {"key": "wait", "value": wait_kind or "—"},
+        {"key": "in wait", "value": fmt_duration(wait_elapsed) if wait_kind else "—"},
+        {"key": "in turn", "value": fmt_duration(turn_elapsed) if turn_active else "—"},
+        {
+            "key": "agent idle",
+            "value": fmt_duration(idle) if turn_active is not False and idle else "—",
+        },
     ]
     if facts.get("gas") is not None:
         cells.append({"key": "gas", "value": f"{float(facts['gas']):g}"})

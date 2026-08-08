@@ -205,11 +205,13 @@ def test_snapshot_reports_node_terminal_and_gates():
         )
         rd = runs / "coder-20260101-000000"
         rd.mkdir()
-        (rd / "checkpoint.json").write_text('{"current_id": "await_operator"}')
+        (rd / "checkpoint.json").write_text(
+            '{"engine": "pyflow", "state": "write_story", "waiting_on": "/workspace/gate.md"}'
+        )
         (rd / "run.json").write_text('{"terminal": ""}')
         with patch.object(sidecar, "WORKSPACE_DIR", ws), patch.object(sidecar, "RUNS_DIR", runs):
             snap = sidecar.snapshot()
-    assert snap["current_node"] == "await_operator"
+    assert snap["current_node"] == "write_story"
     assert snap["terminal"] == ""
     assert snap["gates"] == [{"file_path": "context.md", "question": "Pick one?"}]
 

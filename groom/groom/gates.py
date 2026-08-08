@@ -68,6 +68,7 @@ async def answer_gate(
     *,
     workspace_volume: str,
     native: bool = False,
+    allow_headerless: bool = False,
 ) -> AnswerResult:
     """Write an operator's answer into a gate file.
 
@@ -98,7 +99,9 @@ async def answer_gate(
         current = await asyncio.to_thread(read, workspace_volume, file_path)
         if current is None:
             return AnswerResult(ok=False, message="gate file not found")
-        if not is_awaiting(current):
+        if not is_awaiting(current) and not (
+            allow_headerless and not status_of(current)
+        ):
             return AnswerResult(ok=False, message="already answered in another tab")
 
         new_text = apply_answer(current, answer)

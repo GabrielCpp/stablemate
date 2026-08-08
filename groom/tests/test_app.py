@@ -578,7 +578,9 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
 
     captured = {}
 
-    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False):
+    async def _fake_answer_gate(
+        cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False
+    ):
         state.clear_gate(cid, fp)  # mirror the real clear
         return AnswerResult(ok=True, message="answered")
 
@@ -611,7 +613,9 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
 
     captured = {}
 
-    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False):
+    async def _fake_answer_gate(
+        cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False
+    ):
         return AnswerResult(ok=False, message="already answered in another tab")
 
     async def _capture_broadcast(fragment):

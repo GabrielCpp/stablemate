@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from groom import docker_io
+from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
 from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
@@ -113,10 +114,7 @@ def _current_run_state(runs_volume: str) -> tuple[str, str]:
     current_node = ""
     checkpoint_raw = docker_io.read_file(runs_volume, f"{latest}/checkpoint.json")
     if checkpoint_raw:
-        try:
-            current_node = json.loads(checkpoint_raw).get("current_id", "")
-        except json.JSONDecodeError:
-            pass
+        current_node = parse_position(checkpoint_raw).current_node
 
     terminal = ""
     run_raw = docker_io.read_file(runs_volume, f"{latest}/run.json")

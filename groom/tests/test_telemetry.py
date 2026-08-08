@@ -88,6 +88,7 @@ def _metrics_request(
     gauge: bool = False,
     ts: float = 2000.0,
     run_dir: str = "",
+    attrs: dict[str, str] | None = None,
 ) -> bytes:
     """One metric point. ``gauge=True`` emits a double gauge (node.active,
     node.elapsed_s, turn.idle_s); the default is an int sum (the heartbeat and
@@ -112,6 +113,9 @@ def _metrics_request(
     if node is not None:
         kv = point.attributes.add()
         kv.key, kv.value.string_value = "node", node
+    for key, attr_value in (attrs or {}).items():
+        kv = point.attributes.add()
+        kv.key, kv.value.string_value = key, attr_value
     point.time_unix_nano = int(ts * 1e9)
     return request.SerializeToString()
 
@@ -755,6 +759,87 @@ def test_stuck_retires_when_the_node_finally_closes():
             now=now + 60,
         )
         assert "STUCK" not in state.RUNS["run-1"].fired
+
+
+def test_explicit_wait_suppresses_stuck_and_clears_stale_turn_idle() -> None:
+    with _TelemetryEnv(), patch.dict(
+        os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
+    ):
+        now = 1000.0
+        points = []
+        for name, value, attrs_map in (
+            ("workhorse.node.active", 1, {}),
+            ("workhorse.node.elapsed_s", 180 * 60, {}),
+            ("workhorse.turn.idle_s", 0, {}),
+            ("workhorse.turn.active", 0, {}),
+            ("workhorse.wait.active", 1, {"wait_kind": "operator"}),
+            ("workhorse.wait.elapsed_s", 180 * 60, {"wait_kind": "operator"}),
+        ):
+            points.extend(
+                otlp.parse_metrics(
+                    _metrics_request(
+                        name,
+                        value=value,
+                        node="write_story",
+                        gauge=True,
+                        attrs=attrs_map,
+                    )
+                )
+            )
+        alerts.ingest_metrics(points, now=now)
+
+        run = state.RUNS["run-1"]
+        assert run.wait_kind == "operator"
+        assert run.wait_elapsed_s == 180 * 60
+        assert run.turn_active is False
+        assert run.turn_idle_s == 0
+        assert alerts.check_time_rules(now=now) == []
+
+
+def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
+    with _TelemetryEnv(), patch.dict(
+        os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
+    ):
+        now = 1000.0
+        points = []
+        for name, value in (
+            ("workhorse.node.active", 1),
+            ("workhorse.node.elapsed_s", 180 * 60),
+            ("workhorse.turn.active", 1),
+            ("workhorse.turn.elapsed_s", 180 * 60),
+            ("workhorse.turn.idle_s", 10),
+        ):
+            points.extend(
+                otlp.parse_metrics(
+                    _metrics_request(name, value=value, node="plan", gauge=True)
+                )
+            )
+        alerts.ingest_metrics(points, now=now)
+        assert alerts.check_time_rules(now=now) == []
+
+        idle = otlp.parse_metrics(
+            _metrics_request(
+                "workhorse.turn.idle_s",
+                value=76 * 60,
+                node="plan",
+                gauge=True,
+            )
+        )
+        alerts.ingest_metrics(idle, now=now)
+        assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["STUCK"]
+
+
+def test_pyflow_activity_label_is_consumed_without_legacy_prefix() -> None:
+    with _TelemetryEnv():
+        points = otlp.parse_metrics(
+            _metrics_request(
+                "workhorse.run.heartbeat",
+                node="plan",
+                attrs={"activity": "planning story A"},
+            )
+        )
+        alerts.ingest_metrics(points, now=1000.0)
+        assert state.RUNS["run-1"].activity == "planning story A"
 
 
 def test_turn_heartbeat_suppresses_stall_during_a_long_agent_turn():
