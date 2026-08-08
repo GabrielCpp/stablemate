@@ -42,6 +42,19 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - This repo's **artifact grammar** — the story file layout:
   {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing story)", true) }}.
 
+## Authority for new behavior
+
+This workflow authors the product contract; it does not merely transcribe behavior already in the
+OKF book. When the epic's seeds and story entry put a goal in scope, you may make the concrete UX
+and interaction decisions needed to make that goal buildable and independently verifiable. State
+each decision explicitly as observable Acceptance Criteria. Those Acceptance Criteria become the
+authoritative contract for the new behavior.
+
+Absence from the existing OKF book is not by itself a reason to block. Existing nodes remain
+authoritative for behavior they already describe, so a new decision must not contradict existing
+documented behavior, broaden the epic's scope, or silently change another journey. Block only when
+the required choice would do one of those things or the supplied sources genuinely conflict.
+
 {%- if workhorse_var('features_dir') %}
 
 ## Ground the story in the book (cite node ids)
@@ -149,7 +162,8 @@ the `- **Status**:` line — status transitions go through `ostler set-status <s
 ## No open questions
 
 Resolve the call or leave it out — do not ship `TBD` / `TODO` / `open question` / "decide whether".
-If a product decision genuinely needs the operator and you cannot settle it, return
+Make in-scope interaction choices yourself under the authority rule above. If a decision changes
+scope, contradicts an existing source, or genuinely needs the operator, return
 `status: "blocked"` with the precise question in `notes` instead of writing indecision into the story.
 
 ## Final response (REQUIRED, exact shape)

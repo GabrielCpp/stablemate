@@ -21,6 +21,14 @@ Working on the workflows themselves wants a checkout of the
 The shape came from an internal workflow-as-python-state-machine design brief, which
 shipped and is now kept only for its reasoning.
 
+## Authoring authority
+
+Author is allowed to define previously unspecified behavior when the epic and story put that
+behavior in scope. Explicit, observable Acceptance Criteria become the authority for those new
+choices; the independent audit checks consistency, verifiability, existing documented behavior,
+and scope rather than demanding that a greenfield detail already exist in the OKF book. A conflict
+with an existing source or a required scope expansion still goes to the operator.
+
 ## Editing authored scope
 
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation

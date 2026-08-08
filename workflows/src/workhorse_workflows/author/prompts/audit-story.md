@@ -57,16 +57,20 @@ a new stylistic preference or silently expand the contract.
    running system boundary, but it must name the epic journey step it unlocks. A DOM selector, file
    presence, framework setup, implementation detail, or vague claim ("works correctly", "looks
    right", "is performant") → **refuted**.
-2. **Grounded.** Each AC must trace to a cited OKF node (or other cited evidence — a design mockup,
-   a spec, a legacy surface). An AC asserting behaviour nothing cited establishes — invented scope —
-   → **refuted**. A citation that resolves to no node is not grounding either; the deterministic gate
-   catches the dangling id, you catch the AC that leans on it.
+2. **Grounded and in scope.** Existing behavior must trace to its cited OKF node or other cited
+   evidence. New behavior is grounded when the epic seed/story entry puts the goal in scope and the
+   Acceptance Criteria make the necessary product and interaction choices explicit. The story is
+   the authored contract for those new choices. Do not refute new in-scope behavior merely because
+   no prior OKF node defines it. Refute behavior that contradicts cited existing behavior, expands
+   beyond the epic, remains ambiguous, or has no path back to either existing evidence or an
+   in-scope epic goal. A citation that resolves to no node is not grounding either.
 
    **When the surface does not exist yet**, grounding still applies but its evidence differs. On a
    screen being built for the first time the book has no node for it and every AC describes
    something not yet on disk — that is the normal state, not invented scope. An AC is grounded here
-   if it traces to the design mockup, spec, or reference surface the story cites. Refute what traces
-   to *nothing* — and "the surface is new" is not itself a warrant.
+   if it traces to the epic's in-scope goal and, where present, the design mockup, spec, or reference
+   surface. The story may define details those sources leave open, but it must define them explicitly
+   and consistently rather than hand them to the coder.
 3. **No hidden decisions.** Catch the semantic open-endedness the structural phrase-list misses:
    "match the legacy behaviour" without saying *what* behaviour, "reasonable defaults", "the usual
    states". If the coder still has a product/UX decision to make, the story isn't ready → **refuted**.
