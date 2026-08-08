@@ -83,29 +83,13 @@ def adopt(
     backlog_path: str | Path = "",
     prefix: str | None = None,
 ) -> Result:
-    """Assign generated ids to direct, unnamed work bullets in an existing backlog.
-
-    Preamble bullets are supporting prose, nested bullets are details of their parent, and
-    ``Filed by coder`` is drained by another workflow. None is independently adopted.
-    """
+    """Assign generated ids to every unnamed bullet in an existing backlog."""
     path = _path(graph, backlog_path)
     doc = _read(graph, backlog_path)
     if doc is None:
         return Result(False, f"no backlog at {path}")
 
-    excluded = [
-        section
-        for section in doc.walk_sections()
-        if section.title.strip().casefold() == "filed by coder"
-    ]
-    candidates = [
-        bullet
-        for section in doc.walk_sections()
-        if section.level >= 2
-        and not any(start.line_start <= section.line_start < start.line_end for start in excluded)
-        for bullet in section.bullets
-        if not bullet.bracketed[0]
-    ]
+    candidates = [bullet for bullet in doc.walk_bullets() if not bullet.bracketed[0]]
     if not candidates:
         return Result(True, "adopted 0 unnamed backlog items", [path])
 
@@ -113,12 +97,33 @@ def adopt(
     for bullet in candidates:
         item_id = ids.allocate(graph, prefix)
         line = lines[bullet.line_start]
-        lines[bullet.line_start] = line.replace(
-            bullet.text, f"[{item_id}] {bullet.text}", 1
+        indent = len(line) - len(line.lstrip())
+        marker_end = next(
+            (offset for offset, char in enumerate(line[indent:]) if char.isspace()),
+            len(line) - indent,
         )
+        content_start = indent + marker_end
+        while content_start < len(line) and line[content_start].isspace():
+            content_start += 1
+        lines[bullet.line_start] = f"{line[:content_start]}[{item_id}] {line[content_start:]}"
     doc.replace_body(lines)
     _write(path, doc)
     return Result(True, f"adopted {len(candidates)} unnamed backlog items", [path])
+
+
+def removal_lines(targets: list[markdown.Bullet]) -> set[int]:
+    """Body-relative lines removable without discarding an unselected nested item."""
+    selected = {bullet.line_start for bullet in targets}
+    removable = [
+        bullet
+        for bullet in targets
+        if all(child.line_start in selected for child in list(bullet.walk())[1:])
+    ]
+    return {
+        line
+        for bullet in removable
+        for line in range(bullet.line_start, bullet.line_end)
+    }
 
 
 def prune(graph: Graph, item_id: str) -> Result:
@@ -128,10 +133,13 @@ def prune(graph: Graph, item_id: str) -> Result:
     target = next((b for b in doc.walk_bullets() if b.bracketed[0] == item_id), None)
     if target is None:
         return Result(False, f"no backlog item '{item_id}'")
-    lines = doc.body.split("\n")
-    # The bullet's span covers its nested continuation lines too, so an item with
-    # sub-bullets leaves none of them orphaned behind.
-    del lines[target.line_start:target.line_end]
+    drop = removal_lines([target])
+    if not drop:
+        return Result(
+            False,
+            f"backlog item '{item_id}' has nested items; prune them first",
+        )
+    lines = [line for index, line in enumerate(doc.body.split("\n")) if index not in drop]
     doc.replace_body(lines)
     _write(_path(graph), doc)
     return Result(True, f"pruned backlog item '{item_id}'", [_path(graph)])

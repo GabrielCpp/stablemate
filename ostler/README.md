@@ -105,9 +105,11 @@ and `docs/epics/index.md` (the epics queue).
 
 Use `create backlog-item` for new work. It allocates a full id and writes
 `- [<full-id>] <text>` under the requested `##` section. If a person has already entered plain
-bullets, `backlog adopt` assigns ids to direct unnamed bullets under `##` headings without changing
-their prose. It deliberately leaves preamble bullets, nested detail bullets, already named bullets,
-and the `## Filed by coder` section untouched; repeated adoption is a no-op.
+bullets, `backlog adopt` assigns ids to every unnamed bullet without changing its prose or nesting.
+The grammar is intentional: every bullet in the backlog is an item. Supporting context and detail
+that should not acquire identity must be written as prose rather than as a list. Repeated adoption is
+a no-op. Pruning a parent refuses while any nested item remains, so one item's completion cannot
+silently discard another.
 
 A milestone's generated `id` is independent of its readable filename and title. Its `sourceItems`
 contains the full ids of the backlog intake it owns. Use `milestone set-source-items` to update that

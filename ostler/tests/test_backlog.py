@@ -17,14 +17,17 @@ def test_create_backlog_item_persists_full_generated_id(tmp_path: Path) -> None:
     assert backlog.items(load(tmp_path)) == [(result.entity_id, "Ship draft recovery")]
 
 
-def test_adopt_names_only_direct_scope_bullets_and_is_idempotent(tmp_path: Path) -> None:
+def test_adopt_names_every_bullet_and_is_idempotent(tmp_path: Path) -> None:
     path = tmp_path / "docs/backlog.md"
     path.parent.mkdir(parents=True)
     path.write_text(
         "# Backlog\n\n"
-        "- **api** — supporting preamble, not a work item\n\n"
+        "1. Document the API integration\n\n"
+        "## Decisions to Preserve\n\n"
+        "- Preserve API-only browser access\n\n"
         "## Scope Items\n\n"
-        "- Ship draft recovery\n"
+        "- Ship draft recovery across\n"
+        "  interrupted browser sessions\n"
         "  - Preserve ten snapshots\n"
         "- [LEGACY-1] Keep named work\n\n"
         "## Filed by coder\n\n"
@@ -38,21 +41,24 @@ def test_adopt_names_only_direct_scope_bullets_and_is_idempotent(tmp_path: Path)
     adopted = path.read_text(encoding="utf-8")
     second = backlog.adopt(load(tmp_path), prefix="acme")
 
-    assert first.ok and "adopted 2" in first.message
+    assert first.ok and "adopted 6" in first.message
     assert second.ok and "adopted 0" in second.message
     assert path.read_text(encoding="utf-8") == adopted
     items = backlog.items(load(tmp_path))
     assert [text for _, text in items] == [
-        "Ship draft recovery",
+        "Document the API integration",
+        "Preserve API-only browser access",
+        "Ship draft recovery across\ninterrupted browser sessions",
+        "Preserve ten snapshots",
         "Keep named work",
+        "Fix an adjacent defect",
         "Choose the publisher",
     ]
     generated = [item_id for item_id, _ in items if item_id != "LEGACY-1"]
     assert all(item_id.startswith("acme-") and len(item_id.split("-", 1)[1]) == 26
                for item_id in generated)
-    assert "  - Preserve ten snapshots" in adopted
-    assert "- Fix an adjacent defect" in adopted
-    assert "- **api** — supporting preamble" in adopted
+    assert "  - [acme-" in adopted
+    assert "1. [acme-" in adopted
 
 
 def test_adopt_accepts_an_explicit_backlog_path(tmp_path: Path) -> None:
@@ -65,3 +71,22 @@ def test_adopt_accepts_an_explicit_backlog_path(tmp_path: Path) -> None:
     assert result.ok and "adopted 1" in result.message
     assert "[acme-" in custom.read_text(encoding="utf-8")
     assert not (tmp_path / "docs/backlog.md").exists()
+
+
+def test_prune_refuses_to_discard_an_independently_identified_nested_item(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "docs/backlog.md"
+    path.parent.mkdir(parents=True)
+    original = (
+        "# Backlog\n\n"
+        "- [ACME-parent] Ship draft recovery\n"
+        "  - [ACME-child] Preserve ten snapshots\n"
+    )
+    path.write_text(original, encoding="utf-8")
+
+    result = backlog.prune(load(tmp_path), "ACME-parent")
+
+    assert not result.ok
+    assert "nested items" in result.message
+    assert path.read_text(encoding="utf-8") == original

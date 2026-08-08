@@ -105,8 +105,9 @@ legacy todo queue; numbering gaps are preserved.
 
 `create backlog-item` is the normal entry point for new intake: it allocates and persists a full
 id. `backlog add` remains available when importing an externally assigned id. `backlog adopt`
-allocates ids for direct unnamed bullets under `##` sections, preserving prose and ignoring
-preamble bullets, nested details, named bullets, and `## Filed by coder`; it is idempotent.
+allocates ids for every unnamed bullet while preserving prose and nesting; it is idempotent. Every
+bullet in a backlog is therefore an item. Write supporting context or non-item details as prose, not
+as list items. `backlog prune` refuses a parent while it still contains nested items.
 
 `create milestone` allocates an id independent of the readable `<name>` used for its filename and
 records full backlog ids in `sourceItems`. `milestone set-source-items` replaces that ownership set

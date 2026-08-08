@@ -14,9 +14,9 @@ collision can require an existing handle to lengthen.
 Backlog items live in the managed `docs/backlog.md` worklist as
 `- [<full-id>] <description>`. New automation creates them through `ostler create backlog-item` or
 `Ostler.create_backlog_item`. Existing human-authored bullets enter the same identity model through
-`ostler backlog adopt` or `Ostler.backlog_adopt`: adoption names direct unnamed bullets beneath
-second-level sections while preserving text, ordering, headings, preamble material, nested details,
-already named bullets, and the coder-filed section. Running it again changes nothing.
+`ostler backlog adopt` or `Ostler.backlog_adopt`: adoption names every unnamed bullet while
+preserving text, ordering, headings, and nesting. The backlog grammar treats every bullet as an item;
+supporting context and non-item detail are prose. Running adoption again changes nothing.
 
 Milestones live at readable `docs/milestones/<slug>.md` paths but carry independently generated full
 ids. Their `sourceItems` list records the full backlog ids whose product outcome they own. Creating a
@@ -31,7 +31,7 @@ multiple milestones.
 - code: ostler/ostler/crud.py::set_milestone_source_items
 - code: ostler/ostler/doctor.py::_check_milestones
 - verify: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id,
-  ostler/tests/test_backlog.py::test_adopt_names_only_eligible_direct_bullets_and_is_idempotent,
+  ostler/tests/test_backlog.py::test_adopt_names_every_bullet_and_is_idempotent,
   ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items
 
 ## Contract
@@ -40,8 +40,9 @@ multiple milestones.
 - readable name: mutable prose or filesystem slug that does not substitute for generated identity.
 - display handle: the shortest currently unambiguous prefix of a full id; accepted at command input
   boundaries and resolved back to the full id before any write.
-- backlog adoption scope: unnamed direct list items inside second-level sections, excluding
-  `## Filed by coder`.
+- backlog adoption scope: every unnamed list item in the document, including preamble and nested
+  items; non-items are expressed as prose.
+- backlog pruning: a parent item cannot be pruned while nested items remain.
 - milestone ownership: each backlog id may occur in at most one milestone `sourceItems` list.
 - mutation: identity allocation freezes the repository prefix and invalidates the facade's cached
   graph so the next read observes the write.

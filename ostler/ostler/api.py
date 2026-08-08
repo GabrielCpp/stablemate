@@ -373,7 +373,7 @@ class Ostler:
         return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
 
     def backlog_adopt(self, path: str = "", *, prefix: str | None = None) -> Result:
-        """Assign ids to unnamed direct work bullets in an existing backlog."""
+        """Assign ids to every unnamed bullet in an existing backlog."""
         return self._apply(backlog_mod.adopt(self._fresh(), path, prefix))
 
     def backlog_prune(self, item_id: str) -> Result:
