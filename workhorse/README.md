@@ -433,7 +433,7 @@ session id is also set as the `session.id` attribute on the agent-turn span.
 For away-from-keyboard monitoring of long runs, workhorse streams OpenTelemetry spans,
 metrics and log records to a local OTLP collector — by default
 [`groom`](https://github.com/GabrielCpp/stablemate/tree/main/groom), which
-stores them in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn:
+stores them in SQLite and pages you (ntfy/webhook + browser) on stall/stuck/churn:
 
 ```bash
 pip install 'workhorse-agent[otel]'

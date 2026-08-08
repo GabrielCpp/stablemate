@@ -26,7 +26,7 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 
 ## Contract
 
-- producer: three server paths send this frame — [receive blocked push](http/groom.md#receive-blocked-push), the [sidecar blocked applier](concepts/sidecar-blocked-applier.md) handling a live `blocked` websocket delta, and the alert-rule dispatcher when a STALL or BUDGET rule fires. All three go through the same one broadcast helper, so there is one wire shape rather than three.
+- producer: three server paths send this frame — [receive blocked push](http/groom.md#receive-blocked-push), the [sidecar blocked applier](concepts/sidecar-blocked-applier.md) handling a live `blocked` websocket delta, and the alert-rule dispatcher when a telemetry alert fires. All three go through the same one broadcast helper, so there is one wire shape rather than three.
 - media: a JSON object on the dashboard websocket. It is not an HTTP body, an inline `<script>`, a DOM `CustomEvent`, or a persisted record.
 - shape: exactly two keys — `type` and `message`. No workflow id, gate file path, rule name as its own member, severity, timestamp, toast variant, lifetime, or envelope is included.
 - discriminator: `type` is the string `notify`, which is how the client's frame dispatcher routes it. It is the same discriminator every dashboard push carries, so the client has one dispatch table rather than a shape-sniffing branch.

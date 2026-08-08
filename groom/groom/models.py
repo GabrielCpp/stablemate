@@ -74,7 +74,7 @@ class RunTelemetry:
     beside the durable SQLite store). Spans export on COMPLETION, so "the run
     ended" is signalled by the root ``run:*`` span arriving (``terminal``), and
     "the run started" is approximated by the first span/metric seen
-    (``first_seen_ts``) — good enough for the BUDGET clock.
+    (``first_seen_ts``).
 
     There is no "has finished" bit here that outlives the process: the only
     liveness question groom answers is *is it emitting right now*, and the answer

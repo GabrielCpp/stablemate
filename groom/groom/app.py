@@ -80,7 +80,7 @@ _DASHBOARD_HTML = stamp_assets(
 
 _QUESTION_NOTIFY_LIMIT = 200
 
-# How often the absence-driven alert rules (STALL/BUDGET) are evaluated. Silence
+# How often the absence-driven alert rules (STALL/STUCK) are evaluated. Silence
 # never triggers an ingest, so these need their own clock.
 RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
 # How often the durable store is re-pruned while groom serves. Pruning is a set of
@@ -951,7 +951,7 @@ async def _stop_live() -> None:
 
 async def _spawn_rules() -> None:
     """on_startup hook: bound groom.db's growth once per serve, then start the
-    STALL/BUDGET ticker."""
+    alert-rule ticker."""
     global _rules_task
     store.prune()
     _rules_task = asyncio.create_task(_rules_loop())

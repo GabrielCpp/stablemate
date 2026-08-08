@@ -35,20 +35,6 @@ tab receives is byte-identical to the body a recovering tab polls.
   starts empty, and the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md)
   starts `True` so an initially empty fleet renders as discovery in progress
   rather than as a finished, empty answer.
-- code: groom/groom/cli.py::serve
-- code: groom/groom/app.py::create_app
-- code: groom/groom/app.py::_spawn_scan
-- code: groom/groom/app.py::_background_scan
-- code: groom/groom/app.py::_spawn_rules
-- code: groom/groom/app.py::_spawn_live
-- code: groom/groom/app.py::_live_loop
-- code: groom/groom/app.py::index
-- code: groom/groom/app.py::dashboard_ws
-- code: groom/groom/app.py::_broadcast_shell
-- code: groom/groom/projection.py::state_message
-- code: groom/groom/assets/dashboard.js::startConnection
-- code: groom/groom/assets/dashboard.js::connect
-- code: groom/groom/assets/dashboard.js::applyState
 - steps:
   1. [`groom serve`](../groom-cli.md#serve) validates the parsed command shape,
      optionally warns when the selected bind host is non-loopback and the
@@ -58,11 +44,11 @@ tab receives is byte-identical to the body a recovering tab polls.
      Docker, project dashboard rows, authenticate clients, or wait for discovery.
   2. The application factory registers **three** startup hooks, not one, because
      they answer to three different clocks and none of them may block the others.
-     [Schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan)
-     creates the one-shot Docker reconciliation task;
-     [schedule alert rule ticker](../http/groom.md#schedule-alert-rule-ticker)
-     prunes the durable store once and then starts the absence-driven STALL/BUDGET
-     evaluation loop; and [schedule live clock](../http/groom.md#schedule-live-clock)
+      [Schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan)
+      creates the one-shot Docker reconciliation task;
+      [schedule alert rule ticker](../http/groom.md#schedule-alert-rule-ticker)
+      prunes the durable store once and then starts the absence-driven STALL/STUCK
+      evaluation loop; and [schedule live clock](../http/groom.md#schedule-live-clock)
      starts the periodic state push. Two shutdown hooks cancel the two long-lived
      loops; the discovery task is one-shot and is not cancelled.
   3. Each startup hook only *schedules* its task and returns, so lifespan startup
@@ -160,4 +146,18 @@ tab receives is byte-identical to the body a recovering tab polls.
   groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing,
   groom/tests/test_dashboard_client.py::test_the_client_module_parses,
   groom/tests/test_dashboard_client.py::test_htmx_is_gone_from_the_shipped_surface
+- code: groom/groom/cli.py::serve
+- code: groom/groom/app.py::create_app
+- code: groom/groom/app.py::_spawn_scan
+- code: groom/groom/app.py::_background_scan
+- code: groom/groom/app.py::_spawn_rules
+- code: groom/groom/app.py::_spawn_live
+- code: groom/groom/app.py::_live_loop
+- code: groom/groom/app.py::index
+- code: groom/groom/app.py::dashboard_ws
+- code: groom/groom/app.py::_broadcast_shell
+- code: groom/groom/projection.py::state_message
+- code: groom/groom/assets/dashboard.js::startConnection
+- code: groom/groom/assets/dashboard.js::connect
+- code: groom/groom/assets/dashboard.js::applyState
 - screenshot: docs/features/groom/gui/screenshots/serve-dashboard-and-startup-discovery-post-discovery.png

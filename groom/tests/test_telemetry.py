@@ -944,18 +944,18 @@ def test_run_dir_survives_decode_and_storage():
         assert store.query_spans(run="run-1")[0]["run_dir"] == "/runs/okf-1"
 
 
-def test_budget_fires_past_max_hours_and_terminal_retires_the_run():
-    with _TelemetryEnv(), patch.dict(
-        os.environ, {"GROOM_MAX_HOURS": "24", "GROOM_STALL_MIN": "100000"}
-    ):
+def test_old_live_run_does_not_fire_an_age_alert():
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "100000"}):
         spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
         alerts.ingest_spans(spans, now=0.0)
-        assert alerts.check_time_rules(now=23 * 3600) == []
-        fired = alerts.check_time_rules(now=25 * 3600)
-        assert [a.rule for a in fired] == ["BUDGET"]
+
+        assert alerts.check_time_rules(now=25 * 3600) == []
+
+
+def test_terminal_run_does_not_fire_absence_rules():
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "1"}):
+        spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
         # The root span arriving = the run ended → no further absence alerts
-        # (fresh run so the dedupe set is empty).
-        state.RUNS.clear()
         alerts.ingest_spans(spans, now=0.0)
         root = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "terminal": "terminal"}])

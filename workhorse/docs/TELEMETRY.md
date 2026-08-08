@@ -18,7 +18,7 @@ For `labels()`, see
 
 For away-from-keyboard monitoring of long runs, workhorse streams OpenTelemetry
 spans and metrics to a local OTLP collector — by default `groom`, which stores them
-in SQLite and pages you (ntfy/webhook + browser) on stall/budget/churn. Install the
+in SQLite and pages you (ntfy/webhook + browser) on stall/stuck/churn. Install the
 extra once and it turns itself on whenever the collector is up:
 
 ```bash
@@ -94,4 +94,3 @@ doing](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORI
 There is also a wall-clock ceiling,
 `WORKHORSE_MAX_RUNTIME_S` — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
-

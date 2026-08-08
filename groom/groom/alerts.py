@@ -2,7 +2,7 @@
 
 Ingest-driven rules fire the moment their evidence arrives (a watchdog-kill
 span event, a give-up node span, the Nth repeat of a churning node); the
-absence-driven rules (STALL, STUCK, BUDGET) are evaluated by a periodic tick,
+absence-driven rules (STALL, STUCK) are evaluated by a periodic tick,
 since silence by definition never triggers an ingest. All rules dedupe per
 ``(run_id, rule)`` via ``RunTelemetry.fired`` — one page per failure mode per
 run, not one per span.
@@ -14,7 +14,7 @@ when its node closes or the run moves to another, CHURN on forward progress.
 Without that a page is permanent — a laptop that idle-sleeps past the stall
 window marks its run dead for the life of the groom process, however healthily
 it resumes. WATCHDOG and GAVE-UP stay set because they report events that
-happened, and BUDGET because a run past the ceiling does not go back under it.
+happened.
 
 STALL and STUCK split what used to be one ambiguous rule. Workhorse now beats
 continuously while its process lives, so silence and slowness are different
@@ -27,7 +27,7 @@ window paged as hung.
 The rules read the :data:`groom.state.RUNS` hot cache, which this module also
 maintains from decoded spans/metrics. Thresholds come from env (read per call
 so tests can patch): ``GROOM_STALL_MIN`` (90), ``GROOM_STUCK_MIN`` (75),
-``GROOM_MAX_HOURS`` (24), ``GROOM_CHURN_REPEATS`` (5), ``GROOM_GIVEUP_NODES``
+``GROOM_CHURN_REPEATS`` (5), ``GROOM_GIVEUP_NODES``
 (qa_give_up,fix_give_up — groom, not workhorse, knows these names: the engine
 stays workflow-agnostic and just reports node spans).
 
@@ -55,7 +55,7 @@ from groom.models import RunTelemetry
 @dataclass
 class Alert:
     run_id: str
-    rule: str  # STALL | STUCK | BUDGET | CHURN | WATCHDOG | GAVE-UP
+    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP
     message: str
 
 
@@ -68,10 +68,6 @@ def _stuck_after_s() -> float:
     # that is merely slow gets force-killed and retried by the runner before
     # groom would page anyone about it.
     return float(os.environ.get("GROOM_STUCK_MIN", "75")) * 60
-
-
-def _budget_s() -> float:
-    return float(os.environ.get("GROOM_MAX_HOURS", "24")) * 3600
 
 
 def _churn_repeats() -> int:
@@ -231,7 +227,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
 
         if span.get("name", "").startswith("run:"):
             # The root span only exports when the run ENDS — its arrival is the
-            # "run over" signal that retires this run from STALL/BUDGET watch. It
+            # "run over" signal that retires this run from absence-rule watch. It
             # retires only the session it closed: a later resume under the same
             # run_id clears it again via ``_clear_stale_terminal``.
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
@@ -366,8 +362,6 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
       hits: the run IS beating, but has sat in one node past the threshold. It
       is alive and going nowhere. This is invisible to the trace (the node's
       span will not export until it ends) and used to be misfiled as a STALL.
-    - BUDGET — a live run older than the wall-clock ceiling (first-seen clock;
-      the root span would have arrived if it had ended).
     """
     now = now if now is not None else time.time()
     alerts: list[Alert] = []
@@ -399,15 +393,6 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
                     else ""
                 )
                 + " — the run is not hung, it is not progressing",
-                alerts,
-            )
-        age = now - run.first_seen_ts
-        if age > _budget_s():
-            _fire(
-                run,
-                "BUDGET",
-                f"{label}: still running after {age / 3600:.1f} h — past the "
-                f"GROOM_MAX_HOURS ceiling",
                 alerts,
             )
     return alerts

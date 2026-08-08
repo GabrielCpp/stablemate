@@ -137,10 +137,12 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 |---|---|---|
 | STALL | a live run emits **nothing** — no span, no heartbeat | `GROOM_STALL_MIN` (90) |
 | STUCK | the run **is** heartbeating but has sat in one node too long | `GROOM_STUCK_MIN` (75) |
-| BUDGET | a run still live past the wall-clock ceiling | `GROOM_MAX_HOURS` (24) |
 | CHURN | the same node span repeats with no gas refuel | `GROOM_CHURN_REPEATS` (5) |
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
+
+Groom deliberately does not alert on total run age: resumptions reuse a run identity and multi-day
+runs are normal. Use workhorse's `WORKHORSE_MAX_RUNTIME_S` when a run needs a hard wall-clock limit.
 
 The crux: workhorse **heartbeats** for as long as its process lives, so silence
 and slowness are different observations. STALL means the run stopped emitting

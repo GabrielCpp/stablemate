@@ -237,7 +237,7 @@ telemetry is being torn down.
 ### Observability (automatic when a collector is reachable)
 
 Install the extra and start a local collector (`groom` by default — it pages you
-on stall/budget/churn; see the groom README). Nothing
+on stall/stuck/churn; see the groom README). Nothing
 else is required: at run start workhorse probes the OTLP endpoint and, if
 something is listening, streams spans/metrics/logs to it.
 
