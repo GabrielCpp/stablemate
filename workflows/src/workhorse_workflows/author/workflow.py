@@ -56,6 +56,7 @@ from workhorse_workflows.author.nodes import (
     adopt_backlog,
     blueprint,
     branch_author,
+    check_mockup_needed,
     check_story_feedback,
     check_story_grounding,
     commit_author,
@@ -98,6 +99,9 @@ from workhorse_workflows.author.surveyor import Surveyor
 #: Reworks of one stage before it is handed to the operator: the epic decomposition, one
 #: story, and one epic's story coverage all share this bound (`vars.max_reworks`).
 MAX_REWORKS = 3
+#: One audit-directed rewrite, then a convergence re-audit. Deterministic structure
+#: and grounding defects keep the broader budget above; semantic drip-feeding does not.
+MAX_AUDIT_REWORKS = 1
 #: Autonomous resolutions of one block before every later one goes to a human. The YAML
 #: wrote these as six separate vars, all `"2"`; they are six because each gate counts its
 #: own attempts, and they are equal because nothing yet argues for different bounds.
@@ -288,6 +292,29 @@ class Author(Workflow):
             "split_resolves": split_resolves,
         }
 
+    def _enter_story(
+        self,
+        epic: str,
+        story_slug: str,
+        story_dir: str,
+        story_path: str,
+        cov_reworks: int = 0,
+        split_resolves: int = 0,
+    ) -> Continue:
+        """Run design only when exact planning evidence leaves a possible new screen."""
+        gate = self.call(check_mockup_needed, story_slug)
+        target = self.design_mockup if gate.required else self.write_story
+        return Continue(
+            gate,
+            target,
+            epic=epic,
+            story_slug=story_slug,
+            story_dir=story_dir,
+            story_path=story_path,
+            cov_reworks=cov_reworks,
+            split_resolves=split_resolves,
+        )
+
     # --- mode dispatch --------------------------------------------------------
 
     def start(self) -> Continue | Done:
@@ -323,9 +350,7 @@ class Author(Workflow):
         if self.mode == "story":
             self.call(adopt_backlog, self.ctx.backlog_path)
             seeded = self.call(seed_story, self.epic, self.epics_dir, self.bullet, self.backlog)
-            return Continue(
-                seeded,
-                self.design_mockup,
+            return self._enter_story(
                 epic=self.epic,
                 story_slug=seeded.story_slug,
                 story_dir=seeded.story_dir,
@@ -584,9 +609,7 @@ class Author(Workflow):
                 cov_reworks=cov_reworks,
                 split_resolves=split_resolves,
             )
-        return Continue(
-            pick,
-            self.design_mockup,
+        return self._enter_story(
             epic=epic,
             story_slug=pick.story_slug,
             story_dir=pick.story_dir,
@@ -639,6 +662,8 @@ class Author(Workflow):
         split_resolves: int = 0,
         reworks: int = 0,
         resolves: int = 0,
+        audit_reworks: int = 0,
+        audit_findings: str = "",
     ) -> Continue | Await:
         """Write one story: the coder-ready contract.
 
@@ -664,7 +689,15 @@ class Author(Workflow):
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
         if result.status == "blocked":
             return self._gate_story(result, result.notes, story, resolves)
-        return Continue(result, self.check_story, **story, reworks=reworks, resolves=resolves)
+        return Continue(
+            result,
+            self.check_story,
+            **story,
+            reworks=reworks,
+            resolves=resolves,
+            audit_reworks=audit_reworks,
+            audit_findings=audit_findings,
+        )
 
     def check_story(
         self,
@@ -677,6 +710,8 @@ class Author(Workflow):
         split_resolves: int = 0,
         reworks: int = 0,
         resolves: int = 0,
+        audit_reworks: int = 0,
+        audit_findings: str = "",
     ) -> Continue | Await:
         """Two deterministic gates: is it a contract, and is it grounded?
 
@@ -688,13 +723,37 @@ class Author(Workflow):
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
         structure = self.call(validate_story, story_dir)
         if not structure.ok:
-            return self._rework(structure, structure.errors, story, reworks, resolves)
+            return self._rework(
+                structure,
+                structure.errors,
+                story,
+                reworks,
+                resolves,
+                audit_reworks,
+                audit_findings,
+            )
         grounding = self.call(
             check_story_grounding, story_dir, self._epic_dir(epic), self.ctx.features_dir
         )
         if not grounding.ok:
-            return self._rework(grounding, grounding.errors, story, reworks, resolves)
-        return Continue(grounding, self.audit_story, **story, reworks=reworks, resolves=resolves)
+            return self._rework(
+                grounding,
+                grounding.errors,
+                story,
+                reworks,
+                resolves,
+                audit_reworks,
+                audit_findings,
+            )
+        return Continue(
+            grounding,
+            self.audit_story,
+            **story,
+            reworks=reworks,
+            resolves=resolves,
+            audit_reworks=audit_reworks,
+            audit_findings=audit_findings,
+        )
 
     def audit_story(
         self,
@@ -707,6 +766,8 @@ class Author(Workflow):
         split_resolves: int = 0,
         reworks: int = 0,
         resolves: int = 0,
+        audit_reworks: int = 0,
+        audit_findings: str = "",
     ) -> Continue | Await:
         """A skeptical reader tries to refute that a coder could build this.
 
@@ -725,25 +786,53 @@ class Author(Workflow):
                 "story_slug": story_slug,
                 "story_dir": story_dir,
                 "features_dir": self.ctx.features_dir,
+                "prior_audit_findings": audit_findings,
             },
         )
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
         if result.status == "failed":
-            return self._rework(result, result.notes, story, reworks, resolves)
+            if audit_reworks >= MAX_AUDIT_REWORKS:
+                return self._gate_story(result, result.notes, story, resolves)
+            return Continue(
+                result,
+                self.rework_story,
+                **story,
+                notes=result.notes,
+                reworks=reworks,
+                resolves=resolves,
+                audit_reworks=audit_reworks + 1,
+                audit_findings=result.notes,
+            )
         return Continue(result, self.story_feedback, **story, reworks=reworks, resolves=resolves)
 
     def _rework(
-        self, result: object, notes: str, story: dict[str, object], reworks: int, resolves: int
+        self,
+        result: object,
+        notes: str,
+        story: dict[str, object],
+        reworks: int,
+        resolves: int,
+        audit_reworks: int,
+        audit_findings: str,
     ) -> Continue | Await:
         """`guard_story`: one more rework pass, or hand the story to the operator.
 
-        Not a state — the routing half of a branch, called from the three gates that can
-        fail a story (structure, grounding, audit). The YAML's three `→ guard_story`
-        edges are these three call sites.
+        Not a state — the routing half of a branch, called from the deterministic structure
+        and grounding gates. Semantic audit failures have their own tighter convergence
+        budget before reaching the same operator gate.
         """
         if reworks >= MAX_REWORKS:
             return self._gate_story(result, notes, story, resolves)
-        return Continue(result, self.rework_story, **story, notes=notes, reworks=reworks, resolves=resolves)
+        return Continue(
+            result,
+            self.rework_story,
+            **story,
+            notes=notes,
+            reworks=reworks,
+            resolves=resolves,
+            audit_reworks=audit_reworks,
+            audit_findings=audit_findings,
+        )
 
     def _gate_story(
         self, result: object, notes: str, story: dict[str, object], resolves: int
@@ -772,6 +861,8 @@ class Author(Workflow):
         split_resolves: int = 0,
         reworks: int = 0,
         resolves: int = 0,
+        audit_reworks: int = 0,
+        audit_findings: str = "",
     ) -> Continue:
         """Rewrite the story against whichever gate failed it, and what already failed.
 
@@ -800,7 +891,15 @@ class Author(Workflow):
             },
         )
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
-        return Continue(result, self.check_story, **story, reworks=reworks + 1, resolves=resolves)
+        return Continue(
+            result,
+            self.check_story,
+            **story,
+            reworks=reworks + 1,
+            resolves=resolves,
+            audit_reworks=audit_reworks,
+            audit_findings=audit_findings,
+        )
 
     def resolve_story(
         self,

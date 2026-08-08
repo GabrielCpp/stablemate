@@ -42,6 +42,7 @@ from workhorse_workflows.author.nodes.coverage import prune_backlog, validate_co
 from workhorse_workflows.author.nodes.epics import select_epic, select_epic_document
 from workhorse_workflows.author.nodes.intake import adopt_backlog
 from workhorse_workflows.author.nodes.stories import (
+    check_mockup_needed,
     check_story_feedback,
     check_story_grounding,
     prune_bullet,
@@ -56,6 +57,7 @@ __all__ = [
     "blueprint",
     "adopt_backlog",
     "branch_author",
+    "check_mockup_needed",
     "check_story_feedback",
     "check_story_grounding",
     "commit_author",

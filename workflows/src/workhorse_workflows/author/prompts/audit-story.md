@@ -38,6 +38,18 @@ coder could actually build and a QA could actually verify, grounded in the resea
 - the epic's `## Seeds` and `## Stories` sections in `epic.md` — the scope this story claims (the
   seeds it covers and its dependency edges)
 
+{% if workhorse_var('prior_audit_findings') %}
+## Convergence re-audit
+
+A full independent audit already found:
+
+{{ workhorse_var('prior_audit_findings') }}
+
+Verify every listed finding against the revised story. Fail only when a listed finding remains
+unresolved or the repair introduced a concrete regression on the same readiness axes. Do not open
+a new stylistic preference or silently expand the contract.
+{% endif %}
+
 ## How to audit — try to refute on each axis
 
 1. **Observable + verifiable.** Each AC must be a thing the journey actor could see or do once the
@@ -85,7 +97,7 @@ Then return this exact JSON in your **final response**. The workflow REQUIRES th
 ```
 
 **Exact requirements**:
-- `status` is `"passed"` only when you independently re-judged the riskiest criteria and could
+- `status` is `"passed"` only when you independently re-judged every axis and could
   **not** refute coder-readiness; otherwise `"failed"`.
 - On `"failed"`, `notes` must enumerate the concrete fixes (which AC, why it fails, what it needs)
   so the rework loop can resolve them — not a vague "needs work".

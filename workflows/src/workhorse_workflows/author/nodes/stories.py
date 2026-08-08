@@ -26,6 +26,7 @@ from workhorse_workflows.author.shared.schemas.main import (
     Defects,
     Feedback,
     Ledger,
+    MockupGate,
     Pruned,
     SeededStory,
     StoryChoice,
@@ -271,6 +272,54 @@ def remove_story(
 
 
 # ── epic mode's story loop ──────────────────────────────────────────────────
+
+
+@blueprint.node
+def check_mockup_needed(
+    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+) -> MockupGate:
+    """Skip design only when exact graph identities prove covered surfaces exist.
+
+    Slugs, titles and fuzzy matches are deliberately absent. Any missing story, cover,
+    seed metadata or node keeps the turn, which makes this optimization fail closed.
+    """
+    try:
+        graph = Ostler(survey_repo_root(repo_dir)).graph
+    except (OSError, ValueError, RuntimeError) as exc:
+        return MockupGate(evidence=f"knowledge graph unavailable: {exc}")
+    found = graph.find_story(story_slug.strip())
+    if found is None:
+        return MockupGate(evidence="story is absent from the knowledge graph")
+    epic, story = found
+    if not story.seed_items:
+        return MockupGate(evidence="story has no covered seed evidence")
+
+    seeds = {seed.id: seed for seed in epic.seeds}
+    nodes = {node.id: node for node in graph.ui_nodes}
+    features = {feature.key for feature in graph.features} | {
+        feature.path.relative_to(graph.root).as_posix() for feature in graph.features
+    }
+    unresolved = []
+    for seed_id in story.seed_items:
+        seed = seeds.get(seed_id)
+        surface = str((seed.raw if seed else {}).get("surface", "")).strip()
+        node = nodes.get(surface)
+        if not surface or (surface not in features and node is None):
+            unresolved.append(seed_id)
+        elif node is not None and node.type in {"flow", "untyped"}:
+            # A journey can still introduce a screen; it is not proof one exists.
+            unresolved.append(seed_id)
+
+    if unresolved:
+        return MockupGate(
+            evidence="covered seeds lack conclusive existing-surface evidence: "
+            + ", ".join(unresolved)
+        )
+    logger.info("story '%s' is fully mapped to documented surfaces", story_slug)
+    return MockupGate(
+        required=False,
+        evidence="every covered seed resolves to an existing typed node or feature",
+    )
 
 
 @blueprint.node

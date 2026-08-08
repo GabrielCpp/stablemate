@@ -338,6 +338,7 @@ class _Agent:
         escalate: bool = False,
         explode: set[str] | None = None,
         edit_plans: list[dict[str, Any]] | None = None,
+        existing_surface: bool = False,
     ) -> None:
         self.repo = repo
         self.review_epics = review_epics or ["approved"]
@@ -349,6 +350,7 @@ class _Agent:
         self.escalate = escalate
         self.explode = set(explode or ())
         self.edit_plans = list(edit_plans or ())
+        self.existing_surface = existing_surface
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
@@ -521,9 +523,20 @@ The running system is the source of truth.
                 meta={"sourceBullet": "[p1] Users can edit their profile"},
             )
             return {"status": "complete", "notes": "profile seed recorded"}
+        surface = "docs/features/web/accounts.md"
+        if self.existing_surface:
+            path = self.repo / surface
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "---\ntype: feature\nslug: accounts\narea: web\n"
+                "title: Accounts\n---\n# Accounts\n\nExisting account surface.\n",
+                encoding="utf-8",
+            )
         for seed_id, text in SEEDS.items():
-            okf.add_seed(EPIC, seed_id, status="researched", summary=text,
-                         meta={"sourceBullet": text})
+            meta = {"sourceBullet": text}
+            if self.existing_surface:
+                meta["surface"] = surface
+            okf.add_seed(EPIC, seed_id, status="researched", summary=text, meta=meta)
         return {"status": "complete", "notes": "seeds already recorded"}
 
     def _split_stories(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -687,6 +700,19 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
 
     # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
+
+
+def test_epic_mode_skips_mockups_only_for_exact_existing_surface_evidence(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """An exact typed OKF node removes two agent turns; missing metadata removes none."""
+    agent = _Agent(backlogged, existing_surface=True)
+
+    _drive(_env(tmp_path), agent)
+
+    assert agent.counts()["design-mockup"] == 0, agent.counts()
+    assert agent.counts()["write-story"] == 2, agent.counts()
+    assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
 def test_epic_mode_adopts_unnamed_scope_before_decomposition(
@@ -966,9 +992,9 @@ def test_an_escalated_story_block_waits_on_the_story_context(
 ) -> None:
     """The story gate's other arm: the resolver declines, so a human is waited on.
 
-    The rework budget is spent first (three laps against a failing auditor), then the gate
-    hands the block to the resolver, which escalates — and the wait lands on the *story's*
-    context file, not the run-wide one.
+    One audit-directed repair and convergence re-audit happen first, then the gate hands
+    the block to the resolver, which escalates — and the wait lands on the *story's* context
+    file, not the run-wide one.
     """
     seen: list[Path] = []
 
@@ -983,8 +1009,15 @@ def test_an_escalated_story_block_waits_on_the_story_context(
 
     assert seen == [backlogged / EPIC_DIR / "stories/01-sign-in/context.md"], seen
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # Three reworks, then the gate: the fourth audit is the one that gave up.
-    assert agent.counts()["rework-story"] == 3, agent.counts()
+    assert agent.counts()["rework-story"] == 1, agent.counts()
+    story_audits = [
+        args for args in agent.args_for("audit-story") if args["story_slug"] == "01-sign-in"
+    ]
+    assert len(story_audits) == 3, agent.counts()
+    first, convergence, after_operator = story_audits
+    assert first["prior_audit_findings"] == ""
+    assert convergence["prior_audit_findings"] == "01-sign-in cannot be built as written"
+    assert after_operator["prior_audit_findings"] == ""
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 

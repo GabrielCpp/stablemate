@@ -222,6 +222,17 @@ class MockupResult(AuthorResult):
     notes: str = ""
 
 
+class MockupGate(AuthorResult):
+    """Whether structured story evidence leaves a possible new screen to design.
+
+    ``required`` defaults true so missing, old or unreadable planning data preserves
+    the existing design turn rather than skipping a mockup on a guess.
+    """
+
+    required: bool = True
+    evidence: str = ""
+
+
 class WriteStoryResult(AuthorResult):
     """`prompts/write-story.md` and `prompts/rework-story.md` — one story written."""
 
@@ -255,6 +266,7 @@ __all__ = [
     "EpicReview",
     "Feedback",
     "Ledger",
+    "MockupGate",
     "MockupResult",
     "Pruned",
     "PullRequest",
