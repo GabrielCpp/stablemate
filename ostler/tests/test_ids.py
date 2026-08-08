@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from ostler import ids
+from ostler import doctor, ids
 from ostler.model import load
 
 _ULID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")   # 26 uppercase Crockford Base32 chars
@@ -43,6 +43,15 @@ def test_explicit_prefix_overrides_and_registry_pins_it(tmp_path: Path):
     assert ids.allocate(load(root)).startswith("acme-")
     registry = json.loads((root / ".agents/ids.json").read_text())
     assert registry == {"prefix": "acme"}
+
+
+def test_new_counter_free_registry_passes_schema_validation(tmp_path: Path):
+    root = _repo(tmp_path, "acme")
+    ids.allocate(load(root))
+
+    report = doctor.run(load(root))
+
+    assert not [finding for finding in report.findings if finding.code == "schema"]
 
 
 # ── the ULID body: unique, sortable, coordination-free ───────────────────────────────────

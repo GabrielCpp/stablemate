@@ -76,7 +76,7 @@ def _ids_path(graph: Graph) -> Path:
 
 def _load_ids(graph: Graph) -> dict | None:
     """The registry must already exist (the workflow's id allocator creates it). Freezing
-    cannot synthesize the required prefix/counter, so a missing registry is an error."""
+    cannot synthesize the required prefix, so a missing registry is an error."""
     if graph.ids is not None:
         return dict(graph.ids)
     p = _ids_path(graph)

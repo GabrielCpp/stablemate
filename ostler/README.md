@@ -309,7 +309,7 @@ not fail the check.
 
 ## Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `create epic|story|feature` allocates an id,
+Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `create backlog-item|milestone|epic|story|feature` allocates an id,
 scaffolds the canonical markdown, and (for stories) inserts the `### <slug>` block into the epic's
 `## Stories`. There is no external id allocator.
 

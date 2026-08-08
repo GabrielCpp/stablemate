@@ -155,9 +155,10 @@ to `docs/features/…` OKF nodes with ordinary markdown links.
 
 ## 6. Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `ostler epic|story|feature create` allocates an
-id, scaffolds the canonical markdown, and (for stories) adds the `### <slug>` block to the epic's
-`## Stories`. No external id allocator exists.
+Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `ostler create` allocates ids for backlog items,
+milestones, epics, stories, and features, scaffolds their canonical Markdown, and (for stories) adds
+the `### <slug>` block to the epic's `## Stories`. No external id allocator exists. The registry has
+no counter: only the repo prefix and optional frozen-entity records are persisted.
 
 An id is `<PREFIX>-<ULID>`: the repo prefix (first four letters of the repo name, pinned in the
 registry on first use) followed by a monotonic ULID — 26 Crockford-Base32 chars, a 48-bit
