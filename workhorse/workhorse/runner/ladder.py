@@ -1,5 +1,4 @@
-"""The recovery ladder: render the node's prompt, drive the injected backend through
-retry → cap-wait → compact → reframe → default, and return the node's outputs."""
+"""Render one node and drive retry → cap-wait → compact → reframe → stop."""
 
 from __future__ import annotations
 
@@ -27,6 +26,11 @@ from workhorse.runner.reframe import (
     timeout_retry_prompt,
 )
 from workhorse.runner.spec import AgentNode
+from workhorse.runner.waits import (
+    RecoveryWaitBudget,
+    active_recovery_wait_budget,
+    recovery_wait_scope,
+)
 from workhorse.templates import render, render_string
 
 if TYPE_CHECKING:
@@ -105,6 +109,28 @@ class AgentRunner:
         )
 
     def run(
+        self,
+        node: AgentNode,
+        context: WorkflowContext,
+        workflow_dir: Path,
+        session_id_path: Path | None = None,
+        *,
+        resume_session: bool = False,
+        run_dir: Path | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Run one node with cumulative recovery waits that nested retries cannot renew."""
+        budget = RecoveryWaitBudget.from_resilience(self.resilience)
+        with recovery_wait_scope(budget):
+            return self._run(
+                node,
+                context,
+                workflow_dir,
+                session_id_path,
+                resume_session=resume_session,
+                run_dir=run_dir,
+            )
+
+    def _run(
         self,
         node: AgentNode,
         context: WorkflowContext,
@@ -318,8 +344,12 @@ class AgentRunner:
                     otel.turn_event("reframe", node=node_id, attempt=rephrase + 1)
                     # Brief, escalating pause so a reframe doesn't hammer a struggling
                     # service back-to-back.
+                    delay = min(10 * (rephrase + 1), 60)
+                    budget = active_recovery_wait_budget()
+                    if budget is not None:
+                        budget.consume("reframe", delay)
                     with otel.wait("reframe", node_id):
-                        self.clock.sleep(min(10 * (rephrase + 1), 60))
+                        self.clock.sleep(delay)
                     rephrase += 1
                     continue
 
@@ -417,6 +447,7 @@ class AgentRunner:
         """
         resilience = self.resilience
         backend = self.backend
+        budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(resilience)
         max_invoke_retries = resilience.max_invoke_retries
         short_attempt = 0
         cap_waits = 0
@@ -429,11 +460,18 @@ class AgentRunner:
                 # One agent-turn span per CLI invocation; the result event's
                 # duration/usage attach via otel.turn_result, from inside the adapter.
                 otel.turn_start(node_id, model, effort, timeout, backend=backend.name)
-                result = backend.run_turn(
-                    attempt_prompt, node_id, session_id_path, model,
-                    timeout=timeout, resilience=resilience,
-                    cwd=cwd, add_dirs=add_dirs, effort=effort,
-                )
+                with recovery_wait_scope(budget):
+                    result = backend.run_turn(
+                        attempt_prompt,
+                        node_id,
+                        session_id_path,
+                        model,
+                        timeout=timeout,
+                        resilience=resilience,
+                        cwd=cwd,
+                        add_dirs=add_dirs,
+                        effort=effort,
+                    )
                 otel.turn_end()
                 return result
             except BackendInvocationError as exc:
@@ -477,6 +515,7 @@ class AgentRunner:
                     otel.turn_event(
                         "cap_wait", node=node_id, delay_s=int(delay), resume_around=when
                     )
+                    budget.consume("cap", delay)
                     with otel.wait("cap", node_id):
                         sleep_with_notice(
                             delay, node_id, "cap reset", resilience=resilience, clock=self.clock
@@ -502,6 +541,7 @@ class AgentRunner:
                 # Ticked, not silent: once the backoff reaches its cap a single sleep
                 # is half an hour, which to a collector is indistinguishable from a
                 # wedged turn. The same notice loop the cap wait uses proves liveness.
+                budget.consume("retry", delay)
                 with otel.wait("retry", node_id):
                     sleep_with_notice(
                         delay,

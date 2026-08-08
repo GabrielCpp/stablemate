@@ -21,6 +21,11 @@ from _fakes import FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.waits import (
+    RecoveryWaitBudget,
+    RecoveryWaitBudgetExceeded,
+    recovery_wait_scope,
+)
 
 #: The ladder's knobs are injected, never read from the module — so a test states
 #: the exec-retry budget it is asserting against instead of patching a global.
@@ -84,6 +89,33 @@ def test_absent_cli_fails_nontransient_after_bounded_retries():
             assert "does not load nvm" in str(exc)   # the actionable launch-context hint
     assert fake.calls["n"] == RESILIENCE.exec_retry_max + 1   # bounded, not a spin
     assert len(clock.slept) == RESILIENCE.exec_retry_max
+
+
+def test_exec_wait_budget_is_shared_across_repeated_spawns():
+    """Outer turn retries cannot renew the subprocess self-update allowance."""
+    resilience = AgentResilience(
+        exec_retry_max=1,
+        exec_retry_base_s=1,
+        exec_retry_cap_s=1,
+        exec_retry_wait_budget_s=1,
+    )
+    fake = _PopenFailing(99, errno.ETXTBSY)
+    supervisor, clock = _supervisor()
+    budget = RecoveryWaitBudget.from_resilience(resilience)
+    with patch.object(process.subprocess, "Popen", fake), \
+         patch.object(process.shutil, "which", return_value="/x/claude"), \
+         recovery_wait_scope(budget):
+        try:
+            supervisor.spawn(["claude", "-p"], "n", resilience=resilience)
+        except BackendInvocationError:
+            pass
+        try:
+            supervisor.spawn(["claude", "-p"], "n", resilience=resilience)
+            raise AssertionError("the second spawn must not renew the exec wait budget")
+        except RecoveryWaitBudgetExceeded as exc:
+            assert exc.kind == "exec-retry"
+
+    assert clock.slept == [1]
 
 
 def test_self_update_enoexec_half_written_binary_is_retried_then_succeeds():

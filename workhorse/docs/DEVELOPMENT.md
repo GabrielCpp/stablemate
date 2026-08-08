@@ -55,12 +55,12 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
 │   └── runner/
 │       ├── ladder.py          # AgentRunner: render the prompt, drive the retry → cap-wait →
-│       │                      #   compact → reframe → default ladder, return the outputs
+│       │                      #   compact → reframe ladder, return or stop resumably
 │       ├── clock.py           # The Clock port and the system one — what the ladder waits on
 │       ├── failure.py         # The turn's error types, its markers and its classifier
 │       ├── process.py         # Spawn an agent CLI: process group, watchdog, stream loop
 │       ├── caps.py            # How long to wait out a scheduled-reset cap, and how to sleep it
-│       ├── reframe.py         # The ladder's substitute prompts and its default outputs
+│       ├── reframe.py         # The ladder's retry, timeout, and fresh-session prompts
 │       ├── extract.py         # Recover the node's declared outputs from a free-form answer
 │       ├── backends/          # The agent-CLI port and its adapters
 │       │   ├── __init__.py    # AgentBackend: the port, and nothing else

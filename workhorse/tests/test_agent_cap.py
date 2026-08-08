@@ -15,6 +15,7 @@ from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import caps, failure, ladder
 from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.waits import RecoveryWaitBudgetExceeded
 
 #: The cap ladder's knobs are injected, never read from the module — so a test states
 #: the wait budget it asserts against instead of patching a global (rule 5).
@@ -60,6 +61,50 @@ def test_parse_reset_seconds_variants():
     # no time present -> None (caller uses default)
     assert caps.parse_reset_seconds("overloaded", now) is None
     assert caps.parse_reset_seconds("resets soon", now) is None
+
+
+def test_cap_reset_beyond_the_node_wait_budget_fails_without_partial_sleep():
+    """Sleeping partway to a known-unreached cap reset only delays a resumable stop."""
+    clock = FakeClock()
+    calls = {"n": 0}
+
+    def capped(*args, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("spending cap reached", transient=True)
+
+    try:
+        _turn(
+            capped,
+            clock=clock,
+            cap_default_wait_s=100,
+            cap_wait_margin_s=0,
+            cap_wait_budget_s=50,
+        )
+        raise AssertionError("the cap wait should exceed its cumulative budget")
+    except RecoveryWaitBudgetExceeded as exc:
+        assert exc.kind == "cap"
+
+    assert calls["n"] == 1
+    assert clock.slept == []
+
+
+def test_invalid_wait_durations_fall_back_but_zero_budget_disables_waiting():
+    configured = AgentResilience.from_env(
+        {
+            "AGENT_CAP_TICK_S": "0",
+            "AGENT_CAP_WAIT_BUDGET_S": "inf",
+            "AGENT_RETRY_WAIT_BUDGET_S": "nan",
+            "AGENT_REFRAME_WAIT_BUDGET_S": "-1",
+            "AGENT_EXEC_RETRY_WAIT_BUDGET_S": "0",
+        }
+    )
+
+    defaults = AgentResilience()
+    assert configured.cap_tick_s == defaults.cap_tick_s
+    assert configured.cap_wait_budget_s == defaults.cap_wait_budget_s
+    assert configured.retry_wait_budget_s == defaults.retry_wait_budget_s
+    assert configured.reframe_wait_budget_s == defaults.reframe_wait_budget_s
+    assert configured.exec_retry_wait_budget_s == 0
 
 
 SESSION_MSG = (

@@ -23,6 +23,7 @@ from _fakes import FakeBackend, FakeClock
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure, ladder
 from workhorse.runner.failure import BackendInvocationError, OutputParseError
+from workhorse.runner.waits import RecoveryWaitBudgetExceeded
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 
@@ -37,7 +38,7 @@ def _node() -> AgentNode:
     )
 
 
-def _runner(script, backend=None, **kw) -> ladder.AgentRunner:
+def _runner(script, backend=None, clock=None, **kw) -> ladder.AgentRunner:
     """The ladder with every collaborator INJECTED and one turn scripted.
 
     The knobs arrive as ``AgentResilience`` fields, the CLI as an ``AgentBackend``, the
@@ -54,7 +55,7 @@ def _runner(script, backend=None, **kw) -> ladder.AgentRunner:
     return ScriptedRunner(
         backend=backend or FakeBackend(),
         resilience=AgentResilience(**kw),
-        clock=FakeClock(),
+        clock=clock or FakeClock(),
     )
 
 
@@ -328,6 +329,66 @@ def test_transient_failure_still_reframes_not_aborts():
         pass
 
     assert calls["n"] == 3, "transient failure should reframe (initial + 2), then stop"
+
+
+def test_retry_wait_budget_is_shared_across_output_retries():
+    """A parse retry cannot renew the node's transient-backoff allowance."""
+    calls = {"n": 0}
+    clock = FakeClock()
+
+    def backend_turn(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] in {1, 3}:
+            raise BackendInvocationError("network unavailable", transient=True)
+        return "not json"
+
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(backend_turn),
+        resilience=AgentResilience(
+            max_output_retries=1,
+            max_invoke_retries=1,
+            max_rephrase_attempts=0,
+            invoke_backoff_base_s=5,
+            invoke_backoff_cap_s=5,
+            retry_wait_budget_s=5,
+        ),
+        clock=clock,
+    )
+    try:
+        with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+            runner.run(_node(), WorkflowContext(initial={}), Path("."), None)
+        raise AssertionError("the second transient wait must exceed the shared budget")
+    except RecoveryWaitBudgetExceeded as exc:
+        assert exc.kind == "retry"
+
+    assert calls["n"] == 3
+    assert sum(clock.slept) == 5
+
+
+def test_reframe_wait_budget_is_cumulative_for_the_node():
+    """A high reframe attempt count cannot turn into unbounded recovery sleeping."""
+    calls = {"n": 0}
+    clock = FakeClock()
+
+    def transient_fail(*args, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("overloaded", transient=True)
+
+    runner = _runner(
+        transient_fail,
+        clock=clock,
+        max_rephrase_attempts=5,
+        reframe_wait_budget_s=10,
+    )
+    try:
+        with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+            runner.run(_node(), WorkflowContext(initial={}), Path("."), None)
+        raise AssertionError("the second reframe pause must exceed the shared budget")
+    except RecoveryWaitBudgetExceeded as exc:
+        assert exc.kind == "reframe"
+
+    assert calls["n"] == 2
+    assert clock.slept == [10]
 
 
 def test_a_day_long_outage_is_slept_through_not_failed_through():

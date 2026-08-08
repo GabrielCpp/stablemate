@@ -71,6 +71,14 @@ through three layers before it can ever crash the run (see
    prompt is rephrased from scratch in a *fresh session* and the node is retried,
    up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt simplifies the ask
    further (`reframe.rephrase_prompt`).
+
+The attempt counters above are not the elapsed-time boundary. One mutable ledger spans the
+entire agent-node visit, including output retries, compaction, and reframes, so nested recovery
+cannot renew sleep allowances. Cap, transient retry, reframe, and exec-retry waits each have a
+separate cumulative budget. Exceeding one raises without taking the next sleep; the checkpoint
+remains resumable and no output is fabricated. A resumed node gets fresh recovery allowances,
+while `WORKHORSE_MAX_RUNTIME_S`, when set, still counts from the original run start.
+
 **There is no fourth layer.** When all three are spent the node raises and the run
 stops at its checkpoint, for an operator to look at and resume. The ladder never
 answers *for* a node: a null `decision` from a review node or a null plan from a dev
@@ -143,14 +151,18 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
+| `AGENT_RETRY_WAIT_BUDGET_S` | 97305 (~27h) | Cumulative transient-backoff sleep for one agent-node visit; shared by output retries and reframes |
 | `AGENT_CAP_DEFAULT_WAIT_S` | 3600 | Default wait when cap reset time can't be parsed |
 | `AGENT_CAP_WAIT_MARGIN_S` | 120 | Extra seconds added after parsed reset time |
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
 | `AGENT_MAX_CAP_WAITS` | 48 | Maximum consecutive cap waits before giving up |
+| `AGENT_CAP_WAIT_BUDGET_S` | 691320 (8 days + 120s) | Cumulative cap sleep for one agent-node visit; a reset beyond the remaining allowance stops immediately rather than sleeping partway |
 | `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able (self-update in flight: `ETXTBSY`/`ENOENT` with the shim still resolving) before escalating to the transient ladder. A permanently-absent CLI (`which` → `None`) is not retried. |
 | `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |
 | `AGENT_EXEC_RETRY_CAP_S` | 8 | Upper bound on a single exec-retry delay |
+| `AGENT_EXEC_RETRY_WAIT_BUDGET_S` | 23 | Cumulative spawn-time self-update backoff for one agent-node visit |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
+| `AGENT_REFRAME_WAIT_BUDGET_S` | 60 | Cumulative pause before fresh-session reframes for one agent-node visit |
 | `AGENT_WATCHDOG_GRACE_S` | 120 | Grace beyond `AGENT_RESULT_TIMEOUT_S` after which a separate watchdog thread SIGKILLs the turn's process group. The in-loop timeout can only fire *between* stream reads, so a socket that wedges mid-line would otherwise block forever; this is the always-on backstop. |
 
 ### Driver-level guards (workhorse/pyflow)

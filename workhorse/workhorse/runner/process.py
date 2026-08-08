@@ -19,6 +19,7 @@ from workhorse import otel
 from workhorse.config_run import AgentResilience
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.waits import RecoveryWaitBudget, active_recovery_wait_budget
 from workhorse.runner.redact import SecretRedactor
 
 
@@ -210,6 +211,9 @@ class ProcessSupervisor:
         absent CLI is ``transient=False`` (fail fast, resumable).
         """
         _align_pwd(popen_kwargs)
+        wait_budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(
+            resilience
+        )
         attempt = 0
         while True:
             try:
@@ -241,6 +245,7 @@ class ProcessSupervisor:
                     otel.turn_event(
                         "exec_retry", node=node_id, attempt=attempt, code=code, delay_s=int(delay)
                     )
+                    wait_budget.consume("exec-retry", delay)
                     with otel.wait("exec-retry", node_id):
                         self.clock.sleep(delay)
                     continue

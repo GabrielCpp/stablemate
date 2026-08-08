@@ -16,6 +16,7 @@ the module happened to be imported.
 from __future__ import annotations
 
 import os
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -61,7 +62,13 @@ def _positive_float(environ: Mapping[str, str], key: str, default: float) -> flo
     A poll interval of zero is a busy loop; the default is the safer misread.
     """
     value = _float(environ, key, default)
-    return value if value > 0 else default
+    return value if math.isfinite(value) and value > 0 else default
+
+
+def _nonnegative_float(environ: Mapping[str, str], key: str, default: float) -> float:
+    """A finite duration where zero explicitly disables waiting."""
+    value = _float(environ, key, default)
+    return value if math.isfinite(value) and value >= 0 else default
 
 
 def _bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
@@ -118,6 +125,8 @@ class AgentResilience:
     #: probes rather than thousands, short enough that the run restarts within half
     #: an hour of the link returning.
     invoke_backoff_cap_s: float = 1800.0
+    #: Cumulative transient-backoff sleep allowed within one agent-node visit.
+    retry_wait_budget_s: float = 97305.0
     #: Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout``
     #: check can only fire BETWEEN reads — if the agent writes a partial line and
     #: then its socket wedges (a stalled API stream, a hung MCP server), the reader
@@ -130,6 +139,10 @@ class AgentResilience:
     cap_tick_s: float = 600.0
     max_cap_waits: int = 48
     cap_max_wait_s: float = float(8 * 24 * 3600)
+    #: Cumulative cap sleep per node: one maximum structured reset plus its margin.
+    cap_wait_budget_s: float = float(8 * 24 * 3600 + 120)
+    #: Cumulative pause before fresh-session prompt reframes (10s + 20s + 30s).
+    reframe_wait_budget_s: float = 60.0
     #: The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native
     #: binary and self-updates by default, and a manual ``npm i -g`` does the same.
     #: While that in-place rewrite is in flight, exec of the very same path fails for
@@ -139,6 +152,8 @@ class AgentResilience:
     exec_retry_max: int = 5
     exec_retry_base_s: float = 1.0
     exec_retry_cap_s: float = 8.0
+    #: Cumulative self-update exec backoff per node (1s + 2s + 4s + 8s + 8s).
+    exec_retry_wait_budget_s: float = 23.0
     #: How often the streaming loop emits a turn-liveness heartbeat metric. It only
     #: REPORTS the idleness the loop already tracks — it never kills anything — so it
     #: is safe on by default (and a no-op when telemetry is off). Kept well under
@@ -155,18 +170,30 @@ class AgentResilience:
             max_rephrase_attempts=_int(e, "AGENT_MAX_REPHRASE_ATTEMPTS", 3),
             max_compact_attempts=_int(e, "AGENT_MAX_COMPACT_ATTEMPTS", 2),
             result_timeout_s=_float(e, "AGENT_RESULT_TIMEOUT_S", 3600.0),
-            invoke_backoff_base_s=_float(e, "AGENT_INVOKE_BACKOFF_BASE_S", 15.0),
-            invoke_backoff_cap_s=_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 1800.0),
+            invoke_backoff_base_s=_nonnegative_float(e, "AGENT_INVOKE_BACKOFF_BASE_S", 15.0),
+            invoke_backoff_cap_s=_nonnegative_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 1800.0),
+            retry_wait_budget_s=_nonnegative_float(e, "AGENT_RETRY_WAIT_BUDGET_S", 97305.0),
             watchdog_grace_s=_float(e, "AGENT_WATCHDOG_GRACE_S", 120.0),
-            cap_default_wait_s=_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 3600.0),
-            cap_wait_margin_s=_float(e, "AGENT_CAP_WAIT_MARGIN_S", 120.0),
-            cap_tick_s=_float(e, "AGENT_CAP_TICK_S", 600.0),
+            cap_default_wait_s=_nonnegative_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 3600.0),
+            cap_wait_margin_s=_nonnegative_float(e, "AGENT_CAP_WAIT_MARGIN_S", 120.0),
+            cap_tick_s=_positive_float(e, "AGENT_CAP_TICK_S", 600.0),
             max_cap_waits=_int(e, "AGENT_MAX_CAP_WAITS", 48),
-            cap_max_wait_s=_float(e, "AGENT_CAP_MAX_WAIT_S", float(8 * 24 * 3600)),
+            cap_max_wait_s=_nonnegative_float(
+                e, "AGENT_CAP_MAX_WAIT_S", float(8 * 24 * 3600)
+            ),
+            cap_wait_budget_s=_nonnegative_float(
+                e, "AGENT_CAP_WAIT_BUDGET_S", float(8 * 24 * 3600 + 120)
+            ),
+            reframe_wait_budget_s=_nonnegative_float(
+                e, "AGENT_REFRAME_WAIT_BUDGET_S", 60.0
+            ),
             exec_retry_max=_int(e, "AGENT_EXEC_RETRY_MAX", 5),
-            exec_retry_base_s=_float(e, "AGENT_EXEC_RETRY_BASE_S", 1.0),
-            exec_retry_cap_s=_float(e, "AGENT_EXEC_RETRY_CAP_S", 8.0),
-            heartbeat_every_s=_float(e, "WORKHORSE_OTEL_HEARTBEAT_S", 10.0),
+            exec_retry_base_s=_nonnegative_float(e, "AGENT_EXEC_RETRY_BASE_S", 1.0),
+            exec_retry_cap_s=_nonnegative_float(e, "AGENT_EXEC_RETRY_CAP_S", 8.0),
+            exec_retry_wait_budget_s=_nonnegative_float(
+                e, "AGENT_EXEC_RETRY_WAIT_BUDGET_S", 23.0
+            ),
+            heartbeat_every_s=_positive_float(e, "WORKHORSE_OTEL_HEARTBEAT_S", 10.0),
         )
 
     def with_overrides(self, **kwargs: Any) -> AgentResilience:
