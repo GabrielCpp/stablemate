@@ -27,6 +27,30 @@ the linter rules; obey it. The reference for the type table and bullets is the
 - Previous deterministic gate notes: `{{ workhorse_var('gate_notes') }}`
 - Previous semantic review notes: `{{ workhorse_var('review_notes') }}`
 
+{% if workhorse_var('gate_notes') or workhorse_var('review_notes') %}
+## Repair pass contract
+
+This is a repair pass. Do **not** re-document the whole graph or rewrite unrelated prose.
+Treat unresolved findings in the previous notes above as the complete worklist for this pass,
+and edit only the files/anchors needed to close them plus any deterministic `ostler fmt`
+reshaping. A deterministic note beginning `conformant;` is successful gate evidence and context,
+not a grounding repair item.
+
+Before editing, retain the stable `D1`, `D2`, `D3`, ... IDs on semantic review findings and
+normalize only unresolved deterministic grounding failures as `G1`, `G2`, .... For each item:
+
+- identify the exact file/anchor it names;
+- inspect the implementation symbol or cited test before writing prose;
+- either make the smallest documentation edit that the evidence supports, or weaken an
+  overclaim to the exact behavior the evidence proves;
+- if no implementation or test proves a claim, omit the claim or state the limitation rather
+  than inventing support.
+
+Your final `notes` must include a compact checklist summary in this form:
+`D1 resolved: <file#anchor> — <evidence>; D2 resolved: ...`. If an item cannot be resolved
+without a product or author decision, return `blocked` and name that item.
+{% endif %}
+
 ## Steps
 
 1. **Scope what changed.** Read the story's acceptance criteria, its parent epic's `## User
@@ -63,9 +87,6 @@ the linter rules; obey it. The reference for the type table and bullets is the
    no exception, so the correct response to a deletion is to remove any bullet that now cites
    it (if the node it lived in still documents live behavior) or remove the node entirely (if
    the node described only what was deleted) — never to invent a citation for something gone.
-
-
-
    So a config-only story is normal work, not a no-op: find the node that already describes
    that behavior — the gate notes above name the unowned path — and add the `code:` bullet
    pointing at it. That is a documentation change, so it returns `documented` and lists that
@@ -77,10 +98,14 @@ the linter rules; obey it. The reference for the type table and bullets is the
    / `ostler list` for the node if it exists; `ostler scaffold` it if not; author the
    as-built prose and structured bullets; set `code:` / `verify:` to the **real**
    `path::symbol` you just wrote (omit `verify:` rather than invent a test that doesn't
-    exist). Keep every path link resolving.
+   exist). Keep every path link resolving.
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
+   Prefer narrow, evidence-backed prose over broad claims: write "click controls reorder tabs"
+   instead of "keyboard reordering works" unless a keyboard test proves it; write "new nested
+   insertion is blocked" instead of "containers can never nest" when loaded legacy nested
+   containers are preserved or degraded; and name focus/key behavior exactly as implemented.
 5. **Materialize implemented greenfield journeys as OKF flows.** The author journey plan is
    planning prose, not the feature book. If the current story implements a journey slice named
    there and the book has no matching `flow` node yet, create one with `ostler scaffold flow

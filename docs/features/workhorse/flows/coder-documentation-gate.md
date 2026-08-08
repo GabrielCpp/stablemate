@@ -26,9 +26,14 @@ title: Coder documentation gate
      node findings remain visible but do not expand the story's scope.
   5. An independent documentation reviewer compares the story, implementation diff, and affected
      nodes. It approves only a complete current specification and rejects `not_required` for a new
-     service or UI, CLI, HTTP, domain, or format contract.
-  6. Deterministic or semantic failures return to a maximum of three authoring repairs; a block or
-     exhausted budget reaches a `fail` node and prevents QA or commit.
+     service or UI, CLI, HTTP, domain, or format contract. Revision requests are numbered checklist
+     findings in the typed `DocumentationReview.findings` schema, with exact file/anchor targets
+     and defect classes; later reviews receive the previous checklist and first verify whether each
+     item was resolved instead of starting a fresh broad review.
+  6. Deterministic grounding failures and semantic review failures use separate bounded repair
+     counters. A repair pass receives the previous gate/review notes as its complete worklist and
+     must make the smallest evidence-backed edits needed to close those findings. A block or
+     exhausted budget prevents QA or commit.
   7. After QA, regression repair, and the inline fix drain, the parent invokes the same `docs` flow
      again over the final working tree before selecting the story or epic commit node. Epic
      QA-give-up markers and standalone fix-story commits use the same gate. CI and merge
@@ -37,7 +42,16 @@ title: Coder documentation gate
 - end: The story reaches QA and later commit only when every applicable documentation pass reports
   a conformant, directly grounded, semantically complete OKF book; missing documentation cannot be
   flagged and bypassed in either story or epic mode.
-- code: `base-library/workflows/coder/workflow.yaml`
-- verify: `base-library/workflows/coder/tests/test_qa_control_plane.py::test_documentation_flow_is_hard_gated_and_fail_closed`,
-  `base-library/workflows/coder/tests/test_flow_phases.py::test_standalone_docs_passes_author_review_and_deterministic_gate`,
-  `base-library/workflows/coder/tests/test_story_documentation.py::test_documentation_gate_rejects_surface_only_ownership`
+- verify: `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_reworks_and_carries_the_notes_forward`,
+  `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_without_structured_findings_fails_the_flow`,
+  `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_with_an_empty_finding_fails_the_flow`,
+  `workflows/tests/coder/docs/test_flow.py::test_the_grounding_failure_names_the_symbols_not_the_files`,
+  `workflows/tests/coder/docs/test_flow.py::test_the_gates_failure_does_not_spend_the_reviewers_budget`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::_review_finding_problems`,
+  `workflows/src/workhorse_workflows/coder/docs/flow.py::_format_finding`,
+  `workflows/src/workhorse_workflows/coder/docs/flow.py::_review_notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationFinding`,
+  `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationReview`
+- code: `workflows/src/workhorse_workflows/coder/prompts/document-story.md`
+- code: `workflows/src/workhorse_workflows/coder/prompts/review-story-documentation.md`

@@ -8,6 +8,8 @@ here and the encode/decode pair disappears. Nothing on disk carried the encoded 
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
@@ -89,14 +91,39 @@ class DocumentationGate(CoderResult):
     doctor_error_count: int = 0
 
 
+class DocumentationFinding(CoderResult):
+    """One semantic documentation review finding handed back to the author.
+
+    `kind` is intentionally closed: it lets static tests and later deterministic tooling tell a
+    node-type problem from an overclaim rather than scraping prose.
+    """
+
+    id: str = ""
+    kind: Literal[
+        "node-type",
+        "missing-node",
+        "flow-coverage",
+        "overclaim",
+        "grounding",
+        "verify-overclaim",
+        "author-decision",
+    ] = "overclaim"
+    target: str = ""
+    issue: str = ""
+    repair: str = ""
+
+
 class DocumentationReview(CoderResult):
     """`prompts/review-story-documentation.md` — an independent read of what was written.
 
     `status` is `approved`, `revise` or `blocked`. A blank takes `revise`, the YAML's
-    `default:`, which spends a rework rather than approving or failing.
+    `default:`, which spends a rework rather than approving or failing. A `revise` verdict
+    must carry structured findings; the free-form `notes` is a summary, not the repair
+    contract.
     """
 
     status: str = ""
+    findings: list[DocumentationFinding] = []
     notes: str = ""
 
 
@@ -121,6 +148,7 @@ class DocsResult(CoderResult):
 __all__ = [
     "ContextClassification",
     "DocsResult",
+    "DocumentationFinding",
     "DocumentationGate",
     "DocumentationResult",
     "DocumentationReview",

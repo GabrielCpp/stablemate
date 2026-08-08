@@ -166,6 +166,8 @@ class _Agent:
         nodes_after: int = 1,
         review_status: str = "approved",
         approve_after: int = 1,
+        structured_findings: bool = True,
+        review_findings: list[dict[str, Any]] | None = None,
         explode: set[str] | None = None,
     ) -> None:
         self.author_status = author_status
@@ -173,6 +175,8 @@ class _Agent:
         self.nodes_after = nodes_after
         self.review_status = review_status
         self.approve_after = approve_after
+        self.structured_findings = structured_findings
+        self.review_findings = review_findings
         self.explode = explode or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -202,8 +206,28 @@ class _Agent:
 
     def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth >= self.approve_after:
-            return {"status": self.review_status, "notes": "reads as built"}
-        return {"status": "revise", "notes": "the widget's states are not described"}
+            return {"status": self.review_status, "findings": [], "notes": "reads as built"}
+        if not self.structured_findings:
+            return {"status": "revise", "findings": [], "notes": "free-form only"}
+        if self.review_findings is not None:
+            return {
+                "status": "revise",
+                "findings": self.review_findings,
+                "notes": "structured but incomplete",
+            }
+        return {
+            "status": "revise",
+            "findings": [
+                {
+                    "id": "D1",
+                    "kind": "overclaim",
+                    "target": "docs/features/widget.md#states",
+                    "issue": "The widget's states are not described",
+                    "repair": "Document the as-built states",
+                }
+            ],
+            "notes": "the widget's states are not described",
+        }
 
 
 def _sha256(path: Path) -> str:
@@ -643,8 +667,11 @@ def test_a_revision_request_reworks_and_carries_the_notes_forward(
     assert result.status == "passed", result
     assert agent.counts() == {"document-story": 2, "review-story-documentation": 2}
     second = agent.args_for("document-story")[1]
-    assert second["review_notes"] == "the widget's states are not described"
+    assert "D1 [overclaim] docs/features/widget.md#states" in second["review_notes"]
+    assert "The widget's states are not described" in second["review_notes"]
     assert "direct OKF grounding" in second["gate_notes"]
+    second_review = agent.args_for("review-story-documentation")[1]
+    assert "D1 [overclaim] docs/features/widget.md#states" in second_review["review_notes"]
 
 
 def test_a_blocked_review_fails_rather_than_reworking(
@@ -664,6 +691,35 @@ def test_a_blocked_review_fails_rather_than_reworking(
 
     assert result.status == "blocked", result
     assert agent.counts()["document-story"] == 1, agent.counts()
+
+
+def test_a_revision_request_without_structured_findings_fails_the_flow(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A prose-only revision request cannot be a repair contract anymore."""
+    agent = _Agent(approve_after=99, structured_findings=False)
+
+    with pytest.raises(WorkflowFailed, match="no findings"):
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+
+def test_a_revision_request_with_an_empty_finding_fails_the_flow(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A nonempty findings list cannot bypass the actionable-fields gate."""
+    agent = _Agent(approve_after=99, review_findings=[{}])
+
+    with pytest.raises(
+        WorkflowFailed,
+        match="finding 1 missing id, target, issue, repair",
+    ):
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
 
 def test_the_loop_is_bounded_at_four_passes(

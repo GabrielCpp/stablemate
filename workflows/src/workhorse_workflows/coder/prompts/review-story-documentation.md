@@ -18,6 +18,7 @@ gate before QA.
 - Author status: `{{ workhorse_var('author_status') }}`
 - Author notes: `{{ workhorse_var('author_notes') }}`
 - Deterministic gate: `{{ workhorse_var('gate_notes') }}`
+- Previous semantic review notes: `{{ workhorse_var('review_notes') }}`
 
 Read the story, the parent epic's `## User Journeys`, plan context, working tree, branch commits since
 the story/epic base, and affected OKF nodes. Include QA, regression, CI, merge-resolution, and
@@ -43,12 +44,52 @@ describes the complete current system rather than this story as a changelog. In 
   reusable contract. A new service, screen, component, endpoint, command, flow, concept, or format
   is never `not_required`.
 
+{% if workhorse_var('review_notes') %}
+## Re-review discipline
+
+This is not a fresh exploratory review. First verify each prior semantic finding above. If a
+prior item is now resolved, do not restate it. If it is still wrong, keep the same item number
+and make the requested correction more exact. Add a new item only for a material blocking defect
+that is in the files/anchors this story touched and that would make the current book false.
+{% endif %}
+
+When returning `status=revise`, write numbered checklist findings with stable IDs and exact
+targets, for example:
+
+```text
+D1 [node-type] docs/features/acme/gui/screens/editor.md#insert-widget: browser click action is under ## Invocations; move it to ## Interactions.
+D2 [overclaim] docs/features/acme/flows/widget.md: cited test clicks controls, so do not claim keyboard reorder behavior.
+```
+
+Each finding must name the file/anchor, classify the defect (`node-type`, `missing-node`,
+`flow-coverage`, `overclaim`, `grounding`, `verify-overclaim`, or `author-decision`), and state
+the smallest acceptable repair. Do not return a broad prose paragraph that the author must
+reinterpret.
+
 Return JSON only:
 
 ```json
-{"status": "approved", "notes": "The current OKF book fully covers the reviewed implementation delta."}
+{"status": "approved", "findings": [], "notes": "The current OKF book fully covers the reviewed implementation delta."}
 ```
 
-Use `status=revise` with precise node/path findings when the author can correct the book. Use
+Use `status=revise` only with at least one structured finding in `findings`. Use
 `status=blocked` only when convergence requires a product or author decision. Never approve on
 the promise of a later documentation update.
+
+Each finding has this shape:
+
+```json
+{
+  "status": "revise",
+  "findings": [
+    {
+      "id": "D1",
+      "kind": "node-type",
+      "target": "docs/features/acme/gui/screens/editor.md#insert-widget",
+      "issue": "Browser click action is under ## Invocations.",
+      "repair": "Move it under ## Interactions as an interaction node."
+    }
+  ],
+  "notes": "One or two sentence summary; the findings list is the repair contract."
+}
+```

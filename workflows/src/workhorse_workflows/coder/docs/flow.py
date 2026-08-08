@@ -56,6 +56,7 @@ from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import (
     DocsResult,
+    DocumentationFinding,
     DocumentationResult,
     DocumentationReview,
 )
@@ -325,6 +326,7 @@ class Docs(Workflow):
                 "author_status": author.status,
                 "author_notes": author.notes,
                 "gate_notes": gate_notes,
+                "review_notes": review_notes,
             },
         )
         if result.status == "approved":
@@ -335,12 +337,19 @@ class Docs(Workflow):
                 "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes
             )
             return Done(DocsResult(status="blocked", notes=result.notes))
+        finding_problems = _review_finding_problems(result)
+        if result.status == "revise" and finding_problems:
+            raise WorkflowFailed(
+                "documentation reviewer requested revisions with invalid structured findings: "
+                + "; ".join(finding_problems)
+            )
+        notes = _review_notes(result)
         if review_rework >= self.MAX_REVIEW_REWORKS:
             self.logger.warning(
                 "documentation review did not converge for %s in %d passes — blocking: %s",
                 self.ctx.story_slug,
                 self.MAX_REVIEW_REWORKS + 1,
-                result.notes,
+                notes,
             )
             return Done(
                 DocsResult(
@@ -348,11 +357,11 @@ class Docs(Workflow):
                     notes=(
                         f"documentation review did not converge in "
                         f"{self.MAX_REVIEW_REWORKS + 1} passes: "
-                        f"{result.notes or gate_notes or 'no notes'}"
+                        f"{notes or gate_notes or 'no notes'}"
                     ),
                 )
             )
-        return self._rework(result, rework, review_rework + 1, gate_notes, result.notes)
+        return self._rework(result, rework, review_rework + 1, gate_notes, notes)
 
     def _rework(
         self,
@@ -402,6 +411,40 @@ class Docs(Workflow):
     def _dirs(self) -> list[str]:
         """Every directory this run's agent turns may read."""
         return list(self.output(resolve_workspace_dirs).dirs)
+
+
+def _format_finding(finding: DocumentationFinding) -> str:
+    """One structured reviewer finding as the repair prompt's line protocol."""
+    issue = finding.issue.rstrip(".")
+    return f"{finding.id} [{finding.kind}] {finding.target}: {issue}. Repair: {finding.repair}"
+
+
+def _review_finding_problems(review: DocumentationReview) -> list[str]:
+    """Why a revision response is not an actionable, stable repair contract."""
+    if review.status != "revise":
+        return []
+    if not review.findings:
+        return ["no findings"]
+    problems: list[str] = []
+    for index, finding in enumerate(review.findings, start=1):
+        missing = [
+            field
+            for field in ("id", "target", "issue", "repair")
+            if not str(getattr(finding, field)).strip()
+        ]
+        if missing:
+            problems.append(f"finding {index} missing {', '.join(missing)}")
+        elif not finding.id.startswith("D") or not finding.id[1:].isdigit():
+            problems.append(f"finding {index} has invalid id {finding.id!r}")
+    return problems
+
+
+def _review_notes(review: DocumentationReview) -> str:
+    """The repair brief: structured findings first, summary second."""
+    lines = [_format_finding(finding) for finding in review.findings]
+    if review.notes:
+        lines.append(f"Summary: {review.notes}")
+    return "\n".join(lines)
 
 
 __all__ = ["Docs"]
