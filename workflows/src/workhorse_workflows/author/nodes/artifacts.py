@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown, select
+from ostler import Ostler, markdown, registry, select
 from workhorse.pyflow import WorkflowFailed
 from workhorse.scriptutil import find_repo_root
 from workhorse_workflows.author.nodes._blueprint import blueprint
@@ -131,7 +131,12 @@ def verify_reconcile(
 
 
 @blueprint.node(stub=_stubs.holds)
-def verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> VerifyReport:
+def verify_integrity(
+    logger: logging.Logger,
+    epic: str = "",
+    epics_dir: str = "",
+    repo_dir: str = "",
+) -> VerifyReport:
     """`ostler doctor` over the whole graph, as a blocking gate.
 
     The per-epic coverage validator proves seeds map to stories *within* an epic; story
@@ -143,7 +148,7 @@ def verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "")
     opt-in-by-presence stance the other author gates take. `epic` blank means the whole
     graph, which is what the final gate wants.
     """
-    okf = Ostler(launch_repo_root(repo_dir))
+    okf = Ostler(launch_repo_root(repo_dir), doc_roots={"epics": epics_dir} if epics_dir else {})
 
     try:
         report = okf.doctor(epic=epic.strip() or None)
@@ -297,6 +302,10 @@ def _commit_message(mode: str, epic: str, bullet: str) -> str:
         return "author: survey intake and epic backlog authoring"
     if mode == "story" and epic:
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
+        return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
+    if mode == "epic-edit" and epic:
+        trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
+        epic = registry.epic_slug(epic)
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
     return "author: epic backlog authoring"
 

@@ -21,6 +21,50 @@ Working on the workflows themselves wants a checkout of the
 The shape came from an internal workflow-as-python-state-machine design brief, which
 shipped and is now kept only for its reasoning.
 
+## Editing authored scope
+
+The author command exposes two standalone edit flows. `epic-edit` is the reconciliation
+machine; `story-edit` validates a story-level request and hands a typed binding intent to it.
+Adding or removing a story therefore cannot leave the parent epic's user journeys, seeds or
+coverage describing the old product.
+
+```bash
+workhorse-author run epic-edit --params '{
+  "epic": "docs-app-editor",
+  "change": "Replace the interactive editor with raw XML editing",
+  "force": true
+}'
+
+workhorse-author run story-edit --params '{
+  "action": "add",
+  "epic": "docs-app-editor",
+  "bullet": "RAW-XML-EDITOR",
+  "reason": "Add raw XML editing alongside the interactive editor"
+}'
+
+workhorse-author run story-edit --params '{
+  "action": "remove",
+  "story": "interactive-only-editor",
+  "reason": "The revised journey replaces this story"
+}'
+```
+
+Story removal refuses work beyond `Not started` unless `"force": true` is explicit. A plan
+also needs force to remove any story or seed beyond the scope implied by that story request;
+frozen scope must be explicitly unfrozen first. Direct `epic-edit` accepts the same force
+parameter for destructive reconciliation. The edit planner is read-only and returns a typed
+replacement plan. Deterministic checks project that plan before any write, then feed coded
+findings back to the plan refiner: every active seed remains covered, dependencies remain local
+and acyclic, the requested add/remove is satisfied, and every changed story needing new prose is
+in the affected worklist. Only then does Ostler apply structural mutations, the model revise epic
+prose and affected story bodies, and coverage/integrity gates permit backlog pruning and commit.
+
+Removing the last story does not silently strand scope. Its plan must also remove the last
+seeds; once both resulting sets are empty, the epic and its milestone/legacy queue references
+are deleted. The complete behavior is recorded in the [epic edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-epic-edit.md)
+and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-story-edit.md)
+flows.
+
 ## How a workflow gets a command
 
 Each workflow binds one, and that is the only way it is reached:

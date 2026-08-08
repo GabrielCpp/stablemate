@@ -59,6 +59,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows import author
 from workhorse_workflows.author.nodes.artifacts import validate_artifacts
 from workhorse_workflows.author.nodes.epics import select_epic
+from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.workflow import Author
@@ -329,6 +330,7 @@ class _Agent:
         feedback: dict[str, str] | None = None,
         escalate: bool = False,
         explode: set[str] | None = None,
+        edit_plans: list[dict[str, Any]] | None = None,
     ) -> None:
         self.repo = repo
         self.review_epics = review_epics or ["approved"]
@@ -339,6 +341,7 @@ class _Agent:
         self.feedback = dict(feedback or {})
         self.escalate = escalate
         self.explode = set(explode or ())
+        self.edit_plans = list(edit_plans or ())
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
@@ -381,6 +384,111 @@ class _Agent:
     def _review_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         verdict = self.review_epics[min(nth, len(self.review_epics)) - 1]
         return {"status": verdict, "notes": "" if verdict == "approved" else "one epic is two"}
+
+    # -- standalone epic/story edits -------------------------------------
+
+    def _default_edit_plan(self, data: dict[str, Any]) -> dict[str, Any]:
+        intent = data["intent"]
+        snapshot = data["snapshot"]
+        if intent["kind"] == "remove-story":
+            remaining = [story for story in snapshot["stories"] if story["slug"] != intent["story"]]
+            covered = {seed for story in remaining for seed in story["covers"]}
+            removed_seeds = [seed for seed in snapshot["seeds"] if seed["id"] not in covered]
+            return {
+                "status": "complete",
+                "epic": snapshot["epic"],
+                "delete_epic": not remaining and len(removed_seeds) == len(snapshot["seeds"]),
+                "summary": "remove the requested story and its unowned scope",
+                "journey_changes": ["Remove the journey segment delivered only by the story"],
+                "seed_changes": [
+                    {
+                        "action": "remove",
+                        "id": seed["id"],
+                        "disposition": "drop",
+                        "reason": "the requested story and its scope were removed",
+                    }
+                    for seed in removed_seeds
+                ],
+                "story_changes": [{"action": "remove", "slug": intent["story"]}],
+                "affected_stories": [],
+            }
+        source = str(intent["source_bullet"])
+        slug = source.lower().replace("[", "").replace("]", "").replace(" ", "-")
+        return {
+            "status": "complete",
+            "epic": snapshot["epic"],
+            "delete_epic": False,
+            "summary": "add the requested journey segment",
+            "journey_changes": ["Add the requested actor journey"],
+            "seed_changes": [{
+                "action": "add",
+                "id": intent["bullet_id"],
+                "status": "researched",
+                "summary": source,
+                "source_bullet": source,
+            }],
+            "story_changes": [{
+                "action": "add",
+                "slug": slug,
+                "title": source,
+                "covers": [intent["bullet_id"]],
+                "depends": [],
+                "rewrite": True,
+            }],
+            "affected_stories": [slug],
+        }
+
+    def _plan_epic_edit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.edit_plans:
+            return self.edit_plans[min(nth, len(self.edit_plans)) - 1]
+        return self._default_edit_plan(data)
+
+    def _refine_epic_edit_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.edit_plans:
+            return self.edit_plans[min(nth + 1, len(self.edit_plans)) - 1]
+        return self._default_edit_plan(data)
+
+    def _review_epic_edit_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {"status": "approved", "notes": "scope and journeys agree"}
+
+    def _rewrite_epic_edit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        path = self.repo / data["epic_dir"] / "epic.md"
+        text = path.read_text(encoding="utf-8")
+        _before, marker, graph = text.partition("## Seeds")
+        narrative = """## User Outcome
+
+The account holder completes the revised journey.
+
+## User Journeys
+
+### Complete the revised journey
+
+The account holder enters from the account screen, completes the edited behavior, sees its success
+and failure states, and leaves with the requested outcome.
+
+## Delivered Experience
+
+The revised account operation is usable.
+
+## Guardrails
+
+Invalid input fails visibly.
+
+## Non-Goals
+
+Unrelated account work is excluded.
+
+## Acceptance
+
+The revised journey works end to end.
+
+## Method
+
+The running system is the source of truth.
+
+"""
+        path.write_text(_before.split("# Epic:", 1)[0] + f"# Epic: Accounts\n\n{narrative}{marker}{graph}", encoding="utf-8")
+        return {"status": "complete", "notes": "epic journeys reconciled"}
 
     # -- the per-epic loop ------------------------------------------------
 
@@ -506,6 +614,10 @@ def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
 
 def _drive_story_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     return drive(StoryEdit(**inputs), replace(env, agent_runner=StubRunner(agent)))
+
+
+def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
+    return drive(EpicEdit(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
 # --------------------------------------------------------------------------- epic mode
@@ -897,7 +1009,8 @@ def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
 
     assert result.changed is True
     assert "01-extra" not in {s["slug"] for s in Ostler(with_epic).list("story")}
-    assert "remove 01-extra" in _subject(with_epic)
+    assert not (with_epic / EPIC_DIR).exists(), "the last story leaves an empty epic to delete"
+    assert "accounts" in _subject(with_epic)
 
 
 def test_story_edit_remove_refuses_a_started_story_without_force(
@@ -912,6 +1025,107 @@ def test_story_edit_remove_refuses_a_started_story_without_force(
 
     with pytest.raises(WorkflowFailed, match="refusing to delete"):
         _drive_story_edit(_env(tmp_path), _Agent(with_epic), action="remove", story="01-started")
+
+
+def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
+    with_epic: Path, tmp_path: Path
+) -> None:
+    okf = Ostler(with_epic)
+    assert okf.add_seed(EPIC, "keep", status="researched", summary="Keep").ok
+    assert okf.add_seed(EPIC, "remove", status="researched", summary="Remove").ok
+    assert okf.create_story(EPIC, "keep-story", "Keep", covers=["keep"]).ok
+    assert okf.create_story(EPIC, "remove-story", "Remove", covers=["remove"]).ok
+    _write_story_doc(with_epic / EPIC_DIR / "stories/keep-story/story.md", "Keep")
+    _write_story_doc(with_epic / EPIC_DIR / "stories/remove-story/story.md", "Remove")
+    kept_before = (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes()
+    _commit(with_epic, "authored stories")
+
+    _drive_story_edit(
+        _env(tmp_path),
+        _Agent(with_epic),
+        action="remove",
+        story="remove-story",
+        reason="The remaining journey no longer needs this scope",
+    )
+
+    graph = Ostler(with_epic)
+    assert {row["slug"] for row in graph.list("story", epic=EPIC)} == {"keep-story"}
+    assert {row["id"] for row in graph.list("seed", epic=EPIC)} == {"keep"}
+    assert "## User Journeys" in (with_epic / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
+    assert (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes() == kept_before
+
+
+def test_story_edit_mutates_the_overridden_epics_root(backlogged: Path, tmp_path: Path) -> None:
+    custom_epics = "product/epics"
+    okf = Ostler(backlogged, doc_roots={"epics": custom_epics})
+    assert okf.create_epic(EPIC, "Accounts").ok
+    assert okf.create_story(EPIC, "remove-story", "Remove").ok
+    _commit(backlogged, "custom epic root")
+
+    _drive_story_edit(
+        _env(tmp_path),
+        _Agent(backlogged),
+        action="remove",
+        story="remove-story",
+        epics_dir=custom_epics,
+    )
+
+    assert not (backlogged / custom_epics / EPIC_NAME).exists()
+    assert not (backlogged / EPICS).exists()
+
+
+def test_epic_edit_static_findings_drive_a_replacement_plan(
+    with_epic: Path, tmp_path: Path
+) -> None:
+    okf = Ostler(with_epic)
+    assert okf.add_seed(EPIC, "interactive", status="researched", summary="Interactive").ok
+    assert okf.create_story(
+        EPIC, "interactive-editor", "Interactive editor", covers=["interactive"]
+    ).ok
+    _write_story_doc(
+        with_epic / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
+    )
+    _commit(with_epic, "interactive editor")
+    raw_change = {
+        "action": "add",
+        "slug": "raw-xml-editor",
+        "title": "Raw XML editor",
+        "covers": ["raw-xml"],
+        "depends": ["interactive-editor"],
+        "rewrite": True,
+    }
+    invalid = {
+        "status": "complete",
+        "epic": EPIC,
+        "summary": "add raw XML editing",
+        "journey_changes": ["Add raw XML mode"],
+        "seed_changes": [{
+            "action": "add",
+            "id": "raw-xml",
+            "status": "researched",
+            "summary": "Edit canonical XML",
+            "source_bullet": "[raw-xml] Add raw XML editing",
+        }],
+        "story_changes": [raw_change],
+        "affected_stories": [],
+    }
+    valid = {**invalid, "affected_stories": ["raw-xml-editor"]}
+    agent = _Agent(with_epic, edit_plans=[invalid, valid])
+
+    _drive_epic_edit(
+        _env(tmp_path),
+        agent,
+        epic=EPIC,
+        change="Add raw XML editing alongside the interactive editor",
+    )
+
+    assert agent.counts()["refine-epic-edit-plan"] == 1
+    findings = agent.args_for("refine-epic-edit-plan")[0]["validation_findings"]
+    assert "[E_AFFECTED_STORY]" in findings
+    stories = {row["slug"]: row for row in Ostler(with_epic).list("story", epic=EPIC)}
+    assert set(stories) == {"interactive-editor", "raw-xml-editor"}
+    assert stories["raw-xml-editor"]["covers"] == ["raw-xml"]
+    assert stories["raw-xml-editor"]["authored"] is True
 
 
 # ------------------------------------------------------------------------------- handoff

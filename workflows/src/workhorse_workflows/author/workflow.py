@@ -75,6 +75,8 @@ from workhorse_workflows.author.nodes import (
     verify_reconcile,
 )
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
+from workhorse_workflows.author.epic_edit import EpicEdit
+from workhorse_workflows.author.epic_edit.nodes import blueprint as epic_edit_blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import (
     AuditResult,
@@ -90,6 +92,7 @@ from workhorse_workflows.author.shared.schemas import (
 )
 from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
 from workhorse_workflows.author.story_edit import StoryEdit
+from workhorse_workflows.author.story_edit.nodes import blueprint as story_edit_blueprint
 from workhorse_workflows.author.surveyor import Surveyor
 
 #: Reworks of one stage before it is handed to the operator: the epic decomposition, one
@@ -1096,11 +1099,12 @@ class Author(Workflow):
 
 workflow = (
     Registry("author")
-    .add_blueprints(blueprint, survey_blueprint)
+    .add_blueprints(blueprint, survey_blueprint, epic_edit_blueprint, story_edit_blueprint)
     .add_flows(
         surveyor=Surveyor,
         **{
             "parity-surveyor": ParitySurveyor,
+            "epic-edit": EpicEdit,
             "story-edit": StoryEdit,
         },
     )
@@ -1123,6 +1127,16 @@ workflow = (
             "assess-parity-unit": {"status": "assessed"},
             "fix-record": {"status": "fixed"},
             "partition-findings": {"status": "complete"},
+            "plan-epic-edit": {
+                "status": "complete",
+                "delete_epic": True,
+            },
+            "refine-epic-edit-plan": {
+                "status": "complete",
+                "delete_epic": True,
+            },
+            "review-epic-edit-plan": {"status": "approved"},
+            "rewrite-epic-edit": {"status": "complete"},
         }
     )
 )

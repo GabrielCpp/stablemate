@@ -21,6 +21,7 @@ from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import feedback_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.schemas.edit import ResolvedBullet
 from workhorse_workflows.author.shared.schemas.main import (
     Defects,
     Feedback,
@@ -75,8 +76,8 @@ def _kebab(text: str, *, max_len: int = 60) -> str:
     return slug or "story"
 
 
-def _resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str, bool]:
-    """`(id, sourceBullet, from_backlog)` for the one bullet story mode was pointed at.
+def resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> ResolvedBullet:
+    """Resolve one requested bullet against the configured backlog.
 
     `backlog_rel` is the run's backlog — not always the repo's default one. A repo that
     scopes a run to a subset of its work points `backlog` at a separate file, and this must
@@ -103,11 +104,11 @@ def _resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> tuple[str, str
                 or raw.lstrip("-").strip() == item.text.strip()
                 or (btext and btext == raw)
             ):
-                return bid, item.text.strip(), True
+                return ResolvedBullet(id=bid, source_bullet=item.text.strip(), from_backlog=True)
 
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bare):
-        return bare, bare, False
-    return _kebab(raw), raw, False
+        return ResolvedBullet(id=bare, source_bullet=bare)
+    return ResolvedBullet(id=_kebab(raw), source_bullet=raw)
 
 
 @blueprint.node
@@ -158,7 +159,10 @@ def seed_story(
             "EXISTING epic and never creates one; run epic mode first or fix the epic slug"
         )
 
-    bullet_id, source_bullet, from_backlog = _resolve_bullet(root, bullet, backlog_rel)
+    resolved = resolve_bullet(root, bullet, backlog_rel)
+    bullet_id = resolved.id
+    source_bullet = resolved.source_bullet
+    from_backlog = resolved.from_backlog
 
     for s in okf.list("story", epic=epic):
         if bullet_id in (s.get("covers") or []):
