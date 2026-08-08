@@ -566,7 +566,14 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
             """The human, arriving during the first poll interval."""
 
             def sleep(self, seconds: float) -> None:
-                observed.append({**_checkpoint(env), "ask": ask.read_text()})
+                observed.append(
+                    {
+                        **_checkpoint(env),
+                        "ask": ask.read_text(),
+                        "states": list(fake.states),
+                        "waits": list(fake.waits),
+                    }
+                )
                 ask.write_text("main\n")
                 stamp = ask.stat().st_mtime + 3600
                 os.utime(ask, (stamp, stamp))
@@ -574,7 +581,12 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
 
         clock = AnsweringClock()
         env = _env(tmp, clock=clock)
-        assert drive(Blocks(), env) == "main"
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
+        try:
+            assert drive(Blocks(), env) == "main"
+        finally:
+            otel.install(previous)
 
         assert clock.slept == [env.config.await_poll_s], clock.slept
         assert len(observed) == 1, observed
@@ -582,6 +594,19 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
         assert observed[0]["state"] == "resumed", observed[0]
         assert observed[0]["params"] == {"answer": "pending"}, observed[0]
         assert observed[0]["waiting_on"] == str(ask), observed[0]
+        assert observed[0]["states"] == [
+            ("start", "start", 1, None),
+            ("end", "start", 1, "resumed"),
+        ], observed[0]
+        assert observed[0]["waits"] == [("start", 1, "operator", "start")]
+        assert fake.waits == [
+            ("start", 1, "operator", "start"),
+            ("end", 1, "completed", ""),
+        ]
+        assert fake.states[-2:] == [
+            ("start", "resumed", 3, None),
+            ("end", "resumed", 3, None),
+        ], fake.states
 
 
 # ---------------------------------------------------------------------- self.handoff

@@ -72,9 +72,10 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Iterator, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -244,6 +245,8 @@ def _failsoft(fallback: _R) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
 # makes `_R` the type `Literal[""]`, which is not the `-> str` of the method being
 # wrapped, so the decorator would stop preserving the signature it exists to preserve.
 _NO_OPEN_NODE = str()
+# As above, avoid narrowing the fail-soft decorator to ``Literal[0]``.
+_NO_WAIT_TOKEN = int()
 
 
 class Telemetry(Protocol):
@@ -260,6 +263,10 @@ class Telemetry(Protocol):
 
     def enabled(self) -> bool: ...
     def record_event(self, event: NodeEvent) -> None: ...
+    def state_start(self, state: str, seq: int) -> None: ...
+    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None: ...
+    def wait_start(self, kind: str, node_id: str) -> int: ...
+    def wait_end(self, token: int, outcome: str = "completed") -> None: ...
     def gas_level(self, gas: int, capacity: int) -> None: ...
     def gas_refuel(self, node_id: str) -> None: ...
     def turn_start(
@@ -301,6 +308,11 @@ class _NullTelemetry:
         return False
 
     def record_event(self, event: NodeEvent) -> None: ...
+    def state_start(self, state: str, seq: int) -> None: ...
+    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None: ...
+    def wait_start(self, kind: str, node_id: str) -> int:
+        return 0
+    def wait_end(self, token: int, outcome: str = "completed") -> None: ...
     def gas_level(self, gas: int, capacity: int) -> None: ...
     def gas_refuel(self, node_id: str) -> None: ...
     def turn_start(
@@ -653,6 +665,34 @@ def record_event(event: NodeEvent) -> None:
     _host.active.record_event(event)
 
 
+def state_start(state: str, seq: int) -> None:
+    """Open the span for one state-body execution.
+
+    Checkpoint events record durable position and are not execution boundaries: an
+    ``Await`` writes its target checkpoint before polling, when that target is not yet
+    running. The driver therefore brackets actual dispatch explicitly.
+    """
+    _host.active.state_start(state, seq)
+
+
+def state_end(state: str, seq: int, next_state: str | None = None) -> None:
+    """Close a successfully returned state-body execution."""
+    _host.active.state_end(state, seq, next_state)
+
+
+@contextmanager
+def wait(kind: str, node_id: str) -> Iterator[None]:
+    """Bracket an actual engine-controlled wait with a completed duration span."""
+    token = _host.active.wait_start(kind, node_id)
+    try:
+        yield
+    except BaseException:
+        _host.active.wait_end(token, "interrupted")
+        raise
+    else:
+        _host.active.wait_end(token)
+
+
 def gas_level(gas: int, capacity: int) -> None:
     _host.active.gas_level(gas, capacity)
 
@@ -771,12 +811,15 @@ class _Telemetry:
         # provider, and a second `turn_end(error)` would attach a bogus error to
         # nothing. Ending is therefore latched, not inferred from `_root`.
         self._ended = False
-        # Open node spans, innermost last: [((node_id, seq), span, started_at), ...].
+        # Open execution spans, innermost last:
+        # [((kind, name, seq), span, started_at), ...].
         # The engine's walk nests strictly (a flow node's children open and close
         # while the flow node span is open), so a stack mirrors the tree. The
         # monotonic start stamp feeds the node.elapsed_s gauge, which — unlike the
         # span's own duration — is readable *while* the node is still running.
-        self._stack: list[tuple[tuple[str, int], Any, float]] = []
+        self._stack: list[tuple[tuple[str, str, int], Any, float]] = []
+        self._wait_seq = 0
+        self._wait_keys: dict[int, tuple[str, str, int]] = {}
         self._turn: Any = None
         # Wall-clock bounds of the open turn, so a harness that reports no duration
         # still gets one (see turn_end); the flag stops that fallback from clobbering
@@ -903,7 +946,7 @@ class _Telemetry:
         """Emit one liveness tick for whatever node is open (or none)."""
         with self._lock:
             top = self._stack[-1] if self._stack else None
-        node = top[0][0] if top else ""
+        node = top[0][1] if top else ""
         attrs = self._live_attrs(node)
         if self._run_beats is not None:
             self._run_beats.add(1, attrs)
@@ -922,34 +965,27 @@ class _Telemetry:
         node_id = event.node
         seq = event.seq
         extra = event.model_extra or {}
+        # State checkpoints are durable-position records, not node execution events.
+        # Every checkpoint includes this key, including ordinary ones whose value is
+        # None. Await checkpoints carry a path and must likewise open no target span.
+        if phase == "enter" and "waiting_on" in extra:
+            return
         with self._lock:
             if phase == "enter":
-                span = self._tracer.start_span(
+                self._start_execution(
+                    ("node", node_id, seq),
                     node_id,
-                    context=self._parent_ctx(),
-                    attributes={
-                        "workhorse.node": node_id,
-                        "workhorse.seq": seq,
-                        "workhorse.depth": len(self._stack),
-                        # What the workflow said this node is (see
-                        # `Workflow.INFRA_NODES`) — forwarded, never inferred.
+                    node_id,
+                    {
                         **(
                             {"workhorse.span_kind": str(extra["span_kind"])}
                             if extra.get("span_kind")
                             else {}
-                        ),
-                        **self._labels,
+                        )
                     },
                 )
-                self._stack.append(((node_id, seq), span, time.monotonic()))
-                # Metrics export on the periodic reader, independent of any span's
-                # lifecycle — so unlike the span just opened above, this escapes the
-                # process while the node is still running. It is what answers "where
-                # is the run right now" without inferring it from the last completed
-                # span's workhorse.next.
-                self._set_node_active(node_id, 1)
             elif phase == "done":
-                self._end_node((node_id, seq), next_node=extra.get("next"))
+                self._end_execution(("node", node_id, seq), next_name=extra.get("next"))
                 self._set_node_active(node_id, 0)
             elif phase == "error":
                 # `record_interrupt` writes this to events.jsonl when a run is killed
@@ -968,15 +1004,95 @@ class _Telemetry:
                         "terminal", {"terminal": str(extra.get("terminal") or "")}
                     )
 
-    def _end_node(self, key: tuple[str, int], next_node: Any) -> None:
+    @_failsoft(None)
+    def state_start(self, state: str, seq: int) -> None:
+        with self._lock:
+            self._start_execution(
+                ("state", state, seq),
+                f"state:{state}",
+                state,
+                {"workhorse.span_kind": "state"},
+            )
+
+    @_failsoft(None)
+    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None:
+        with self._lock:
+            self._end_execution(("state", state, seq), next_name=next_state)
+            self._set_node_active(state, 0)
+
+    @_failsoft(_NO_WAIT_TOKEN)
+    def wait_start(self, kind: str, node_id: str) -> int:
+        with self._lock:
+            self._wait_seq += 1
+            token = self._wait_seq
+            key = ("wait", node_id, token)
+            self._wait_keys[token] = key
+            self._start_execution(
+                key,
+                f"wait:{kind}",
+                node_id,
+                {
+                    "workhorse.span_kind": "wait",
+                    "workhorse.wait_kind": kind,
+                },
+                mark_active=False,
+            )
+            return token
+
+    @_failsoft(None)
+    def wait_end(self, token: int, outcome: str = "completed") -> None:
+        with self._lock:
+            key = self._wait_keys.pop(token, None)
+            if key is None:
+                return
+            self._end_execution(
+                key,
+                next_name=None,
+                end_attributes={"workhorse.wait_outcome": outcome},
+            )
+
+    def _start_execution(
+        self,
+        key: tuple[str, str, int],
+        span_name: str,
+        node_id: str,
+        attributes: dict[str, Any],
+        *,
+        mark_active: bool = True,
+    ) -> None:
+        span = self._tracer.start_span(
+            span_name,
+            context=self._parent_ctx(),
+            attributes={
+                "workhorse.node": node_id,
+                "workhorse.seq": key[2],
+                "workhorse.depth": len(self._stack),
+                **attributes,
+                **self._labels,
+            },
+        )
+        self._stack.append((key, span, time.monotonic()))
+        # Metrics export independently of span completion, so this is what makes
+        # the currently executing state or node visible while it is still open.
+        if mark_active:
+            self._set_node_active(node_id, 1)
+
+    def _end_execution(
+        self,
+        key: tuple[str, str, int],
+        next_name: Any,
+        end_attributes: dict[str, Any] | None = None,
+    ) -> None:
         """End the span for ``key``, sweeping anything left open above it."""
         if all(k != key for k, _, _ in self._stack):
             return
         while self._stack:
             stack_key, span, _ = self._stack.pop()
             if stack_key == key:
-                if next_node:
-                    span.set_attribute("workhorse.next", str(next_node))
+                if next_name:
+                    span.set_attribute("workhorse.next", str(next_name))
+                for name, value in (end_attributes or {}).items():
+                    span.set_attribute(name, value)
                 span.end()
                 return
             span.end()
@@ -985,7 +1101,7 @@ class _Telemetry:
     def current_node(self) -> str:
         """The innermost open node visit, or "" — what stamps a log record."""
         with self._lock:
-            return self._stack[-1][0][0] if self._stack else ""
+            return self._stack[-1][0][1] if self._stack else ""
 
     @_failsoft(None)
     def end_run(

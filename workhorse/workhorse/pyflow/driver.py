@@ -21,6 +21,7 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
+from workhorse import otel
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
@@ -290,7 +291,7 @@ def drive(
         # clean — reported "no changes needed" and burned another pass.) Writing first costs
         # one checkpoint on the aborting iteration and keeps the module's own invariant:
         # state parameters *are* the checkpoint.
-        env.writer.write_state_checkpoint(
+        state_seq = env.writer.write_state_checkpoint(
             spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
         if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
@@ -303,8 +304,17 @@ def drive(
         # further along the run is being entered for the first time, and a handoff it
         # makes is a fresh invocation whatever a stale child checkpoint says.
         env.resume_pending = resuming
+        otel.state_start(spec.name, state_seq)
         outcome = bound(**kwargs)
         resuming = env.resume_pending = False
+
+        if not isinstance(outcome, (Continue, Done, Await)):
+            raise WorkflowFailed(
+                f"state '{spec.name}' returned {outcome!r} — a state must return "
+                "Continue(...), Done(...) or Await(...), or raise WorkflowFailed"
+            )
+        next_state = outcome.state if isinstance(outcome, (Continue, Await)) else None
+        otel.state_end(spec.name, state_seq, next_state)
 
         if isinstance(outcome, Done):
             env.writer.write_final_context({"result": _result_payload(outcome.result)})
@@ -322,20 +332,15 @@ def drive(
                 waiting_on=str(outcome.path),
             )
             env.log.info("[workhorse] await  → blocked on %s", outcome.path)
-            poll_until_touched(
-                outcome.path,
-                since=baseline,
-                interval=env.config.await_poll_s,
-                clock=env.clock,
-                log=env.log,
-                deadline=env.deadline,
-            )
-        elif not isinstance(outcome, Continue):
-            raise WorkflowFailed(
-                f"state '{spec.name}' returned {outcome!r} — a state must return "
-                "Continue(...), Done(...) or Await(...), or raise WorkflowFailed"
-            )
-
+            with otel.wait("operator", spec.name):
+                poll_until_touched(
+                    outcome.path,
+                    since=baseline,
+                    interval=env.config.await_poll_s,
+                    clock=env.clock,
+                    log=env.log,
+                    deadline=env.deadline,
+                )
         state, params = outcome.state, outcome.params
 
     raise WorkflowFailed(

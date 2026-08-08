@@ -318,7 +318,8 @@ class AgentRunner:
                     otel.turn_event("reframe", node=node_id, attempt=rephrase + 1)
                     # Brief, escalating pause so a reframe doesn't hammer a struggling
                     # service back-to-back.
-                    self.clock.sleep(min(10 * (rephrase + 1), 60))
+                    with otel.wait("reframe", node_id):
+                        self.clock.sleep(min(10 * (rephrase + 1), 60))
                     rephrase += 1
                     continue
 
@@ -476,9 +477,10 @@ class AgentRunner:
                     otel.turn_event(
                         "cap_wait", node=node_id, delay_s=int(delay), resume_around=when
                     )
-                    sleep_with_notice(
-                        delay, node_id, "cap reset", resilience=resilience, clock=self.clock
-                    )
+                    with otel.wait("cap", node_id):
+                        sleep_with_notice(
+                            delay, node_id, "cap reset", resilience=resilience, clock=self.clock
+                        )
                     print(f"[{node_id}] ▶ cap wait elapsed — resuming node", flush=True)
                     continue
                 if short_attempt >= max_invoke_retries:
@@ -500,10 +502,11 @@ class AgentRunner:
                 # Ticked, not silent: once the backoff reaches its cap a single sleep
                 # is half an hour, which to a collector is indistinguishable from a
                 # wedged turn. The same notice loop the cap wait uses proves liveness.
-                sleep_with_notice(
-                    delay,
-                    node_id,
-                    "transient failure",
-                    resilience=resilience,
-                    clock=self.clock,
-                )
+                with otel.wait("retry", node_id):
+                    sleep_with_notice(
+                        delay,
+                        node_id,
+                        "transient failure",
+                        resilience=resilience,
+                        clock=self.clock,
+                    )

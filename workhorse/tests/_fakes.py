@@ -123,6 +123,11 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.beats: list[tuple[str, float, float]] = []
         #: One entry per ``set_labels`` call, in order.
         self.labels: list[dict[str, str]] = []
+        #: Explicit state execution boundaries, distinct from durable checkpoints.
+        self.states: list[tuple[str, str, int, str | None]] = []
+        #: Completed wait boundaries: action, token, kind/outcome, node.
+        self.waits: list[tuple[str, int, str, str]] = []
+        self._wait_token = 0
 
     def enabled(self) -> bool:
         return True
@@ -132,3 +137,17 @@ class RecordingTelemetry(otel._NullTelemetry):
 
     def set_labels(self, labels: dict[str, str]) -> None:
         self.labels.append(dict(labels))
+
+    def state_start(self, state: str, seq: int) -> None:
+        self.states.append(("start", state, seq, None))
+
+    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None:
+        self.states.append(("end", state, seq, next_state))
+
+    def wait_start(self, kind: str, node_id: str) -> int:
+        self._wait_token += 1
+        self.waits.append(("start", self._wait_token, kind, node_id))
+        return self._wait_token
+
+    def wait_end(self, token: int, outcome: str = "completed") -> None:
+        self.waits.append(("end", token, outcome, ""))

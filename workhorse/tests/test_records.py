@@ -99,6 +99,17 @@ def test_resume_reads_the_seq_back_off_the_checkpoint():
         assert ArtifactWriter.resume(w.run_dir)._seq == 2
 
 
+def test_checkpoint_write_returns_the_sequence_it_committed():
+    """The driver keys an execution span to the checkpoint it is about to dispatch.
+    Returning the committed sequence prevents it from guessing at writer internals."""
+    with tempfile.TemporaryDirectory() as tmp:
+        w = _writer(tmp)
+        assert w.write_state_checkpoint("a", {}, inputs={}) == 1
+        assert w.write_state_checkpoint("b", {}, inputs={}) == 2
+        resumed = ArtifactWriter.resume(w.run_dir)
+        assert resumed.write_state_checkpoint("c", {}, inputs={}) == 3
+
+
 def test_an_unreadable_checkpoint_costs_the_seq_and_nothing_else():
     """Resuming is the failure path's own path; a corrupt checkpoint there must not
     raise on top of whatever sent us here."""

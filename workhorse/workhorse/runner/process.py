@@ -241,7 +241,8 @@ class ProcessSupervisor:
                     otel.turn_event(
                         "exec_retry", node=node_id, attempt=attempt, code=code, delay_s=int(delay)
                     )
-                    self.clock.sleep(delay)
+                    with otel.wait("exec-retry", node_id):
+                        self.clock.sleep(delay)
                     continue
                 # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
                 # has had time to close. A CLI that resolves but still won't exec means the

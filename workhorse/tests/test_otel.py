@@ -139,6 +139,10 @@ def test_noop_by_default_all_calls_inert():
     assert otel.enabled() is False
     # Every public function must be safely callable with nothing configured.
     otel.record_event(_event("a", 1, "enter"))
+    otel.state_start("start", 1)
+    otel.state_end("start", 1, "finish")
+    with otel.wait("operator", "start"):
+        pass
     otel.gas_level(10, 100)
     otel.gas_refuel("select_story")
     otel.set_labels({"work_id": "w1"})
@@ -391,6 +395,53 @@ def test_enter_done_pairs_a_node_span_and_records_next():
     assert span.attrs["workhorse.seq"] == 1 and not span.ended
     t.record_event(_event("plan", 1, "done", next="build"))
     assert span.ended and span.attrs["workhorse.next"] == "build"
+
+
+def test_checkpoint_enters_do_not_open_execution_spans():
+    """A checkpoint records durable position, not work being executed. In particular,
+    the target checkpoint written before an Await must not become a phantom open span."""
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("start", 1, "enter", waiting_on=None))
+    t.record_event(_event("finish", 2, "enter", waiting_on="operator.md"))
+    assert [span.name for span in tracer.spans] == ["run:wf"]
+
+
+def test_state_spans_are_siblings_and_contain_their_nodes():
+    """Sequential states must not become nested suffixes that last until run shutdown."""
+    t, tracer, _, _ = _telemetry()
+    t.state_start("start", 1)
+    t.record_event(_event("measure", 1, "enter"))
+    t.record_event(_event("measure", 1, "done"))
+    t.state_end("start", 1, "finish")
+    t.state_start("finish", 2)
+    t.state_end("finish", 2)
+
+    root = tracer.by_name("run:wf")
+    start = tracer.by_name("state:start")
+    finish = tracer.by_name("state:finish")
+    assert tracer.by_name("measure").parent is start
+    assert start.parent is root and finish.parent is root
+    assert start.attrs["workhorse.span_kind"] == "state"
+    assert start.attrs["workhorse.next"] == "finish"
+    assert start.ended and finish.ended
+
+
+def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
+    t, tracer, meter, _ = _telemetry()
+    t.state_start("review", 1)
+    token = t.wait_start("cap", "review-qa-plan")
+    wait_span = tracer.by_name("wait:cap")
+    assert wait_span.parent is tracer.by_name("state:review")
+    assert wait_span.attrs["workhorse.span_kind"] == "wait"
+    assert wait_span.attrs["workhorse.wait_kind"] == "cap"
+    assert wait_span.attrs["workhorse.node"] == "review-qa-plan"
+    # A wait is a phase inside the open state/node, not a replacement node-active series.
+    assert meter.instruments["workhorse.node.active"].records == [
+        ("set", 1, {"node": "review"})
+    ]
+    t.wait_end(token)
+    assert wait_span.ended
+    assert wait_span.attrs["workhorse.wait_outcome"] == "completed"
 
 
 def test_an_interrupted_node_records_why_on_its_span():

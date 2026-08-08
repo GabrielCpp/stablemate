@@ -179,7 +179,7 @@ class ArtifactWriter:
         flow: str | None = None,
         ctx: Any = None,
         waiting_on: str | None = None,
-    ) -> None:
+    ) -> int:
         """Checkpoint a Python state machine: the state to (re-)enter and its arguments.
 
         The YAML engine's checkpoint is ``(current_id, context)`` — a node plus the
@@ -217,6 +217,7 @@ class ArtifactWriter:
             )
         )
         self._append_event(node_id=state, phase="enter", waiting_on=waiting_on)
+        return self._seq
 
     def _write_checkpoint(self, checkpoint: Checkpoint) -> None:
         """Put the checkpoint on disk in one indivisible step. Write-then-rename, so a
