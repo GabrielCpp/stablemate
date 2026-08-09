@@ -6,7 +6,7 @@ title: scriptutil — the engine-side helpers a node imports
 # scriptutil — the engine-side helpers a node imports
 
 A small library of standalone helpers for workflow **[node functions](../workflow-format.md#node)**:
-JSON/JSONC parsing, the hard-fail idiom, repo/docs root resolution, the mid-run reimport, and one
+JSON/JSONC parsing, repo/docs root resolution, and one
 external-CLI seam. What is left here is what a *runner* needs and nothing that knows what a repo
 is — git, GitHub and multi-repo workspace resolution live in
 [`workhorse_workflows.kit`](workflow-kit.md), a different distribution.
@@ -47,21 +47,6 @@ outright.
   warning with the exception text and return `{}`.
 - code: `workhorse/workhorse/scriptutil.py::load_json`
 
-## `die`
-
-The hard-fail idiom, defined once instead of re-implemented per node.
-
-- **Input:** `message: str`; `code: int = 1` (keyword-only).
-- **Output:** `NoReturn` — prints `message` to stderr and raises `SystemExit(code)`.
-
-Unlike `sys.exit(message)`, which always exits `1`, this pairs an actionable message with any exit
-`code`: nodes use `2` to distinguish a bad or missing invocation target from an ordinary failure, a
-distinction the script runner propagates. The `NoReturn` annotation is load-bearing for callers —
-statements after `die(...)` narrow as unreachable, and a thin per-workflow wrapper that always ends
-in `die` is itself `NoReturn`.
-
-- code: `workhorse/workhorse/scriptutil.py::die`
-
 ## `find_repo_root`
 
 - **Input:** `repo_dir: str | Path = ""` — the run's own input (`Workflow.repo_dir`, which the CLI
@@ -86,33 +71,6 @@ same argument-first order for exactly that reason.
   joined under [`find_repo_root(repo_dir)`](#find_repo_root)); 2) `find_repo_root(repo_dir)` itself
   when it is empty — i.e. the docs sit beside the code.
 - code: `workhorse/workhorse/scriptutil.py::find_docs_root`
-
-## `fresh_import`
-
-Re-imports a module straight from disk instead of returning whatever `sys.modules` already holds.
-
-- **Input:** `name: str`; `also_purge: tuple[str, ...] = ()` (keyword-only).
-- **Output:** the imported `ModuleType`.
-- **Algorithm:** delete `name` and every `also_purge` root from `sys.modules`, along with each of
-  their submodules, then `importlib.import_module(name)`.
-
-The in-process script runner (`workhorse/workhorse/runner/script.py`) reuses one Python interpreter
-for a whole run. A node re-executes on every call, but anything it merely `import`s stays cached for
-the rest of the run — so a fix landed on disk mid-run (an environment-fix loop editing a QA-tool
-package while QA states are still ahead) stays invisible to every later state unless that state
-forces a real reimport. Pass any package `name` transitively imports and might change mid-run via
-`also_purge` — e.g. `fresh_import("qa_cli", also_purge=("ostler",))` — so its stale submodules don't
-leak back in through the reimported caller.
-
-`WORKHORSE_FRESH_IMPORT=0` (also `false`/`no`/`off`) disables the purge and returns the cached
-module. That escape hatch exists for tests: reimporting builds a *new module object*, so every
-`monkeypatch.setattr` applied to the old one is silently discarded — the mock is still in place, just
-no longer on the thing the caller reaches. Nothing edits a package on disk under test, so the
-behavior the purge exists for cannot occur there anyway.
-
-- code: `workhorse/workhorse/scriptutil.py::fresh_import`
-- verify: `workhorse/tests/test_scriptutil_fresh_import.py::test_fresh_import_picks_up_an_edit_made_after_the_first_import`
-- verify: `workhorse/tests/test_scriptutil_fresh_import.py::test_disabled_fresh_import_preserves_a_monkeypatched_attribute`
 
 ## `run_tool`
 

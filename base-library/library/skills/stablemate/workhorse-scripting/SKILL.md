@@ -255,7 +255,7 @@ node *writes* is strict JSON; only input may be JSONC.
 ## What the engine still offers directly — `workhorse.scriptutil`
 
 The generic, workflow-agnostic half: `load_json`, `load_jsonc`, `find_repo_root`,
-`find_docs_root`, `fresh_import`, `run_tool`, `die`. `run_tool` remains the seam for a
+`find_docs_root`, `run_tool`. `run_tool` remains the seam for a
 genuine external CLI — one that is not git, GitHub or ostler.
 
 ## Domain helpers — `workhorse_workflows.kit`

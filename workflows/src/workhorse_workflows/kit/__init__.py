@@ -1,7 +1,7 @@
 """The domain half of what used to be ``workhorse.scriptutil``: git, GitHub, workspaces.
 
-The engine kept the seams a *runner* needs — ``load_jsonc``, ``die``, ``find_repo_root``,
-``find_docs_root``, ``fresh_import``, ``run_tool`` — and nothing that knows what a repo
+The engine kept the seams a *runner* needs — ``load_jsonc``, ``load_json``,
+``find_repo_root``, ``find_docs_root``, ``run_tool`` — and nothing that knows what a repo
 is. Everything that drives git or github.com lives here, which is why ``gitpython`` and
 ``PyGithub`` are this package's dependencies and no longer workhorse-agent's.
 

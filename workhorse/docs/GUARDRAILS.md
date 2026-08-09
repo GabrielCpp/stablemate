@@ -169,7 +169,6 @@ same CLI configuration as the conversation it is compacting.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKHORSE_FRESH_IMPORT` | 1 | Whether `scriptutil.fresh_import` really purges `sys.modules` and re-imports from disk, so a fix landed mid-run reaches the nodes still ahead of it. Set `0` to return the cached module instead — the re-import builds a *new module object*, which discards every `monkeypatch` a test applied to the old one. Nothing rewrites a package on disk under test, so the behavior it exists for cannot occur there. |
 | `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and the node functions it calls. |
 | `WORKHORSE_AWAIT_POLL_S` | 15 | How often an `Await` re-checks the file it is waiting on. A portable polling loop rather than an inotify watch, so it behaves the same in a container, over NFS, and on a laptop that sleeps. |
 | `WORKHORSE_MAX_TRANSITIONS` | 1000 | How many state transitions a run may make before it is declared stuck. The gas tank bounds node *work*; this bounds the state machine itself, so a two-state ping-pong that burns no gas still ends. A workflow class that sets `max_transitions` knows its own shape and overrides this for its runs. A zero or negative setting is read as a typo and falls back to the default — a budget of zero is not "no budget", it is a run that ends before its first transition. |
