@@ -73,6 +73,7 @@ from workhorse_workflows.coder.dream import Dream
 from workhorse_workflows.coder.fix import BLOCKED_NOTE, Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.genesis import Genesis
+from workhorse_workflows.coder.implement_plan import ImplementPlan
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.review import Review
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -159,7 +160,7 @@ class Coder(Workflow):
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
-    #: name and was not passed one, which is what carries them into the eight sub-flows:
+    #: name and was not passed one, which is what carries them into the story sub-flows:
     #: a `handoff` constructs a fresh workflow, so nothing crosses that boundary unless
     #: something puts it there. See `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
@@ -1031,9 +1032,9 @@ class Coder(Workflow):
 workflow = (
     Registry("coder")
     .add_blueprints(blueprint)
-    # The eight `flows:` blocks, by the name `workhorse-coder run <name>` takes. Five are
-    # only ever reached by `handoff`; `genesis`, `dream` and `fix` are entered directly,
-    # which is the whole reason they need names here.
+    # The nine registered Python sub-flows, by the name `workhorse-coder run <name>`
+    # takes. Five are reached by `handoff`; `genesis`,
+    # `dream`, `fix`, and `implement-plan` are entered directly.
     .add_flows(
         genesis=Genesis,
         dev=Dev,
@@ -1043,6 +1044,7 @@ workflow = (
         fix=Fix,
         fix_ci=FixCi,
         dream=Dream,
+        **{"implement-plan": ImplementPlan},
     )
     .stub_agents(
         {

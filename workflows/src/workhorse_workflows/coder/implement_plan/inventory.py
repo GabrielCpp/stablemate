@@ -1,0 +1,407 @@
+"""Snapshot a prose plan and validate its checkpoint-authoritative packet DAG."""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import secrets
+import stat
+from collections import deque
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit, urlunsplit
+
+from git.exc import GitError
+from workhorse import worklist as wl
+from workhorse.pyflow import WorkflowFailed
+from workhorse.scriptutil import find_repo_root
+
+from workhorse_workflows.coder.implement_plan.schemas import (
+    PlanDecomposition,
+    PlanRunContext,
+    PlanTask,
+    PreparedPlan,
+    VerificationCommand,
+)
+from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.kit import open_repo
+
+_TASK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_SCOPE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_COMMIT_TYPES = frozenset(
+    {"feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "revert"}
+)
+
+
+def _atomic_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def git_control_digest(root: Path) -> str:
+    """Identity of Git controls that can change add/commit/push behavior invisibly."""
+    digest = hashlib.sha256()
+    try:
+        repo = open_repo(root)
+        digest.update(repo.git.config("--list", "--show-origin", "-z").encode())
+        controls: list[Path] = []
+        for name in (
+            "hooks",
+            "info/exclude",
+            "info/attributes",
+            "info/grafts",
+            "objects/info/alternates",
+            "refs/replace",
+        ):
+            resolved = Path(repo.git.rev_parse("--git-path", name).strip())
+            controls.append(resolved if resolved.is_absolute() else root / resolved)
+    except (GitError, OSError) as exc:
+        raise WorkflowFailed(f"cannot fingerprint Git controls at {root}: {exc}") from exc
+    files: list[Path] = []
+    for control in controls:
+        if control.is_dir():
+            files.extend(path for path in control.rglob("*") if path.is_file())
+        else:
+            files.append(control)
+    for path in sorted(files, key=lambda value: str(value)):
+        digest.update(str(path).encode())
+        try:
+            mode = path.lstat().st_mode if path.exists() or path.is_symlink() else 0
+            digest.update(str(stat.S_IFMT(mode)).encode())
+            digest.update(str(stat.S_IMODE(mode)).encode())
+            digest.update(path.read_bytes() if path.is_file() else b"(missing)")
+        except OSError as exc:
+            raise WorkflowFailed(f"cannot fingerprint Git control {path}: {exc}") from exc
+    return digest.hexdigest()
+
+
+def other_refs_digest(root: Path, branch: str) -> str:
+    """Identity of every ref the workflow does not deliberately advance."""
+    try:
+        lines = open_repo(root).git.for_each_ref("--format=%(refname) %(objectname)").splitlines()
+    except GitError as exc:
+        raise WorkflowFailed(f"cannot fingerprint refs at {root}: {exc}") from exc
+    mutable = (f"refs/heads/{branch} ", f"refs/remotes/origin/{branch} ")
+    payload = "\n".join(
+        sorted(line for line in lines if not line.startswith(mutable))
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def origin_endpoint(root: Path) -> str:
+    """Credential-free identity shared by every origin fetch and push target."""
+    try:
+        git = open_repo(root).git
+        fetch = git.remote("get-url", "--all", "origin").splitlines()
+        push = git.remote("get-url", "--all", "--push", "origin").splitlines()
+    except GitError as exc:
+        raise WorkflowFailed(f"cannot resolve origin endpoints: {exc}") from exc
+    endpoints = {_safe_endpoint(url) for url in [*fetch, *push] if url.strip()}
+    if len(endpoints) != 1:
+        raise WorkflowFailed("implement-plan requires every origin fetch/push URL to be one endpoint")
+    return endpoints.pop()
+
+
+def origin_digest(root: Path) -> str:
+    """Opaque checkpoint identity for the credential-free origin endpoint."""
+    return hashlib.sha256(origin_endpoint(root).encode()).hexdigest()
+
+
+def _safe_endpoint(value: str) -> str:
+    """Remove URL userinfo before an origin identity reaches a checkpoint."""
+    endpoint = value.strip()
+    parsed = urlsplit(endpoint)
+    if not parsed.scheme or not parsed.netloc:
+        if ":" in endpoint:
+            authority, path = endpoint.split(":", 1)
+            if "@" in authority:
+                return f"{authority.rsplit('@', 1)[1]}:{path}"
+        return endpoint
+    host = parsed.hostname or ""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = host + (f":{parsed.port}" if parsed.port is not None else "")
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+
+
+def _clean_repo_relative(value: str, *, label: str, allow_dot: bool = False) -> str:
+    raw = value.strip().replace("\\", "/")
+    path = PurePosixPath(raw)
+    if not raw or path.is_absolute() or ".." in path.parts or ".git" in path.parts:
+        raise WorkflowFailed(f"{label} must be a safe repository-relative path, got {value!r}")
+    normalized = path.as_posix().rstrip("/") or "."
+    if normalized == "." and not allow_dot:
+        raise WorkflowFailed(f"{label} may not own the whole repository")
+    return normalized
+
+
+def _validate_command(command: VerificationCommand, *, owner: str) -> VerificationCommand:
+    if not command.argv or any(not part for part in command.argv):
+        raise WorkflowFailed(f"{owner} has a verification command with an empty argv")
+    executable = command.argv[0]
+    executable_name = PurePosixPath(executable.replace("\\", "/")).name.lower()
+    forbidden = {"git", "git.exe", "sh", "bash", "cmd", "cmd.exe", "powershell", "pwsh"}
+    if executable_name in forbidden:
+        raise WorkflowFailed(f"{owner} verification executable {executable!r} is not allowed")
+    if not 1 <= command.timeout_s <= 7200:
+        raise WorkflowFailed(f"{owner} verification timeout must be between 1 and 7200 seconds")
+    command.cwd = _clean_repo_relative(
+        command.cwd or ".", label=f"{owner} command cwd", allow_dot=True
+    )
+    return command
+
+
+def _path_owned(path: str, scopes: list[str]) -> bool:
+    candidate = PurePosixPath(path)
+    return any(
+        candidate == PurePosixPath(scope) or PurePosixPath(scope) in candidate.parents
+        for scope in scopes
+    )
+
+
+def _valid_commit_scopes(root: Path) -> set[str]:
+    try:
+        tracked = open_repo(root).git.ls_files("-z").split("\0")
+        return {
+            path.split("/", 1)[0]
+            for path in tracked
+            if "/" in path and not path.startswith(".")
+        } | {"deps", "release", "ci", "lint", "hooks"}
+    except (GitError, OSError) as exc:
+        raise WorkflowFailed(f"cannot inspect repository scopes at {root}: {exc}") from exc
+
+
+def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
+    if not _TASK_ID.fullmatch(task.id):
+        raise WorkflowFailed(f"task id {task.id!r} must be a lowercase kebab-case identifier")
+    if not task.title.strip() or not task.objective.strip() or not task.acceptance:
+        raise WorkflowFailed(f"task {task.id} needs a title, objective, and acceptance criteria")
+    if not task.paths:
+        raise WorkflowFailed(f"task {task.id} must own at least one explicit path")
+    task.paths = list(
+        dict.fromkeys(
+            _clean_repo_relative(path, label=f"task {task.id} path") for path in task.paths
+        )
+    )
+    if any(PurePosixPath(path).parts[0] == ".agents" for path in task.paths):
+        raise WorkflowFailed(f"task {task.id} may not own Workhorse's .agents run storage")
+    try:
+        source = Path(context.source_path).relative_to(Path(context.repo_root)).as_posix()
+    except ValueError:
+        source = ""
+    if source and _path_owned(source, task.paths):
+        raise WorkflowFailed(f"task {task.id} ownership covers the private source plan {source}")
+    if not task.verification:
+        raise WorkflowFailed(f"task {task.id} must declare deterministic verification")
+    task.verification = [
+        _validate_command(command, owner=f"task {task.id}") for command in task.verification
+    ]
+    if task.commit_type not in _COMMIT_TYPES:
+        raise WorkflowFailed(f"task {task.id} has unsupported commit type {task.commit_type!r}")
+    valid_scopes = _valid_commit_scopes(Path(context.repo_root))
+    if task.commit_scope and (
+        not _SCOPE.fullmatch(task.commit_scope) or task.commit_scope not in valid_scopes
+    ):
+        raise WorkflowFailed(f"task {task.id} has invalid commit scope {task.commit_scope!r}")
+    head = task.commit_type + (f"({task.commit_scope})" if task.commit_scope else "")
+    if len(f"{head}: implement planned change") > 72:
+        raise WorkflowFailed(f"task {task.id} commit subject exceeds 72 characters")
+    task.depends_on = list(dict.fromkeys(task.depends_on))
+    return task
+
+
+def _topological(tasks: list[PlanTask]) -> list[PlanTask]:
+    by_id = {task.id: task for task in tasks}
+    if len(by_id) != len(tasks):
+        raise WorkflowFailed("plan decomposition contains duplicate task ids")
+    position = {task.id: index for index, task in enumerate(tasks)}
+    dependants: dict[str, list[str]] = {task.id: [] for task in tasks}
+    indegree: dict[str, int] = {}
+    for task in tasks:
+        missing = [dependency for dependency in task.depends_on if dependency not in by_id]
+        if missing:
+            raise WorkflowFailed(f"task {task.id} depends on unknown tasks: {', '.join(missing)}")
+        if task.id in task.depends_on:
+            raise WorkflowFailed(f"task {task.id} depends on itself")
+        indegree[task.id] = len(task.depends_on)
+        for dependency in task.depends_on:
+            dependants[dependency].append(task.id)
+    ready = deque(task.id for task in tasks if indegree[task.id] == 0)
+    ordered: list[PlanTask] = []
+    while ready:
+        task_id = ready.popleft()
+        ordered.append(by_id[task_id])
+        released: list[str] = []
+        for dependant in dependants[task_id]:
+            indegree[dependant] -= 1
+            if indegree[dependant] == 0:
+                released.append(dependant)
+        ready.extend(sorted(released, key=position.__getitem__))
+    if len(ordered) != len(tasks):
+        cycle = ", ".join(task_id for task_id, degree in indegree.items() if degree)
+        raise WorkflowFailed(f"plan decomposition contains a dependency cycle: {cycle}")
+    ancestors: dict[str, set[str]] = {}
+    for task in ordered:
+        ancestors[task.id] = set(task.depends_on)
+        for dependency in task.depends_on:
+            ancestors[task.id].update(ancestors[dependency])
+    for index, left in enumerate(tasks):
+        for right in tasks[index + 1 :]:
+            overlap = any(
+                _path_owned(left_path, [right_path]) or _path_owned(right_path, [left_path])
+                for left_path in left.paths
+                for right_path in right.paths
+            )
+            unordered = left.id not in ancestors[right.id] and right.id not in ancestors[left.id]
+            if overlap and unordered:
+                raise WorkflowFailed(
+                    f"tasks {left.id} and {right.id} have overlapping path ownership but no dependency"
+                )
+    return ordered
+
+
+@blueprint.node
+def snapshot_plan(logger, plan_path: str, run_dir: str, repo_dir: str = "") -> PlanRunContext:
+    """Freeze plan text and repository identity before any planning turn runs."""
+    repo_root = find_repo_root(repo_dir)
+    source = Path(plan_path).expanduser()
+    if not source.is_absolute():
+        source = repo_root / source
+    source = source.resolve()
+    try:
+        content = source.read_bytes()
+        text = content.decode("utf-8")
+        repo = open_repo(repo_root)
+        replacements = repo.git.for_each_ref("--format=%(refname)", "refs/replace").strip()
+        if replacements:
+            raise WorkflowFailed("implement-plan refuses repositories with active replacement refs")
+        repo.git.update_environment(GIT_NO_REPLACE_OBJECTS="1")
+        branch = repo.active_branch.name
+        base_commit = repo.git.rev_parse("HEAD").strip()
+    except (OSError, UnicodeDecodeError, GitError, TypeError) as exc:
+        raise WorkflowFailed(f"cannot snapshot plan {source}: {exc}") from exc
+    if repo.is_dirty(index=True, working_tree=True, untracked_files=True):
+        raise WorkflowFailed(
+            f"implement-plan requires a clean worktree at {repo_root}; preserve or commit existing work first"
+        )
+    if not branch or branch == "HEAD":
+        raise WorkflowFailed("implement-plan requires a checked-out branch, not detached HEAD")
+    try:
+        remote = repo.git.ls_remote("origin", f"refs/heads/{branch}")
+    except GitError as exc:
+        raise WorkflowFailed(f"implement-plan requires a readable origin/{branch}: {exc}") from exc
+    remote_head = remote.split()[0] if remote.split() else ""
+    if remote_head != base_commit:
+        raise WorkflowFailed(
+            f"implement-plan requires origin/{branch} at local HEAD {base_commit[:12]}"
+        )
+    digest = hashlib.sha256(content).hexdigest()
+    private_dir = Path(run_dir) / "implement-plan"
+    context = PlanRunContext(
+        repo_root=str(repo_root),
+        source_path=str(source),
+        plan_text=text,
+        plan_digest=digest,
+        worklist_path=str(private_dir / "worklist.json"),
+        branch=branch,
+        base_commit=base_commit,
+        origin_digest=origin_digest(repo_root),
+        git_control_digest=git_control_digest(repo_root),
+        other_refs_digest=other_refs_digest(repo_root, branch),
+        run_nonce=secrets.token_hex(16),
+    )
+    _atomic_json(
+        private_dir / "snapshot.json",
+        context.model_dump(mode="json", exclude={"plan_text"}),
+    )
+    logger.info("snapshotted %s as %s", source, digest[:12])
+    return context
+
+
+def assert_plan_unchanged(context: PlanRunContext) -> None:
+    try:
+        current_digest = hashlib.sha256(Path(context.source_path).read_bytes()).hexdigest()
+    except OSError as exc:
+        raise WorkflowFailed(f"cannot re-read source plan: {exc}") from exc
+    if current_digest != context.plan_digest:
+        raise WorkflowFailed("source plan changed after snapshot; start a new implement-plan run")
+
+
+@blueprint.node
+def prepare_plan(
+    logger, decomposition: PlanDecomposition, context: PlanRunContext
+) -> PreparedPlan:
+    """Validate the agent proposal into immutable checkpoint authority."""
+    assert_plan_unchanged(context)
+    if decomposition.status != "ready":
+        raise WorkflowFailed(
+            f"plan decomposition was not ready: {decomposition.summary or decomposition.status or 'no result'}"
+        )
+    if not decomposition.tasks:
+        raise WorkflowFailed("plan decomposition produced no implementation tasks")
+    tasks = _topological([_validate_task(task, context) for task in decomposition.tasks])
+    final = [
+        _validate_command(command, owner="final gate")
+        for command in decomposition.final_verification
+    ]
+    if not final:
+        raise WorkflowFailed("plan decomposition must declare a final repository verification gate")
+    logger.info("prepared %d dependency-ordered plan tasks", len(tasks))
+    return PreparedPlan(tasks=tasks, final_verification=final, summary=decomposition.summary)
+
+
+def task_key(context: PlanRunContext, task_id: str) -> str:
+    source = f"{context.run_nonce}:{task_id}".encode()
+    return hashlib.sha256(source).hexdigest()[:16]
+
+
+def write_worklist(
+    context: PlanRunContext,
+    plan: PreparedPlan,
+    *,
+    current_index: int,
+    completed_commits: list[str],
+    blocked: str = "",
+) -> None:
+    """Project checkpoint authority for operators; never read it back to schedule work."""
+    items: list[wl.WorkItem] = []
+    for index, task in enumerate(plan.tasks):
+        if index < len(completed_commits):
+            status, commit_sha = "done", completed_commits[index]
+        elif index == current_index and blocked == task.id:
+            status, commit_sha = "blocked", ""
+        elif index == current_index:
+            status, commit_sha = "active", ""
+        else:
+            status, commit_sha = "pending", ""
+        items.append(
+            wl.WorkItem(
+                id=task.id,
+                status=status,
+                kind="plan-task",
+                order=index + 1,
+                payload={"task": task.model_dump(mode="json"), "commit_sha": commit_sha},
+            )
+        )
+    payload = {
+        "version": 1,
+        "plan_digest": context.plan_digest,
+        "branch": context.branch,
+        "base_commit": context.base_commit,
+        "tasks": [item.model_dump(exclude_unset=True, mode="json") for item in items],
+    }
+    _atomic_json(Path(context.worklist_path), payload)
+
+
+__all__ = [
+    "assert_plan_unchanged",
+    "git_control_digest",
+    "origin_endpoint",
+    "origin_digest",
+    "other_refs_digest",
+    "prepare_plan",
+    "snapshot_plan",
+    "task_key",
+    "write_worklist",
+]

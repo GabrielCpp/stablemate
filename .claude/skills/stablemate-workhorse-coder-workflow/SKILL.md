@@ -13,7 +13,7 @@ metadata:
 
 Load this skill when reading, modifying, or debugging the `coder` workflow —
 `workflows/src/workhorse_workflows/coder/`: `workflow.py` (the epic/story state machine),
-`flows/` (the eight sub-flows), `nodes/` (the node functions), `schemas/`, `prompts/`.
+its nine registered sub-flows, node functions, schemas, and prompts.
 
 The engine API those files are written against — states, `Continue`/`Done`/`Await`,
 `self.call`/`agent`/`handoff`/`output` — is `workhorse/docs/AUTHORING.md`. Node-authoring
@@ -57,10 +57,10 @@ workhorse-coder run --params '{"mode":"story","story":"CASE-1234"}'
 
 ### Standalone flow invocation
 
-The eight sub-flows are registered by name on the registry (`Registry("coder").add_flows(
-genesis=…, dev=…, review=…, docs=…, qa=…, fix=…, fix_ci=…, dream=…)`), and any of them is
-independently launchable. Each resolves `story_path`/`spec_dir` from the `story` slug via
-ostler in its own first state, so only the minimal params are needed:
+Nine sub-flows are registered by name on the registry (`Registry("coder").add_flows(...)`),
+and any of them is independently launchable. The eight story-oriented flows resolve
+`story_path`/`spec_dir` from the story slug via ostler in their own first state, so only the
+minimal params are needed:
 
 ```bash
 # QA only, against DEV
@@ -68,6 +68,9 @@ workhorse-coder run qa --params '{"story":"CASE-1234","target_env":"dev"}'
 
 # Dev (plan + implement) only
 workhorse-coder run dev --params '{"story":"CASE-1234"}'
+
+# An already-reviewed prose plan, split into verified commits
+workhorse-coder run implement-plan --params '{"plan_path":"/absolute/path/to/plan.md"}'
 ```
 
 `docs_path` and `epic` are optional (empty string = derive from CWD / ostler defaults).
@@ -75,8 +78,10 @@ Standalone QA clears both the disposable `qa/` tree and the stale root `qa-evide
 then regenerates context. `plan-context.json` is not required; source-root resolution
 degrades to the standalone repository.
 
-`genesis`, `dream` and `fix` exist as names *because* they are entered directly; the other
-five are also reached by `self.handoff(...)` from the main machine.
+`genesis`, `dream`, `fix`, and `implement-plan` exist as names *because* they are entered
+directly; the other five are also reached by `self.handoff(...)` from the main machine.
+`implement-plan` is the exception to the story-input convention: it snapshots `plan_path`,
+validates a typed dependency worklist, and owns scoped verification, commit, and push.
 
 ---
 
