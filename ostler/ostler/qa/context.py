@@ -686,11 +686,13 @@ def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
         return False
     if not separator or not symbol or not path.endswith(".py"):
         return True
-    for text in texts:
-        all_lines = set(range(1, len(text.splitlines()) + 1))
-        if symbol in _symbols_for_lines(text, all_lines, path):
-            return True
-    return False
+    # `inventory.declares`, not `_symbols_for_lines`: the two answer different questions and
+    # only the first one is grounding's. `_symbols_for_lines` attributes a *diff hunk* to the
+    # declaration whose body spans it, so it can only ever report classes and functions — a
+    # module-level constant has no body to span. Asking it whether a name exists therefore
+    # made every `code:` bullet naming a constant permanently unsatisfiable: the citation was
+    # reported dangling in both base and head, and no rewrite of the book could clear it.
+    return any(inventory.declares(path, text, symbol) for text in texts)
 
 
 def _git_bytes(root: Path, *args: str) -> bytes:

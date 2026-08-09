@@ -674,3 +674,74 @@ def test_excluded_paths_leave_the_diff_before_anything_is_obligated_on_them(tmp_
     assert "svc/orphan.py" not in paths, paths
     # And it is gone from the findings too — an excluded path cannot be an unmapped unit.
     assert "orphan" not in json.dumps(packet["healthFindings"]), packet["healthFindings"]
+
+
+def test_a_module_level_constant_grounds_like_any_other_declaration(tmp_path: Path):
+    """A `code:` bullet naming a module-level binding is satisfiable.
+
+    The existence check used to reuse the helper that attributes a *diff hunk* to the
+    declaration whose body spans it — which can only ever report a class or a function, since
+    a constant has no body to span. Every citation of one was therefore reported as resolving
+    "in neither base nor head", a finding no rewrite of the book could clear: the docs gate
+    burned its whole rework budget and failed the run.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "docs/features/demo/backend.md").write_text(
+        "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
+        "- code: `svc/backend.py::MANIFEST`, `svc/backend.py::ROUTES`, "
+        "`svc/backend.py::serve`, `svc/backend.py::serve.Handler`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc/backend.py").write_text(
+        "MANIFEST = {'name': 'demo'}\nROUTES, ALIASES = {}, {}\n\n\n"
+        "def serve(port):\n    class Handler:\n        pass\n\n    return Handler, port\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/backend.py").write_text(
+        (tmp_path / "svc/backend.py").read_text(encoding="utf-8").replace("port", "bind"),
+        encoding="utf-8",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["svc"]})
+
+    dangling = [f for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
+    assert dangling == [], dangling
+
+
+def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: Path):
+    """The widened check must not become "any name mentioned anywhere" — an import is not a
+    declaration, so a symbol that moved out from under its citation stays a finding.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "docs/features/demo/backend.md").write_text(
+        "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
+        "- code: `svc/backend.py::MANIFEST`\n- code: `svc/backend.py::serve`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc/backend.py").write_text(
+        "from svc.data import MANIFEST\n\n\ndef serve():\n    return MANIFEST\n", encoding="utf-8"
+    )
+    (tmp_path / "svc/data.py").write_text("MANIFEST = {'name': 'demo'}\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/backend.py").write_text(
+        "from svc.data import MANIFEST\n\n\ndef serve():\n    return dict(MANIFEST)\n",
+        encoding="utf-8",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["svc"]})
+
+    dangling = [f["ref"] for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
+    assert dangling == ["svc/backend.py::MANIFEST"], packet["healthFindings"]
