@@ -23,7 +23,9 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import sys
+import sysconfig
 import tempfile
+import types
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -425,22 +427,75 @@ workflow.entry = Probe
 '''
 
 
-def _write_package(root: Path) -> Any:
+#: A library the workflow imports and the operator fixes — the shape of every real
+#: workflow, which is several distributions deep rather than one package. The flow below
+#: branches on this value instead of pushing a new copy of itself, so what the assertion
+#: proves is specifically that the *dependency* was re-read.
+#: The two payloads differ in *length*, not just in bytes. CPython validates a cached
+#: `.pyc` against its source's mtime **and size**, both at one-second granularity, so a
+#: same-second rewrite of exactly the same length would be served from the stale cache
+#: and this test would measure the bytecode cache rather than the reload. A real push
+#: lands hours after the import it replaces; a test rewrites the file microseconds after.
+_VERSION_V2 = "new-and-longer"
+_LIB_V1 = 'VERSION = "old"\n'
+_LIB_V2 = f'VERSION = "{_VERSION_V2}"\n'
+
+_FLOW_OVER_LIB = '''
+"""A flow whose defect is in the library it calls, not in itself."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from probe_lib import value
+
+from workhorse import reload
+from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.transitions import Done
+from workhorse.pyflow.workflow import Workflow
+
+
+class Probe(Workflow):
+    def start(self) -> Any:
+        run_dir = reload.armed()
+        assert run_dir is not None
+        if value.VERSION != "old":
+            (run_dir / "ran-new.txt").write_text(value.VERSION, encoding="utf-8")
+            return Done(value.VERSION)
+        # The operator's push — into the library, with this package left untouched.
+        Path(value.__file__).write_text(@V2@, encoding="utf-8")
+        (run_dir / "ran-old.txt").write_text(value.VERSION, encoding="utf-8")
+        reload.request(run_dir)
+        raise reload.ReloadRequested("the operator cut this turn")
+
+
+workflow = Registry("probe")
+workflow.add_flows(main=Probe)
+workflow.entry = Probe
+'''.replace("@V2@", repr(_LIB_V2))
+
+
+def _write_package(root: Path, flow: str = _FLOW_V1) -> Any:
     """Materialise the probe distribution under `root` and import its registry."""
     package = root / "reloadable_probe"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
-    (package / "flow.py").write_text(_FLOW_V1, encoding="utf-8")
+    (package / "flow.py").write_text(flow, encoding="utf-8")
     (package / "pushed.py").write_text(_FLOW_V2, encoding="utf-8")
+    lib = root / "probe_lib"
+    lib.mkdir()
+    (lib / "__init__.py").write_text("", encoding="utf-8")
+    (lib / "value.py").write_text(_LIB_V1, encoding="utf-8")
     sys.path.insert(0, str(root))
     importlib.invalidate_caches()
     return importlib.import_module("reloadable_probe.flow").workflow
 
 
 def _forget_package(root: Path) -> None:
-    root_pkg = "reloadable_probe"
-    for name in [m for m in sys.modules if m == root_pkg or m.startswith(root_pkg + ".")]:
-        del sys.modules[name]
+    for root_pkg in ("reloadable_probe", "probe_lib"):
+        for name in [m for m in sys.modules if m == root_pkg or m.startswith(root_pkg + ".")]:
+            del sys.modules[name]
     if str(root) in sys.path:
         sys.path.remove(str(root))
 
@@ -475,6 +530,79 @@ def test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed():
         assert sorted(p.name for p in (Path(tmp) / "runs").iterdir()) == ["probe-probe"]
 
 
+def test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports():
+    """The failure this scope exists to prevent, stated as the operator meets it.
+
+    A workflow is several distributions deep — the state machine calls a doc-graph
+    validator, a shared kit — and a defect is at least as likely to be in one of those as
+    in the flow. Purging only the entry package would leave the fixed library in
+    `sys.modules`, re-import the workflow against the stale copy, and log a successful
+    reload over code that did not change: a false receipt, which is worse than the no-op
+    it hides, because the operator stops looking. Here the flow is byte-identical across
+    the reload and only the library moved.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "src"
+        registry = _write_package(root, flow=_FLOW_OVER_LIB)
+        try:
+            code = run_pyflow(
+                dataclasses.replace(_invocation(tmp), registry=registry, run_id="lib")
+            )
+        finally:
+            _forget_package(root)
+
+        run_dir = Path(tmp) / "runs" / "probe-lib"
+        assert code == 0, code
+        assert (run_dir / "ran-old.txt").read_text(encoding="utf-8") == "old"
+        assert (run_dir / "ran-new.txt").read_text(encoding="utf-8") == _VERSION_V2
+
+
+def test_the_environment_is_kept_while_the_working_tree_is_replaced():
+    """The safety invariant, stated over the scan rather than over one reload.
+
+    Replacing a package the *engine* also holds would hand objects of the new classes to
+    the surviving frames' old ones — the failure that makes a hot reload unpredictable
+    rather than merely incomplete. Site-packages is the line: workhorse's own
+    dependencies live there, and so nothing an operator can edit in place does.
+    """
+    site = Path(sysconfig.get_paths()["purelib"])
+    tree = Path("/srv/checkout")
+    fakes = {
+        # A wheel-installed dependency the engine may also be holding: kept.
+        "vendored_dep": site / "vendored_dep" / "__init__.py",
+        "vendored_dep.sub": site / "vendored_dep" / "sub.py",
+        # An editable sibling — `__file__` points at the source tree, never at the `.pth`
+        # shim — so it is the operator's to fix, and a reload's to replace.
+        "probe_sibling": tree / "probe_sibling" / "__init__.py",
+        # A namespace package: nothing on disk to have been fixed.
+        "probe_namespace": None,
+    }
+    saved = {name: sys.modules.get(name) for name in fakes}
+    for name, origin in fakes.items():
+        module = types.ModuleType(name)
+        if origin is not None:
+            module.__file__ = str(origin)
+        sys.modules[name] = module
+    try:
+        roots = run_mod._reloadable_roots("reloadable_probe.flow")
+    finally:
+        for name, previous in saved.items():
+            if previous is None:
+                del sys.modules[name]
+            else:
+                sys.modules[name] = previous
+
+    # The entry package first and unconditionally: a workflow installed as a wheel — the
+    # docker image, where nothing is a source tree — still reloads exactly as before.
+    assert roots[0] == "reloadable_probe"
+    assert "probe_sibling" in roots
+    assert "vendored_dep" not in roots
+    assert "probe_namespace" not in roots
+    # The engine's own modules are on the stack doing the reload; `--core` is for those.
+    assert "workhorse" not in roots
+    assert not {"sys", "json", "pathlib", "__main__"} & set(roots)
+
+
 if __name__ == "__main__":
     test_a_reload_raised_from_a_state_body_closes_that_states_span()
     test_a_reload_deep_in_a_sub_flow_closes_one_scope_per_drive_frame()
@@ -483,4 +611,6 @@ if __name__ == "__main__":
     test_a_run_arms_the_watch_for_its_own_dir_and_disarms_on_the_way_out()
     test_a_request_that_cannot_be_cleared_stops_the_run_rather_than_looping()
     test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed()
+    test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports()
+    test_the_environment_is_kept_while_the_working_tree_is_replaced()
     print("ok")

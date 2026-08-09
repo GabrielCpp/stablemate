@@ -12,9 +12,11 @@ same shape whichever engine wrote it.
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
 import shutil
 import sys
+import sysconfig
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -353,7 +355,7 @@ def _drive_reloadable(
                     pending_resume.state,
                 )
                 raise _CoreReloadRequested from exc
-            registry = _reimport(registry)
+            registry, replaced = _reimport(registry)
             env.workflow_dir = registry.directory()
             env.nodes = registry.nodes
             resume = _read_resume(writer.run_dir)
@@ -364,12 +366,24 @@ def _drive_reloadable(
             # pushed code renamed or retyped a workflow field the checkpoint still holds.
             # The run stops at a resumable checkpoint with pydantic naming the field.
             wf = _instantiate(workflow_cls, resume.inputs)
-            otel.turn_event("reload", state=resume.state, flow=resume.flow or "", core=core)
+            otel.turn_event(
+                "reload",
+                state=resume.state,
+                flow=resume.flow or "",
+                core=core,
+                packages=",".join(replaced),
+            )
             # A log record, not a print: the reload is the one thing an operator needs
             # to see in `groom logs` when they come back to a run that changed under
-            # them, and the console handler still puts it on their terminal.
+            # them, and the console handler still puts it on their terminal. It names
+            # the packages it replaced, because the failure this feature must never
+            # have is a reload that reports success over code it did not reload — an
+            # operator who fixed a library the workflow imports can read this line and
+            # see whether their fix is in.
             env.log.info(
-                "[workhorse] reload: re-entering '%s' on the pushed code", resume.state
+                "[workhorse] reload: re-entering '%s' on the pushed code (replaced: %s)",
+                resume.state,
+                ", ".join(replaced),
             )
 
 
@@ -412,33 +426,107 @@ def _exec_reload(name: str, run_dir: Path) -> int:
     return reload.RELOAD_EXIT_CODE
 
 
-def _reimport(registry: Registry) -> Registry:
-    """Re-read the workflow distribution from disk and return its rebuilt registry.
+def _reloadable_roots(entry_module: str) -> list[str]:
+    """The top-level packages a workflow-only reload replaces, newest-code-first.
 
-    The package purged is the top-level one the entry flow's module lives in — derived,
-    not named, because workhorse is workflow-agnostic and must not know which
-    distribution it is running. Everything under it goes, so a fix in a node module or a
-    sub-flow is picked up as surely as one in the workflow module itself; workhorse's own
+    A workflow is not one package. `workhorse_workflows` imports libraries that are
+    edited in the same working tree and fixed in the same push — the doc-graph validator
+    a node calls, a shared kit — and purging only the entry package would re-import the
+    workflow *against the stale copies of those*, since `sys.modules` still holds them.
+    The run would then report a successful reload and carry on running the code the
+    operator just fixed, which is worse than not reloading at all: a no-op is visible,
+    and a false receipt is not.
+
+    So the rule is **replace the code that can be edited, keep the environment**: the
+    entry flow's own package always, plus every other top-level package whose module
+    file lies outside the interpreter's stdlib and site-packages — i.e. an editable or
+    source-tree install, which is the only kind an operator can fix while a run holds
+    it open. A wheel in site-packages is left alone, and so is the standard library.
+
+    That line is not a heuristic about *which* packages matter; it is the safety
+    invariant. Workhorse's own dependencies are environment-installed, so keeping the
+    environment is what guarantees no surviving frame is left holding a class from a
+    module object that has been replaced — the failure that makes a hot reload
+    unpredictable rather than merely wrong. Workhorse itself is excluded by name (its
+    own root, derived from this module rather than spelled), because its frames are on
+    the stack doing the reload: replacing those is what `--core` is for.
+
+    The entry package is unconditional, so a workflow installed as a wheel — the docker
+    image, where nothing is a source tree — still reloads exactly as it did before.
+    """
+    engine = __name__.partition(".")[0]
+    # `sysconfig` answers for the interpreter actually running, so inside a venv these
+    # are the venv's own directories, and an editable install's `__file__` — which points
+    # at the source tree, never at the `.pth` shim under site-packages — falls outside.
+    env_dirs = tuple(
+        Path(p).resolve()
+        for p in (
+            sysconfig.get_paths().get(key) for key in ("purelib", "platlib", "stdlib", "platstdlib")
+        )
+        if p
+    )
+    # Whatever is mid-execution up the stack — the console script the run was started
+    # from, a caller that embedded the engine, a test driving it. Those modules match the
+    # source-tree rule and must still be kept: dropping a module object whose frame is
+    # still running does not stop that frame, it just guarantees the next import builds a
+    # *second* copy of its classes, and the two then fail every `isinstance` between them.
+    # Same reasoning as excluding the engine, arrived at by looking rather than by name.
+    live = set()
+    frame = inspect.currentframe()
+    while frame is not None:
+        live.add(str(frame.f_globals.get("__name__", "")).partition(".")[0])
+        frame = frame.f_back
+
+    roots = [entry_module.partition(".")[0]]
+    for name, module in list(sys.modules.items()):
+        root = name.partition(".")[0]
+        if root in roots or root == engine or root in live:
+            continue
+        if root in sys.stdlib_module_names:
+            continue
+        origin = getattr(module, "__file__", None)
+        if not origin:
+            # A namespace package or a built-in: nothing on disk to have been fixed.
+            continue
+        path = Path(origin).resolve()
+        if any(path.is_relative_to(directory) for directory in env_dirs):
+            continue
+        roots.append(root)
+    return roots
+
+
+def _reimport(registry: Registry) -> tuple[Registry, list[str]]:
+    """Re-read the workflow's code from disk and return its rebuilt registry.
+
+    What is purged is `_reloadable_roots`' answer — the entry flow's package plus every
+    source-tree package alongside it — derived, not named, because workhorse is
+    workflow-agnostic and must not know which distribution it is running, let alone what
+    that distribution depends on. Everything under each root goes, so a fix in a node
+    module, a sub-flow, or a library the nodes call is picked up alike; workhorse's own
     modules are untouched, which is the difference between this and `--core`.
 
     The registry is a module-level object built at import, so the fresh one is found on
     the re-imported module rather than reconstructed here — reconstructing it would mean
     this function knowing how a distribution composes its blueprints.
+
+    Returns the registry and the roots that were replaced, which the caller logs: a
+    reload the operator cannot audit is one they cannot trust.
     """
     entry = registry.entry
     if entry is None:  # pragma: no cover — a run without an entry flow never started
         raise WorkflowFailed("cannot reload a workflow that declares no entry point")
     module_name = entry.__module__
-    root = module_name.partition(".")[0]
-    for cached in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
-        del sys.modules[cached]
+    replaced = _reloadable_roots(module_name)
+    for root in replaced:
+        for cached in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
+            del sys.modules[cached]
     # The point of a reload is that the files changed under a process that already read
     # them, which is exactly the case the finder's directory caches were built to skip.
     importlib.invalidate_caches()
     module = importlib.import_module(module_name)
     for value in vars(module).values():
         if isinstance(value, Registry) and value.name == registry.name and value.entry:
-            return value
+            return value, replaced
     raise WorkflowFailed(
         f"reloaded {module_name} but found no Registry({registry.name!r}) on it, so the "
         "run would carry on against the code it was asked to replace. Resume the run to "

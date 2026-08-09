@@ -429,14 +429,36 @@ What the run then does:
    which state was re-entered and when.
 3. **The cut consumes no recovery budget.** Not a retry, not a reframe, not a compaction
    attempt, and no backoff: the turn was interrupted on purpose.
-4. **The workflow package is re-imported from disk** and the run re-enters the checkpoint
-   the state wrote on entry — same process, same run dir, same root span, same wall-clock
+4. **The pushed code is re-imported from disk** and the run re-enters the checkpoint the
+   state wrote on entry — same process, same run dir, same root span, same wall-clock
    budget. Not a new run.
 
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
 at that checkpoint with pydantic naming the field, which is the honest outcome of an
 incompatible edit.
+
+**What "the pushed code" covers is wider than the workflow package**, because a defect
+usually is. A workflow is several distributions deep — the state machine calls a doc-graph
+validator, a shared kit — and a reload that replaced only the entry package would
+re-import the workflow against the *stale* copy of the library you just fixed, then log a
+successful reload over code that never changed. So the rule is **replace the working tree,
+keep the environment**: the workflow's own package always, plus every other top-level
+package whose module file lies outside the interpreter's stdlib and site-packages — i.e.
+an editable or source-tree install, which is the only kind you can fix while a run holds
+it open. A wheel in site-packages is left alone, and so is anything with a live frame on
+the stack. That line is the safety invariant rather than a guess about which packages
+matter: workhorse's own dependencies are environment-installed, so keeping the environment
+is what guarantees no surviving frame is left holding a class whose module was swapped
+underneath it. The reload log record names the packages it replaced, so a reload is
+something you can audit rather than take on faith:
+
+```
+[workhorse] reload: re-entering 'implement' on the pushed code (replaced: workhorse_workflows, ostler)
+```
+
+A dependency installed as a wheel therefore needs `--core` (or a plain resume) to be
+picked up — reinstalling it is an environment change, not a working-tree one.
 
 `--core` asks for workhorse's own modules too, which cannot be replaced from a frame
 executing them — the driver, the ladder and the stream loop are all on that frame — so it
