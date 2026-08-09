@@ -290,10 +290,15 @@ def _format_profile(result: dict | None) -> str:
             continue
         lines.append(title)
         for row in rows:
+            # The group rows have carried a cost since they were written; printing it is
+            # what turns "stalled ×3" from a count into "$41 of stalled", which is the
+            # number that decides whether a loop is worth fixing.
+            row_cost = f"${row['cost_usd']:.2f}" if row["cost_usd"] is not None else "-"
             lines.append(
                 f"  {row['dimension']}={row['value']}  {row['node']}"
                 f"  visits={row['visits']}  backend_retries={row['backend_retries']}"
                 f"  turns={row['turns']}  agent={row['agent_s'] / 60:.1f}m"
+                f"  cost={row_cost}"
             )
     return "\n".join(lines)
 

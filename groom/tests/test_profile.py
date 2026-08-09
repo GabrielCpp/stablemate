@@ -231,6 +231,58 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
         assert "visits/work=1.0" in rendered
 
 
+def test_the_docs_loop_labels_land_in_the_buckets_they_were_named_for() -> None:
+    """The docs subflow's progress labels need no groom change — this is the proof.
+
+    `workhorse_workflows` picked those names to match the two classifiers here: a
+    `_verdict` suffix for the productivity verdict, a canonical non-negative integer for
+    the outstanding count. Nothing on either side imports the other, so if
+    `_VERDICT_SUFFIXES` is ever narrowed or the attempt predicate tightened, this is where
+    it surfaces rather than as a silently empty section of a report.
+    """
+    with _DB():
+        store.insert_spans(
+            [
+                _span("run-1", "workflow_run", 0, 40, attrs={"run_id": "run-1"}),
+                _span("visit-1", "workflow_state", 0, 20, parent="run-1", node="document"),
+                _span(
+                    "turn-1",
+                    "agent_turn",
+                    0,
+                    60,
+                    parent="visit-1",
+                    node="document",
+                    attrs={
+                        "work_id": "story-1",
+                        "docs.gate_progress_verdict": "stalled",
+                        "docs.review_findings": "2",
+                        "total_cost_usd": 3.5,
+                    },
+                ),
+            ]
+        )
+
+        profile = store.run_profile("run-1")
+        assert profile is not None
+        verdict = next(
+            row
+            for row in profile["verdict_groups"]
+            if row["dimension"] == "docs.gate_progress_verdict"
+        )
+        assert verdict["value"] == "stalled" and verdict["turns"] == 1
+        outstanding = next(
+            row
+            for row in profile["attempt_groups"]
+            if row["dimension"] == "docs.review_findings"
+        )
+        assert outstanding["value"] == "2" and outstanding["turns"] == 1
+
+        rendered = cli._format_profile(profile)
+        assert "docs.gate_progress_verdict=stalled  document" in rendered
+        assert "docs.review_findings=2  document" in rendered
+        assert "agent=1.0m  cost=$3.50" in rendered
+
+
 def test_profile_does_not_collapse_unparented_legacy_turns_into_one_visit() -> None:
     with _DB():
         store.insert_spans(
