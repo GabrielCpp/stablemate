@@ -20,7 +20,11 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.author.epic_edit.flow import EpicEdit
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
+from workhorse_workflows.kit.telemetry import (
+    counter_labels,
+    progress_verdict,
+    verdict_labels,
+)
 
 
 def test_counters_are_prefixed_and_stringified():
@@ -102,6 +106,43 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     assert cleared.plan_rework == 2
     assert cleared.plan_rework_total == 3
     assert cleared.docs_recheck_required is True
+
+
+def test_progress_verdict_names_what_a_pass_bought():
+    """The six outcomes, as a table. The vocabulary is closed on purpose: it becomes a
+    span-attribute value, and an open one turns a group-by into a list of singletons."""
+    cases = [
+        (None, ["D1"], "first_pass"),
+        (["D1", "D2"], [], "cleared"),
+        (None, [], "cleared"),
+        (["D1", "D2"], ["D1"], "reduced"),
+        (["D1"], ["D1", "D2"], "regressed"),
+        (["D1", "D2"], ["D1", "D2"], "stalled"),
+        (["D1", "D2"], ["D3", "D4"], "churned"),
+    ]
+    for previous, current, expected in cases:
+        assert progress_verdict(previous, current) == expected, (previous, current)
+
+
+def test_a_pass_that_closed_two_and_opened_two_is_not_a_stall():
+    """`churned` is deliberately distinct from `stalled`, and this is the whole reason the
+    helper compares identities rather than counts.
+
+    The repair-pass contract requires the author to retain stable finding ids, so a
+    changed id set is evidence the previous worklist *was* closed and new defects were
+    found. That wants a larger budget. `stalled` — the same findings handed back a second
+    time — wants a prompt repair instead. Collapsing them into one word erases the only
+    distinction the label exists to draw.
+    """
+    assert progress_verdict(["D1", "D2"], ["D3", "D4"]) == "churned"
+    assert progress_verdict(["D1", "D2"], ["D1", "D2"]) == "stalled"
+
+
+def test_an_empty_baseline_is_a_first_pass_not_a_reduction():
+    """A lane that has never failed carries no ids, and must not read as "had zero
+    findings, now has two, therefore regressed"."""
+    assert progress_verdict(None, ["G:a.py::b"]) == "first_pass"
+    assert progress_verdict([], ["G:a.py::b"]) == "first_pass"
 
 
 def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:
