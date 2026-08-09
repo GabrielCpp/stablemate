@@ -10,7 +10,11 @@ variable before launching. If groom is listening, a run should be observable.
 
 The probe is what keeps that honest — auto-on may not *cost* anything on a
 machine with no collector, so enabling is gated on one short-timeout TCP connect
-rather than on hope. With the endpoint dead, the SDK absent, or the var set
+rather than on hope. The SDK itself is a **required** dependency, so "installed but
+unobservable" is not a state a workhorse install can be in — it was, while telemetry
+was an `otel` extra, and the fail-soft policy below made that state silent: an install
+missing the extra exported nothing, said nothing, and looked from the dashboard exactly
+like a run that had died. With the endpoint dead, the SDK absent, or the var set
 falsy, every function here is a near-zero-cost no-op — instrumentation must never
 change how an unattended run behaves, let alone crash it, so every public entry
 point also swallows its own exceptions.

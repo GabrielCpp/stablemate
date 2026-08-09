@@ -436,9 +436,13 @@ metrics and log records to a local OTLP collector — by default
 stores them in SQLite and pages you (ntfy/webhook + browser) on stall/stuck/churn:
 
 ```bash
-pip install 'workhorse-agent[otel]'
 groom serve                                                # now every run is observed
 ```
+
+The OTel SDK is a **required** dependency, so any install of workhorse can export. It used
+to be an `otel` extra, and an install that skipped it produced not "a run without
+telemetry" but an *invisible* run: telemetry fails soft, so the exporter was absent
+silently and the dashboard showed nothing, which reads exactly like a dead run.
 
 Live gauges distinguish an open agent turn, an explicit operator/cap/retry wait, and
 ordinary deterministic node work. Turn idle and elapsed values are cleared when the turn

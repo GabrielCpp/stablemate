@@ -248,13 +248,12 @@ telemetry is being torn down.
 
 ### Observability (automatic when a collector is reachable)
 
-Install the extra and start a local collector (`groom` by default — it pages you
-on stall/stuck/churn; see the groom README). Nothing
-else is required: at run start workhorse probes the OTLP endpoint and, if
+Start a local collector (`groom` by default — it pages you on stall/stuck/churn;
+see the groom README). Nothing else is required — the OTel SDK is a required
+dependency of workhorse: at run start workhorse probes the OTLP endpoint and, if
 something is listening, streams spans/metrics/logs to it.
 
 ```bash
-pip install 'workhorse-agent[otel]'
 groom serve                                                # now runs export
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:8787   # the default
 export WORKHORSE_OTEL=0                                    # …unless you opt out

@@ -39,6 +39,15 @@ dependencies = [
   # Recognize canonical operator-gate headings without mistaking examples inside fenced
   # code for document structure.
   "markdown-it-py>=3.0",
+  # OpenTelemetry instrumentation (see workhorse/otel.py). **Required, not optional.**
+  # It was an `otel` extra, and the failure that ended that: an install which omits it
+  # is not "a run without telemetry" but a run that is *invisible* — telemetry fails
+  # soft by design, so a venv missing the SDK exports nothing and says nothing, and the
+  # dashboard simply never shows the run. That is indistinguishable from a dead run, and
+  # the runs it happens to are the unattended multi-hour ones telemetry exists for. Two
+  # pure-python wheels are a cheap price for "installed implies observable".
+  "opentelemetry-sdk>=1.25",
+  "opentelemetry-exporter-otlp-proto-http>=1.25",
 ]
 # Deliberately short. The engine is workflow-agnostic, so anything a *workflow* reads
 # belongs on `workhorse-workflows`, not here: YAML (pyyaml/ruamel.yaml) left with the
@@ -51,14 +60,10 @@ dependencies = [
 # which drive the real CLI as a subprocess per test) are subprocess/CPU-bound and
 # shard cleanly across cores — running them with `-n auto` needs xdist.
 test = ["pytest>=8.0", "pytest-xdist>=3.0"]
-# OpenTelemetry instrumentation (see workhorse/otel.py). Telemetry turns itself on
-# when a collector answers, but only if this extra is installed: without it — or
-# with no collector reachable — telemetry is a no-op and workhorse keeps zero
-# required telemetry deps.
-otel = [
-  "opentelemetry-sdk>=1.25",
-  "opentelemetry-exporter-otlp-proto-http>=1.25",
-]
+# `otel` is kept as an empty alias so an existing `workhorse-agent[otel]` install line —
+# in a Dockerfile, a CI job, another repo's lockfile — keeps resolving instead of failing
+# on an unknown extra. The SDK it used to carry is now a hard dependency above.
+otel = []
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workhorse"

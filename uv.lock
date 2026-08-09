@@ -1782,8 +1782,6 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "hvac" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-sdk" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "pytest" },
@@ -1797,8 +1795,6 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "hvac", specifier = ">=2.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.25" },
-    { name = "opentelemetry-sdk", specifier = ">=1.25" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pytest", specifier = ">=9.0.3" },
@@ -2107,16 +2103,14 @@ dependencies = [
     { name = "json-repair" },
     { name = "json5" },
     { name = "markdown-it-py" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "tomli-w" },
 ]
 
 [package.optional-dependencies]
-otel = [
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-sdk" },
-]
 test = [
     { name = "pytest" },
     { name = "pytest-xdist" },
@@ -2128,8 +2122,8 @@ requires-dist = [
     { name = "json-repair", specifier = ">=0.30" },
     { name = "json5", specifier = ">=0.9" },
     { name = "markdown-it-py", specifier = ">=3.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.25" },
-    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.25" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.25" },
+    { name = "opentelemetry-sdk", specifier = ">=1.25" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },

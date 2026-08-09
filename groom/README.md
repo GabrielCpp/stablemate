@@ -83,7 +83,6 @@ and port expose standard OTLP/HTTP receivers — `POST /v1/traces`,
 `POST /v1/metrics` and `POST /v1/logs` — so an ordinary run
 
 ```bash
-pip install 'workhorse-agent[otel]'   # the extra carries the OTel SDK; without it, no export
 workhorse-coder run                # probes the endpoint at start; exports if groom answers
 ```
 
