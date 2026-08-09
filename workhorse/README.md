@@ -396,6 +396,49 @@ of the auto behavior above):
 "Survives reboot" therefore covers both the *work products* (commits, sessions,
 artifacts) **and** position in the machine — an interrupted run auto-resumes mid-flight.
 
+## Pushing a fix into a run that is already going (`control reload`)
+
+The failure this exists for is not a crash. It is watching a healthy run spend real money
+on a flow you have already fixed on disk: a prompt that sends the agent in circles, a gate
+handing back the same worklist every pass. Stopping and restarting the run costs the
+in-flight turn, opens a second run generation, and reads in groom exactly like the failure
+it is not.
+
+```bash
+workhorse-coder control --run <id> reload                 # cut the turn, re-enter on the pushed code
+workhorse-coder control --run <id> reload --at-boundary   # let the turn land first
+workhorse-coder control --run <id> reload --core          # …and replace workhorse itself
+```
+
+With no `--run`, the most recent unfinished run under `--runs-dir` is taken, and the
+command prints which one, whether its pid answers, and the state it last checkpointed.
+It does not block on the reload landing.
+
+What the run then does:
+
+1. **The turn is cut, within about a second.** A turn can last hours, so waiting for the
+   next state boundary would deliver hours of the exact waste you are stopping.
+   `--at-boundary` is the opt-out, for a turn that is 95% through expensive work and is
+   *not* the broken part.
+2. **The turn's span closes with the usage it really accrued**, and every scope above it
+   closes on the unwind. A reload costs no dangling spans — that is what keeps it from
+   looking like an abort.
+3. **The cut consumes no recovery budget.** Not a retry, not a reframe, not a compaction
+   attempt, and no backoff: the turn was interrupted on purpose.
+4. **The workflow package is re-imported from disk** and the run re-enters the checkpoint
+   the state wrote on entry — same process, same run dir, same root span, same wall-clock
+   budget. Not a new run.
+
+The checkpoint is written *before* the state runs, so nothing durable is lost. If the
+pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
+at that checkpoint with pydantic naming the field, which is the honest outcome of an
+incompatible edit.
+
+`--core` asks for workhorse's own modules too, which cannot be replaced from a frame
+executing them and so costs a new process image. That exec is **not wired yet**: the run
+says so and reloads the workflow package alone, rather than silently doing half of what
+was asked.
+
 ## Run artifacts
 
 Each workflow execution writes a timestamped directory:

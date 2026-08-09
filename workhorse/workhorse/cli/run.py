@@ -32,6 +32,7 @@ from workhorse.pyflow.run import RunInvocation, run_pyflow
 # Re-imported under its historical private name: the run-identity rules live in
 # `rundir` so the driver can obey them without importing this module.
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
+from workhorse.rundir import resolve_run_dir
 from workhorse.runner.backends.registry import get_backend
 
 NAME = "run"
@@ -202,17 +203,8 @@ def _resume_run_dir(
 ) -> Path | None:
     """The run dir an explicit `--resume-run` / `--resume-latest` names, if either was given."""
     if args.resume_run:
-        # Three spellings, because the flag's own metavar promises two and `--run-id`
-        # creates the third: a path, the run *dir* name, and the run id that named it.
-        # A dir is `<workflow>-<run-id>`, so `--run-id shakedown --resume-run shakedown`
-        # — the obvious thing to type — used to miss the dir it had just made.
-        candidate = Path(args.resume_run)
-        if not candidate.is_absolute() and not candidate.exists():
-            candidate = runs_dir / args.resume_run
-            if not candidate.is_dir():
-                candidate = runs_dir / f"{workflow_name}-{args.resume_run}"
-        resolved = candidate.resolve()
-        if not resolved.is_dir():
+        resolved = resolve_run_dir(args.resume_run, runs_dir, workflow_name)
+        if resolved is None:
             print(
                 f"error: resume run dir not found for {args.resume_run!r} "
                 f"(looked under {runs_dir})",

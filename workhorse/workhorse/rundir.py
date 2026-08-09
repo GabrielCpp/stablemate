@@ -75,6 +75,26 @@ def auto_resolve(
     return rid, stable
 
 
+def resolve_run_dir(spec: str, runs_dir: Path, workflow_name: str) -> Path | None:
+    """The run dir an operator meant by ``spec``, or None if there is no such dir.
+
+    Three spellings, because a run dir is ``<workflow>-<run-id>`` and the operator has
+    two other names for the same run already in their shell history: a path, the run
+    *dir* name, and the run id that named it. ``--run-id shakedown --resume-run
+    shakedown`` — the obvious thing to type — used to miss the dir it had just made.
+
+    Shared by ``run``'s resume flags and ``control``'s ``--run`` so the two cannot drift:
+    a name that resumes a run must also be a name that can reload it.
+    """
+    candidate = Path(spec)
+    if not candidate.is_absolute() and not candidate.exists():
+        candidate = runs_dir / spec
+        if not candidate.is_dir():
+            candidate = runs_dir / f"{workflow_name}-{spec}"
+    resolved = candidate.resolve()
+    return resolved if resolved.is_dir() else None
+
+
 def find_latest_resumable(runs_dir: Path) -> Path | None:
     """Newest run dir that crashed mid-flight (has a checkpoint, never finished)."""
     if not runs_dir.exists():
