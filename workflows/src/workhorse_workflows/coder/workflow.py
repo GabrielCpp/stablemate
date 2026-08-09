@@ -121,6 +121,7 @@ from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
 from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.stage_plan import StagePlan
 
 
 class Coder(Workflow):
@@ -1032,9 +1033,9 @@ class Coder(Workflow):
 workflow = (
     Registry("coder")
     .add_blueprints(blueprint)
-    # The nine registered Python sub-flows, by the name `workhorse-coder run <name>`
-    # takes. Five are reached by `handoff`; `genesis`,
-    # `dream`, `fix`, and `implement-plan` are entered directly.
+    # The ten registered Python sub-flows, by the name `workhorse-coder run <name>`
+    # takes. Six are reached by `handoff` — `implement-plan` both ways, directly and
+    # from `stage-plan`; `genesis`, `dream`, `fix` and `stage-plan` are entered directly.
     .add_flows(
         genesis=Genesis,
         dev=Dev,
@@ -1044,7 +1045,7 @@ workflow = (
         fix=Fix,
         fix_ci=FixCi,
         dream=Dream,
-        **{"implement-plan": ImplementPlan},
+        **{"implement-plan": ImplementPlan, "stage-plan": StagePlan},
     )
     .stub_agents(
         {
