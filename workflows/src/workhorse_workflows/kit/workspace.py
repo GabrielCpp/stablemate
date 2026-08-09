@@ -23,8 +23,8 @@ from pathlib import Path
 
 import yaml
 
-from workhorse.scriptutil import find_repo_root, load_jsonc
-from workhorse_workflows.kit import credentials
+from workhorse_workflows.kit import credentials, jsonio
+from workhorse_workflows.kit import paths as paths_kit
 
 
 def _repo_name_from_dir(path: Path) -> str:
@@ -50,7 +50,7 @@ def _read_workspace_file(workspace_file: str | Path) -> tuple[list[dict], Path] 
     """
     if not workspace_file or not Path(workspace_file).exists():
         return None
-    ws = load_jsonc(Path(workspace_file).read_text(encoding="utf-8"))
+    ws = jsonio.load_jsonc(Path(workspace_file).read_text(encoding="utf-8"))
     ws_dir = Path(workspace_file).parent
     return ws.get("folders", []), ws_dir
 
@@ -78,7 +78,7 @@ def resolve_workspace(
         # A single-repo run: key the synthesized folder off the *repo* root rather than
         # the process cwd, which for a node is the workflow's own directory and would
         # name the workspace after the workflow (e.g. "coder") instead of the repo.
-        cwd = find_repo_root(repo_dir)
+        cwd = paths_kit.find_repo_root(repo_dir)
         folders = [{"name": _repo_name_from_dir(cwd), "path": str(cwd)}]
         ws_dir = cwd.parent
 

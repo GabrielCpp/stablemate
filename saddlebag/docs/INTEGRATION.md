@@ -21,7 +21,7 @@ import logging
 
 from pydantic import BaseModel
 from workhorse.pyflow import Blueprint, Continue, Done, Workflow
-from workhorse.scriptutil import run_tool
+from workhorse_workflows.kit import run_tool
 
 blueprint = Blueprint("checkout-qa")
 
@@ -112,7 +112,7 @@ class CheckoutQA(Workflow):
 here — every node and every agent turn returns a typed model. Two things carry the design:
 
 **`run_tool` is the seam.** Nodes route every external CLI call through
-`workhorse.scriptutil.run_tool`, so the invocation is logged and `check=True` fails the
+`workhorse_workflows.kit.run_tool`, so the invocation is logged and `check=True` fails the
 node rather than letting a silent non-zero exit hand the workflow an empty lease.
 
 **Release by `--run-id`, not `--lease-id`.** One release node then cleans up every

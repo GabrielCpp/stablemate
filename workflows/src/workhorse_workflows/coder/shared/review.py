@@ -21,7 +21,7 @@ import logging
 
 from ostler import Ostler
 from workhorse import gates
-from workhorse.scriptutil import find_docs_root, load_json
+from workhorse_workflows.kit import find_docs_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import ImplResult

@@ -21,7 +21,7 @@ loop would see it; a node returns one model, and that mirror is now
 `RegressionRun.as_qa_result()`, called at the flow's transition site. And the detector
 carried its own `find_repo_root` and its own `_load_json`; both are the engine's now, the
 latter because its `except (FileNotFoundError, json.JSONDecodeError, OSError) → {}` is
-exactly `scriptutil.load_json`'s, differing only in which channel the diagnostic goes to.
+exactly `kit.load_json`'s, differing only in which channel the diagnostic goes to.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import find_repo_root, load_json
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import (
     FailureAttribution,

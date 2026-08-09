@@ -32,7 +32,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult

@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 from workhorse import stack
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import (

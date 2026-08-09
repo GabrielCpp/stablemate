@@ -39,7 +39,6 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   ├── logsetup.py            # Logging configuration for the driver and node functions
 │   ├── stack.py               # ensure_stack / teardown_stack: a long-lived stack across nodes
 │   ├── worklist.py            # A resumable work queue (WorkItem / WorkCounts / WorkSnapshot)
-│   ├── scriptutil.py          # Helpers for the shell steps a workflow shells out to
 │   ├── testing.py             # make_git_repo + the artifact assertions a workflow test uses
 │   ├── pyflow/                # The Python state-machine driver
 │   │   ├── workflow.py        # The `Workflow` base class: state discovery, freezing, self.ctx

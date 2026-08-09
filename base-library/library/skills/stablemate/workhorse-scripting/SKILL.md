@@ -19,7 +19,7 @@ code you write against it.
 
 ## Separation of concerns — workhorse is generic, keep workflow logic in the workflow
 
-Workhorse (`workhorse/**`, including `scriptutil.py`, `templates.py`, the pyflow driver,
+Workhorse (`workhorse/**`, including `templates.py`, the pyflow driver,
 and the Jinja globals it registers) is a **generic engine shared by every workflow**. It
 must never learn the shape of one workflow's data.
 
@@ -174,7 +174,7 @@ injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path", "workspace_file")
 
 # the node just declares what it wants — the callsite says nothing
 def collect(logger: Logger, docs_path: str = "", repo_dir: str = "") -> Docs:
-    root = scriptutil.find_docs_root(docs_path, repo_dir)
+    root = kit.find_docs_root(docs_path, repo_dir)
 ```
 
 One exception, and it is a security property rather than an exemption: `kit/credentials.py`
@@ -249,18 +249,15 @@ still at module scope, binding the name to `None`, with every user returning ear
 ## JSONC parsing
 
 VSCode workspace files are JSON with Comments (trailing commas, `//` comments). Parse them
-with `load_jsonc()` from `workhorse.scriptutil` — never `json.loads()` directly. Anything a
+with `load_jsonc()` from `workhorse_workflows.kit` — never `json.loads()` directly. Anything a
 node *writes* is strict JSON; only input may be JSONC.
 
-## What the engine still offers directly — `workhorse.scriptutil`
+## The shared helpers — `workhorse_workflows.kit`
 
-The generic, workflow-agnostic half: `load_json`, `load_jsonc`, `find_repo_root`,
-`find_docs_root`, `run_tool`. `run_tool` remains the seam for a
-genuine external CLI — one that is not git, GitHub or ostler.
-
-## Domain helpers — `workhorse_workflows.kit`
-
-Git, GitHub and workspace resolution live in the **workflow** distribution, not the engine.
+Everything a node reuses lives in the **workflow** distribution, not the engine: git,
+GitHub and workspace resolution, plus `find_repo_root`, `find_docs_root`, `load_json`,
+`load_jsonc` and `run_tool`. `run_tool` is the seam for a genuine external CLI — one that
+is not git, GitHub or ostler.
 
 ```python
 from workhorse_workflows import kit
@@ -330,7 +327,7 @@ from the environment, which is prohibited here (see *No environment* below):
 
 ```python
 def my_node(logger: Logger, repo_dir: str = "") -> Result:
-    root = scriptutil.find_repo_root(repo_dir)   # argument first, else walk up from cwd
+    root = kit.find_repo_root(repo_dir)   # argument first, else walk up from cwd
 ```
 
 The workflow holds `repo_dir` as a field and `Workflow.injects` fills it into any node that
@@ -339,7 +336,7 @@ declares the parameter, so the callsite usually says nothing at all.
 ## OKF graph (ostler) — the in-process `ostler` API, never subprocess
 
 Don't shell out to the `ostler` CLI — no `subprocess.run(["ostler", …])`, no
-`scriptutil.run_tool(["ostler", …])`, no local `ostler_json`/`ostler_run` helper scraping
+`kit.run_tool(["ostler", …])`, no local `ostler_json`/`ostler_run` helper scraping
 `--json` out of stdout with `raw_decode`. `ostler` is a dependency of the workflow
 distribution, so command the doc graph **as a library** through the `Ostler` facade — it
 returns plain Python objects (`dict`/`list`/`str` and `Result`), and an in-process test

@@ -21,7 +21,7 @@ import yaml
 from git.exc import GitError
 from ostler import Ostler, path as okf_path
 from ostler import refs as refs_mod
-from workhorse.scriptutil import find_docs_root, load_json
+from workhorse_workflows.kit import find_docs_root, load_json
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,

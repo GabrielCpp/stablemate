@@ -23,7 +23,7 @@ import logging
 from pathlib import Path
 
 from git.exc import GitError
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import WorktreeSnapshot
 from workhorse_workflows.kit import open_repo

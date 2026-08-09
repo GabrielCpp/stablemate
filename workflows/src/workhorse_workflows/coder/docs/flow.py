@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (

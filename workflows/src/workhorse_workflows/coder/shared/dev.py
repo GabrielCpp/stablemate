@@ -32,7 +32,7 @@ from typing import Any
 import yaml
 from workhorse import gates
 from workhorse.pyflow import WorkflowFailed
-from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
+from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.contract import service_problems
 from workhorse_workflows.coder.shared.blueprint import blueprint

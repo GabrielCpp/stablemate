@@ -16,7 +16,7 @@ travels down from `Workflow.repo_dir` through the state that calls the node. An 
 `repo_dir` still falls back to a walk — a visible, overridable default, unlike an
 ambient variable.
 
-* `workhorse.scriptutil.find_repo_root` — `repo_dir`, else the first of
+* `workhorse_workflows.kit.find_repo_root` — `repo_dir`, else the first of
   `[cwd, *cwd.parents]` carrying `agents.yml` or `.git`. Four scripts
   (`check-sentinel-ids.py`, `detect-regression-platform.py`, `flush-root-screenshots.py`,
   `verify_qa_evidence.py`) had re-typed this function *character for character* rather

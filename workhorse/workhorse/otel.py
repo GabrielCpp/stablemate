@@ -511,7 +511,7 @@ def _build(
             # Files/Diff from. Defaults to the process cwd; a workflow (or its
             # harness) that operates on a checkout elsewhere overrides it by setting
             # AGENT_REPO_DIR, the same working-tree env the script utilities already
-            # resolve from (see scriptutil.find_repo_root). The engine learns no
+            # resolve from (see the kit’s find_repo_root). The engine learns no
             # workflow's schema and no consumer's name — it forwards a value it is
             # handed, exactly like repo/branch above.
             "workspace": os.environ.get("AGENT_REPO_DIR") or os.getcwd(),

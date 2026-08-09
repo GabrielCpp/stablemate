@@ -276,7 +276,7 @@ subject per module, `nodes/` is a package even when it holds three functions, an
 `~400 lines` is the trigger to apply the rule. This README is where that rule is stated;
 the argument behind it is "One workflow, several files" in the retired internal design
 brief. `coder`'s nodes alone run to ~6,600 lines across 18
-modules, and a single `nodes.py` at that size is `scriptutil.py` again.
+modules, and a single `nodes.py` at that size is unreviewable.
 
 ## Status
 

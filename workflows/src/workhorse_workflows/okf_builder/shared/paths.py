@@ -25,7 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import path as okf_path
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 
 #: The build's scratch directory under the docs repo: worklists, walkthrough logs.
 BUILD_DIRNAME = ".agents/okf-build"

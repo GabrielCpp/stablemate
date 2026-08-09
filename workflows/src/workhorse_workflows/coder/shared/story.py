@@ -25,7 +25,7 @@ from pathlib import Path
 
 from ostler import Ostler, markdown, path as okf_path, registry
 from workhorse.pyflow import WorkflowFailed
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs

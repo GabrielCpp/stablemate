@@ -22,7 +22,7 @@ from pathlib import Path
 
 from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
-from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult, ScreenshotFlush
 from workhorse_workflows.kit import diff_text, list_tracked_files, merge_base

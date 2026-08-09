@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 
 from github import GithubException
-from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiRepoPick, PushOutcome
 from workhorse_workflows.kit import (

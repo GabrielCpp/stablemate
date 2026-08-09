@@ -38,7 +38,7 @@ from pathlib import Path
 
 from github import GithubException
 from ostler import markdown, path as okf_path, registry
-from workhorse.scriptutil import find_repo_root, load_json
+from workhorse_workflows.kit import find_repo_root, load_json
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.ci import push_epic_branch

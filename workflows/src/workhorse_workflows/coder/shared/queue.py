@@ -36,7 +36,7 @@ from pathlib import Path
 from ostler import Ostler, markdown, model, path as okf_path, registry, select
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
-from workhorse.scriptutil import find_docs_root, find_repo_root, load_json
+from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (

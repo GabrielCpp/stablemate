@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult

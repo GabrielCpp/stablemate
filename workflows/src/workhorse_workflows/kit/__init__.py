@@ -1,16 +1,19 @@
-"""The domain half of what used to be ``workhorse.scriptutil``: git, GitHub, workspaces.
+"""Everything a node reuses: git, GitHub, workspaces, paths, JSON, external CLIs.
 
-The engine kept the seams a *runner* needs — ``load_jsonc``, ``load_json``,
-``find_repo_root``, ``find_docs_root``, ``run_tool`` — and nothing that knows what a repo
-is. Everything that drives git or github.com lives here, which is why ``gitpython`` and
-``PyGithub`` are this package's dependencies and no longer workhorse-agent's.
+All of it used to be ``workhorse.scriptutil``, in the engine distribution. It is here
+instead because a helper a *node* calls is workflow domain, not engine: the engine gained
+nothing from knowing how to open a PR or where a repo's docs live, and every install of it
+paid for ``gitpython``, ``PyGithub`` and ``json5`` — three libraries it never called. What
+stayed behind in workhorse is what the driver itself runs on, and nothing else.
 
-Scripts import the flat surface, exactly as they imported ``scriptutil``::
+Nodes import the flat surface, exactly as they imported ``scriptutil``::
 
     from workhorse_workflows.kit import commit_all, github_client, resolve_workspace
 
 **Patch the defining submodule** — :mod:`~workhorse_workflows.kit.git`,
-:mod:`~workhorse_workflows.kit.github`, :mod:`~workhorse_workflows.kit.workspace` — and
+:mod:`~workhorse_workflows.kit.github`, :mod:`~workhorse_workflows.kit.workspace`,
+:mod:`~workhorse_workflows.kit.paths`, :mod:`~workhorse_workflows.kit.jsonio`,
+:mod:`~workhorse_workflows.kit.tools` — and
 the flat surface follows, because this module resolves a name through ``__getattr__``
 rather than binding it at import time. That is what keeps the seam contract the same one
 ``scriptutil`` had: a script node is re-imported on every run, so its
@@ -18,7 +21,7 @@ rather than binding it at import time. That is what keeps the seam contract the 
 re-export would have frozen those bindings at *package* import, one process-lifetime
 earlier, and every existing patch would have silently stopped reaching the script.
 
-One rule follows from having three modules where there was one: a helper here calls
+One rule follows from having several modules where there was one: a helper here calls
 another through its module (``git_kit.origin_url(...)``), never a direct import, so a
 test that fakes ``kit.git.origin_url`` also redirects :mod:`~workhorse_workflows.kit.github`'s
 internal use of it — which is what monkeypatching a single module used to give for free.
@@ -79,6 +82,20 @@ _NAMES: dict[str, str] = {
         "get_repo_config",
         "resolve_workspace",
     )
+} | {
+    name: "workhorse_workflows.kit.paths"
+    for name in (
+        "find_docs_root",
+        "find_repo_root",
+    )
+} | {
+    name: "workhorse_workflows.kit.jsonio"
+    for name in (
+        "load_json",
+        "load_jsonc",
+    )
+} | {
+    "run_tool": "workhorse_workflows.kit.tools",
 }
 
 __all__ = sorted(_NAMES)
@@ -135,6 +152,15 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         resolve_repo,
         sync_to_origin,
     )
+    from workhorse_workflows.kit.jsonio import (  # noqa: F401
+        load_json,
+        load_jsonc,
+    )
+    from workhorse_workflows.kit.paths import (  # noqa: F401
+        find_docs_root,
+        find_repo_root,
+    )
+    from workhorse_workflows.kit.tools import run_tool  # noqa: F401
     from workhorse_workflows.kit.workspace import (  # noqa: F401
         build_dispatch_list,
         checkout_workspace,

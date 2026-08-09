@@ -23,12 +23,17 @@ dependencies = [
   # the Workhorse 2.x backend contract: that coordinated release replaces Aider with
   # Cline and carries the breaking recovery semantics these machines are tested on.
   "workhorse-agent>=2,<3",
-  # `kit` — the git/GitHub/workspace half of what used to be `workhorse.scriptutil`.
-  # These are here rather than on the engine because knowing how to open a pull
-  # request is workflow domain: workhorse never called either library, and every
-  # install of it paid for both.
+  # `kit` — all of what used to be `workhorse.scriptutil`. These are here rather than
+  # on the engine because knowing how to open a pull request, or how to read the
+  # relaxed JSON a `.code-workspace` file is written in, is workflow domain: workhorse
+  # never called any of the three, and every install of it paid for them.
   "gitpython>=3.1",
   "PyGithub>=2.0",
+  # A *strict* JSONC/JSON5 parser for `load_jsonc` — VSCode `.code-workspace` files.
+  # Deliberately not the engine's `json-repair`: that one invents a parse for genuinely
+  # broken input, which is the right answer for an agent reply and the wrong one for a
+  # config file the operator wrote and expects to be told about.
+  "json5>=0.9",
   # The surveyor's enumeration rules, its finding-record front matter and its cluster
   # partition are all YAML the nodes read directly. Declared here rather than leaned on
   # through workhorse's own dependency: a module that imports it says so.

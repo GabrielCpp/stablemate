@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 from git.exc import GitError
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
-from workhorse.scriptutil import find_repo_root
+from workhorse_workflows.kit import find_repo_root
 
 from workhorse_workflows.coder.implement_plan.schemas import (
     PlanDecomposition,

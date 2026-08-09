@@ -24,7 +24,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.paths import DREAM_INBOX, DREAM_LEDGER
 from workhorse_workflows.coder.shared.schemas.dream import ImprovementsRecorded, RunEvidence

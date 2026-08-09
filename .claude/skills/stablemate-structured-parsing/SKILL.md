@@ -52,7 +52,7 @@ any caller wanting a row had no option but to split on `|` itself.
 | Markdown frontmatter | `ostler.markdown.split(...).frontmatter` (a dict) | `\A---\n(.*?)\n---` |
 | …in farrier, which needs frontmatter only | `farrier.frontmatter` — `split_front_matter`, `frontmatter_tags`, `frontmatter_metadata`, `banner_sources`, `first_heading` | a second fence regex |
 | YAML | `yaml.safe_load` | `^key:\s*(.+)$`, or `line.split(":", 1)` |
-| JSON with comments / trailing commas | `json5.loads` (`workhorse.scriptutil.load_jsonc`) | strip-comments-then-`json.loads` |
+| JSON with comments / trailing commas | `json5.loads` (`workhorse_workflows.kit.load_jsonc`) | strip-comments-then-`json.loads` |
 | A JSON object embedded in agent prose | `json.JSONDecoder().raw_decode` scanned from each `{` (`runner/extract._json_objects`) | `re.search(r"\{.*\}", DOTALL)` |
 | Python source | `ast` | `^(?:async\s+)?(?:def\|class)\s+(\w+)` |
 | Unified diff | `unidiff.PatchSet` | `^@@ -\d+ \+\d+ @@` |

@@ -156,7 +156,7 @@ services:
 
       # Optional: host directory containing a .code-workspace file, for
       # multi-repo runs (or non-git sibling folders that can't be cloned — see
-      # workhorse/scriptutil.py's checkout_workspace()). Uncomment and set
+      # workhorse_workflows.kit.workspace's checkout_workspace()). Uncomment and set
       # WORKSPACE_DIR_HOST, then point AGENT_PARAM_WORKSPACE_FILE at this mount's
       # target below, not at the host path.
       # - type: bind

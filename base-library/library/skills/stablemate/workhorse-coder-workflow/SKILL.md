@@ -306,11 +306,11 @@ one the node's semantics need:
 
 | Resolver | Marker when `repo_dir` is empty | Used by |
 |---|---|---|
-| `scriptutil.find_repo_root(repo_dir)` | `agents.yml`/`.git` upward from `cwd` | the consuming code repo |
+| `kit.find_repo_root(repo_dir)` | `agents.yml`/`.git` upward from `cwd` | the consuming code repo |
 | `paths.epics_repo_root(repo_dir)` | `agents.yml` or a `docs/epics/` **directory** | `prune_epic` — a docs checkout with no `.git` still gets its queue popped |
 | `paths.launch_repo_root(repo_dir)` | `cwd` if project-shaped, else upward | the operator gates — its `cwd`-first probe is what lets a test point a gate at a sandbox by chdir alone |
 
-Docs specifically: `find_docs_root(docs_path, repo_dir)` from `workhorse.scriptutil` — the
+Docs specifically: `find_docs_root(docs_path, repo_dir)` from `workhorse_workflows.kit` — the
 explicit path when given, else the repo root, i.e. docs beside the code.
 
 ---

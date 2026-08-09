@@ -8,7 +8,7 @@ title: The .code-workspace file format
 A VSCode [multi-root workspace file](https://code.visualstudio.com/docs/editor/multi-root-workspaces)
 that [the workflow kit](concepts/workflow-kit.md) reads (via its shared `_read_workspace_file`
 helper — see [resolve_workspace](concepts/workflow-kit.md#resolve_workspace) — parsed as
-[JSON-with-Comments](concepts/scriptutil.md#load_jsonc)) to learn which repos a workflow run
+[JSON-with-Comments](concepts/workflow-kit.md#load_jsonc)) to learn which repos a workflow run
 operates on, and optionally clones/updates via
 [`checkout_workspace`](concepts/workflow-kit.md#checkout_workspace). The **path** to the file is
 never fixed — it is a run's input: a workflow declares a `workspace_file` field and passes it down

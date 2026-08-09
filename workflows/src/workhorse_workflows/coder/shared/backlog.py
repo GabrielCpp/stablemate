@@ -46,7 +46,7 @@ from typing import Any
 
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
-from workhorse.scriptutil import find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.backlog import (

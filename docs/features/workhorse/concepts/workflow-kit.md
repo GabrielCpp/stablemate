@@ -1,22 +1,27 @@
 ---
 type: concept
 slug: workflow-kit
-title: workhorse_workflows.kit — git, GitHub and workspaces for nodes
+title: workhorse_workflows.kit — the helpers a node imports
 ---
-# workhorse_workflows.kit — git, GitHub and workspaces for nodes
+# workhorse_workflows.kit — the helpers a node imports
 
-The domain half of what used to be `workhorse.scriptutil`: everything that knows what a repo is.
-Three modules — `git`, `github`, `workspace` — behind one flat import surface:
+Everything a **[node function](../workflow-format.md#node)** reuses. All of it used to be
+`workhorse.scriptutil`, in the engine distribution. Six modules — `git`, `github`, `workspace`,
+`paths`, `jsonio`, `tools` — behind one flat import surface:
 
 ```python
-from workhorse_workflows.kit import commit_all, github_client, resolve_workspace
+from workhorse_workflows.kit import commit_all, github_client, resolve_workspace, find_repo_root
 ```
 
-It lives in the `workflows` distribution, not in workhorse, because that is where `gitpython` and
-`PyGithub` are dependencies. The split is the point: the engine gained nothing from knowing how to
-open a PR, and every install of it paid for two libraries it never called. What stayed behind —
-JSON parsing, root resolution, the reimport, the external-CLI seam — is documented in
-[scriptutil](scriptutil.md).
+It lives in the `workflows` distribution, not in workhorse, because a helper a *node* calls is
+workflow domain, not engine. The split is the point: the engine gained nothing from knowing how to
+open a PR, or where a repo's docs live, and every install of it paid for `gitpython`, `PyGithub` and
+`json5` — three libraries it never called. What stayed behind in workhorse is what the driver itself
+runs on, and nothing else.
+
+Every function here is a **parameterised primitive**: it takes the path or dict it needs as an
+argument rather than hard-coding one workflow's vocabulary, and none of them reads the environment
+(see [workflows/README.md](../../../../workflows/README.md)).
 
 - code: `workflows/src/workhorse_workflows/kit/__init__.py`
 
@@ -24,7 +29,8 @@ JSON parsing, root resolution, the reimport, the external-CLI seam — is docume
 
 `workhorse_workflows.kit` resolves a name through `__getattr__` against a `{name: module}` map
 rather than re-exporting it at import time. **Patch the defining submodule** — `kit.git`,
-`kit.github`, `kit.workspace` — and the flat surface follows.
+`kit.github`, `kit.workspace`, `kit.paths`, `kit.jsonio`, `kit.tools` — and the flat surface
+follows.
 
 That indirection is not incidental. A node re-executes on every call, so its
 `from workhorse_workflows.kit import github_client` re-reads the attribute and picks up a fake. A
@@ -32,7 +38,7 @@ plain re-export would have frozen those bindings at *package* import — one pro
 earlier — and every existing patch would have silently stopped reaching the node while still
 appearing to be installed.
 
-One rule follows from having three modules where there was one: a helper here calls another through
+One rule follows from having six modules where there was one: a helper here calls another through
 its module object (`git_kit.origin_url(...)`), never a direct `from … import`, so a test that fakes
 `kit.git.origin_url` also redirects `kit.github`'s internal use of it — which is what
 monkeypatching a single module used to give for free.
@@ -40,8 +46,8 @@ monkeypatching a single module used to give for free.
 ## Workspace resolution
 
 Which repos a run spans, where they are, and getting them onto disk. The manifest is the
-[`.code-workspace` file](../code-workspace-file.md), parsed with scriptutil's
-[`load_jsonc`](scriptutil.md#load_jsonc) by a shared `_read_workspace_file(workspace_file)`
+[`.code-workspace` file](../code-workspace-file.md), parsed with
+[`load_jsonc`](#load_jsonc) by a shared `_read_workspace_file(workspace_file)`
 helper: it parses the path it is handed and returns `(folders, ws_dir)`, or `None` when that path is
 empty or does not exist. The path is an **argument** — the run's `workspace_file` input, never an
 environment read (see [workflows/README.md](../../../../workflows/README.md)). It returns `None`
@@ -74,7 +80,7 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
      name is the directory's, so one repo cannot answer to two names; and `ws_dir`
      is the root's **parent**, so the folder's `path` resolves back to the root itself. The
      argument comes first for the same reason it does in
-     [`find_repo_root`](scriptutil.md#find_repo_root) — a bare `Path.cwd()` would key a mono-repo
+     [`find_repo_root`](#find_repo_root) — a bare `Path.cwd()` would key a mono-repo
      run off whatever directory the driver was launched from instead of the real repo.
   2. **Merge each folder's `agents.yml`.** Resolve `ws_dir / folder["path"]`; if
      `<abs path>/agents.yml` exists, `yaml.safe_load` it — on a YAML/OS error the entry is just
@@ -228,7 +234,7 @@ shim, no CLI, no network. Every helper below inherits that seam.
 | symbol | does |
 |---|---|
 | `github_client(token=None)` | an authenticated PyGithub `Github` client — the seam |
-| `resolve_github_token(root=None)` | the first non-empty of: the env var named by the repo's `agents.yml` `workflow.githubTokenEnv` (or `github_token_env`), `GH_TOKEN`, `GITHUB_TOKEN` — `""` when none is set, which callers read as "no token, skip". `root` defaults to [`find_repo_root()`](scriptutil.md#find_repo_root) |
+| `resolve_github_token(root=None)` | the first non-empty of: the env var named by the repo's `agents.yml` `workflow.githubTokenEnv` (or `github_token_env`), `GH_TOKEN`, `GITHUB_TOKEN` — `""` when none is set, which callers read as "no token, skip". `root` defaults to [`find_repo_root()`](#find_repo_root) |
 | `repo_full_name_from_url(url)` | an `owner/repo` slug from an origin URL (SSH or HTTPS); `None` when the origin is not github.com |
 | `resolve_repo(path, token=None)` | the GitHub repository for the `origin` configured at `path` |
 | `find_open_pr(gh_repo, branch)` | the first OPEN pull request whose head is `branch`, else `None` |
@@ -238,12 +244,95 @@ shim, no CLI, no network. Every helper below inherits that seam.
 - code: `workflows/src/workhorse_workflows/kit/github.py::github_client`
 - code: `workflows/src/workhorse_workflows/kit/github.py::resolve_github_token`
 
+## paths
+
+Where the repo is, and where its docs are.
+
+### `find_repo_root`
+
+- **Input:** `repo_dir: str | Path = ""` — the run's own input (`Workflow.repo_dir`, which the CLI
+  defaults to the launch directory), handed to the node as an argument.
+- **Output:** `Path` — `repo_dir` resolved when given; else the first of `Path.cwd()` and its
+  parents containing an `agents.yml` or a `.git`; else `Path.cwd()` itself if none match.
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_repo_root`
+
+The argument takes priority over walking `cwd` because a run's cwd is not necessarily the consuming
+repo (see [workhorse-<name> run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
+`agents.yml`/`.git` whenever the two diverge. It reads **no environment variable**: a node whose
+root depends on the ambient environment is a node whose behavior no caller can see or override,
+which is the rule in [workflows/README.md](../../../../workflows/README.md).
+[`resolve_workspace`](#resolve_workspace) mirrors the same argument-first order for exactly that
+reason.
+
+### `find_docs_root`
+
+- **Input:** `docs_path: str = ""` — an explicit path (typically a workflow parameter);
+  `repo_dir: str | Path = ""`, the same input `find_repo_root` takes, so the two travel together.
+- **Output:** `Path`, resolved in priority order: 1) `docs_path` if given (absolute as-is, else
+  joined under [`find_repo_root(repo_dir)`](#find_repo_root)); 2) `find_repo_root(repo_dir)` itself
+  when it is empty — i.e. the docs sit beside the code.
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_docs_root`
+
+## jsonio
+
+The two JSON dialects a node meets. `json5` is a dependency of this distribution for the second of
+them, and deliberately not the engine's `json-repair`: that one invents a parse for genuinely broken
+input, which is the right answer for an agent reply and the wrong one for a config file the operator
+wrote and expects to be told about.
+
+### `load_jsonc`
+
+Parses the relaxed JSON dialect VSCode accepts for `.code-workspace` files: `//` line comments and
+trailing commas before a closing `}`/`]`, neither valid in strict JSON.
+
+- **Input:** `text: str` — raw file contents.
+- **Output:** `dict` — the parsed object.
+- **Algorithm:** a real `json5.loads`, not a strip-then-`json.loads`. The stripping version deleted
+  from `//` to end of line without knowing what a string literal is, so any workspace file holding a
+  URL — `{"url": "https://example.com"}` — was truncated mid-string and then reported as invalid
+  JSON. `.code-workspace` files routinely hold URLs and `//` paths.
+- **Raises:** propagates the parser's `ValueError` if the text still isn't valid JSON5.
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
+- verify: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
+
+### `load_json`
+
+A caller-facing convenience over `json.loads` that never raises: a missing or unparsable file is
+logged and treated as empty, for callers that would rather proceed with `{}` than fail the node
+outright.
+
+- **Input:** `path: Path`, `label: str` (used only in the log message), `logger: logging.Logger`.
+- **Output:** the parsed `dict`, or `{}` on failure.
+- **Algorithm:** read `path` as UTF-8 and `json.loads` it; on `FileNotFoundError` log a warning
+  (`"<label> not found at <path>"`) and return `{}`; on `json.JSONDecodeError` or `OSError` log a
+  warning with the exception text and return `{}`.
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
+
+## tools
+
+### `run_tool`
+
+Runs an external CLI as a subprocess and returns the completed process. Git, GitHub and ostler each
+have a richer in-process facade of their own; this is for the CLI that has none.
+
+- **Input:** `argv: list[str]`; `cwd: str | Path | None = None`; `check: bool = False` and
+  `logger: logging.Logger | None = None` (keyword-only).
+- **Output:** the `subprocess.CompletedProcess` (`capture_output=True, text=True`).
+- **Raises:** with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
+  raises `RuntimeError(f"{argv[0]} failed: {stderr}")`. With `check=False` (the default) a failed
+  result is returned to the caller as-is.
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`
+
+This is the single seam nodes route external-CLI calls through, so an in-process test can
+monkeypatch `run_tool` on `kit.tools` and get a canned result with no `PATH` shim. In production it
+runs the real binary — the "real passthrough" contract.
+
 ## Consumers
 
 - Workflow **[node functions](../workflow-format.md#node)** across `author`, `coder` and
   `okf_builder`.
 - `workhorse/supervisor.py`, which calls [`checkout_workspace`](#checkout_workspace) once, in
   process, before the engine starts.
-- Not the engine. Nothing under `workhorse/workhorse/` imports this package — the dependency runs
-  one way only, `kit` → [`scriptutil`](scriptutil.md), and only for
-  [`load_jsonc`](scriptutil.md#load_jsonc) and [`find_repo_root`](scriptutil.md#find_repo_root).
+- Not the engine. Nothing under `workhorse/workhorse/` imports this package, and nothing here
+  imports the engine except for the `Workflow` machinery a node is declared against — the
+  distribution dependency runs one way only, `workflows` → `workhorse`.

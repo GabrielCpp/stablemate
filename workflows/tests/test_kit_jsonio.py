@@ -1,4 +1,4 @@
-"""Tests for scriptutil.load_jsonc — the reader for VSCode `.code-workspace` files.
+"""Tests for kit.load_jsonc — the reader for VSCode `.code-workspace` files.
 
 The version this replaces stripped comments with `re.sub(r"//[^\n]*", "", text)`, which
 does not know what a string literal is. Any workspace file holding a URL — and they
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from workhorse.scriptutil import load_jsonc
+from workhorse_workflows.kit import load_jsonc
 
 
 def test_a_url_in_a_string_is_not_a_comment():

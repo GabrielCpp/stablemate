@@ -98,7 +98,7 @@ class Workflow(BaseModel):
     #: The consuming repo's root — the one input every workflow shares, which is why it
     #: is declared on the parent rather than re-declared per workflow. The CLI defaults
     #: it to the launch directory; `--param repo_dir=…` overrides. Blank means "resolve
-    #: by walking up from the cwd" (`scriptutil.find_repo_root`).
+    #: by walking up from the cwd" (the kit’s `find_repo_root`).
     #:
     #: It is a field and not an environment read because **a node may not read the
     #: environment** (`workflows/README.md`): a run's inputs have to be visible in its
