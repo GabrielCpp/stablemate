@@ -311,7 +311,7 @@ def _drive_reloadable(
                 # modules — `drive` is on this stack. Re-exec belongs to the supervisor;
                 # until it is wired, say so rather than silently reloading half of what
                 # was asked for.
-                print(
+                env.log.warning(
                     "[workhorse] reload: --core needs a process restart; reloading the "
                     "workflow package only"
                 )
@@ -327,7 +327,12 @@ def _drive_reloadable(
             # The run stops at a resumable checkpoint with pydantic naming the field.
             wf = _instantiate(workflow_cls, resume.inputs)
             otel.turn_event("reload", state=resume.state, flow=resume.flow or "", core=core)
-            print(f"[workhorse] reload: re-entering '{resume.state}' on the pushed code")
+            # A log record, not a print: the reload is the one thing an operator needs
+            # to see in `groom logs` when they come back to a run that changed under
+            # them, and the console handler still puts it on their terminal.
+            env.log.info(
+                "[workhorse] reload: re-entering '%s' on the pushed code", resume.state
+            )
 
 
 def _reimport(registry: Registry) -> Registry:

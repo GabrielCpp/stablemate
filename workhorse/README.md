@@ -421,8 +421,12 @@ What the run then does:
    `--at-boundary` is the opt-out, for a turn that is 95% through expensive work and is
    *not* the broken part.
 2. **The turn's span closes with the usage it really accrued**, and every scope above it
-   closes on the unwind. A reload costs no dangling spans — that is what keeps it from
-   looking like an abort.
+   closes on the unwind, each one stamped `workhorse.cut=reload`. A reload costs no
+   dangling spans — that is what keeps it from looking like an abort — and the stamp is
+   what keeps the closed ones from being read as *completed* work: groom excludes a cut
+   visit from its churn rule, so pushing five fixes into a broken flow does not page as
+   the loop you were breaking. The reload itself is a log record, so `groom logs` shows
+   which state was re-entered and when.
 3. **The cut consumes no recovery budget.** Not a retry, not a reframe, not a compaction
    attempt, and no backoff: the turn was interrupted on purpose.
 4. **The workflow package is re-imported from disk** and the run re-enters the checkpoint

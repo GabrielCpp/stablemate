@@ -268,7 +268,9 @@ class Telemetry(Protocol):
     def enabled(self) -> bool: ...
     def record_event(self, event: NodeEvent) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
-    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None: ...
+    def state_end(
+        self, state: str, seq: int, next_state: str | None = None, cut: str = ""
+    ) -> None: ...
     def wait_start(self, kind: str, node_id: str) -> int: ...
     def wait_end(self, token: int, outcome: str = "completed") -> None: ...
     def gas_level(self, gas: int, capacity: int) -> None: ...
@@ -313,7 +315,9 @@ class _NullTelemetry:
 
     def record_event(self, event: NodeEvent) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
-    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None: ...
+    def state_end(
+        self, state: str, seq: int, next_state: str | None = None, cut: str = ""
+    ) -> None: ...
     def wait_start(self, kind: str, node_id: str) -> int:
         return 0
     def wait_end(self, token: int, outcome: str = "completed") -> None: ...
@@ -679,9 +683,15 @@ def state_start(state: str, seq: int) -> None:
     _host.active.state_start(state, seq)
 
 
-def state_end(state: str, seq: int, next_state: str | None = None) -> None:
-    """Close a successfully returned state-body execution."""
-    _host.active.state_end(state, seq, next_state)
+def state_end(state: str, seq: int, next_state: str | None = None, cut: str = "") -> None:
+    """Close a state-body execution — successfully returned, or ``cut`` short.
+
+    A non-empty ``cut`` names why the body did not run to its own end (today: a live
+    reload), and is stamped on this span and on every node span still open under it.
+    Closing them is what keeps a reload from leaving unclosed spans; saying they were
+    cut is what keeps the closed ones from being read as completed work.
+    """
+    _host.active.state_end(state, seq, next_state, cut)
 
 
 @contextmanager
@@ -1042,9 +1052,11 @@ class _Telemetry:
             )
 
     @_failsoft(None)
-    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None:
+    def state_end(
+        self, state: str, seq: int, next_state: str | None = None, cut: str = ""
+    ) -> None:
         with self._lock:
-            self._end_execution(("state", state, seq), next_name=next_state)
+            self._end_execution(("state", state, seq), next_name=next_state, cut=cut)
             self._set_node_active(state, 0)
 
     @_failsoft(_NO_WAIT_TOKEN)
@@ -1127,12 +1139,22 @@ class _Telemetry:
         key: tuple[str, str, int],
         next_name: Any,
         end_attributes: dict[str, Any] | None = None,
+        cut: str = "",
     ) -> None:
-        """End the span for ``key``, sweeping anything left open above it."""
+        """End the span for ``key``, sweeping anything left open above it.
+
+        ``cut`` is stamped on every span this closes, swept ones included: a scope that
+        ended because the work under it was interrupted did not *complete*, and a reader
+        with only start and end timestamps cannot tell the two apart. It is what lets
+        groom count a node visit that a reload cut as an interruption rather than as one
+        more completed repeat of the same work.
+        """
         if all(k != key for k, _, _ in self._stack):
             return
         while self._stack:
             stack_key, span, _ = self._stack.pop()
+            if cut:
+                span.set_attribute("workhorse.cut", cut)
             if stack_key == key:
                 if next_name:
                     span.set_attribute("workhorse.next", str(next_name))

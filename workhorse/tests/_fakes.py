@@ -125,6 +125,8 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.labels: list[dict[str, str]] = []
         #: Explicit state execution boundaries, distinct from durable checkpoints.
         self.states: list[tuple[str, str, int, str | None]] = []
+        #: One entry per state span closed by an interruption: state, cut reason.
+        self.cuts: list[tuple[str, str]] = []
         #: Completed wait boundaries: action, token, kind/outcome, node.
         self.waits: list[tuple[str, int, str, str]] = []
         #: One entry per ``turn_event``: name, error flag, attributes.
@@ -166,8 +168,12 @@ class RecordingTelemetry(otel._NullTelemetry):
     def state_start(self, state: str, seq: int) -> None:
         self.states.append(("start", state, seq, None))
 
-    def state_end(self, state: str, seq: int, next_state: str | None = None) -> None:
+    def state_end(
+        self, state: str, seq: int, next_state: str | None = None, cut: str = ""
+    ) -> None:
         self.states.append(("end", state, seq, next_state))
+        if cut:
+            self.cuts.append((state, cut))
 
     def wait_start(self, kind: str, node_id: str) -> int:
         self._wait_token += 1

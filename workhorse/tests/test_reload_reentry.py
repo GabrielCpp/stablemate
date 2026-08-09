@@ -120,6 +120,11 @@ def test_a_reload_raised_from_a_state_body_closes_that_states_span():
         # Closed with no next state: the transition never produced one, and inventing
         # `start` here would say the reload decided something.
         assert fake.states[-1][1:] == ("start", fake.states[0][2], None), fake.states
+        # …and closed *marked*. A scope that ended because its work was interrupted is
+        # indistinguishable from one that finished if all it exports is two timestamps,
+        # and groom's churn rule reads exactly that: unmarked, an operator pushing five
+        # fixes into a broken flow pages for the loop the reload was breaking.
+        assert fake.cuts == [("start", "reload")], fake.cuts
 
 
 def test_a_reload_deep_in_a_sub_flow_closes_one_scope_per_drive_frame():

@@ -330,7 +330,13 @@ def drive(
             # does, minus the outcome attribute it never earned. That is the point: an
             # operator who reloads a broken flow must not pay for it in spans that never
             # leave the process, which is exactly what makes a reload read as a crash.
-            otel.state_end(spec.name, state_seq, None)
+            #
+            # They close marked, not bare: a node visit that ended here did not finish
+            # its work, and a reader with only the two timestamps cannot tell that from
+            # one that did. Unmarked, five reloads of a flow an operator is fixing are
+            # five completed visits to the same node on the same labels — groom's churn
+            # rule, i.e. the reload paging as the loop it exists to break.
+            otel.state_end(spec.name, state_seq, None, cut="reload")
             raise
         resuming = env.resume_pending = False
 
