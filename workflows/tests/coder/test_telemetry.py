@@ -18,6 +18,12 @@ from workhorse.pyflow.driver import drive
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.author.epic_edit.flow import EpicEdit
+from workhorse_workflows.coder.shared.schemas.docs import (
+    DocsProgress,
+    DocumentationFinding,
+    DocumentationGate,
+    DocumentationReview,
+)
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import (
@@ -165,6 +171,80 @@ def test_qa_reports_every_budget_on_its_loop():
     # Every budget is reported, including the ones still at zero — the loop carries them
     # all, so "this story has not spent its setup budget" is a fact, not an absence.
     assert labels["qa.setup_rework"] == "0"
+
+
+def test_the_gate_verdict_is_forgotten_with_the_failures_it_summarises():
+    """A passing gate clears the lane, verdict and baseline together.
+
+    The direct analogue of `test_verdicts_are_forgotten_with_the_notes_they_summarise`: a
+    verdict left behind after its findings were closed would let a later span claim a
+    failure that no longer exists, and would make the *next* failure read as `stalled`
+    against a baseline that had already been satisfied.
+    """
+    progress = DocsProgress(gate_ids=["G:a.py::b"], gate_failures=1, gate_verdict="invalid")
+    cleared = progress.after_gate(DocumentationGate(status="passed"))
+    assert cleared.gate_ids == []
+    assert cleared.gate_failures == 0
+    assert cleared.gate_verdict == "passed"
+    assert cleared.gate_progress_verdict == "cleared"
+
+
+def test_only_a_revise_leaves_a_worklist_for_the_next_pass():
+    """`approved` and `blocked` both end the flow, so neither leaves findings outstanding —
+    even if the reviewer attached some to explain itself."""
+    finding = DocumentationFinding(id="D1", target="docs/features/widget.md#links")
+    revised = DocsProgress().after_review(
+        DocumentationReview(status="revise", findings=[finding])
+    )
+    assert revised.review_ids == ["D1"] and revised.review_findings == 1
+    approved = revised.after_review(
+        DocumentationReview(status="approved", findings=[finding])
+    )
+    assert approved.review_ids == [] and approved.review_progress_verdict == "cleared"
+
+
+def test_docs_reports_its_gates_and_whether_the_rework_bought_anything():
+    progress = DocsProgress(
+        gate_verdict="invalid",
+        gate_failures=2,
+        gate_progress_verdict="stalled",
+    )
+    labels = _sealed(Docs).state_labels({"rework": 2, "progress": progress})
+    assert labels["work_id"] == "04-tabs"
+    assert labels["docs.rework"] == "2"
+    assert labels["docs.gate_verdict"] == "invalid"
+    assert labels["docs.gate_failures"] == "2"
+    assert labels["docs.gate_progress_verdict"] == "stalled"
+    # The reviewer has not spoken, so it claims no verdict — and unlike the gate's counts,
+    # a lane that never ran reports no zero either.
+    assert "docs.review_disposition" not in labels
+    assert "docs.review_progress_verdict" not in labels
+
+
+def test_every_docs_label_lands_in_a_groom_profile_bucket():
+    """The test that keeps the feature from being vacuous.
+
+    `groom profile` renders exactly two kinds of span dimension and derives both from the
+    attribute itself: a *verdict* group is named with one of the suffixes below, and an
+    *attempt* group is a dotted name whose value is a canonical non-negative integer.
+    Anything else — `docs.loop_productive="yes"`, say — is stored and rendered nowhere, and
+    nothing would report the omission. `workflows` does not depend on `groom`, so the
+    suffixes are duplicated here rather than imported; the source is
+    `groom/groom/store.py::_VERDICT_SUFFIXES`, and this fails loudly if either side moves.
+    """
+    suffixes = ("_verdict", "_disposition", "_failure_class", "_refutation_class")
+    for name in DocsProgress.VERDICT_LABELS:
+        assert name.endswith(suffixes), name
+
+    counts = counter_labels(
+        DocsProgress(gate_failures=2, review_findings=0).model_dump(),
+        "docs",
+        DocsProgress.COUNT_LABELS,
+    )
+    assert set(counts) == {"docs.gate_failures", "docs.review_findings"}
+    for name, value in counts.items():
+        assert "." in name and not name.startswith("workhorse."), name
+        assert value.isdigit() and str(int(value)) == value, (name, value)
 
 
 def test_a_state_with_no_loop_yet_reports_only_the_base_labels():

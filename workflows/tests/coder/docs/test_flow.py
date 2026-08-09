@@ -156,6 +156,11 @@ class _Agent:
     from which the author starts naming what it touched, which is how a gate failure and its
     recovery are separable. `review_status` is the reviewer's verdict, `approve_after` the
     pass it stops asking for revisions on.
+
+    `findings_per_pass` varies the reviewer's worklist across passes — the axis a
+    *progress* verdict is measured on, where every other axis here is measured per pass.
+    `explode_after` picks *which* pass dies, so a kill can be staged after a loop has
+    already accumulated a baseline rather than only on the first turn.
     """
 
     def __init__(
@@ -168,7 +173,9 @@ class _Agent:
         approve_after: int = 1,
         structured_findings: bool = True,
         review_findings: list[dict[str, Any]] | None = None,
+        findings_per_pass: list[list[dict[str, Any]]] | None = None,
         explode: set[str] | None = None,
+        explode_after: int = 1,
     ) -> None:
         self.author_status = author_status
         self.author_nodes = author_nodes
@@ -177,7 +184,9 @@ class _Agent:
         self.approve_after = approve_after
         self.structured_findings = structured_findings
         self.review_findings = review_findings
+        self.findings_per_pass = findings_per_pass
         self.explode = explode or set()
+        self.explode_after = explode_after
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
@@ -186,10 +195,11 @@ class _Agent:
         data = ctx.as_dict()
         self.calls.append(stem)
         self.args.append(data)
-        if stem in self.explode:
+        nth = self.counts()[stem]
+        if stem in self.explode and nth >= self.explode_after:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
-        return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
+        return f"(scripted) {node.prompt}", handler(data, nth)
 
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
@@ -209,6 +219,13 @@ class _Agent:
             return {"status": self.review_status, "findings": [], "notes": "reads as built"}
         if not self.structured_findings:
             return {"status": "revise", "findings": [], "notes": "free-form only"}
+        if self.findings_per_pass is not None:
+            pass_findings = self.findings_per_pass[min(nth, len(self.findings_per_pass)) - 1]
+            return {
+                "status": "revise",
+                "findings": pass_findings,
+                "notes": f"structured findings for pass {nth}",
+            }
         if self.review_findings is not None:
             return {
                 "status": "revise",
@@ -795,6 +812,84 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     assert agent.counts() == {"document-story": 5, "review-story-documentation": 4}
 
 
+# --------------------------------------------------------------------- was it productive?
+
+
+def _finding(fid: str) -> dict[str, Any]:
+    """One well-formed reviewer finding, distinguished from the next only by its id."""
+    return {
+        "id": fid,
+        "kind": "overclaim",
+        "target": f"docs/features/widget.md#{fid.lower()}",
+        "issue": f"{fid} is not described",
+        "repair": f"Document {fid}",
+    }
+
+
+def test_a_reviewer_handing_back_the_same_worklist_exhausts_as_stalled(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Four passes, one worklist, nothing closed — the budget was not the problem.
+
+    This is the shape `docs.rework=3` alone cannot distinguish from its opposite below, and
+    the two want opposite interventions: this one wants the author's prompt fixed, not a
+    bigger budget. The verdict rides the reworked author turns as a span label; the run's
+    last pass causes no work, so it is carried in the blocking notes instead.
+    """
+    agent = _Agent(approve_after=99, findings_per_pass=[[_finding("D1"), _finding("D2")]])
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert "did not converge in 4 passes (stalled)" in result.notes, result.notes
+
+
+def test_a_reviewer_closing_each_worklist_and_opening_another_exhausts_as_churned(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The same four passes and the same two findings a pass — and a different diagnosis.
+
+    Every pass closed the brief it was given and the reviewer found new, distinct defects,
+    so the loop was productive and merely unfinished. `_rework`'s own docstring records the
+    run this happened on. A count of reworks scores it identically to the stall above.
+    """
+    agent = _Agent(
+        approve_after=99,
+        findings_per_pass=[
+            [_finding("D1"), _finding("D2")],
+            [_finding("D3"), _finding("D4")],
+            [_finding("D5"), _finding("D6")],
+            [_finding("D7"), _finding("D8")],
+        ],
+    )
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert "did not converge in 4 passes (churned)" in result.notes, result.notes
+
+
+def test_the_grounding_lane_carries_its_own_verdict_into_the_failure(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An author that never names a node is handed the identical brief every pass."""
+    agent = _Agent(nodes_after=99)
+
+    with pytest.raises(WorkflowFailed) as excinfo:
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert "4 grounding passes (stalled)" in str(excinfo.value), excinfo.value
+
+
 # --------------------------------------------------------------------------- resume
 
 
@@ -826,9 +921,57 @@ def test_a_run_killed_mid_review_resumes_without_re_documenting(
     assert resume.flow == "Docs", resume
     assert resume.params["rework"] == 0, resume.params
     assert resume.params["author"]["nodes"] == ["docs/features/widget.md"], resume.params
+    assert resume.params["progress"]["gate_verdict"] == "passed", resume.params
+    assert resume.params["progress"]["gate_progress_verdict"] == "cleared", resume.params
 
     agent = _Agent()
     result = drive_flow(Docs(**resume.inputs), env(run_dir=run_dir), agent, resume)
 
     assert result.status == "passed", result
     assert agent.counts() == {"review-story-documentation": 1}, agent.counts()
+
+
+def test_a_run_killed_mid_rework_resumes_knowing_what_was_outstanding(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The baseline a progress verdict is measured against has to survive the kill.
+
+    A verdict comparing this pass to the last one is only as durable as the last pass's
+    worklist, and that worklist lives nowhere but the state parameter — which is exactly
+    why it is one. Without this, every resume would report `first_pass` and a run that died
+    once would score as productive no matter what it did afterwards.
+    """
+    run_env = env()
+    run_dir = run_env.writer.run_dir
+
+    with pytest.raises(RuntimeError, match="killed during document-story"):
+        drive_flow(
+            Docs(story=STORY, epic=EPIC),
+            run_env,
+            _Agent(
+                approve_after=99,
+                findings_per_pass=[[_finding("D1"), _finding("D2")]],
+                explode={"document-story"},
+                explode_after=2,
+            ),
+        )
+
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    resume = read_resume(checkpoint)
+    assert resume.state == "document", resume
+    progress = resume.params["progress"]
+    assert progress["review_disposition"] == "revise", progress
+    assert progress["review_ids"] == ["D1", "D2"], progress
+    assert progress["review_findings"] == 2, progress
+    assert progress["review_progress_verdict"] == "first_pass", progress
+
+    agent = _Agent(
+        approve_after=99, findings_per_pass=[[_finding("D1"), _finding("D2")]]
+    )
+    result = drive_flow(Docs(**resume.inputs), env(run_dir=run_dir), agent, resume)
+
+    assert result.status == "blocked", result
+    assert "(stalled)" in result.notes, result.notes

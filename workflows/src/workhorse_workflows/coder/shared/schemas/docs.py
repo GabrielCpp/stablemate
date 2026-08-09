@@ -8,9 +8,10 @@ here and the encode/decode pair disappears. Nothing on disk carried the encoded 
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar, Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
+from workhorse_workflows.kit.telemetry import progress_verdict
 
 
 class OkfDetection(CoderResult):
@@ -135,6 +136,90 @@ class DocumentationReview(CoderResult):
     notes: str = ""
 
 
+class DocsProgress(CoderResult):
+    """What each gate last decided, and whether the rework it forced was worth spending.
+
+    The docs flow's counterpart to `QaLoop`'s recorded verdicts, and it exists for the same
+    reason: the budget counters are a cost, not a diagnosis. `docs.rework=3` says a story
+    was expensive; `docs.rework=3` beside `docs.gate_progress_verdict=stalled` says the
+    author was handed the same brief three times and never acted on it, while `churned`
+    says it closed each brief and the budget was simply too small. Those want opposite
+    interventions, and nothing in the flow could tell them apart before this.
+
+    Nothing branches on any field here — it is a state parameter, which is what makes it
+    checkpointed, and being checkpointed is the whole point: comparing this pass to the one
+    before it requires the previous pass's findings to survive a resume.
+
+    The two lanes are kept apart because they are disjoint. `review` only runs when the
+    gate passed, so a pass produces grounding failures *or* review findings, never both;
+    comparing a gate-failure pass against a reviewer-revise pass would score every switch
+    between lanes as nonsense.
+    """
+
+    gate_verdict: str = ""  #: passed | invalid
+    review_disposition: str = ""  #: approved | revise | blocked
+    gate_progress_verdict: str = ""  #: see `kit.telemetry.progress_verdict`
+    review_progress_verdict: str = ""  #: idem, over the semantic lane
+
+    gate_failures: int = 0
+    review_findings: int = 0
+
+    #: The identities the last *failing* pass of each lane left open — the baseline the next
+    #: pass is judged against. Empty means the lane has never failed, which is distinct from
+    #: a lane that failed with nothing outstanding (impossible by construction: a failing
+    #: gate names at least one failure, and a `revise` carrying no findings is rejected).
+    gate_ids: list[str] = []
+    review_ids: list[str] = []
+
+    #: Closed vocabularies, so the label cardinality they add is bounded. Every name ends in
+    #: a suffix `groom profile` recognises as a verdict dimension.
+    VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
+        "gate_verdict",
+        "review_disposition",
+        "gate_progress_verdict",
+        "review_progress_verdict",
+    )
+
+    #: Reported as attempt dimensions beside the budgets. Both are counts of what a pass
+    #: left outstanding, never a signed delta — `groom profile` classifies an attempt
+    #: dimension with `str.isdigit`, so a negative value would silently render nowhere.
+    COUNT_LABELS: ClassVar[tuple[str, ...]] = ("gate_failures", "review_findings")
+
+    def after_gate(self, gate: DocumentationGate) -> DocsProgress:
+        """Record what the deterministic grounding gate just decided.
+
+        A `passed` gate clears the lane: no failures, no baseline, and `cleared` as the
+        verdict. The verdict is forgotten together with the findings it summarised, the same
+        invariant `QaLoop.cleared()` keeps — leaving one behind would let a later span claim
+        a failure that had already been closed.
+        """
+        ids = list(gate.failures)
+        return self.model_copy(
+            update={
+                "gate_verdict": gate.status or "invalid",
+                "gate_failures": len(ids),
+                "gate_progress_verdict": progress_verdict(self.gate_ids or None, ids),
+                "gate_ids": ids,
+            }
+        )
+
+    def after_review(self, review: DocumentationReview) -> DocsProgress:
+        """Record what the semantic reviewer just decided.
+
+        Only a `revise` leaves findings outstanding: `approved` and `blocked` both end the
+        flow, so neither leaves a worklist for a next pass to be judged against.
+        """
+        ids = [finding.id for finding in review.findings] if review.status == "revise" else []
+        return self.model_copy(
+            update={
+                "review_disposition": review.status or "revise",
+                "review_findings": len(ids),
+                "review_progress_verdict": progress_verdict(self.review_ids or None, ids),
+                "review_ids": ids,
+            }
+        )
+
+
 class DocsResult(CoderResult):
     """What the docs flow hands back: `passed`, `not_applicable` or `blocked`.
 
@@ -154,6 +239,7 @@ class DocsResult(CoderResult):
 
 __all__ = [
     "ContextClassification",
+    "DocsProgress",
     "DocsResult",
     "DocumentationFinding",
     "DocumentationGate",

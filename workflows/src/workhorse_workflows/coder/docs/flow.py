@@ -54,13 +54,14 @@ from workhorse_workflows.coder.shared.docs import (
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import (
+    DocsProgress,
     DocsResult,
     DocumentationFinding,
     DocumentationResult,
     DocumentationReview,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit.telemetry import counter_labels
+from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 
 
 class Docs(Workflow):
@@ -113,8 +114,27 @@ class Docs(Workflow):
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("rework", "review_rework")
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, plus which attempt of which budget the next state is on."""
-        return self.labels() | counter_labels(params, "docs", self.BUDGET_LABELS)
+        """The same, plus which attempt of which budget the next state is on, what each gate
+        last decided, and whether the pass that decided it bought anything.
+
+        A verdict labels the spans opened *after* it — the author turn a `revise` forced,
+        not the review turn that said the word. That is the useful direction, and the same
+        one `Qa.state_labels` documents: it lets a query attribute the cost of a rework to
+        the verdict that caused it. It is also why `_rework` carries the progress forward
+        rather than dropping it at the transition — `groom profile` aggregates agent-turn
+        spans only, and `verify` spends no turn, so a gate verdict is visible exactly
+        because the next author turn inherits it.
+        """
+        base = self.labels() | counter_labels(params, "docs", self.BUDGET_LABELS)
+        progress = params.get("progress")
+        if not isinstance(progress, DocsProgress):
+            return base
+        carried = progress.model_dump()
+        return (
+            base
+            | counter_labels(carried, "docs", DocsProgress.COUNT_LABELS)
+            | verdict_labels(carried, "docs", DocsProgress.VERDICT_LABELS)
+        )
 
     def start(self) -> Continue | Done:
         """Decide whether there is a book to document into, and how the diff can be read.
@@ -154,6 +174,7 @@ class Docs(Workflow):
         review_rework: int = 0,
         gate_notes: str = "",
         review_notes: str = "",
+        progress: DocsProgress | None = None,
     ) -> Continue | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
@@ -172,6 +193,12 @@ class Docs(Workflow):
         threaded rather than reset, because under the YAML both were vars that persisted
         across the loop — a second gate failure still shows the author what the reviewer said
         the first time.
+
+        `progress` is threaded the same way and read by nothing but `state_labels`. It is
+        optional rather than defaulted to an instance for two reasons: a shared mutable
+        default is a hazard, and an added *optional* parameter is what keeps an in-flight
+        checkpoint resumable — `coerce_params` raises on a parameter it does not know, so a
+        state that stopped accepting the ones already written would fail every resume.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
         classification = self.output(classify_documentation_context)
@@ -212,6 +239,7 @@ class Docs(Workflow):
             review_rework=review_rework,
             gate_notes=gate_notes,
             review_notes=review_notes,
+            progress=progress,
         )
 
     def verify(
@@ -221,6 +249,7 @@ class Docs(Workflow):
         gate_notes: str,
         review_notes: str,
         review_rework: int = 0,
+        progress: DocsProgress | None = None,
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -270,6 +299,7 @@ class Docs(Workflow):
             tuple(author.nodes),
             preexisting=tuple(self.preexisting),
         )
+        progress = (progress or DocsProgress()).after_gate(gate)
         if gate.status == "passed":
             return Continue(
                 gate,
@@ -279,13 +309,16 @@ class Docs(Workflow):
                 review_rework=review_rework,
                 gate_notes=gate.notes,
                 review_notes=review_notes,
+                progress=progress,
             )
         if rework >= self.MAX_REWORKS:
             raise WorkflowFailed(
                 f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
-                f"passes: {gate.notes or review_notes}"
+                f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
             )
-        return self._rework(gate, rework + 1, review_rework, gate.notes, review_notes)
+        return self._rework(
+            gate, rework + 1, review_rework, gate.notes, review_notes, progress
+        )
 
     def review(
         self,
@@ -294,6 +327,7 @@ class Docs(Workflow):
         gate_notes: str,
         review_notes: str,
         review_rework: int = 0,
+        progress: DocsProgress | None = None,
     ) -> Continue | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
@@ -342,6 +376,9 @@ class Docs(Workflow):
                 "documentation reviewer requested revisions with invalid structured findings: "
                 + "; ".join(finding_problems)
             )
+        # After the structural check, so a malformed `revise` still fails on its findings
+        # rather than being scored on them.
+        progress = (progress or DocsProgress()).after_review(result)
         notes = _review_notes(result)
         if review_rework >= self.MAX_REVIEW_REWORKS:
             self.logger.warning(
@@ -355,12 +392,15 @@ class Docs(Workflow):
                     status="blocked",
                     notes=(
                         f"documentation review did not converge in "
-                        f"{self.MAX_REVIEW_REWORKS + 1} passes: "
+                        f"{self.MAX_REVIEW_REWORKS + 1} passes "
+                        f"({progress.review_progress_verdict}): "
                         f"{notes or gate_notes or 'no notes'}"
                     ),
                 )
             )
-        return self._rework(result, rework, review_rework + 1, gate_notes, notes)
+        return self._rework(
+            result, rework, review_rework + 1, gate_notes, notes, progress
+        )
 
     def _rework(
         self,
@@ -369,6 +409,7 @@ class Docs(Workflow):
         review_rework: int,
         gate_notes: str,
         review_notes: str,
+        progress: DocsProgress | None = None,
     ) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
@@ -394,6 +435,7 @@ class Docs(Workflow):
             review_rework=review_rework,
             gate_notes=gate_notes,
             review_notes=review_notes,
+            progress=progress,
         )
 
     @property
