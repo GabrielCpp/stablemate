@@ -32,6 +32,64 @@ REQUEST_FILE = "reload-request.json"
 logger = logging.getLogger(__name__)
 
 
+class ReloadRequested(Exception):
+    """An operator asked for pushed code to be picked up. Not a verdict, not a failure.
+
+    It travels as an exception because it has to unwind an arbitrarily deep stack of nested
+    `drive` frames — `drive` is re-entrant, and swapping modules under a live parent frame
+    would hand new-class objects to old-class validation. But it is the opposite of a
+    failure in every way the retry ladder cares about: the turn it interrupted was cut on
+    purpose, so it consumes no short retry, no reframe and no compaction attempt, and enters
+    no backoff. Misclassifying it as a timeout would prepend an overran-your-budget warning
+    to a prompt that overran nothing; misclassifying it as a hard failure would spend a
+    reframe on a turn nobody was unhappy with.
+
+    Not a `PyflowError`: it is raised in `runner/`, which imports nothing from `pyflow/`,
+    and inverting that edge to reuse a base class would be the more expensive mistake. Like
+    `RunBudgetExceeded` it stamps no terminal — the run stopped, it did not decide — and
+    unlike it the stop is not the end: the driver re-enters from the checkpoint the state
+    already wrote on entry, in the same process.
+    """
+
+    def __init__(self, message: str = "reload requested", *, core: bool = False) -> None:
+        super().__init__(message)
+        self.core = core
+
+
+class _Watch:
+    """The run dir the stream loop polls, set once when the run starts.
+
+    Process-wide because there is one run per process and the stream loop is several
+    layers below anything that knows where its artifacts live — the same reason
+    `runner/process.py` holds one module-level `ProcessSupervisor`. An object rather than
+    a bare global so a test can set and clear it without rebinding a module attribute.
+    """
+
+    run_dir: Path | None = None
+
+
+_watch = _Watch()
+
+
+def arm(run_dir: str | Path | None) -> None:
+    """Point the poll at this run's directory. Idempotent; `None` disarms."""
+    _watch.run_dir = Path(run_dir) if run_dir else None
+
+
+def armed() -> Path | None:
+    return _watch.run_dir
+
+
+def armed_pending() -> "ReloadRequest | None":
+    """The outstanding request for the armed run, or None when nothing is armed.
+
+    This is what the stream loop calls once per select slice. With nothing armed it is a
+    branch on an attribute, so an unarmed process — every unit test that streams a fake
+    agent — pays nothing.
+    """
+    return pending(_watch.run_dir)
+
+
 @dataclass(frozen=True)
 class ReloadRequest:
     """What an operator asked for, as recorded in the request file.
@@ -116,4 +174,14 @@ def consume(run_dir: str | Path | None) -> ReloadRequest | None:
     return found
 
 
-__all__ = ["REQUEST_FILE", "ReloadRequest", "consume", "pending", "request"]
+__all__ = [
+    "REQUEST_FILE",
+    "ReloadRequest",
+    "ReloadRequested",
+    "arm",
+    "armed",
+    "armed_pending",
+    "consume",
+    "pending",
+    "request",
+]

@@ -39,28 +39,6 @@ class RunBudgetExceeded(PyflowError):
     """
 
 
-class ReloadRequested(PyflowError):
-    """An operator asked for pushed code to be picked up. Not a verdict, not a failure.
-
-    It travels as an exception for the same reason `WorkflowFailed` does — it has to unwind
-    an arbitrarily deep stack of nested `drive` frames, and `drive` is re-entrant. But it is
-    the opposite of a failure in every way the ladder cares about: the turn it interrupted
-    was cut on purpose, so it consumes no retry, no reframe and no compaction attempt, and
-    enters no backoff. Misclassifying it as a timeout would prepend an overran-your-budget
-    warning to a prompt that overran nothing; misclassifying it as a hard failure would
-    spend a reframe on a turn nobody was unhappy with.
-
-    Like `RunBudgetExceeded` it stamps no terminal: the run stopped, it did not decide.
-    Unlike it, the stop is not the end — the driver re-enters from the checkpoint the state
-    already wrote on entry, in the same process, so the run continues under the new code
-    with no new resume generation and no dangling span.
-    """
-
-    def __init__(self, message: str = "reload requested", *, core: bool = False) -> None:
-        super().__init__(message)
-        self.core = core
-
-
 class WorkflowDefinitionError(PyflowError):
     """The workflow is mis-declared — raised at registration/import time.
 

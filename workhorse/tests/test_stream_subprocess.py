@@ -13,7 +13,7 @@ import sys
 import time
 
 from _fakes import RecordingTelemetry
-from workhorse import otel
+from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 
@@ -231,6 +231,74 @@ def test_the_stale_oldpwd_is_dropped_when_the_child_moves(tmp_path):
     finally:
         os.environ.pop("OLDPWD", None)
     assert "".join(lines).strip() == "<unset>"
+
+
+def test_a_reload_request_cuts_the_streaming_turn_within_a_slice(tmp_path):
+    """The property the whole feature's value rests on: latency, not eventual delivery.
+
+    The 'agent' here would run for an hour. An operator plants a request while it streams,
+    and the turn has to end in about the length of one select slice — the saving is exactly
+    the tokens the turn would have burned after that instant.
+    """
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
+    reload.arm(tmp_path)
+    try:
+        reload.request(tmp_path)
+        started = time.monotonic()
+        raised = None
+        try:
+            process.stream_subprocess(
+                [sys.executable, "-u", "-c",
+                 "import sys, time; print('working'); sys.stdout.flush(); time.sleep(3600)"],
+                "test_node",
+                3600,
+                lambda line: None,
+                resilience=AgentResilience(),
+            )
+        except reload.ReloadRequested as exc:
+            raised = exc
+        elapsed = time.monotonic() - started
+    finally:
+        reload.arm(None)
+        otel.install(previous)
+
+    assert raised is not None, "the stream must report the reload, not a verdict on the turn"
+    assert raised.core is False
+    assert elapsed < 10, elapsed
+    # Recorded BEFORE the kill, so the turn's span closes with the usage it really accrued.
+    names = [name for name, _, _ in fake.events]
+    assert "reload_kill" in names
+    name, error, attrs = next(event for event in fake.events if event[0] == "reload_kill")
+    assert error is False, "a reload is not an error; groom must not read it as one"
+    assert attrs["node"] == "test_node"
+
+
+def test_an_at_boundary_request_does_not_touch_the_streaming_turn(tmp_path):
+    """`--at-boundary` is the case for a turn 95% through work that is not broken."""
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
+    reload.arm(tmp_path)
+    try:
+        reload.request(tmp_path, at_boundary=True)
+        timed_out, rc, lines = _run(
+            "import sys; sys.stdout.write('a\\n'); sys.stdout.flush()", timeout=30
+        )
+    finally:
+        reload.arm(None)
+        otel.install(previous)
+
+    assert timed_out is False and rc == 0
+    assert [ln.strip() for ln in lines] == ["a"]
+    assert [name for name, _, _ in fake.events if name == "reload_kill"] == []
+
+
+def test_an_unarmed_process_never_sees_a_request(tmp_path):
+    """Nothing polls until a run arms it — every other test streams with the feature inert."""
+    reload.request(tmp_path)
+    assert reload.armed() is None
+    timed_out, rc, _ = _run("import sys; sys.stdout.write('a\\n')", timeout=30)
+    assert timed_out is False and rc == 0
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from workhorse import otel
+from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
@@ -351,6 +351,7 @@ class ProcessSupervisor:
             on_fire=fired.set,
         )
         timed_out = False
+        reloading: reload.ReloadRequest | None = None
         assert proc.stdout is not None
         try:
             start = self.clock.monotonic()
@@ -372,6 +373,23 @@ class ProcessSupervisor:
                 # arriving stream; the watchdog is the backstop for a stream that wedges
                 # mid-line (where readline() below would otherwise block past the deadline).
                 ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
+                # The reload check rides the same short slice, so an operator who pushes a
+                # fix waits ≤1s rather than however many hours this turn had left. The
+                # ordering below is the whole contract: the event is recorded BEFORE the
+                # kill, exactly as the watchdog does it, so the turn's span closes carrying
+                # the tokens, cost and elapsed time it really accrued and nothing dangles.
+                requested = reload.armed_pending()
+                if requested is not None and requested.cuts_the_turn:
+                    print(
+                        f"[{node_id}] ⟳ reload requested — cutting this turn and "
+                        "re-entering the state on the pushed code",
+                        flush=True,
+                    )
+                    otel.turn_event(
+                        "reload_kill", node=node_id, core=requested.core, elapsed_s=int(elapsed)
+                    )
+                    reloading = requested
+                    break
                 if not ready:
                     if proc.poll() is not None:
                         break
@@ -386,7 +404,11 @@ class ProcessSupervisor:
             # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
             # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
             timed_out = timed_out or fired.is_set()
-            if timed_out and proc.poll() is None:
+            # A reload takes the group down the same way a timeout does — SIGTERM, 5s,
+            # SIGKILL — so the MCP servers and browsers the agent spawned go with it. What
+            # it must NOT do is set `timed_out`: that is the flag the ladder reads as "the
+            # turn overran", and this turn overran nothing.
+            if (timed_out or reloading is not None) and proc.poll() is None:
                 _kill_process_group(proc, signal.SIGTERM)
                 try:
                     proc.wait(timeout=5)
@@ -405,6 +427,13 @@ class ProcessSupervisor:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     pass
+        if reloading is not None:
+            # Raised rather than returned because every caller between here and the driver
+            # is written to interpret a `(timed_out, returncode)` pair as a verdict on the
+            # agent, and there is no value of that pair meaning "nobody judged this turn".
+            raise reload.ReloadRequested(
+                f"reload requested during {node_id}", core=reloading.core
+            )
         return timed_out, proc.returncode
 
 
