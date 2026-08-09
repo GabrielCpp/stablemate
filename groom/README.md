@@ -137,7 +137,7 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 |---|---|---|
 | STALL | a live run emits **nothing** — no span, no heartbeat | `GROOM_STALL_MIN` (90) |
 | STUCK | a live agent turn is silent too long, or deterministic work has sat in one node too long; explicit waits are excluded | `GROOM_STUCK_MIN` (75) |
-| CHURN | the same node span repeats with no gas refuel | `GROOM_CHURN_REPEATS` (5) |
+| CHURN | the same node span completes again and again under an unchanged `labels()` signature — i.e. on the same unit of work. A visit a live reload cut short (`workhorse.cut`) is an interruption, not a repeat, and does not count | `GROOM_CHURN_REPEATS` (5) |
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
 

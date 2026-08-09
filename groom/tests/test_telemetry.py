@@ -69,6 +69,12 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
                 kv.value.double_value = value
             else:
                 kv.value.int_value = value
+        # `workhorse.cut` — why a span ended without its work finishing. Workhorse
+        # closes the whole open scope on a live reload rather than orphaning it, so
+        # this is the only thing separating an interrupted visit from a completed one.
+        if spec.get("cut"):
+            kv = span.attributes.add()
+            kv.key, kv.value.string_value = "workhorse.cut", spec["cut"]
         for name in spec.get("events", []):
             span.events.add().name = name
         if spec.get("error"):
@@ -681,6 +687,49 @@ def test_churn_still_fires_when_the_same_work_repeats():
         )
         alerts.ingest_spans(otlp.parse_traces(moved_on), now=13.0)
         assert "CHURN" not in state.RUNS["run-1"].fired
+
+
+def test_a_reload_cut_visit_is_not_a_completed_repeat():
+    """An operator pushing fixes into a broken flow must not page for churn.
+
+    A live reload interrupts the node mid-turn and re-enters the same state on the
+    pushed code, so the node re-completes under an unchanged label signature — the
+    exact shape CHURN looks for. Workhorse closes the cut scope (an orphaned span is
+    the failure the whole feature exists to avoid) and stamps ``workhorse.cut``; that
+    stamp is the only thing distinguishing "interrupted" from "went round again", and
+    without it the fifth push reports the reload as the loop it was breaking.
+    """
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
+        for seq in range(6):
+            reloaded = otlp.parse_traces(
+                _trace_request(
+                    [{"name": "implement", "node": "implement", "seq": seq, "cut": "reload",
+                      "labels": {"work_id": "story-4"}}]
+                )
+            )
+            assert alerts.ingest_spans(reloaded, now=10.0 + seq) == []
+
+
+def test_a_cut_turn_is_a_completed_turn_not_a_watchdog_kill():
+    """`reload_kill` and `watchdog_kill` both end a streaming turn, and only one of
+    them is a failure. The reload turn accrued real tokens and real wall clock before
+    the operator cut it — it is spend, and it is reported as spend — but nothing about
+    it is an error, so it pages nobody and its span closes with an OK status."""
+    with _TelemetryEnv():
+        cut_turn = otlp.parse_traces(
+            _trace_request(
+                [{"name": "agent_turn", "node": "implement", "events": ["reload_kill"],
+                  "numbers": {"usage.output_tokens": 4200, "total_cost_usd": 1.5}}]
+            )
+        )
+        assert alerts.ingest_spans(cut_turn, now=100.0) == []
+        assert state.RUNS["run-1"].fired == set()
+        # And the spend is spend: the tokens were bought before the cut, so they total
+        # like any other turn's rather than being written off with the answer.
+        store.insert_spans(cut_turn)
+        spend = store.node_costs(run="run-1")
+        assert [(row["node"], row["turns"], row["cost_usd"], row["output_tokens"])
+                for row in spend] == [("implement", 1, 1.5, 4200)]
 
 
 def test_agent_turn_retries_do_not_count_as_churn():

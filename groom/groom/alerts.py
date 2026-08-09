@@ -259,8 +259,14 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         # Churn: node-span repeats ON THE SAME WORK. Only completed NODE spans
         # count (agent_turn retries are the ladder doing its job), and a repeat
         # under a different label signature is progress, not a repeat.
+        #
+        # `workhorse.cut` is how a span says it ended without finishing: workhorse
+        # closes the whole open scope when a live reload interrupts a run, so the node
+        # exports rather than being lost, and stamps why. Counting those would make an
+        # operator pushing fixes into a broken flow page for churn on the fifth push —
+        # the reload reported as the loop it was breaking.
         node = span.get("node") or ""
-        if node and span.get("name") == node:
+        if node and span.get("name") == node and not attrs.get("workhorse.cut"):
             signature = _label_signature(attrs)
             if run.node_labels.get(node) != signature:
                 run.node_labels[node] = signature
