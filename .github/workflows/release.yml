@@ -137,10 +137,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Ordered by the dependency graph, because an install of a release has to resolve:
-      # workhorse-workflows declares workhorse-agent and ostler. Steps in a job run in
-      # order; a matrix does not promise that, and a `needs:` chain would need
-      # always()/!failure() guards to survive a skipped predecessor.
+      # Build every candidate before publishing any of them. The wheel smoke test then
+      # installs workhorse-workflows against those local candidates, without uv's
+      # workspace sources. That is the only way to exercise sibling version constraints:
+      # uv.lock deliberately records editable members without their declared specifiers.
+      # Uploads remain dependency-ordered below the smoke test.
       #
       # stablemate-core is absent deliberately: it is not a distribution. workhorse and
       # farrier each carry a copy of it (`make vendor`), so a core change is committed as
@@ -149,6 +150,38 @@ jobs:
       - name: Build ostler
         if: contains(fromJSON(env.RELEASED), 'ostler')
         run: uv build --package ostler --out-dir dist/ostler
+
+      - name: Build workhorse-agent
+        if: contains(fromJSON(env.RELEASED), 'workhorse')
+        run: uv build --package workhorse-agent --out-dir dist/workhorse-agent
+
+      - name: Build farrier
+        if: contains(fromJSON(env.RELEASED), 'farrier')
+        run: uv build --package farrier --out-dir dist/farrier
+
+      - name: Build workhorse-workflows
+        if: contains(fromJSON(env.RELEASED), 'workflows')
+        run: uv build --package workhorse-workflows --out-dir dist/workhorse-workflows
+
+      - name: Verify candidate dependency metadata
+        if: contains(fromJSON(env.RELEASED), 'workflows')
+        run: |
+          links=()
+          for directory in dist/ostler dist/workhorse-agent; do
+            if [[ -d "$directory" ]]; then
+              links+=(--find-links "$directory")
+            fi
+          done
+          uv venv /tmp/workhorse-workflows-release
+          uv pip install \
+            --python /tmp/workhorse-workflows-release/bin/python \
+            "${links[@]}" \
+            dist/workhorse-workflows/*.whl
+          uv pip check --python /tmp/workhorse-workflows-release/bin/python
+          /tmp/workhorse-workflows-release/bin/workhorse-hello-world run --dry-run
+          /tmp/workhorse-workflows-release/bin/workhorse-author dot >/dev/null
+
+      # Publish only after every candidate is known to resolve, in dependency order.
       - name: Publish ostler
         if: contains(fromJSON(env.RELEASED), 'ostler')
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -156,9 +189,6 @@ jobs:
           skip-existing: true
           packages-dir: dist/ostler
 
-      - name: Build workhorse-agent
-        if: contains(fromJSON(env.RELEASED), 'workhorse')
-        run: uv build --package workhorse-agent --out-dir dist/workhorse-agent
       - name: Publish workhorse-agent
         if: contains(fromJSON(env.RELEASED), 'workhorse')
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -166,9 +196,6 @@ jobs:
           skip-existing: true
           packages-dir: dist/workhorse-agent
 
-      - name: Build farrier
-        if: contains(fromJSON(env.RELEASED), 'farrier')
-        run: uv build --package farrier --out-dir dist/farrier
       - name: Publish farrier
         if: contains(fromJSON(env.RELEASED), 'farrier')
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -176,9 +203,6 @@ jobs:
           skip-existing: true
           packages-dir: dist/farrier
 
-      - name: Build workhorse-workflows
-        if: contains(fromJSON(env.RELEASED), 'workflows')
-        run: uv build --package workhorse-workflows --out-dir dist/workhorse-workflows
       - name: Publish workhorse-workflows
         if: contains(fromJSON(env.RELEASED), 'workflows')
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -35,8 +35,11 @@ dependencies = [
   # dependency nothing imports is a claim the lockfile cannot check. `ostler` arrived
   # with the author port: its epic/story/coverage nodes read and write the planning-doc
   # graph through the library, and `verify_integrity` runs `ostler doctor` over it. The
-  # `vet` extra stays out until the coder port's screenshot steps import it.
-  "ostler>=1.0.0",
+  # 1.x floor is the coordinated release that added nested backlog adoption; cap the
+  # major because that planning-graph API is part of the workflow's runtime contract.
+  # The release wheel smoke test installs sibling candidates without workspace sources,
+  # which is the only place this cross-package constraint is actually exercised.
+  "ostler>=1,<2",
   # A unified diff is a format with a grammar, and the coder's hygiene gate reads one to
   # find the lines a branch added. Hand-scanning it means every `startswith("+++ b/")`
   # test is a guess that the line is a header rather than a hunk body that looks like one.

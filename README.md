@@ -346,8 +346,11 @@ by accident.
 
 Merging the release PR re-triggers the same workflow, which then creates the tags
 (`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases, runs `make test`
-against the merged tree, and uploads the packages that were actually released — in
-dependency order, since an install of a release has to resolve:
+against the merged tree, builds every candidate, and installs the Workflows wheel against
+the sibling candidate wheels before uploading anything. That isolated install is
+load-bearing: the workspace lock replaces sibling constraints with editable sources, so a
+local `uv sync` can pass while the published dependency range is impossible to resolve.
+Only after that smoke test do uploads proceed in dependency order:
 
 ```
 ostler → workhorse-agent → farrier → workhorse-workflows
