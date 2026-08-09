@@ -439,9 +439,18 @@ at that checkpoint with pydantic naming the field, which is the honest outcome o
 incompatible edit.
 
 `--core` asks for workhorse's own modules too, which cannot be replaced from a frame
-executing them and so costs a new process image. That exec is **not wired yet**: the run
-says so and reloads the workflow package alone, rather than silently doing half of what
-was asked.
+executing them — the driver, the ladder and the stream loop are all on that frame — so it
+costs a new process image. Everything above still happens first (the turn is cut, its span
+closes with its usage, the scopes close on the unwind, the run is stamped `reload` and
+flushed), and only then does the run `os.execv` itself as
+`run --resume-run <dir>`: same pid, no supervisor, identical in a container and on a
+laptop. The price of the new image is a new root span and a new resume generation, so the
+seconds between the two show up as a resume gap where a workflow-only reload costs
+nothing — which is why `--core` is something you ask for rather than the default. If the
+exec cannot happen at all, the run exits `3`, the reserved reload code: under
+`supervisor.py` that is a restart (with the source re-staged first, which is also how a
+core that has to be *staged* rather than exec'd is picked up), and without one it is a
+stop over a run dir that is still resumable by hand.
 
 ## Run artifacts
 

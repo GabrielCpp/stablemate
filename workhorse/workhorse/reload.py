@@ -29,6 +29,14 @@ from pathlib import Path
 
 REQUEST_FILE = "reload-request.json"
 
+#: What a run exits with when a `--core` reload could not replace the process image
+#: itself, and a supervisor should start it again. Chosen to sit outside the normal
+#: 0/1/2, 126/127 and 128+signal ranges, and shared with the two other processes that
+#: already spell a reload this way (`supervisor.py`, `groom/groom/sidecar.py`), so one
+#: supervision loop can serve all three. Any other code means stop, which is what keeps
+#: a reload onto code that does not import from storming.
+RELOAD_EXIT_CODE = 3
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,6 +183,7 @@ def consume(run_dir: str | Path | None) -> ReloadRequest | None:
 
 
 __all__ = [
+    "RELOAD_EXIT_CODE",
     "REQUEST_FILE",
     "ReloadRequest",
     "ReloadRequested",

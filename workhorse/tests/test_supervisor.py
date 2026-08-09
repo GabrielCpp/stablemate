@@ -158,6 +158,43 @@ def test_a_reload_landing_on_broken_code_fails_safe_instead_of_storming(tmp_path
 # --------------------------------------------------------------------------- #
 
 
+def test_the_run_restarts_on_the_reload_code_with_the_source_restaged(tmp_path: Path):
+    """A `--core` reload normally re-execs itself and never reaches here. This is the
+    backstop for the case exec cannot serve: an engine that has to be *staged* before it
+    exists to run, where exec would re-run the image it is replacing. Same policy as the
+    observer's, refresh included."""
+    counter = tmp_path / "starts"
+    order: list[str] = []
+    code = (
+        f"import pathlib,sys; p=pathlib.Path({str(counter)!r}); "
+        "n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
+        "sys.exit(3 if n < 1 else 0)"
+    )
+
+    def refresh() -> None:
+        order.append(f"refresh@{counter.read_text()}")
+
+    rc = _run(supervisor.supervise(_child(code=code), None, on_reload=refresh))
+
+    assert rc == 0
+    assert counter.read_text() == "2"
+    assert order == ["refresh@1"]
+
+
+def test_a_run_that_fails_after_a_reload_is_not_restarted_again(tmp_path: Path):
+    """Only the reserved code restarts, and the code the container reports is the one
+    the *last* image exited with — otherwise a reload onto an engine that cannot import
+    becomes a storm, and reports success while it storms."""
+    counter = tmp_path / "starts"
+    code = (
+        f"import pathlib,sys; p=pathlib.Path({str(counter)!r}); "
+        "n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
+        "sys.exit(3 if n < 1 else 9)"
+    )
+    assert _run(supervisor.supervise(_child(code=code), None)) == 9
+    assert counter.read_text() == "2"
+
+
 def test_sigterm_reaches_the_run_so_docker_stop_stays_graceful(tmp_path: Path):
     """`docker stop` sends SIGTERM to PID 1; the run is two levels down and only
     gets it because the supervisor forwards it."""

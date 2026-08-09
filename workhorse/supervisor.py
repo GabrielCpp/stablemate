@@ -436,6 +436,22 @@ async def supervise(
 
     proc = await run.start()
     rc = await proc.wait()
+    # The run gets the loop the observer already had, for the one outcome its own
+    # `os.execv` cannot cover: a `--core` reload whose new engine has to be *staged*
+    # first (exec would re-run the image it is replacing), or an exec that could not
+    # happen at all. Only the reserved code restarts it; every other code is the
+    # container's, so a reload onto a tree that does not import stops instead of
+    # storming. `stopping` is checked because a SIGTERM during the reload window must
+    # win over the restart.
+    while rc == RELOAD_EXIT_CODE and not run.stopping:
+        log.info("workflow requested a reload")
+        if on_reload is not None:
+            # Same contract as the observer's: a refresh that fails leaves the previous
+            # generation installed, and the restart below still has something to run.
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(on_reload)
+        proc = await run.start()
+        rc = await proc.wait()
     log.info("workflow exited with %d", rc)
 
     # Best-effort "the workflow exited" push. It must never change the container's

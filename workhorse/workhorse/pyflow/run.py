@@ -12,6 +12,7 @@ same shape whichever engine wrote it.
 from __future__ import annotations
 
 import importlib
+import os
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -66,6 +67,16 @@ class RunInvocation:
     context_manifest: ManifestContext = field(default_factory=ManifestContext)
     config: RunConfig = field(default_factory=RunConfig)
     telemetry: otel.TelemetryHost = field(default_factory=otel.TelemetryHost)
+
+
+class _CoreReloadRequested(Exception):
+    """A reload asked for workhorse itself, so the unwind must reach the process edge.
+
+    Private, and deliberately not a `PyflowError`: nothing about the run failed, and the
+    only frame allowed to act on it is the one outside the `finally` that finalizes the
+    run. It carries no payload — the checkpoint the state wrote on entry is the whole
+    live state, and the new image reads it from disk like any other resume.
+    """
 
 
 def run_pyflow(invocation: RunInvocation) -> int:
@@ -180,9 +191,24 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # its stubbed node index would be rebuilt from a registry it never really imported.
     if not dry_run:
         reload.arm(writer.run_dir)
+    #: Set by the `--core` unwind below, and acted on only after the `finally` has
+    #: flushed telemetry and disarmed the watch. `os.execv` runs no `finally` and no
+    #: `atexit`, so exec'ing from inside the block would drop the run's last spans and
+    #: leave the very dangling scope a reload exists not to produce.
+    core_reload = False
     try:
         try:
             _drive_reloadable(wf, env, resume, registry=registry, writer=writer)
+        except _CoreReloadRequested:
+            # The engine itself was asked for, so this process image is what gets
+            # replaced. Everything a clean stop does happens first — the turn was cut
+            # and its span closed with the usage it accrued, the state's scope closed
+            # marked, the checkpoint the state wrote on entry is on disk — and the run
+            # is stamped `reload` rather than aborted, so a reader can tell the image
+            # being replaced from a run that died here.
+            agent_process.terminate_active()
+            core_reload = True
+            otel.end_run("reload")
         except KeyboardInterrupt:
             agent_process.terminate_active()
             _record_interrupt(writer)
@@ -265,6 +291,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # process — a second `run_pyflow` in a test, or a supervisor loop.
         reload.arm(None)
 
+    if core_reload:
+        return _exec_reload(name, writer.run_dir)
+
     verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
     return 0
@@ -307,14 +336,23 @@ def _drive_reloadable(
                     f"{reload.REQUEST_FILE} and resume."
                 ) from exc
             if core:
-                # `--core` means the engine itself, which cannot replace its own live
-                # modules — `drive` is on this stack. Re-exec belongs to the supervisor;
-                # until it is wired, say so rather than silently reloading half of what
-                # was asked for.
-                env.log.warning(
-                    "[workhorse] reload: --core needs a process restart; reloading the "
-                    "workflow package only"
+                # `--core` means the engine itself, and no process can swap the modules
+                # its own stack is executing — `drive`, the ladder and `process.py` are
+                # all on this one. So the *image* is what gets replaced. The exec is not
+                # taken here: it belongs on the far side of `run_pyflow`'s `finally`,
+                # where the run's telemetry has been flushed and the watch disarmed.
+                pending_resume = _read_resume(writer.run_dir)
+                otel.turn_event(
+                    "reload",
+                    state=pending_resume.state,
+                    flow=pending_resume.flow or "",
+                    core=True,
                 )
+                env.log.info(
+                    "[workhorse] reload: --core — re-executing this run from '%s'",
+                    pending_resume.state,
+                )
+                raise _CoreReloadRequested from exc
             registry = _reimport(registry)
             env.workflow_dir = registry.directory()
             env.nodes = registry.nodes
@@ -333,6 +371,45 @@ def _drive_reloadable(
             env.log.info(
                 "[workhorse] reload: re-entering '%s' on the pushed code", resume.state
             )
+
+
+def _exec_reload(name: str, run_dir: Path) -> int:
+    """Replace this process image with a resume of the same run. Normally never returns.
+
+    `os.execv` rather than an exit code the caller restarts on, because exec keeps the
+    pid and needs no supervisor: the same call is what reloads the engine inside a
+    container and on a laptop, which is the property the whole feature is judged by. The
+    argv is rebuilt rather than replayed — `run --resume-run <dir>` is the resume
+    spelling, and the original one's `--param`/`--params-file` are already in the
+    checkpoint, so replaying them would let a stale file win over what the run really
+    holds.
+
+    Unlike the workflow-only reload this *is* a new process, so it opens a new root span
+    and a new resume generation: a `--core` reload costs the seconds between the two
+    images as a resume gap, where a tier-1 reload costs nothing. That is the price named
+    in the operator docs, and the reason `--core` is not the default.
+
+    An exec that cannot happen at all — the console script moved out from under the run —
+    exits with the reserved reload code instead. Under a supervisor that is a restart
+    (which is also the path that picks up a *staged* core, where exec would re-run the
+    image it is replacing); with no supervisor it is a nonzero exit over a run dir that
+    is still resumable by hand.
+    """
+    argv = [sys.argv[0], "run", "--resume-run", str(run_dir)]
+    executable = shutil.which(argv[0]) or argv[0]
+    if executable.endswith(".py"):
+        # `python -m workhorse...` / a script run by path: exec the interpreter, since
+        # the file itself is not required to be executable.
+        argv, executable = [sys.executable, *argv], sys.executable
+    print(f"[workhorse] reload: re-executing {' '.join(argv)}")
+    try:
+        os.execv(executable, argv)
+    except OSError as exc:
+        print(
+            f"[workhorse] ERROR: reload --core could not re-execute {executable}: {exc}"
+        )
+        print(f"[workhorse] resume with: workhorse-{name} run --resume-run {run_dir}")
+    return reload.RELOAD_EXIT_CODE
 
 
 def _reimport(registry: Registry) -> Registry:

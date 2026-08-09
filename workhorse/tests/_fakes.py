@@ -136,6 +136,9 @@ class RecordingTelemetry(otel._NullTelemetry):
         #: left dangling, which is the failure a test about an interrupted turn is for.
         self.turns_opened: list[str] = []
         self.turns_closed: list[str | None] = []
+        #: Run finalizations: the status each ``end_run`` published, in order. The host
+        #: makes the first one win, so a second entry means a test called it itself.
+        self.ended: list[str] = []
         self._wait_token = 0
 
     def enabled(self) -> bool:
@@ -174,6 +177,15 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.states.append(("end", state, seq, next_state))
         if cut:
             self.cuts.append((state, cut))
+
+    def end_run(
+        self,
+        status: str,
+        error: str | None = None,
+        error_class: str = "",
+        error_kind: str = "",
+    ) -> None:
+        self.ended.append(status)
 
     def wait_start(self, kind: str, node_id: str) -> int:
         self._wait_token += 1

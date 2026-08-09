@@ -224,18 +224,19 @@ def _build_registry() -> Registry:
 REGISTRY = _build_registry()
 
 
-def _invocation(tmp: str) -> RunInvocation:
+def _invocation(tmp: str, active: Any = None) -> RunInvocation:
     return RunInvocation(
         registry=REGISTRY,
         runs_dir=Path(tmp) / "runs",
         flow="main",
         run_id="t",
-        # Forced on with a null adapter: left to auto, the probe would answer from
-        # whatever is listening on the dev machine and these tests would pass by
-        # environment.
+        # Forced on with a null adapter unless a test asks for a recording one: left to
+        # auto, the probe would answer from whatever is listening on the dev machine and
+        # these tests would pass by environment.
         telemetry=otel.TelemetryHost(
             settings=dataclasses.replace(otel.OtelSettings(), forced=True),
-            build=lambda workflow, run_id, run_dir, settings: otel._NullTelemetry(),
+            build=lambda workflow, run_id, run_dir, settings: active
+            or otel._NullTelemetry(),
         ),
     )
 
@@ -280,6 +281,76 @@ def test_a_request_that_cannot_be_cleared_stops_the_run_rather_than_looping():
             assert run_pyflow(_invocation(tmp)) == 1
 
     assert reload.armed() is None
+
+
+def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
+    """`--core` cannot be a module swap — `drive`, the ladder and `process.py` are all on
+    the stack executing it — so the process image goes instead. What keeps that from
+    reading as a crash is the order: the run is stamped `reload`, its spans are closed
+    and flushed and the process-wide watch is disarmed, and only *then* is the image
+    replaced. `os.execv` runs no `finally` and no `atexit`, so exec'ing a moment earlier
+    would drop the run's last spans — the dangling scope a reload exists not to leave."""
+    drives = 0
+    at_exec: list[tuple[Path, list[str], bool]] = []
+
+    def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
+        nonlocal drives
+        drives += 1
+        env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
+        reload.request(env.run_dir, core=True)
+        raise reload.ReloadRequested("cut mid-turn", core=True)
+
+    fake = RecordingTelemetry()
+
+    def fake_exec(name: str, run_dir: Path) -> int:
+        at_exec.append((run_dir, list(fake.ended), reload.armed() is not None))
+        return reload.RELOAD_EXIT_CODE
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with (
+            patch.object(run_mod, "drive", fake_drive),
+            patch.object(run_mod, "_exec_reload", fake_exec),
+        ):
+            assert run_pyflow(_invocation(tmp, fake)) == reload.RELOAD_EXIT_CODE
+
+        run_dir = Path(tmp) / "runs" / "stub-t"
+        assert at_exec == [(run_dir, ["reload"], False)], at_exec
+
+    # Driven once: a `--core` reload does not also swap the workflow package, because
+    # the image that comes back re-imports every module from disk anyway.
+    assert drives == 1
+    # And the reload is on the record as one, naming the state the new image re-enters.
+    assert [(name, attrs.get("core"), attrs.get("state")) for name, _, attrs in fake.events] == [
+        ("reload", True, "start")
+    ], fake.events
+    assert reload.armed() is None
+
+
+def test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one():
+    """The original argv is not replayed: its `--param`/`--params-file` are already in
+    the checkpoint the new image resumes from, so replaying them would let a file the
+    operator edited meanwhile win over what the run actually holds.
+
+    An exec that cannot happen at all exits with the reserved reload code, which is a
+    restart under a supervisor and a resumable stop without one — never a silent
+    carry-on against the code the operator asked to replace."""
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_execv(path: str, argv: list[str]) -> None:
+        calls.append((path, list(argv)))
+        raise OSError("the console script moved")
+
+    # A path that does not exist, so `shutil.which` is deterministic rather than
+    # answering from whatever this machine has on PATH.
+    script = "/nonexistent/bin/workhorse-stub"
+    with (
+        patch.object(run_mod.os, "execv", fake_execv),
+        patch.object(run_mod.sys, "argv", [script, "run", "--param", "story=4"]),
+    ):
+        rc = run_mod._exec_reload("stub", Path("/runs/stub-t"))
+
+    assert rc == reload.RELOAD_EXIT_CODE
+    assert calls == [(script, [script, "run", "--resume-run", "/runs/stub-t"])], calls
 
 
 # ------------------------------------------------------- the re-import, for real
