@@ -83,12 +83,20 @@ class DocumentationGate(CoderResult):
     rework guard, so nothing but an explicit pass reaches the reviewer. The two counts are
     diagnostics: how many changed production units the packet saw, and how many doctor errors
     landed on a node this story actually affected.
+
+    `failures` is `notes` in machine-readable form: one stable identity per discrete
+    failure — `G:{path::symbol}` for an ungrounded reference, `E:{ref}:{line}:{code}` for a
+    doctor error, `S:{slug}` for a structural refusal. `notes` is the author's rework brief
+    and its prose is load-bearing; this is the half a *later* pass can be compared against,
+    which is what distinguishes a rework that closed findings from one that handed the same
+    ones back. Empty on `passed`.
     """
 
     status: str = ""
     notes: str = ""
     changed_code_count: int = 0
     doctor_error_count: int = 0
+    failures: list[str] = []
 
 
 class DocumentationFinding(CoderResult):

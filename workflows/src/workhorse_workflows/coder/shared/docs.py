@@ -282,14 +282,23 @@ def verify_story_documentation(
     inherited = untouched_since(docs_root.resolve(), tuple(preexisting))
 
     problems: list[str] = []
+    # The same statement as `problems`, one stable identity per discrete failure. `problems`
+    # is prose addressed to the author and its wording is load-bearing; this is the form a
+    # later pass can be compared against, which is what turns "three reworks" into "three
+    # reworks that closed nothing". Nothing branches on it.
+    failures: list[str] = []
     if author_status not in {"documented", "not_required"}:
         problems.append(f"documentation author status is {author_status!r}")
+        failures.append("S:author-status")
     if author_status == "documented" and not nodes:
         problems.append("documentation author did not identify affected OKF nodes")
+        failures.append("S:author-nodes")
     if context_mode == "local" and build_status != "passed":
         problems.append("diff-to-OKF context generation did not pass")
+        failures.append("S:context-build")
     if context_mode == "local" and validation_status != "passed":
         problems.append("diff-to-OKF context validation did not pass")
+        failures.append("S:context-validate")
 
     packet: dict[str, Any] = {}
     if context_mode == "local":
@@ -300,6 +309,7 @@ def verify_story_documentation(
             packet = loaded
         else:
             problems.append(f"cannot read {packet_path}")
+            failures.append("S:packet-unreadable")
 
     exactly_grounded, file_grounded = _grounded_paths(packet)
     ungrounded: list[str] = []
@@ -344,6 +354,9 @@ def verify_story_documentation(
             "Add a `code:` bullet naming each of these exactly as written here: "
             + ", ".join(ungrounded)
         )
+        # One per reference, verbatim: these identities are the inventory's own spelling
+        # and are stable across passes, so comparing two passes' sets is exact here.
+        failures.extend(f"G:{ref}" for ref in ungrounded)
 
     okf: Ostler | None = None
     try:
@@ -352,6 +365,7 @@ def verify_story_documentation(
     except (OSError, ValueError, RuntimeError) as exc:
         report = {}
         problems.append(f"ostler doctor could not run: {exc}")
+        failures.append("S:doctor-unavailable")
     affected = _affected_doc_nodes(packet, nodes)
     # `okf` is None only when its construction raised, and then `report` is empty and the
     # comprehension never reaches the call — the guard below says so at the line itself.
@@ -373,6 +387,14 @@ def verify_story_documentation(
                 for item in doctor_errors
             )
         )
+        # The message is excluded from the identity on purpose: a doctor error whose prose
+        # was reworded is the same defect, and a pass that only changed the wording did not
+        # buy anything.
+        failures.extend(
+            f"E:{item.get('path') or item.get('ref') or '<graph>'}:"
+            f"{item.get('line') or 0}:{item.get('code', '?')}"
+            for item in doctor_errors
+        )
 
     changed = len(packet.get("changedCode", []))
     if problems:
@@ -383,6 +405,7 @@ def verify_story_documentation(
             notes=notes,
             changed_code_count=changed,
             doctor_error_count=len(doctor_errors),
+            failures=failures,
         )
     notes = (
         f"Affected documentation is conformant; {changed} changed production unit(s) have "

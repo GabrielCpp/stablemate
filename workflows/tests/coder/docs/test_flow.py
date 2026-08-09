@@ -447,6 +447,14 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     # where naming the file is naming the reference.
     assert "api/config.yaml" in gate.notes, gate.notes
     assert "2 changed production symbol(s)" in gate.notes, gate.notes
+    # The same statement in the form a later pass can be compared against: one entry per
+    # owed reference, carrying the inventory's spelling rather than a count. `notes` stays
+    # the author's brief and is asserted above unchanged — `failures` is beside it, not
+    # instead of it.
+    assert sorted(gate.failures) == [
+        "G:api/config.yaml",
+        f"G:{controller}::(*LinkController).Resolve",
+    ], gate.failures
 
 
 def test_a_deletion_needs_no_code_bullet(
