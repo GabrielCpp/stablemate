@@ -136,7 +136,7 @@ def _clean_repo_relative(value: str, *, label: str, allow_dot: bool = False) -> 
     return normalized
 
 
-def _validate_command(command: VerificationCommand, *, owner: str) -> VerificationCommand:
+def validate_command(command: VerificationCommand, *, owner: str) -> VerificationCommand:
     if not command.argv or any(not part for part in command.argv):
         raise WorkflowFailed(f"{owner} has a verification command with an empty argv")
     executable = command.argv[0]
@@ -195,7 +195,7 @@ def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
     if not task.verification:
         raise WorkflowFailed(f"task {task.id} must declare deterministic verification")
     task.verification = [
-        _validate_command(command, owner=f"task {task.id}") for command in task.verification
+        validate_command(command, owner=f"task {task.id}") for command in task.verification
     ]
     if task.commit_type not in _COMMIT_TYPES:
         raise WorkflowFailed(f"task {task.id} has unsupported commit type {task.commit_type!r}")
@@ -342,7 +342,7 @@ def prepare_plan(
         raise WorkflowFailed("plan decomposition produced no implementation tasks")
     tasks = _topological([_validate_task(task, context) for task in decomposition.tasks])
     final = [
-        _validate_command(command, owner="final gate")
+        validate_command(command, owner="final gate")
         for command in decomposition.final_verification
     ]
     if not final:
@@ -403,5 +403,6 @@ __all__ = [
     "prepare_plan",
     "snapshot_plan",
     "task_key",
+    "validate_command",
     "write_worklist",
 ]

@@ -98,7 +98,7 @@ def verify_committed_task(
     repository.assert_clean_at(context, commit_sha, expected_parent)
     repository.validate_task_commit(context, task, expected_parent, commit_sha)
     repository.assert_tree_matches_worktree(context, task, commit_sha)
-    with repository.committed_tree(context, commit_sha) as candidate:
+    with repository.committed_tree(Path(context.repo_root), commit_sha) as candidate:
         result = repository.run_commands(candidate, task.verification)
     repository.assert_clean_at(context, commit_sha, expected_parent)
     if not result.passed:
@@ -188,7 +188,7 @@ def verify_final_candidate(
     repository.assert_clean_at(context, expected_head, expected_remote)
     if len(completed_commits) != len(plan.tasks):
         raise WorkflowFailed("final candidate gate reached without a commit for every task")
-    with repository.committed_tree(context, expected_head) as candidate:
+    with repository.committed_tree(Path(context.repo_root), expected_head) as candidate:
         result = repository.run_commands(candidate, plan.final_verification)
     repository.assert_clean_at(context, expected_head, expected_remote)
     if not result.passed:

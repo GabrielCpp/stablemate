@@ -245,13 +245,22 @@ def run_commands(root: Path, commands: list[VerificationCommand]) -> Verificatio
 
 
 @contextmanager
-def committed_tree(context: PlanRunContext, commit_sha: str) -> Iterator[Path]:
-    """Materialize exactly one commit for verification, then remove the worktree."""
+def committed_tree(root: Path, commit_sha: str) -> Iterator[Path]:
+    """Materialize exactly one commit for verification, then remove the worktree.
+
+    Takes the repository root rather than a `PlanRunContext` because the parent
+    `stage-plan` flow runs the same isolated aggregate gate without owning one: its
+    per-phase child holds the checkpointed repository identity, and a half-filled
+    context passed here purely to reach `repo_root` would be a fail-open lookalike.
+    """
     parent = Path(tempfile.mkdtemp(prefix="workhorse-verify-"))
     checkout = parent / "tree"
     hooks = parent / "empty-hooks"
     hooks.mkdir()
-    repo = open_context(context)
+    try:
+        repo = open_repo(root)
+    except GitError as exc:
+        raise WorkflowFailed(f"cannot open repository {root}: {exc}") from exc
     try:
         repo.git(c=f"core.hooksPath={hooks}").worktree(
             "add", "--detach", "--quiet", str(checkout), commit_sha
