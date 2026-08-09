@@ -53,6 +53,21 @@ def _decomposition(
     }
 
 
+def _issue(issue_id: str, path: str, *, finding: str = "Observed blocking defect.") -> dict[str, Any]:
+    return _task(issue_id, path) | {
+        "finding": finding,
+        "commit_type": "fix",
+    }
+
+
+def _review(*issues: dict[str, Any], summary: str = "independent review") -> dict[str, Any]:
+    return {
+        "status": "issues" if issues else "approved",
+        "summary": summary,
+        "issues": list(issues),
+    }
+
+
 @pytest.fixture
 def origin(
     tmp_path: Path,
@@ -77,6 +92,7 @@ class _Agent:
         planning_edits: dict[str, str] | None = None,
         commit_on_task: str = "",
         blocked_on_task: str = "",
+        reviews: list[dict[str, Any]] | None = None,
     ) -> None:
         self.repo = repo
         self.decomposition = decomposition
@@ -85,6 +101,8 @@ class _Agent:
         self.planning_edits = planning_edits or {}
         self.commit_on_task = commit_on_task
         self.blocked_on_task = blocked_on_task
+        self.reviews = reviews or [_review()]
+        self.review_index = 0
         self.calls: list[str] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -93,11 +111,14 @@ class _Agent:
         if node.id == "decompose-implementation-plan":
             self._write(self.planning_edits)
             reply = self.decomposition
+        elif node.id == "review-plan-implementation":
+            reply = self.reviews[min(self.review_index, len(self.reviews) - 1)]
+            self.review_index += 1
         else:
-            task_id = data["task"]["id"]
+            task_id = (data.get("task") or data["issue"])["id"]
             writes = (
                 self.repair_edits.get(task_id, {})
-                if node.id == "repair-plan-task"
+                if node.id in {"repair-plan-task", "repair-plan-review-issue"}
                 else self.edits.get(task_id, {})
             )
             self._write(writes)

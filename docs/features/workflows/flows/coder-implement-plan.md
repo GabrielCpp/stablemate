@@ -29,6 +29,15 @@ as state parameters, so they are the checkpointed execution authority. `worklist
 rebuildable operator projection of those values. Selection, verification, commit, publication, and
 completion never read its task payloads or statuses back to steer execution.
 
+Passing the implementation packets is not completion. After their aggregate gate and publication,
+an independent extra-smart review turn inspects the complete `base..candidate` diff against the
+immutable plan, acceptance criteria, real integration paths, failure/recovery behavior, tests,
+package boundaries, documentation, and repository conventions. A blank or contradictory verdict
+fails closed. Actionable findings become a second typed, checkpoint-authoritative
+`review-worklist.json`; each issue is fixed, verified, committed, and published through the same Git
+safety boundary before a fresh review starts. The workflow permits three issue-fix cycles and fails
+rather than claim completion if review does not converge.
+
 Each packet then follows one checkpointed loop:
 
 1. Resume or implement the packet within its declared paths.
@@ -39,6 +48,17 @@ Each packet then follows one checkpointed loop:
    trailer.
 6. Push the current branch without force and verify the remote head.
 7. Mark the packet done only after remote verification; then select a dependency-ready packet.
+
+After the implementation worklist:
+
+1. Review the exact published candidate without allowing repository edits.
+2. Deterministically validate every blocking issue's evidence, ownership, dependencies, commands,
+   and Conventional Commit metadata.
+3. Project and execute the review issue worklist one scoped issue at a time.
+4. Rerun the aggregate repository gate against the exact review-fix candidate before its last push.
+5. Re-review the resulting complete diff; repeat only within the fixed convergence budget.
+6. Write completion evidence only after an approved review with an empty actionable worklist and a
+   final aggregate verification pass against the published `HEAD`.
 
 Publication is deliberately **incremental, not transactional**. Every non-final packet reaches
 origin after its own clean committed-tree verification. The final aggregate gate can therefore stop
@@ -71,6 +91,9 @@ the remote branch head and writes a completion manifest under the private run di
   verification in a detached temporary worktree before every push; the final committed tree
   additionally runs the aggregate gate in the same isolated form.
 - A failed packet is blocked and stops the run; dependants never run.
+- A reviewer cannot waive its own findings: `approved` plus issues and `issues` without packets are
+  invalid. Review issue packets require concrete evidence and use the same scoped edit, hook,
+  committed-tree, publication, and crash-recovery controls as implementation packets.
 - Pushes are ordinary fast-forward pushes. A rejected push requires explicit reconciliation and a
   fresh validation pass; the workflow never force-pushes. Fetch and push URLs must resolve to one
   credential-free endpoint identity so remote verification observes the destination publication
@@ -104,4 +127,5 @@ policies rather than extensions to the generic `WorkList` primitive.
 - `workflows/tests/coder/implement_plan/test_validation.py`
 - `workflows/tests/coder/implement_plan/test_repository_safety.py`
 - `workflows/tests/coder/implement_plan/test_resume.py`
+- `workflows/tests/coder/implement_plan/test_review.py`
 - `workflows/src/workhorse_workflows/coder/implement_plan/flow.py`

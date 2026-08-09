@@ -18,10 +18,19 @@ from workhorse_workflows.coder.implement_plan.execution import (
     verify_plan_task,
 )
 from workhorse_workflows.coder.implement_plan.inventory import prepare_plan, snapshot_plan
+from workhorse_workflows.coder.implement_plan.review import (
+    check_review_turn,
+    prepare_review_issues,
+    project_review_approval,
+    project_review_progress,
+    validate_review_report,
+)
+from workhorse_workflows.coder.implement_plan.review_flow import ReviewIssues
 from workhorse_workflows.coder.implement_plan.schemas import (
     ImplementationResult,
     PlanDecomposition,
     PlanRunContext,
+    PlanReview,
     PlanTask,
     PreparedPlan,
 )
@@ -36,6 +45,7 @@ class ImplementPlan(Workflow):
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair",)
     MAX_REPAIRS: ClassVar[int] = 2
+    MAX_REVIEW_FIX_CYCLES: ClassVar[int] = 3
 
     def setup(self) -> PlanRunContext:
         if not self.plan_path.strip():
@@ -86,10 +96,14 @@ class ImplementPlan(Workflow):
         if index >= len(plan.tasks):
             return Continue(
                 plan,
-                self.final_gate,
+                self.review,
                 plan=plan,
                 completed_commits=completed_commits,
                 expected_head=expected_head,
+                cycle=0,
+                review_issue_count=0,
+                review_commits=[],
+                review_issue_ids=[],
             )
         task = plan.tasks[index]
         decision = self.call(decide_task_entry, self.ctx, task, expected_head)
@@ -293,6 +307,7 @@ class ImplementPlan(Workflow):
             plan,
             [*completed_commits, commit_sha],
             commit_sha,
+            expected_parent,
         )
         return Continue(
             None,
@@ -332,20 +347,122 @@ class ImplementPlan(Workflow):
             expected_head=result.commit_sha,
         )
 
-    def final_gate(
+    def review(
         self,
         plan: PreparedPlan,
         completed_commits: list[str],
         expected_head: str,
-    ) -> Done:
-        return Done(
+        cycle: int,
+        review_issue_count: int,
+        review_commits: list[str],
+        review_issue_ids: list[str],
+    ) -> Continue:
+        report = self.agent(
+            "prompts/review-plan-implementation.md",
+            returns=PlanReview,
+            power="extra-smart",
+            cwd=self.ctx.repo_root,
+            args={
+                "plan_text": self.ctx.plan_text,
+                "plan_digest": self.ctx.plan_digest,
+                "repo_root": self.ctx.repo_root,
+                "base_commit": self.ctx.base_commit,
+                "candidate_commit": expected_head,
+                "prepared_plan": plan.model_dump(mode="json"),
+                "review_cycle": cycle + 1,
+            },
+        )
+        self.call(check_review_turn, self.ctx, expected_head)
+        return Continue(
+            report,
+            self.route_review,
+            plan=plan,
+            completed_commits=completed_commits,
+            expected_head=expected_head,
+            cycle=cycle,
+            review_issue_count=review_issue_count,
+            review_commits=review_commits,
+            review_issue_ids=review_issue_ids,
+            report=report,
+        )
+
+    def route_review(
+        self,
+        plan: PreparedPlan,
+        completed_commits: list[str],
+        expected_head: str,
+        cycle: int,
+        review_issue_count: int,
+        review_commits: list[str],
+        review_issue_ids: list[str],
+        report: PlanReview,
+    ) -> Continue | Done:
+        """Route one checkpointed review report into approval or its issue worklist."""
+        self.call(validate_review_report, report)
+        if report.status == "approved":
             self.call(
-                complete_plan,
+                verify_final_candidate,
                 self.ctx,
                 plan,
                 completed_commits,
                 expected_head,
+                expected_head,
             )
+            self.call(
+                project_review_approval,
+                self.ctx,
+                cycle,
+                report.summary,
+                review_issue_ids,
+                review_commits,
+            )
+            return Done(
+                self.call(
+                    complete_plan,
+                    self.ctx,
+                    plan,
+                    completed_commits,
+                    expected_head,
+                    review_issue_count,
+                    cycle + 1,
+                    review_commits,
+                    review_issue_ids,
+                )
+            )
+        issues = self.call(prepare_review_issues, report, self.ctx, plan, cycle)
+        if cycle >= self.MAX_REVIEW_FIX_CYCLES:
+            self.call(
+                project_review_progress,
+                self.ctx,
+                issues,
+                cycle,
+                0,
+                [],
+                issues.tasks[0].id,
+            )
+            raise WorkflowFailed(
+                "implementation review did not converge after "
+                f"{self.MAX_REVIEW_FIX_CYCLES} issue-fix cycles"
+            )
+        fixed = self.handoff(
+            ReviewIssues,
+            run_context=self.ctx,
+            plan=issues,
+            expected_head=expected_head,
+            cycle=cycle,
+        )
+        if fixed.status != "fixed":
+            raise WorkflowFailed(f"review issue worklist returned {fixed.status or 'no status'}")
+        return Continue(
+            fixed,
+            self.review,
+            plan=plan,
+            completed_commits=completed_commits,
+            expected_head=fixed.final_commit,
+            cycle=cycle + 1,
+            review_issue_count=review_issue_count + fixed.issue_count,
+            review_commits=[*review_commits, *fixed.commits],
+            review_issue_ids=[*review_issue_ids, *fixed.issue_ids],
         )
 
     def _task_args(self, task: PlanTask) -> dict[str, Any]:

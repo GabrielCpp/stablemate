@@ -81,7 +81,10 @@ degrades to the standalone repository.
 `genesis`, `dream`, `fix`, and `implement-plan` exist as names *because* they are entered
 directly; the other five are also reached by `self.handoff(...)` from the main machine.
 `implement-plan` is the exception to the story-input convention: it snapshots `plan_path`,
-validates a typed dependency worklist, and owns scoped verification, commit, and push.
+validates a typed dependency worklist, and owns scoped verification, commit, and push. Completion
+also requires an independent semantic review with no actionable findings. Findings become a second
+checkpoint-authoritative review worklist; its scoped fixes must pass the same deterministic Git and
+verification gates, then survive a fresh review, before the flow returns `complete`.
 
 ---
 

@@ -183,8 +183,8 @@ def verify_final_candidate(
     plan: PreparedPlan,
     completed_commits: list[str],
     expected_head: str,
+    expected_remote: str,
 ) -> VerificationResult:
-    expected_remote = completed_commits[-2] if len(completed_commits) > 1 else context.base_commit
     repository.assert_clean_at(context, expected_head, expected_remote)
     if len(completed_commits) != len(plan.tasks):
         raise WorkflowFailed("final candidate gate reached without a commit for every task")
@@ -204,6 +204,10 @@ def complete_plan(
     plan: PreparedPlan,
     completed_commits: list[str],
     expected_head: str,
+    review_issue_count: int = 0,
+    review_passes: int = 1,
+    review_commits: list[str] | None = None,
+    review_issue_ids: list[str] | None = None,
 ) -> PlanImplementationResult:
     """Verify publication identity and write evidence after the candidate was gated."""
     repository.assert_clean_at(context, expected_head, expected_head)
@@ -221,6 +225,16 @@ def complete_plan(
             for index, task in enumerate(plan.tasks)
         ],
         "final_verification": "passed before the final packet was published",
+        "review": {
+            "status": "approved",
+            "passes": review_passes,
+            "fixed_issue_count": review_issue_count,
+            "commits": review_commits or [],
+            "resolved_issues": [
+                {"id": issue_id, "commit_sha": (review_commits or [])[index]}
+                for index, issue_id in enumerate(review_issue_ids or [])
+            ],
+        },
     }
     path = Path(context.worklist_path).with_name("completion.json")
     temporary = path.with_suffix(".json.tmp")
@@ -231,6 +245,8 @@ def complete_plan(
         status="complete",
         plan_digest=context.plan_digest,
         task_count=len(plan.tasks),
+        review_issue_count=review_issue_count,
+        review_passes=review_passes,
         final_commit=expected_head,
     )
 

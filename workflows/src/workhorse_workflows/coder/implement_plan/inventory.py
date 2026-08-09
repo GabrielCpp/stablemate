@@ -25,7 +25,7 @@ from workhorse_workflows.coder.implement_plan.schemas import (
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.kit import open_repo
 
-_TASK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_TASK_ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 _SCOPE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _COMMIT_TYPES = frozenset(
     {"feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "revert"}

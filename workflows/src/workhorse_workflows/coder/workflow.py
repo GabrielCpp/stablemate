@@ -1079,6 +1079,7 @@ workflow = (
             "apply-genesis-conventions": {"status": "complete"},
             "fix-genesis": {"status": "complete"},
             "dream-reflect": {"status": "complete"},
+            "review-plan-implementation": {"status": "approved", "summary": "dry-run"},
         }
     )
 )

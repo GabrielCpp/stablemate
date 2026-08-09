@@ -18,7 +18,7 @@ from workhorse_workflows.coder.implement_plan.execution import (
 )
 from workhorse_workflows.coder.implement_plan.inventory import task_key
 from workhorse_workflows.coder.implement_plan.flow import ImplementPlan
-from coder.implement_plan._support import _Agent, _decomposition
+from coder.implement_plan._support import _Agent, _decomposition, _issue, _review
 from coder.implement_plan._support import _command, _context, _prepared, _task
 
 def test_tampered_projection_cannot_skip_a_checkpointed_task(
@@ -165,4 +165,75 @@ def test_real_checkpoint_resumes_committed_task_without_reimplementation(
     )
 
     assert result.status == "complete"
-    assert agent.calls == calls_before_resume
+    assert agent.calls == [*calls_before_resume, "review-plan-implementation"]
+
+
+def test_nested_review_worklist_resumes_committed_fix_without_re_review(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., Any],
+    drive_flow: Callable[..., Any],
+) -> None:
+    marker = tmp_path / "review-fix-committed"
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "if git diff --cached | grep -q 'review-fixed'; then\n"
+        f"  touch {marker}\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Resume a review fix\n", encoding="utf-8")
+    task = _task("initial", "src/value.txt")
+    issue = _issue(
+        "review-fix",
+        "src/value.txt",
+        finding="The independent review found the final value was incomplete.",
+    )
+    issue["verification"] = [
+        _command(
+            "from pathlib import Path; "
+            "assert Path('src/value.txt').read_text() == 'review-fixed\\n'; "
+            f"assert not Path({str(marker)!r}).exists()"
+        )
+    ]
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={
+            "initial": {"src/value.txt": "initial\n"},
+            "review-1-review-fix": {"src/value.txt": "review-fixed\n"},
+        },
+        reviews=[_review(issue), _review(summary="fix verified")],
+    )
+    run_env = env()
+
+    with pytest.raises(WorkflowFailed, match="committed verification failed"):
+        drive_flow(
+            ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)),
+            run_env,
+            agent,
+        )
+
+    root_checkpoint = parse_checkpoint((run_env.writer.run_dir / "checkpoint.json").read_text())
+    root_resume = read_resume(root_checkpoint)
+    assert root_resume.state == "route_review"
+    child_dir = run_env.writer.run_dir / "review_issues" / "_flow"
+    child_checkpoint = parse_checkpoint((child_dir / "checkpoint.json").read_text())
+    assert read_resume(child_checkpoint).state == "verify_committed"
+    calls_before_resume = list(agent.calls)
+    marker.unlink()
+
+    result = drive_flow(
+        ImplementPlan(**root_resume.inputs),
+        env(run_dir=run_env.writer.run_dir),
+        agent,
+        root_resume,
+    )
+
+    assert result.status == "complete"
+    assert result.review_issue_count == 1
+    assert agent.calls == [*calls_before_resume, "review-plan-implementation"]

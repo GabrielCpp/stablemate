@@ -25,6 +25,7 @@ class PlanTask(CoderResult):
     id: str = ""
     title: str = ""
     objective: str = ""
+    finding: str = ""
     acceptance: list[str] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)
     paths: list[str] = Field(default_factory=list)
@@ -66,6 +67,24 @@ class PreparedPlan(CoderResult):
     summary: str = ""
 
 
+class PlanReview(CoderResult):
+    """An independent review of the fully implemented candidate."""
+
+    status: str = ""
+    summary: str = ""
+    issues: list[PlanTask] = Field(default_factory=list)
+
+
+class ReviewFixResult(CoderResult):
+    """The commits produced by one checkpointed review-issue worklist."""
+
+    status: str = ""
+    issue_count: int = 0
+    issue_ids: list[str] = Field(default_factory=list)
+    commits: list[str] = Field(default_factory=list)
+    final_commit: str = ""
+
+
 class ImplementationResult(CoderResult):
     """An implementation/repair turn's report; deterministic checks remain authoritative."""
 
@@ -97,6 +116,8 @@ class PlanImplementationResult(CoderResult):
     status: str = ""
     plan_digest: str = ""
     task_count: int = 0
+    review_issue_count: int = 0
+    review_passes: int = 0
     final_commit: str = ""
 
 
@@ -106,9 +127,11 @@ __all__ = [
     "PlanDecomposition",
     "PlanImplementationResult",
     "PlanRunContext",
+    "PlanReview",
     "PlanTask",
     "PreparedPlan",
     "PublishResult",
+    "ReviewFixResult",
     "TaskDecision",
     "VerificationCommand",
     "VerificationResult",
