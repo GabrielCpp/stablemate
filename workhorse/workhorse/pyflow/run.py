@@ -11,14 +11,16 @@ same shape whichever engine wrote it.
 
 from __future__ import annotations
 
+import importlib
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse import logsetup, otel
+from workhorse import logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
@@ -172,9 +174,15 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # the invocation, like every other setting.
     otel.install(invocation.telemetry)
     otel.start_run(name, writer.run_id, str(writer.run_dir))
+    # From here on the run answers a reload request. Armed after telemetry rather than
+    # before, so the first thing a cut turn does — record `reload_kill` on its own span —
+    # has somewhere to land. A dry run is left unarmed: it runs no agent turn to cut, and
+    # its stubbed node index would be rebuilt from a registry it never really imported.
+    if not dry_run:
+        reload.arm(writer.run_dir)
     try:
         try:
-            drive(wf, env, resume)
+            _drive_reloadable(wf, env, resume, registry=registry, writer=writer)
         except KeyboardInterrupt:
             agent_process.terminate_active()
             _record_interrupt(writer)
@@ -252,10 +260,108 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # A crash before any branch above finalized leaves the run marked aborted
         # rather than silently open; end_run is idempotent, so the normal paths win.
         otel.end_run("aborted", error="run aborted before finalize")
+        # And the watch is disarmed on every exit path: it is process-wide, so a run
+        # that left it armed would hand its run dir to whatever ran next in the same
+        # process — a second `run_pyflow` in a test, or a supervisor loop.
+        reload.arm(None)
 
     verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
     return 0
+
+
+def _drive_reloadable(
+    wf: Workflow,
+    env: RunEnv,
+    resume: Resume | None,
+    *,
+    registry: Registry,
+    writer: ArtifactWriter,
+) -> Any:
+    """`drive`, plus the one thing that may legitimately restart it: a live reload.
+
+    The loop is here, at the outermost frame, because `drive` is re-entrant: a `handoff`
+    runs a nested `drive` inside its parent state's body, and swapping `sys.modules`
+    under a live parent frame would hand objects of the new classes to the old classes'
+    pydantic validation. So the request travels as an exception until every frame is
+    gone, and only then — with nothing on the stack that remembers the old modules —
+    is the workflow package re-imported and the run re-entered from its checkpoint.
+
+    Re-entry is a resume in the same process and the same run dir, which is the whole
+    value: the run keeps its telemetry root span, its `run.json`, its session map and
+    its wall-clock budget. It is not a new generation, and groom must not read it as one.
+    """
+    while True:
+        try:
+            return drive(wf, env, resume)
+        except reload.ReloadRequested as exc:
+            # Consumed *before* the swap — `reload.consume` is written that way so a
+            # reload onto a tree that does not import cannot become a loop that re-reads
+            # the same request forever.
+            request = reload.consume(writer.run_dir)
+            core = request.core if request is not None else exc.core
+            if reload.pending(writer.run_dir) is not None:
+                raise WorkflowFailed(
+                    f"the reload request in {writer.run_dir} could not be cleared, so "
+                    "honouring it would reload forever. Remove "
+                    f"{reload.REQUEST_FILE} and resume."
+                ) from exc
+            if core:
+                # `--core` means the engine itself, which cannot replace its own live
+                # modules — `drive` is on this stack. Re-exec belongs to the supervisor;
+                # until it is wired, say so rather than silently reloading half of what
+                # was asked for.
+                print(
+                    "[workhorse] reload: --core needs a process restart; reloading the "
+                    "workflow package only"
+                )
+            registry = _reimport(registry)
+            env.workflow_dir = registry.directory()
+            env.nodes = registry.nodes
+            resume = _read_resume(writer.run_dir)
+            # The checkpoint names its own flow, so a reload lands back in the sub-flow's
+            # *parent* state and the handoff re-adopts the child checkpoint itself.
+            workflow_cls = registry.class_named(resume.flow) or registry.flow(None)
+            # A `WorkflowFailed` here is the honest outcome of an incompatible edit: the
+            # pushed code renamed or retyped a workflow field the checkpoint still holds.
+            # The run stops at a resumable checkpoint with pydantic naming the field.
+            wf = _instantiate(workflow_cls, resume.inputs)
+            otel.turn_event("reload", state=resume.state, flow=resume.flow or "", core=core)
+            print(f"[workhorse] reload: re-entering '{resume.state}' on the pushed code")
+
+
+def _reimport(registry: Registry) -> Registry:
+    """Re-read the workflow distribution from disk and return its rebuilt registry.
+
+    The package purged is the top-level one the entry flow's module lives in — derived,
+    not named, because workhorse is workflow-agnostic and must not know which
+    distribution it is running. Everything under it goes, so a fix in a node module or a
+    sub-flow is picked up as surely as one in the workflow module itself; workhorse's own
+    modules are untouched, which is the difference between this and `--core`.
+
+    The registry is a module-level object built at import, so the fresh one is found on
+    the re-imported module rather than reconstructed here — reconstructing it would mean
+    this function knowing how a distribution composes its blueprints.
+    """
+    entry = registry.entry
+    if entry is None:  # pragma: no cover — a run without an entry flow never started
+        raise WorkflowFailed("cannot reload a workflow that declares no entry point")
+    module_name = entry.__module__
+    root = module_name.partition(".")[0]
+    for cached in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
+        del sys.modules[cached]
+    # The point of a reload is that the files changed under a process that already read
+    # them, which is exactly the case the finder's directory caches were built to skip.
+    importlib.invalidate_caches()
+    module = importlib.import_module(module_name)
+    for value in vars(module).values():
+        if isinstance(value, Registry) and value.name == registry.name and value.entry:
+            return value
+    raise WorkflowFailed(
+        f"reloaded {module_name} but found no Registry({registry.name!r}) on it, so the "
+        "run would carry on against the code it was asked to replace. Resume the run to "
+        "pick the new code up."
+    )
 
 
 def _open_run(

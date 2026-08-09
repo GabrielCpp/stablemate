@@ -21,7 +21,7 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from workhorse import gates, otel
+from workhorse import gates, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
@@ -299,13 +299,39 @@ def drive(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
                 "from the run's original start. Raise the budget and resume."
             )
+        # The boundary half of the reload. The stream loop cuts a turn that is burning
+        # tokens; this catches every other moment — a request that arrived while a
+        # script node ran, and the `--at-boundary` request the stream loop deliberately
+        # ignores. It sits *after* the checkpoint above, so the state about to run is
+        # already durable and the re-entry replays it having lost nothing. The request
+        # is left on disk for `run_pyflow` to consume, because consuming it here would
+        # mean the unwind could still fail with nothing recording why it started.
+        boundary = reload.armed_pending()
+        if boundary is not None:
+            env.log.info("[workhorse] reload → requested; re-entering at '%s'", spec.name)
+            raise reload.ReloadRequested(
+                f"reload requested at the boundary before {spec.name}", core=boundary.core
+            )
         env.log.info("[workhorse] state  → %s", spec.name)
         # Armed for the resumed state only — see `RunEnv.resume_pending`. A state
         # further along the run is being entered for the first time, and a handoff it
         # makes is a fresh invocation whatever a stale child checkpoint says.
         env.resume_pending = resuming
         otel.state_start(spec.name, state_seq)
-        outcome = bound(**kwargs)
+        try:
+            outcome = bound(**kwargs)
+        except reload.ReloadRequested:
+            # Every `drive` frame closes its own scope on the way out, innermost first:
+            # a handoff runs a nested `drive` inside this state's body, so the unwind
+            # passes through one of these per level. `_end_execution` also sweeps
+            # whatever this frame left open above it — the agent node's own span, which
+            # never received the `done` event that normally ends it, because the turn
+            # was cut. So a reload exports the same span tree a completed transition
+            # does, minus the outcome attribute it never earned. That is the point: an
+            # operator who reloads a broken flow must not pay for it in spans that never
+            # leave the process, which is exactly what makes a reload read as a crash.
+            otel.state_end(spec.name, state_seq, None)
+            raise
         resuming = env.resume_pending = False
 
         if not isinstance(outcome, (Continue, Done, Await)):
