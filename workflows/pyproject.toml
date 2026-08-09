@@ -19,8 +19,10 @@ classifiers = [
 ]
 dependencies = [
   # The engine. This package is the only direction the dependency runs: workhorse
-  # knows nothing about any workflow in here, and must not.
-  "workhorse-agent>=1,<2",
+  # knows nothing about any workflow in here, and must not. Workflows 1.x starts on
+  # the Workhorse 2.x backend contract: that coordinated release replaces Aider with
+  # Cline and carries the breaking recovery semantics these machines are tested on.
+  "workhorse-agent>=2,<3",
   # `kit` — the git/GitHub/workspace half of what used to be `workhorse.scriptutil`.
   # These are here rather than on the engine because knowing how to open a pull
   # request is workflow domain: workhorse never called either library, and every
