@@ -511,6 +511,51 @@ def _profile_groups(
     )
 
 
+def _profile_verdict_decisions(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """How many times each gate actually reached each verdict, cost aside.
+
+    `_profile_groups` answers "what did this verdict cost", and it can only answer it over
+    `agent_turn` spans, because turns are what carry a price. That makes it the wrong
+    denominator for "how often": a label is stamped on every span opened after the state
+    entry that set it, so a verdict routing to another agent turn is counted and a verdict
+    routing to deterministic work is not. The bias is not random — it is exactly toward the
+    expensive outcomes, so a rubber-stamp gate and a gate that changes everything can look
+    alike. `qa.audit_verdict=stands` sat on 99 spans and 0 turns while `refuted` showed 4.
+
+    A decision is a *transition*: the run of consecutive spans carrying one value counts
+    once, and a value is re-counted after the dimension is cleared, which is how a gate
+    reaching the same verdict on the next work item stays two decisions rather than one.
+    Absence is what clearing looks like on the wire — `verdict_labels` emits only non-empty
+    strings and every span is stamped with the whole current set.
+
+    Traces are tracked separately so two flows in flight cannot alias each other's verdicts.
+    Spans must arrive in start order; `run_profile` selects them that way.
+    """
+    current: dict[tuple[str, str], str] = {}
+    counts: Counter[tuple[str, str]] = Counter()
+    for span in spans:
+        trace = span["trace_id"]
+        present = {
+            dimension: raw
+            for dimension, raw in span["attrs"].items()
+            if isinstance(raw, str) and raw and dimension.endswith(_VERDICT_SUFFIXES)
+        }
+        for dimension, raw in present.items():
+            if current.get((trace, dimension)) != raw:
+                counts[(dimension, raw)] += 1
+                current[(trace, dimension)] = raw
+        for key in [
+            key
+            for key in current
+            if key[0] == trace and key[1] not in present
+        ]:
+            del current[key]
+    return [
+        {"dimension": dimension, "value": value, "decisions": count}
+        for (dimension, value), count in sorted(counts.items())
+    ]
+
+
 def _span_category(
     span: dict[str, Any], parent_keys: set[tuple[str, str]]
 ) -> str:
@@ -657,6 +702,7 @@ def run_profile(run: str) -> dict[str, Any] | None:
         "work": _profile_turn_summary(turns),
         "attempt_groups": _profile_groups(turns, verdicts=False),
         "verdict_groups": _profile_groups(turns, verdicts=True),
+        "verdict_decisions": _profile_verdict_decisions(spans),
     }
 
 

@@ -300,6 +300,22 @@ def _format_profile(result: dict | None) -> str:
                 f"  turns={row['turns']}  agent={row['agent_s'] / 60:.1f}m"
                 f"  cost={row_cost}"
             )
+    decisions = result.get("verdict_decisions") or []
+    if decisions:
+        # Counted over every span rather than the priced ones, because a verdict routing to
+        # deterministic work buys no turn to be counted on. The groups above say what an
+        # outcome cost; this says how often a gate reached it, which is the number that
+        # decides whether the gate is worth its cost at all.
+        lines.append("verdict decisions (every gate outcome, priced or not)")
+        totals: dict[str, int] = {}
+        for row in decisions:
+            totals[row["dimension"]] = totals.get(row["dimension"], 0) + row["decisions"]
+        for row in decisions:
+            share = row["decisions"] / totals[row["dimension"]]
+            lines.append(
+                f"  {row['dimension']}={row['value']}"
+                f"  decisions={row['decisions']}  ({share:.0%})"
+            )
     return "\n".join(lines)
 
 
