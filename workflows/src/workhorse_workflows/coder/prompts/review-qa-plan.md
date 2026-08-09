@@ -19,6 +19,28 @@ Read the story, `qa-okf-context.json`, `qa-plan.yml`, `qa-plan.md`, review artif
 `docs/qa/lessons.md` under the docs root (`docs_path` when non-empty) when present. Read applicable
 QA skills and inspect cited native tests or flows when the plan delegates execution to them.
 
+## What the plan does not own
+
+The plan author is held to a contract you are also held to. Reject a plan for what it got
+wrong, never for a responsibility it was forbidden to take:
+
+- **The heavyweight shared stack — docker compose, emulators, the DB and its baseline seed —
+  is not the plan's to start.** It is owned by the workflow's `ensure_stack` step, which reads
+  the repo's `qa-stack.yml`, brings the stack up *after* this review and *before* the plan runs,
+  and leaves it up. A plan that records the stack as not-yet-started is describing the state at
+  authoring time, correctly. "This scenario needs the auth emulator and the emulator is not
+  running" is therefore not a defect, and a revision demanding the plan establish it asks for
+  something the author is explicitly told not to write.
+- Only `background:` daemons — per-run services pinned to the working tree — are the plan's to
+  declare, and those you may review normally.
+- The plan may not edit product code or tests. A scenario that delegates to a cited native test
+  is reviewed on whether that test proves the claim; if the test itself is inadequate, say so as
+  a coverage finding against the scenario, not as an instruction to go write it here.
+
+A finding the author cannot act on inside a plan file spends the repair budget and returns the
+same worklist next pass, which ends the story with no verdict at all. When the only thing left
+is outside the plan's authority, approve and put it in `notes`.
+
 For every scenario, independently verify:
 
 - its objective is explicit and corresponds to every AC/obligation in `covers`;
