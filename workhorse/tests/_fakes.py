@@ -129,6 +129,11 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.waits: list[tuple[str, int, str, str]] = []
         #: One entry per ``turn_event``: name, error flag, attributes.
         self.events: list[tuple[str, bool, dict[str, Any]]] = []
+        #: Agent-turn span boundaries: the node each turn opened on, and the error each
+        #: one closed with (``None`` = closed cleanly). Unequal lengths mean a span was
+        #: left dangling, which is the failure a test about an interrupted turn is for.
+        self.turns_opened: list[str] = []
+        self.turns_closed: list[str | None] = []
         self._wait_token = 0
 
     def enabled(self) -> bool:
@@ -142,6 +147,21 @@ class RecordingTelemetry(otel._NullTelemetry):
 
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None:
         self.events.append((name, error, dict(attrs)))
+
+    def turn_start(
+        self,
+        node_id: str,
+        model: str | None,
+        effort: str | None,
+        timeout: float,
+        backend: str | None = None,
+    ) -> None:
+        self.turns_opened.append(node_id)
+
+    def turn_end(
+        self, error: str | None = None, error_class: str = "", error_kind: str = ""
+    ) -> None:
+        self.turns_closed.append(error)
 
     def state_start(self, state: str, seq: int) -> None:
         self.states.append(("start", state, seq, None))

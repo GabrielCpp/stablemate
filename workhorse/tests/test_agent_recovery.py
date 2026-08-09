@@ -19,9 +19,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from _fakes import FakeBackend, FakeClock
+from _fakes import FakeBackend, FakeClock, RecordingTelemetry
+from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
-from workhorse.runner import failure, ladder
+from workhorse.runner import failure, ladder, process
+from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.failure import BackendInvocationError, OutputParseError
 from workhorse.runner.waits import RecoveryWaitBudgetExceeded
 from workhorse.context import WorkflowContext
@@ -139,6 +141,88 @@ def test_persistent_failure_raises_instead_of_answering_for_the_node():
         raise AssertionError("the exhausted ladder must raise, not default the outputs")
     except BackendInvocationError:
         pass
+
+
+def test_a_reload_is_neither_retried_nor_reframed():
+    """The ladder must let a reload past untouched — it is not a verdict on the turn.
+
+    Every other exit from ``run`` spends something: a reframe, a compaction attempt, a
+    backoff out of a budget measured in days. A reload spends none of them, because the
+    operator cut the turn deliberately and the *next*, genuine failure is entitled to the
+    full ladder. Reframing here would also be actively wrong: it would open a fresh
+    session and re-ask the question against the very code the reload is replacing.
+    """
+    calls = {"n": 0}
+    clock = FakeClock()
+
+    def cut(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise reload.ReloadRequested("reload requested during review_implementation")
+
+    try:
+        _run(_node(), cut, clock=clock, max_rephrase_attempts=3)
+        raise AssertionError("a reload must propagate, not be recovered from")
+    except reload.ReloadRequested as exc:
+        assert exc.core is False
+
+    assert calls["n"] == 1, "the reload was retried or reframed"
+    assert clock.slept == [], f"a reload entered a backoff: {clock.slept}"
+
+
+def test_the_cut_turn_closes_its_span_and_closes_it_cleanly():
+    """The span survives the interrupt — that is half of what the feature promises.
+
+    Left open, the turn dangles in the collector and the tokens it really burned before
+    the cut are never attributed to it, which is precisely the ambiguity a restart-based
+    reload produces and this one exists to avoid. Closed with an ERROR status, groom
+    counts a deliberate reload among the failures.
+    """
+    fake = RecordingTelemetry()
+
+    def cut(prompt, node_id, sid, model=None, **kwargs):
+        raise reload.ReloadRequested("reload requested during review_implementation")
+
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(turn=cut),
+        resilience=AgentResilience(),
+        clock=FakeClock(),
+    )
+    previous = otel.install(otel.TelemetryHost(active=fake))
+    try:
+        runner.turn("p", "review_implementation", None, timeout=60)
+        raise AssertionError("a reload must propagate out of the turn")
+    except reload.ReloadRequested:
+        pass
+    finally:
+        otel.install(previous)
+
+    assert fake.turns_opened == ["review_implementation"]
+    assert fake.turns_closed == [None], "the cut turn's span dangled or closed as an error"
+
+
+def test_a_reload_during_compaction_is_not_read_as_compaction_being_unavailable():
+    """``/compact`` is best-effort, but only about compaction *failing*.
+
+    Swallowing the reload here returns ``False``, which the ladder reads as "compaction
+    can't help" and answers with a reframe — a fresh session and a whole new turn under
+    the code being replaced.
+    """
+    def cut(cmd, node_id, timeout, on_line, **kwargs):
+        raise reload.ReloadRequested("reload requested during review_implementation")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sid_path = Path(tmp) / "session"
+        sid_path.write_text("session-abc")
+        with patch.object(process, "stream_subprocess", cut):
+            try:
+                ClaudeBackend().compact(
+                    sid_path, "review_implementation",
+                    timeout=1.0,
+                    resilience=AgentResilience(),
+                )
+                raise AssertionError("the reload was swallowed as a compaction failure")
+            except reload.ReloadRequested:
+                pass
 
 
 def test_reframe_count_then_stop():

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
-from workhorse import otel
+from workhorse import otel, reload
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
@@ -474,6 +474,20 @@ class AgentRunner:
                     )
                 otel.turn_end()
                 return result
+            except reload.ReloadRequested:
+                # The one exit from this loop that consumes nothing: no short retry, no
+                # cap wait, no backoff, and no budget. The operator cut the turn; the
+                # turn did not fail, so a counter incremented here would spend part of
+                # the recovery the *next* genuine failure is entitled to.
+                #
+                # It still has to close the span — and close it *cleanly*. The turn
+                # accrued real tokens, cost and wall clock before the cut, and the
+                # `reload_kill` event the stream loop already recorded is on this span;
+                # ending it with an ERROR status would make groom count a deliberate
+                # reload among the failures. Not closing it at all is the unclosed span
+                # this whole feature exists to avoid.
+                otel.turn_end()
+                raise
             except BackendInvocationError as exc:
                 otel.turn_end(
                     error=str(exc),

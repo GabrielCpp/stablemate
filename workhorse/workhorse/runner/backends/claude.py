@@ -18,7 +18,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from workhorse import otel
+from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
@@ -234,6 +234,12 @@ def _compact_session(
             resilience=resilience,
             stdin_data="/compact", env_extra=env_extra,
         )
+    except reload.ReloadRequested:
+        # Best-effort covers compaction *failing*; it does not cover the operator
+        # cutting it. Swallowed here it would return False, the ladder would read that
+        # as "compaction is unavailable" and spend a reframe — a fresh session and a
+        # whole new turn against the very code the reload is replacing.
+        raise
     except Exception as exc:  # noqa: BLE001 — compaction is best-effort
         print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
         return False
