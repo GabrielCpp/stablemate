@@ -693,17 +693,26 @@ class Coder(Workflow):
         satisfied by what is already there — but three in a row is a loop that is not
         building anything, and the run stops rather than walking the whole epic producing
         nothing. The counter resets on any commit that landed.
+
+        It also resets when the stamp superseded a *previous attempt's* outcome — a
+        give-up, a docs block, an interrupted run. Re-running one of those is the loop
+        proving that work already in the tree is now correct, and it commits nothing by
+        construction, because the code it vindicates was committed under the failure marker
+        the first time. Counting it killed a sixteen-hour run three stories after it
+        re-verified and passed exactly that kind of story. A `Not started` story that
+        builds nothing is the reading the guard was written for and still counts, so a dev
+        phase that has quietly stopped producing code is caught as before.
         """
         story = self._story
         result = self.call(
             commit_story, self._queue_epic(epic), story.story_slug, story.spec_dir,
             story.story_path,
         )
-        if result.committed:
+        if result.committed or result.superseded_outcome:
             return Continue(result, self.select_story, epic=epic, zero_diff=0)
         zero_diff += 1
         self.logger.info(
-            "%s committed nothing (%d/%d in a row)",
+            "%s committed nothing and its status did not move (%d/%d in a row)",
             story.story_slug, zero_diff, self.MAX_ZERO_DIFF_COMMITS,
         )
         if zero_diff >= self.MAX_ZERO_DIFF_COMMITS:

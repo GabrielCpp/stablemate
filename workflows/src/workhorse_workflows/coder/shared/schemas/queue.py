@@ -143,9 +143,20 @@ class StoryCommitted(CoderResult):
     committed separately and is excluded from this answer, because the zero-diff churn
     guard counts consecutive no-op story commits and a stamp every passing story makes
     would keep the guard from ever tripping.
+
+    `superseded_outcome` is the other half of that guard's question. It is narrower than
+    "was a stamp written", which every passing story does: it is "did this stamp replace a
+    *previous attempt's* outcome" — a give-up, a docs block, an interrupted run — as
+    opposed to a story that arrived `Not started` and has never been built. Re-running a
+    story whose work already landed under a failure marker is the most valuable thing the
+    loop does and it commits nothing by construction, so counting it as churn ends the run
+    for succeeding. A never-attempted story that builds nothing is the opposite reading and
+    still counts, which is what keeps the guard able to catch a dev phase that has quietly
+    stopped producing code.
     """
 
     committed: bool = False
+    superseded_outcome: bool = False
 
 
 class QaFlagged(CoderResult):

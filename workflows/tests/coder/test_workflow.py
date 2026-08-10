@@ -96,8 +96,11 @@ Users need a thing.
 
 ## Implementation Status
 
-- **Status**: Not started
+- **Status**: {status}
 """
+
+#: What `flag_qa_failure` leaves on a story it gave up on — the status a re-run supersedes.
+GAVE_UP = "QA FAILED after 3 QA-plan review revision attempts — needs manual review"
 
 #: One drainable backlog item, in the shape `select_fix_item` parses.
 BULLET = "widget-pagination"
@@ -144,7 +147,7 @@ def epic(
     guard below is only testable against a repo whose only dirt is what the run made.
     """
 
-    def _epic(count: int = 1) -> Path:
+    def _epic(count: int = 1, status: str = "Not started") -> Path:
         slugs = [f"STORY-{n}" for n in range(1, count + 1)]
         stories = "\n".join(f"### {slug}\n\n- title: Story {slug}\n" for slug in slugs)
         write(
@@ -154,7 +157,7 @@ def epic(
         for slug in slugs:
             write(
                 repo / "docs" / "epics" / EPIC / "stories" / slug / "story.md",
-                STORY_MD.format(title=f"Story {slug}"),
+                STORY_MD.format(title=f"Story {slug}", status=status),
             )
         write(repo / "docs" / "epics" / "index.md", INDEX)
         git(repo, "add", "-A")
@@ -904,6 +907,39 @@ def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
     # Four stories were built before the guard tripped, not one and not the whole epic.
     assert sub.calls.count("Dev") == 4, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_re_verifying_given_up_stories_is_progress_not_churn(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The zero-diff guard's false positive, which ended a real sixteen-hour run.
+
+    A story given up on is committed behind its `[QA FAILED]` marker — the work is already
+    in the tree. Re-running it later is the most valuable thing the loop does, and it
+    commits nothing *by construction*: there is no diff left to make, only a status to
+    move from the failure marker to `QA passed`. Three of those in a row read to the old
+    guard exactly like three stories that built nothing, and it stopped the run for
+    succeeding at the expensive thing.
+
+    Same four stories and the same no-change sub-flows as the test above; the only
+    difference is what the stories arrived carrying, and that is the whole distinction —
+    a prior attempt's outcome superseded, versus a `Not started` story that built nothing.
+    """
+    repo = epic(count=4, status=GAVE_UP)
+    sub = _Sub(repo, changes=False).install(monkeypatch)
+    run_env = env()
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.has_epic is False, result
+    assert sub.calls.count("Dev") == 4, sub.calls
+    assert _output(run_env, open_pr)["should_gate"] is True
+    for n in range(1, 5):
+        story = repo / "docs" / "epics" / EPIC / "stories" / f"STORY-{n}" / "story.md"
+        assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
 def test_a_commit_that_lands_resets_the_zero_diff_counter(

@@ -45,7 +45,7 @@ import tempfile
 from pathlib import Path
 
 from ostler import Ostler, markdown, path as okf_path
-from ostler.model import status_bullet
+from ostler.model import status_bullet, story_status
 
 #: The literal an append writes when the story carries no Status field yet. Reading one is
 #: ostler's parser's job, never a scan for this string.
@@ -127,6 +127,31 @@ def rewrite_status(
     return [story_md]
 
 
+def current(
+    root: Path,
+    slug: str,
+    *,
+    epic: str = "",
+    story_path: str = "",
+) -> str:
+    """What the story.md says its status is right now, `""` when it says nothing.
+
+    The counterpart of `mark`, and the same field: `ostler.model.story_status` reads the
+    frontmatter first and the parsed `- **Status**:` bullet second, so this answers with
+    exactly the value `set_status` would overwrite — never a substring of the prose. A
+    caller compares it against the status it is about to write to learn whether the stamp
+    is a change or a no-op.
+    """
+    story_md = resolve_story_path(root, epic, slug, story_path)
+    if not story_md.is_file():
+        return ""
+    try:
+        text = story_md.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    return story_status(markdown.split(text))
+
+
 def mark(
     root: Path,
     slug: str,
@@ -156,6 +181,7 @@ def mark(
 
 __all__ = [
     "STATUS_PREFIX",
+    "current",
     "mark",
     "mark_via_ostler",
     "resolve_story_path",

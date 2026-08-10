@@ -845,15 +845,23 @@ def select_story(
 
 def _stamp_status(
     logger: logging.Logger, root: Path, epic: str, slug: str, story_path: str
-) -> None:
-    """Record `QA passed` on the story and commit just that change.
+) -> bool:
+    """Record `QA passed` on the story and commit just that change. Did the record move?
 
     Deliberately committed SEPARATELY, scoped to the paths the stamp touched, and
     deliberately NOT folded into the caller's `committed` answer. That answer drives the
     zero-diff churn guard (three consecutive no-op story commits halt the run), and a
     status stamp is a change every passing story makes — counting it would mean every story
     always "committed something" and the guard could never trip again.
+
+    The return value is the narrower fact the guard actually wants: this stamp replaced a
+    *previous attempt's* outcome — a give-up, a docs block, an interrupted run — rather
+    than the `Not started` a story carries before anything has touched it. A re-run of work
+    that already landed under a failure marker commits nothing by construction, and it is
+    the run advancing, not spinning. A never-attempted story that builds nothing is not,
+    and still counts.
     """
+    before = story_status.current(root, slug, epic=epic, story_path=story_path)
     written = story_status.mark(root, slug, DONE_STATUS, epic=epic, story_path=story_path, logger=logger)
     if not written:
         logger.warning(
@@ -861,7 +869,9 @@ def _stamp_status(
             DONE_STATUS,
             slug,
         )
-        return
+        return False
+    prior = before.strip()
+    superseded = bool(prior) and prior not in (registry.DEFAULT_STORY_STATUS, DONE_STATUS)
 
     # The story doc lives in the workflow host repo (the doc graph root), which is not
     # necessarily one of the affected code repos — so it is committed here or not at all.
@@ -885,6 +895,7 @@ def _stamp_status(
     )
     if specs and commit_paths(root, stamp, *specs):
         logger.info("recorded %s for %s", DONE_STATUS, slug)
+    return superseded
 
 
 @blueprint.node
@@ -978,8 +989,8 @@ def commit_story(
                 logger.info("committed in %s", repo_path.name)
                 any_committed = True
 
-    _stamp_status(logger, root, epic, slug, story_path)
-    return StoryCommitted(committed=any_committed)
+    superseded = _stamp_status(logger, root, epic, slug, story_path)
+    return StoryCommitted(committed=any_committed, superseded_outcome=superseded)
 
 
 def _record_skip(run_dir: str, slug: str) -> None:
