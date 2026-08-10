@@ -173,7 +173,12 @@ class Docs(Workflow):
         # computes the same join from the same packet; paying for it once here is what
         # keeps the author from re-deriving it by hand, which it does badly and at length.
         obligations = self._obligations(classification)
-        return Continue(okf, self.document, obligations=tuple(obligations.refs))
+        return Continue(
+            okf,
+            self.document,
+            obligations=tuple(obligations.refs),
+            delta_refs=tuple(obligations.refs),
+        )
 
     def document(
         self,
@@ -183,6 +188,7 @@ class Docs(Workflow):
         review_notes: str = "",
         progress: DocsProgress | None = None,
         obligations: tuple[str, ...] = (),
+        delta_refs: tuple[str, ...] = (),
     ) -> Continue | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
@@ -207,6 +213,13 @@ class Docs(Workflow):
         default is a hazard, and an added *optional* parameter is what keeps an in-flight
         checkpoint resumable — `coerce_params` raises on a parameter it does not know, so a
         state that stopped accepting the ones already written would fail every resume.
+
+        `delta_refs` is the *unnarrowed* worklist `start` computed, threaded alongside
+        `obligations` rather than folded into it. `obligations` shrinks as the gate closes
+        items, which is right for an author being told what is left to do and wrong for a
+        reviewer being told what this story is answerable for: a scope that shrinks every pass
+        would keep re-legalizing the findings it had just ruled out of bounds. This one
+        never narrows, and `review` is its only reader.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
         classification = self.output(classify_documentation_context)
@@ -249,6 +262,7 @@ class Docs(Workflow):
             gate_notes=gate_notes,
             review_notes=review_notes,
             progress=progress,
+            delta_refs=delta_refs,
         )
 
     def verify(
@@ -259,6 +273,7 @@ class Docs(Workflow):
         review_notes: str,
         review_rework: int = 0,
         progress: DocsProgress | None = None,
+        delta_refs: tuple[str, ...] = (),
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -319,6 +334,7 @@ class Docs(Workflow):
                 gate_notes=gate.notes,
                 review_notes=review_notes,
                 progress=progress,
+                delta_refs=delta_refs,
             )
         if rework >= self.MAX_REWORKS:
             raise WorkflowFailed(
@@ -337,6 +353,7 @@ class Docs(Workflow):
             obligations=tuple(
                 failure[2:] for failure in gate.failures if failure.startswith("G:")
             ),
+            delta_refs=delta_refs,
         )
 
     def review(
@@ -347,6 +364,7 @@ class Docs(Workflow):
         review_notes: str,
         review_rework: int = 0,
         progress: DocsProgress | None = None,
+        delta_refs: tuple[str, ...] = (),
     ) -> Continue | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
@@ -379,6 +397,7 @@ class Docs(Workflow):
                 "author_notes": author.notes,
                 "gate_notes": gate_notes,
                 "review_notes": review_notes,
+                "obligations": list(delta_refs),
             },
         )
         if result.status == "approved":
@@ -418,7 +437,8 @@ class Docs(Workflow):
                 )
             )
         return self._rework(
-            result, rework, review_rework + 1, gate_notes, notes, progress
+            result, rework, review_rework + 1, gate_notes, notes, progress,
+            delta_refs=delta_refs,
         )
 
     def _rework(
@@ -430,6 +450,7 @@ class Docs(Workflow):
         review_notes: str,
         progress: DocsProgress | None = None,
         obligations: tuple[str, ...] = (),
+        delta_refs: tuple[str, ...] = (),
     ) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
@@ -457,6 +478,7 @@ class Docs(Workflow):
             review_notes=review_notes,
             progress=progress,
             obligations=obligations,
+            delta_refs=delta_refs,
         )
 
     def _obligations(self, classification: ContextClassification) -> DocumentationObligations:

@@ -446,3 +446,19 @@ def test_runbook_missing_steps_and_driver_is_flagged(repo: Path):
     assert "missing-required-section" in bad   # no `## Steps`
     assert "missing-required-bullet" in bad     # no `driver:`
     assert "unresolved-relation" in bad         # `environment:` link is broken
+
+
+def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
+    # The feature book is parsed once per file and cached for the process, because a graph load
+    # is 24s on a real book and every node of a workflow run loads one. The key is the content
+    # digest for exactly this case: a workflow's writer phase rewrites a doc between two loads,
+    # and a same-size edit inside one filesystem timestamp tick is invisible to a stat-keyed
+    # cache. A stale UI node here is a gate reading the document the run just replaced.
+    doc = repo / "docs/features/web/login.md"
+    write(doc, "---\ntype: screen\n---\n\n# Login\n\n## Components\n\n### aaa\n")
+    assert present(load(repo).find_ui_node("docs/features/web/login.md#aaa")).title == "aaa"
+
+    write(doc, "---\ntype: screen\n---\n\n# Login\n\n## Components\n\n### bbb\n")
+    reloaded = load(repo)
+    assert reloaded.find_ui_node("docs/features/web/login.md#aaa") is None
+    assert present(reloaded.find_ui_node("docs/features/web/login.md#bbb")).title == "bbb"

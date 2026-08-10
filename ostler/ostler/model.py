@@ -8,6 +8,7 @@ epic's seeds and story dependency-DAG are folded into its ``epic.md`` body (``##
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -498,18 +499,58 @@ def _load_ids(graph: Graph) -> None:
             graph.ids = None
 
 
-def _load_features(graph: Graph) -> None:
+_FEATURE_DOC_CACHE: dict[Path, tuple[str, dict, list[UINode]]] = {}
+
+
+def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
+    """The two products the feature book is read for — frontmatter and UI nodes — parsed once.
+
+    Two things were paying full markdown parses of the same files. :func:`_load_features` wanted
+    only the frontmatter, but ``markdown.split`` locates the fence with the parser rather than by
+    scanning for ``---`` (deliberately — a line scan lost CRLF files and trailing-space fences
+    entirely), so "just the frontmatter" costs a parse too; :func:`_load_ui_nodes` then read and
+    parsed every file a second time for its sections. Measured on a real book: 5.7s and 18.7s of
+    a 25s load. One pass produces both.
+
+    The cache is keyed on the file's **content digest**, not its mtime. A load is not the only
+    thing that touches these files — the writer phases of a workflow edit them between loads, and
+    a same-size rewrite inside one filesystem timestamp tick is exactly the case a stat-keyed
+    cache serves stale. Reading the text is required to hash it, and reading the whole book costs
+    0.03s against the 24s it saves.
+
+    What is cached is shared across every graph loaded in this process, so callers read these
+    products and do not mutate them — as every consumer of ``graph.ui_nodes`` and
+    ``FeatureRecord.data`` does today. The frontmatter is copied out because a ``FeatureRecord``
+    hands it to callers directly; the nodes are not, because copying them is the cost this is
+    avoiding.
+    """
+    text = path.read_text(encoding="utf-8")
+    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+    hit = _FEATURE_DOC_CACHE.get(path)
+    if hit is not None and hit[0] == digest:
+        return dict(hit[1]), hit[2]
+    doc = markdown.split(text)
+    frontmatter = doc.frontmatter or {}
+    nodes = _parse_ui_nodes(doc, path, root)
+    _FEATURE_DOC_CACHE[path] = (digest, frontmatter, nodes)
+    return dict(frontmatter), nodes
+
+
+def _feature_paths(graph: Graph) -> list[Path]:
     froot = graph.doc_roots["features"]
     if not froot.is_dir():
-        return
-    for path in sorted(froot.rglob("*.md")):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
-            continue
+        return []
+    return [p for p in sorted(froot.rglob("*.md"))
+            if p.is_file() and p.name not in registry.RESERVED_FILES]
+
+
+def _load_features(graph: Graph) -> None:
+    froot = graph.doc_roots["features"]
+    for path in _feature_paths(graph):
         try:
-            doc = _read_frontmatter(path)
+            data, _ = _feature_doc(path, graph.root)
         except OSError:
             continue
-        data = doc.frontmatter or {}
         rel = path.relative_to(froot).with_suffix("")
         slug = str(data.get("slug") or rel.name)
         area = str(data.get("area") or (rel.parent.as_posix() if rel.parent.as_posix() != "." else ""))
@@ -657,17 +698,12 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
 
 
 def _load_ui_nodes(graph: Graph) -> None:
-    froot = graph.doc_roots["features"]
-    if not froot.is_dir():
-        return
-    for path in sorted(froot.rglob("*.md")):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
-            continue
+    for path in _feature_paths(graph):
         try:
-            doc = markdown.split(path.read_text(encoding="utf-8"))
+            _, nodes = _feature_doc(path, graph.root)
         except OSError:
             continue
-        graph.ui_nodes.extend(_parse_ui_nodes(doc, path, graph.root))
+        graph.ui_nodes.extend(nodes)
 
 
 def _load_epics(graph: Graph) -> None:

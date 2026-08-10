@@ -41,7 +41,25 @@ A finding the author cannot act on inside a plan file spends the repair budget a
 same worklist next pass, which ends the story with no verdict at all. When the only thing left
 is outside the plan's authority, approve and put it in `notes`.
 
-For every scenario, independently verify:
+## What the plan is answerable for
+
+The contract is fixed and written down: the story's acceptance criteria, plus the OKF
+obligations in `<spec_dir>/qa-okf-context.json`. That union is the whole of what this plan
+owes. Every check below is a check *against that contract*, not against QA in the abstract.
+
+**A plan that covers its contract is approvable even if you can imagine a better plan.** There
+is always another scenario worth adding, another assertion worth strengthening; a review that
+asks for the best plan rather than a sufficient one never terminates, and the story ends with
+no QA verdict at all — which is strictly worse than QA run against a merely adequate plan. If
+a scenario reaches and observes what its `covers` claims, it passes. Improvements you would
+like but do not need go in `notes`.
+
+**Find everything you are going to find, this pass.** List every finding you have, however
+many that is. A defect you could have named this pass and held back is not grounds for a later
+refusal: if the author repairs what you listed, you approve.
+
+For every scenario, independently verify — against the acceptance criteria and obligations it
+`covers`, and not beyond them:
 
 - its objective is explicit and corresponds to every AC/obligation in `covers`;
 - causal preconditions are established and asserted rather than assumed from fixture selection;
@@ -49,15 +67,17 @@ For every scenario, independently verify:
   checkpoints before the terminal assertion;
 - the terminal assertion proves the objective, not merely page presence or command success;
 - expected error, retry, persistence, role, locale, keyboard, accessibility, and isolation paths
-  from OKF are exercised where applicable;
+  are exercised **where `qa-okf-context.json` lists them as obligations** — a path OKF does not
+  oblige for this story is not a gap;
 - unexpected 5xx responses, crashes, and browser console errors cannot pass unnoticed;
 - producer-consumer and pooled/shared-state obligations use an integration-strength oracle;
 - each `verify:` reference has an appropriate level and actually runs in the declared environment;
 - runner-owned artifacts will demonstrate the claimed result.
 
 Do not execute the plan, drive the product, edit either plan file, or author evidence. This is an
-independent review, not another planning pass. Approve only when the plan can meaningfully test its
-objectives. Otherwise return precise revision notes keyed to scenario and coverage IDs.
+independent review, not another planning pass. Approve when every acceptance criterion and
+obligation in the contract has a scenario that would actually catch it failing. Otherwise return
+precise revision notes keyed to scenario and coverage IDs.
 
 Return JSON only:
 

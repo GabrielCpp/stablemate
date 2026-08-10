@@ -386,6 +386,49 @@ def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
     assert agent.args_for("document-story")[1]["obligations"] == ["api/widget.go::Widget"]
 
 
+def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The reviewer's scope is what this story changed, and it does not shrink.
+
+    `review-story-documentation.md` refuses on defects outside the story's obligations, which
+    is only bounded if it knows what they are. It reads the same worklist the author gets, but
+    the *unnarrowed* one: the author's list shrinks as the grounding gate closes items, and a
+    reviewer scope that shrank with it would re-legalize on pass two the findings it had ruled
+    out of bounds on pass one — the exact oscillation the bound exists to stop.
+    """
+    write(alongside / "api" / "widget.go", "package api\n\nfunc Widget() {}\n")
+
+    class _Grounding(_Agent):
+        """An author that actually closes the worklist, so the gate lets the reviewer run."""
+
+        def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            write(
+                alongside / "docs/features/widget.md",
+                "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
+                "# Widget\n\n- code: `api/widget.go::Widget`\n",
+            )
+            return super()._document_story(data, nth)
+
+    # Two reviewer passes, so the second one is reached through `_rework` — which resets the
+    # author's `obligations` to empty and is exactly where a shared parameter would lose the
+    # scope.
+    agent = _Grounding(approve_after=2)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.args_for("document-story")[0]["obligations"] == ["api/widget.go::Widget"]
+    assert agent.args_for("document-story")[1]["obligations"] == []
+    review = agent.args_for("review-story-documentation")
+    assert len(review) == 2, agent.calls
+    assert [r["obligations"] for r in review] == [["api/widget.go::Widget"]] * 2, review
+
+
 # --------------------------------------------------------------------------- the gate
 
 

@@ -20,10 +20,39 @@ gate before QA.
 - Deterministic gate: `{{ workhorse_var('gate_notes') }}`
 - Previous semantic review notes: `{{ workhorse_var('review_notes') }}`
 
+## What this story is answerable for
+
+{% if workhorse_var('obligations') %}
+This story changed exactly these production references:
+
+{% for ref in workhorse_var('obligations') %}
+- `{{ ref }}`
+{% endfor %}
+
+They are your scope. A node is in scope when it documents behavior reached by one of those
+references, or when this story's diff should have created it and did not.
+{% else %}
+No changed-reference worklist could be computed for this story, so scope it yourself from the
+branch commits since the story/epic base — the diff, not the book.
+{% endif %}
+
+**A defect outside that scope is pre-existing, and pre-existing is not grounds to refuse.**
+The book was already incomplete when this story started; the author was not asked to finish
+it and cannot, and a finding against a node this story never touched returns unfixed next
+pass and every pass after it. Say it in `notes` if it matters. Do not put it in `findings`.
+
+**Find everything you are going to find, this pass.** List every in-scope defect you can see
+now, however many that is — a long list of real findings is a good review. A defect you could
+have named this pass and held back is not grounds for a later refusal: if the author repairs
+what you listed, you approve.
+
+## The review
+
 Read the story, the parent epic's `## User Journeys`, plan context, working tree, branch commits since
 the story/epic base, and affected OKF nodes. Include QA, regression, CI, merge-resolution, and
-inline-fix mutations made after the initial review. Approve only when the book
-describes the complete current system rather than this story as a changelog. In particular:
+inline-fix mutations made after the initial review. Approve when the book tells the truth about
+the system *within that scope* — as a description of the system as it now stands, not as a
+changelog of this story. In particular, for the surfaces this story touched:
 
 - every new or changed service, screen, component, interaction, CLI command, endpoint,
   invocation, flow, concept, and format has the correct typed node and reachable relationships;
@@ -37,8 +66,10 @@ describes the complete current system rather than this story as a changelog. In 
   target that isn't there, with no exception. A symbol or file this story deleted needs no
   citation at all; do not send the author back to add one, and flag a bullet that still cites
   something deleted as a defect to remove;
-- unchanged surrounding behavior remains complete, so the documented node could guide a
-  behavior-equivalent implementation;
+- behavior this story changed on an in-scope node is described completely enough to guide a
+  behavior-equivalent implementation, and behavior it did not change was not *degraded* —
+  a bullet the author deleted or weakened is a defect, a bullet that was already thin before
+  this story is not;
 - author-owned requirements were not weakened to match code;
 - `not_required` is used only when the diff is genuinely internal and changes no observable or
   reusable contract. A new service, screen, component, endpoint, command, flow, concept, or format
@@ -50,7 +81,10 @@ describes the complete current system rather than this story as a changelog. In 
 This is not a fresh exploratory review. First verify each prior semantic finding above. If a
 prior item is now resolved, do not restate it. If it is still wrong, keep the same item number
 and make the requested correction more exact. Add a new item only for a material blocking defect
-that is in the files/anchors this story touched and that would make the current book false.
+that is in the files/anchors this story touched, that would make the current book false, and
+that **the author's repair introduced** — a defect that was already there last pass was in
+scope last pass, and raising it now is the failure mode this discipline exists to stop. If every
+prior item is resolved and the repair introduced nothing, approve.
 {% endif %}
 
 When returning `status=revise`, write numbered checklist findings with stable IDs and exact
