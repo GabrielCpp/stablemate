@@ -62,8 +62,8 @@ def test_review_issue_requires_concrete_evidence(
         )
 
 
-@pytest.mark.parametrize("issue_id", ["", "trailing-", "Uppercase", "x" * 49])
-def test_review_issue_requires_an_original_bounded_id(
+@pytest.mark.parametrize("issue_id", ["", "   "])
+def test_review_issue_requires_an_id(
     tmp_path: Path,
     repo: Path,
     logger: Any,
@@ -73,7 +73,7 @@ def test_review_issue_requires_an_original_bounded_id(
     root_plan = _prepared(context, logger, _task("root", "src/root.py"))
     issue = _issue("temporary", "src/a.py") | {"id": issue_id}
 
-    with pytest.raises(WorkflowFailed, match="review issue id"):
+    with pytest.raises(WorkflowFailed, match="needs an id"):
         prepare_review_issues(
             logger,
             PlanReview.model_validate(_review(issue)),
@@ -81,6 +81,33 @@ def test_review_issue_requires_an_original_bounded_id(
             root_plan,
             0,
         )
+
+
+@pytest.mark.parametrize("issue_id", ["trailing-", "Uppercase", "F1", "x" * 49])
+def test_review_issue_id_is_an_opaque_handle(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+    issue_id: str,
+) -> None:
+    """The id names a defect across cycles; nothing downstream parses its shape.
+
+    A reviewer that labels its findings `F1` instead of the prompt's kebab-case is not
+    reporting a malformed review, and refusing one used to take the whole run down.
+    """
+    context = _context(tmp_path, repo, logger)
+    root_plan = _prepared(context, logger, _task("root", "src/root.py"))
+    issue = _issue("temporary", "src/a.py") | {"id": issue_id}
+
+    prepared = prepare_review_issues(
+        logger,
+        PlanReview.model_validate(_review(issue)),
+        context,
+        root_plan,
+        0,
+    )
+
+    assert [task.id for task in prepared.tasks] == [f"review-1-{issue_id}"]
 
 
 def test_review_issue_dependencies_must_stay_in_the_same_report(

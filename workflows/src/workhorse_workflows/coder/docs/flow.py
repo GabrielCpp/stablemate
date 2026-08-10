@@ -461,7 +461,16 @@ def _format_finding(finding: DocumentationFinding) -> str:
 
 
 def _review_finding_problems(review: DocumentationReview) -> list[str]:
-    """Why a revision response is not an actionable, stable repair contract."""
+    """Why a revision response is not an actionable, stable repair contract.
+
+    A finding's `id` is an **opaque handle**, checked for presence and nothing else. Its
+    only job is to name the same defect across passes so `_review_notes` can carry a
+    stable worklist back to the author — no consumer parses it, and the shape the prompt
+    suggests (`D1`) is a convention, not a contract. Enforcing that shape cost a whole
+    real run: a reviewer returned two correct, fully actionable findings labelled
+    `F1`/`F2`, and the format check turned a routine revise pass into `WorkflowFailed`,
+    discarding an hour of context over a prefix letter.
+    """
     if review.status != "revise":
         return []
     if not review.findings:
@@ -475,8 +484,6 @@ def _review_finding_problems(review: DocumentationReview) -> list[str]:
         ]
         if missing:
             problems.append(f"finding {index} missing {', '.join(missing)}")
-        elif not finding.id.startswith("D") or not finding.id[1:].isdigit():
-            problems.append(f"finding {index} has invalid id {finding.id!r}")
     return problems
 
 

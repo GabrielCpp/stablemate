@@ -747,6 +747,28 @@ def test_a_revision_request_with_an_empty_finding_fails_the_flow(
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
 
+def test_a_finding_id_is_an_opaque_handle(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The id only has to name the same defect twice — no consumer parses its shape.
+
+    The prompt suggests `D1`, and a reviewer that answers `F1` is not reporting a
+    malformed review. Enforcing the suggestion raised `WorkflowFailed` out of an
+    otherwise routine revise pass and killed the whole coder run with it.
+    """
+    agent = _Agent(approve_after=2, review_findings=[_finding("F1")])
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["document-story"] == 2, agent.counts()
+    second = agent.args_for("document-story")[1]
+    assert "F1 [overclaim] docs/features/widget.md#f1" in second["review_notes"]
+
+
 def test_the_loop_is_bounded_at_four_passes(
     docs: Path,
     elsewhere: Path,

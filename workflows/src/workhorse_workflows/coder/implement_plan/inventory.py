@@ -25,7 +25,6 @@ from workhorse_workflows.coder.implement_plan.schemas import (
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.kit import open_repo
 
-_TASK_ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 _SCOPE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _COMMIT_TYPES = frozenset(
     {"feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "revert"}
@@ -173,8 +172,8 @@ def _valid_commit_scopes(root: Path) -> set[str]:
 
 
 def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
-    if not _TASK_ID.fullmatch(task.id):
-        raise WorkflowFailed(f"task id {task.id!r} must be a lowercase kebab-case identifier")
+    if not task.id.strip():
+        raise WorkflowFailed("plan task needs an id to be addressable in the packet DAG")
     if not task.title.strip() or not task.objective.strip() or not task.acceptance:
         raise WorkflowFailed(f"task {task.id} needs a title, objective, and acceptance criteria")
     if not task.paths:

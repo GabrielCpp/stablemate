@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from workhorse import worklist as wl
@@ -18,8 +17,6 @@ from workhorse_workflows.coder.implement_plan.schemas import (
     ReviewFixResult,
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
-
-_REVIEW_ISSUE_ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$")
 
 
 def _atomic_json(path: Path, payload: object) -> None:
@@ -69,10 +66,8 @@ def prepare_review_issues(
     original_ids = {issue.id for issue in review.issues}
     rewritten = []
     for issue in review.issues:
-        if not _REVIEW_ISSUE_ID.fullmatch(issue.id):
-            raise WorkflowFailed(
-                f"review issue id {issue.id!r} must be lowercase kebab-case and at most 48 characters"
-            )
+        if not issue.id.strip():
+            raise WorkflowFailed("review issue needs an id to be addressable across cycles")
         if not issue.finding.strip():
             raise WorkflowFailed(f"review issue {issue.id or '(missing id)'} needs concrete evidence")
         unknown = set(issue.depends_on) - original_ids
