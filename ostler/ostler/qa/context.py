@@ -25,10 +25,16 @@ _SYMBOL_RE = re.compile(
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
 )
 _AC_RE = re.compile(r"^(?:AC\s*)?(\d+)\s*[:.)-]\s*(.+)$", re.IGNORECASE)
-_VERIFY_REF_RE = re.compile(
-    r"(?P<path>[A-Za-z0-9_./$-]+\.(?:py|tsx?|jsx?|go|mjs|cjs|ya?ml|dart|java|kts?|rs|sh|bash|sql|rb|php|cs|swift|feature))"
-    r"(?:::(?P<symbol>[^`,]+))?"
-)
+_EXTS = "py|tsx?|jsx?|go|mjs|cjs|ya?ml|dart|java|kts?|rs|sh|bash|sql|rb|php|cs|swift|feature"
+#: A `verify:` ref *inside an inline-code span*, where every character up to the end of the
+#: span belongs to the target. Test names in this tree routinely carry commas — `> exports the
+#: live editor through canonical XML, revokes its object URL, and clears the named status` —
+#: and the span is what says where they stop.
+_VERIFY_SPAN_RE = re.compile(rf"(?P<path>[A-Za-z0-9_./$-]+\.(?:{_EXTS}))(?:::(?P<symbol>.+))?", re.S)
+#: The same ref scanned out of *prose*, for a bullet that cites without backticks. Nothing
+#: marks where the target ends there, so a comma still has to close it — the fallback is
+#: lossier than the span reading, which is exactly why the span reading is tried first.
+_VERIFY_REF_RE = re.compile(rf"(?P<path>[A-Za-z0-9_./$-]+\.(?:{_EXTS}))(?:::(?P<symbol>[^`,]+))?")
 
 #: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
 #: persistence store, event or idempotency key as an already-selected node is pulled in.
@@ -753,13 +759,27 @@ def _code_path(value: str) -> str:
 
 
 def _verification_refs(node: dict[str, Any]) -> list[str]:
+    """Every test a node's ``verify:`` bullets cite, as ``path`` or ``path::name``.
+
+    Backticked refs are read span by span, because the span boundary is the only thing that
+    says where a test *name* ends — and these names contain commas, dashes and parentheses.
+    Reading the raw bullet with one regex truncated them at the first comma, and the truncated
+    name then matched no test, so the grounding gate told a correctly-cited book its citation
+    did not exist. That is a tool failing to parse the book, which this package treats as the
+    tool's defect, not the book's.
+    """
     refs: list[str] = []
     for value in _values(node.get("bullets", {}).get("verify")):
+        spans = markdown.all_code_spans(value)
+        if spans:
+            # A span is one whole ref, matched anchored: prose in backticks is not a citation.
+            matches = [_VERIFY_SPAN_RE.fullmatch(span.strip()) for span in spans]
+            found = [match for match in matches if match]
+        else:
+            found = list(_VERIFY_REF_RE.finditer(value))
         refs.extend(
-            f"{match['path']}::{match['symbol'].strip()}"
-            if match["symbol"]
-            else match["path"]
-            for match in _VERIFY_REF_RE.finditer(value)
+            f"{match['path']}::{match['symbol'].strip()}" if match["symbol"] else match["path"]
+            for match in found
         )
     return list(dict.fromkeys(refs))
 

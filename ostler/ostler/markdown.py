@@ -135,6 +135,24 @@ def leading_code_spans(text: str) -> list[str]:
     return spans
 
 
+def all_code_spans(text: str) -> list[str]:
+    """Every inline-code span in a value, wherever it sits, in order.
+
+    ``leading_code_spans``'s stricter sibling, for the bullet whose refs are *interleaved with
+    prose* rather than opening the value — ``verify:`` writes them that way. The point of
+    reading spans at all is that a span's content is content: a comma, an em-dash or a
+    parenthesis inside one is part of the target, not a separator. A regex scanned over the
+    raw bullet cannot know that, and the one that read ``verify:`` truncated every test title
+    at its first comma — so a book citing a real test by its real name was told the name did
+    not exist, four review passes running.
+    """
+    return [
+        child.content
+        for child in _MD.parseInline(_normalize(text))[0].children or ()
+        if child.type == "code_inline"
+    ]
+
+
 def code_line_spans(text: str) -> list[tuple[int, int]]:
     """0-indexed ``[start, end)`` line spans of every code block — fenced or indented.
 

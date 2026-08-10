@@ -4,7 +4,13 @@ import json
 import subprocess
 from pathlib import Path
 
-from ostler.qa.context import ChangedUnit, _is_generated_unit, build_context, validate_context
+from ostler.qa.context import (
+    ChangedUnit,
+    _is_generated_unit,
+    _verification_refs,
+    build_context,
+    validate_context,
+)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -745,3 +751,29 @@ def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: P
 
     dangling = [f["ref"] for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
     assert dangling == ["svc/backend.py::MANIFEST"], packet["healthFindings"]
+
+
+def test_a_backticked_verify_ref_keeps_the_commas_inside_its_test_name():
+    """A comma in a test title is content, not a separator — the span boundary says so.
+
+    Real titles in a browser suite read like `> exports the live editor through canonical XML,
+    revokes its object URL, and clears the named status`. Scanning the raw bullet with one
+    regex cut every one of them at the first comma, and the grounding gate then reported the
+    truncated name as citing a test that does not exist. A story lost four documentation
+    review passes to that, being told to repair a citation that was already correct.
+    """
+    backticked = (
+        "`docs-app/app/lib/drafts.test.ts::describe(\"createPairedDrafts\") > generates once, "
+        "cloning the input independently` and `docs-app/app/x.browser.test.tsx::describe(\"S\") > b`"
+    )
+    assert _verification_refs({"bullets": {"verify": backticked}}) == [
+        'docs-app/app/lib/drafts.test.ts::describe("createPairedDrafts") > generates once, '
+        "cloning the input independently",
+        'docs-app/app/x.browser.test.tsx::describe("S") > b',
+    ]
+    # Prose in backticks is not a citation, and a bullet citing without them still splits on
+    # the comma — nothing marks where a target ends there, so that reading has to stay lossy.
+    assert _verification_refs({"bullets": {"verify": "`not a citation at all`"}}) == []
+    assert _verification_refs(
+        {"bullets": {"verify": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}}
+    ) == ["tests/test_items.py::test_save", "tests/test_items.py::test_retry"]
