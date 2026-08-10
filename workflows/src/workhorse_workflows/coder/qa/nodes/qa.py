@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from ostler import registry
 from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
@@ -124,8 +125,16 @@ def record_qa_giveup(
         "`events.jsonl` for where it stopped.\n"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Stamped with the same `type:` a real QA assessment carries. A doc under `docs/specs/`
+    # with no non-empty `type` is an `okf-missing-type` *error* in `ostler doctor`, and this
+    # file lands in exactly that directory. Leaving it bare made the give-up plant a
+    # permanent doctor error, which the next story's documentation gate then read as its own
+    # blocker and refused to converge on — one story's QA give-up blocking an unrelated
+    # story's docs phase, days later, with nothing connecting the two.
+    front = f"---\ntype: {registry.spec_type_for(path.name)}\n---\n\n"
     path.write_text(
-        f"# QA give-up — {story_slug or 'story'}\n\n"
+        front
+        + f"# QA give-up — {story_slug or 'story'}\n\n"
         f"QA never reached a verdict on this story: {spent or 'the retry budget'} was spent "
         "and no\nrun produced an assessment. There is no evidence directory, because nothing "
         "ran. What\nfollows is what the gates said before the budget ended, which is the whole "

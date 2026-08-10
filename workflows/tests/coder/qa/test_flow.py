@@ -27,6 +27,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+import yaml
 from workhorse import stack as workhorse_stack
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import driver as pyflow_driver
@@ -853,6 +854,30 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     text = giveup.read_text(encoding="utf-8")
     assert "review pass 5" in text, text
     assert "4 QA-plan repair" in text, text
+
+
+def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:
+    """A bare give-up doc plants an `okf-missing-type` error the *next* story trips over.
+
+    It lands in `docs/specs/<slug>/`, where every document is an OKF Concept and a missing
+    non-empty `type` is a doctor *error*. The docs gate runs `ostler doctor` over the tree,
+    not over the story — so a give-up here left a permanent error that the following story's
+    documentation phase read as its own blocker and refused to converge on, with nothing
+    linking the two. A real run lost a story to it days after the give-up.
+    """
+    record = record_qa_giveup(
+        logging.getLogger("test"),
+        spec_dir=str(tmp_path),
+        story_slug=STORY,
+        spent="4 QA-plan repair",
+        plan_review_notes="the reviewer never approved a plan",
+    )
+
+    assert record.written is True
+    text = (tmp_path / "qa.md").read_text(encoding="utf-8")
+    front = yaml.safe_load(text.split("---")[1])
+    assert front["type"] == "spec.qa", text
+    assert "the reviewer never approved a plan" in text, text
 
 
 def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None:
