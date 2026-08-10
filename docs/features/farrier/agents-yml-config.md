@@ -139,7 +139,10 @@ Each entry aggregates one or more already-selected skills' (and prompts') bodies
 `AGENTS.md` written under one or more repo directories, so the assistant auto-loads those rules
 from any ancestor directory without an explicit skill invocation. When `claude` is enabled a
 `CLAUDE.md` is written beside it carrying the provenance banner and `@AGENTS.md` — the body
-itself is never written twice.
+itself is never written twice. `AGENTS.md` carries **no** banner: Claude strips block-level HTML
+comments before loading, but the harnesses that read `AGENTS.md` natively do not, and a
+"generated — do not edit" line inside an always-loaded rules file reads to an agent as a rule
+about the repo. `farrier source AGENTS.md` resolves the provenance instead.
 
 - `skill` — type: `string` — required: one of `skill`/`skills` — default: none. Names a single
   already-selected skill.

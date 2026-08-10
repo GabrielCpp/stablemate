@@ -178,9 +178,13 @@ natively — and, when the claude adapter is on, a `CLAUDE.md` beside it holding
 library source(s), the regeneration command, and a copy-pasteable
 `farrier source <path>` command that prints this machine's editable source paths
 (one per line). Claude strips block-level HTML comments before loading, so the
-banner is free exactly where it is read; `AGENTS.md` carries a single-line
-marker instead, since Codex and the rest would pay for every line of it in
-context on every turn. `farrier source` resolves either filename.
+banner costs nothing exactly where it is read.
+
+`AGENTS.md` carries **no banner at all**. A harness that does not strip comments
+loads that line as part of an always-loaded rules file, where "generated — do not
+edit" is indistinguishable from a rule about the repo the agent is working in.
+`farrier source AGENTS.md` still resolves it, through `agents.yml`, from either
+filename — provenance lives in the tool, not in the agent's context.
 
 ## Running Farrier
 
