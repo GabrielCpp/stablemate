@@ -248,6 +248,12 @@ class RunConfig:
     #: an implementation of the port, so nothing downstream branches on it and
     #: ``AgentRunner.backend`` can honestly claim to hold an ``AgentBackend``.
     backend: AgentBackend = field(default_factory=NullBackend)
+    #: The working tree this run operates on (AGENT_REPO_DIR), or "" for the process
+    #: cwd. Only a path — the driver makes no claim that it is a repository, and
+    #: :mod:`workhorse.gitstate` observes it rather than assuming. Read here for the
+    #: same reason as everything else in this class: so the driver never asks the
+    #: environment a second time and gets a different answer.
+    workspace: str = ""
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
@@ -259,6 +265,7 @@ class RunConfig:
             max_transitions=_positive_int(e, "WORKHORSE_MAX_TRANSITIONS", 1000),
             print_prompt=_bool(e, "WORKHORSE_PRINT_PROMPT", True),
             model_override=(e.get("AGENT_MODEL") or e.get("AGENT_CLAUDE_MODEL") or None),
+            workspace=(e.get("AGENT_REPO_DIR") or ""),
         )
 
 

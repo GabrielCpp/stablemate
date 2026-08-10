@@ -26,7 +26,7 @@ gets its own nested instance of this same layout, rooted under the calling node'
 ```
 <runs-dir>/
 └── <workflow-name>-<run-id>/
-    ├── run.json               # run-level metadata (start/end time, terminal state, pid)
+    ├── run.json               # run-level metadata (start/end time, terminal state, pid, repo state)
     ├── checkpoint.json        # the state to (re-)enter and its params (overwritten every step)
     ├── events.jsonl           # append-only event log (enter/done/terminal/error)
     ├── context.json           # the run's result (written once, at finish)
@@ -82,6 +82,39 @@ state changes:
   `interrupted_at` — `KeyboardInterrupt`, or the `RunBudgetExceeded` message naming the budget.
 - `pid` — type `int`, required — the writing process's pid. Also a telemetry resource attribute;
   recorded here so it survives with telemetry off.
+- `repo_start` — type `object | null` — default `null`; what `git` said about the run's working
+  tree when the run directory was created, as `{path, head, branch, dirty}`. Written by
+  [`workhorse.gitstate`](#repo-state), which **observes** rather than predicts — a workflow node,
+  or the agent inside a turn, may commit, branch, rebase or check out at any moment, and the
+  directory may not be a working tree at all. Carried across a resume rather than re-observed, so
+  it keeps meaning *what the run started from* instead of *what the last process happened to see*.
+  `null` where there was nothing to observe; every field is optional on read, so a `run.json`
+  written before this existed still parses.
+- `repo_end` — type `object | null` — default `null`; the same observation at the moment the run
+  reached a terminal. Cleared by a resume, exactly as `ended_at` is. Only written at a terminal:
+  every other write of this file happens while the run is still going, where an "end" would be
+  overwritten by the next one anyway.
+
+#### Repo state
+
+The same observation reaches telemetry, because a recorded turn that cannot be matched to the
+code the agent was reading is *what happened, somewhere*:
+
+- **spans** — the root span, every node/state span and every agent-turn span carry
+  `git.head.start` at open and `git.head.end` at close. Unequal endpoints mean something moved
+  HEAD inside that span. That is a **record, not an error** — nothing in the engine asserts the
+  two should be equal, and nothing models why they differ.
+- **logs** — each record shipped to the collector carries a `head` attribute: the commit current
+  when it was emitted. It cannot be a resource attribute (the resource is frozen when the provider
+  is built, and this run's HEAD moves), so a `logging` filter stamps it at emit.
+
+Reads are cheap by construction: HEAD is cached with a short TTL and re-read only at boundaries,
+because a `git rev-parse` per log line is not affordable. The cost is that a record emitted
+seconds after a mid-turn checkout may carry the previous hash; the span endpoints bracket the move
+regardless. Every git call is best-effort behind a timeout — a run must never die because it could
+not describe itself — so a missing `git`, a non-repository directory or a hung filesystem yields an
+**absent** field rather than a blank or a zero. Absent means *not observed*, which is why `dirty`
+is tri-state: `null` is "did not look, or could not tell", never "clean".
 
 ### checkpoint.json
 - type: `object` — required: yes — default: absent until the first state is about to run

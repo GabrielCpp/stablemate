@@ -23,7 +23,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse import control, logsetup, otel, reload
+from workhorse import control, gitstate, logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
@@ -135,6 +135,13 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # other, and overwriting the checkpoint of a real week-long run — which is
         # what reusing its id would do — is not a price a smoke test may charge.
         run_id, no_cache, resume_run_dir = "dry-run", True, None
+
+    # Before the run dir exists, because creating it is the first thing that records an
+    # observation. The path is only a path: workhorse drives arbitrary workflows over
+    # arbitrary trees, so nothing here claims it is a repository — `gitstate` looks, and
+    # reports nothing when there is nothing to report.
+    gitstate.bind(config.workspace or os.getcwd())
+    otel.set_head_probe(lambda refresh: gitstate.current_head(refresh=refresh))
 
     writer, resume = _open_run(
         name, runs_dir, resume_run_dir, run_id=run_id, params=params, no_cache=no_cache

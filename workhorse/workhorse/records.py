@@ -81,6 +81,26 @@ def parse_checkpoint(text: str) -> Checkpoint:
     return _CHECKPOINT.validate_json(text)
 
 
+class RepoObservation(BaseModel):
+    """What git said about a working tree at one moment — a fact, not a claim.
+
+    Written by :mod:`workhorse.gitstate`, which observes rather than predicts: the
+    engine drives arbitrary workflows over arbitrary repos, so a node, or the agent
+    inside a turn, may commit, branch, rebase or check out at any point, and the cwd
+    may not be a working tree at all. Two observations that differ mean something moved
+    HEAD between them, which is precisely what a reader would otherwise have no way to
+    discover — and nothing here asserts they should have been equal.
+
+    Every field defaults to empty/None, and empty means *not observed*. ``dirty`` is
+    tri-state for that reason: None is "did not look, or could not tell", never "clean".
+    """
+
+    path: str = ""
+    head: str = ""
+    branch: str = ""
+    dirty: bool | None = None
+
+
 class RunRecord(BaseModel):
     """`run.json` — what a run directory says about itself between processes.
 
@@ -110,6 +130,13 @@ class RunRecord(BaseModel):
     #: Advertised on telemetry too; recorded here as well so it survives with telemetry
     #: off.
     pid: int | None = None
+    #: The working tree as it was when this run directory was created, carried across
+    #: resumes so it keeps meaning "what the run started from" rather than "what the
+    #: last process happened to see".
+    repo_start: RepoObservation | None = None
+    #: …and as it was when the run reached a terminal. Cleared by a resume, exactly as
+    #: ``ended_at`` is: a run that picked back up has no end yet.
+    repo_end: RepoObservation | None = None
 
 
 def parse_run_record(text: str) -> RunRecord:

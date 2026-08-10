@@ -9,16 +9,32 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse import otel
+from workhorse import gitstate, otel
 from workhorse.records import (
     Checkpoint,
     NodeEvent,
     NodePhase,
     PyflowCheckpoint,
+    RepoObservation,
     RunRecord,
     parse_checkpoint,
     parse_run_record,
 )
+
+
+def _observe_repo() -> RepoObservation | None:
+    """The run's working tree right now, or None when there was nothing to observe.
+
+    None rather than a zeroed record on purpose: an absent observation is honest about a
+    cwd that is not a repository (or a caller — a test, a library embedder — that never
+    bound one), whereas ``dirty: false`` there is a claim nobody made.
+    """
+    state = gitstate.current_state()
+    if not state.observed:
+        return None
+    return RepoObservation(
+        path=state.path, head=state.head, branch=state.branch, dirty=state.dirty
+    )
 
 
 def _clear_stale_run(run_dir: Path) -> None:
@@ -84,6 +100,7 @@ class ArtifactWriter:
         # node finished under the current checkpoint" (fast-forward) from "stale
         # artifact from an earlier loop visit" (must re-run).
         self._seq = 0
+        self._repo_start = _observe_repo()
         self._write_run_json(terminal=None)
 
     @property
@@ -120,6 +137,11 @@ class ArtifactWriter:
         # ways a stale run dir can disappoint us are the two caught here.
         except (OSError, ValidationError):
             pass
+        # What the run started from is the previous process's observation, kept rather
+        # than re-taken: a resume days later sees whatever the tree is *now*, which is a
+        # different fact and belongs to this generation's spans. A run dir written before
+        # this existed has none, and observing then is the honest fallback.
+        self._repo_start = record.repo_start or _observe_repo()
         # Re-mark the run as in-progress (terminal=None) until it finishes.
         self._write_run_json(terminal=None)
         return self
@@ -148,6 +170,7 @@ class ArtifactWriter:
         self._workflow_name = workflow_name
         self._run_id = run_id
         self._seq = 0
+        self._repo_start = _observe_repo()
         self._write_run_json(terminal=None)
         return self
 
@@ -405,5 +428,11 @@ class ArtifactWriter:
             interrupted_at=now if error and not terminal else None,
             error=error,
             pid=os.getpid(),
+            repo_start=self._repo_start,
+            # Observed only at a terminal. Every other write of this file happens on a
+            # path where the run is still going, and an "end" recorded there would be
+            # overwritten by the next one anyway — a walk of the tree per transition
+            # bought nothing.
+            repo_end=_observe_repo() if terminal else None,
         )
         (self.run_dir / "run.json").write_text(record.model_dump_json(indent=2))

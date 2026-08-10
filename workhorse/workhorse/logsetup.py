@@ -29,7 +29,7 @@ import os
 import sys
 from typing import Any
 
-from workhorse import otel
+from workhorse import gitstate, otel
 
 _LEVEL = (os.environ.get("WORKHORSE_LOG_LEVEL") or "INFO").strip().upper()
 # Third-party loggers that are chatty at DEBUG and say nothing about the run.
@@ -50,6 +50,32 @@ class _NodeFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "node"):
             record.node = otel.current_node()
+        return True
+
+
+class _HeadFilter(logging.Filter):
+    """Stamp every record with the commit the run's tree was on when it was emitted.
+
+    Same reasoning as :class:`_NodeFilter` — captured at emit, because by read time the
+    tree has moved — and the same mechanism: a non-standard attribute on the record,
+    which ``LoggingHandler`` carries through as a log attribute. It cannot be a
+    *resource* attribute instead: the resource is frozen when the provider is built,
+    and a resource that claimed one hash for a run whose HEAD moves would be wrong for
+    most of the run's records.
+
+    Attached to the OTel handler alone. The console renders neither this nor ``node``,
+    and the value only has a consumer once records are being shipped.
+
+    Left absent rather than blank when nothing observed a tree, so a store can tell "not
+    a repo" from a hash it failed to read. The read is cached (see
+    :mod:`workhorse.gitstate`) — a `rev-parse` per log line is not affordable.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "head"):
+            head = gitstate.current_head()
+            if head:
+                record.head = head
         return True
 
 
@@ -95,6 +121,7 @@ def attach_otel(logger_provider: Any) -> None:
         return
     handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
     handler.addFilter(_NodeFilter())
+    handler.addFilter(_HeadFilter())
     handler.addFilter(_DropOtelInternals())
     logging.getLogger().addHandler(handler)
     _otel_handler = handler

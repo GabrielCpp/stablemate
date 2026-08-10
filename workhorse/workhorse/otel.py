@@ -273,6 +273,46 @@ def _is_control_unwind(error: BaseException) -> bool:
     return getattr(error, CONTROL_UNWIND_MARKER, False) is True
 
 
+#: How a span learns the working tree's HEAD. A hook rather than an import, for the
+#: reason above: this module is the leaf every layer instruments through, and
+#: observing git is `workhorse.gitstate`'s job. The entry point points this at it
+#: once the run's tree is known; a process that never binds one — a library caller,
+#: a test — keeps the no-op and no attribute is stamped.
+#:
+#: The argument is *refresh*: False accepts the cached answer (span opens, which
+#: happen in bursts), True re-reads (span closes, where the whole point is to catch
+#: a HEAD that moved inside the span).
+HeadProbe = Callable[[bool], str]
+
+
+def _no_head(refresh: bool) -> str:  # noqa: ARG001 — the null probe ignores it
+    return ""
+
+
+_head_probe: HeadProbe = _no_head
+
+
+def set_head_probe(probe: HeadProbe | None) -> None:
+    """Point span stamping at a repo observer, or back at the no-op with ``None``."""
+    global _head_probe
+    _head_probe = probe or _no_head
+
+
+def _head_attrs(key: str, *, refresh: bool = False) -> dict[str, str]:
+    """``{key: <head>}``, or empty for anything that is not an observed hash.
+
+    Empty rather than blank: an absent attribute is honest about a cwd that is not a
+    repository, whereas ``git.head.start = ""`` is a claim nobody made. Swallowing is
+    deliberate and matches the rest of this module — a probe that raises must cost an
+    attribute, never the span.
+    """
+    try:
+        head = _head_probe(refresh)
+    except Exception:
+        return {}
+    return {key: head} if head else {}
+
+
 class Telemetry(Protocol):
     """What the instrumentation sites may ask of telemetry.
 
@@ -979,7 +1019,9 @@ class _Telemetry:
     # ---- spans ---------------------------------------------------------- #
     def start_root(self, workflow: str) -> None:
         with self._lock:
-            self._root = self._tracer.start_span(f"run:{workflow}")
+            self._root = self._tracer.start_span(
+                f"run:{workflow}", attributes=_head_attrs("git.head.start", refresh=True)
+            )
 
     def start_heartbeat(self) -> None:
         """Begin proving the run's process is alive, independent of node type.
@@ -1182,6 +1224,10 @@ class _Telemetry:
                 "workhorse.node": node_id,
                 "workhorse.seq": key[2],
                 "workhorse.depth": len(self._stack),
+                # Cached: a node opens inside the burst of work the previous one's
+                # close already refreshed, so re-reading here would buy a subprocess
+                # per transition and the same hash.
+                **_head_attrs("git.head.start"),
                 **attributes,
                 **self._labels,
             },
@@ -1209,8 +1255,15 @@ class _Telemetry:
         """
         if all(k != key for k, _, _ in self._stack):
             return
+        # One refreshed read for the whole sweep: every span closing here closes *now*,
+        # so they share an end state, and re-reading per span would spawn a git per
+        # frame. Unequal to the span's `git.head.start` means something moved HEAD
+        # inside it — which this records and does not interpret.
+        end_head = _head_attrs("git.head.end", refresh=True)
         while self._stack:
             stack_key, span, _ = self._stack.pop()
+            for name, value in end_head.items():
+                span.set_attribute(name, value)
             if cut:
                 span.set_attribute("workhorse.cut", cut)
             if stack_key == key:
@@ -1307,12 +1360,17 @@ class _Telemetry:
             # no `finally` around it, or a kill between two of them. Closing it is the
             # backstop; stamping it is not. An abandoned frame says so with an attribute,
             # so a reader can still tell it apart from one that ran to its own end.
+            end_head = _head_attrs("git.head.end", refresh=True)
             while self._stack:
                 _, span, _ = self._stack.pop()
                 span.set_attribute("workhorse.outcome", "abandoned")
+                for name, value in end_head.items():
+                    span.set_attribute(name, value)
                 span.end()
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
+                for name, value in end_head.items():
+                    self._root.set_attribute(name, value)
                 if error_class:
                     self._root.set_attribute("error.class", error_class)
                 if error_kind:
@@ -1357,6 +1415,9 @@ class _Telemetry:
                     "model": model or "",
                     "effort": effort or "",
                     "timeout_s": -1 if timeout == float("inf") else int(timeout),
+                    # Refreshed, unlike a node open: the agent is what most often moves
+                    # HEAD, so the tree a turn *started* against is worth a subprocess.
+                    **_head_attrs("git.head.start", refresh=True),
                     **self._labels,
                 },
             )
@@ -1385,6 +1446,8 @@ class _Telemetry:
                     "duration_ms", int((time.monotonic() - self._turn_started) * 1000)
                 )
             self._turn_started = None
+            for name, value in _head_attrs("git.head.end", refresh=True).items():
+                turn.set_attribute(name, value)
             if error:
                 # The class and the recovery bucket, not just the message. A store can
                 # count failed turns from the status alone; only these say whether they
