@@ -319,7 +319,8 @@ class _Agent:
 
     The knobs are the graph's branches: `review_epics` scripts the epic reviewer's verdicts
     in order, `unwritten` makes the story writer leave a section empty (the structural
-    gate's failing arm), `fail_audit` fails the auditor for named stories,
+    gate's failing arm), `fail_audit` fails the auditor for named stories, `audit_replies` returns a
+    verbatim audit reply for a named story,
     `coverage_verdicts` scripts the coverage reviewer, `feedback` drops an operator note
     into a story's inbox mid-run, `escalate` makes the operator stand-in hand the block to
     a human, and `explode` raises instead of writing a story — a run killed mid-turn.
@@ -334,12 +335,13 @@ class _Agent:
         two_epics: bool = False,
         unwritten: set[str] | None = None,
         fail_audit: set[str] | None = None,
+        audit_replies: dict[str, dict[str, Any]] | None = None,
         feedback: dict[str, str] | None = None,
         escalate: bool = False,
         explode: set[str] | None = None,
         edit_plans: list[dict[str, Any]] | None = None,
         edit_reviews: list[str] | None = None,
-        existing_surface: bool = False,
+        backend_seeds: bool = False,
     ) -> None:
         self.repo = repo
         self.review_epics = review_epics or ["approved"]
@@ -347,12 +349,13 @@ class _Agent:
         self.two_epics = two_epics
         self.unwritten = set(unwritten or ())
         self.fail_audit = set(fail_audit or ())
+        self.audit_replies = dict(audit_replies or {})
         self.feedback = dict(feedback or {})
         self.escalate = escalate
         self.explode = set(explode or ())
         self.edit_plans = list(edit_plans or ())
         self.edit_reviews = edit_reviews or ["approved"]
-        self.existing_surface = existing_surface
+        self.backend_seeds = backend_seeds
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
@@ -530,7 +533,7 @@ The running system is the source of truth.
             )
             return {"status": "complete", "notes": "profile seed recorded"}
         surface = "docs/features/web/accounts.md"
-        if self.existing_surface:
+        if self.backend_seeds:
             path = self.repo / surface
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
@@ -539,9 +542,11 @@ The running system is the source of truth.
                 encoding="utf-8",
             )
         for seed_id, text in SEEDS.items():
-            meta = {"sourceBullet": text}
-            if self.existing_surface:
-                meta["surface"] = surface
+            meta: dict[str, Any] = {"sourceBullet": text}
+            if self.backend_seeds:
+                # Classified seeds are what the mockup gate reads: `backend` alone means no
+                # surface is designed, and the story writer falls back to the feature doc.
+                meta |= {"surface": surface, "layers": ["backend"], "services": ["api-service"]}
             okf.add_seed(EPIC, seed_id, status="researched", summary=text, meta=meta)
         return {"status": "complete", "notes": "seeds already recorded"}
 
@@ -591,9 +596,22 @@ The running system is the source of truth.
             inbox = self.repo / data["story_dir"] / "feedback.md"
             inbox.parent.mkdir(parents=True, exist_ok=True)
             inbox.write_text(f"STATUS: NEW\n\n{note}\n")
+        if slug in self.audit_replies:
+            return self.audit_replies[slug]
         if slug in self.fail_audit:
-            return {"status": "failed", "notes": f"{slug} cannot be built as written"}
-        return {"status": "passed", "notes": "a coder could build this"}
+            # The findings list is the verdict — `status` alone no longer fails a story.
+            return {
+                "status": "failed",
+                "findings": [{
+                    "id": f"{slug}-01",
+                    "kind": "journey",
+                    "target": "## Acceptance Criteria",
+                    "issue": f"{slug} cannot be built as written",
+                    "repair": "state the observable outcome",
+                }],
+                "notes": f"{slug} cannot be built as written",
+            }
+        return {"status": "passed", "findings": [], "notes": "a coder could build this"}
 
     # -- the epic's coverage ----------------------------------------------
 
@@ -708,11 +726,16 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     assert set(agent.cwds) == {str(backlogged)}
 
 
-def test_epic_mode_skips_mockups_only_for_exact_existing_surface_evidence(
+def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """An exact typed OKF node removes two agent turns; missing metadata removes none."""
-    agent = _Agent(backlogged, existing_surface=True)
+    """A `backend`-tagged seed removes two agent turns; an untagged one removes none.
+
+    The gate used to read free-text `surface:` cross-checked against the OKF book, which in a
+    greenfield repo resolves to nothing — so it failed closed and designed a 20 KB mockup for
+    every backend story. The layer tag is the fact the epic author already knows.
+    """
+    agent = _Agent(backlogged, backend_seeds=True)
 
     _drive(_env(tmp_path), agent)
 
@@ -899,6 +922,79 @@ def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
+def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
+    backlogged: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The give-up arm advances the queue instead of waiting on a human forever.
+
+    The auditor objects to `01-sign-in` on every lap and the autonomous resolver never
+    clears it, so the story exhausts its resolution budget. It used to `Await` there — and
+    with no human at the other end of an unattended run, one unwritable story held the
+    epic's entire remaining queue behind it for 14 of one run's 48 hours.
+    """
+    agent = _Agent(backlogged, fail_audit={"01-sign-in"})
+
+    with caplog.at_level(logging.WARNING):
+        _drive(_env(tmp_path), agent)
+
+    assert any("parking story '01-sign-in'" in r.message for r in caplog.records), caplog.text
+    assert any("leaves 1 story/stories unauthored" in r.message for r in caplog.records)
+    # The parked story is never re-selected, and the next one is authored normally.
+    assert agent.args_for("write-story")[-1]["story_slug"] == "02-reset-password"
+    assert _stories(backlogged)["02-reset-password"] is True
+
+
+# --------------------------------------------------------------------------- the audit contract
+# The findings list *is* the verdict. Prose `status` used to be, and nothing could check
+# whether an audit had been exhaustive — so each lap surfaced one different objection and
+# 87 of 144 stories in one run went write → audit(fail) → rework → audit(pass), every time.
+
+
+def test_an_empty_findings_list_is_a_pass_whatever_status_says(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """A `failed` with nothing to repair cannot be reworked, so it upholds the story.
+
+    Routing it to rework instead sends the reworker a blank brief, which is precisely the
+    lap that costs a turn and repairs nothing.
+    """
+    agent = _Agent(
+        backlogged,
+        audit_replies={"01-sign-in": {"status": "failed", "findings": [], "notes": "unease"}},
+    )
+
+    _drive(_env(tmp_path), agent)
+
+    assert agent.counts()["audit-story"] == 2, agent.counts()   # one per story, no re-audit
+    assert agent.counts()["rework-story"] == 0, agent.counts()
+    assert _stories(backlogged) == {slug: True for slug in SLUGS}
+
+
+def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """Every finding names its repair, or the audit did not answer.
+
+    A finding with no `repair` is indistinguishable from a hunch once it reaches the rework
+    prompt, and the loop would burn its whole budget on it. Stopping leaves the checkpoint
+    resumable; upholding silently would ship the defect.
+    """
+    from workhorse.pyflow import WorkflowFailed
+
+    agent = _Agent(
+        backlogged,
+        audit_replies={"01-sign-in": {
+            "status": "failed",
+            "findings": [{"id": "x-01", "kind": "journey", "target": "## Acceptance Criteria",
+                          "issue": "vague", "repair": "   "}],
+            "notes": "",
+        }},
+    )
+
+    with pytest.raises(WorkflowFailed, match="finding 1 missing repair"):
+        _drive(_env(tmp_path), agent)
+
+
 def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -1051,7 +1147,13 @@ def test_an_escalated_story_block_waits_on_the_story_context(
     assert len(story_audits) == 3, agent.counts()
     first, convergence, after_operator = story_audits
     assert first["prior_audit_findings"] == ""
-    assert convergence["prior_audit_findings"] == "01-sign-in cannot be built as written"
+    # The re-audit is handed the structured findings, id first, so it can recognise the same
+    # defect rather than inventing a fresh objection each lap.
+    assert convergence["prior_audit_findings"] == (
+        "01-sign-in-01 [journey] ## Acceptance Criteria: 01-sign-in cannot be built as "
+        "written. Repair: state the observable outcome\n"
+        "Summary: 01-sign-in cannot be built as written"
+    )
     assert after_operator["prior_audit_findings"] == ""
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 

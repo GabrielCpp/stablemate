@@ -4,7 +4,14 @@ agent: agent
 
 # Rework the story: `{{ workhorse_var('story_slug') }}`
 
-The per-story validator rejected this story. Fix exactly what it flagged, then return control.
+This story came back for repair. Fix exactly what was flagged, then return control.
+
+The flags below come from one of two places, and they read differently. The deterministic validator
+emits plain error lines. The independent audit emits **findings**, one per line, shaped
+`<id> [<kind>] <target>: <issue>. Repair: <repair>` — address each one at the `target` it names, and
+do not treat the list as a licence to rewrite the rest of the story. The `id` is how the next audit
+recognises the same defect, so a finding you leave unrepaired will come straight back under its own
+name; if you believe a finding is wrong, say which id and why in `notes` rather than ignoring it.
 
 ## Inputs (authoritative)
 
@@ -21,7 +28,7 @@ The per-story validator rejected this story. Fix exactly what it flagged, then r
   story cites by node id from its `## Context`. Read it; never write to it, and do not inspect the
   app or source code to discover replacement nodes.
 {%- endif %}
-- Deterministic validation errors to fix: `{{ workhorse_var('validation_errors') }}`
+- Validation errors or audit findings to fix: `{{ workhorse_var('validation_errors') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`
 {%- if workhorse_var('prior_attempts') %}
 - **Earlier attempts that already FAILED (do not repeat these approaches):**
@@ -31,7 +38,7 @@ The per-story validator rejected this story. Fix exactly what it flagged, then r
 
 ## Task
 
-Address every deterministic validation error above. Common fixes:
+Address every error or finding above. Common fixes:
 
 - Add a missing/empty required section. The bare-minimum contract needs only **Context** (what &
   why) and **Acceptance Criteria** (observable, user-facing) — do NOT re-add Description, QA,

@@ -41,13 +41,16 @@ coder could actually build and a QA could actually verify, grounded in the resea
 {% if workhorse_var('prior_audit_findings') %}
 ## Convergence re-audit
 
-A full independent audit already found:
+A full independent audit already found, one finding per line as
+`<id> [<kind>] <target>: <issue>. Repair: <repair>`:
 
 {{ workhorse_var('prior_audit_findings') }}
 
-Verify every listed finding against the revised story. Fail only when a listed finding remains
-unresolved or the repair introduced a concrete regression on the same readiness axes. Do not open
-a new stylistic preference or silently expand the contract.
+Verify every listed finding against the revised story. Return a finding **only** when a listed one
+remains unresolved — reusing its `id` so the same defect keeps one name across passes — or when the
+repair introduced a concrete regression on the same readiness axes. Do not re-raise an id whose
+repair landed, and do not open a new stylistic preference or silently expand the contract: a defect
+you could have named in the first lap and did not is one you have forfeited.
 {% endif %}
 
 ## How to audit — try to refute on each axis
@@ -81,9 +84,15 @@ a new stylistic preference or silently expand the contract.
    A missing journey / chrome / transient criterion → **refuted** (this is the exact "caught by luck
    at QA" failure the grounding exists to prevent).
 
-When uncertain whether a weakness is real, **lean toward refuted** — the cost of a wrong refute is
-one more bounded rework cycle; the cost of a wrong uphold is the coder building the wrong thing
-from a story this mechanism exists to stop.
+**A defect you cannot point at is not a defect.** Every finding must name the section, criterion or
+line of the story it is against, and say what would repair it. If a weakness is real but you cannot
+cite where it lives, you have not found it yet — go find it or drop it. The tiebreak is *cite it or
+drop it*, not "lean toward refuted": an uncitable refute costs a full rework cycle and comes back as
+a different uncitable refute next lap.
+
+**Audit exhaustively, in one lap.** List every defect you can find now, across all four axes. You do
+not get a second pass for a defect you could have named here — the next lap only verifies the
+repairs to what you list.
 
 ## Output
 
@@ -96,17 +105,29 @@ Then return this exact JSON in your **final response**. The workflow REQUIRES th
 ```json
 {
   "status": "passed" | "failed",
-  "notes": "If upheld: one line confirming what you independently re-verified. If refuted: the specific weak/ungrounded/missing ACs as a worklist for rework-story (which AC, why, what's needed)."
+  "findings": [
+    {
+      "id": "<short stable handle for this defect, e.g. AC3-ungrounded>",
+      "kind": "journey" | "chrome" | "transient-feedback" | "grounding",
+      "target": "<the AC number, section, or line this is against>",
+      "issue": "<what is wrong with it>",
+      "repair": "<what would make it right>"
+    }
+  ],
+  "notes": "One line: what you re-verified (upheld), or the shape of the problem (refuted)."
 }
 ```
 
 **Exact requirements**:
-- `status` is `"passed"` only when you independently re-judged every axis and could
-  **not** refute coder-readiness; otherwise `"failed"`.
-- On `"failed"`, `notes` must enumerate the concrete fixes (which AC, why it fails, what it needs)
-  so the rework loop can resolve them — not a vague "needs work".
+- **`findings` is the verdict.** An empty list is a pass, and the workflow reads it that way whatever
+  `status` says. Do not return `status: "failed"` with an empty `findings` — that names no defect and
+  gives rework nothing to do, so the story is upheld anyway.
+- Every finding needs all of `id`, `target`, `issue`, `repair` non-empty. A finding missing any of
+  them fails the run rather than reworking, because rework cannot act on it. `id` is a handle you
+  choose; nothing parses it — only keep it stable for the same defect across passes.
+- `kind` is one of the four axes above and nothing else.
 - Do NOT emit `blocked` — you are judging an authored artifact, not running an environment. If the
-  story is too thin to judge, that is a **failed** (it must be grounded further), with notes saying so.
+  story is too thin to judge, that is findings against what is missing, not a blocked status.
 - Return the complete JSON exactly as shown, after the markdown audit section.
 
 {% block repo_audit_rules %}{% endblock %}

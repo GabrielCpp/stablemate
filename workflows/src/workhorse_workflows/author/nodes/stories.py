@@ -33,6 +33,10 @@ from workhorse_workflows.author.shared.schemas.main import (
     StoryMutation,
 )
 
+#: The one seed layer (`ostler.registry.SEED_LAYERS`) that mandates a designed mockup. Backend
+#: and infra work has no surface to design; only frontend does.
+MOCKUP_LAYER = "frontend"
+
 #: The backlog scope-item contract, shared with the coverage validator: `- [id] …`, read off
 #: the parsed list rather than matched line by line, so a bullet inside a fenced example is
 #: not a scope item and a wrapped one is still whole.
@@ -119,6 +123,8 @@ def seed_story(
     epics_dir: str = "",
     bullet: str = "",
     backlog: str = "",
+    layers: str = "",
+    services: str = "",
     repo_dir: str = "",
 ) -> SeededStory:
     """Register ONE bullet as a new story inside an already-existing epic.
@@ -183,13 +189,21 @@ def seed_story(
             )
 
     # Best-effort: an already-present seed id is a no-op for our purpose.
-    okf.add_seed(
-        epic,
-        bullet_id,
-        status="researched",
-        summary=source_bullet,
-        meta={"sourceBullet": source_bullet},
-    )
+    # `layers`/`services` come from the caller or not at all — story mode has a free-text
+    # bullet and no research turn behind it, and a guessed layer would silently skip the
+    # design turn a real frontend story needs. Blank leaves the seed unclassified, which the
+    # mockup gate reads as "keep the mockup".
+    seed_meta: dict[str, str] = {"sourceBullet": source_bullet}
+    if layers.strip():
+        seed_meta["layers"] = layers.strip()
+    if services.strip():
+        seed_meta["services"] = services.strip()
+    seeded = okf.add_seed(epic, bullet_id, status="researched", summary=source_bullet,
+                          meta=seed_meta)
+    if not seeded.ok and layers.strip():
+        # A bad `--params '{"layers": ...}'` is an operator typo, not a transient — surface it
+        # rather than letting the story proceed on an unclassified seed.
+        raise WorkflowFailed(f"`seed add {epic} {bullet_id}` failed: {seeded.message}")
 
     slug = _kebab(source_bullet)
     res = okf.create_story(epic, slug, source_bullet, covers=[bullet_id])
@@ -278,10 +292,24 @@ def remove_story(
 def check_mockup_needed(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> MockupGate:
-    """Skip design only when exact graph identities prove covered surfaces exist.
+    """Design a mockup only for a story that touches the frontend.
 
-    Slugs, titles and fuzzy matches are deliberately absent. Any missing story, cover,
-    seed metadata or node keeps the turn, which makes this optimization fail closed.
+    The question is decided from the `layers:` the epic author wrote on each covered seed,
+    unioned over the story's `covers`. That is deterministic: the decision is a set
+    membership test over a closed vocabulary ostler validated at write time, so it costs no
+    model turn and cannot drift lap to lap.
+
+    It replaces a gate that asked whether the *surface already exists* — matching each seed's
+    free-text `surface:` against `graph.ui_nodes` and `graph.features`. In a greenfield repo
+    both collections are empty and every seed reads `surface: missing from OKF`, so that gate
+    could only ever answer "required" and 100 of 111 stories in one run got a mockup,
+    including pure-backend ones. Existence was also the wrong question: a screen that does
+    not exist yet is exactly what a mockup is for.
+
+    Still fail-closed, on the two inputs that can be absent: a story ostler cannot resolve,
+    and a covered seed carrying no `layers:` at all (every seed written before the key
+    existed). Unclassified means unknown, not "no frontend" — an omitted tag costs a wasted
+    design turn rather than silently dropping one that was needed.
     """
     try:
         graph = Ostler(survey_repo_root(repo_dir)).graph
@@ -295,35 +323,39 @@ def check_mockup_needed(
         return MockupGate(evidence="story has no covered seed evidence")
 
     seeds = {seed.id: seed for seed in epic.seeds}
-    nodes = {node.id: node for node in graph.ui_nodes}
-    features = {feature.key for feature in graph.features} | {
-        feature.path.relative_to(graph.root).as_posix() for feature in graph.features
-    }
-    unresolved = []
+    layers: list[str] = []
+    services: list[str] = []
+    untagged: list[str] = []
     for seed_id in story.seed_items:
         seed = seeds.get(seed_id)
-        surface = str((seed.raw if seed else {}).get("surface", "")).strip()
-        node = nodes.get(surface)
-        if not surface or (surface not in features and node is None):
-            unresolved.append(seed_id)
-        elif node is not None and node.type in {"flow", "untyped"}:
-            # A journey can still introduce a screen; it is not proof one exists.
-            unresolved.append(seed_id)
+        if seed is None or not seed.layers:
+            untagged.append(seed_id)
+            continue
+        layers += [t for t in seed.layers if t not in layers]
+        services += [t for t in seed.services if t not in services]
 
-    if unresolved:
+    if untagged:
         return MockupGate(
-            evidence="covered seeds lack conclusive existing-surface evidence: "
-            + ", ".join(unresolved)
+            layers=layers, services=services,
+            evidence="covered seed(s) carry no `layers:`, so a frontend surface cannot be "
+                     "ruled out: " + ", ".join(untagged),
         )
-    logger.info("story '%s' is fully mapped to documented surfaces", story_slug)
+    if MOCKUP_LAYER in layers:
+        return MockupGate(
+            layers=layers, services=services,
+            evidence=f"covered seeds are tagged {', '.join(layers)} — {MOCKUP_LAYER} work "
+                     f"needs a designed surface",
+        )
+    logger.info("story '%s' touches no frontend layer (%s)", story_slug, ", ".join(layers))
     return MockupGate(
-        required=False,
-        evidence="every covered seed resolves to an existing typed node or feature",
+        required=False, layers=layers, services=services,
+        evidence=f"covered seeds are tagged {', '.join(layers)} only — no {MOCKUP_LAYER} work",
     )
 
 
 @blueprint.node
-def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "") -> StoryChoice:
+def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
+                 parked: tuple[str, ...] = ()) -> StoryChoice:
     """The next story in this epic whose `story.md` still needs writing.
 
     **ostler answers the whole question**: `next_story_report(epic, need="author")` walks
@@ -333,6 +365,10 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "")
     which `ostler create story` writes into every scaffold — so every story was born "done",
     the loop routed straight past writing, and a run produced 44 empty stories and reported
     success. One definition of authored, owned by the graph's owner, is the fix.
+
+    `parked` is the run's give-up set — stories that exhausted their rework budget. They are
+    passed to ostler as `skip=`, so they are neither reselected nor counted as authored: one
+    story nobody can fix used to stall the whole queue behind it.
 
     Full rubric validation belongs to `validate_story`; this only advances the loop.
     """
@@ -345,7 +381,7 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "")
     okf = Ostler(survey_repo_root(repo_dir))
 
     try:
-        report = okf.next_story_report(epic, need="author")
+        report = okf.next_story_report(epic, skip=frozenset(parked), need="author")
     except (OSError, ValueError, RuntimeError):
         reason = f"could not read stories for epic '{epic}' via ostler's in-process API"
         logger.warning(reason)
@@ -367,7 +403,7 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "")
     snap = wl.snapshot(items)
 
     if report["state"] != "ready":
-        logger.info("every story in epic '%s' has a written story.md", epic)
+        logger.info("no story to author in epic '%s': %s", epic, report["detail"])
         return StoryChoice(
             reason=report["detail"], progress=snap.progress, remaining_count=snap.remaining
         )

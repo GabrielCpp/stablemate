@@ -38,7 +38,7 @@ change with.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -80,6 +80,7 @@ from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.epic_edit.nodes import blueprint as epic_edit_blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import (
+    AuditFinding,
     AuditResult,
     CoverageReview,
     DecomposeResult,
@@ -118,6 +119,42 @@ MAX_INTEGRITY_RESOLVES = 2
 #: the flow is already blocked and the only question is what unblocks it.
 UNBOUNDED = float("inf")
 
+#: The fields a finding must carry to be a repair brief the rework turn can act on. The `id`
+#: is checked for presence only — it names the same defect across passes and nothing parses
+#: it, so enforcing a shape would fail a run over a prefix letter (the coder's docs review
+#: learned that the expensive way; see `coder/docs/flow.py::_review_finding_problems`).
+AUDIT_FINDING_FIELDS = ("id", "target", "issue", "repair")
+
+
+def _format_audit_finding(finding: AuditFinding) -> str:
+    issue = finding.issue.rstrip(". ")
+    return f"{finding.id} [{finding.kind}] {finding.target}: {issue}. Repair: {finding.repair}"
+
+
+def _audit_finding_problems(result: AuditResult) -> list[str]:
+    """Why the audit's findings are not an actionable repair contract.
+
+    Only structure is judged here, never the verdict: the verdict is `findings` being empty
+    or not. A finding with a blank `repair` is what the rework turn cannot act on, and acting
+    on it anyway is how one audit's vague objection became the next audit's different vague
+    objection.
+    """
+    problems: list[str] = []
+    for index, finding in enumerate(result.findings, start=1):
+        missing = [field for field in AUDIT_FINDING_FIELDS
+                   if not str(getattr(finding, field)).strip()]
+        if missing:
+            problems.append(f"finding {index} missing {', '.join(missing)}")
+    return problems
+
+
+def _audit_notes(result: AuditResult) -> str:
+    """The repair brief handed to `rework-story`: structured findings first, summary second."""
+    lines = [_format_audit_finding(finding) for finding in result.findings]
+    if result.notes:
+        lines.append(f"Summary: {result.notes}")
+    return "\n".join(lines)
+
 
 class Author(Workflow):
     """Turn a backlog into epics, and each epic into stories a coder can build.
@@ -136,6 +173,16 @@ class Author(Workflow):
     epic: str = ""
     #: `story` mode: a backlog `[id]`, or the literal bullet text to author.
     bullet: str = ""
+    #: `story` mode: the seed's classification, comma-separated —
+    #: `layers` from `frontend`/`backend`/`infra`, `services` free text.
+    #:
+    #: Epic mode gets these from `write-epic`, which has researched the surface. Story mode
+    #: has only a free-text bullet and no agent turn before the seed is written, so there is
+    #: nothing to infer them from and guessing would silently skip a design turn. Left blank
+    #: the seed is unclassified, which keeps the mockup — the same behaviour story mode has
+    #: always had. Set them when the caller knows: `--params '{"layers":"backend"}'`.
+    layers: str = ""
+    services: str = ""
     #: The worklist. Story mode resolves `bullet` against **this** file, and the coverage
     #: tail prunes the bullets an authored epic consumed from it. Blank — the normal case —
     #: means "wherever ostler keeps it", so a repo that moved its docs is followed.
@@ -288,6 +335,7 @@ class Author(Workflow):
         mockup: str,
         cov_reworks: int,
         split_resolves: int,
+        parked: Sequence[str] = (),
     ) -> dict[str, object]:
         """The story-loop parameters every state in it passes on unchanged.
 
@@ -295,6 +343,10 @@ class Author(Workflow):
         and have to survive the story loop, because the YAML held them in vars that the
         loop never touched: an epic whose coverage comes back with gaps re-enters
         `split_stories` on the budget it left with, not on a fresh one.
+
+        `parked` belongs to the epic the same way: the stories this run gave up on, carried
+        so the *next* selection excludes them. A list rather than a set because state
+        parameters are the checkpoint and the checkpoint is JSON.
         """
         return {
             "epic": epic,
@@ -304,6 +356,7 @@ class Author(Workflow):
             "mockup": mockup,
             "cov_reworks": cov_reworks,
             "split_resolves": split_resolves,
+            "parked": list(parked),
         }
 
     def _enter_story(
@@ -314,8 +367,9 @@ class Author(Workflow):
         story_path: str,
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
     ) -> Continue:
-        """Run design only when exact planning evidence leaves a possible new screen."""
+        """Design the surface first, but only when a covered seed is tagged `frontend`."""
         gate = self.call(check_mockup_needed, story_slug)
         target = self.design_mockup if gate.required else self.write_story
         return Continue(
@@ -327,6 +381,7 @@ class Author(Workflow):
             story_path=story_path,
             cov_reworks=cov_reworks,
             split_resolves=split_resolves,
+            parked=list(parked),
         )
 
     # --- mode dispatch --------------------------------------------------------
@@ -363,7 +418,8 @@ class Author(Workflow):
             return Done(result)
         if self.mode == "story":
             self.call(adopt_backlog, self.ctx.backlog_path)
-            seeded = self.call(seed_story, self.epic, self.epics_dir, self.bullet, self.backlog)
+            seeded = self.call(seed_story, self.epic, self.epics_dir, self.bullet, self.backlog,
+                               layers=self.layers, services=self.services)
             return self._enter_story(
                 epic=self.epic,
                 story_slug=seeded.story_slug,
@@ -609,13 +665,24 @@ class Author(Workflow):
 
     # --- 2d. the per-story loop -----------------------------------------------
 
-    def next_story(self, epic: str, cov_reworks: int = 0, split_resolves: int = 0) -> Continue:
+    def next_story(self, epic: str, cov_reworks: int = 0, split_resolves: int = 0,
+                   parked: Sequence[str] = ()) -> Continue:
         """Take the next unwritten story of this epic, or check the epic's coverage.
 
-        `select_story` + `decide_story`.
+        `select_story` + `decide_story`. `parked` is handed to ostler as its skip set, so a
+        story this run gave up on is passed over rather than re-selected forever — one
+        unresolvable story used to hold the epic's whole remaining queue behind it.
         """
-        pick = self.call(select_story, self._epic_dir(epic))
+        pick = self.call(select_story, self._epic_dir(epic), parked=tuple(parked))
         if not pick.has_story:
+            if parked:
+                # The epic moves on, so this is the only place the give-up is stated: a
+                # parked story still *covers* its seeds, so the coverage check that follows
+                # cannot notice that its `story.md` was never written.
+                self.logger.warning(
+                    "epic '%s' leaves %d story/stories unauthored (parked this run): %s",
+                    epic, len(parked), ", ".join(parked),
+                )
             return Continue(
                 pick,
                 self.check_coverage,
@@ -630,6 +697,7 @@ class Author(Workflow):
             story_path=pick.story_path,
             cov_reworks=cov_reworks,
             split_resolves=split_resolves,
+            parked=parked,
         )
 
     def design_mockup(
@@ -640,12 +708,14 @@ class Author(Workflow):
         story_path: str,
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
     ) -> Continue:
-        """Sketch a genuinely new screen before writing the story against it.
+        """Sketch the surface before writing the story against it.
 
-        `reset_story_rework` + `reset_write_story_resolve` + `design_mockup`. Advisory
-        throughout: a story on an existing surface is a pass-through, and a failed mockup
-        must never block authoring — `write_story` falls back to the feature doc.
+        `reset_story_rework` + `reset_write_story_resolve` + `design_mockup`. Reached only
+        when `check_mockup_needed` found a covered seed tagged `frontend`, so the prompt
+        draws rather than re-deciding. Still advisory: a failed mockup must never block
+        authoring — `write_story` falls back to the feature doc.
         """
         result = self.agent(
             "prompts/design-mockup.md",
@@ -661,7 +731,8 @@ class Author(Workflow):
             },
         )
         story = self._story(
-            epic, story_slug, story_dir, story_path, result.mockup, cov_reworks, split_resolves
+            epic, story_slug, story_dir, story_path, result.mockup, cov_reworks, split_resolves,
+            parked,
         )
         return Continue(result, self.write_story, **story)
 
@@ -674,6 +745,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
         audit_reworks: int = 0,
@@ -700,7 +772,8 @@ class Author(Workflow):
                 "mockup_path": mockup,
             },
         )
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         if result.status == "blocked":
             return self._gate_story(result, result.notes, story, resolves)
         return Continue(
@@ -722,6 +795,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
         audit_reworks: int = 0,
@@ -734,7 +808,8 @@ class Author(Workflow):
         cannot be grounded in anything; then grounding, which is presence and nothing
         semantic — refuting the story is the auditor's job.
         """
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         structure = self.call(validate_story, story_dir)
         if not structure.ok:
             return self._rework(
@@ -778,6 +853,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
         audit_reworks: int = 0,
@@ -785,9 +861,13 @@ class Author(Workflow):
     ) -> Continue | Await:
         """A skeptical reader tries to refute that a coder could build this.
 
-        `audit_story` + `decide_story_audit`. `failed` is the only arm that reworks: the
-        YAML declared `default: {status: passed}` for this node, and the default branch
-        was `passed` too, so an unreadable audit upholds the story either way.
+        The verdict is `findings`, not `status`: an empty list is a pass by construction,
+        whatever prose the auditor put in `status`. Reading the verdict from free text let
+        each lap raise one *different* objection with nothing able to tell whether the pass
+        was exhaustive — 87 of 144 stories in one run took exactly two audits.
+
+        A finding the rework turn cannot act on is the audit failing to answer, so a
+        malformed one raises rather than quietly reworking against nothing.
         """
         result = self.agent(
             "prompts/audit-story.md",
@@ -803,21 +883,35 @@ class Author(Workflow):
                 "prior_audit_findings": audit_findings,
             },
         )
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
-        if result.status == "failed":
-            if audit_reworks >= MAX_AUDIT_REWORKS:
-                return self._gate_story(result, result.notes, story, resolves)
-            return Continue(
-                result,
-                self.rework_story,
-                **story,
-                notes=result.notes,
-                reworks=reworks,
-                resolves=resolves,
-                audit_reworks=audit_reworks + 1,
-                audit_findings=result.notes,
+        problems = _audit_finding_problems(result)
+        if problems:
+            raise WorkflowFailed(
+                f"the audit of '{story_slug}' returned findings the rework turn cannot act on: "
+                + "; ".join(problems)
             )
-        return Continue(result, self.story_feedback, **story, reworks=reworks, resolves=resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
+        if not result.findings:
+            if result.status == "failed":
+                # Not an error: the operator's rule is that an empty finding list is a pass. But
+                # an auditor that says `failed` and names nothing is one worth seeing in the log.
+                self.logger.warning(
+                    "story '%s' audited `failed` with no findings — upholding it", story_slug
+                )
+            return Continue(result, self.story_feedback, **story, reworks=reworks, resolves=resolves)
+        notes = _audit_notes(result)
+        if audit_reworks >= MAX_AUDIT_REWORKS:
+            return self._gate_story(result, notes, story, resolves)
+        return Continue(
+            result,
+            self.rework_story,
+            **story,
+            notes=notes,
+            reworks=reworks,
+            resolves=resolves,
+            audit_reworks=audit_reworks + 1,
+            audit_findings=notes,
+        )
 
     def _rework(
         self,
@@ -851,16 +945,38 @@ class Author(Workflow):
     def _gate_story(
         self, result: object, notes: str, story: dict[str, object], resolves: int
     ) -> Continue | Await:
-        """`gate_write_story` + `guard_write_story_resolve`: resolver, or human.
+        """`gate_write_story` + `guard_write_story_resolve`: resolver, human, or park it.
 
         Reached from a `blocked` write and from a story-rework loop that will not
         converge — two states, hence a helper rather than an inlined pair of lines.
-        Both arms re-enter `write_story` with the rework budget reset, because
+        The resolver arm re-enters `write_story` with the rework budget reset, because
         `await_write_story` reset it on the way through.
+
+        **Exhausting the autonomous budget parks the story rather than blocking.** An
+        `Await` here waits on an operator who, in an unattended run, is not coming — and it
+        waits while every *other* story in the epic sits unwritten behind it. One story did
+        that for 14.7 h of a 48 h run. So an autonomous run records the slug and goes to the
+        next story; the epic finishes with its parked stories named in the selection report,
+        which is visible scope left undone rather than a queue silently stopped. A `human`
+        operator mode still awaits, because there blocking is the entire point.
         """
         context = paths.story_context(str(story["story_dir"]))
-        if self.operator_mode == "human" or resolves >= MAX_WRITE_STORY_RESOLVES:
+        if self.operator_mode == "human":
             return Await(self._abs(context), notes, self.write_story, **story, reworks=0, resolves=resolves)
+        if resolves >= MAX_WRITE_STORY_RESOLVES:
+            slug = str(story["story_slug"])
+            parked = [*(story["parked"] if isinstance(story["parked"], list) else []), slug]
+            self.logger.warning(
+                "parking story '%s' after %d autonomous resolutions: %s", slug, resolves, notes
+            )
+            return Continue(
+                result,
+                self.next_story,
+                epic=str(story["epic"]),
+                cov_reworks=story["cov_reworks"],
+                split_resolves=story["split_resolves"],
+                parked=parked,
+            )
         return Continue(result, self.resolve_story, **story, notes=notes, resolves=resolves)
 
     def rework_story(
@@ -873,6 +989,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
         audit_reworks: int = 0,
@@ -904,7 +1021,8 @@ class Author(Workflow):
                 "prior_attempts": ledger.prior_attempts,
             },
         )
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         return Continue(
             result,
             self.check_story,
@@ -925,6 +1043,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         resolves: int = 0,
     ) -> Continue | Await:
         """Stand in for the operator on a story block, or escalate to one.
@@ -933,7 +1052,8 @@ class Author(Workflow):
         """
         context = paths.story_context(story_dir)
         result = self._resolve("write-story", notes, context, self._epic_dir(epic))
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         if result.decision == "answered":
             return Continue(result, self.write_story, **story, reworks=0, resolves=resolves + 1)
         return Await(self._abs(context), notes, self.write_story, **story, reworks=0, resolves=resolves + 1)
@@ -947,6 +1067,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
     ) -> Continue | Done:
@@ -962,7 +1083,8 @@ class Author(Workflow):
         the YAML, and the port reproduces that rather than quietly fixing it.
         """
         feedback = self.call(check_story_feedback, paths.story_feedback(story_dir))
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         if feedback.present:
             return Continue(
                 feedback,
@@ -976,7 +1098,8 @@ class Author(Workflow):
             seeded = self.output(seed_story)
             return Done(self.call(prune_bullet, self.backlog, seeded.bullet_id, seeded.from_backlog))
         return Continue(
-            feedback, self.next_story, epic=epic, cov_reworks=cov_reworks, split_resolves=split_resolves
+            feedback, self.next_story, epic=epic, cov_reworks=cov_reworks,
+            split_resolves=split_resolves, parked=parked,
         )
 
     def apply_feedback(
@@ -989,6 +1112,7 @@ class Author(Workflow):
         mockup: str = "",
         cov_reworks: int = 0,
         split_resolves: int = 0,
+        parked: Sequence[str] = (),
         reworks: int = 0,
         resolves: int = 0,
     ) -> Continue:
@@ -1019,7 +1143,8 @@ class Author(Workflow):
                 "operator_feedback": notes,
             },
         )
-        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks, split_resolves)
+        story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
+                            split_resolves, parked)
         return Continue(result, self.check_story, **story, reworks=reworks, resolves=resolves)
 
     # --- 2e. epic coverage ----------------------------------------------------

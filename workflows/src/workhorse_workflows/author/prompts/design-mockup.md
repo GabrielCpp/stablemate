@@ -4,13 +4,17 @@ agent: agent
 
 # Design a mockup for a new screen: `{{ workhorse_var('story_slug') }}`
 
-You are the **design** stage. When a story introduces a **genuinely new screen** that does not exist
-yet, produce a **visual mockup in the app's own style** so the writer can link it and the coder has a
-concrete reference. For a story on a surface that already exists (an already-built screen), you do
-**nothing** and return a pass-through.
+You are the **design** stage. Produce a **visual mockup in the app's own style** so the writer can
+link it and the coder has a concrete reference.
 
-This is a greenfield aid only — a missing or imperfect mockup must **never** block authoring. If you
-cannot produce one, say so and return cleanly; the writer falls back to the feature doc / reference.
+**The decision to design has already been made.** The workflow reached you only because this story
+covers a seed tagged `frontend`; a story whose seeds are all `backend`/`infra` never gets here. So do
+not re-litigate whether a mockup is warranted, and do not go looking for evidence that the surface
+already exists — depict the surface this story delivers, whether it is new or a change to a built
+screen. Your job is to draw it, not to decide whether to.
+
+A missing or imperfect mockup must **never** block authoring. If you genuinely cannot produce one,
+say so and return cleanly; the writer falls back to the feature doc / reference.
 
 ## Inputs (authoritative)
 
@@ -18,25 +22,12 @@ cannot produce one, say so and return cleanly; the writer falls back to the feat
 - Story folder: `{{ workhorse_var('story_dir') }}`
 {%- if workhorse_var('features_dir') %}
 - **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation.
-  **Read it; never write to it.** It is the only test for "is this screen new?" (below) and, when
-  the screen exists in part, the content the mockup must depict. Do not inspect the app or source
-  code to discover surfaces.
+  **Read it; never write to it.** Where it already describes this surface in part, it is the content
+  the mockup must depict. Do not inspect the app or source code to discover surfaces.
 {%- endif %}
 - Prior mockup/design reference dir: `{{ workhorse_var('mockup_dir') }}` — read existing examples from
   here when present, but do not write the new story's source of truth there.
 - Story-local mockup path: `{{ workhorse_var('story_dir') }}/mockup.html` — write the mockup here.
-
-## Decide first: is this a new screen?
-
-The book is the test: a screen the book already carries is a screen author treats as existing.
-
-Pass-through (return `status: "skipped"`) when **any** holds:
-- the book has a `screen` node for this surface (it's an edit of a built screen, not a new one);
-- the story only changes/relocates existing UI (a section added to an existing screen is borderline —
-  only mock it if the *screen itself* is new).
-
-Otherwise — no node for the surface, and no feature doc describing it — treat it as new and produce
-a mockup.
 
 ## Produce the mockup (in the app's style)
 
@@ -69,9 +60,9 @@ a mockup.
 
 ```json
 {
-  "status": "created" | "skipped" | "failed",
+  "status": "created" | "failed",
   "surface": "<area>/<surface-key>",
-  "mockup": "<story_dir>/mockup.html, or '' when skipped/failed",
-  "notes": "Why skipped (existing surface), what was drawn, or why it failed."
+  "mockup": "<story_dir>/mockup.html, or '' when it failed",
+  "notes": "What was drawn, or why it could not be."
 }
 ```

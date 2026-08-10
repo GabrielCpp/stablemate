@@ -73,12 +73,30 @@ is the next stage.
       --legacy-surface "<legacy/reference doc or design/spec ref, if documented>" \
       --backing "<documented API/service reference, if present>" \
      --prerequisites "<role/account/data needed to reach it, or 'none'>" \
-     --source-bullet "<verbatim backlog bullet>"
+     --source-bullet "<verbatim backlog bullet>" \
+     --layer <frontend|backend|infra> [--layer ...] \
+     --service <service-or-package> [--service ...]
    ```
+
+   `--layer` and `--service` are both repeatable, and a seed routinely carries several of each:
+   one seed spans a screen and the API behind it. Classify by what the work *touches*:
+
+   | Layer      | Use it when the seed changes                                        |
+   | ---------- | ------------------------------------------------------------------- |
+   | `frontend` | a user-visible screen, view, or component                            |
+   | `backend`  | a service, API, handler, job, or data access                         |
+   | `infra`    | build, deploy, CI, configuration, or schema/migration                |
+
+   These are load-bearing, not bookkeeping: a story covering a seed tagged `frontend` gets a
+   design-mockup turn, and one whose seeds are all `backend`/`infra` skips it. Tag every seed —
+   a seed left untagged keeps the mockup turn, so an omission costs a wasted design pass rather
+   than silently dropping one. `--layer` takes only the three tokens above; anything else is
+   rejected. `--service` is free text: use the repo, package, or service directory name.
 
     Every backlog bullet assigned to this epic's delivered journeys must map to ≥1 seed. The seed ids are stable handles the
    story-split stage passes to `ostler create story --covers` (the coverage check depends on it).
-   The research fields (`--surface`, `--legacy-surface`, `--backing`, `--prerequisites`, plus any
+   The research fields (`--surface`, `--legacy-surface`, `--backing`, `--prerequisites`, `--layer`,
+   `--service`, plus any
    key parity points / risks in the `--summary` and the seed's prose body) carry the detail that
    makes the story split and the per-story write effective — fill them from real research, not
    guesses or fresh app/code discovery; if an item genuinely can't be established from existing docs

@@ -12,6 +12,8 @@ tri-state verifiers share one `VerifyReport` rather than carrying
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
 
 # ── node returns ────────────────────────────────────────────────────────────
@@ -223,13 +225,20 @@ class MockupResult(AuthorResult):
 
 
 class MockupGate(AuthorResult):
-    """Whether structured story evidence leaves a possible new screen to design.
+    """Whether the story touches a surface somebody has to design.
 
-    ``required`` defaults true so missing, old or unreadable planning data preserves
-    the existing design turn rather than skipping a mockup on a guess.
+    Decided from the `layers:` on the seeds the story covers — see
+    `nodes/stories.py::check_mockup_needed`. ``required`` defaults true so a missing story,
+    a missing seed or an unclassified one preserves the design turn rather than skipping a
+    mockup on a guess.
+
+    ``layers``/``services`` are the union over those seeds, carried here so the decision is
+    legible in the checkpoint and in telemetry rather than only in prose.
     """
 
     required: bool = True
+    layers: list[str] = []
+    services: list[str] = []
     evidence: str = ""
 
 
@@ -240,10 +249,33 @@ class WriteStoryResult(AuthorResult):
     notes: str = ""
 
 
+class AuditFinding(AuthorResult):
+    """One defect the story auditor is willing to fail the story over.
+
+    `kind` is intentionally closed on the four axes `prompts/audit-story.md` judges: it lets
+    the consumer and later static tooling tell a journey gap from an ungrounded claim without
+    scraping prose. `target` is the section or line of the story the finding is against — a
+    defect the auditor cannot point at is not a defect.
+    """
+
+    id: str = ""
+    kind: Literal["journey", "chrome", "transient-feedback", "grounding"] = "grounding"
+    target: str = ""
+    issue: str = ""
+    repair: str = ""
+
+
 class AuditResult(AuthorResult):
-    """`prompts/audit-story.md` — the story read back against its epic and seeds."""
+    """`prompts/audit-story.md` — the story read back against its epic and seeds.
+
+    `findings` is what the verdict is read from, not `status`: an empty list is a pass by
+    construction. Free-text `status` alone let each audit lap raise one *different* objection
+    with nothing able to check whether the pass was exhaustive, which made 87 of 144 stories
+    in one run take exactly two audits. `notes` is the summary, not the verdict.
+    """
 
     status: str = ""
+    findings: list[AuditFinding] = []
     notes: str = ""
 
 
@@ -255,6 +287,7 @@ class CoverageReview(AuthorResult):
 
 
 __all__ = [
+    "AuditFinding",
     "AuditResult",
     "Branches",
     "Committed",

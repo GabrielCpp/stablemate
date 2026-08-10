@@ -29,6 +29,7 @@ from workhorse_workflows.author.shared.schemas.edit import (
     StorySnapshot,
 )
 from workhorse_workflows.author.shared.schemas.main import (
+    AuditFinding,
     AuditResult,
     Branches,
     Committed,
@@ -73,6 +74,7 @@ from workhorse_workflows.author.shared.schemas.survey import (
 )
 
 __all__ = [
+    "AuditFinding",
     "AuditResult",
     "AppliedEpicEdit",
     "AuthorResult",
