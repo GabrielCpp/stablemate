@@ -422,3 +422,35 @@ def test_an_unknown_need_is_rejected(tmp_path: Path):
     _epic_of_scaffolds(tmp_path, [("a", [])])
     with pytest.raises(ValueError, match="unknown need"):
         select.next_story_report(load(tmp_path), "e", need="authored")
+
+
+def test_author_report_skips_a_parked_story_and_keeps_going(tmp_path: Path):
+    """A story the run gave up on is passed over, not re-selected until the budget runs out.
+
+    Without this the author loop re-picked the same unwritable story forever and the epic's
+    whole remaining queue waited behind it — 14 of a 48-hour run, on one story.
+    """
+    _epic_of_scaffolds(tmp_path, [("a", []), ("b", ["a"])])
+
+    report = select.next_story_report(load(tmp_path), "e", skip={"a"}, need="author")
+
+    assert report["state"] == "ready"
+    assert report["story"]["slug"] == "b"
+    assert report["skipped"] == ["a"]
+    assert report["remaining"] == ["a", "b"]   # parked is not authored
+
+
+def test_author_report_is_blocked_not_done_when_every_story_is_parked(tmp_path: Path):
+    """Nothing left to select is not the same as nothing left to write.
+
+    ``done`` is what the caller acts on to close the epic, so reporting it here would merge an
+    epic whose stories were never authored at all.
+    """
+    _epic_of_scaffolds(tmp_path, [("a", []), ("b", ["a"])])
+
+    report = select.next_story_report(load(tmp_path), "e", skip={"a", "b"}, need="author")
+
+    assert report["state"] == "blocked"
+    assert report["story"] is None
+    assert sorted(report["skipped"]) == ["a", "b"]
+    assert "parked" in report["detail"]

@@ -150,26 +150,41 @@ def _story_dict(epic: Epic, story: Story) -> dict:
             "authored": story.authored, "unwrittenSections": list(story.unwritten_sections)}
 
 
-def _author_report(epic: Epic) -> dict:
+def _author_report(epic: Epic, skip: frozenset[str] = frozenset()) -> dict:
     """``need="author"`` — the first story in DAG order that still has no written story.md.
 
     Dependencies order the work but do not gate it: an unauthored dependency is a reason to
-    write it *first*, not a reason to stall, so unlike the build path there is no ``blocked``
-    state. Stories already authored are counted, not re-selected, which is what lets a rerun
-    resume mid-epic instead of starting over or (as it did) skipping the epic entirely.
+    write it *first*, not a reason to stall, so on this axis nothing ever waits on a
+    dependency. Stories already authored are counted, not re-selected, which is what lets a
+    rerun resume mid-epic instead of starting over or (as it did) skipping the epic entirely.
+
+    ``skip`` is the author's own give-up set — a story the run parked because it exhausted its
+    rework budget. It is excluded from selection but never counted as authored, exactly as on
+    the build axis: otherwise a story nothing can fix stays first-unauthored forever and the
+    epic's other 100 stories never get written. When every unauthored story is parked the state
+    is ``blocked``, not ``done`` — the epic has unwritten scope in it and a caller that reads
+    ``done`` would prune it.
     """
     ordered = dag_order(epic)
     authored = [s.slug for s in ordered if s.authored]
+    pending = [s for s in ordered if not s.authored]
     report = {"state": "", "story": None, "epic": epic.name, "total": len(ordered),
-              "done": len(authored), "remaining": [s.slug for s in ordered if not s.authored],
-              "skipped": [], "waiting_on": {}, "detail": ""}
-    for story in ordered:
-        if not story.authored:
-            report["state"] = "ready"
-            report["story"] = _story_dict(epic, story)
-            empty = ", ".join(story.unwritten_sections) or "no story.md"
-            report["detail"] = f"{story.slug} is unwritten ({empty})"
-            return report
+              "done": len(authored), "remaining": [s.slug for s in pending],
+              "skipped": [s.slug for s in pending if s.slug in skip],
+              "waiting_on": {}, "detail": ""}
+    for story in pending:
+        if story.slug in skip:
+            continue
+        report["state"] = "ready"
+        report["story"] = _story_dict(epic, story)
+        empty = ", ".join(story.unwritten_sections) or "no story.md"
+        report["detail"] = f"{story.slug} is unwritten ({empty})"
+        return report
+    if pending:
+        report["state"] = "blocked"
+        report["detail"] = (f"all {len(pending)} unauthored stories in '{epic.name}' were parked "
+                            f"this run: {', '.join(report['skipped'])}")
+        return report
     report["state"] = "done"
     report["detail"] = f"all {len(ordered)} stories in '{epic.name}' are authored"
     return report
@@ -223,10 +238,11 @@ def next_story_report(graph: Graph, epic_name: str,
 
     ``need`` picks which question is being asked. ``"build"`` (the default, everything above)
     is the coder's: which story can be implemented next. ``"author"`` is the author's: which
-    story still has no written story.md — ``done`` means every story is *authored*, and the
-    ``skip``/dependency machinery does not apply (see :func:`_author_report`). The two are
-    separate axes and a story is routinely finished on one and untouched on the other, so a
-    caller must say which it means; the shape of the report is identical either way.
+    story still has no written story.md — ``done`` means every story is *authored*, ``skip``
+    applies exactly as above, and only the dependency machinery does not (see
+    :func:`_author_report`). The two are separate axes and a story is routinely finished on one
+    and untouched on the other, so a caller must say which it means; the shape of the report is
+    identical either way.
     """
     epic = epic_by_name(graph, epic_name)
     if epic is None:
@@ -235,10 +251,10 @@ def next_story_report(graph: Graph, epic_name: str,
                 "detail": f"no epic named '{epic_name}' in the graph"}
     if need not in ("build", "author"):
         raise ValueError(f"unknown need '{need}' (expected 'build' or 'author')")
-    if need == "author" and epic.stories:
-        return _author_report(epic)
-
     skip = frozenset(skip or ())
+    if need == "author" and epic.stories:
+        return _author_report(epic, skip)
+
     done = {s.slug for s in epic.stories if is_done(s.status)}
     report = {"state": "", "story": None, "epic": epic.name, "total": len(epic.stories),
               "done": len(done), "remaining": [], "skipped": [], "waiting_on": {},
