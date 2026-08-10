@@ -475,7 +475,7 @@ class Coder(Workflow):
         the failing path), and the loop takes the next story.
 
         `attempts` is a count only for a result that predates `QaFlowResult.spent`; normally
-        it is that field's phrase ("4 total QA-plan repair"), which is why it is stringified rather
+        it is that field's phrase ("4 QA-plan repair"), which is why it is stringified rather
         than counted here. Both forms read correctly in the marker commit and the flag.
         """
         if self.mode != "epic":

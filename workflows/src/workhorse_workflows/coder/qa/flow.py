@@ -170,7 +170,12 @@ class Qa(Workflow):
     #: declared — each guard carries a branch literal. See the module docstring.
     MAX_QA_REWORKS: ClassVar[int] = 3
     MAX_CONTEXT_REWORKS: ClassVar[int] = 3
-    MAX_TOTAL_PLAN_REWORKS: ClassVar[int] = 4
+    #: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
+    #: gates that judge the plan (`review-qa-plan` and the post-run assessment);
+    #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa-plan.yml` that does not parse.
+    #: See `QaLoop.plan_judgement_rework` for the story that split them.
+    MAX_PLAN_REWORKS: ClassVar[int] = 4
+    MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
@@ -197,6 +202,7 @@ class Qa(Workflow):
         "plan_validation_rework",
         "plan_review_rework",
         "plan_rework_total",
+        "plan_judgement_rework",
         "qa_rework",
         "setup_rework",
         "regression_fix",
@@ -218,7 +224,10 @@ class Qa(Workflow):
         loop = params.get("loop")
         if not isinstance(loop, QaLoop):
             return self.labels()
-        carried = loop.model_dump() | {"plan_rework_total": loop.plan_rework_total}
+        carried = loop.model_dump() | {
+            "plan_rework_total": loop.plan_rework_total,
+            "plan_judgement_rework": loop.plan_judgement_rework,
+        }
         return (
             self.labels()
             | counter_labels(carried, "qa", self.BUDGET_LABELS)
@@ -989,15 +998,23 @@ class Qa(Workflow):
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
-        """Spend the post-run component of the shared QA-plan repair budget."""
-        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
+        """Spend the post-run component of the QA-plan judgement budget."""
+        if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return Continue(result, self.plan, loop=loop.update(plan_rework=loop.plan_rework + 1))
 
     def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
-        """Spend the validation component of the shared QA-plan repair budget."""
-        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
+        """Spend a schema-validation repair — a budget of its own, not the judgement one.
+
+        A `qa-plan.yml` that does not parse is a mechanical defect, and repairing it says
+        nothing about whether the plan tests the story. Charging it to the same ceiling as
+        the reviewer let a run of schema typos exhaust the story before any gate had read
+        the plan for coverage; `QaLoop.plan_judgement_rework` records the case.
+        """
+        if loop.plan_validation_rework >= self.MAX_PLAN_VALIDATION_REWORKS:
+            return self._exhausted(
+                loop, f"{loop.plan_validation_rework} QA-plan schema repair"
+            )
         return Continue(
             result,
             self.plan,
@@ -1005,9 +1022,9 @@ class Qa(Workflow):
         )
 
     def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Done:
-        """Spend the review component of the shared QA-plan repair budget."""
-        if loop.plan_rework_total >= self.MAX_TOTAL_PLAN_REWORKS:
-            return self._exhausted(loop, f"{loop.plan_rework_total} total QA-plan repair")
+        """Spend the review component of the QA-plan judgement budget."""
+        if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return Continue(
             result,
             self.plan,

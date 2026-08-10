@@ -980,12 +980,12 @@ def test_the_give_up_marker_names_the_budget_qa_actually_spent(
     this is where that name has to surface.
     """
     repo = epic()
-    _Sub(repo, qa_status="exhausted", qa_spent="4 total QA-plan repair").install(monkeypatch)
+    _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
 
     drive_flow(Coder(), env(), _Agent())
 
     marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
-    assert "after 4 total QA-plan repair attempts" in marker, marker
+    assert "after 4 QA-plan repair attempts" in marker, marker
     assert "after 0 attempts" not in marker, marker
 
 
@@ -1032,7 +1032,7 @@ def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
     """
     repo = epic()
     write(repo / "docs" / "specs" / "STORY-1" / "qa.md", "# QA\n\nEleven assertions failed.\n")
-    _Sub(repo, qa_status="exhausted", qa_spent="4 total QA-plan repair").install(monkeypatch)
+    _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
 
     drive_flow(Coder(), env(), _Agent())
 
@@ -1323,7 +1323,7 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
     run_env = env()
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(seen, green)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, green)):
         result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result

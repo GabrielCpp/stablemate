@@ -421,8 +421,29 @@ class QaLoop(CoderResult):
 
         Derived from the durable stage counters so old checkpoints retain what they
         already spent and no duplicated total can drift from its components.
+
+        **This is a telemetry reading, not a budget.** No guard branches on it — see
+        `plan_judgement_rework` for why one shared ceiling was the wrong shape.
         """
         return self.plan_rework + self.plan_validation_rework + self.plan_review_rework
+
+    @property
+    def plan_judgement_rework(self) -> int:
+        """Repairs spent on the two gates that exercise *judgement* about the plan.
+
+        `validate_qa_plan` is a schema check: `ostler qa validate` parses `qa-plan.yml`
+        and says whether it is well-formed. Failing it means the plan turn mistyped a
+        field — cheap to fix, deterministic, and worth nothing as evidence about whether
+        the plan tests the story. `review-qa-plan` and the post-run plan gates are the
+        opposite: an agent judging coverage, which is the work the budget exists to bound.
+
+        They shared one ceiling of four until a story spent three repairs on schema typos
+        and reached the reviewer with a single revision left, then gave up "after 4 total
+        QA-plan repair" — a give-up a human reads as an intractable plan when the plan had
+        in fact been read critically exactly once. Mechanical failures now spend their own
+        budget (`MAX_PLAN_VALIDATION_REWORKS`) and cannot starve this one.
+        """
+        return self.plan_rework + self.plan_review_rework
 
     def update(self, **changes: object) -> QaLoop:
         """The same loop with some fields replaced — the port of an `incr`/`emit-kv` node."""
@@ -495,7 +516,7 @@ class QaFlowResult(CoderResult):
     #: Whether the parent must document again before committing. Missing old results recheck.
     docs_recheck_required: bool = True
     #: Which budget ran out and how much of it was spent, as the phrase that goes in the
-    #: give-up marker ("4 total QA-plan repair"). Empty unless the flow ended `exhausted`.
+    #: give-up marker ("4 QA-plan repair"). Empty unless the flow ended `exhausted`.
     spent: str = ""
 
 

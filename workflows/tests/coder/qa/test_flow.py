@@ -486,7 +486,7 @@ class _Agent:
 
 
 def _answers(seen: list[str], *, scope: str = "story") -> Callable[..., None]:
-    """A stand-in for the human an `Await` is waiting on, patched over `poll_until_touched`."""
+    """A stand-in for the human an `Await` is waiting on, patched over `wait_for_answer`."""
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
@@ -691,7 +691,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, repair="blocked")
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "passed", result
@@ -719,21 +719,22 @@ def test_an_epic_scoped_answer_hands_the_story_back_to_replan(
 # --------------------------------------------------------------------------- the plan gate
 
 
-def test_an_unrunnable_plan_spends_the_total_repair_budget_then_gives_up(
+def test_a_plan_that_never_parses_spends_only_the_schema_budget(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Four total repairs buy five plan turns and never reach the stack."""
+    """Three schema repairs buy four plan turns and never reach the stack."""
     okf = ostler(plan_invalid=9)
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"plan-qa": 5}, agent.counts()
+    assert agent.counts() == {"plan-qa": 4}, agent.counts()
     assert okf.runs == 0, "an invalid plan must never be executed"
+    assert result.spent == "3 QA-plan schema repair", result.spent
 
 
 def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
@@ -742,7 +743,7 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The semantic plan gate can spend all four shared repairs."""
+    """The semantic plan gate can spend all four judgement repairs."""
     okf = ostler()
     agent = _Agent(docs, review="revise")
 
@@ -753,27 +754,49 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     assert okf.runs == 0
 
 
-def test_validation_and_review_share_the_total_plan_repair_budget(
+def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Two validation and two review repairs leave no post-run repair."""
+    """A run of `qa-plan.yml` typos leaves the reviewer its full budget.
+
+    The regression: both gates charged one shared ceiling of four, so a story that spent
+    three repairs on schema defects reached `review-qa-plan` with a single revision left
+    and gave up "after 4 total QA-plan repair" — which reads to a triaging human as a plan
+    nobody could make work, when the plan had been read for coverage exactly once. The
+    reviewer must still get all four judgement repairs after the schema ones.
+    """
+    okf = ostler(plan_invalid=3)
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    # Three schema repairs, then five reviewed plans: the reviewer is not short-changed.
+    assert agent.counts() == {"plan-qa": 8, "review-qa-plan": 5}, agent.counts()
+    assert result.spent == "4 QA-plan repair", result.spent
+    assert okf.runs == 0
+
+
+def test_validation_and_review_spend_separate_plan_budgets(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Two schema repairs cost the judgement budget nothing."""
     okf = ostler(plan_invalid=2, fail_runs=1)
     agent = _Agent(docs, revise_plans=2)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert agent.counts() == {
-        "plan-qa": 5,
-        "review-qa-plan": 3,
-        "qa-story": 1,
-    }, agent.counts()
-    assert okf.plan_validations == 5
-    assert okf.runs == 1
-    assert result.spent == "4 total QA-plan repair"
+    # Two reviewer revisions and one post-run repair still leave a judgement repair, so
+    # the story now reaches a verdict where the shared budget gave up on it.
+    assert result.status == "passed", result
+    assert okf.runs == 2
+    assert okf.plan_validations == 6
 
 
 def test_three_review_revisions_leave_one_post_run_repair(
@@ -782,7 +805,7 @@ def test_three_review_revisions_leave_one_post_run_repair(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The fourth and final shared repair can address a post-run finding."""
+    """The fourth and final judgement repair can address a post-run finding."""
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, revise_plans=3)
 
@@ -829,7 +852,7 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     assert giveup.is_file(), "the give-up must leave the file its status points at"
     text = giveup.read_text(encoding="utf-8")
     assert "review pass 5" in text, text
-    assert "4 total QA-plan repair" in text, text
+    assert "4 QA-plan repair" in text, text
 
 
 def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None:
@@ -996,7 +1019,7 @@ def test_an_escalating_resolver_hands_the_block_to_a_person(
     seen: list[str] = []
     agent = _Agent(docs, repair="blocked", escalate=True)
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
@@ -1132,17 +1155,18 @@ def test_each_exhaustion_names_the_budget_it_spent(
     assert result.status == "exhausted", result
     assert result.spent == "3 OKF-context repair", result.spent
 
-    # The three plan stages retain separate diagnostics but exhaust one aggregate budget.
+    # The mechanical plan gate names itself, and spends only its own budget — a schema
+    # give-up and a coverage give-up ask a human for very different things.
     okf = ostler(plan_invalid=9)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
     assert result.status == "exhausted", result
-    assert result.spent == "4 total QA-plan repair", result.spent
+    assert result.spent == "3 QA-plan schema repair", result.spent
     assert okf.runs == 0
 
     okf = ostler()
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs, review="revise"))
     assert result.status == "exhausted", result
-    assert result.spent == "4 total QA-plan repair", result.spent
+    assert result.spent == "4 QA-plan repair", result.spent
     assert okf.runs == 0
 
     # The post-run budget, reached only through a plan the reviewer approved and the runner
@@ -1150,7 +1174,7 @@ def test_each_exhaustion_names_the_budget_it_spent(
     okf = ostler(fail_runs=99)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
     assert result.status == "exhausted", result
-    assert result.spent == "4 total QA-plan repair", result.spent
+    assert result.spent == "4 QA-plan repair", result.spent
     assert okf.runs == 5
 
     ostler(fail_runs=99)
