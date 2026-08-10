@@ -238,6 +238,12 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 - `{"type":"progress","current_node":…}` / `{"type":"blocked",file_path,question}`
   — inotify deltas, streamed over the same socket (`_apply_socket_progress` /
   `_apply_socket_blocked`).
+- `{"type":"turn","run":…,<identity>}` — one of this run's turn records (its
+  `sessions.jsonl`, `transcripts/` or `turns/`) was written. An **announce, not a
+  payload**: it says something moved and the host decides when to pull, so a node
+  streaming a megabyte of transcript costs one small frame per coalesced watch
+  batch. Identity rides along because the host needs the run id to file what it
+  pulls, and the container is the only side that knows it.
 - `{"type":"rpc_result","id":…,"ok":true,"data":…}` or
   `{…,"ok":false,"error":…}` — the reply to one RPC.
 
@@ -247,6 +253,15 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
   — correlation id is a per-connection counter (`SidecarConnection`), answered
   from local disk. `getTree`→`{paths:[…]}`, `getFile`→`{content}`,
   `getDiff`→`{diff}`.
+- `{"type":"rpc",…,"method":"listTurns"|"readTurnFile","params":{run,path,offset}}`
+  — the turn-record half of the data plane, rooted at `RUNS_DIR` rather than
+  `WORKSPACE_DIR`. `listTurns`→`{run,files:[{path,size}]}`,
+  `readTurnFile`→`{data (base64), offset, size, eof}`. The workspace RPCs are
+  **not** widened to reach the runs volume: that would hand the file panel the
+  whole run dir as a side effect. These are siblings through the same
+  `_safe_relpath` guard, narrowed further to the turn-record surface
+  (`sessions.jsonl`, `transcripts/`, `turns/`) and checked to resolve inside the
+  volume, since they return raw bytes and a symlink escapes without a `..`.
 - `{"type":"reload"}` — the sidecar closes and `exit(3)`s.
 
 **Decisions on the former open questions**
@@ -270,11 +285,19 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 - `groom/groom/sidecar.py` — the [sidecar live session runner](concepts/sidecar-live-session-runner.md)
   and async session (`run`/`_serve`/`_run_session`),
   RPC handlers (`_rpc_get_tree`/`_rpc_get_file`/`_rpc_get_diff`, `_safe_relpath`),
+  the turn-record RPCs (`_rpc_list_turns`/`_rpc_read_turn_file`, `_within_runs`,
+  `TURN_SURFACE`) and `_turn_announce`,
   `_hello_frame`, `_classify_event`, `ReloadRequested`/`RELOAD_EXIT_CODE`.
 - `groom/groom/sidecar_hub.py` — host-side `SidecarConnection` (RPC correlation,
   send lock) + the `CONNECTIONS` registry.
+- `groom/groom/sidecar_turns.py` — the host's pull: mirrors a container's run dir
+  under `<archive>/.incoming/<container>/<run>` and hands it to
+  `turns.harvest_run`, so a container's records get the archive's rules by
+  construction rather than by a parallel ingest. Pulls are coalesced one-in-flight
+  per container; the mirror is a cache, dropped after the terminal pull.
 - `groom/groom/app.py` — `dashboard_sidecar` (`/sidecar`), the socket-preferred
-  `/files`/`/file`/`/diff`, `/reload`, `_apply_hello`.
+  `/files`/`/file`/`/diff`, `/reload`, `_apply_hello` (which fires the
+  unconditional terminal pull), `_apply_socket_turn`.
 - `workhorse/supervisor.py` — installs the sidecar at startup and supervises it,
   restarting only on exit 3. `workhorse/livesource.py` — copies `/mnt/groom-src` to
   a new `/opt/live/groom/<gen>` per reload and installs from THAT, so a running

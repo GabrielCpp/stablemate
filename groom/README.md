@@ -17,9 +17,11 @@ a container has genuinely stopped.
   container gets inotify and a developer's macOS or Windows box still works) and holds
   one persistent WebSocket open to the host's `groom` (dialing out over
   `host.docker.internal`, so no inbound reachability is needed). It advertises
-  full state on connect, streams `progress`/`blocked` deltas, and serves the
+  full state on connect, streams `progress`/`blocked`/`turn` deltas, and serves the
   Files/Diff panels from local disk via `getTree`/`getFile`/`getDiff` RPC over
-  the same socket. The connection is best-effort and re-syncs on reconnect —
+  the same socket — plus `listTurns`/`readTurnFile`, through which the host pulls
+  the container's turn records into its archive before the volume is destroyed.
+  The connection is best-effort and re-syncs on reconnect —
   a container with no `groom` listening behaves exactly as it does today. See
   `docs/features/groom/sidecar-live-sessions.md` for the message schema and the
   local `reload` dev loop.
@@ -373,6 +375,18 @@ racing a run dir's lifetime, not groom's disk budget. Harvest is idempotent on a
 content digest, so a live run's growing transcript is re-copied and a finished one is
 not, and scratch run dirs (`pytest-of-`, `tmpXXXXXX` under a temp root) are never
 archived.
+
+**Containers.** A container's run dir is on a volume the host cannot read, and it is
+destroyed by the same event that makes anyone want it — the run ending. So the sidecar
+announces (`{"type":"turn","run":…}`) whenever a turn record moves, and groom **pulls**
+it over the same socket the Files panel uses. Pull, not push: a thrashing node writes
+records as fast as it turns and the host is the side that has to store them. What
+arrives is mirrored under `<archive>/.incoming/<container>/<run>` and then harvested
+exactly as a local run dir would be, so a container's records get the archive's rules —
+the visit key, the digest, what counts as a record — by construction rather than by a
+second implementation. The last pull is unconditional, at the run's terminal, and drops
+the mirror after it. The sidecar remains non-authoritative: if it never connects, that
+container's records are absent and nothing else degrades.
 
 ### What occupied the wall clock (`groom profile`)
 

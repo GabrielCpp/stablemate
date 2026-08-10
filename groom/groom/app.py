@@ -36,6 +36,7 @@ from groom import (
     otlp,
     projection,
     sidecar_hub,
+    sidecar_turns,
     state,
     store,
     turns,
@@ -857,6 +858,17 @@ async def _apply_hello(container_id: str, data: dict) -> None:
     wf.gates.clear()
     if snapshot.get("terminal"):
         wf.state = WorkflowState.FINISHED
+        # The run is over, so this is the last chance to take its turn records off a
+        # volume that goes away with the container. Unconditional: a terminal reached
+        # between two announces would otherwise leave the final turns behind.
+        conn = sidecar_hub.get(container_id)
+        if conn is not None:
+            sidecar_turns.schedule(
+                conn,
+                run_id=str(identity.get("run_id") or ""),
+                workflow=str(identity.get("workflow") or ""),
+                final=True,
+            )
     else:
         for gate in snapshot.get("gates") or []:
             file_path = str(gate.get("file_path", ""))
@@ -870,6 +882,21 @@ async def _apply_hello(container_id: str, data: dict) -> None:
 async def _apply_socket_progress(container_id: str, data: dict) -> None:
     state.upsert_workflow(container_id, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
     await _broadcast_shell(container_id)
+
+
+def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
+    """A container says one of its turn records moved; go and fetch it.
+
+    Pull rather than let the sidecar push: a thrashing node writes turn records as fast
+    as it turns, and the host is the side that has to store them. The announce is a
+    hint — everything it names is re-derived from the container's own listing.
+    """
+    sidecar_turns.schedule(
+        conn,
+        run=str(data.get("run", "")),
+        run_id=str(data.get("run_id", "")),
+        workflow=str(data.get("workflow", "")),
+    )
 
 
 async def _apply_socket_blocked(container_id: str, data: dict) -> None:
@@ -889,9 +916,10 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
     ``/ws``): the sidecar is the client, so no inbound reachability into the
     container is needed. The first ``hello`` establishes identity and registers
     the connection in :mod:`groom.sidecar_hub`; thereafter this loop applies
-    streamed ``progress``/``blocked`` deltas and resolves the ``rpc_result``
-    replies to the ``getTree``/``getFile``/``getDiff`` requests the panel
-    handlers issue. On disconnect the connection is unregistered and its pending
+    streamed ``progress``/``blocked``/``turn`` deltas and resolves the
+    ``rpc_result`` replies to the ``getTree``/``getFile``/``getDiff`` requests the
+    panel handlers issue and the ``listTurns``/``readTurnFile`` requests the turn
+    pull issues. On disconnect the connection is unregistered and its pending
     RPCs fail fast to the volume-read fallback.
     """
     await socket.accept()
@@ -922,6 +950,8 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
                 await _apply_socket_progress(conn.container_id, data)
             elif mtype == "blocked":
                 await _apply_socket_blocked(conn.container_id, data)
+            elif mtype == "turn":
+                _apply_socket_turn(conn, data)
     except WebSocketDisconnect:
         pass
     finally:

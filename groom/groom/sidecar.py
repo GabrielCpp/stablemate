@@ -16,7 +16,9 @@ The socket is the container's live session: the sidecar dials groom (it is the
 client, so no inbound reachability into the container is needed), advertises its
 identity + full current state on connect, streams ``progress``/``blocked``
 deltas from the watch, and answers ``getTree``/``getFile``/``getDiff`` RPCs from
-local disk — the data plane for groom's Files/Diff panels. A reconnect-with-
+local disk — the data plane for groom's Files/Diff panels — plus
+``listTurns``/``readTurnFile``, through which the host pulls this container's
+turn records into its durable archive. A reconnect-with-
 backoff loop (built into ``websockets.connect``) means groom being down is never
 fatal; the sidecar just keeps trying and re-advertises on reconnect.
 
@@ -35,6 +37,7 @@ workhorse's event loop. A ``reload`` command over the socket makes it exit with
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import os
@@ -271,6 +274,25 @@ def _classify_event(path: Path) -> dict | None:
     return {"type": "blocked", "file_path": rel_path, "question": extract_question(content)}
 
 
+def _turn_announce(path: Path) -> dict | None:
+    """A ``turn`` frame when a changed path is part of a run's turn-record surface.
+
+    An announce, not a payload: it says *something moved, come and get it*, and the
+    host decides when to pull. So a node writing a transcript line by line costs one
+    small frame per batch the watch coalesces, whatever the transcript grows to.
+
+    Identity rides along because the host needs the run id to file what it pulls, and
+    the container is the only side that knows it.
+    """
+    relative = _under_mount(path, RUNS_DIR)
+    if relative is None:
+        return None
+    parts = relative.parts
+    if len(parts) < 2 or parts[1] not in TURN_SURFACE:
+        return None
+    return {"type": "turn", "run": parts[0], **_identity()}
+
+
 def _handle_event(path: Path) -> None:
     """Residual HTTP path: classify one changed path and fire the matching
     fire-and-forget push. The socket session (:func:`_run_session`) uses
@@ -382,10 +404,123 @@ def _rpc_get_diff(params: dict) -> dict:
     return {"diff": _git_diff(str(params.get("repo", "")))}
 
 
+# --------------------------------------------------------------------------- #
+# Turn records: the run-dir half of the data plane.
+#
+# The workspace RPCs above are rooted at WORKSPACE_DIR and stay that way — a
+# container's turn records live under RUNS_DIR, and widening `_rpc_get_file` to
+# reach them would hand the file panel the whole runs volume as a side effect.
+# These are siblings instead, rooted at RUNS_DIR, through the same traversal
+# guard, and narrowed further to the turn-record surface: a run dir also holds
+# checkpoints and events the host has other ways to read.
+#
+# The host *pulls* through these. A container that is thrashing writes turn
+# records as fast as it turns, and a push would let it outrun the host that has
+# to store them — the same reason the file panel pulls today.
+# --------------------------------------------------------------------------- #
+
+#: The only paths within a run dir these RPCs will name or read.
+TURN_SURFACE = ("sessions.jsonl", "transcripts", "turns")
+
+#: Largest slice one ``readTurnFile`` will return, before base64. Bounds the frame,
+#: not the file: a transcript is fetched over as many calls as it takes.
+TURN_CHUNK_BYTES = 512 * 1024
+
+
+def _run_base(run: str) -> Path:
+    """The run dir a turn-record RPC is talking about — named, or the latest.
+
+    An empty name resolves to the latest run rather than erroring, because that is
+    what the host asks for when it heard about a container before it heard which run
+    the container is on.
+    """
+    if run:
+        return RUNS_DIR / _safe_relpath(run)
+    latest = _latest_run_dir()
+    if latest is None:
+        raise ValueError("no run directory")
+    return latest
+
+
+def _within_runs(path: Path) -> Path:
+    """``path``, having confirmed it really resolves under ``RUNS_DIR``.
+
+    ``_safe_relpath`` rejects ``..`` and absolute paths, which is the whole guard the
+    workspace reads need. It is not the whole guard here: these reads return raw
+    bytes of whatever they are pointed at, and a symlink inside the run dir resolves
+    out of the volume without a single ``..`` in the request.
+    """
+    root = Path(os.path.realpath(RUNS_DIR))
+    resolved = Path(os.path.realpath(path))
+    if resolved != root and root not in resolved.parents:
+        raise ValueError(f"outside the runs volume: {path}")
+    return resolved
+
+
+def _turn_files(base: Path) -> list[dict]:
+    """Every file of the turn-record surface in one run dir, with its size.
+
+    The size is what makes a re-pull cheap: the host keeps what it already fetched
+    and asks again only for the files whose length moved.
+    """
+    files: list[dict] = []
+    for name in TURN_SURFACE:
+        target = base / name
+        if target.is_file():
+            entries = [(name, target)]
+        elif target.is_dir():
+            entries = [
+                (f"{name}/{p.relative_to(target).as_posix()}", p)
+                for p in sorted(target.rglob("*"))
+                if p.is_file()
+            ]
+        else:
+            continue
+        for rel, path in entries:
+            try:
+                files.append({"path": rel, "size": path.stat().st_size})
+            except OSError:
+                continue
+    return files
+
+
+def _rpc_list_turns(params: dict) -> dict:
+    base = _run_base(str(params.get("run", "")))
+    return {"run": base.name, "files": _turn_files(base)}
+
+
+def _rpc_read_turn_file(params: dict) -> dict:
+    """One slice of one turn-record file, base64'd.
+
+    base64 rather than text because a truncated transcript is still wanted and a byte
+    slice of UTF-8 does not have to land on a character boundary; the host reassembles
+    bytes and never has to care.
+    """
+    base = _run_base(str(params.get("run", "")))
+    rel = _safe_relpath(str(params.get("path", "")))
+    if rel.split("/")[0] not in TURN_SURFACE:
+        raise ValueError(f"not a turn record: {rel}")
+    offset = max(0, int(params.get("offset", 0)))
+    length = min(max(0, int(params.get("length", TURN_CHUNK_BYTES))), TURN_CHUNK_BYTES)
+    full = _within_runs(base / rel)
+    size = full.stat().st_size
+    with full.open("rb") as fh:
+        fh.seek(offset)
+        data = fh.read(length)
+    return {
+        "data": base64.b64encode(data).decode("ascii"),
+        "offset": offset,
+        "size": size,
+        "eof": offset + len(data) >= size,
+    }
+
+
 _RPC_METHODS = {
     "getTree": _rpc_get_tree,
     "getFile": _rpc_get_file,
     "getDiff": _rpc_get_diff,
+    "listTurns": _rpc_list_turns,
+    "readTurnFile": _rpc_read_turn_file,
 }
 
 
@@ -444,9 +579,10 @@ async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
         for change, raw_path in changes:
             if change is Change.deleted:
                 continue
-            frame = _classify_event(Path(raw_path))
-            if frame is not None:
-                outbox.put_nowait(frame)
+            changed = Path(raw_path)
+            for frame in (_classify_event(changed), _turn_announce(changed)):
+                if frame is not None:
+                    outbox.put_nowait(frame)
 
 
 async def _run_session(ws) -> None:
