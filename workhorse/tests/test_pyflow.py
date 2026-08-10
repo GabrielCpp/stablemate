@@ -636,6 +636,42 @@ def test_await_with_no_questions_preserves_a_pre_authored_gate():
         assert drive(Blocks(), _env(tmp, clock=AnsweringClock())).startswith("STATUS: ANSWERED")
 
 
+def test_await_ignores_a_save_that_left_the_gate_unanswered():
+    """A touch is not an answer.
+
+    The gate used to resume on the file's mtime, so an editor autosave — or an operator
+    saving half a reply and going to lunch — resumed the run on a gate still marked
+    AWAITING_OPERATOR. The status the file already carries is what the wait reads now.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "", self.resumed)
+
+            def resumed(self) -> Transition:
+                return Done(ask.read_text())
+
+        class HalfAnswers(FakeClock):
+            """Saves a draft first, then the real answer."""
+
+            def sleep(self, seconds: float) -> None:
+                body = "main" if self.slept else "thinking"
+                status = "ANSWERED" if self.slept else "AWAITING_OPERATOR"
+                ask.write_text(f"STATUS: {status}\n\n{body}\n")
+                stamp = ask.stat().st_mtime + 3600
+                os.utime(ask, (stamp, stamp))
+                super().sleep(seconds)
+
+        clock = HalfAnswers()
+        env = _env(tmp, clock=clock)
+        assert drive(Blocks(), env) == "STATUS: ANSWERED\n\nmain\n"
+        # The draft cost a second wait; under the mtime rule it would have cost one.
+        assert clock.slept == [env.config.await_poll_s] * 2, clock.slept
+
+
 # ---------------------------------------------------------------------- self.handoff
 
 

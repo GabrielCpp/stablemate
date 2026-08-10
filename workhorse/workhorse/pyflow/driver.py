@@ -23,6 +23,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from workhorse import gates, otel, reload
 from workhorse.artifacts import ArtifactWriter
+from workhorse.control import NULL_CHANNEL, ControlChannel, Request, wait_until
 from workhorse.pyflow import activity as activity_log
 from workhorse.pyflow.engine import Engine, RunEnv, jsonable
 from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
@@ -153,57 +154,88 @@ def _revive_ctx(wf: Workflow, raw: Any) -> Any:
         return raw
 
 
-def _mtime(path: Path) -> float | None:
+def answered(path: Path) -> bool:
+    """Whether the operator gate at `path` has actually been answered.
+
+    The gate file carries its own state — `gates.format_operator_gate` writes
+    `STATUS: AWAITING_OPERATOR`, groom's dashboard flips it to `ANSWERED`, and three
+    workflows already read it — so *that* is the edge, not the file's mtime. Waiting on
+    the mtime is what used to resume a run on an editor autosave, or on an operator
+    saving half a thought: the answer was not written yet, but the file was touched.
+
+    Anything other than an explicit `AWAITING_OPERATOR` counts as answered, including a
+    file with no header at all. An operator who replaces the whole file with their answer
+    has answered it, and `gates.status_of` deliberately reports "absent" rather than
+    guessing, leaving that call here.
+    """
     try:
-        return path.stat().st_mtime
+        text = path.read_text()
     except OSError:
-        return None
+        # Not there yet: an `Await` with no questions can name a file the operator has
+        # still to create, and a missing gate is unanswered rather than answered.
+        return False
+    return gates.status_of(text) != "AWAITING_OPERATOR"
 
 
-def poll_until_touched(
+def wait_for_answer(
     path: Path,
     *,
-    since: float | None,
     interval: float,
     clock: Clock = SYSTEM_CLOCK,
+    channel: ControlChannel = NULL_CHANNEL,
     log: logging.Logger | None = None,
     deadline: float | None = None,
-) -> None:
-    """Block until `path` is written to (or appears).
+) -> Request | None:
+    """Block until the gate at `path` is answered, or a control request arrives.
 
-    A `stat` loop, not inotify. inotify is Linux-only — a runner that cannot wait for a
-    human on macOS is not portable — and it was the single most fragile thing in the
-    library it replaces (raw kernel API over `ctypes`). At a latency budget measured in
+    Two arms, and both are load-bearing. The re-read is *authoritative*: the answer is a
+    file a human edits at leisure, possibly from a machine that can reach the run dir and
+    nothing else, so a run has to resume on it whether or not anyone sends a message.
+    The channel makes it *prompt*, and is what lets an operator reach a run that is
+    otherwise going to sit here for days.
+
+    A re-read rather than inotify, still: inotify is Linux-only — a runner that cannot
+    wait for a human on macOS is not portable — and against a latency budget measured in
     days the two are indistinguishable.
 
-    `interval` and `clock` are both arguments because this is a decision function that
-    waits: it used to sleep through a module-level `_sleep` a test reassigned and read
-    its own interval out of `os.environ`. Both are dependencies, and a test that
-    exercises a week-long wait should cost microseconds with nothing patched.
+    Returns the request that interrupted the wait, or None when the gate was answered.
     """
     log = log or logger
     waited = 0.0
     while True:
-        current = _mtime(path)
-        if current is not None and (since is None or current > since):
-            log.info("[workhorse] await  → %s changed; resuming", path)
-            return
+        if answered(path):
+            log.info("[workhorse] await  → %s answered; resuming", path)
+            return None
         if deadline is not None and clock.now().timestamp() > deadline:
             raise WorkflowFailed(
                 f"run exceeded its wall-clock budget while waiting on {path}"
             )
-        clock.sleep(interval)
+        request = wait_until(
+            lambda: answered(path),
+            timeout=interval,
+            clock=clock,
+            channel=channel,
+            tick=interval,
+        )
+        if request is not None:
+            return request
         waited += interval
         if waited % HEARTBEAT_S < interval:
-            log.info("[workhorse] await  → still waiting on %s (%ds)", path, int(waited))
+            # Names the condition, not just the file: an operator who edited the gate
+            # without flipping its status is the one case this wait will not end on its
+            # own, and this line is where they find that out.
+            log.info(
+                "[workhorse] await  → still waiting for STATUS: ANSWERED in %s (%ds)",
+                path,
+                int(waited),
+            )
 
 
-def _ask(path: Path, questions: str, log: logging.Logger) -> float | None:
-    """Write the ask, and return the baseline mtime the wait compares against."""
+def _ask(path: Path, questions: str, log: logging.Logger) -> None:
+    """Write the ask, so the operator has something to answer."""
     if questions:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(gates.format_operator_gate(questions))
-    return _mtime(path)
 
 
 def _resume_in_place(wf: Workflow, env: RunEnv) -> Resume | None:
@@ -354,7 +386,7 @@ def drive(
             return outcome.result
 
         if isinstance(outcome, Await):
-            baseline = _ask(outcome.path, outcome.questions, env.log)
+            _ask(outcome.path, outcome.questions, env.log)
             env.writer.write_state_checkpoint(
                 outcome.state,
                 jsonable(outcome.params),
@@ -365,9 +397,8 @@ def drive(
             )
             env.log.info("[workhorse] await  → blocked on %s", outcome.path)
             with otel.wait("operator", spec.name):
-                poll_until_touched(
+                wait_for_answer(
                     outcome.path,
-                    since=baseline,
                     interval=env.config.await_poll_s,
                     clock=env.clock,
                     log=env.log,
