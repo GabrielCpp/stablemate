@@ -48,11 +48,18 @@ from ostler import query as query_mod
 from ostler import registry, select, todo as todo_mod
 from ostler import waivers as waivers_mod
 from ostler.crud import Result
+from ostler.qa import (
+    QaOutcome,
+    build_context,
+    cmd_run,
+    cmd_validate,
+    validate_context,
+    write_context,
+)
 from ostler.model import Graph, load
 
 if TYPE_CHECKING:
     from ostler.edit import EditPlan
-    from ostler.qa import QaOutcome
 
 
 class Ostler:
@@ -442,7 +449,6 @@ class Ostler:
 
         ``exclude_paths`` drops repo-relative paths from the diff before it is mapped —
         for a ``head="WORKTREE"`` caller that knows some of the dirt is not its own."""
-        from ostler.qa import build_context, write_context
 
         packet = build_context(
             self.root, base=base, head=head, source_roots=source_roots or {},
@@ -455,7 +461,6 @@ class Ostler:
     def qa_context_validate(self, *, spec: str | Path) -> builtins.list[str]:
         """Validate ``qa-okf-context.json`` in ``spec``; returns problem strings, empty
         if valid (``ostler qa context-validate``)."""
-        from ostler.qa import validate_context
 
         context_file = self._resolve(spec) / "qa-okf-context.json"
         packet = json.loads(context_file.read_text(encoding="utf-8"))
@@ -463,7 +468,6 @@ class Ostler:
 
     def qa_validate(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
         """Validate a ``qa-plan.yml`` without executing it (``ostler qa validate``)."""
-        from ostler.qa import cmd_validate
 
         return cmd_validate(Path(plan_file),
                             self._resolve(spec) if spec else None, root=self.root)
@@ -471,7 +475,6 @@ class Ostler:
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
                stop_on_fail: bool = False) -> QaOutcome:
         """Execute a ``qa-plan.yml`` in batch mode (``ostler qa run``)."""
-        from ostler.qa import cmd_run
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
                        stop_on_fail=stop_on_fail, root=self.root)
