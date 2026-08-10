@@ -72,6 +72,27 @@ def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
     return exact, files
 
 
+def _is_grounded(ref: str, exact: set[str]) -> bool:
+    """Whether *ref* is grounded outright, or by a declaration that lexically encloses it.
+
+    A qualified symbol — `useTransientValue.timerRef`, `Outer.inner`, `Panel.render` — names
+    something *inside* a unit the book can document. Requiring a `code:` bullet per nested
+    name is a demand no book can meet, because the nested name has no documentable surface
+    of its own: the author would be writing a bullet for a local variable. Grounding the
+    owner is the honest claim, and it is a strictly stronger one — it says what the enclosing
+    unit now does, which is what a change to its body actually altered.
+
+    The walk is over the ancestors the qualified name already encodes, so it needs no view of
+    the syntax tree and no per-language rule. One consequence worth naming: Go spells a
+    value-receiver method `Owner.Method`, which is dotted without being nested, so grounding
+    the type will satisfy its methods. Pointer receivers (`(*Owner).Method`) do not roll up,
+    since no book ref is spelled `(*Owner)`.
+    """
+    path, _, symbol = ref.partition("::")
+    parts = symbol.split(".")
+    return any(f"{path}::{'.'.join(parts[:depth])}" in exact for depth in range(1, len(parts) + 1))
+
+
 def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
     """The changed production references the book does not directly own yet.
 
@@ -107,7 +128,9 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
             *(f"{head_path}::{symbol}" for symbol in head_symbols if head_path),
         }
         if base_symbols | head_symbols:
-            ungrounded.extend(sorted(required - exactly_grounded))
+            ungrounded.extend(
+                sorted(ref for ref in required if not _is_grounded(ref, exactly_grounded))
+            )
         elif candidates.isdisjoint(
             {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
         ):

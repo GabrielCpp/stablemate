@@ -567,6 +567,63 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     ], gate.failures
 
 
+def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
+    docs: Path,
+    logger: logging.Logger,
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """A nested symbol has no documentable surface of its own, so it cannot be owed alone.
+
+    A React component's every changed line falls inside some local `const`, so the mapper
+    charges the story for `Panel.status` and `Panel.el`. Demanding a `code:` bullet per name
+    is a demand no book can honestly meet — and a run met it the dishonest way, writing
+    bullets that documented local variables as production surface to get past this gate.
+
+    Grounding the owner is the stronger claim, not a weaker one: it says what `Panel` now
+    does, which is what a change inside its body actually altered.
+    """
+    panel = "web/app/components/panel.tsx"
+    write_json(
+        docs / SPEC_REL / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": panel,
+                    "basePath": panel,
+                    "headPath": panel,
+                    "baseSymbols": [],
+                    "headSymbols": ["Panel", "Panel.status", "Panel.el", "Badge.tone"],
+                }
+            ],
+            "directNodes": [
+                {
+                    "node": "docs/features/widget.md#panel",
+                    "reasons": [{"kind": "changed-code", "ref": f"{panel}::Panel"}],
+                }
+            ],
+        },
+    )
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=("docs/features/widget.md#panel",),
+    )
+
+    # `Badge` is a sibling the book never grounded, so the rollup reaches nothing for it:
+    # this closes what an owner covers, it does not forgive an owner that is missing.
+    assert gate.status == "invalid", gate
+    assert "1 changed production symbol(s)" in gate.notes, gate.notes
+    assert f"{panel}::Badge.tone" in gate.notes, gate.notes
+    assert "Panel.status" not in gate.notes, gate.notes
+    assert "Panel.el" not in gate.notes, gate.notes
+    assert gate.failures == [f"G:{panel}::Badge.tone"], gate.failures
+
+
 def test_a_deletion_needs_no_code_bullet(
     docs: Path,
     logger: logging.Logger,
