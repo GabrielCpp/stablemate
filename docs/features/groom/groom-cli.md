@@ -167,6 +167,43 @@ standard usage/error path.
     with status 0 when output succeeds.
   - Parser failures exit with status 2 before the command handler runs.
 
+### transcript
+- usage: `groom transcript {ls|show|harvest|backfill} [...]`
+- parent: [groom](#groom)
+- flags:
+  - `ls [--run RUN] [--node NODE] [--session SESSION] [--workflow WORKFLOW] [--limit N] [--json]`
+    - Lists archived turn records, ordered by the visit key `(run_id, generation,
+      seq)` rather than by timestamp, so a node's laps read in the order the run
+      took them across a checkpoint rewind. `--limit` defaults to 200.
+  - `show --session SESSION [--json]`
+    - Prints one record's directory, the files in it, and its `prompt.md`. The
+      transcript body is never printed: a record runs to tens of megabytes and the
+      path is what a pager or a replay needs.
+  - `harvest`
+    - Runs the copy pass immediately instead of waiting for the periodic tick.
+  - `backfill [--dry-run]`
+    - Archives turns whose transcript never reached the run dir but is still in the
+      agent CLI's own session store, joined on the session ids in each known run's
+      `sessions.jsonl`. `--dry-run` reports the same records and copies nothing.
+- args:
+  - none: every verb takes flags only; a missing verb is a parser error.
+- does:
+  - Reads and writes the archive beside `groom.db` — `$GROOM_DB`'s directory, or
+    the platform data dir — so pointing `$GROOM_DB` elsewhere moves the bodies with
+    the index.
+  - Harvest is idempotent on a content digest over the whole record, so a live run's
+    growing transcript is re-copied and an unchanged one costs a digest and no copy.
+  - Run dirs that look throwaway (`pytest-of-`, a `tempfile.mkdtemp` name under a
+    temp root) are excluded from the inventory and never archived, and a run dir
+    this host no longer has is skipped rather than reported as a failure.
+- code: groom/groom/cli.py::transcript_ls
+- detail: [the turn record](../../../groom/README.md#what-the-node-actually-said-groom-transcript)
+- errors:
+  - Unknown verbs, unknown flags and a missing `--session` on `show` are parser
+    errors; argparse writes usage text and exits with status 2.
+  - A record whose bodies were removed under the index reports its files as empty
+    rather than raising.
+
 ## Invocations
 
 ### groom-serve

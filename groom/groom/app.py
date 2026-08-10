@@ -38,6 +38,7 @@ from groom import (
     sidecar_hub,
     state,
     store,
+    turns,
 )
 from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
@@ -88,6 +89,10 @@ RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
 # DELETEs, wasteful to run every rules tick, so it rides its own slower clock; the
 # startup prune still happens once immediately. Default 1h.
 PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
+# How often turn records are copied out of visible run dirs into the durable archive.
+# Well under the prune interval: this one is racing a run dir's lifetime, not groom's
+# disk budget, and a record harvested late is a record that may not be there at all.
+HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
 # How often the run list is re-rendered and pushed to every connected dashboard.
 # The list shows clock-derived facts — "alive", "silent 4m", "in node 12m" — that are
 # computed against `now` at render time, so between renders they do not merely lag,
@@ -960,6 +965,7 @@ async def _rules_loop() -> None:
     Each tick is wrapped so one bad evaluation (or an unreachable notifier) never
     kills the loop — the STALL watch itself must not be able to stall."""
     last_prune = time.monotonic()
+    last_harvest = time.monotonic()
     while True:
         await asyncio.sleep(RULES_TICK_S)
         try:
@@ -968,8 +974,16 @@ async def _rules_loop() -> None:
             # Free finished/dead runs (and the native rows they back) so RUNS and
             # the per-tick rule walk don't grow unbounded across a week-long serve.
             state.evict_runs(alerts.stale_run_ids(now))
+            if time.monotonic() - last_harvest >= HARVEST_EVERY_S:
+                # On its own, faster clock than the prune: a run dir is where a turn
+                # record is written, not where it survives, and the window between the
+                # two is however long that dir outlives the run. Off the loop because it
+                # copies files.
+                await asyncio.to_thread(turns.harvest)
+                last_harvest = time.monotonic()
             if time.monotonic() - last_prune >= PRUNE_EVERY_S:
                 await asyncio.to_thread(store.prune)
+                await asyncio.to_thread(turns.prune)
                 last_prune = time.monotonic()
         except Exception:  # noqa: BLE001
             pass

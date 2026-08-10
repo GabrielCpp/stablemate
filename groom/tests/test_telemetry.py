@@ -684,7 +684,7 @@ def test_receivers_drop_test_run_telemetry_but_keep_real_runs():
             client.__exit__(None, None, None)
 
 
-def test_purge_test_runs_evicts_by_run_dir_across_all_three_tables():
+def test_purge_test_runs_evicts_by_run_dir_across_every_table():
     with _TelemetryEnv():
         suite = {"run_id": "suite-run", "workflow": "coder", "run_dir": "/tmp/pytest-of-me/t0/r"}
         real = {"run_id": "real-run", "workflow": "coder", "run_dir": "/home/me/repo/.agents/runs/x"}
@@ -700,15 +700,22 @@ def test_purge_test_runs_evicts_by_run_dir_across_all_three_tables():
                     _metrics_request("workhorse.run.heartbeat", run_id=resource["run_id"])
                 )
             )
+            # The archive index is keyed by run too, so a suite run's turn records
+            # must go with its telemetry rather than outliving it in the index.
+            store.insert_turns([{
+                "run_id": resource["run_id"], "node": "plan", "session_id": "s1",
+                "generation": 1, "seq": 1, "ts": 100.0, "path": "p", "sha256": "d",
+            }])
         assert store.test_run_ids() == {"suite-run"}
 
         preview = store.purge_test_runs(dry_run=True)
-        assert preview == {"runs": 1, "spans": 1, "metrics": 1, "logs": 1}
+        assert preview == {"runs": 1, "spans": 1, "metrics": 1, "logs": 1, "turns": 1}
         assert len(store.query_spans()) == 2  # dry run deleted nothing
 
         assert store.purge_test_runs() == preview
         assert [s["run_id"] for s in store.query_spans()] == ["real-run"]
         assert [r["run_id"] for r in store.query_logs()] == ["real-run"]
+        assert [t["run_id"] for t in store.query_turns()] == ["real-run"]
         assert store.test_run_ids() == set()
         # Nothing left to do: a second pass is a no-op, not an error.
         assert store.purge_test_runs()["runs"] == 0

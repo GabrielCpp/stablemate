@@ -436,6 +436,97 @@ def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
         print(f"vacuumed {store.db_path()}")
 
 
+def _format_turns(rows: list[dict]) -> str:
+    if not rows:
+        return (
+            "no archived turns match.\n"
+            "  Records are harvested from run dirs on groom's periodic tick; a run whose\n"
+            "  dir this host cannot see has none. `groom transcript harvest` runs it now,\n"
+            "  and `groom transcript backfill` pulls sessions the CLI still holds."
+        )
+    import datetime as _dt
+
+    lines = [f"{'when':<9} {'visit':<12} {'node':<28} {'src':<14} {'size':>9}  session"]
+    for row in rows:
+        stamp = _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S") if row["ts"] else "-"
+        visit = f"{row['generation']}-{row['seq']}"
+        size = f"{row['bytes'] / 1024:.0f}K" if row["bytes"] else "-"
+        lines.append(
+            f"{stamp:<9} {visit:<12} {row['node'][:28]:<28} {row['source'][:14]:<14}"
+            f" {size:>9}  {row['session_id']}"
+        )
+    return "\n".join(lines)
+
+
+def transcript_ls(
+    run: str = "", node: str = "", session: str = "", workflow: str = "",
+    limit: int = 200, as_json: bool = False,
+) -> None:
+    """List archived turn records, in the order the run took them.
+
+    Ordered by the visit key rather than by clock, so a node's laps read top to bottom
+    even across a checkpoint rewind — which is the shape anyone arriving from
+    ``groom loops`` is here to read.
+    """
+    import json as _json
+
+    from groom import store
+
+    rows = store.query_turns(run=run, node=node, session=session, workflow=workflow, limit=limit)
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    print(_format_turns(rows))
+
+
+def transcript_show(session: str, as_json: bool = False) -> None:
+    """Show one archived turn: where its bodies are, and the prompt that caused it.
+
+    The transcript is not printed. It is JSONL of up to tens of megabytes, and what a
+    reader wants from here is the path to point a pager or a replay at.
+    """
+    import json as _json
+
+    from groom import store, turns
+
+    rows = store.query_turns(session=session, limit=10)
+    if not rows:
+        print(f"no archived turn for session {session}.")
+        return
+    records = [turns.read_record(row) for row in rows]
+    if as_json:
+        print(_json.dumps(records, indent=2))
+        return
+    for record in records:
+        print(f"{record['node']}  visit {record['generation']}-{record['seq']}  {record['source']}")
+        print(f"  dir: {record['dir']}")
+        for name in record["files"]:
+            print(f"    {name}")
+        if record["prompt"]:
+            print("\n--- prompt.md ---")
+            print(record["prompt"])
+
+
+def transcript_harvest() -> None:
+    """Copy anything new out of the run dirs this host can see, now."""
+    from groom import turns
+
+    print(f"archived {turns.harvest()} turn record(s) into {turns.transcripts_root()}")
+
+
+def transcript_backfill(dry_run: bool = False) -> None:
+    """Archive turns whose transcript is still only in the agent CLI's own store."""
+    from groom import turns
+
+    planned = turns.backfill(dry_run=dry_run)
+    verb = "would archive" if dry_run else "archived"
+    print(f"{verb} {len(planned)} turn record(s) from the CLI session store")
+    for record in planned[:20]:
+        print(f"  {record['run_id']}  {record['node']}  {record['session_id']}")
+    if len(planned) > 20:
+        print(f"  … and {len(planned) - 20} more")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="groom", description="Local dashboard for workhorse operator gates.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -511,6 +602,41 @@ def main(argv: list[str] | None = None) -> None:
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
+    transcript_parser = subparsers.add_parser(
+        "transcript",
+        help="The archived turn records: what each node visit was told, said, and "
+        "was looking at. Where a lap distribution from `loops` is read next.",
+    )
+    transcript_verbs = transcript_parser.add_subparsers(dest="verb", required=True)
+
+    ts_ls = transcript_verbs.add_parser("ls", help="List archived turns for a run or node.")
+    ts_ls.add_argument("--run", default="", help="Limit to one run_id.")
+    ts_ls.add_argument("--node", default="", help="Limit to one node id.")
+    ts_ls.add_argument("--session", default="", help="Limit to one backend session id.")
+    ts_ls.add_argument("--workflow", default="", help="Limit to one workflow name.")
+    ts_ls.add_argument("--limit", type=int, default=200, help="Max records (default 200).")
+    ts_ls.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+
+    ts_show = transcript_verbs.add_parser(
+        "show", help="One turn: its files on disk and the prompt that produced it."
+    )
+    ts_show.add_argument("--session", required=True, help="The backend session id.")
+    ts_show.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+
+    transcript_verbs.add_parser(
+        "harvest", help="Copy new turn records out of visible run dirs now, without waiting "
+        "for the periodic tick."
+    )
+
+    ts_backfill = transcript_verbs.add_parser(
+        "backfill",
+        help="Archive turns whose transcript never reached the run dir but is still in "
+        "the agent CLI's own session store, joined on the run's session map.",
+    )
+    ts_backfill.add_argument(
+        "--dry-run", action="store_true", help="Report what would be archived, copy nothing."
+    )
+
     subparsers.add_parser("db-path", help="Print the telemetry SQLite path and exit.")
 
     purge_parser = subparsers.add_parser(
@@ -547,6 +673,18 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "profile":
         profile(run=args.run, as_json=args.as_json)
+    elif args.command == "transcript":
+        if args.verb == "ls":
+            transcript_ls(
+                run=args.run, node=args.node, session=args.session,
+                workflow=args.workflow, limit=args.limit, as_json=args.as_json,
+            )
+        elif args.verb == "show":
+            transcript_show(session=args.session, as_json=args.as_json)
+        elif args.verb == "harvest":
+            transcript_harvest()
+        elif args.verb == "backfill":
+            transcript_backfill(dry_run=args.dry_run)
     elif args.command == "db-path":
         from groom import store
 

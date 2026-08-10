@@ -329,6 +329,51 @@ groom loops --run RUN --json     # one run, machine-readable
 groom loops --min-items 10       # only nodes with enough items to have a shape
 ```
 
+### What the node actually said (`groom transcript`)
+
+`loops` says a node re-decided the same thing eleven times. It cannot say *why*,
+because the reasoning, the tool calls and the file the agent read and then ignored
+are none of them telemetry — they live in the agent CLI's own session store, on
+whichever host ran it, for as long as that CLI feels like keeping them.
+
+So groom keeps its own copy. Every turn record — the transcript, the `prompt.md`
+that provoked it, the `output.json` it answered with — is harvested off visible run
+dirs on a tick and archived beside `groom.db`, addressed by the visit key the run
+recorded in `sessions.jsonl`:
+
+```console
+$ groom transcript ls --run RUN --node plan-qa
+when      visit        node                         src              size  session
+14:02:11  1-37         plan-qa                      store           612K  9f2c…
+14:19:40  1-44         plan-qa                      store           701K  a13b…
+14:41:02  1-52         plan-qa                      tee             498K  c07e…
+```
+
+One row per lap, in the order the run took them — by the visit key rather than the
+clock, so the order survives a checkpoint rewind, which a wall clock read across two
+generations does not. `src` is where the copy came from and is never inferred: `store`
+is the CLI's own session directory (richer — it carries attachments and the subagent
+sidechains that never cross stdout), `tee` is the redacted stream capture used when
+that store is not on this host, `store-backfill` came from the CLI after the fact.
+
+```bash
+groom transcript show --session SESSION   # its files on disk, and the prompt that caused it
+groom transcript harvest                  # copy now, without waiting for the tick
+groom transcript backfill --dry-run       # what the CLI still holds that the archive doesn't
+```
+
+`show` prints paths rather than the transcript: a record runs to tens of megabytes,
+and what a reader wants from here is somewhere to point a pager or a replay.
+
+The archive rides its **own clock**. `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to
+`0`, meaning keep everything, because a transcript is wanted precisely when someone
+comes back to a run long after its spans aged out. `GROOM_HARVEST_EVERY_S` (default
+300) is how often the tick copies; it is well under the prune interval because it is
+racing a run dir's lifetime, not groom's disk budget. Harvest is idempotent on a
+content digest, so a live run's growing transcript is re-copied and a finished one is
+not, and scratch run dirs (`pytest-of-`, `tmpXXXXXX` under a temp root) are never
+archived.
+
 ### What occupied the wall clock (`groom profile`)
 
 For one retained run, partition observed wall time and group agent work by the
@@ -357,8 +402,17 @@ collapsed together.
 
 ### The schema, and one footgun
 
-Three tables — `spans`, `metrics`, `logs` — plus `attrs_json` on each, holding
-whatever OpenTelemetry attributes the producer set.
+Four tables — `spans`, `metrics`, `logs` and `turns` — the first three with an
+`attrs_json` holding whatever OpenTelemetry attributes the producer set. `turns`
+carries no bodies: it is the index over the archive above, keyed by
+`(run_id, generation, seq, session_id)`.
+
+Repo state is recorded as **observation, not assertion**. A span carries
+`head_start` and `head_end`, a log record carries the `head` current when it was
+emitted, and a `turns` row carries the head the turn recorded. The engine says
+nothing about why the pair on a span is unequal — that is the record that
+something moved `HEAD` inside it, and reading the reason is the consumer's job.
+NULL means nothing observed a tree, which is not the same as an unknown hash.
 
 **OTel attribute keys are flat strings that merely look nested.** `set_attribute`
 is called with `usage.output_tokens`, and that reaches `attrs_json` as a literal
@@ -374,7 +428,8 @@ returns NULL silently. **Quote every dotted key.**
 
 The fields most queries want dodge this entirely by being real columns on
 `spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
-`cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`.
+`cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`,
+`head_start`, `head_end`.
 
 `resume_generation` counts how many times a run directory has been started. A
 resume reuses the `run_id` and opens a fresh root span, so it is what tells a gap

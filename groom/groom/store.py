@@ -84,7 +84,9 @@ CREATE TABLE IF NOT EXISTS spans (
     cache_read_tokens INTEGER,
     cache_creation_tokens INTEGER,
     pid INTEGER,
-    resume_generation INTEGER
+    resume_generation INTEGER,
+    head_start TEXT,
+    head_end TEXT
 );
 CREATE INDEX IF NOT EXISTS spans_run ON spans(run_id, start_ts);
 CREATE INDEX IF NOT EXISTS spans_node ON spans(node);
@@ -107,11 +109,31 @@ CREATE TABLE IF NOT EXISTS logs (
     body     TEXT NOT NULL DEFAULT '',
     ts       REAL NOT NULL,
     trace_id TEXT NOT NULL DEFAULT '',
-    attrs_json TEXT NOT NULL DEFAULT '{}'
+    attrs_json TEXT NOT NULL DEFAULT '{}',
+    head     TEXT
 );
 CREATE INDEX IF NOT EXISTS logs_run ON logs(run_id, ts);
 CREATE INDEX IF NOT EXISTS logs_node ON logs(run_id, node, ts);
 CREATE INDEX IF NOT EXISTS logs_severity ON logs(severity);
+CREATE TABLE IF NOT EXISTS turns (
+    run_id     TEXT NOT NULL DEFAULT '',
+    workflow   TEXT NOT NULL DEFAULT '',
+    flow       TEXT NOT NULL DEFAULT '',
+    node       TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    generation INTEGER,
+    seq        INTEGER,
+    ts         REAL NOT NULL DEFAULT 0,
+    backend    TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL DEFAULT '',
+    path       TEXT NOT NULL DEFAULT '',
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    sha256     TEXT NOT NULL DEFAULT '',
+    head       TEXT,
+    PRIMARY KEY (run_id, generation, seq, session_id)
+);
+CREATE INDEX IF NOT EXISTS turns_visit ON turns(run_id, node, generation, seq);
+CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id);
 """
 
 _conn: sqlite3.Connection | None = None
@@ -139,7 +161,15 @@ _ADDED_SPAN_COLUMNS = (
     ("cache_creation_tokens", "INTEGER"),
     ("pid", "INTEGER"),
     ("resume_generation", "INTEGER"),
+    ("head_start", "TEXT"),
+    ("head_end", "TEXT"),
 )
+
+#: The same, for `logs`. A log record carries the head observed when it was *emitted*
+#: rather than one for the whole run, because a workflow — or the agent inside a turn —
+#: may move HEAD at any point, and a run-level value would be wrong for most of the
+#: records. NULL means nothing observed a tree, which is not the same as an unknown hash.
+_ADDED_LOG_COLUMNS = (("head", "TEXT"),)
 
 # OTel attribute key -> the `spans` column it is promoted to. OTel's attribute model
 # is a flat dict whose keys merely *look* dotted, so `usage.output_tokens` is stored
@@ -156,6 +186,11 @@ _PROMOTED_SPAN_COLUMNS = (
     ("usage.output_tokens", "output_tokens", int),
     ("usage.cache_read_input_tokens", "cache_read_tokens", int),
     ("usage.cache_creation_input_tokens", "cache_creation_tokens", int),
+    # Observations, not assertions: the pair being unequal is the record that something
+    # moved HEAD inside the span, and the store says nothing about why. A span over a
+    # tree nobody looked at carries neither.
+    ("git.head.start", "head_start", str),
+    ("git.head.end", "head_end", str),
 )
 
 #: Promoted from the decoded span record rather than from its OTel attributes — these
@@ -189,10 +224,11 @@ def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    existing = {row["name"] for row in conn.execute("PRAGMA table_info(spans)")}
-    for column, decl in _ADDED_SPAN_COLUMNS:
-        if column not in existing:
-            conn.execute(f"ALTER TABLE spans ADD COLUMN {column} {decl}")  # noqa: S608
+    for table, added in (("spans", _ADDED_SPAN_COLUMNS), ("logs", _ADDED_LOG_COLUMNS)):
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for column, decl in added:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")  # noqa: S608
     conn.commit()
 
 
@@ -274,6 +310,13 @@ def insert_metrics(points: list[dict[str, Any]]) -> None:
     conn.commit()
 
 
+def _log_head(attrs: dict[str, Any]) -> str | None:
+    """The commit this record was emitted on, or NULL for a record nobody observed one
+    for. Kept out of the promoted-column machinery above because that one reads spans."""
+    raw = attrs.get("head")
+    return raw if isinstance(raw, str) and raw else None
+
+
 def insert_logs(records: list[dict[str, Any]]) -> None:
     """Append decoded log records (see groom.otlp.parse_logs).
 
@@ -286,13 +329,14 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
     conn = _connection()
     conn.executemany(
         "INSERT INTO logs (run_id, workflow, run_dir, node, logger, severity, body,"
-        " ts, trace_id, attrs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " ts, trace_id, attrs_json, head) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 r.get("run_id", ""), r.get("workflow", ""), r.get("run_dir", ""),
                 r.get("node", ""), r.get("logger", ""), r.get("severity", "INFO"),
                 r.get("body", ""), r.get("ts", 0.0), r.get("trace_id", ""),
                 json.dumps(r.get("attrs") or {}),
+                _log_head(r.get("attrs") or {}),
             )
             for r in records
         ],
@@ -1145,11 +1189,11 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     """
     conn = _connection()
     run_ids = sorted(test_run_ids())
-    counts = {"runs": len(run_ids), "spans": 0, "metrics": 0, "logs": 0}
+    counts = {"runs": len(run_ids), "spans": 0, "metrics": 0, "logs": 0, "turns": 0}
     for start in range(0, len(run_ids), _PURGE_CHUNK):
         chunk = run_ids[start : start + _PURGE_CHUNK]
         marks = ",".join("?" * len(chunk))
-        for table in ("spans", "metrics", "logs"):
+        for table in ("spans", "metrics", "logs", "turns"):
             verb = "SELECT COUNT(*) AS n FROM" if dry_run else "DELETE FROM"
             cursor = conn.execute(f"{verb} {table} WHERE run_id IN ({marks})", chunk)  # noqa: S608 - literal table name, bound values
             counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
@@ -1159,6 +1203,104 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     if vacuum and counts["runs"]:
         conn.execute("VACUUM")
     return counts
+
+
+def insert_turns(rows: list[dict[str, Any]]) -> int:
+    """Index archived turn records; how many rows the index gained or replaced.
+
+    INSERT OR REPLACE on the visit key plus the session, so re-harvesting a run — which
+    happens on every tick while it is live — updates the row of a transcript that has
+    grown rather than duplicating it. No transcript text goes in here: the bodies live
+    under :func:`groom.turns.transcripts_root` and this table is how they are found.
+    """
+    if not rows:
+        return 0
+    conn = _connection()
+    conn.executemany(
+        "INSERT OR REPLACE INTO turns (run_id, workflow, flow, node, session_id,"
+        " generation, seq, ts, backend, source, path, bytes, sha256, head)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                r.get("run_id", ""), r.get("workflow", ""), r.get("flow", ""),
+                r.get("node", ""), r.get("session_id", ""), r.get("generation"),
+                r.get("seq"), float(r.get("ts") or 0.0), r.get("backend", ""),
+                r.get("source", ""), r.get("path", ""), int(r.get("bytes") or 0),
+                r.get("sha256", ""), r.get("head") or None,
+            )
+            for r in rows
+        ],
+    )
+    conn.commit()
+    return len(rows)
+
+
+def query_turns(
+    run: str = "",
+    node: str = "",
+    session: str = "",
+    workflow: str = "",
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Archived turns, newest visit last — a node's laps read top to bottom.
+
+    Ordered by the visit key rather than by ``ts``, because that is the order the run
+    actually took them in and it survives a checkpoint rewind, which a wall clock read
+    across two generations does not.
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    for column, value in (
+        ("run_id", run), ("node", node), ("session_id", session), ("workflow", workflow)
+    ):
+        if value:
+            clauses.append(f"{column} = ?")
+            params.append(value)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(max(1, limit))
+    rows = _connection().execute(
+        "SELECT run_id, workflow, flow, node, session_id, generation, seq, ts, backend,"
+        f" source, path, bytes, sha256, head FROM turns {where}"  # noqa: S608 - bound values
+        " ORDER BY run_id, generation, seq LIMIT ?",
+        params,
+    )
+    return [dict(row) for row in rows]
+
+
+def run_directories() -> list[dict[str, Any]]:
+    """Every run telemetry has seen a directory for: run_id, run_dir, workflow.
+
+    The run inventory the archive harvests from. Distinct rather than grouped, because a
+    run that moved between directories is two rows here and both may hold records.
+    """
+    return [
+        dict(row)
+        for row in _connection().execute(
+            "SELECT DISTINCT run_id, run_dir, workflow FROM spans"
+            " WHERE run_dir != '' AND run_id != ''"
+        )
+    ]
+
+
+def turns_before(cutoff: float) -> list[dict[str, Any]]:
+    """Index rows for archived turns older than ``cutoff``. ``ts`` of 0 means the turn
+    never recorded one, and an unstamped record is never aged out on a guess."""
+    return [
+        dict(row)
+        for row in _connection().execute(
+            "SELECT run_id, workflow, node, session_id, generation, seq, ts, path"
+            " FROM turns WHERE ts > 0 AND ts < ?",
+            (cutoff,),
+        )
+    ]
+
+
+def delete_turns(cutoff: float) -> int:
+    """Drop the index rows :func:`turns_before` returned; rows removed."""
+    conn = _connection()
+    removed = conn.execute("DELETE FROM turns WHERE ts > 0 AND ts < ?", (cutoff,)).rowcount
+    conn.commit()
+    return removed
 
 
 def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:
@@ -1171,6 +1313,12 @@ def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> i
     one again (``GROOM_LIVENESS_RETENTION_DAYS``, see ``_LIVENESS_METRICS``), for
     the same reason one step further: they are the highest-volume *metric* and the
     only one nothing reads the history of.
+
+    ``turns`` is deliberately untouched. It indexes an archive on disk rather than
+    telemetry, and the two are kept on different clocks on purpose: a transcript is
+    wanted precisely when someone comes back to a run long after its spans have aged
+    out. Its own knob is ``GROOM_TRANSCRIPT_RETENTION_DAYS`` (see :mod:`groom.turns`),
+    and it defaults to keeping everything.
     """
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
