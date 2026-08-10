@@ -253,6 +253,86 @@ def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
     print(_format_costs(rows))
 
 
+def _format_loops(rows: list[dict]) -> str:
+    if not rows:
+        return (
+            "no looping nodes found.\n"
+            "  A lap distribution needs agent_turn spans carrying a work_id label, and\n"
+            "  at least a few work items per node before its shape means anything."
+        )
+    header = (
+        f"{'node':<28}{'items':>6}{'turns':>6}{'exit':>7}{'mean':>6}"
+        f"{'max':>5}{'at-max':>7}{'>=3':>6}{'excess$':>9}{'verdict':>11}"
+    )
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        excess = row["excess_cost_usd"]
+        lines.append(
+            f"{row['node'][:27]:<28}{row['work_items']:>6}{row['turns']:>6}"
+            f"{row['exit_rate'] * 100:>6.0f}%{row['mean_laps']:>6.2f}"
+            f"{row['max_laps']:>5}{row['at_max']:>7}"
+            f"{row['share_ge3'] * 100:>5.0f}%"
+            f"{(f'{excess:.2f}' if excess is not None else '-'):>9}"
+            f"{row['verdict']:>11}"
+        )
+    total = sum(row["excess_cost_usd"] or 0.0 for row in rows)
+    excess_turns = sum(row["excess_turns"] for row in rows)
+    lines.append("-" * len(header))
+    lines.append(f"{'excess (laps after the first)':<40}{excess_turns:>6} turns  ${total:.2f}")
+    lines.append("")
+    priced = sum(row["priced_turns"] for row in rows)
+    zeroed = sum(row["zero_cost_turns"] for row in rows)
+    turns = sum(row["turns"] for row in rows)
+    if priced < turns or zeroed:
+        # Without this the ranking lies by omission: a run under subscription auth
+        # prices nothing (or prices a literal 0), so its worst loop sorts to the
+        # bottom at $0.00 excess and reads as the cheap one.
+        unpriced = (turns - priced) + zeroed
+        lines.append(
+            f"note: {unpriced} of {turns} turns reported no usable cost"
+            f" ({turns - priced} none, {zeroed} a literal 0 while"
+        )
+        lines.append(
+            "      spending tokens), so excess$ and the ordering under-count them."
+            " Rank those"
+        )
+        lines.append("      nodes by excess turns, not by money.")
+        lines.append("")
+    lines.append(
+        "exit = how often this gate accepts, per lap. at-max counts the work items that"
+    )
+    lines.append(
+        "reached the longest run observed — a pile there is worth checking against the"
+    )
+    lines.append("node's MAX_* budget, since a censored loop stacks up at exactly the cap.")
+    return "\n".join(lines)
+
+
+def loops(
+    run: str = "", workflow: str = "", min_items: int = 3, as_json: bool = False
+) -> None:
+    """Print per-node lap distributions — which review→rework loops converge.
+
+    ``cost`` says which nodes are expensive; this says which are expensive *because
+    they repeat*. The unit is the lap count per work item, and ``excess$`` is the
+    money spent on every lap after the first — the part of the bill that exists only
+    because a gate kept saying no.
+
+    With no ``--run`` it reports across every run in the store, which is the useful
+    default: one run's loop is an anecdote, and the same node over twenty runs is a
+    property of the prompt.
+    """
+    import json as _json
+
+    from groom import store
+
+    rows = store.loop_convergence(run=run, workflow=workflow, min_work_items=min_items)
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    print(_format_loops(rows))
+
+
 def _format_profile(result: dict | None) -> str:
     if result is None:
         return "no telemetry found for that run."
@@ -407,6 +487,21 @@ def main(argv: list[str] | None = None) -> None:
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
+    loops_parser = subparsers.add_parser(
+        "loops",
+        help="Per-node lap distributions: which review→rework loops converge, and what "
+        "the laps after the first are costing. Defaults to every run in the store.",
+    )
+    loops_parser.add_argument("--run", default="", help="Limit to one run_id.")
+    loops_parser.add_argument("--workflow", default="", help="Limit to one workflow name.")
+    loops_parser.add_argument(
+        "--min-items", type=int, default=3, dest="min_items",
+        help="Skip nodes with fewer work items than this (default 3).",
+    )
+    loops_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable output."
+    )
+
     profile_parser = subparsers.add_parser(
         "profile",
         help="Partition one run's wall time and separate workflow visits from backend retries.",
@@ -445,6 +540,11 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "cost":
         cost(run=args.run, limit=args.limit, as_json=args.as_json)
+    elif args.command == "loops":
+        loops(
+            run=args.run, workflow=args.workflow,
+            min_items=args.min_items, as_json=args.as_json,
+        )
     elif args.command == "profile":
         profile(run=args.run, as_json=args.as_json)
     elif args.command == "db-path":

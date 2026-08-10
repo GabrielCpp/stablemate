@@ -278,6 +278,57 @@ Duration is comparable across harnesses but not identical: when the CLI reports 
 turn duration that value is used, and when it does not (codex reports none) the
 engine's own wall clock is stamped instead, which includes process spawn.
 
+### Which loops converge (`groom loops`)
+
+`cost` says which nodes are expensive. `loops` says which are expensive *because
+they repeat*, and what the repetition costs:
+
+```console
+$ groom loops --workflow coder
+node                         items turns   exit  mean  max at-max   >=3  excess$    verdict
+-------------------------------------------------------------------------------------------
+plan-qa                         43   237    18%  5.51   13      1   84%   221.48  thrashing
+document-story                  55   249    22%  4.53   10      3   75%   137.20  thrashing
+implement-plan                  52    75    69%  1.44    4      1    8%    35.97      loose
+```
+
+The unit is the **lap count per work item** — one row of `cost`'s `/work` column
+unpacked into its distribution, because the mean cannot separate *every* story
+taking four passes from most taking one and a handful taking twenty, and those
+want opposite fixes.
+
+`exit` is the headline: `work_items / turns`, the share of laps that are the last
+one for their work item. It is the maximum-likelihood per-lap acceptance
+probability of a memoryless loop, which is what a review gate is — it re-reads a
+rewritten artifact with no memory of how often it has already objected. Read it as
+**how often this gate says yes**. Verdicts are labels on it (`converged` ≥ 80%,
+`loose` ≥ 50%, `churning` ≥ 30%, `thrashing` below), and the number to act on is
+`excess$`: the money spent on every lap after the first, priced per turn rather
+than pro-rated so a loop with cheap rework turns is not overcharged.
+
+`at-max` carries no verdict on purpose. A loop bounded by a `MAX_*` budget is
+censored — work items that would have run longer stop at exactly the cap — so a
+pile there is *suggestive* of a budget being exhausted rather than a gate being
+satisfied. Only suggestive: a naturally long tail lands in the same place, and
+this module cannot see the workflow's constants. The number is there so whoever
+sees a big one goes and reads the `MAX_*`.
+
+Work items are keyed by `(run_id, work_id)`. Story slugs repeat across runs, so
+keying on the slug alone would merge one story's single pass in three runs into a
+three-lap item and report a converging loop as a thrashing one. With no `--run`
+the report spans every retained run, which is the useful default: one run's loop
+is an anecdote, the same node over twenty is a property of the prompt.
+
+The cost caveats from `groom cost` apply here too, and bite harder because this
+report *sorts* by money — a node that churned hundreds of laps under subscription
+auth reports `$0.00` of excess. Both unpriced counts are tracked (`priced_turns`,
+`zero_cost_turns`), excess turns break the tie, and the CLI says so in a note.
+
+```bash
+groom loops --run RUN --json     # one run, machine-readable
+groom loops --min-items 10       # only nodes with enough items to have a shape
+```
+
 ### What occupied the wall clock (`groom profile`)
 
 For one retained run, partition observed wall time and group agent work by the

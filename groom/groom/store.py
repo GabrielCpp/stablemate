@@ -438,6 +438,129 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     ]
 
 
+#: Exit-rate thresholds for :func:`loop_convergence`. A gate that accepts four times
+#: in five is doing its job; one that accepts one time in five is not a gate, it is a
+#: budget being spent. The boundaries are round numbers chosen to be legible, not
+#: fitted — the number to act on is `excess_cost_usd`, and the verdict only sorts.
+_LOOP_VERDICTS = ((0.8, "converged"), (0.5, "loose"), (0.3, "churning"), (0.0, "thrashing"))
+
+#: Below this many work items a lap distribution says nothing: one story that took
+#: four passes is an anecdote, and calling it "thrashing" would put noise at the top
+#: of a report whose whole purpose is ranking.
+MIN_LOOP_WORK_ITEMS = 3
+
+
+def loop_convergence(
+    run: str = "", workflow: str = "", min_work_items: int = MIN_LOOP_WORK_ITEMS
+) -> list[dict[str, Any]]:
+    """Per-node lap distributions: which review→rework loops converge, and what the
+    ones that don't are costing.
+
+    `node_costs` reports `turns_per_work_id`, which is this function's `mean_laps`.
+    The mean alone cannot separate the two ways a node averages four turns — *every*
+    work item taking four passes, versus most taking one and a handful taking twenty —
+    and those want opposite fixes. So the unit here is the **lap count per work item**,
+    and what is reported is its shape.
+
+    The headline is `exit_rate` = `work_items / turns`: the probability that any given
+    lap is the last one for that work item. It is the maximum-likelihood estimate of
+    the per-lap acceptance probability of a memoryless loop, which is what a review
+    gate is — it re-reads a rewritten artifact with no memory of how many times it has
+    already objected. Read it as *how often this gate says yes*. A gate at 0.8 accepts
+    four times in five; a gate at 0.2 asks five times before it is satisfied, and the
+    four refusals are the churn.
+
+    `excess_turns` and `excess_cost_usd` are the laps after the first, and their money
+    — the part of the bill that exists only because the loop did not converge. That is
+    the number to rank by; the verdict is a label on it. Cost is attributed per turn
+    rather than pro-rated, so a loop whose repeat laps are cheaper than its first (a
+    rework prompt is usually shorter than the original) is not overcharged.
+
+    `max_laps` and `at_max` are reported without a verdict attached, deliberately. A
+    loop bounded by a `MAX_*` budget is censored — every work item that would have run
+    longer stops at exactly the cap — so a pile at the maximum is *suggestive* of a
+    budget being exhausted rather than a gate being satisfied. It is only suggestive:
+    this module cannot see the workflow's constants, and a naturally long tail lands in
+    the same place. Whoever reads a big `at_max` should go look at the `MAX_*` for that
+    loop, which is why the number is here at all.
+
+    Work items are keyed by `(run_id, work_id)`. Story slugs repeat across runs — every
+    coder run has an `01-*` — so keying on the slug alone would silently merge one
+    story's laps in three runs into a single nine-lap item and report a converging loop
+    as a thrashing one.
+
+    Two counts keep the ranking honest, because a harness can decline to price a turn
+    two ways and only one of them leaves a hole (`node_costs` documents this at length).
+    `priced_turns` is the turns reporting any cost; `zero_cost_turns` is the turns
+    reporting exactly `0` *while emitting output tokens*, which sum happily and make a
+    thrashing node read as free. Under subscription auth a node can churn hundreds of
+    laps for a reported $0, so ordering by `excess_cost_usd` alone would sort the worst
+    loop in such a run to the bottom. `excess_turns` breaks the tie, and the CLI says
+    out loud when the money is only partly observed.
+
+    Nodes with fewer than `min_work_items` items are dropped: see
+    :data:`MIN_LOOP_WORK_ITEMS`.
+    """
+    clauses = ["name = 'agent_turn'", "json_extract(attrs_json, '$.work_id') IS NOT NULL"]
+    params: list[Any] = []
+    if run:
+        clauses.append("run_id = ?")
+        params.append(run)
+    if workflow:
+        clauses.append("workflow = ?")
+        params.append(workflow)
+    rows = _connection().execute(
+        "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
+        " json_extract(attrs_json, '$.work_id') AS work_id,"
+        f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
+        " start_ts"
+        f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts",
+        params,
+    ).fetchall()
+
+    # node -> (run_id, work_id) -> [(cost, suspect_zero) of each lap, in order]
+    laps: dict[str, dict[tuple[str, str], list[tuple[float | None, bool]]]] = {}
+    for row in rows:
+        item = (row["run_id"], str(row["work_id"]))
+        lap = (row["cost_usd"], bool(row["suspect_zero"]))
+        laps.setdefault(row["node"], {}).setdefault(item, []).append(lap)
+
+    report = [_loop_row(node, items) for node, items in laps.items()]
+    report = [row for row in report if row["work_items"] >= min_work_items]
+    report.sort(key=lambda row: (-(row["excess_cost_usd"] or 0.0), -row["excess_turns"]))
+    return report
+
+
+def _loop_row(
+    node: str, items: dict[tuple[str, str], list[tuple[float | None, bool]]]
+) -> dict[str, Any]:
+    counts = sorted(len(laps) for laps in items.values())
+    turns, work_items = sum(counts), len(counts)
+    exit_rate = work_items / turns
+    peak = counts[-1]
+    every = [lap for laps in items.values() for lap in laps]
+    priced = [cost for cost, _ in every if cost is not None]
+    # The laps after the first, by their own cost — not the total pro-rated.
+    excess = [cost for laps in items.values() for cost, _ in laps[1:] if cost is not None]
+    return {
+        "node": node,
+        "work_items": work_items,
+        "turns": turns,
+        "priced_turns": len(priced),
+        "zero_cost_turns": sum(1 for _, suspect in every if suspect),
+        "excess_turns": turns - work_items,
+        "exit_rate": exit_rate,
+        "mean_laps": turns / work_items,
+        "median_laps": counts[work_items // 2],
+        "max_laps": peak,
+        "at_max": sum(1 for count in counts if count == peak),
+        "share_ge3": sum(1 for count in counts if count >= 3) / work_items,
+        "cost_usd": sum(priced) if priced else None,
+        "excess_cost_usd": sum(excess) if excess else None,
+        "verdict": next(name for floor, name in _LOOP_VERDICTS if exit_rate >= floor),
+    }
+
+
 _VERDICT_SUFFIXES = ("_verdict", "_disposition", "_failure_class", "_refutation_class")
 
 

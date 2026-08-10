@@ -327,9 +327,11 @@ def test_promoted_columns_are_added_to_a_database_that_predates_them():
         assert rows["old"]["output_tokens"] is None
 
 
-def _turn(node: str, work_id: str, cost: float, span_id: str) -> dict:
+def _turn(
+    node: str, work_id: str, cost: float, span_id: str, start: float = 1000.0
+) -> dict:
     return {
-        "name": "agent_turn", "node": node, "span_id": span_id,
+        "name": "agent_turn", "node": node, "span_id": span_id, "start": start,
         "labels": {"work_id": work_id},
         "numbers": {"total_cost_usd": cost, "duration_ms": 60000},
     }
@@ -367,6 +369,115 @@ def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
         # Share is of total agent spend, so the two nodes account for all of it.
         assert rows["plan-qa"]["share"] == 0.75
         assert rows["implement-plan"]["share"] == 0.25
+
+
+def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
+    """The mean cannot tell "every story took two passes" from "one story took five",
+    and those want different fixes. So the row carries the distribution, and the
+    headline is the exit rate — how often the gate accepts."""
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        # A gate that says no more often than yes: 6 turns, 3 stories.
+                        _turn("plan-qa", "story-a", 1.0, "11" * 8, start=1000.0),
+                        _turn("plan-qa", "story-a", 2.0, "12" * 8, start=1010.0),
+                        _turn("plan-qa", "story-a", 4.0, "13" * 8, start=1020.0),
+                        _turn("plan-qa", "story-b", 1.0, "14" * 8, start=1030.0),
+                        _turn("plan-qa", "story-b", 8.0, "15" * 8, start=1040.0),
+                        _turn("plan-qa", "story-c", 1.0, "16" * 8, start=1050.0),
+                        # A node that ran once per story: nothing to fix here.
+                        _turn("implement-plan", "story-a", 5.0, "17" * 8),
+                        _turn("implement-plan", "story-b", 5.0, "18" * 8),
+                        _turn("implement-plan", "story-c", 5.0, "19" * 8),
+                        # A turn with no work_id cannot be attributed to a lap, and a
+                        # node span is not a turn. Neither may enter the counts.
+                        {"name": "agent_turn", "node": "plan-qa", "span_id": "1a" * 8},
+                        {"name": "qa", "node": "qa", "span_id": "1b" * 8},
+                    ]
+                )
+            )
+        )
+        rows = {row["node"]: row for row in store.loop_convergence()}
+        assert set(rows) == {"plan-qa", "implement-plan"}
+
+        churning = rows["plan-qa"]
+        assert (churning["work_items"], churning["turns"]) == (3, 6)
+        assert churning["exit_rate"] == 0.5
+        assert churning["mean_laps"] == 2.0
+        assert (churning["median_laps"], churning["max_laps"]) == (2, 3)
+        assert churning["at_max"] == 1
+        assert churning["share_ge3"] == 1 / 3
+        # Excess is the laps after the first, priced individually — 2+4 for story-a and
+        # 8 for story-b. Pro-rating the total instead would misprice a loop whose
+        # rework turns cost more than its first.
+        assert churning["cost_usd"] == 17.0
+        assert churning["excess_cost_usd"] == 14.0
+        assert churning["excess_turns"] == 3
+        assert churning["verdict"] == "loose"
+
+        converged = rows["implement-plan"]
+        assert converged["exit_rate"] == 1.0
+        assert converged["excess_turns"] == 0
+        assert converged["excess_cost_usd"] is None
+        assert converged["verdict"] == "converged"
+
+        # Ranked by what the churn costs, which is the number to act on.
+        assert [row["node"] for row in store.loop_convergence()] == [
+            "plan-qa", "implement-plan"
+        ]
+
+
+def test_loop_convergence_counts_the_turns_whose_cost_cannot_be_trusted():
+    """A thrashing node under subscription auth reports $0 of excess and would sort to
+    the bottom of a money-ranked report. Both ways a turn goes unpriced are counted, so
+    the reader is told to rank that node by laps instead."""
+    with _TelemetryEnv():
+        free = {
+            "name": "agent_turn", "node": "audit-story", "span_id": "31" * 8,
+            "labels": {"work_id": "story-a"},
+            "numbers": {"total_cost_usd": 0.0, "usage.output_tokens": 900},
+        }
+        silent = {
+            "name": "agent_turn", "node": "audit-story", "span_id": "32" * 8,
+            "labels": {"work_id": "story-b"}, "numbers": {"usage.output_tokens": 900},
+        }
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request([free, silent, _turn("audit-story", "story-c", 3.0, "33" * 8)])
+            )
+        )
+        row = store.loop_convergence()[0]
+        # A literal 0 sums, so it is "priced" — and that is exactly why it needs its own
+        # count. Only the NULL leaves a visible hole.
+        assert (row["turns"], row["priced_turns"]) == (3, 2)
+        assert row["zero_cost_turns"] == 1
+
+
+def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():
+    """Every coder run has a `story-a`. Keying laps on the slug alone would merge one
+    story's single pass in three runs into a single three-lap item, and report a loop
+    that converges everywhere as one that never does."""
+    with _TelemetryEnv():
+        for index, run_id in enumerate(("run-a", "run-b", "run-c")):
+            store.insert_spans(
+                otlp.parse_traces(
+                    _trace_request(
+                        [_turn("plan-qa", "story-a", 1.0, f"2{index}" * 8)],
+                        resource={"run_id": run_id, "workflow": "coder"},
+                    )
+                )
+            )
+        rows = {row["node"]: row for row in store.loop_convergence(min_work_items=3)}
+        assert rows["plan-qa"]["work_items"] == 3
+        assert rows["plan-qa"]["exit_rate"] == 1.0
+
+        # And the filters narrow to one run / one workflow, where three items become one
+        # — below the floor, so the node drops out rather than being judged on it.
+        assert store.loop_convergence(run="run-a", min_work_items=3) == []
+        assert store.loop_convergence(workflow="author", min_work_items=1) == []
+        assert len(store.loop_convergence(run="run-a", min_work_items=1)) == 1
 
 
 def test_node_costs_reports_how_many_turns_actually_priced_themselves():
