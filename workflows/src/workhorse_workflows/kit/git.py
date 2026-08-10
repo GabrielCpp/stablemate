@@ -10,6 +10,14 @@ Each helper opens the repo lazily and returns a plain value / bool so callers st
 fail-soft: a bad repo or failed command yields ``None``/``False``/``-1`` rather than
 raising into an unattended run.
 
+The two commit helpers are the deliberate exception. Their ``False`` means *the tree
+had nothing to commit*, and callers act on it — the coder's zero-diff guard reads three
+of them in a row as "the loop is not making progress" and stops the run. Laundering a
+git refusal (a stale ``index.lock``, a rejecting hook, a failed signature) into that same
+``False`` tells the caller the opposite of what happened: work was done, git would not
+record it, and the run is killed for idleness with the real error never printed. So they
+raise ``GitCommandError`` when git refuses, and reserve ``False`` for the empty tree.
+
 GitPython is imported at **module scope**. It used to be imported inside every
 function because importing it runs a ``git --version`` probe that crashes when ``git``
 is shadowed by a stub, and workhorse is full of git-free scripts that must import
@@ -182,21 +190,27 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
     scope = ["--", *pathspecs]
     try:
         repo = open_repo(path)
-        repo.git.add(*pathspecs)
-        try:
-            repo.git.diff("--cached", "--quiet", *scope)
-            return False  # nothing staged
-        except GitCommandError:
-            pass  # staged changes present
-        repo.git.commit("-m", message, *scope)
-        return True
     except GitError:
-        return False
+        return False  # not a repo — nothing to commit here
+    # Probe the scope before staging it. `git add` fails outright on a pathspec that
+    # matches nothing ("did not match any files"), which is an ordinary empty scope, not
+    # a refusal — and swallowing it here is what used to hide the refusals too.
+    # `git status` reports the same scope without erroring on an unmatched pathspec.
+    if not repo.git.status("--porcelain", *scope).strip():
+        return False  # nothing in scope
+    repo.git.add(*pathspecs)
+    try:
+        repo.git.diff("--cached", "--quiet", *scope)
+        return False  # nothing staged
+    except GitCommandError:
+        pass  # staged changes present
+    repo.git.commit("-m", message, *scope)
+    return True
 
 
 def commit_all(path: str | Path, message: str) -> bool:
     """Stage EVERY change in the working tree (``git add -A``) and commit it. Returns
-    False when there was nothing to commit (or the commit failed).
+    False when there was nothing to commit, and raises when git refused the commit.
 
     This commits whatever else is in the tree at the time — another process's edits, a
     half-finished refactor, a stray temp file — under this run's subject line. It is
@@ -205,16 +219,16 @@ def commit_all(path: str | Path, message: str) -> bool:
     writes a *known* set of paths should name them with :func:`commit_paths`."""
     try:
         repo = open_repo(path)
-        repo.git.add("-A")
-        try:
-            repo.git.diff("--cached", "--quiet")
-            return False  # nothing staged
-        except GitCommandError:
-            pass  # staged changes present
-        repo.git.commit("-m", message)
-        return True
     except GitError:
-        return False
+        return False  # not a repo — nothing to commit here
+    repo.git.add("-A")
+    try:
+        repo.git.diff("--cached", "--quiet")
+        return False  # nothing staged
+    except GitCommandError:
+        pass  # staged changes present
+    repo.git.commit("-m", message)
+    return True
 
 
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:

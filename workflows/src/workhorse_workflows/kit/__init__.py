@@ -48,6 +48,10 @@ _NAMES: dict[str, str] = {
         "default_branch",
         "diff_text",
         "fetch_reset",
+        # The exception the two commit helpers raise when git refuses. Re-exported so a
+        # node that must tell "nothing to commit" from "git said no" still imports only
+        # from the kit, rather than reaching past it into gitpython.
+        "GitError",
         "is_ancestor",
         "list_tracked_files",
         "local_branch_exists",
@@ -129,6 +133,7 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         default_branch,
         diff_text,
         fetch_reset,
+        GitError,
         is_ancestor,
         list_tracked_files,
         local_branch_exists,

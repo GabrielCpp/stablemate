@@ -64,6 +64,7 @@ from workhorse_workflows.kit import (
     default_branch,
     find_open_pr,
     get_affected_repos,
+    GitError,
     local_branch_exists,
     resolve_github_token,
     resolve_repo,
@@ -941,11 +942,26 @@ def commit_story(
             kind, commits.scope(package), description, epic=epic_name, story=slug
         )
 
+    def _commit_in(repo_path: Path, package: str) -> bool:
+        """``commit_all``, with a git refusal turned into a halt rather than a False.
+
+        False here flows into the caller's zero-diff counter, and three of them stop the
+        run for making no progress. A stale ``index.lock``, a rejecting hook or a failed
+        signature is the opposite situation — the story's work exists and git would not
+        record it — so it must halt loudly here, while the tree still holds the work and
+        the git error is still in hand, rather than be counted as an idle story."""
+        try:
+            return bool(commit_all(repo_path, _story_message(package)))
+        except GitError as exc:
+            raise WorkflowFailed(
+                f"git refused the commit for {slug} in {repo_path}: {exc}"
+            ) from exc
+
     if not affected:
         # No plan-context.json or no services in it — commit in the resolved root (the
         # single-repo / no-workspace-file case, and test sandboxes with no seeded plan).
         logger.info("no affected repos resolved from plan-context — falling back to the repo root")
-        any_committed = bool(commit_all(root, _story_message(root.name)))
+        any_committed = _commit_in(root, root.name)
         if any_committed:
             logger.info("committed in %s", root.name)
     else:
@@ -958,7 +974,7 @@ def commit_story(
             if not (repo_path / ".git").exists():
                 logger.warning("repo %s is not a git repo — skipping", name)
                 continue
-            if commit_all(repo_path, _story_message(name)):
+            if _commit_in(repo_path, name):
                 logger.info("committed in %s", repo_path.name)
                 any_committed = True
 

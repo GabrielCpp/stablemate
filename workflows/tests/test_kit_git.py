@@ -14,6 +14,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+from git.exc import GitError
+
 from workhorse.testing import make_git_repo
 from workhorse_workflows.kit.git import commit_all, commit_paths
 
@@ -98,3 +101,25 @@ def test_commit_helpers_are_fail_soft_off_a_repo(tmp_path: Path) -> None:
     not_a_repo.mkdir()
     assert commit_paths(not_a_repo, "m", "docs") is False
     assert commit_all(not_a_repo, "m") is False
+
+
+def test_a_refused_commit_raises_instead_of_reading_as_an_empty_one(tmp_path: Path) -> None:
+    """The regression that killed a real run.
+
+    A stale `.git/index.lock` makes `git add` refuse. Both helpers used to swallow that
+    and return False — the same value they return for a clean tree — so the coder's
+    zero-diff guard counted three stories' worth of *refused* commits as three stories
+    that did no work and stopped the run, with the git error printed nowhere and the work
+    still sitting in the tree.
+    """
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "src/feature.py")
+    (root / ".git" / "index.lock").write_text("", encoding="utf-8")
+
+    with pytest.raises(GitError):
+        commit_all(root, "coder: STORY-1")
+    with pytest.raises(GitError):
+        commit_paths(root, "coder: STORY-1", "src")
+
+    (root / ".git" / "index.lock").unlink()
+    assert commit_all(root, "coder: STORY-1") is True  # and it lands once git will take it
