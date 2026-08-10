@@ -25,6 +25,7 @@ from pathlib import Path
 
 otel = importlib.import_module("workhorse.otel")
 records = importlib.import_module("workhorse.records")
+reload = importlib.import_module("workhorse.reload")
 usage = importlib.import_module("workhorse.runner.usage")
 artifacts = importlib.import_module("workhorse.artifacts")
 
@@ -685,6 +686,56 @@ def test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost():
     assert root.attrs["workhorse.terminal"] == "fail"
     assert root.status is None or root.status.code != "ERROR"
     assert sum(1 for s in tracer.spans if s.status and s.status.code == "ERROR") == 1
+
+
+def test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure():
+    """A deliberate reload is not the run's error, and groom's badge counts ERROR spans.
+
+    `ReloadRequested` travels as an exception only because it has to leave a stack of
+    re-entrant `drive` frames; the operator got exactly what they asked for. Those frames
+    are genuinely over, so they still close here — but stamping ERROR on them made a
+    successful `control reload` show up as the one error on an otherwise healthy run, and
+    it also spent the once-per-run error slot a real failure needs. `AgentRunner.turn`
+    already closes the *turn* span cleanly for a cut; this is the node/state half.
+    """
+    t, tracer, _, _ = _telemetry()
+    previous = otel.install(otel.TelemetryHost(active=t))
+    try:
+        try:
+            with otel.scope():
+                t.state_start("dev", 1)
+                with otel.scope():
+                    t.record_event(_event("validate_paths", 1, "enter"))
+                    raise reload.ReloadRequested("reload requested at the boundary")
+        except reload.ReloadRequested:
+            pass
+    finally:
+        otel.install(previous)
+
+    state, node = tracer.by_name("state:dev"), tracer.by_name("validate_paths")
+    assert state.ended and node.ended
+    assert t.open_depth() == 0
+    for span in (state, node):
+        assert span.status is None or span.status.code != "ERROR", span
+        assert "error.class" not in span.attrs, span
+        assert span.attrs["workhorse.outcome"] == "control"
+        assert span.attrs["workhorse.control"] == "ReloadRequested"
+    assert not any(s.status and s.status.code == "ERROR" for s in tracer.spans)
+
+    # The slot was not spent: the genuine failure that follows still gets blamed.
+    previous = otel.install(otel.TelemetryHost(active=t))
+    try:
+        try:
+            with otel.scope():
+                t.record_event(_event("later_node", 2, "enter"))
+                raise AttributeError("no such attribute")
+        except AttributeError:
+            pass
+    finally:
+        otel.install(previous)
+    later = tracer.by_name("later_node")
+    assert later.status.code == "ERROR"
+    assert later.attrs["error.class"] == "AttributeError"
 
 
 def test_end_run_is_idempotent_and_the_first_status_wins():

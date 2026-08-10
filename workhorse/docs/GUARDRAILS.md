@@ -293,6 +293,7 @@ raised:
 | `status = ERROR` + `error.class` | this span is the one that broke — exactly one per run |
 | `workhorse.outcome = error` | an outer frame the failure propagated through |
 | `workhorse.outcome = abandoned` | still open at `end_run`; closed by the backstop, not by its own scope |
+| `workhorse.outcome = control` + `workhorse.control` | a frame a **control unwind** left — the run moved, it did not break |
 | `workhorse.terminal` (root) | the run-level verdict, on every run, failed or not |
 
 Nesting depth is not a count of failures. Before this, one `AttributeError` three
@@ -300,6 +301,15 @@ frames down closed as three ERROR spans, so a dashboard summing `status = 'ERROR
 (groom's per-run error badge) reported "3 errors" for one defect — and the number moved
 when the *shape* of a workflow changed rather than when anything broke. The root only
 takes the ERROR status when nothing below it already carried the failure.
+
+Neither is every raise a failure. `ReloadRequested` travels as an exception because it
+has to leave an arbitrarily deep stack of re-entrant `drive` frames, but the operator got
+what they asked for: those frames close here, cleanly, with no ERROR status and without
+spending the once-per-run error slot a genuine failure needs. An exception class opts in
+by setting `workhorse_control_unwind = True` on itself — read off the instance, so
+`otel.py` stays the leaf that imports nothing from the rest of workhorse. `AgentRunner.turn`
+applies the same rule to the *turn* span it closes for a cut turn; without the node/state
+half, a successful `control reload` badged the run with its one and only error.
 
 #### Turn cost and tokens, normalized across harnesses
 

@@ -256,6 +256,22 @@ _NO_WAIT_TOKEN = int()
 # matching `unwind_to` a no-op instead of a sweep of somebody else's frames.
 _NO_OPEN_DEPTH = int()
 
+#: An exception class sets this `True` to say its raise moves the run rather than breaks
+#: it, so `unwind_to` closes the frames it left open without calling them a failure.
+CONTROL_UNWIND_MARKER = "workhorse_control_unwind"
+
+
+def _is_control_unwind(error: BaseException) -> bool:
+    """Is this raise a control signal rather than a failure?
+
+    Asked of the exception instead of matched against a type, because this module imports
+    nothing from the rest of workhorse — it is the leaf every layer instruments through,
+    and an edge from here to `reload` (and so to `control`) inverts that for one boolean.
+    The class that unwinds declares itself, next to the docstring that already argues it
+    is not a failure.
+    """
+    return getattr(error, CONTROL_UNWIND_MARKER, False) is True
+
 
 class Telemetry(Protocol):
     """What the instrumentation sites may ask of telemetry.
@@ -1235,13 +1251,27 @@ class _Telemetry:
         `status = 'ERROR'` reported "3 errors" for one defect and the number moved when
         the *shape* of the workflow changed. The outer frames record that they ended in
         an error (`workhorse.outcome`) without claiming to be one.
+
+        Not every raise is a failure. A control unwind — `ReloadRequested` is the one —
+        travels as an exception because it has to leave an arbitrarily deep stack of
+        re-entrant `drive` frames, and those frames really are over, so they still close
+        here. But the run did what the operator asked, so they close *cleanly*: outcome
+        recorded, no ERROR status, no `error.class`, and the once-per-run error slot left
+        for a genuine one. `AgentRunner.turn` already reasons exactly this way about the
+        turn span it closes for a cut; a node span that stayed ERROR made groom badge a
+        successful reload as the run's one error.
         """
+        control = _is_control_unwind(error)
         with self._lock:
             innermost = True
             while len(self._stack) > depth:
                 _, span, _ = self._stack.pop()
-                span.set_attribute("workhorse.outcome", "error")
-                if innermost and not self._error_reported:
+                span.set_attribute(
+                    "workhorse.outcome", "control" if control else "error"
+                )
+                if control:
+                    span.set_attribute("workhorse.control", type(error).__name__)
+                elif innermost and not self._error_reported:
                     self._error_reported = True
                     span.set_attribute("error.class", type(error).__name__)
                     span.set_status(

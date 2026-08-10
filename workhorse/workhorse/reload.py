@@ -56,6 +56,12 @@ class ReloadRequested(Exception):
     already wrote on entry, in the same process.
     """
 
+    #: Telemetry says the same thing the paragraph above says. `otel.unwind_to` closes
+    #: the spans this raise left open without stamping ERROR on any of them, so a
+    #: deliberate reload is not counted among a run's failures. The name is
+    #: `otel.CONTROL_UNWIND_MARKER`, read off the instance so otel need not import this.
+    workhorse_control_unwind = True
+
     def __init__(
         self, message: str = "reload requested", *, core: bool = False, cli: str = ""
     ) -> None:
