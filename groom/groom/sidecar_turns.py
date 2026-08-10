@@ -130,11 +130,17 @@ async def _pull_until_quiet(conn: Any, run: str, run_id: str, workflow: str) -> 
     except Exception:  # noqa: BLE001 - a container whose records did not arrive is not a broken groom
         logger.debug("turn pull failed for %s", container, exc_info=True)
     finally:
-        _IN_FLIGHT.pop(container, None)
-        if flags["final"]:
-            # The run is over, so the mirror has nothing left to save on the next pull.
-            # Everything worth keeping is in the archive by now; this is only the cache.
-            await asyncio.to_thread(shutil.rmtree, staging_root() / container, True)
+        # The flag is released *after* the cleanup, not before it: a pull scheduled in
+        # between would otherwise start re-creating the mirror in one thread while
+        # another was still deleting it, and see files vanish under it mid-fetch.
+        try:
+            if flags["final"]:
+                # The run is over, so the mirror has nothing left to save on the next
+                # pull. Everything worth keeping is in the archive by now; this is only
+                # the cache.
+                await asyncio.to_thread(shutil.rmtree, staging_root() / container, True)
+        finally:
+            _IN_FLIGHT.pop(container, None)
 
 
 def schedule(
