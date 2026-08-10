@@ -19,30 +19,17 @@ one-repo/one-book convention the builder already defaults to.
 """
 from __future__ import annotations
 
-import importlib.util
+import logging
 import sys
 import tempfile
 from pathlib import Path
 
-from ostler import path as okf_path
+from ostler import Ostler, path as okf_path
+from ostler.coverage import is_complete, render
+from workhorse_workflows.okf_builder.nodes.coverage import inventory_source
 
 ROOT = Path(__file__).resolve().parent.parent
-INVENTORY = ROOT / "base-library" / "workflows" / "okf-builder" / "scripts" / "inventory-source.py"
-
-
-def load_inventory_module():
-    """Import the builder's inventory front end as a library.
-
-    It is loaded by path because its filename is hyphenated (it is a workflow script node
-    first), not because it is a subprocess — verify must see its errors as exceptions, not
-    scrape them out of stdout.
-    """
-    spec = importlib.util.spec_from_file_location("okf_inventory_source", INVENTORY)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load the source inventory front end at {INVENTORY}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+LOG = logging.getLogger("okf-verify")
 
 
 def service_config() -> dict[str, dict]:
@@ -66,10 +53,7 @@ def books() -> list[str]:
     return sorted(d.name for d in features.iterdir() if d.is_dir())
 
 
-def verify(book: str, services: dict, inv_mod, tmp: Path) -> tuple[bool, str]:
-    from ostler import Ostler
-    from ostler.coverage import is_complete, render
-
+def verify(book: str, services: dict, tmp: Path) -> tuple[bool, str]:
     conf = services.get(book) or {}
     source = ROOT / (conf.get("source") or book)
     if not source.is_dir():
@@ -79,15 +63,17 @@ def verify(book: str, services: dict, inv_mod, tmp: Path) -> tuple[bool, str]:
     if isinstance(excludes, str):
         excludes = [p.strip() for p in excludes.split(",") if p.strip()]
 
+    # The same node the okf-builder workflow runs, called as the plain function it is: a
+    # `@blueprint.node` stamps a registration onto the function and hands it straight back,
+    # so nothing here needs an engine to get the inventory this join's source side wants.
     out = tmp / f"{book}.inventory.json"
-    argv = [str(INVENTORY), str(source), str(out), ",".join(excludes), str(ROOT)]
-    saved, sys.argv = sys.argv, argv
-    try:
-        inv_mod.main()
-    except SystemExit:
-        pass  # the script node emits its summary and exits 0; the artifact is what we want
-    finally:
-        sys.argv = saved
+    inventory_source(
+        LOG,
+        source_root=str(source),
+        output_path=str(out),
+        source_excludes=",".join(excludes),
+        repo_root=str(ROOT),
+    )
 
     try:
         result = Ostler(ROOT).coverage(
@@ -99,7 +85,6 @@ def verify(book: str, services: dict, inv_mod, tmp: Path) -> tuple[bool, str]:
 
 
 def main() -> int:
-    inv_mod = load_inventory_module()
     services = service_config()
     found = books()
     if not found:
@@ -111,7 +96,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         for book in found:
-            ok, summary = verify(book, services, inv_mod, tmp)
+            ok, summary = verify(book, services, tmp)
             print(summary)
             if not ok:
                 failures.append(book)
