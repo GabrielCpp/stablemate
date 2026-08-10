@@ -45,7 +45,7 @@ from ostler import crud, doctor
 from ostler import ids as ids_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
-from ostler import select, todo as todo_mod
+from ostler import registry, select, todo as todo_mod
 from ostler import waivers as waivers_mod
 from ostler.crud import Result
 from ostler.model import Graph, load
@@ -367,6 +367,15 @@ class Ostler:
     def set_status(self, slug: str, status: str) -> Result:
         """Set a story's status (``ostler set-status``)."""
         return self._apply(crud.set_status(self._fresh(), slug, status))
+
+    def unblock(self, *, story: str = "", epic: str = "",
+                status: str = registry.DEFAULT_STORY_STATUS) -> Result:
+        """Clear give-up stamps off stories (``ostler unblock``).
+
+        Named scope, no positional: ``unblock()`` with nothing sweeps the whole graph, and a
+        caller that meant one story must not reach that by passing it in the wrong slot.
+        """
+        return self._apply(crud.unblock(self._fresh(), story=story, epic=epic, status=status))
 
     def backlog_add(self, item_id: str, text: str, section: str = "") -> Result:
         """Append a backlog item (``ostler backlog add``)."""

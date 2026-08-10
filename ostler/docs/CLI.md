@@ -13,7 +13,7 @@ The commands fall into three surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/backlog.md`, `docs/milestones/`, `docs/epics/`, `docs/specs/` |
+| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/backlog.md`, `docs/milestones/`, `docs/epics/`, `docs/specs/` |
 | **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/features/` — the node/edge book |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
@@ -86,6 +86,7 @@ ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \
                             [--legacy-surface …] [--backing …] [--prerequisites …] [--source-bullet …]
 ostler seed remove <epic> <id>
 ostler set-status <slug> <status>
+ostler unblock <slug> | unblock --epic <name> | unblock --all   [--status S] [--json]
 
 ostler backlog adopt [--path P]
 ostler backlog add <id> <text> [--section S] | backlog prune <id> | backlog list [--json]
@@ -96,6 +97,18 @@ ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | tod
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>",
 "message": "…"}`. For `create epic` the `name` is the numbered directory that was written
 (`0001-checkout-flow`) — read it back rather than assuming which number the epic got.
+
+`unblock` clears the give-up stamps a coder run leaves behind — `QA give-up after N attempts …`,
+`Docs blocked — needs manual review: …`, `Blocked` — and restores `Not started` (or `--status S`).
+It is the inverse of what `flag_qa_failure` and `flag_docs_block` write, and it exists because
+that stamp is a *sentence*, it lands in both the frontmatter and the body bullet of every
+`story.md`, and one run stamps several stories at once. A story whose status is not in that
+vocabulary is never rewritten, so a `QA passed` story survives `--all` and a second run is a
+no-op that still exits 0. Note what it does *not* change: a blocked story was already eligible
+for selection — `next-story` only skips *done* work — so unblocking is about the label the next
+agent reads, not about the queue. The per-run skip lists (`blocked-epics.txt`,
+`qa-skip-stories.txt`) live in the workflow's run dir and are not ostler's to clear; a fresh run
+drops them on its own.
 
 `update story` replaces the title, seed coverage and sibling dependencies stored in the parent
 `epic.md`. All three options are required so the command expresses one complete metadata state.

@@ -12,10 +12,34 @@ from ostler.model import Epic, Graph, Story
 
 _DONE_STATUSES = {"qa passed", "passed", "done", "merged", "complete"}
 
+#: The openings of every status a coder run stamps when it gives up on a story. Each is
+#: written by one node and each carries a trailing explanation — `QA give-up after 3
+#: attempts — needs manual review: docs/specs/x/qa.md` — so this is a prefix vocabulary,
+#: not a set of whole values like :data:`_DONE_STATUSES`.
+_BLOCKED_PREFIXES = ("blocked", "docs blocked", "qa give-up", "qa give up")
+
 
 def is_done(status: str) -> bool:
     s = (status or "").strip().lower()
     return s in _DONE_STATUSES
+
+
+def is_blocked(status: str) -> bool:
+    """Whether a status is a give-up stamp — a story set aside for a human, not built.
+
+    Distinct from the ``blocked`` *state* of :func:`next_story_report`, which is derived per
+    run from the skip set and the dependency graph and owns no storage. This one is the mark
+    that outlives the run, and it is why it needs a reader: nothing else in the graph
+    distinguishes "not started" from "tried three times and gave up", so an agent that
+    re-selects the story reads the stamp and believes the work is unsalvageable. (Observed:
+    a planner handed a story whose code was green on every gate answered ``blocked`` and
+    wrote no plan, because the status still said give-up.)
+
+    A blocked story is emphatically NOT done — selection already retries it on the next run.
+    Unblocking is about the label the next agent reads, not about eligibility.
+    """
+    s = (status or "").strip().lower()
+    return not is_done(s) and s.startswith(_BLOCKED_PREFIXES)
 
 
 def epic_by_name(graph: Graph, name: str) -> Epic | None:

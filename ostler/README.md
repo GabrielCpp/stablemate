@@ -172,7 +172,7 @@ accepted as input either way).
 |---|---|
 | `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
 | `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
-| `create` `update` `delete` `seed` `set-status` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
+| `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` | the `docs/features/` node/edge book — see below |

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import ids, markdown, model, path as path_mod, registry, todo as todo_mod
+from ostler import ids, markdown, model, path as path_mod, registry, select, todo as todo_mod
 from ostler.model import Graph
 from ostler.result import Result   # re-exported: `from ostler.crud import Result` still works
 
@@ -342,6 +342,69 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
             doc.replace_body(lines)
     path.write_text(doc.render(), encoding="utf-8")
     return Result(True, f"status of '{slug}' → {status}", [path])
+
+
+def unblock(graph: Graph, *, story: str = "", epic: str = "",
+            status: str = registry.DEFAULT_STORY_STATUS) -> Result:
+    """Clear the give-up stamp off a story, an epic's stories, or the whole graph.
+
+    The inverse of what `flag_qa_failure` and `flag_docs_block` write, and the reason it is a
+    command rather than an operator editing frontmatter: the stamp is a *sentence* (``QA
+    give-up after 4 attempts — needs manual review: docs/specs/11-copy-link/qa.md``), it is
+    written into two places in every story.md (the frontmatter field and the body bullet),
+    and a run gives up on several stories at once — six in one observed epic, all of which an
+    operator then had to find and retype identically. `set_status` can do one of them if you
+    already know the slug and the exact replacement; this knows which stories are stamped.
+
+    Only a story :func:`select.is_blocked` reads as blocked is rewritten. A done story is
+    never touched — the vocabulary check would let ``QA passed`` through no more than it lets
+    ``Not started`` through, and silently resetting finished work is the one failure this
+    must not have. Which makes it idempotent: unblocking twice writes nothing the second
+    time and still succeeds, so a script can run it unconditionally.
+
+    Scope is exactly one of `story` / `epic` / neither (the whole graph); the CLI is what
+    refuses an accidental sweep, by making the graph-wide form ask for ``--all``.
+    """
+    if story and epic:
+        return Result(False, "pass a story or an epic, not both")
+
+    if story:
+        found = graph.find_story(story)
+        if found is None:
+            return Result(False, f"no story '{story}'")
+        candidates = [found[1]]
+    elif epic:
+        found_epic = select.epic_by_name(graph, epic)
+        if found_epic is None:
+            return Result(False, f"no epic '{epic}'")
+        candidates = list(found_epic.stories)
+    else:
+        candidates = [s for e in graph.epics for s in e.stories]
+
+    blocked = [s for s in candidates if select.is_blocked(s.status)]
+    if not blocked:
+        return Result(True, "nothing to unblock" + (f": '{story or epic}' is not blocked"
+                                                    if story or epic else ""))
+
+    paths: list[Path] = []
+    cleared: list[str] = []
+    failures: list[str] = []
+    for candidate in blocked:
+        res = set_status(graph, candidate.slug, status)
+        if res.ok:
+            cleared.append(candidate.slug)
+            paths.extend(res.paths)
+        else:
+            failures.append(f"{candidate.slug} ({res.message})")
+
+    message = f"unblocked {len(cleared)} → {status}: {', '.join(cleared)}" if cleared else ""
+    if failures:
+        # Partial success is still a write, so the paths already rewritten are reported —
+        # a caller that commits `res.paths` must not lose them to an unrelated story's
+        # missing story.md.
+        message = (message + "; " if message else "") + f"could not unblock {', '.join(failures)}"
+        return Result(False, message, paths)
+    return Result(True, message, paths)
 
 
 # ---------------------------------------------------------------------------

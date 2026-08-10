@@ -285,6 +285,16 @@ def _build_parser() -> argparse.ArgumentParser:
     ss.add_argument("slug")
     ss.add_argument("status")
 
+    ub = sub.add_parser("unblock", help="clear give-up stamps off stories")
+    ub.add_argument("slug", nargs="?", default="",
+                    help="one story; omit it and pass --epic or --all for the wider scope")
+    ub.add_argument("--epic", default="", help="every blocked story in this epic")
+    ub.add_argument("--all", action="store_true", dest="all_stories",
+                    help="every blocked story in the graph")
+    ub.add_argument("--status", default=registry.DEFAULT_STORY_STATUS,
+                    help=f"the status to restore (default: {registry.DEFAULT_STORY_STATUS!r})")
+    ub.add_argument("--json", action="store_true")
+
     bl = sub.add_parser("backlog", help="manage docs/backlog.md")
     bls = bl.add_subparsers(dest="op", required=True)
     bla = bls.add_parser("add")
@@ -1131,6 +1141,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
         return _result(crud.remove_seed(graph, args.epic, ids_mod.resolve(graph, args.id)))
     if c == "set-status":
         return _result(crud.set_status(graph, args.slug, args.status))
+    if c == "unblock":
+        # A bare `ostler unblock` rewrites every stamped story in the repo, which is a
+        # reasonable thing to want and a terrible thing to do by accident — so the widest
+        # scope is the one that has to be spelled out.
+        if not (args.slug or args.epic or args.all_stories):
+            return _result(crud.Result(False, "name a story, pass --epic, or pass --all"), args.json)
+        if args.all_stories and (args.slug or args.epic):
+            return _result(crud.Result(False, "--all takes no story or --epic"), args.json)
+        return _result(
+            crud.unblock(graph, story=args.slug, epic=args.epic, status=args.status),
+            args.json,
+        )
     if c == "backlog":
         if args.op == "add":
             return _result(backlog_mod.add(graph, args.id, args.text, args.section))
