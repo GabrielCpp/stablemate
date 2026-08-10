@@ -530,6 +530,8 @@ runs/
     ├── sessions.jsonl            # one line per agent turn: the node, its visit key, and its CLI session
     ├── turns/                    # one directory per agent-node visit, keyed <gen>-<seq>-<node>,
     │                             # holding that visit's own copy of the files below
+    ├── transcripts/              # one capture per agent turn, same key + the session id:
+    │                             # <gen>-<seq>-<node>__<session-id>.{jsonl,d,tee.jsonl,meta.json}
     └── <step-id>/                # the LATEST visit of this step
         ├── prompt.md             # rendered prompt, written before agent invocation
         ├── output.json           # extracted JSON outputs
@@ -554,6 +556,14 @@ the agent CLI's own session store, keyed by session id. `sessions.jsonl` records
 than once (loop revisits, compact/reframe within a node), so the mapping is
 `node → sessions` and consumers dedup on read. With telemetry on the same
 session id is also set as the `session.id` attribute on the agent-turn span.
+
+That store is on one host and the CLI prunes it whenever it likes, so the run also keeps
+its own copy: each turn is captured into `transcripts/` under the same visit key, from
+the backend's session store where workhorse can resolve one and from a redacted tee of
+the stream where it cannot. Every capture's `.meta.json` says which of the two it is,
+plus the bytes, the head observed at the time, and whether the per-turn cap truncated it.
+Bounds are `WORKHORSE_CAPTURE_TRANSCRIPTS` (default on) and
+`WORKHORSE_TRANSCRIPT_MAX_BYTES` (default 32 MiB per turn).
 
 ## Telemetry (automatic when a collector is reachable)
 

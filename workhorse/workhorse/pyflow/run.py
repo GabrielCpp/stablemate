@@ -37,6 +37,7 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
+from workhorse.runner import transcript
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +146,15 @@ def run_pyflow(invocation: RunInvocation) -> int:
 
     writer, resume = _open_run(
         name, runs_dir, resume_run_dir, run_id=run_id, params=params, no_cache=no_cache
+    )
+
+    # Now that there is a run dir to write into. Bound here, at the boundary, because the
+    # two writers that use it are a stream callback several layers below the run and a
+    # classifier that never sees a RunConfig.
+    transcript.bind(
+        writer.run_dir,
+        enabled=config.capture_transcripts,
+        max_bytes=config.transcript_max_bytes,
     )
 
     # A resume re-enters the flow that wrote the checkpoint. Asking for a different one

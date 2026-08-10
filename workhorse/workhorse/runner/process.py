@@ -21,6 +21,7 @@ from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.waits import RecoveryWaitBudget, active_recovery_wait_budget
 from workhorse.runner.redact import SecretRedactor
+from workhorse.runner import transcript
 
 
 def _align_pwd(popen_kwargs: dict[str, Any]) -> None:
@@ -315,9 +316,16 @@ class ProcessSupervisor:
         as a secret, the same way it never assembles ``env_extra``.
         """
         redactor = SecretRedactor(secrets or ())
+        # Teed here rather than in an adapter, because this is the one line every backend's
+        # output passes through *after* redaction: a tee installed anywhere else would be a
+        # transcript with the leaked key still in it.
+        tee = transcript.tee_begin(node_id)
 
         def redacted_on_line(raw: str) -> object:
-            return on_line(redactor.redact(raw))
+            line = redactor.redact(raw)
+            if tee is not None:
+                tee.write(line)
+            return on_line(line)
 
         env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
         proc = self.spawn(
@@ -424,6 +432,10 @@ class ProcessSupervisor:
                     _kill_process_group(proc, signal.SIGKILL)
             proc.wait()
         finally:
+            if tee is not None:
+                # Closed on every exit — timeout, reload, kill — so the classifier that
+                # runs next finds a complete file rather than an open handle's tail.
+                tee.close()
             if watchdog is not None:
                 watchdog.cancel()
             self.active.clear()

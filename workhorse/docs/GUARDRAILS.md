@@ -451,6 +451,16 @@ where its rendered prompt and its output are kept — `<node-id>/` holds only th
 visit, and the prompt that produced lap 2 is otherwise gone by the time lap 5 is the one
 in trouble.
 
+And because the CLI's own session store is on a single host and prunable, the turn's
+transcript is copied into the run's `transcripts/` under that same key — from the store
+where workhorse can resolve one, from a tee taken at the redaction seam where it cannot,
+and always saying in its `.meta.json` which of the two it was.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKHORSE_CAPTURE_TRANSCRIPTS` | 1 (on) | Keep each agent turn's transcript under the run's `transcripts/`. On by default because what it buys is only available after the fact: a run that has to be told to record is a run that did not record the turn anyone ends up asking about |
+| `WORKHORSE_TRANSCRIPT_MAX_BYTES` | 33554432 (32 MiB) | Per-turn ceiling on a capture. A turn runs 0.5–1.1 MB, so this is sized for the pathological one. A capture that hits it is truncated with a final `{"truncated": true, "bytes": N}` line rather than dropped — a transcript that says where it stopped is evidence, one that just ends looks like a turn that died |
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WORKHORSE_OTEL` | _unset_ | Tri-state override. Unset = auto (probe the endpoint, and stay off in a test process); truthy forces telemetry on without probing; `0`/`false`/`no` forces it off |

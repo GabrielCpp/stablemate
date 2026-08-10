@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from workhorse import gitstate, otel, turnkey
+from workhorse.runner import transcript
 
 # A subscription "cap" is a transient failure that recovers on a SCHEDULE — the
 # spending/usage/session window resets at a wall-clock time (e.g. "resets 3:50am",
@@ -290,6 +291,11 @@ def record_session_map(
             fh.write(json.dumps(row) + "\n")
     except OSError:
         pass
+    # The turn is over and the CLI has finally named its session, which is the first
+    # moment either transcript source can be addressed by the visit key this row carries.
+    # Here rather than at the two call sites because those are the same two moments, and a
+    # capture filed under a different key than the row would join to nothing.
+    transcript.capture(backend, node_id, session_id)
 
 
 def classify_turn(

@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from workhorse.runner import transcript
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.null import NullBackend
 
@@ -254,6 +255,17 @@ class RunConfig:
     #: same reason as everything else in this class: so the driver never asks the
     #: environment a second time and gets a different answer.
     workspace: str = ""
+    #: Keep each agent turn's transcript under the run's ``transcripts/``
+    #: (WORKHORSE_CAPTURE_TRANSCRIPTS). On by default: what it buys — being able to see
+    #: why a node re-decided the same thing five times — is only available after the
+    #: fact, so a run that has to be told to record is a run that never recorded the
+    #: turn anyone ends up asking about.
+    capture_transcripts: bool = True
+    #: Per-turn ceiling on a captured transcript, in bytes
+    #: (WORKHORSE_TRANSCRIPT_MAX_BYTES). A turn runs 0.5-1.1 MB; the default is sized
+    #: for the pathological turn, and a capture that hits it is truncated with a marker
+    #: line rather than dropped.
+    transcript_max_bytes: int = transcript.DEFAULT_MAX_BYTES
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
@@ -266,6 +278,10 @@ class RunConfig:
             print_prompt=_bool(e, "WORKHORSE_PRINT_PROMPT", True),
             model_override=(e.get("AGENT_MODEL") or e.get("AGENT_CLAUDE_MODEL") or None),
             workspace=(e.get("AGENT_REPO_DIR") or ""),
+            capture_transcripts=_bool(e, "WORKHORSE_CAPTURE_TRANSCRIPTS", True),
+            transcript_max_bytes=_positive_int(
+                e, "WORKHORSE_TRANSCRIPT_MAX_BYTES", transcript.DEFAULT_MAX_BYTES
+            ),
         )
 
 

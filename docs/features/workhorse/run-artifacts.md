@@ -37,6 +37,11 @@ gets its own nested instance of this same layout, rooted under the calling node'
     ├── turns/                 # one subdirectory per agent-node VISIT, never overwritten
     │   └── <gen>-<seq>-<node>/  # that visit's own prompt.md / output.json /
     │                            # context_after.json / branch.json
+    ├── transcripts/           # one capture per agent turn, keyed the same way
+    │   ├── <gen>-<seq>-<node>__<session-id>.jsonl      # from the backend's session store
+    │   ├── <gen>-<seq>-<node>__<session-id>.d/         # …and its sidechain tree, if any
+    │   ├── <gen>-<seq>-<node>__<session-id>.tee.jsonl  # or, failing that, a tee of the stream
+    │   └── <gen>-<seq>-<node>__<session-id>.meta.json  # which source, how many bytes, head, ts
     └── <node-id>/             # one subdirectory per node visited
         ├── prompt.md          # what was sent/run for this node
         ├── output.json        # the node's recorded return value
@@ -252,6 +257,39 @@ agent visit is still current is not filed under that visit's key. Best-effort th
 Named by the visit rather than the node, the directory keeps growing with the run; unlike the
 per-node directories it is bounded only by how many turns the run spends. A long run's `turns/`
 tree is therefore the largest thing in the run dir.
+
+### transcripts/
+- type: `directory` — required: no — default: absent until the first agent turn is captured
+
+One capture per agent turn: what the agent actually said and did between the prompt and the
+answer. `prompt.md` and `output.json` are the two ends of a turn; everything in between — the
+reasoning, the tool calls, the file it read and then ignored — is only in the agent CLI's own
+session store, which lives on the host that ran the CLI, is keyed by nothing telemetry can join
+on, and is pruned whenever the CLI likes.
+
+Two sources, tried in that order, and every capture records **which one it came from** in its
+`.meta.json` (`source: "store" | "tee"`) — a consumer must never have to guess what it is holding:
+
+- **the backend's session store**, strictly richer than the stream: a Claude session directory
+  carries attachments, queued operations and a whole sibling tree of subagent sidechains that
+  never cross stdout at all. That tree lands as `…__<session-id>.d/`.
+- **a tee of the stream**, for a CLI whose store workhorse cannot resolve and for a container
+  whose store is not on this host. It is opened at the one point every backend's output passes
+  through *after* redaction, so a teed transcript is redacted by construction. The tee runs
+  alongside until a store capture actually succeeds in this run, and stops after that — having a
+  resolver is not the same claim as the store being on this host.
+
+`.meta.json` also carries `backend`, `session_id`, `node`, `generation`, `seq`, `ts`, `bytes`,
+`truncated`, and the `head` observed when the turn was recorded.
+
+Bounded per turn by `WORKHORSE_TRANSCRIPT_MAX_BYTES` (32 MiB; a turn runs 0.5–1.1 MB, so the cap
+is for the pathological one). A capture that hits the cap is **truncated with a final
+`{"truncated": true, "bytes": N}` line**, not dropped — a transcript that says where it stopped is
+usable evidence, one that just ends is indistinguishable from a turn that died. Set
+`WORKHORSE_CAPTURE_TRANSCRIPTS=0` to keep none.
+
+Same visit guard as `turns/`: only turns taken inside a visit the engine opened are captured.
+Best-effort throughout — a capture that cannot be written is a worse run dir, never a worse run.
 
 ### `<node-id>/prompt.md`
 - type: `string` (plain text) — required: no — default: absent
