@@ -39,6 +39,12 @@ from typing import Protocol
 
 from workhorse.runner.clock import Clock
 
+#: The one verb answered by this module rather than by a consumer of it. `status` asks
+#: what the run is doing, which changes nothing about it — answering is delivery, not
+#: acting — and answering it *here* is what makes it work from inside a six-day cap
+#: sleep, where no consumer is looking at the channel at all.
+STATUS = "status"
+
 #: The listener, in the run dir. Discovery is "look in the run dir" — see `POINTER_FILE`
 #: for the one case where what is found there is a pointer rather than the socket.
 SOCKET_FILE = "control.sock"
@@ -309,19 +315,35 @@ class _Watch:
     `held` is a request that was delivered but deliberately not acted on yet — an
     `--at-boundary` reload arriving mid-turn. Taking it off the socket consumes it, so
     something has to remember it until the state boundary that honours it.
+
+    `report` is how the process describes itself to a `status` request. A callable rather
+    than a dict because the answer must be the run's position *now*, and the point of
+    asking is usually that the run has been somewhere for a suspiciously long time.
     """
 
     channel: ControlChannel = NULL_CHANNEL
     held: Request | None = None
+    report: Callable[[], dict[str, object]] | None = None
 
 
 _watch = _Watch()
 
 
 def arm(channel: ControlChannel | None) -> None:
-    """Make `channel` the one this process answers on. `None` disarms."""
+    """Make `channel` the one this process answers on. `None` disarms.
+
+    Disarming forgets the reporter too: a process with no channel is not a run, and a
+    stale reporter would describe the previous one to whoever asked next.
+    """
     _watch.channel = channel or NULL_CHANNEL
     _watch.held = None
+    if channel is None:
+        _watch.report = None
+
+
+def report_with(describe: Callable[[], dict[str, object]] | None) -> None:
+    """Say how this process answers `status`. `None` restores the unattached answer."""
+    _watch.report = describe
 
 
 def armed() -> ControlChannel:
@@ -334,6 +356,24 @@ def armed() -> ControlChannel:
     return _watch.channel
 
 
+def _delivered(channel: ControlChannel) -> Request | None:
+    """The next request off `channel` that a consumer has to decide about, or None.
+
+    `status` never gets that far: it is answered here, on the connection it arrived on,
+    and the take is repeated. That is deliberately not a convenience — every consumer in
+    the engine is a *waiting* site with a policy about what may end its wait, and a query
+    that ends a cap wait to be told "still capped" is the wait answering the wrong
+    question. Answering below them means `status` works from every wait there is,
+    including the six-day one, without any of them knowing the verb exists.
+    """
+    while True:
+        request = channel.take()
+        if request is None or request.action != STATUS:
+            return request
+        report = _watch.report
+        channel.reply(report() if report is not None else {"attached": False})
+
+
 def take() -> Request | None:
     """The next request off the channel, or None. A held request is *not* returned here.
 
@@ -342,7 +382,7 @@ def take() -> Request | None:
     declined request would acknowledge the same message once per second for the rest of
     the turn — and never honour it, since declining is exactly what that site does.
     """
-    return _watch.channel.take()
+    return _delivered(_watch.channel)
 
 
 def outstanding() -> Request | None:
@@ -350,7 +390,7 @@ def outstanding() -> Request | None:
     held, _watch.held = _watch.held, None
     if held is not None:
         return held
-    return _watch.channel.take()
+    return _delivered(_watch.channel)
 
 
 def hold(request: Request) -> None:
@@ -388,7 +428,7 @@ def wait_until(
     while True:
         if predicate is not None and predicate():
             return None
-        request = channel.take()
+        request = _delivered(channel)
         if request is not None:
             return request
         if remaining <= 0:
@@ -403,7 +443,7 @@ def wait_until(
         else:
             ready, _, _ = select.select([fd], [], [], slice_s)
             if ready:
-                request = channel.take()
+                request = _delivered(channel)
                 if request is not None:
                     return request
         remaining -= slice_s
@@ -501,6 +541,7 @@ def _read_line(conn: socket.socket) -> str:
 
 __all__ = [
     "NULL_CHANNEL",
+    "STATUS",
     "POINTER_FILE",
     "SOCKET_FILE",
     "ControlChannel",
@@ -513,6 +554,7 @@ __all__ = [
     "armed",
     "hold",
     "outstanding",
+    "report_with",
     "send",
     "take",
     "wait_until",

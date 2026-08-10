@@ -443,6 +443,25 @@ does not know — leaves the window intact: it is answered and held, not obeyed,
 delivered can never shorten a six-day sleep. Nothing is cut in these cases, since there is
 no turn in flight; the ladder unwinds and the node re-enters on the pushed code.
 
+**Asking where a run is (`control status`).** The same channel answers a question as well
+as carrying an instruction:
+
+```bash
+workhorse-coder control --run <id> status
+```
+
+Everything it reports — the workflow, the run id, the pid, the state and flow the last
+checkpoint named — is also on disk, and reading the disk is what the command falls back to.
+What only a reply can establish is that *this process is still serving this run dir*: a pid
+in `run.json` outlives the process that wrote it, and a checkpoint says where a run got to,
+not whether anything is still there. So a `status` that answers is liveness, and one that
+does not is not an error — a script node with no wait in it reads the channel only between
+turns, and the command says which of the two it saw rather than smoothing them together.
+
+`status` is answered *below* every wait rather than by one, which is what makes it safe to
+ask of the run most worth asking about: a run six days into a cap window is answered from
+inside that window, and the window is not shortened by having been asked.
+
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
 at that checkpoint with pydantic naming the field, which is the honest outcome of an

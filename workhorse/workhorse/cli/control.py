@@ -1,10 +1,13 @@
 """`control` — say something to a run that is already going, without stopping it.
 
-Today it has one verb. `reload` asks a live run to cut whatever it is doing, pick the
-pushed code up, and re-enter its own checkpoint — the operator's half of
-:mod:`workhorse.reload`. The run is a different process (often in a different container),
-so the whole command is: resolve which run dir is meant, say it on the run's control
-socket, and report what the run appeared to be doing when it was asked.
+`reload` asks a live run to cut whatever it is doing, pick the pushed code up, and
+re-enter its own checkpoint — the operator's half of :mod:`workhorse.reload`. `status`
+asks where it is, and is answered by the run itself: everything in the answer is also on
+disk, but a reply *on that run's socket* is the one thing the disk cannot prove — that
+this process is the one still serving this run dir. The run is a different process (often
+in a different container), so the whole command is: resolve which run dir is meant, say it
+on the run's control socket, and report what the run appeared to be doing when it was
+asked.
 
 It is deliberately **not** a wait for the *reload*. The run acknowledges the message on
 the same connection, which is quick and worth having — a request nobody was listening for
@@ -30,14 +33,16 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_reco
 from workhorse.rundir import find_latest_resumable, resolve_run_dir
 
 NAME = "control"
-HELP = "Signal a run that is already in flight (reload)"
+HELP = "Signal a run that is already in flight (reload, status)"
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "action",
-        choices=["reload"],
-        help="What to ask the run to do. Only 'reload' exists so far.",
+        choices=["reload", "status"],
+        help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
+        "run where it is, which is also a proof that this process is the one serving "
+        "that run dir.",
     )
     parser.add_argument(
         "--run",
@@ -86,10 +91,34 @@ def run(args: argparse.Namespace) -> None:
         print(f"  run:     {_liveness(run_dir)}", file=sys.stderr)
         sys.exit(1)
 
+    if args.action == control.STATUS:
+        _report(run_dir, reply)
+        return
+
     scope = "workhorse and the workflow" if args.core else "the workflow package"
     when = "at the next state boundary" if args.at_boundary else "cutting the current turn"
     print(f"reload requested for {run_dir}: reload {scope}, {when}")
     print(f"  reply:   {reply or 'delivered, no answer'}")
+    print(f"  run:     {_liveness(run_dir)}")
+    print(f"  at:      {_position(run_dir)}")
+
+
+def _report(run_dir: Path, reply: dict[str, object]) -> None:
+    """Print what the run said about itself, or say that it did not say anything.
+
+    An empty reply is not an error and not silence: the connection was accepted, so the
+    process is there — it just is not currently looking at the channel, which is what a
+    script node with no wait in it looks like from outside. So the on-disk answer is
+    printed underneath either way, and the difference between the two is stated rather
+    than smoothed over, because it is the difference between 'busy' and 'wedged'.
+    """
+    if reply:
+        print(f"status of {run_dir}:")
+        for key in sorted(reply):
+            print(f"  {key}: {reply[key]}")
+        return
+    print(f"status of {run_dir}: the run did not answer within the timeout")
+    print("  (a node that is not waiting on anything reads the channel only between turns)")
     print(f"  run:     {_liveness(run_dir)}")
     print(f"  at:      {_position(run_dir)}")
 

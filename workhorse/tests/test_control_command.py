@@ -31,6 +31,7 @@ import pytest  # noqa: E402
 
 from workhorse import control  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
+from workhorse.cli import control as control_cmd  # noqa: E402
 from workhorse.cli import main as cli_main  # noqa: E402
 from workhorse.pyflow.registry import Registry  # noqa: E402
 from workhorse.records import PyflowCheckpoint, RunRecord  # noqa: E402
@@ -200,6 +201,48 @@ def test_a_run_nobody_is_listening_for_is_an_error_not_a_reassuring_line(capsys)
         err = capsys.readouterr().err
         assert "no run is listening" in err, err
         assert "already finished" in err, err
+
+
+def test_status_is_answered_by_the_run_and_not_by_the_run_dir(capsys) -> None:
+    """The one thing the disk cannot say: this process is still serving this run dir.
+
+    A pid in `run.json` and a checkpoint on disk survive the process that wrote them, so
+    reading them proves nothing about what is happening now. A reply on the run's own
+    socket does, which is why `status` is a message rather than a second reader of the
+    same files.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        control.report_with(lambda: {"attached": True, "state": "plan_story", "flow": "Qa"})
+        try:
+            with _listening(run_dir) as listener:
+                _control(runs, "status", "--run", "t", "--runs-dir", str(runs))
+        finally:
+            control.report_with(None)
+
+        out = capsys.readouterr().out
+        assert "attached: True" in out, out
+        assert "state: plan_story" in out, out
+        # Answered below the wait, so the run never had to stop what it was doing —
+        # the property that makes `status` safe to ask of a run in a six-day cap sleep.
+        assert listener.taken == []
+
+
+def test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is(capsys) -> None:
+    # A busy script node reads the channel only between turns, so an unanswered query is
+    # normal. What must not happen is it reading as an error, or as an answer.
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        control_cmd._report(run_dir, {})
+
+        out = capsys.readouterr().out
+        assert "did not answer" in out, out
+        assert "Qa.plan_story" in out, out
+        assert f"pid {os.getpid()} is alive" in out, out
 
 
 if __name__ == "__main__":

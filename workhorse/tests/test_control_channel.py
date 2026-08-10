@@ -47,14 +47,14 @@ def test_a_message_sent_to_a_live_run_arrives_with_its_reply() -> None:
         answered: list[dict[str, object]] = []
 
         def client() -> None:
-            answered.append(control.send(run_dir, Request(action="status")))
+            answered.append(control.send(run_dir, Request(action="reload")))
 
         caller = threading.Thread(target=client)
         caller.start()
         try:
             request = wait_until(None, timeout=5.0, clock=FakeClock(), channel=channel, tick=0.05)
             assert request is not None
-            assert request.action == "status"
+            assert request.action == "reload"
             channel.reply({"state": "review"})
         finally:
             caller.join(timeout=5)
@@ -202,6 +202,48 @@ def test_asking_a_run_that_is_not_running_says_so_immediately() -> None:
         assert raised
 
 
+def test_status_is_answered_under_every_wait_and_ends_none_of_them() -> None:
+    """The verb this module answers itself, and the reason it does.
+
+    Every other request has to reach a consumer, because only a consumer knows whether
+    its wait may end. `status` is the one that must reach an operator *without* ending
+    anything: the run it is most worth asking is the one asleep for six days in a cap
+    window, and waking that wait to answer "still capped" would spend the answer.
+    """
+    clock = FakeClock()
+    control.report_with(lambda: {"attached": True, "state": "Qa.plan_story"})
+    try:
+        channel = FakeChannel(Request(action="status"))
+        ended = wait_until(None, timeout=120.0, clock=clock, channel=channel, tick=30.0)
+    finally:
+        control.report_with(None)
+
+    assert ended is None                       # the wait ran to term
+    assert channel.replies == [{"attached": True, "state": "Qa.plan_story"}]
+    assert sum(clock.slept) == 120.0           # …and slept every second of it
+
+
+def test_a_process_with_no_run_attached_says_so_rather_than_going_quiet() -> None:
+    # `status` is answerable by construction, including from a process that is not a run:
+    # an unanswered query is indistinguishable from a wedged one, which is the state an
+    # operator asks about.
+    channel = FakeChannel(Request(action="status"))
+    assert wait_until(None, timeout=1.0, clock=FakeClock(), channel=channel, tick=1.0) is None
+    assert channel.replies == [{"attached": False}]
+
+
+def test_disarming_forgets_how_the_last_run_described_itself() -> None:
+    control.arm(FakeChannel())
+    control.report_with(lambda: {"attached": True, "state": "Qa.plan_story"})
+    control.arm(None)
+
+    channel = FakeChannel(Request(action="status"))
+    assert wait_until(None, timeout=1.0, clock=FakeClock(), channel=channel, tick=1.0) is None
+    # Not the previous run's position: a process-wide reporter outliving its run would
+    # answer for a run that has already ended.
+    assert channel.replies == [{"attached": False}]
+
+
 if __name__ == "__main__":
     test_a_message_sent_to_a_live_run_arrives_with_its_reply()
     test_a_request_ends_a_wait_that_had_hours_left()
@@ -214,4 +256,7 @@ if __name__ == "__main__":
     test_nothing_a_client_sends_can_end_the_run()
     test_a_verb_a_run_is_too_old_to_know_is_delivered_not_rejected()
     test_asking_a_run_that_is_not_running_says_so_immediately()
+    test_status_is_answered_under_every_wait_and_ends_none_of_them()
+    test_a_process_with_no_run_attached_says_so_rather_than_going_quiet()
+    test_disarming_forgets_how_the_last_run_described_itself()
     print("ok")

@@ -202,6 +202,10 @@ def run_pyflow(invocation: RunInvocation) -> int:
             print(f"[workhorse] WARNING: no control channel for this run: {exc}")
         else:
             control.arm(channel)
+            # How this run answers `control status`. A closure rather than a snapshot:
+            # the answer worth having is where the run is *now*, and asking is usually
+            # prompted by it having been somewhere too long.
+            control.report_with(lambda: _status_report(name, writer))
     #: Set by the `--core` unwind below, and acted on only after the `finally` has
     #: flushed telemetry and disarmed the watch. `os.execv` runs no `finally` and no
     #: `atexit`, so exec'ing from inside the block would drop the run's last spans and
@@ -566,6 +570,39 @@ def _open_run(
     if existing is not None:
         return ArtifactWriter.resume(existing), _read_resume(existing)
     return ArtifactWriter(name, runs_dir, run_id=rid), None
+
+
+def _status_report(name: str, writer: ArtifactWriter) -> dict[str, object]:
+    """What this run says about itself when asked, over the channel it was asked on.
+
+    The state comes from the checkpoint rather than from a live variable for the same
+    reason `groom` reads it: the checkpoint is the run's own account of where it is, so
+    the answer cannot disagree with what a resume would do. It is re-read per request —
+    a status query is rare and a stale position is the one thing this must not report.
+
+    Everything here is already on disk, so an operator can get all of it without the run.
+    What only the run can say is that it is the process *currently serving this run dir*,
+    which is exactly what a reply on its own socket proves.
+    """
+    report: dict[str, object] = {
+        "attached": True,
+        "workflow": name,
+        "run": writer.run_id,
+        "run_dir": str(writer.run_dir),
+        "pid": os.getpid(),
+    }
+    try:
+        checkpoint = parse_checkpoint((writer.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    except (OSError, ValidationError) as exc:
+        report["state"] = f"no readable checkpoint yet ({exc.__class__.__name__})"
+        return report
+    if not isinstance(checkpoint, PyflowCheckpoint):
+        report["state"] = "a checkpoint from the retired YAML engine"
+        return report
+    report["state"] = checkpoint.state
+    report["flow"] = checkpoint.flow or ""
+    report["seq"] = checkpoint.seq
+    return report
 
 
 def _read_resume(run_dir: Path) -> Resume:

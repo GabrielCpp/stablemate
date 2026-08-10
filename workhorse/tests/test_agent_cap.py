@@ -484,6 +484,36 @@ def test_an_at_boundary_reload_does_not_shorten_the_cap_wait_it_arrives_in():
     assert held is not None and held.at_boundary is True
 
 
+def test_a_status_query_is_answered_from_inside_the_cap_wait_it_never_ends():
+    """Asking a sleeping run where it is must not be what wakes it.
+
+    This is the wait an operator most wants to ask about — a run in a multi-day cap
+    window looks identical to a hung one from outside — and the one where answering by
+    ending the wait would be worst: the cap has not reopened, so the retry it woke for
+    would be spent for nothing.
+    """
+    calls = {"n": 0}
+
+    def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BackendInvocationError(CAP_MSG, transient=True)
+        return "RESULT_OK"
+
+    channel = _armed(control.Request(action="status"))
+    control.report_with(lambda: {"attached": True, "state": "select_gate"})
+    clock = FakeClock()
+    try:
+        out = _turn(capped, node_id="select_gate", clock=clock)
+    finally:
+        control.report_with(None)
+        control.arm(None)
+
+    assert out == "RESULT_OK"
+    assert sum(clock.slept) > 0, "the window was slept, not cut short by the question"
+    assert channel.replies == [{"attached": True, "state": "select_gate"}]
+
+
 def test_an_action_this_run_does_not_know_is_answered_not_obeyed():
     """A newer CLI talking to an older run must not be able to end its wait."""
     calls = {"n": 0}
