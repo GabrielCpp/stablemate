@@ -174,6 +174,20 @@ def read_asset_text(asset: Asset) -> str:
         ) from exc
 
 
+def strip_arguments_placeholder(body: str) -> str:
+    """Drop a command's ``$ARGUMENTS`` line when its body is aggregated instead.
+
+    The placeholder is substituted by the slash-command invocation and by nothing
+    else, so a prompt folded into an always-loaded instruction file would carry a
+    bare ``$ARGUMENTS`` into every session — read by the agent as text, not as the
+    hole it is. Only a line that is exactly the placeholder is removed; one used
+    inline (``run X on $ARGUMENTS``) is left alone, since deleting the line around
+    it would take a sentence with it.
+    """
+    lines = [line for line in body.splitlines() if line.strip() != "$ARGUMENTS"]
+    return "\n".join(lines)
+
+
 class Renderer:
     def __init__(
         self,
@@ -701,15 +715,19 @@ class Renderer:
         front matter and joined by a `---` rule. A prompt is included for the
         repos that want a procedure always in context rather than invoked as a
         slash command; it is the same library file the command renders from, so
-        neither copy drifts.
+        neither copy drifts. A prompt's `$ARGUMENTS` placeholder is dropped on
+        the way in: nothing substitutes it outside a slash-command invocation,
+        so aggregated it is a literal dollar sign in every session's context.
         """
         parts: list[str] = []
         sources: list[Source] = []
-        selected = [self.skill_source(name) for name in skill_names]
-        selected += [self.prompt_source(name) for name in prompt_names or []]
-        for source in selected:
+        selected = [(self.skill_source(name), False) for name in skill_names]
+        selected += [(self.prompt_source(name), True) for name in prompt_names or []]
+        for source, is_prompt in selected:
             sources.append(source)
             _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
+            if is_prompt:
+                body = strip_arguments_placeholder(body)
             part = self.render_templates(body, target, output_path).strip()
             if part:
                 parts.append(part)

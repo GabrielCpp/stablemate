@@ -28,7 +28,8 @@ def _library(tmp_path: Path) -> Path:
     prompt = root / "library" / "prompts" / "stablemate" / "commit.md"
     prompt.parent.mkdir(parents=True)
     prompt.write_text(
-        "---\ndescription: Commit and push\n---\n\n# Commit\n\nPush as you go.\n",
+        "---\ndescription: Commit and push\n---\n\n# Commit\n\n$ARGUMENTS\n\n"
+        "Push as you go.\n",
         encoding="utf-8",
     )
     (root / "packs").mkdir()
@@ -69,6 +70,19 @@ def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
     assert body.index("Ostler rules.") < body.index("Push as you go.")
     # The prompt's own front matter never reaches the aggregated file.
     assert "description: Commit and push" not in body
+
+
+def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
+    # Nothing substitutes `$ARGUMENTS` outside a slash-command invocation, so
+    # aggregated it would be a literal dollar sign in every session's context.
+    repo, outputs = _render(
+        tmp_path,
+        "  - prompts: [demo-commit]\n" '    paths: ["."]\n' "    includeReadme: none\n",
+    )
+    assert "$ARGUMENTS" not in outputs[repo / "CLAUDE.md"]
+    # ...but the command itself still renders with it.
+    command = outputs[repo / ".claude" / "commands" / "demo-commit.md"]
+    assert "$ARGUMENTS" in command
 
 
 def test_prompt_only_mapping_needs_no_skill(tmp_path):
