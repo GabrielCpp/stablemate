@@ -11,3 +11,9 @@
 
 # Benchmark run artifacts and scorecards, per benchmarks/README.md's layout note.
 .runs/
+
+# `replay.py` working area: one clone of the fixture app per trial, plus that trial's run
+# artifacts and log. Derived and large — the measurement it produces lives in groom's
+# telemetry, which is what `replay.py report` reads. Note this is the *working area*;
+# `fixtures/*.yml` (no leading dot) is the tracked manifest and stays tracked.
+.replay/

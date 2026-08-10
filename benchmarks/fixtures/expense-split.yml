@@ -1,0 +1,36 @@
+# The expense-split replay fixture: one finished benchmark app, frozen.
+#
+# `bench.py coder` answers "can the workflows build an app", costs hours, and moves every
+# variable at once. This fixture answers a much narrower question — "does *this* story's
+# review loop converge" — by rewinding one flow's outputs on an app that is already built
+# and re-running that flow alone. Minutes and a few dollars, and the only thing that
+# differs between two trials is the code under test.
+#
+# `commit` is the tree each story is replayed against: the story's own implementation and
+# planning documents are present, later stories' are not. It is pinned rather than derived
+# because this history has two eras in it (the early commits predate the conventional
+# subjects), and a rule that reads the log would have to encode both.
+#
+# The bundle is NOT tracked in this repo. It is a binary pack that `check_public.py` can
+# only scan by path, and a fixture whose contents no check can read does not belong in a
+# repo whose public-ness is load-bearing. Rebuild it with `replay.py capture`.
+
+name: expense-split
+source: /tmp/bench-expense-split
+
+stories:
+  - story: create-group
+    qa: b3b0e0c
+    docs: e1b9785
+  - story: group-membership
+    qa: a4b70c2
+    docs: a4b70c2
+  - story: expense-record
+    qa: b0464ec
+    docs: b8b3ffc
+  - story: expense-list
+    qa: 2c2b1b2
+    docs: 2c2b1b2
+  - story: balance-settlement
+    qa: 99fff2b
+    docs: 321d39a
