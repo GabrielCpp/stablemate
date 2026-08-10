@@ -63,9 +63,33 @@ Return JSON only:
 
 ```json
 {
-  "disposition": "approved",
-  "notes": "Every objective has asserted preconditions, checkpoints, terminal proof, and runner-owned evidence."
+  "disposition": "revise",
+  "findings": [
+    {
+      "id": "R1",
+      "scope": "plan",
+      "target": "scenario `create-document` / covers `AC-2`",
+      "issue": "The terminal assertion checks the dialog closed, not that the document exists.",
+      "repair": "Assert the new row is present in the document list after the dialog closes."
+    }
+  ],
+  "notes": "One coverage gap; the rest of the plan reaches its objectives."
 }
 ```
 
-`disposition` is exactly `approved` or `revise`.
+`disposition` is exactly `approved` or `revise`. A `revise` must carry the findings that
+justify it — `notes` summarizes them, it is not the repair contract.
+
+Every finding names its `scope`, and the flow acts on that field rather than on the prose
+above it:
+
+- `plan` — the plan author can fix it by editing `qa-plan.yml` / `qa-plan.md`. This is the
+  only scope that is sent back for repair.
+- `stack` — it belongs to `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
+  emulator, database, seed or aggregate command that must be up before the plan runs.
+- `product-test` — it belongs to product code or a native test the plan only cites.
+
+`stack` and `product-test` findings are **dropped** before the author sees them, and a
+`revise` whose findings are all outside the plan's authority is recorded as `approved`. That
+is the contract above made mechanical, not a loophole: name the scope honestly, because a
+misfiled finding is now silently discarded rather than argued with.

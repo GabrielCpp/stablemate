@@ -355,6 +355,7 @@ class _Agent:
         repair: str = "repaired",
         review: str = "approved",
         revise_plans: int = 0,
+        plan_findings: list[dict[str, str]] | None = None,
         disposition: str = "confirmed",
         failure_class: str = "none",
         objective: str = "yes",
@@ -370,6 +371,7 @@ class _Agent:
         self.repair = repair
         self.review = review
         self.revise_plans = revise_plans
+        self.plan_findings = plan_findings or []
         self.disposition = disposition
         self.failure_class = failure_class
         self.objective = objective
@@ -423,7 +425,12 @@ class _Agent:
         # `revise_plans` follows `_Ostler`'s convention: a count of *leading* refusals, for
         # the tests that need the reviewer to relent and let a plan through.
         disposition = "revise" if nth <= self.revise_plans else self.review
-        return {"disposition": disposition, "notes": f"review pass {nth}"}
+        findings = self.plan_findings if disposition == "revise" else []
+        return {
+            "disposition": disposition,
+            "findings": findings,
+            "notes": f"review pass {nth}",
+        }
 
     def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # A runner failure the assessment confirms is a product defect unless the test says
@@ -828,6 +835,76 @@ def test_validation_and_review_spend_separate_plan_budgets(
     assert result.status == "passed", result
     assert okf.runs == 2
     assert okf.plan_validations == 6
+
+
+def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`_scoped_to_the_plan`: a `revise` the plan author may not act on is overturned.
+
+    `review-qa-plan.md` tells the reviewer the heavyweight stack is `ensure_stack`'s and not
+    the plan's, and real reviews refuse plans over it anyway — an emulator that is not
+    running yet, at a point in the flow where it is not supposed to be. Standing, that
+    refusal costs a `power="high"` replan turn and a second full review to arrive back at the
+    identical plan, because there was nothing in the plan file to change.
+    """
+    okf = ostler()
+    agent = _Agent(
+        docs,
+        revise_plans=1,
+        plan_findings=[
+            {
+                "id": "R1",
+                "scope": "stack",
+                "target": "scenario `create-document`",
+                "issue": "the auth emulator is not running",
+                "repair": "start the emulator before the suite",
+            }
+        ],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # One plan turn and one review: the refusal did not survive its own contract.
+    assert agent.counts()["plan-qa"] == 1, agent.counts()
+    assert agent.counts()["review-qa-plan"] == 1, agent.counts()
+    assert okf.runs == 1
+
+
+def test_a_mixed_refusal_keeps_only_what_the_plan_can_fix(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """One actionable finding still refuses the plan, and the stack one is not sent along.
+
+    The brief the replan turn reads is `plan_review_notes`, so what was dropped has to be
+    visibly ceded there rather than silently vanishing — a finding that reappears every pass
+    with no explanation is how the reviewer and the author deadlock.
+    """
+    okf = ostler()
+    agent = _Agent(
+        docs,
+        revise_plans=1,
+        plan_findings=[
+            {"id": "R1", "scope": "stack", "issue": "the auth emulator is not running"},
+            {"id": "R2", "scope": "plan", "issue": "AC-2's terminal assertion proves nothing"},
+        ],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["plan-qa"] == 2, agent.counts()
+    brief = agent.args_for("plan-qa")[1]["plan_review_notes"]
+    assert "Outside the plan's authority" in brief, brief
+    assert "the auth emulator is not running" in brief, brief
+    assert okf.runs == 1
 
 
 def test_three_review_revisions_leave_one_post_run_repair(

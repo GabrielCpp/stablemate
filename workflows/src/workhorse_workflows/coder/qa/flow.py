@@ -130,6 +130,41 @@ def _finding(passed: bool, notes: str) -> str:
     return "" if passed else notes
 
 
+def _scoped_to_the_plan(review: QaPlanReview) -> tuple[QaPlanReview, int]:
+    """Hold a plan review to the authority its own brief already claims, and count the misses.
+
+    `review-qa-plan.md` states it twice — the heavyweight shared stack belongs to
+    `ensure_stack`, and a finding the author cannot act on inside a plan file spends the
+    repair budget and returns the same worklist next pass. Reviews observed in real runs
+    refuse plans over exactly that anyway: an emulator that is not running, a stack the plan
+    was forbidden to start. Prose in a brief is not a filter, and free-form `notes` left the
+    flow nothing to filter *with*; a closed `scope` on each finding does.
+
+    Two things happen here, and the second is the one that pays. Out-of-scope findings are
+    dropped from the repair contract — the author is not sent to fix what it may not touch.
+    And when *every* finding was out of scope, the refusal itself is overturned: a `revise`
+    with nothing left in it is the case the brief says to approve, and letting it stand costs
+    a `power="high"` replan turn plus a second full review to arrive back here unchanged.
+
+    A `revise` carrying no findings at all is left alone. It may be a legacy shape or a prose
+    refusal, and nothing here can tell it from a real one — the safe arm is the flow's own.
+
+    Returns the review to act on, and how many findings were dropped.
+    """
+    outside = [finding for finding in review.findings if finding.scope != "plan"]
+    if not outside:
+        return review, 0
+    kept = [finding for finding in review.findings if finding.scope == "plan"]
+    ceded = "; ".join(f"{finding.scope}: {finding.issue}".strip() for finding in outside)
+    update: dict[str, object] = {
+        "findings": kept,
+        "notes": f"{review.notes}\n\nOutside the plan's authority, not sent for repair: {ceded}",
+    }
+    if not kept and review.disposition != "approved":
+        update["disposition"] = "approved"
+    return review.model_copy(update=update), len(outside)
+
+
 class Qa(Workflow):
     """Run a story's QA plan, gate the evidence, audit the pass, and bound every retry."""
 
@@ -388,6 +423,9 @@ class Qa(Workflow):
         and `cleared()` does not blank. The reviewer's own brief is deliberately unchanged:
         it judges the plan in front of it, and handing it its own past findings would anchor
         the one gate whose independence the flow is built around.
+
+        What the reviewer returns is then held to the authority contract its own brief states,
+        by `_scoped_to_the_plan` rather than by trusting it — see that function.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -403,6 +441,12 @@ class Qa(Workflow):
                 "target_env": self.target_env,
             },
         )
+        review, dropped = _scoped_to_the_plan(review)
+        if dropped:
+            self.logger.info(
+                "dropped %d QA-plan review finding(s) outside the plan's authority", dropped,
+                extra={"activity": True},
+            )
         loop = loop.update(
             plan_review_notes=_finding(review.disposition == "approved", review.notes),
             plan_review_disposition=review.disposition,

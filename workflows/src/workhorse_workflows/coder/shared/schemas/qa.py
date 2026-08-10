@@ -19,7 +19,7 @@ becomes one model, because the set is what the script actually returns.
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -236,14 +236,38 @@ class QaPlanResult(CoderResult):
     notes: str = ""
 
 
+class QaPlanFinding(CoderResult):
+    """One QA-plan review finding, with the authority it falls under named.
+
+    `scope` is closed for the same reason `DocumentationFinding.kind` is, and here the
+    closure is load-bearing rather than diagnostic. `review-qa-plan.md` already tells the
+    reviewer in prose that the heavyweight shared stack is `ensure_stack`'s and not the
+    plan's, and that a finding the author cannot act on inside a plan file spends the repair
+    budget for nothing — and the reviewer keeps issuing them anyway. Prose cannot filter
+    prose. A named scope can: the flow drops everything that is not `plan` deterministically,
+    and counts what it dropped, so the failure is measurable instead of anecdotal.
+    """
+
+    id: str = ""
+    scope: Literal["plan", "stack", "product-test"] = "plan"
+    target: str = ""
+    issue: str = ""
+    repair: str = ""
+
+
 class QaPlanReview(CoderResult):
     """`review-qa-plan.md` — the semantic read of a plan that already parses.
 
     `revise` is the default because the YAML's is: a reviewer that produced nothing has not
     approved anything, and the bounded replan loop is the safe arm.
+
+    `findings` is the repair contract; `notes` is a summary of it. A `revise` whose findings
+    are all out of the plan's authority is not a revision the author can spend a pass on —
+    see `QaPlanFinding.scope` and `review_plan`.
     """
 
     disposition: str = "revise"
+    findings: list[QaPlanFinding] = []
     notes: str = "Semantic QA plan review produced no valid result."
 
 
