@@ -49,17 +49,16 @@ prompts:
 # text is written once and every repo that wants it always-loaded aggregates the
 # same file instead of maintaining its own copy of the cadence.
 #
-# `filename` is what makes this AGENTS.md rather than CLAUDE.md — the codex
-# adapter is off, and CLAUDE.md stays the one-line `@AGENTS.md` pointer.
-# `includeReadme: none` keeps the root README (an outward-facing overview) out of
-# every session's context.
+# The aggregated text lands in AGENTS.md — the name every harness reads — and
+# CLAUDE.md is generated beside it as the `@AGENTS.md` pointer. `includeReadme:
+# false` keeps the root README (an outward-facing overview) out of every
+# session's context.
 localInstructions:
   - skills:
       - stablemate-repo
     prompts:
       - stablemate-commit
       - stablemate-reload-runs
-    filename: AGENTS.md
     paths:
       - "."
-    includeReadme: none
+    includeReadme: false

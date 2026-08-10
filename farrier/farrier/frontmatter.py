@@ -81,11 +81,11 @@ def banner_sources(text: str) -> list[str]:
     return out
 
 
-#: Filenames farrier generates by aggregating library sources into one always-loaded
-#: file (localInstructions), and the only names a `filename:` may pick from. The set is
-#: closed because `farrier source` resolves a generated instruction file back through
-#: agents.yml by its name — a name outside it would be unresolvable.
-LOCAL_INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "CODEX.md")
+#: The files a localInstructions mapping generates. AGENTS.md carries the aggregated
+#: text — every harness reads that name natively — and CLAUDE.md is a pointer to it,
+#: written only when the claude adapter is on. `farrier source` resolves either back
+#: through agents.yml by its name, so the set is closed.
+LOCAL_INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
 
 
 def mapping_skill_names(mapping: dict[str, Any]) -> list[str]:
@@ -118,24 +118,32 @@ def mapping_prompt_names(mapping: dict[str, Any]) -> list[str]:
     return []
 
 
-def mapping_filename(mapping: dict[str, Any]) -> str | None:
-    """The single output filename a localInstructions mapping asks for, if any.
+#: Legacy spellings of `includeReadme`, from when the key chose the *mechanism*
+#: (copy the body in, or reference it with Claude's `@` directive). The mechanism
+#: is no longer the author's to pick — it follows the file being written — so the
+#: key is a boolean now, and the old words map onto it.
+_README_ALIASES = {"inline": True, "import": True, "none": False}
 
-    Without it a mapping writes the per-adapter default set (CLAUDE.md for
-    claude, AGENTS.md + CODEX.md for codex). With it the mapping writes exactly
-    that one file per path — which is how a claude-only repo generates AGENTS.md
-    without turning the codex adapter on.
+
+def mapping_include_readme(mapping: dict[str, Any]) -> bool:
+    """Whether a localInstructions mapping folds in the sibling README.md.
+
+    True by default: a directory's README is usually the orientation an agent
+    working there wants. How it gets in is decided per generated file, not here —
+    CLAUDE.md references it with `@README.md`, and AGENTS.md, which harnesses
+    without an import directive read, gets the body copied.
     """
-    filename = mapping.get("filename")
-    if filename is None:
-        return None
-    filename = str(filename)
-    if filename not in LOCAL_INSTRUCTION_FILES:
+    value = mapping.get("includeReadme", True)
+    if isinstance(value, bool):
+        return value
+    key = str(value)
+    if key not in _README_ALIASES:
         raise SystemExit(
-            f"localInstructions.filename must be one of "
-            f"{'/'.join(LOCAL_INSTRUCTION_FILES)} (got {filename!r})"
+            f"localInstructions.includeReadme must be true or false "
+            f"(got {value!r}; the {'/'.join(_README_ALIASES)} spellings are the "
+            "old mechanism-picking form and still work)"
         )
-    return filename
+    return _README_ALIASES[key]
 
 
 def _as_text(value: Any) -> str:

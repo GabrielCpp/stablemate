@@ -1,10 +1,11 @@
-"""`localInstructions` aggregation: which sources go in, and what the file is called.
+"""`localInstructions` aggregation: which sources go in, and which files come out.
 
 An entry names skills (`skill`/`skills`), prompts (`prompt`/`prompts`), or both —
 prompts are there so a procedure a repo wants *always loaded* stays one library
 file rather than a hand-maintained fragment in every consuming repo's root
-instructions. `filename` picks the single output name, which is how a
-claude-only repo generates AGENTS.md without turning the codex adapter on.
+instructions. The aggregated text always lands in AGENTS.md, the one name every
+harness reads natively; CLAUDE.md is generated beside it as an `@AGENTS.md`
+pointer whenever the claude adapter is on, so the body is never written twice.
 
     ./.venv/bin/python -m pytest tests/test_local_instruction_mapping.py
 """
@@ -36,11 +37,11 @@ def _library(tmp_path: Path) -> Path:
     return root
 
 
-def _repo(tmp_path: Path, mapping: str) -> Path:
+def _repo(tmp_path: Path, mapping: str, codex: bool = False) -> Path:
     repo = tmp_path / "demo"
     repo.mkdir(parents=True, exist_ok=True)
     (repo / "agents.yml").write_text(
-        "agents:\n  claude: true\n  codex: false\n"
+        f"agents:\n  claude: true\n  codex: {str(codex).lower()}\n"
         "skills:\n  - stablemate/ostler\n"
         "prompts:\n  - stablemate/commit\n"
         "localInstructions:\n" + mapping,
@@ -49,10 +50,12 @@ def _repo(tmp_path: Path, mapping: str) -> Path:
     return repo
 
 
-def _render(tmp_path: Path, mapping: str) -> tuple[Path, dict[Path, str]]:
+def _render(
+    tmp_path: Path, mapping: str, codex: bool = False
+) -> tuple[Path, dict[Path, str]]:
     root = _library(tmp_path)
     set_layers(root)
-    repo = _repo(tmp_path, mapping)
+    repo = _repo(tmp_path, mapping, codex)
     from farrier.frontmatter import read_yaml
 
     return repo, render_expected(read_yaml(repo / "agents.yml"), repo)
@@ -64,9 +67,9 @@ def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
         "  - skills: [demo-ostler]\n"
         "    prompts: [demo-commit]\n"
         '    paths: ["."]\n'
-        "    includeReadme: none\n",
+        "    includeReadme: false\n",
     )
-    body = outputs[repo / "CLAUDE.md"]
+    body = outputs[repo / "AGENTS.md"]
     assert body.index("Ostler rules.") < body.index("Push as you go.")
     # The prompt's own front matter never reaches the aggregated file.
     assert "description: Commit and push" not in body
@@ -77,20 +80,21 @@ def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
     # aggregated it would be a literal dollar sign in every session's context.
     repo, outputs = _render(
         tmp_path,
-        "  - prompts: [demo-commit]\n" '    paths: ["."]\n' "    includeReadme: none\n",
+        "  - prompts: [demo-commit]\n"
+        '    paths: ["."]\n'
+        "    includeReadme: false\n",
     )
-    assert "$ARGUMENTS" not in outputs[repo / "CLAUDE.md"]
+    assert "$ARGUMENTS" not in outputs[repo / "AGENTS.md"]
     # ...but the command itself still renders with it.
-    command = outputs[repo / ".claude" / "commands" / "demo-commit.md"]
-    assert "$ARGUMENTS" in command
+    assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-commit.md"]
 
 
 def test_prompt_only_mapping_needs_no_skill(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        "  - prompt: demo-commit\n    paths: [\".\"]\n    includeReadme: none\n",
+        '  - prompt: demo-commit\n    paths: ["."]\n    includeReadme: false\n',
     )
-    assert "Push as you go." in outputs[repo / "CLAUDE.md"]
+    assert "Push as you go." in outputs[repo / "AGENTS.md"]
 
 
 def test_mapping_with_no_source_is_rejected(tmp_path):
@@ -99,41 +103,94 @@ def test_mapping_with_no_source_is_rejected(tmp_path):
     assert "at least one source" in str(exc.value)
 
 
-def test_filename_names_the_single_output(tmp_path):
-    # claude adapter only, yet the root file is AGENTS.md: that is the whole
-    # point of the key — the name is not the adapter's to choose.
+def test_claude_only_repo_still_writes_agents_md_plus_a_pointer(tmp_path):
+    # The body goes where every harness looks, even when only Claude is enabled:
+    # turning codex on later must not move a file or change what it says.
     repo, outputs = _render(
         tmp_path,
-        "  - skill: demo-ostler\n"
-        "    filename: AGENTS.md\n"
-        '    paths: ["."]\n'
-        "    includeReadme: none\n",
+        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: false\n',
     )
-    assert repo / "AGENTS.md" in outputs
+    assert "Ostler rules." in outputs[repo / "AGENTS.md"]
+    pointer = outputs[repo / "CLAUDE.md"]
+    assert "@AGENTS.md" in pointer
+    assert "Ostler rules." not in pointer
+
+
+def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
+    root = _library(tmp_path)
+    set_layers(root)
+    repo = tmp_path / "demo"
+    repo.mkdir()
+    (repo / "agents.yml").write_text(
+        "agents:\n  claude: false\n  codex: true\n"
+        "skills:\n  - stablemate/ostler\n"
+        "localInstructions:\n"
+        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: false\n',
+        encoding="utf-8",
+    )
+    from farrier.frontmatter import read_yaml
+
+    outputs = render_expected(read_yaml(repo / "agents.yml"), repo)
+    assert "Ostler rules." in outputs[repo / "AGENTS.md"]
     assert repo / "CLAUDE.md" not in outputs
-    # Still rendered for the claude target — the banner is a Claude-only comment.
-    assert "DO NOT EDIT" in outputs[repo / "AGENTS.md"]
 
 
-def test_unknown_filename_is_rejected(tmp_path):
+def _with_readme(tmp_path: Path) -> None:
+    repo = tmp_path / "demo"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "README.md").write_text("Local readme.\n", encoding="utf-8")
+
+
+def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
+    _with_readme(tmp_path)
+    repo, outputs = _render(
+        tmp_path, '  - skill: demo-ostler\n    paths: ["."]\n', codex=False
+    )
+    # Claude can pull it in by reference, so the always-loaded file stays lean.
+    assert "@README.md" in outputs[repo / "CLAUDE.md"]
+    assert "Local readme." not in outputs[repo / "AGENTS.md"]
+
+
+def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
+    _with_readme(tmp_path)
+    repo, outputs = _render(
+        tmp_path, '  - skill: demo-ostler\n    paths: ["."]\n', codex=True
+    )
+    # Codex has no import directive, so the body is copied — and Claude then gets
+    # it through the pointer, which must not import it a second time.
+    assert "Local readme." in outputs[repo / "AGENTS.md"]
+    assert "@README.md" not in outputs[repo / "CLAUDE.md"]
+
+
+def test_legacy_include_readme_spellings_still_map_onto_the_boolean(tmp_path):
+    repo, outputs = _render(
+        tmp_path,
+        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: none\n',
+    )
+    assert "## Local README" not in outputs[repo / "AGENTS.md"]
+
+
+def test_unknown_include_readme_value_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
-            "  - skill: demo-ostler\n    filename: RULES.md\n    paths: [\".\"]\n",
+            '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: maybe\n',
         )
-    assert "filename" in str(exc.value)
+    assert "includeReadme" in str(exc.value)
 
 
-def test_source_resolves_a_filename_mapped_file_to_skill_and_prompt(tmp_path, capsys):
+@pytest.mark.parametrize("name", ["AGENTS.md", "CLAUDE.md"])
+def test_source_resolves_either_generated_file_to_skill_and_prompt(
+    tmp_path, capsys, name
+):
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,
         "  - skills: [demo-ostler]\n"
         "    prompts: [demo-commit]\n"
-        "    filename: AGENTS.md\n"
         '    paths: ["."]\n',
     )
-    generated = repo / "AGENTS.md"
+    generated = repo / name
     generated.write_text("<!--\ngenerated by farrier\n-->\n\n# Body\n", encoding="utf-8")
     assert main(["source", str(generated), "--library", str(root)]) == 0
     assert capsys.readouterr().out.strip().splitlines() == [

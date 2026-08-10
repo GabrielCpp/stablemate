@@ -25,7 +25,6 @@ from farrier.frontmatter import (
     LOCAL_INSTRUCTION_FILES,
     banner_sources,
     frontmatter_metadata,
-    mapping_filename,
     mapping_prompt_names,
     mapping_skill_names,
     read_yaml,
@@ -203,9 +202,9 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     resolution walks up to the repo's agents.yml, finds the mapping targeting
     this file's directory, and turns its installed skill and prompt names into
     library source paths with the same selection/prefix machinery install uses.
-    A mapping that names a `filename` only claims that one file, so two mappings
-    may share a directory; among those that do claim it, the last one wins,
-    mirroring install.
+    AGENTS.md and its CLAUDE.md pointer come from the same mapping, so both names
+    resolve to the same sources; when two mappings claim a directory the last one
+    wins, mirroring install.
 
     Returns library-relative source paths; None when the file is not a local
     instruction file or no agents.yml exists above it (caller may fall back to
@@ -224,9 +223,6 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     skill_names: list[str] = []
     prompt_names: list[str] = []
     for mapping in config.get("localInstructions", []) or []:
-        filename = mapping_filename(mapping)
-        if filename is not None and filename != generated.name:
-            continue
         for rel in mapping.get("paths", []) or []:
             if (repo / rel).resolve() == directory:
                 skill_names = mapping_skill_names(mapping)

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from farrier.frontmatter import (
-    mapping_filename,
+    mapping_include_readme,
     mapping_prompt_names,
     mapping_skill_names,
 )
@@ -193,23 +193,16 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                 "A localInstructions entry must select at least one source "
                 "(`skill`/`skills` and/or `prompt`/`prompts`)"
             )
-        filename = mapping_filename(mapping)
-        # `includeReadme` controls how a sibling README.md is folded in:
-        #   inline (default) — copy the rendered README body into the file
-        #   import           — reference it via Claude's `@README.md` directive
-        #   none             — omit it
-        # Booleans are accepted too: true → inline, false → none.
-        readme_flag = mapping.get("includeReadme", "inline")
-        if readme_flag is True:
-            readme_mode = "inline"
-        elif readme_flag is False:
-            readme_mode = "none"
-        else:
-            readme_mode = str(readme_flag)
-        if readme_mode not in ("inline", "import", "none"):
-            raise SystemExit(
-                f"localInstructions.includeReadme must be one of inline/import/none (got {readme_flag!r})"
-            )
+        include_readme = mapping_include_readme(mapping)
+        claude_only = bool(agents.get("claude")) and not (
+            agents.get("codex") or agents.get("copilot")
+        )
+        # The aggregated body is written once, to AGENTS.md — the one name every
+        # harness reads natively. Its template helpers resolve against the shared
+        # `.agents/` layout unless Claude is the only adapter, because a link into
+        # `.claude/skills/` in a file codex also reads points at a copy codex was
+        # never given.
+        target = "claude" if claude_only else "codex"
         for rel in mapping.get("paths", []) or []:
             directory = repo / rel
             if not directory.exists():
@@ -217,21 +210,25 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                     f"Local instruction path does not exist: {rel} "
                     "(create it first — e.g. `farrier scaffold <id>`)"
                 )
-            # A `filename` names the one file to write, whatever the adapters
-            # are; the target still follows the adapter, since it decides the
-            # banner and whether `@`-imports are available.
-            if filename:
-                targets = {filename: "claude" if agents.get("claude") else "codex"}
-            else:
-                targets = {}
-                if agents.get("codex"):
-                    targets |= {"AGENTS.md": "codex", "CODEX.md": "codex"}
-                if agents.get("claude"):
-                    targets["CLAUDE.md"] = "claude"
-            for name, target in targets.items():
-                output_path = directory / name
-                outputs[output_path] = renderer.render_local_instruction(
-                    skill_names, target, output_path, readme_mode, prompt_names
+            agents_path = directory / "AGENTS.md"
+            # Claude alone can pull the README in by reference, which keeps the
+            # always-loaded file lean. With another adapter present the body has
+            # to be copied into AGENTS.md — and then Claude gets it through the
+            # import chain, so importing it again would load it twice.
+            outputs[agents_path] = renderer.render_local_instruction(
+                skill_names,
+                target,
+                agents_path,
+                include_readme and not claude_only,
+                prompt_names,
+            )
+            if agents.get("claude"):
+                claude_path = directory / "CLAUDE.md"
+                outputs[claude_path] = renderer.render_claude_pointer(
+                    skill_names,
+                    claude_path,
+                    prompt_names,
+                    include_readme and claude_only,
                 )
 
     return outputs
