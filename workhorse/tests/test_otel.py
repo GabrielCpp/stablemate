@@ -596,7 +596,10 @@ def test_failed_end_run_sweeps_open_spans_and_flags_error():
     t.record_event(_event("stuck", 1, "enter"))
     t.end_run("fail", "out of gas")
     stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
-    assert stuck.ended and stuck.status.code == "ERROR"
+    # Swept, not blamed: nothing closed this frame at its own depth, so it says it was
+    # abandoned. The failure itself is one ERROR span, and here that is the root.
+    assert stuck.ended and stuck.attrs["workhorse.outcome"] == "abandoned"
+    assert stuck.status is None or stuck.status.code != "ERROR"
     assert root.ended and root.attrs["workhorse.terminal"] == "fail"
     assert root.status.code == "ERROR"
     assert shutdown["called"] is True
@@ -635,11 +638,53 @@ def test_aborted_end_run_remains_an_error() -> None:
     )
 
     stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
-    assert stuck.ended and stuck.status.code == "ERROR"
+    assert stuck.ended and stuck.attrs["workhorse.outcome"] == "abandoned"
+    assert stuck.status is None or stuck.status.code != "ERROR"
     assert root.ended and root.attrs["workhorse.terminal"] == "aborted"
     assert root.status.code == "ERROR"
     assert root.attrs["error.class"] == "RuntimeError"
     assert root.attrs["error.kind"] == "fatal"
+
+
+def test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost():
+    """One defect is one ERROR span, however deep the frame that raised.
+
+    Nesting is not a count of failures: an `AttributeError` three frames down used to
+    close as three ERROR spans, so a dashboard summing `status = 'ERROR'` reported "3
+    errors" for one defect — and the number moved when the *shape* of the workflow
+    changed rather than when anything broke.
+    """
+    t, tracer, _, _ = _telemetry()
+    previous = otel.install(otel.TelemetryHost(active=t))
+    try:
+        boom = AttributeError("no such attribute")
+        try:
+            with otel.scope():
+                t.state_start("verify", 1)
+                with otel.scope():
+                    t.record_event(_event("build_context", 1, "enter"))
+                    raise boom
+        except AttributeError:
+            pass
+    finally:
+        otel.install(previous)
+
+    state, node = tracer.by_name("state:verify"), tracer.by_name("build_context")
+    # Both closed here, by the scope that opened them — not swept at the end of the run.
+    assert state.ended and node.ended
+    assert t.open_depth() == 0
+    assert node.status.code == "ERROR"
+    assert node.attrs["error.class"] == "AttributeError"
+    # The frame above ended *in* an error without claiming to *be* one.
+    assert state.attrs["workhorse.outcome"] == "error"
+    assert state.status is None or state.status.code != "ERROR"
+
+    # And the root does not add a second one on the way out.
+    t.end_run("fail", str(boom))
+    root = tracer.by_name("run:wf")
+    assert root.attrs["workhorse.terminal"] == "fail"
+    assert root.status is None or root.status.code != "ERROR"
+    assert sum(1 for s in tracer.spans if s.status and s.status.code == "ERROR") == 1
 
 
 def test_end_run_is_idempotent_and_the_first_status_wins():

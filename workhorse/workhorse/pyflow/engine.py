@@ -233,21 +233,28 @@ class Engine:
         spec = self._resolve(node)
         writer = self.env.writer
         rendered = _describe(spec, args, kwargs)
-        writer.record_node(
-            spec.name,
-            "enter",
-            blueprint=spec.blueprint,
-            # The workflow's own classification of this node, forwarded rather than
-            # inferred — see `Workflow.INFRA_NODES`. Absent when it has nothing to say.
-            **({"span_kind": span_kind} if span_kind else {}),
-            **_stand_in(self.env.dry_run, spec.stub is not None),
-        )
-        self.env.log.info(
-            "[workhorse] call   → %s%s", spec.name, " (dry-run)" if self.env.dry_run else ""
-        )
-        value = self._invoke(spec, args, kwargs)
-        writer.write_step(spec.name, rendered, _payload(value), {}, next_node=None)
-        return value
+        # The `enter` below opens this node's span and only `write_step` closes it. A
+        # node that raises never reaches that line, so the scope opened *before* the
+        # enter is what closes it — at the frame that opened it, carrying the error,
+        # rather than leaving it for the end of the run to sweep.
+        with otel.scope():
+            writer.record_node(
+                spec.name,
+                "enter",
+                blueprint=spec.blueprint,
+                # The workflow's own classification of this node, forwarded rather than
+                # inferred — see `Workflow.INFRA_NODES`. Absent when it has nothing to say.
+                **({"span_kind": span_kind} if span_kind else {}),
+                **_stand_in(self.env.dry_run, spec.stub is not None),
+            )
+            self.env.log.info(
+                "[workhorse] call   → %s%s",
+                spec.name,
+                " (dry-run)" if self.env.dry_run else "",
+            )
+            value = self._invoke(spec, args, kwargs)
+            writer.write_step(spec.name, rendered, _payload(value), {}, next_node=None)
+            return value
 
     def _resolve(self, node: Callable[..., Any]) -> NodeSpec:
         """The spec this run will actually call for `node`.
@@ -328,60 +335,65 @@ class Engine:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
         declared = node_id in (self.env.agent_stubs or {})
-        writer.record_node(
-            node_id, "enter", prompt=prompt, **_stand_in(self.env.dry_run, declared)
-        )
+        # The `enter` below opens this node's span and only `write_step` closes it.
+        # A turn that raises never reaches that line, so the scope opened *before*
+        # the enter is what closes it — at the frame that opened it, carrying the
+        # error, rather than leaving it for the end of the run to sweep.
+        with otel.scope():
+            writer.record_node(
+                node_id, "enter", prompt=prompt, **_stand_in(self.env.dry_run, declared)
+            )
 
-        if self.env.dry_run:
-            value = self._agent_stub(node_id, returns, args)
-            writer.write_step(node_id, f"(dry-run) {prompt}", _payload(value), {})
-            self.env.log.info("[workhorse] agent  → %s (dry-run)", node_id)
-            return value
+            if self.env.dry_run:
+                value = self._agent_stub(node_id, returns, args)
+                writer.write_step(node_id, f"(dry-run) {prompt}", _payload(value), {})
+                self.env.log.info("[workhorse] agent  → %s (dry-run)", node_id)
+                return value
 
-        # Left out entirely when the state said nothing, so the node model's own
-        # defaults keep applying rather than being overwritten with None.
-        budget: dict[str, Any] = {}
-        if power is not None:
-            budget["power"] = power
-        if timeout is not None:
-            budget["timeout"] = timeout
-        # The runner Jinja-renders `cwd`/`add_dirs` — a literal path is a no-op render,
-        # so real values pass through unchanged and the cwd de-dupe and `--add-dir`
-        # flags come for free.
-        if cwd is not None:
-            budget["cwd"] = str(cwd)
-        if add_dirs is not None:
-            budget["add_dirs"] = [str(d) for d in add_dirs]
-        node = AgentNode(
-            type="agent",
-            id=node_id,
-            prompt=prompt,
-            # The values are already real Python objects, so they go into the render
-            # context directly rather than through `args:`, which is a dict of Jinja
-            # template *strings* and would stringify an int or a Path on the way past.
-            args={},
-            outputs=_outputs_for(returns),
-            next=None,
-            **budget,
-        )
-        self.env.log.info("[workhorse] agent  → %s", node_id)
-        # Never None: `RunEnv.__post_init__` resolves the field, so the ladder this run
-        # uses is the ladder this run was built with — not one this call constructs from
-        # configuration it would have to re-read.
-        runner = self.env.agent_runner
-        if runner is None:  # pragma: no cover - see above; the field is always resolved
-            raise WorkflowFailed("this run was built without an agent runner")
-        rendered, raw = runner.run(
-            node,
-            # The manifest underneath, the state's arguments on top: a state that
-            # binds `repo` means its own, not the manifest's.
-            WorkflowContext({**self.env.manifest.as_context(), **jsonable(args)}),
-            self.env.workflow_dir,
-            self.env.session_id_path,
-            run_dir=writer.run_dir,
-        )
-        writer.write_step(node_id, rendered, raw, {}, next_node=None)
-        return _coerce(raw, returns, node_id)
+            # Left out entirely when the state said nothing, so the node model's own
+            # defaults keep applying rather than being overwritten with None.
+            budget: dict[str, Any] = {}
+            if power is not None:
+                budget["power"] = power
+            if timeout is not None:
+                budget["timeout"] = timeout
+            # The runner Jinja-renders `cwd`/`add_dirs` — a literal path is a no-op render,
+            # so real values pass through unchanged and the cwd de-dupe and `--add-dir`
+            # flags come for free.
+            if cwd is not None:
+                budget["cwd"] = str(cwd)
+            if add_dirs is not None:
+                budget["add_dirs"] = [str(d) for d in add_dirs]
+            node = AgentNode(
+                type="agent",
+                id=node_id,
+                prompt=prompt,
+                # The values are already real Python objects, so they go into the render
+                # context directly rather than through `args:`, which is a dict of Jinja
+                # template *strings* and would stringify an int or a Path on the way past.
+                args={},
+                outputs=_outputs_for(returns),
+                next=None,
+                **budget,
+            )
+            self.env.log.info("[workhorse] agent  → %s", node_id)
+            # Never None: `RunEnv.__post_init__` resolves the field, so the ladder this run
+            # uses is the ladder this run was built with — not one this call constructs from
+            # configuration it would have to re-read.
+            runner = self.env.agent_runner
+            if runner is None:  # pragma: no cover - see above; the field is always resolved
+                raise WorkflowFailed("this run was built without an agent runner")
+            rendered, raw = runner.run(
+                node,
+                # The manifest underneath, the state's arguments on top: a state that
+                # binds `repo` means its own, not the manifest's.
+                WorkflowContext({**self.env.manifest.as_context(), **jsonable(args)}),
+                self.env.workflow_dir,
+                self.env.session_id_path,
+                run_dir=writer.run_dir,
+            )
+            writer.write_step(node_id, rendered, raw, {}, next_node=None)
+            return _coerce(raw, returns, node_id)
 
     def _agent_stub(self, node_id: str, returns: type, args: dict[str, Any]) -> Any:
         """The reply a dry run uses for one prompt.
@@ -411,25 +423,29 @@ class Engine:
         child = wf(*args, **kwargs)
         node_id = _flow_id(wf)
         writer = self.env.writer
-        writer.record_node(node_id, "enter", flow=type(child).__name__)
-        self.env.log.info("[workhorse] flow   → %s", node_id)
-        # A resume re-enters the state that was running when the run was killed — and
-        # if that state is a handoff, the sub-flow it was inside is where the run
-        # actually was. Started fresh, the child replays from its own `start`, which
-        # for a long sub-flow (the coder's QA flow: context, plan, review, then a
-        # half-hour suite) throws away hours of finished agent turns on every restart.
-        # The token is one-shot and set only for the resumed state's own body, so an
-        # ordinary re-entry — a loop calling the same flow a second time — still
-        # starts the child clean, which is what `subscope`'s `resume` contract asks for.
-        resuming = self.env.resume_pending
-        self.env.resume_pending = False
-        sub_writer = writer.subscope(node_id, type(child).__name__, resume=resuming)
-        sub_env = dataclasses.replace(
-            self.env, writer=sub_writer, **_sub_scope(type(child), self.env)
-        )
-        result = self.env.driver(child, sub_env, resume_in_place=resuming)
-        writer.write_step(node_id, f"handoff → {type(child).__name__}", _payload(result), {})
-        return result
+        # The `enter` below opens this handoff's span. The child's own states close
+        # their own spans; this scope closes the handoff frame itself when the
+        # sub-flow raises through it, at the depth that opened it.
+        with otel.scope():
+            writer.record_node(node_id, "enter", flow=type(child).__name__)
+            self.env.log.info("[workhorse] flow   → %s", node_id)
+            # A resume re-enters the state that was running when the run was killed — and
+            # if that state is a handoff, the sub-flow it was inside is where the run
+            # actually was. Started fresh, the child replays from its own `start`, which
+            # for a long sub-flow (the coder's QA flow: context, plan, review, then a
+            # half-hour suite) throws away hours of finished agent turns on every restart.
+            # The token is one-shot and set only for the resumed state's own body, so an
+            # ordinary re-entry — a loop calling the same flow a second time — still
+            # starts the child clean, which is what `subscope`'s `resume` contract asks for.
+            resuming = self.env.resume_pending
+            self.env.resume_pending = False
+            sub_writer = writer.subscope(node_id, type(child).__name__, resume=resuming)
+            sub_env = dataclasses.replace(
+                self.env, writer=sub_writer, **_sub_scope(type(child), self.env)
+            )
+            result = self.env.driver(child, sub_env, resume_in_place=resuming)
+            writer.write_step(node_id, f"handoff → {type(child).__name__}", _payload(result), {})
+            return result
 
     # --- self.output --------------------------------------------------------
 
@@ -490,9 +506,10 @@ def _flow_id(wf: Callable[..., Any]) -> str:
 def _outputs_for(returns: type) -> list[OutputSpec]:
     """The keys the agent is asked for, taken from the model it must return.
 
-    Declaring them is what gives the resilience ladder something to fall back to:
-    after every reframe fails, the node emits these keys as nulls and the run moves on
-    rather than crashing.
+    Declaring them is what the resilience ladder reframes against — it is how a reply
+    that missed a key gets asked again for that key by name. There is no fallback below
+    the last reframe: a node that never answered has no answer to emit, so the ladder
+    stops the run (see `runner/spec.py::OutputSpec`).
     """
     fields = getattr(returns, "model_fields", None)
     if not fields:

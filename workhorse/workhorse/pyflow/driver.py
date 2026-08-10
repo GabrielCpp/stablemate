@@ -351,27 +351,32 @@ def drive(
         # further along the run is being entered for the first time, and a handoff it
         # makes is a fresh invocation whatever a stale child checkpoint says.
         env.resume_pending = resuming
-        otel.state_start(spec.name, state_seq)
-        try:
-            outcome = bound(**kwargs)
-        except reload.ReloadRequested:
-            # Every `drive` frame closes its own scope on the way out, innermost first:
-            # a handoff runs a nested `drive` inside this state's body, so the unwind
-            # passes through one of these per level. `_end_execution` also sweeps
-            # whatever this frame left open above it — the agent node's own span, which
-            # never received the `done` event that normally ends it, because the turn
-            # was cut. So a reload exports the same span tree a completed transition
-            # does, minus the outcome attribute it never earned. That is the point: an
-            # operator who reloads a broken flow must not pay for it in spans that never
-            # leave the process, which is exactly what makes a reload read as a crash.
-            #
-            # They close marked, not bare: a node visit that ended here did not finish
-            # its work, and a reader with only the two timestamps cannot tell that from
-            # one that did. Unmarked, five reloads of a flow an operator is fixing are
-            # five completed visits to the same node on the same labels — groom's churn
-            # rule, i.e. the reload paging as the loop it exists to break.
-            otel.state_end(spec.name, state_seq, None, cut="reload")
-            raise
+        # The state's own span, and every node span its body leaves open, close in
+        # this scope's `finally` — at the depth that opened them, carrying the error
+        # on the innermost frame only. The reload path below restores the depth
+        # itself, which leaves the scope a no-op there.
+        with otel.scope():
+            otel.state_start(spec.name, state_seq)
+            try:
+                outcome = bound(**kwargs)
+            except reload.ReloadRequested:
+                # Every `drive` frame closes its own scope on the way out, innermost first:
+                # a handoff runs a nested `drive` inside this state's body, so the unwind
+                # passes through one of these per level. `_end_execution` also sweeps
+                # whatever this frame left open above it — the agent node's own span, which
+                # never received the `done` event that normally ends it, because the turn
+                # was cut. So a reload exports the same span tree a completed transition
+                # does, minus the outcome attribute it never earned. That is the point: an
+                # operator who reloads a broken flow must not pay for it in spans that never
+                # leave the process, which is exactly what makes a reload read as a crash.
+                #
+                # They close marked, not bare: a node visit that ended here did not finish
+                # its work, and a reader with only the two timestamps cannot tell that from
+                # one that did. Unmarked, five reloads of a flow an operator is fixing are
+                # five completed visits to the same node on the same labels — groom's churn
+                # rule, i.e. the reload paging as the loop it exists to break.
+                otel.state_end(spec.name, state_seq, None, cut="reload")
+                raise
         resuming = env.resume_pending = False
 
         if not isinstance(outcome, (Continue, Done, Await)):

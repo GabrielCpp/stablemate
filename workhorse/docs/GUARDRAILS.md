@@ -275,6 +275,32 @@ and retry/reframe/compact/watchdog span events.
 Exports are best-effort: a down collector never slows or crashes a run
 (`events.jsonl` on disk remains the durable record).
 
+#### One failure is one ERROR span
+
+A span is opened by an `enter` event and closed by the matching `done`, so a body that
+raises never emits its own close. Each frame that can raise — a `self.call`, a
+`self.agent`, a `self.handoff`, a state body — is therefore bracketed by
+`otel.scope()`, a context manager (and, being a `@contextmanager`, a decorator too)
+that closes in its own `finally` every span the body left open, at the depth that
+opened it. A node span's duration then runs to the moment its work stopped, not to the
+moment the process gave up.
+
+The error is recorded **once**, on the innermost frame — the one whose body actually
+raised:
+
+| Attribute / status | Means |
+|---|---|
+| `status = ERROR` + `error.class` | this span is the one that broke — exactly one per run |
+| `workhorse.outcome = error` | an outer frame the failure propagated through |
+| `workhorse.outcome = abandoned` | still open at `end_run`; closed by the backstop, not by its own scope |
+| `workhorse.terminal` (root) | the run-level verdict, on every run, failed or not |
+
+Nesting depth is not a count of failures. Before this, one `AttributeError` three
+frames down closed as three ERROR spans, so a dashboard summing `status = 'ERROR'`
+(groom's per-run error badge) reported "3 errors" for one defect — and the number moved
+when the *shape* of a workflow changed rather than when anything broke. The root only
+takes the ERROR status when nothing below it already carried the failure.
+
 #### Turn cost and tokens, normalized across harnesses
 
 Each backend reports a turn's consumption in its own vocabulary — claude's `result`

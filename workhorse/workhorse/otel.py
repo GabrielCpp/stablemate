@@ -251,6 +251,10 @@ def _failsoft(fallback: _R) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
 _NO_OPEN_NODE = str()
 # As above, avoid narrowing the fail-soft decorator to ``Literal[0]``.
 _NO_WAIT_TOKEN = int()
+# `open_depth`'s fallback. Zero rather than -1: with telemetry failing soft the only
+# safe reading of "how deep are we" is "no scope of mine is open", which makes the
+# matching `unwind_to` a no-op instead of a sweep of somebody else's frames.
+_NO_OPEN_DEPTH = int()
 
 
 class Telemetry(Protocol):
@@ -293,6 +297,8 @@ class Telemetry(Protocol):
     def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
     def current_node(self) -> str: ...
+    def open_depth(self) -> int: ...
+    def unwind_to(self, depth: int, error: BaseException) -> None: ...
     def end_run(
         self,
         status: str,
@@ -343,6 +349,11 @@ class _NullTelemetry:
 
     def current_node(self) -> str:
         return ""
+
+    def open_depth(self) -> int:
+        return 0
+
+    def unwind_to(self, depth: int, error: BaseException) -> None: ...
 
     def end_run(
         self,
@@ -695,6 +706,34 @@ def state_end(state: str, seq: int, next_state: str | None = None, cut: str = ""
 
 
 @contextmanager
+def scope() -> Iterator[None]:
+    """Close, in this body's own `finally`, every span the body leaves open.
+
+    Span open/close is driven by the enter/done records the engine writes, so a body
+    that raises never emits its `done` and its frame stays open. Bracketing the body
+    makes the raise close it *here*, at the depth that opened it, with the error
+    recorded on the innermost frame only — see :meth:`_Telemetry.unwind_to`.
+
+    `@contextmanager` yields a `ContextDecorator`, so this reads either way::
+
+        with otel.scope():
+            value = self._invoke(spec, args, kwargs)
+
+        @otel.scope()
+        def run_node(...): ...
+
+    A body that closed its own spans (a reload unwinding through `state_end`) leaves
+    the depth already restored, and this is then a no-op.
+    """
+    depth = _host.active.open_depth()
+    try:
+        yield
+    except BaseException as exc:
+        _host.active.unwind_to(depth, exc)
+        raise
+
+
+@contextmanager
 def wait(kind: str, node_id: str) -> Iterator[None]:
     """Bracket an actual engine-controlled wait with a completed duration span."""
     token = _host.active.wait_start(kind, node_id)
@@ -825,6 +864,9 @@ class _Telemetry:
         # provider, and a second `turn_end(error)` would attach a bogus error to
         # nothing. Ending is therefore latched, not inferred from `_root`.
         self._ended = False
+        # Latched by the first span to carry the failure, so the run exports exactly one
+        # ERROR span however deep the frame that raised was. See `unwind_to`.
+        self._error_reported = False
         # Open execution spans, innermost last:
         # [((kind, name, seq), span, started_at), ...].
         # The engine's walk nests strictly (a flow node's children open and close
@@ -1170,6 +1212,44 @@ class _Telemetry:
         with self._lock:
             return self._stack[-1][0][1] if self._stack else ""
 
+    @_failsoft(_NO_OPEN_DEPTH)
+    def open_depth(self) -> int:
+        """How many execution spans are open — the mark a `scope()` unwinds back to."""
+        with self._lock:
+            return len(self._stack)
+
+    @_failsoft(None)
+    def unwind_to(self, depth: int, error: BaseException) -> None:
+        """Close every span opened above ``depth`` because the body raised.
+
+        Two rules, and both are why this exists rather than letting `end_run` sweep:
+
+        A span is closed by the scope that opened it, in that scope's own `finally`.
+        Swept at the end of the run instead, a node span's duration runs to the moment
+        the process gave up rather than to the moment its work stopped, and every frame
+        between them is stamped with whatever verdict the run ended on.
+
+        The error is recorded **once**, on the innermost frame — the one whose body
+        actually raised. Nesting depth is not a count of failures: one `AttributeError`
+        three frames down used to close as three ERROR spans, so a dashboard summing
+        `status = 'ERROR'` reported "3 errors" for one defect and the number moved when
+        the *shape* of the workflow changed. The outer frames record that they ended in
+        an error (`workhorse.outcome`) without claiming to be one.
+        """
+        with self._lock:
+            innermost = True
+            while len(self._stack) > depth:
+                _, span, _ = self._stack.pop()
+                span.set_attribute("workhorse.outcome", "error")
+                if innermost and not self._error_reported:
+                    self._error_reported = True
+                    span.set_attribute("error.class", type(error).__name__)
+                    span.set_status(
+                        self._trace.Status(self._trace.StatusCode.ERROR, str(error))
+                    )
+                innermost = False
+                span.end()
+
     @_failsoft(None)
     def end_run(
         self,
@@ -1193,10 +1273,13 @@ class _Telemetry:
             for token in list(self._wait_live):
                 self.wait_end(token, "interrupted")
             self.turn_end(error if failed else None)
+            # Whatever is still open here was not closed by its own scope — a frame with
+            # no `finally` around it, or a kill between two of them. Closing it is the
+            # backstop; stamping it is not. An abandoned frame says so with an attribute,
+            # so a reader can still tell it apart from one that ran to its own end.
             while self._stack:
                 _, span, _ = self._stack.pop()
-                if failed:
-                    span.set_status(self._trace.Status(self._trace.StatusCode.ERROR, error))
+                span.set_attribute("workhorse.outcome", "abandoned")
                 span.end()
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
@@ -1204,7 +1287,11 @@ class _Telemetry:
                     self._root.set_attribute("error.class", error_class)
                 if error_kind:
                     self._root.set_attribute("error.kind", error_kind)
-                if failed:
+                # Only when nothing under it already carried the failure. The run-level
+                # verdict is `workhorse.terminal` — an attribute, readable on every run —
+                # so the ERROR *status* is free to mean "this is the span that broke".
+                if failed and not self._error_reported:
+                    self._error_reported = True
                     self._root.set_status(
                         self._trace.Status(self._trace.StatusCode.ERROR, error)
                     )
