@@ -1,6 +1,6 @@
 ---
 name: commit-cadence
-description: "Commit and push as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`, pushed before the next concern starts. Covers when to commit (each coherent unit, not at the end of the session), when to push (right after each commit), how to reconcile a rejected push without forcing, what to do when an SSH push hangs instead of failing (fail fast with BatchMode, then fall back to a GitHub token without persisting it), what the subject must be (release-please reads it and nothing else), and how to stage safely in a tree another process is also writing to. Load when finishing any unit of work in a git repo, before running `git commit` or `git push`, when deciding whether to batch changes, or when a working tree holds changes that are not yours."
+description: "Commit and push as you go, on the branch you are already on, with a Conventional Commits subject — one commit per finished concern, staged by explicit path, never `git add -A`, pushed before the next concern starts. Covers when to commit (each coherent unit, not at the end of the session), when to push (right after each commit), how to reconcile a rejected push without forcing, what to do when an SSH push hangs instead of failing (fail fast with BatchMode, then fall back to a GitHub token without persisting it), what the subject must be (release-please reads it and nothing else), how to stage safely in a tree another process is also writing to, and why a push is followed by `control reload` when a live workhorse run is still holding the old code. Load when finishing any unit of work in a git repo, before running `git commit` or `git push`, when deciding whether to batch changes, when a working tree holds changes that are not yours, or after changing workflow/engine code while a run is in flight."
 applyTo: ""
 tags: [standards, workflow]
 ---
@@ -106,6 +106,53 @@ containing one into a commit message, an issue, or a PR body.
 
 If no token is available either, say so and leave the commit local — an unpushed commit the
 user knows about is recoverable; a pushed secret is not.
+
+## Reload the runs that are already holding the old code
+
+A push does not reach a run that is already going. Its process imported the workflow
+modules when it started, and a Python process does not notice that a file on disk changed
+— so a live run keeps spending real money executing the exact code you just fixed, and
+keeps doing it for however many hours or days it has left.
+
+So the ritual is three steps, not two: **commit, push, reload.** After pushing a change to
+`workflows/` or `workhorse/`, check whether a run is holding the old copy and tell it to
+pick the new one up:
+
+```bash
+.venv/bin/groom status                                       # which runs are live, and where
+workhorse-<name> control status --run <id>                   # and is this process really serving that run dir
+workhorse-<name> control reload --run <id> --at-boundary     # let the turn land, then re-enter on the pushed code
+```
+
+A reload is a message on the run's control socket, not a restart. The run unwinds to the
+outermost frame, re-imports the workflow package (and every other editable top-level
+package it holds), and re-enters from the checkpoint it just wrote — **same process, same
+pid, same root span, same run dir, same wall-clock budget.** That is why it is not
+optional-because-expensive: it costs a state boundary, where restarting costs the
+in-flight turn and opens a second run generation that groom reads as a failure.
+
+Two choices to make deliberately:
+
+- **`--at-boundary` or cut the turn.** The default cuts the streaming turn within about a
+  second, which is right when that turn *is* the waste you are stopping. Pass
+  `--at-boundary` when the turn is doing legitimate work your fix does not change —
+  throwing it away buys nothing.
+- **`--core` only for the engine.** A plain reload replaces the workflow package and
+  anything else editable; `workhorse` itself is on the stack doing the reload, so changing
+  it needs `--core`, which costs a process image. Do not reach for it for a `workflows/`
+  change.
+
+The one precondition worth checking, because it is the way a reload silently reports
+success over code it did not load: the run's interpreter must resolve the package to your
+source tree, not to a wheel. A wheel in site-packages is deliberately left alone.
+
+```bash
+<run's venv>/bin/python -c "import workhorse_workflows as w; print(w.__file__)"
+```
+
+Full mechanics — what closes, what the spans are stamped with, what a `--core` reload
+re-execs — are in stablemate's `workhorse/README.md`, under "Pushing a fix into a run that
+is already going".
 
 ## The subject is the release input
 

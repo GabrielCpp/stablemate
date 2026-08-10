@@ -166,6 +166,14 @@ git commit -m "fix(workflows): <description>"
 git push                                     # now, not at the end of the session
 ```
 
+**A push does not reach a run that is already going.** A live `workhorse` process imported
+the workflow modules at startup and never re-reads them, so it keeps spending on the code
+you just fixed. After pushing a change under `workflows/` or `workhorse/`, check `groom
+status` for live runs and reload each one that holds it — `workhorse-<name> control reload
+--run <id> --at-boundary`. That is a message on the run's control socket, not a restart:
+same pid, same run dir, same root span, re-entered from the checkpoint. Restarting instead
+costs the in-flight turn and opens a second run generation.
+
 When a push is rejected the remote moved: fetch, rebase, re-run the gate, push again. Never
 `--force` a shared branch — several agents push to this repo, and a force discards whichever
 of them got there first.
