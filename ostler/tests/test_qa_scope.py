@@ -166,6 +166,119 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
     assert obligation["evidenceRequired"] == "live"
 
 
+def _event_book(tmp_path: Path) -> Path:
+    """A changed producer, and an untouched consumer the relation fixpoint walks to.
+
+    The consumer grounds its own code and that code is not in the diff. Nothing about this
+    story says what to assert about it — only that it listens to a name the producer says.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/producer.md").write_text(
+        "---\ntype: screen\ntitle: Checkout\n---\n# Checkout\n\n"
+        "- route: /checkout\n"
+        "- code:\n\n"
+        "## Place\n\n"
+        "- role: button\n"
+        "- name: Place order\n"
+        "- emits: order.placed\n"
+        "- code: app/producer.py::place\n"
+        "- verify: tests/producer_test.py::places\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/consumer.md").write_text(
+        "---\ntype: screen\ntitle: Receipts\n---\n# Receipts\n\n"
+        "- route: /receipts\n"
+        "- code:\n\n"
+        "## Mail\n\n"
+        "- role: status\n"
+        "- name: Receipt sent\n"
+        "- consumes: order.placed\n"
+        "- code: app/consumer.py::mail\n"
+        "- verify: tests/consumer_test.py::mails\n",
+        encoding="utf-8",
+    )
+    producer = tmp_path / "app/producer.py"
+    producer.write_text("def place():\n    return 'old'\n", encoding="utf-8")
+    (tmp_path / "app/consumer.py").write_text("def mail():\n    return 'sent'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    producer.write_text("def place():\n    return 'new'\n", encoding="utf-8")
+    return producer
+
+
+def test_a_node_reached_only_by_the_event_fixpoint_is_context_not_live_evidence(tmp_path: Path):
+    """Sharing an event name with the change is closure, not reach.
+
+    The `while related:` fixpoint walks `emits`/`consumes` and the consistency bullets until
+    nothing new is reachable, and never consults the diff while doing it — so every kind it
+    mints is closure by construction. Left owed live evidence, a seven-criterion story came
+    out demanding proof across 67 documents: 194 of its obligations were held by
+    `event-consumer` alone, the planner could not write a plan that covered them, the
+    reviewer was right to keep rejecting it, and the story ended with no verdict at all.
+    """
+    _event_book(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    producer = by_id["okf:docs/features/demo/producer.md#place:contract"]
+    assert producer["required"] is True
+    assert producer["evidenceRequired"] == "live"
+
+    consumer = by_id["okf:docs/features/demo/consumer.md#mail:contract"]
+    assert {reason["kind"] for reason in consumer["reasons"]} == {"event-consumer"}
+    assert consumer["required"] is False
+    assert consumer["evidenceRequired"] == "context"
+
+
+def test_every_relation_fixpoint_kind_is_declared_closure(tmp_path: Path):
+    """The set and the loop that feeds it may not drift apart again.
+
+    They already did once: the fixpoint was added with seven relation bullets plus the two
+    event kinds, and none of the nine was added to the exemption. Deriving the reason kinds
+    from the same tuple the loop iterates is what makes that unrepeatable, and this asserts
+    the derivation rather than a re-typed literal.
+    """
+    from ostler.qa.context import (
+        _CLOSURE_REASON_KINDS,
+        _RELATION_KEYS,
+        _RELATION_REASON_KINDS,
+    )
+
+    assert _RELATION_REASON_KINDS == {key.replace(" ", "-") for key in _RELATION_KEYS}
+    assert _RELATION_REASON_KINDS <= _CLOSURE_REASON_KINDS
+    assert {"event-consumer", "event-producer"} <= _CLOSURE_REASON_KINDS
+
+
+def test_qa_scaffolding_is_not_a_production_unit():
+    """QA does not owe live proof of the mock backend it tests through.
+
+    Six of one story's sixteen changed files were `tools/qa-mock-backends/*.py`. None of the
+    filter's tokens (`test`, `fixtures`, `__mocks__`) appears in that path, so the mocks were
+    modelled as product, and roughly half the story's surviving live obligations were owed
+    against the fixture harness and mock servers. The plan's first scenario asserted the
+    fixture server's own routes.
+    """
+    from ostler.qa.context import _is_non_production_path as non_production
+
+    assert non_production("web-app/tools/qa-mock-backends/auth.py")
+    assert non_production("web/mocks/handlers.ts")
+    assert non_production("web/__mocks__/handlers.ts")
+    assert non_production("svc/stubs/payments.go")
+    assert non_production("e2e/harness/browser.ts")
+    assert non_production("svc/fake-clock/clock.go")
+    assert non_production("web/api-mocks/orders.ts")
+
+    assert not non_production("app/mock.py")
+    assert not non_production("app/services/payments.py")
+    assert not non_production("web/src/components/Banner.tsx")
+
+
 def test_obligations_carry_the_book_locators_for_the_node(tmp_path: Path):
     """`role`/`name`/`route` ride on the obligation, so a browser locator has a source.
 

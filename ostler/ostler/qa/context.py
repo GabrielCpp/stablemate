@@ -31,11 +31,40 @@ _VERIFY_REF_RE = re.compile(
     r"(?:::(?P<symbol>[^`,]+))?"
 )
 
+#: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
+#: persistence store, event or idempotency key as an already-selected node is pulled in.
+_RELATION_KEYS = (
+    "consistency",
+    "consistency rule",
+    "consistency group",
+    "persistence",
+    "event",
+    "concurrency",
+    "idempotency",
+)
+
+#: The reason kind the fixpoint stamps for each of those bullets.
+_RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in _RELATION_KEYS)
+
 #: Reason kinds that reach a node only through the graph, never through the diff. A node
 #: held solely by these was not touched by this story — the closure walked to it from
 #: something that was. It stays in the packet as context and is not owed live evidence.
+#:
+#: The second group is the relation fixpoint below (`while related:`), which walks
+#: `emits`/`consumes` and the consistency/persistence/concurrency bullets until nothing new
+#: is reachable. That loop never reads the diff — it is closure by construction, and every
+#: kind it mints belongs here. Leaving them out is what made a seven-criterion story owe
+#: live proof against sixty-seven documents.
 _CLOSURE_REASON_KINDS = frozenset(
-    {"contains-impacted-node", "flow-links-contract", "flow-contract-closure", "graph-closure"}
+    {
+        "contains-impacted-node",
+        "flow-links-contract",
+        "flow-contract-closure",
+        "graph-closure",
+        "event-consumer",
+        "event-producer",
+    }
+    | _RELATION_REASON_KINDS
 )
 
 #: Bullets that name how to address a node in a running UI. Lifted onto the obligation so a
@@ -244,15 +273,7 @@ def build_context(
                 {"kind": "flow-contract-closure", "ref": source}
             )
 
-    relation_keys = (
-        "consistency",
-        "consistency rule",
-        "consistency group",
-        "persistence",
-        "event",
-        "concurrency",
-        "idempotency",
-    )
+    relation_keys = _RELATION_KEYS
     related = True
     while related:
         related = False
@@ -796,8 +817,26 @@ def _is_non_production_path(path: str) -> bool:
         "fixture",
         "golden",
         "goldens",
+        # QA's own scaffolding. A mock backend, a stub server or a fixture harness exists to
+        # make a test runnable; it carries no user-observable behaviour of its own. Treated as
+        # production it gets modelled in the book as features, and then every story that so
+        # much as touches a mock owes live proof of the mock — QA verifying its own harness
+        # instead of the product it was pointed at.
+        "mocks",
+        "__mocks__",
+        "stubs",
+        "harness",
+        "harnesses",
     }
     if any(part in non_production_dirs for part in parts[:-1]):
+        return True
+    # Same reasoning, for the directories that name their purpose rather than sit under a
+    # conventional folder — `tools/qa-mock-backends/`, `mock-server/`, `qa-fixtures/`.
+    if any(
+        part.startswith(("qa-mock", "mock-", "mock_", "qa-fixture", "fake-", "fake_"))
+        or part.endswith(("-mocks", "-mock-backends", "-fixtures"))
+        for part in parts[:-1]
+    ):
         return True
     name = parts[-1] if parts else candidate
     if name.startswith("test_") or name.endswith(("_test.py", "_test.go")):
