@@ -190,12 +190,18 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
+    #: The author's two prompts. `document-story` writes the first draft and
+    #: `repair-documentation` edits the cited nodes on every later pass, so they are one
+    #: role and are counted as one: `nth` here means the author's nth turn, not the nth
+    #: turn of whichever prompt it happened to reach.
+    AUTHOR_STEMS = ("document-story", "repair-documentation")
+
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
         data = ctx.as_dict()
         self.calls.append(stem)
         self.args.append(data)
-        nth = self.counts()[stem]
+        nth = self.authored() if stem in self.AUTHOR_STEMS else self.counts()[stem]
         if stem in self.explode and nth >= self.explode_after:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
@@ -204,8 +210,16 @@ class _Agent:
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
 
+    def authored(self) -> int:
+        """How many author turns have run, across the draft and every repair."""
+        return sum(self.counts()[stem] for stem in self.AUTHOR_STEMS)
+
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
+
+    def author_args(self) -> list[dict[str, Any]]:
+        """Every author turn's brief in order, whichever of its two prompts served it."""
+        return [a for s, a in zip(self.calls, self.args, strict=True) if s in self.AUTHOR_STEMS]
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {
@@ -213,6 +227,10 @@ class _Agent:
             "nodes": list(self.author_nodes) if nth >= self.nodes_after else [],
             "notes": f"documented on pass {nth}",
         }
+
+    def _repair_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The repair turn answers in the author's own shape — same schema, same gate."""
+        return self._document_story(data, nth)
 
     def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth >= self.approve_after:
@@ -383,7 +401,7 @@ def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
     gate = _output(run_env, verify_story_documentation)
     grounding = [f for f in gate["failures"] if f.startswith("G:")]
     assert grounding == ["G:api/widget.go::Widget"], gate
-    assert agent.args_for("document-story")[1]["obligations"] == ["api/widget.go::Widget"]
+    assert agent.author_args()[1]["obligations"] == ["api/widget.go::Widget"]
 
 
 def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
@@ -423,7 +441,7 @@ def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
 
     assert result.status == "passed", result
     assert agent.args_for("document-story")[0]["obligations"] == ["api/widget.go::Widget"]
-    assert agent.args_for("document-story")[1]["obligations"] == []
+    assert agent.author_args()[1]["obligations"] == []
     review = agent.args_for("review-story-documentation")
     assert len(review) == 2, agent.calls
     assert [r["obligations"] for r in review] == [["api/widget.go::Widget"]] * 2, review
@@ -448,13 +466,11 @@ def test_a_documented_claim_naming_no_nodes_is_sent_back(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["document-story"] == 2, agent.counts()
+    assert agent.authored() == 2, agent.counts()
     # The reviewer never saw the first pass: the gate is upstream of it.
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
     # And the second author pass was told exactly what was wrong with the first.
-    assert "did not identify affected OKF nodes" in agent.args_for("document-story")[1][
-        "gate_notes"
-    ]
+    assert "did not identify affected OKF nodes" in agent.author_args()[1]["gate_notes"]
 
 
 def test_the_grounding_failure_names_the_symbols_not_the_files(
@@ -767,8 +783,12 @@ def test_a_revision_request_reworks_and_carries_the_notes_forward(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts() == {"document-story": 2, "review-story-documentation": 2}
-    second = agent.args_for("document-story")[1]
+    assert agent.counts() == {
+        "document-story": 1,
+        "repair-documentation": 1,
+        "review-story-documentation": 2,
+    }, agent.counts()
+    second = agent.author_args()[1]
     assert "D1 [overclaim] docs/features/widget.md#states" in second["review_notes"]
     assert "The widget's states are not described" in second["review_notes"]
     assert "direct OKF grounding" in second["gate_notes"]
@@ -793,6 +813,30 @@ def test_a_blocked_review_fails_rather_than_reworking(
 
     assert result.status == "blocked", result
     assert agent.counts()["document-story"] == 1, agent.counts()
+
+
+def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Both the gate and the reviewer send the book to `repair`, not back to `document`.
+
+    `document`'s brief is "write this story into the book". Handed that instruction plus a
+    finding against one bullet, the author revisits nodes nobody complained about — so the
+    `power="high"` reviewer meets a changed book each round and, correctly, finds a
+    different real defect in it. Only the first pass may be an authoring pass.
+    """
+    agent = _Agent(nodes_after=2, approve_after=3)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["document-story"] == 1, agent.counts()
+    # One grounding repair, then two the reviewer asked for.
+    assert agent.counts()["repair-documentation"] == 3, agent.counts()
+    assert agent.calls[0] == "document-story", agent.calls
 
 
 def test_a_revision_request_without_structured_findings_fails_the_flow(
@@ -841,8 +885,8 @@ def test_a_finding_id_is_an_opaque_handle(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["document-story"] == 2, agent.counts()
-    second = agent.args_for("document-story")[1]
+    assert agent.authored() == 2, agent.counts()
+    second = agent.author_args()[1]
     assert "F1 [overclaim] docs/features/widget.md#f1" in second["review_notes"]
 
 
@@ -869,7 +913,11 @@ def test_the_loop_is_bounded_at_four_passes(
 
     assert result.status == "blocked", result
     assert "review did not converge in 4 passes" in result.notes
-    assert agent.counts() == {"document-story": 4, "review-story-documentation": 4}
+    assert agent.counts() == {
+        "document-story": 1,
+        "repair-documentation": 3,
+        "review-story-documentation": 4,
+    }, agent.counts()
 
 
 def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
@@ -884,7 +932,7 @@ def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
     with pytest.raises(WorkflowFailed, match="did not converge in 4 grounding passes"):
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
-    assert agent.counts() == {"document-story": 4}
+    assert agent.counts() == {"document-story": 1, "repair-documentation": 3}, agent.counts()
 
 
 def test_the_gates_failure_does_not_spend_the_reviewers_budget(
@@ -908,7 +956,11 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts() == {"document-story": 5, "review-story-documentation": 4}
+    assert agent.counts() == {
+        "document-story": 1,
+        "repair-documentation": 4,
+        "review-story-documentation": 4,
+    }, agent.counts()
 
 
 # --------------------------------------------------------------------- was it productive?
@@ -1046,21 +1098,22 @@ def test_a_run_killed_mid_rework_resumes_knowing_what_was_outstanding(
     run_env = env()
     run_dir = run_env.writer.run_dir
 
-    with pytest.raises(RuntimeError, match="killed during document-story"):
+    # The kill lands on the *second* author turn, which is a repair and not a re-author.
+    with pytest.raises(RuntimeError, match="killed during repair-documentation"):
         drive_flow(
             Docs(story=STORY, epic=EPIC),
             run_env,
             _Agent(
                 approve_after=99,
                 findings_per_pass=[[_finding("D1"), _finding("D2")]],
-                explode={"document-story"},
+                explode={"repair-documentation"},
                 explode_after=2,
             ),
         )
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "document", resume
+    assert resume.state == "repair", resume
     progress = resume.params["progress"]
     assert progress["review_disposition"] == "revise", progress
     assert progress["review_ids"] == ["D1", "D2"], progress

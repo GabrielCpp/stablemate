@@ -402,6 +402,11 @@ class _Agent:
 
     # -- the seam ---------------------------------------------------------
 
+    #: The plan author's two prompts. `plan-qa` writes the first draft and `repair-qa-plan`
+    #: edits the cited scenarios on every later lap, so they are one role and share one lap
+    #: number: `nth` means the author's nth turn, not the nth turn of one of its prompts.
+    PLAN_STEMS = ("plan-qa", "repair-qa-plan")
+
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
         data = ctx.as_dict()
@@ -411,13 +416,22 @@ class _Agent:
         if stem in self.explode:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
-        return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
+        nth = self.planned() if stem in self.PLAN_STEMS else self.counts()[stem]
+        return f"(scripted) {node.prompt}", handler(data, nth)
 
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
 
+    def planned(self) -> int:
+        """How many plan-authoring turns have run, across the draft and every repair."""
+        return sum(self.counts()[stem] for stem in self.PLAN_STEMS)
+
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
+
+    def plan_args(self) -> list[dict[str, Any]]:
+        """Every plan turn's brief in order, whichever of its two prompts served it."""
+        return [a for s, a in zip(self.calls, self.args, strict=True) if s in self.PLAN_STEMS]
 
     # -- one handler per prompt -------------------------------------------
 
@@ -434,6 +448,10 @@ class _Agent:
     def _plan_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         (Path(data["spec_dir"]) / "qa-plan.yml").write_text(QA_PLAN, encoding="utf-8")
         return {"status": "planned", "notes": f"plan pass {nth}"}
+
+    def _repair_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The repair turn leaves the same plan on disk and answers in the same shape."""
+        return self._plan_qa(data, nth)
 
     def _review_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # `revise_plans` follows `_Ostler`'s convention: a count of *leading* refusals, for
@@ -759,7 +777,8 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"plan-qa": 4}, agent.counts()
+    # One draft and three repairs: a plan that does not parse is repaired, not re-authored.
+    assert agent.counts() == {"plan-qa": 1, "repair-qa-plan": 3}, agent.counts()
     assert okf.runs == 0, "an invalid plan must never be executed"
     assert result.spent == "3 QA-plan schema repair", result.spent
 
@@ -777,7 +796,11 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"plan-qa": 5, "review-qa-plan": 5}, agent.counts()
+    assert agent.counts() == {
+        "plan-qa": 1,
+        "repair-qa-plan": 4,
+        "review-qa-plan": 5,
+    }, agent.counts()
     assert okf.runs == 0
 
 
@@ -801,7 +824,7 @@ def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    briefs = [args["prior_plan_reviews"] for args in agent.args_for("plan-qa")]
+    briefs = [args["prior_plan_reviews"] for args in agent.plan_args()]
     assert len(briefs) == 5, briefs
     assert briefs[0] == "", "the first draft has been refused nothing"
     # Each later turn carries every refusal so far, oldest first and numbered by its pass —
@@ -833,7 +856,11 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
 
     assert result.status == "exhausted", result
     # Three schema repairs, then five reviewed plans: the reviewer is not short-changed.
-    assert agent.counts() == {"plan-qa": 8, "review-qa-plan": 5}, agent.counts()
+    assert agent.counts() == {
+        "plan-qa": 1,
+        "repair-qa-plan": 7,
+        "review-qa-plan": 5,
+    }, agent.counts()
     assert result.spent == "4 QA-plan repair", result.spent
     assert okf.runs == 0
 
@@ -890,7 +917,7 @@ def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
 
     assert result.status == "passed", result
     # One plan turn and one review: the refusal did not survive its own contract.
-    assert agent.counts()["plan-qa"] == 1, agent.counts()
+    assert agent.planned() == 1, agent.counts()
     assert agent.counts()["review-qa-plan"] == 1, agent.counts()
     assert okf.runs == 1
 
@@ -932,8 +959,8 @@ def test_a_mixed_refusal_keeps_only_what_the_plan_can_fix(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["plan-qa"] == 2, agent.counts()
-    brief = agent.args_for("plan-qa")[1]["plan_review_notes"]
+    assert agent.planned() == 2, agent.counts()
+    brief = agent.plan_args()[1]["plan_review_notes"]
     assert "Outside the plan's authority" in brief, brief
     assert "the auth emulator is not running" in brief, brief
     assert okf.runs == 1
@@ -958,9 +985,35 @@ def test_the_replan_brief_is_composed_from_the_findings_not_the_prose(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    brief = agent.args_for("plan-qa")[1]["plan_review_notes"]
+    brief = agent.plan_args()[1]["plan_review_notes"]
     assert "R1 [plan] scenario `create-document`: review pass 1. Repair: assert" in brief, brief
     assert brief.splitlines()[-1] == "Summary: review pass 1", brief
+
+
+def test_only_the_first_draft_is_authored_and_every_lap_after_it_repairs(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """All three guards land on `repair_plan`, whichever of them fired.
+
+    Re-entering `plan` regenerates the whole file from the story, which resamples the
+    scenarios the reviewer already accepted and hands the next review a fresh set of defects
+    to find — the loop then has no reason to terminate. Here a schema failure, a semantic
+    refusal and a post-run assessment all fire in one run, and only the very first turn is
+    an authoring turn.
+    """
+    ostler(plan_invalid=1, fail_runs=1)
+    agent = _Agent(docs, revise_plans=1)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["plan-qa"] == 1, agent.counts()
+    # One schema repair, one review repair, one post-run repair.
+    assert agent.counts()["repair-qa-plan"] == 3, agent.counts()
+    assert agent.calls[0] == "plan-qa", agent.calls
 
 
 @pytest.mark.parametrize(
@@ -1010,7 +1063,8 @@ def test_three_review_revisions_leave_one_post_run_repair(
     assert result.status == "passed", result
     # Five plan turns: three reviewer repairs and one post-run repair after the initial plan.
     assert agent.counts() == {
-        "plan-qa": 5,
+        "plan-qa": 1,
+        "repair-qa-plan": 4,
         "review-qa-plan": 5,
         "qa-story": 2,
         "audit-qa": 1,
@@ -1278,7 +1332,7 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     assert result.status == "exhausted", result
     assert agent.counts()["audit-qa"] == 0, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
-    assert agent.counts()["plan-qa"] == 5, agent.counts()
+    assert agent.planned() == 5, agent.counts()
 
 
 def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(

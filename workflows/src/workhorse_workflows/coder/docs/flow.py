@@ -220,9 +220,11 @@ class Docs(Workflow):
         reviewer being told what this story is answerable for: a scope that shrinks every pass
         would keep re-legalizing the findings it had just ruled out of bounds. This one
         never narrows, and `review` is its only reader.
+
+        This state is the *first pass only*. A gate failure or a reviewer refusal goes to
+        `repair`, which edits the nodes the findings cite instead of re-authoring the book.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
-        classification = self.output(classify_documentation_context)
         result = self.agent(
             "prompts/document-story.md",
             returns=DocumentationResult,
@@ -230,20 +232,93 @@ class Docs(Workflow):
             # gate that will check the result. Not a discovery task.
             power="medium",
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "story_slug": self.ctx.story_slug,
-                "docs_path": self.docs_path,
-                "features_root": self._features_root,
-                "epic_path": self._epic_path,
-                "context_mode": classification.mode,
-                "context_notes": classification.notes,
-                "gate_notes": gate_notes,
-                "review_notes": review_notes,
-                "obligations": list(obligations),
-            },
+            args=self._author_args(gate_notes, review_notes, obligations),
         )
+        return self._authored(
+            result,
+            rework=rework,
+            review_rework=review_rework,
+            gate_notes=gate_notes,
+            review_notes=review_notes,
+            progress=progress,
+            delta_refs=delta_refs,
+        )
+
+    def repair(
+        self,
+        rework: int = 0,
+        review_rework: int = 0,
+        gate_notes: str = "",
+        review_notes: str = "",
+        progress: DocsProgress | None = None,
+        obligations: tuple[str, ...] = (),
+        delta_refs: tuple[str, ...] = (),
+    ) -> Continue | Done:
+        """Edit the nodes the findings cite, and leave every other node alone.
+
+        Every pass after the first used to re-enter `document`, whose brief is "write this
+        story into the book". Handed that instruction plus a finding against one bullet, the
+        author revisits nodes nobody complained about — so the `power="high"` reviewer meets a
+        changed book each round and, correctly, finds a different real defect in it. That is
+        the loop `document-story` averaged 4.5 turns on. Bounding the reviewer's scope (its
+        own prompt) only helps if the artifact under review stops moving underneath it, which
+        is what this state is for.
+
+        Same signature, same result, same gate as `document`: only the instruction and the
+        power tier differ.
+        """
+        self.logger.info("repairing the documentation for %s", self.ctx.story_slug,
+                         extra={"activity": True})
+        result = self.agent(
+            "prompts/repair-documentation.md",
+            returns=DocumentationResult,
+            # low: applying a named list of edits to nodes that already exist. Paying the
+            # authoring tier for it is part of what tempted the turn to re-author.
+            power="low",
+            add_dirs=self._dirs(),
+            args=self._author_args(gate_notes, review_notes, obligations),
+        )
+        return self._authored(
+            result,
+            rework=rework,
+            review_rework=review_rework,
+            gate_notes=gate_notes,
+            review_notes=review_notes,
+            progress=progress,
+            delta_refs=delta_refs,
+        )
+
+    def _author_args(
+        self, gate_notes: str, review_notes: str, obligations: tuple[str, ...]
+    ) -> dict[str, object]:
+        """The brief `document` and `repair` share — same inputs, different instruction."""
+        classification = self.output(classify_documentation_context)
+        return {
+            "story_path": self.ctx.story_path,
+            "spec_dir": self.ctx.spec_dir,
+            "story_slug": self.ctx.story_slug,
+            "docs_path": self.docs_path,
+            "features_root": self._features_root,
+            "epic_path": self._epic_path,
+            "context_mode": classification.mode,
+            "context_notes": classification.notes,
+            "gate_notes": gate_notes,
+            "review_notes": review_notes,
+            "obligations": list(obligations),
+        }
+
+    def _authored(
+        self,
+        result: DocumentationResult,
+        *,
+        rework: int,
+        review_rework: int,
+        gate_notes: str,
+        review_notes: str,
+        progress: DocsProgress | None,
+        delta_refs: tuple[str, ...],
+    ) -> Continue | Done:
+        """The tail both author turns share: the contract on the answer, then the gate."""
         if result.status == "blocked":
             self.logger.info(
                 "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
@@ -468,10 +543,13 @@ class Docs(Workflow):
         refusals each naming a distinct, correct, fixable defect, and the flow raised on the
         third with the book one edit from conformant. Same defect the QA flow's
         `_guard_plan_validation` / `_guard_plan_review` split fixes.
+
+        Where it sends the author is `repair`, not `document`: a finding against three
+        bullets is not a reason to rewrite the nodes the gate and the reviewer both passed.
         """
         return Continue(
             result,
-            self.document,
+            self.repair,
             rework=rework,
             review_rework=review_rework,
             gate_notes=gate_notes,

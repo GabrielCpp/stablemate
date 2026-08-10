@@ -429,6 +429,10 @@ class Qa(Workflow):
         review as `prior_plan_reviews`. A refusal describes a plan that is gone; the *demand*
         in it outlives the draft it was written against, and forgetting that is what let a
         story spend every judgement repair being told the same thing. See the field.
+
+        This state is the *first draft only*. Every later lap — a schema defect, a reviewer
+        refusal, a post-run finding — goes to `repair_plan`, which edits the plan instead of
+        writing a new one.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         self.agent(
@@ -438,22 +442,57 @@ class Qa(Workflow):
             # obligation packet that both already exist.
             power="medium",
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "qa_dir": self.ctx.qa_dir,
-                "docs_path": self.docs_path,
-                "target_env": self.target_env,
-                "context_status": loop.context_status,
-                "context_notes": loop.context_notes,
-                "plan_validation_notes": loop.plan_validation_notes,
-                "plan_review_notes": loop.plan_review_notes,
-                "prior_plan_reviews": loop.prior_plan_review_brief,
-                "run_assessment_notes": loop.assessment_notes,
-                "audit_notes": loop.audit_notes,
-                "evidence_notes": loop.qa.notes,
-            },
+            args=self._plan_args(loop),
         )
+        return self._validated(loop)
+
+    def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
+        """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
+
+        Every lap after the first used to re-enter `plan`, which regenerates the whole file
+        from the story. That **resamples the scenarios the reviewer already accepted**, so
+        each pass handed the gate a fresh set of defects to find and the loop had no reason
+        to terminate — `plan-qa` averaged 5.5 turns per story and reached 13, with the same
+        demand refused pass after pass. Repairing only what was cited makes the worklist
+        shrink monotonically, which is the whole mechanism by which the loop converges.
+
+        It takes the same brief as `plan` and returns the same result, so the validation tail
+        and every guard are unchanged; what differs is the instruction and the power tier.
+        """
+        self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
+                         extra={"activity": True})
+        self.agent(
+            "prompts/repair-qa-plan.md",
+            returns=QaPlanResult,
+            # low: applying a named list of edits to a file that already exists is not the
+            # work that authoring the plan was, and paying the authoring tier for it is what
+            # tempted the turn to rewrite rather than repair.
+            power="low",
+            add_dirs=self._dirs(),
+            args=self._plan_args(loop),
+        )
+        return self._validated(loop)
+
+    def _plan_args(self, loop: QaLoop) -> dict[str, object]:
+        """Every diagnostic the loop collected, for whichever plan turn is about to run."""
+        return {
+            "story_path": self.ctx.story_path,
+            "spec_dir": self.ctx.spec_dir,
+            "qa_dir": self.ctx.qa_dir,
+            "docs_path": self.docs_path,
+            "target_env": self.target_env,
+            "context_status": loop.context_status,
+            "context_notes": loop.context_notes,
+            "plan_validation_notes": loop.plan_validation_notes,
+            "plan_review_notes": loop.plan_review_notes,
+            "prior_plan_reviews": loop.prior_plan_review_brief,
+            "run_assessment_notes": loop.assessment_notes,
+            "audit_notes": loop.audit_notes,
+            "evidence_notes": loop.qa.notes,
+        }
+
+    def _validated(self, loop: QaLoop) -> Continue | Await | Done:
+        """The tail both plan turns share: clear the brief, stamp, parse, route on the parse."""
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
@@ -1117,10 +1156,16 @@ class Qa(Workflow):
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
-        """Spend the post-run component of the QA-plan judgement budget."""
+        """Spend the post-run component of the QA-plan judgement budget.
+
+        Like both guards below, this returns to `repair_plan` and not to `plan`: a finding
+        against one scenario is not a reason to resample the seven the gate already passed.
+        """
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
-        return Continue(result, self.plan, loop=loop.update(plan_rework=loop.plan_rework + 1))
+        return Continue(
+            result, self.repair_plan, loop=loop.update(plan_rework=loop.plan_rework + 1)
+        )
 
     def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
         """Spend a schema-validation repair — a budget of its own, not the judgement one.
@@ -1129,6 +1174,10 @@ class Qa(Workflow):
         nothing about whether the plan tests the story. Charging it to the same ceiling as
         the reviewer let a run of schema typos exhaust the story before any gate had read
         the plan for coverage; `QaLoop.plan_judgement_rework` records the case.
+
+        A parse error is also the most local repair there is, which is why this goes to
+        `repair_plan` — regenerating a whole plan to fix an indentation slip threw away a
+        correct draft and bought a different one.
         """
         if loop.plan_validation_rework >= self.MAX_PLAN_VALIDATION_REWORKS:
             return self._exhausted(
@@ -1136,7 +1185,7 @@ class Qa(Workflow):
             )
         return Continue(
             result,
-            self.plan,
+            self.repair_plan,
             loop=loop.update(plan_validation_rework=loop.plan_validation_rework + 1),
         )
 
@@ -1146,7 +1195,7 @@ class Qa(Workflow):
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return Continue(
             result,
-            self.plan,
+            self.repair_plan,
             loop=loop.update(plan_review_rework=loop.plan_review_rework + 1),
         )
 
