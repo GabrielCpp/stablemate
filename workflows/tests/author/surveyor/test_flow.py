@@ -536,7 +536,7 @@ def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
         seen.append(path.read_text())
         agent.block_repeats = agent.counts()["plan-units"]
 
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
@@ -556,7 +556,7 @@ def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
         seen.append(path.read_text())
         agent.block_repeats = agent.counts()["partition-findings"]
 
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
@@ -580,7 +580,7 @@ def test_an_escalated_partition_block_waits_on_the_operator_context_file(
         seen.append(path.read_text())
 
     agent = _Agent(surveyed, blocked={"partition-findings"}, escalate=True)
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
@@ -606,7 +606,7 @@ def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
         seen.append(path.read_text())
 
     agent = _Agent(surveyed, blocked={"plan-units"})
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent, operator_mode="human")
 
     assert result.emit_ok is True, result

@@ -278,7 +278,7 @@ class _Agent:
 def _answers(seen: list[str]) -> Callable[..., None]:
     """A stand-in for the human an `Await` is waiting on.
 
-    Patched over `poll_until_touched`, so it runs where the operator's edit would land: the
+    Patched over `wait_for_answer`, so it runs where the operator's edit would land: the
     questions are already in the file by then, which is what `seen` records.
     """
 
@@ -547,7 +547,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, needs_changes=1, apply_status="blocked")
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "approved", result
@@ -570,7 +570,7 @@ def test_an_escalating_resolver_falls_through_to_the_human(
     seen: list[str] = []
     agent = _Agent(docs, needs_changes=1, apply_status="blocked", escalate=True)
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert result.status == "approved", result
@@ -589,7 +589,7 @@ def test_an_answered_resolution_never_waits(
 ) -> None:
     """The other half of the split: a resolver that answered must not halt the run.
 
-    `poll_until_touched` is replaced with something that fails the test if it is reached, so
+    `wait_for_answer` is replaced with something that fails the test if it is reached, so
     an accidental unconditional `Await` cannot pass by having a helpful stub answer it.
     """
 
@@ -598,7 +598,7 @@ def test_an_answered_resolution_never_waits(
 
     agent = _Agent(docs, needs_changes=1, apply_status="blocked")
 
-    with patch.object(pyflow_driver, "poll_until_touched", never):
+    with patch.object(pyflow_driver, "wait_for_answer", never):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert result.status == "approved", result

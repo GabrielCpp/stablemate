@@ -959,7 +959,7 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
         return real_rebase(self, current)
 
     with (
-        patch.object(pyflow_driver, "poll_until_touched", answered),
+        patch.object(pyflow_driver, "wait_for_answer", answered),
         patch.object(pyflow_activity.ActivityLog, "rebase", capture),
     ):
         _drive(_env(tmp_path), agent)
@@ -1001,7 +1001,7 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
     """`human` skips the resolver entirely and waits on the file.
 
     The wait is the driver's `Await`: it writes the questions to the context file,
-    checkpoints, and polls that path's mtime. Patching `poll_until_touched` is the
+    checkpoints, and polls that path's mtime. Patching `wait_for_answer` is the
     operator answering — and the autonomous arms above are proved by the *absence* of that
     patch, since a real wait would hang the suite.
     """
@@ -1011,7 +1011,7 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
         seen.append(path.read_text())
 
     agent = _Agent(backlogged, review_epics=["blocked", "approved"])
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         _drive(_env(tmp_path), agent, operator_mode="human")
 
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
@@ -1039,7 +1039,7 @@ def test_an_escalated_story_block_waits_on_the_story_context(
         agent.fail_audit.clear()
 
     agent = _Agent(backlogged, fail_audit={"01-sign-in"}, escalate=True)
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         _drive(_env(tmp_path), agent)
 
     assert seen == [backlogged / EPIC_DIR / "stories/01-sign-in/context.md"], seen
@@ -1258,7 +1258,7 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
         seen.append(path.read_text())
         agent.edit_reviews = ["approved"]
 
-    with patch.object(pyflow_driver, "poll_until_touched", answered):
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
         _drive_story_edit(
             _env(tmp_path),
             agent,

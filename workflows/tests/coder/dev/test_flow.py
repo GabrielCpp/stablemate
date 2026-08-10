@@ -344,7 +344,7 @@ class _Agent:
 def _answers(docs: Path, seen: list[str], *, scope: str = "story") -> Callable[..., None]:
     """A stand-in for the human an `Await` is waiting on.
 
-    Patched over `poll_until_touched`, so it runs where the operator's edit would land: the
+    Patched over `wait_for_answer`, so it runs where the operator's edit would land: the
     questions are already in the file by then, which is what `seen` records, and writing the
     answer over them is what a person answering in place does.
     """
@@ -651,7 +651,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, blocked=1)
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "ready", result
@@ -669,7 +669,7 @@ def test_an_escalating_resolver_falls_through_to_the_human(
     seen: list[str] = []
     agent = _Agent(docs, blocked=1, escalate=True)
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -698,7 +698,7 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     seen: list[str] = []
     agent = _Agent(docs, blocked=1, escalate=True)
 
-    with patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -755,7 +755,7 @@ def test_the_human_operator_is_bounded_by_the_same_counter(
     agent = _Agent(docs, blocked=99)
 
     with (
-        patch.object(pyflow_driver, "poll_until_touched", _answers(docs, seen)),
+        patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)),
         pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"),
     ):
         drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
