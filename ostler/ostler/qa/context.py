@@ -195,6 +195,19 @@ def build_context(
                     }
                 )
 
+    # A bare-file `code:` citation says "this node is documented against that file". It
+    # localizes a change to the node only while the node is the file's *sole* owner. A
+    # global stylesheet or a shared module is cited by every node that renders through it,
+    # so one edited line makes all of them file-owned — and none of that is evidence the
+    # change touched any particular one. Which of those citations are shared is a property
+    # of the whole change set, so it is known here and not inside the loop above.
+    file_owners: dict[str, set[str]] = {}
+    for node_id, reasons in direct_reasons.items():
+        for reason in reasons:
+            if reason["kind"] == "file-owner":
+                file_owners.setdefault(reason["ref"], set()).add(node_id)
+    shared_files = {ref for ref, owners in file_owners.items() if len(owners) > 1}
+
     # Containment and graph links broaden impact without lexical inference.
     impacted = set(direct_reasons)
     for node_id in list(impacted):
@@ -324,7 +337,7 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=False,
-            required=_is_required(node_id, direct_reasons, grounded),
+            required=_is_required(node_id, direct_reasons, grounded, shared_files),
         )
     ] + [
         obligation
@@ -333,7 +346,7 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=True,
-            required=_is_required(node_id, direct_reasons, grounded),
+            required=_is_required(node_id, direct_reasons, grounded, shared_files),
         )
     ]
     obligations.sort(key=lambda item: item["id"])
@@ -939,10 +952,11 @@ def _is_required(
     node_id: str,
     direct_reasons: dict[str, list[dict[str, str]]],
     grounded: set[str],
+    shared_files: frozenset[str] | set[str] = frozenset(),
 ) -> bool:
     """Whether this node's obligations are owed live evidence, or are only context.
 
-    Two conditions, both from the book rather than from inference. The node must be
+    Three conditions, all from the book rather than from inference. The node must be
     *grounded* — at least one `code:` ref that resolves in base or head — because a node
     whose `code:` is empty documents something nobody has built yet, and a QA plan cannot
     exercise a route or a component that has no implementation. And it must be reached by
@@ -950,8 +964,20 @@ def _is_required(
     broad: a single edited file drags in every flow that links to every contract it owns.
     Demanding live proof for the whole closure is what made the packet grow faster than the
     change did.
+
+    The third is the same argument one level down, for the reach that is *not* closure. A
+    `file-owner` reason is a bare-file citation with no symbol behind it, so it points at
+    the node only as precisely as the file belongs to it. When several nodes cite the same
+    file the citation stops localizing anything — an edit to a global stylesheet owed live
+    proof for every component documented against it, which is a plan the change cannot
+    justify and the planner cannot write. Those nodes stay in the packet as context; a node
+    the diff also reached by an exact symbol keeps its own reason and stays required.
     """
-    kinds = {reason.get("kind", "") for reason in direct_reasons.get(node_id, [])}
+    kinds = {
+        reason.get("kind", "")
+        for reason in direct_reasons.get(node_id, [])
+        if not (reason.get("kind") == "file-owner" and reason.get("ref") in shared_files)
+    }
     return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
 
 

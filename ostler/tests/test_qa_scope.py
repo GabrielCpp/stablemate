@@ -75,6 +75,97 @@ def test_container_reached_only_by_closure_is_context_not_live_evidence(tmp_path
     assert {reason["kind"] for reason in parent["reasons"]} == {"contains-impacted-node"}
 
 
+def _shared_stylesheet_book(tmp_path: Path) -> Path:
+    """Two widgets and a stylesheet both of them are documented against.
+
+    One widget also grounds a symbol of its own, which is the discriminator: the change set
+    edits only the stylesheet, so the *file* reaches both and no *symbol* reaches either.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/screen.md").write_text(
+        "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
+        "- route: /demo\n"
+        "- code:\n\n"
+        "## Alert\n\n"
+        "- role: alert\n"
+        "- code: app/app.css\n"
+        "- verify: tests/alert.test.ts::styled\n\n"
+        "## Banner\n\n"
+        "- role: banner\n"
+        "- code: app/app.css\n"
+        "- verify: tests/banner.test.ts::styled\n",
+        encoding="utf-8",
+    )
+    stylesheet = tmp_path / "app/app.css"
+    stylesheet.write_text(".alert { color: red }\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    stylesheet.write_text(".alert { color: blue }\n", encoding="utf-8")
+    return stylesheet
+
+
+def test_a_file_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path):
+    """One edited stylesheet does not owe live proof for every component that renders through it.
+
+    A `file-owner` reason is a bare-file citation, so it localizes the change only as far as
+    the file belongs to one node. On a real run an eight-line change to `app.css` was the
+    sole reason 30 of 58 nodes were owed evidence, and the planner spent three hour-long
+    turns — $32 — writing plans that could never cover them, because nothing in the diff
+    said what to assert.
+    """
+    _shared_stylesheet_book(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    for node in ("alert", "banner"):
+        obligation = by_id[f"okf:docs/features/demo/screen.md#{node}:contract"]
+        assert obligation["required"] is False, f"{node} is owed live evidence"
+        assert obligation["evidenceRequired"] == "context"
+        assert {reason["kind"] for reason in obligation["reasons"]} == {"file-owner"}
+
+
+def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
+    """The narrowing is about a citation that stopped discriminating, not about bare files.
+
+    A language whose symbols the mapper cannot extract reaches its node by file and nothing
+    else. While that node is the file's only owner the citation still says exactly what the
+    change touched, so demoting it would leave the change with no obligation at all.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/screen.md").write_text(
+        "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
+        "- route: /demo\n"
+        "- code:\n\n"
+        "## Alert\n\n"
+        "- role: alert\n"
+        "- code: app/alert.css\n"
+        "- verify: tests/alert.test.ts::styled\n",
+        encoding="utf-8",
+    )
+    stylesheet = tmp_path / "app/alert.css"
+    stylesheet.write_text(".alert { color: red }\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    stylesheet.write_text(".alert { color: blue }\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    obligation = {item["id"]: item for item in packet["obligations"]}[
+        "okf:docs/features/demo/screen.md#alert:contract"
+    ]
+    assert obligation["required"] is True
+    assert obligation["evidenceRequired"] == "live"
+
+
 def test_obligations_carry_the_book_locators_for_the_node(tmp_path: Path):
     """`role`/`name`/`route` ride on the obligation, so a browser locator has a source.
 
